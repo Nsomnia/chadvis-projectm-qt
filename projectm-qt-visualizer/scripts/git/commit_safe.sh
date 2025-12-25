@@ -8,7 +8,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 echo "=== Safe Commit ==="
-echo "Building to verify code compiles..."
+echo "Building to verify code compiles (potato-safe mode)..."
 cd "$PROJECT_ROOT"
 ./scripts/build.sh
 echo ""
