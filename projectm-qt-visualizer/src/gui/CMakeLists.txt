@@ -13,4 +13,5 @@ Qt6::Widgets
 Qt6::OpenGL
 Qt6::OpenGLWidgets
 projectm_lib
+platform_lib
 )

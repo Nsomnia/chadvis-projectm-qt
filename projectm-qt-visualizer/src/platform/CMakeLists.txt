@@ -1,9 +1,19 @@
 # Platform-specific library
-# Currently placeholder
 add_library(platform_lib INTERFACE)
-# Future Linux-specific:
-# if(UNIX AND NOT APPLE)
-# target_sources(platform_lib PRIVATE
-# linux/PulseAudioSource.cpp
-# )
-# endif()
+
+# Linux-specific: PulseAudio/PipeWire audio capture
+if(UNIX AND NOT APPLE)
+    # PulseAudio is checked in main CMakeLists
+    if(PULSEAUDIO_FOUND)
+        target_sources(platform_lib INTERFACE
+            ${CMAKE_CURRENT_SOURCE_DIR}/linux/PulseAudioSource.cpp
+        )
+        target_include_directories(platform_lib INTERFACE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${PULSEAUDIO_INCLUDE_DIRS}
+        )
+        target_link_libraries(platform_lib INTERFACE
+            ${PULSEAUDIO_LIBRARIES}
+        )
+    endif()
+endif()
