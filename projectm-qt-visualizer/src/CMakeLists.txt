@@ -22,6 +22,7 @@ Qt6::Widgets
 Qt6::OpenGL
 Qt6::OpenGLWidgets
 Qt6::Multimedia
-${PROJECTM4_LIBRARIES}
+projectM-4
+projectM-4-playlist
 OpenGL::GL
 )

@@ -7,7 +7,7 @@
  * AGENT NOTE: projectM v4 uses a C API. This wrapper makes it RAII-safe.
  *
  * API Reference:
- * #include <projectm-4/projectm.h>
+ * #include <projectM-4/projectM.h>
  * projectm_handle projectm_create();
  * void projectm_destroy(projectm_handle);
  * void projectm_set_window_size(projectm_handle, size_t w, size_t h);
@@ -16,7 +16,8 @@
  */
 #ifndef PROJECTMWRAPPER_HPP
 #define PROJECTMWRAPPER_HPP
-#include <projectm-4/projectm.h>
+#include <projectM-4/projectM.h>
+#include <projectM-4/playlist.h>
 #include <string>
 #include <vector>
 class ProjectMWrapper
@@ -43,6 +44,7 @@ void randomPreset();
 bool isInitialized() const { return m_handle != nullptr; }
 private:
 projectm_handle m_handle = nullptr;
+projectm_playlist_handle m_playlist = nullptr;
 std::vector<float> m_silenceBuffer;
 int m_width = 1280;
 int m_height = 720;

@@ -4,10 +4,11 @@ ProjectMWrapper.cpp
 )
 target_include_directories(projectm_lib PUBLIC
 ${CMAKE_CURRENT_SOURCE_DIR}
-${PROJECTM4_INCLUDE_DIRS}
+/usr/include/projectM-4
 )
 target_link_libraries(projectm_lib PUBLIC
 Qt6::Core
-${PROJECTM4_LIBRARIES}
+projectM-4
+projectM-4-playlist
 OpenGL::GL
 )

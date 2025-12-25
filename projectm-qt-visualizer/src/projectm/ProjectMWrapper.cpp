@@ -29,17 +29,9 @@ return false;
 qDebug() << "projectM instance created successfully";
 // Configure settings
 projectm_set_window_size(m_handle, m_width, m_height);
-// Try to find preset path
-// Common locations on Arch Linux:
-// /usr/share/projectM/presets
-// ~/.projectM/presets
-QString presetPath = "/usr/share/projectM/presets";
-if (QDir(presetPath).exists()) {
-qDebug() << "Using preset path:" << presetPath;
-projectm_set_preset_path(m_handle, presetPath.toUtf8().constData());
-} else {
-qWarning() << "Default preset path not found, visualization may be limited";
-}
+// Load idle preset (the "M" logo)
+// Note: projectM v4 uses idle:// protocol for default idle preset
+projectm_load_preset_file(m_handle, "idle://", false);
 qDebug() << "projectM initialized - Neck-beard visualization ready!";
 return true;
 }
@@ -96,21 +88,16 @@ return true;
 }
 void ProjectMWrapper::nextPreset()
 {
-if (m_handle) {
-projectm_playlist_play_next(m_handle, true);
-}
+// Playlist API requires separate playlist handle - not implemented yet
+qWarning() << "nextPreset() - Playlist API not yet implemented";
 }
 void ProjectMWrapper::previousPreset()
 {
-if (m_handle) {
-projectm_playlist_play_previous(m_handle, true);
-}
+// Playlist API requires separate playlist handle - not implemented yet
+qWarning() << "previousPreset() - Playlist API not yet implemented";
 }
 void ProjectMWrapper::randomPreset()
 {
-if (m_handle) {
-// Note: May need playlist configured first
-projectm_playlist_set_shuffle(m_handle, true);
-projectm_playlist_play_next(m_handle, true);
-}
+// Playlist API requires separate playlist handle - not implemented yet
+qWarning() << "randomPreset() - Playlist API not yet implemented";
 }

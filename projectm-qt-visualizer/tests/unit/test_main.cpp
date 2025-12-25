@@ -3,10 +3,9 @@
  * @brief Test suite entry point using Qt Test.
  */
 #include <QtTest>
+#include <QCoreApplication>
 // Include test classes here as they're implemented
 // #include "core/test_Logger.cpp"
-QTEST_MAIN_PLACEHOLDER
-// Placeholder until real tests exist
 int main(int argc, char *argv[])
 {
 QCoreApplication app(argc, argv);

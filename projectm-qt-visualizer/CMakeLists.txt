@@ -21,7 +21,8 @@ Multimedia
 )
 # projectM v4 via pkg-config
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(PROJECTM4 REQUIRED projectm-4)
+set(ENV{PKG_CONFIG_PATH} "/usr/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+pkg_check_modules(PROJECTM4 REQUIRED projectM-4)
 # OpenGL
 find_package(OpenGL REQUIRED)
 # Include directories
