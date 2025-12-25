@@ -1,0 +1,29 @@
+# Build artifacts
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+moc_*
+ui_*
+qrc_*
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+# Agent scratchpad
+scratch/
+# Backup graveyard
+.backup_graveyard/
+# Logs
+logs/*.log
+# OS
+.DS_Store
+Thumbs.db
