@@ -11,4 +11,9 @@ Qt6::Core
 projectM-4
 projectM-4-playlist
 OpenGL::GL
+platform_lib
 )
+# Link PulseAudio if available
+if(PULSEAUDIO_FOUND)
+    target_link_libraries(projectm_lib PUBLIC ${PULSEAUDIO_LIBRARIES})
+endif()

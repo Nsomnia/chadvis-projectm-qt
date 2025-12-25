@@ -22,11 +22,13 @@ explicit MainWindow(QWidget *parent = nullptr);
 private slots:
 void onOpenFile();
 void onAbout();
+void onAudioToggle();  // Toggle audio capture on/off
 private:
 void setupUi();
 void setupMenuBar();
 void setupStatusBar();
 void setupCentralWidget();
 std::unique_ptr<VisualizerWidget> m_visualizer;
+bool m_audioActive = false;
 };
 #endif // MAINWINDOW_HPP

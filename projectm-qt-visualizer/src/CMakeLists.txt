@@ -26,3 +26,7 @@ projectM-4
 projectM-4-playlist
 OpenGL::GL
 )
+# Link PulseAudio if available
+if(PULSEAUDIO_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${PULSEAUDIO_LIBRARIES})
+endif()
