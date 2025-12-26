@@ -18,5 +18,5 @@ cmake -G Ninja \
 cmake --build . -- -j1
 echo ""
 echo "=== Build complete ==="
-echo "Binary: $BUILD_DIR/src/projectm-qt-visualizer"
+echo "Binary: $BUILD_DIR/projectm-qt-visualizer"
 echo "I use Arch, BTW. Build succeeded."

@@ -12,7 +12,10 @@ Makefile
 moc_*
 ui_*
 qrc_*
-# IDE
+# IDE and tooling
+.cache/
+.compile_commands/
+compile_commands.json
 .idea/
 .vscode/
 *.swp
@@ -24,6 +27,10 @@ scratch/
 .backup_graveyard/
 # Logs
 logs/*.log
+# Debug/development files
+*_debug.cpp
+*_debug.hpp
+CMakeLists_new.txt
 # OS
 .DS_Store
 Thumbs.db
