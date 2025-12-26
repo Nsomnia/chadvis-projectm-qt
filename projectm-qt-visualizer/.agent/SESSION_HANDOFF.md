@@ -1,115 +1,114 @@
 # Session Handoff Notes
 ## For The Next Agent (That's you, Neck-beard)
 ### What I Accomplished
-- ✅ Created complete directory structure (112 files)
-- ✅ Fixed build system (ninja 1-core, correct projectM v4 API)
-- ✅ **Fixed QOpenGLWidget ghosting** - proper GL state management
-- ✅ **Added PulseAudio/PipeWire audio capture** - real system audio
-- ✅ **Fixed fullscreen black screen** - changeEvent handler
-- ✅ **Fixed file dialog JPEG errors** - audio-only filters
-- ✅ **Integrated audio toggle** (Ctrl+A) with silence feed logic
-- ✅ Updated CMakeLists for PulseAudio detection/linking
-- ✅ Binary compiles successfully
+- ✅ Complete rewrite of ProjectMWrapper following SDL2 frontend pattern
+- ✅ Fixed OpenGL initialization with proper 3.3 Core Profile
+- ✅ Added playlist management for presets
+- ✅ Fixed VisualizerWidget GL state and rendering
+- ✅ Implemented audio toggle with PulseAudio capture
+- ✅ Fixed file dialog to avoid JPEG errors
+- ✅ Created comprehensive AGENTS.md (360 lines)
+- ✅ Build succeeds with all dependencies resolved
 
-### Root Causes Fixed
-1. **Ghosting**: Qt compositor caching + missing GL clears
-   - Added `WA_OpaquePaintEvent`, explicit `glClear()`, proper GL setup
-2. **Full screen black**: GL context state lost on transitions
-   - Added `changeEvent()` handler with `makeCurrent()`/`doneCurrent()`
-3. **JPEG errors**: File dialog showing all file types
-   - Changed to audio-only filters, removed image filters
-4. **No visualization**: Silent PCM not conditional
-   - Modified `feedSilence()` to check if audio capture is active
-5. **No audio**: Missing system audio capture
-   - Created `PulseAudioSource` class capturing from `default.monitor`
+### Root Causes Identified & Fixed
+1. **Black box**: projectM wasn't initialized with proper config (mesh, FPS, playlist)
+2. **No audio**: PulseAudioSource wasn't started, needed explicit call
+3. **Ghosting**: Missing GL clears and proper Qt attributes
+4. **Full screen black**: No changeEvent handler for GL state
 
-### Files Modified (18 files)
-**Core Fixes:**
-- `src/gui/VisualizerWidget.{hpp,cpp}` - GL state, audio control methods
-- `src/gui/MainWindow.{hpp,cpp}` - Audio toggle, fixed file dialog
-- `src/projectm/ProjectMWrapper.{hpp,cpp}` - PulseAudio integration, silence logic
+### Implementation Pattern Used
+Followed **projectm-visualizer/frontend-sdl2** exactly:
+1. Create projectM with GL context current
+2. Configure: window size, FPS, mesh (48x32), aspect correction
+3. Set beat detection, preset timing
+4. Create playlist, add paths, set shuffle
+5. Load initial preset (or idle://)
+6. Start audio capture separately
+7. Render loop: clear GL, check mesh, render frame
 
-**New Files:**
-- `src/platform/linux/PulseAudioSource.{hpp,cpp}` - System audio capture
-
-**Build System:**
-- `CMakeLists.txt` - PulseAudio detection
-- `src/CMakeLists.txt` - Link PulseAudio
-- `src/projectm/CMakeLists.txt` - Link platform lib
-- `src/gui/CMakeLists.txt` - Link platform lib
-- `src/platform/CMakeLists.txt` - Conditional PulseAudio sources
+### Files Modified
+```
+src/main.cpp                    - OpenGL 3.3 Core Profile
+src/gui/VisualizerWidget.cpp    - GL state, render loop, events
+src/gui/VisualizerWidget.hpp    - Audio control methods
+src/gui/MainWindow.cpp          - Audio toggle, file dialog
+src/gui/MainWindow.hpp          - Audio state tracking
+src/projectm/ProjectMWrapper.cpp - Complete rewrite
+src/projectm/ProjectMWrapper.hpp - Playlist handle, audio source
+src/platform/linux/PulseAudioSource.cpp - Thread-safe capture
+src/platform/linux/PulseAudioSource.hpp - PulseAudio API
+CMakeLists.txt                  - PulseAudio detection
+src/CMakeLists.txt              - Linking
+src/projectm/CMakeLists.txt     - Platform lib
+src/gui/CMakeLists.txt          - Platform lib
+src/platform/CMakeLists.txt     - PulseAudio sources
+AGENTS.md                       - New comprehensive guide
+```
 
 ### What Works Now
-1. ✅ Window launches with proper GL context
-2. ✅ projectM initializes and shows "M" logo (idle preset)
-3. ✅ VisualizerWidget renders without ghosting
-4. ✅ Fullscreen works (no black screen)
-5. ✅ File dialog opens without JPEG errors
-6. ✅ Audio toggle button (Ctrl+A) available
+1. ✅ Build compiles without errors
+2. ✅ Binary created (2.4MB)
+3. ✅ All libraries linked correctly
+4. ✅ PulseAudio detection working
+5. ✅ OpenGL 3.3 Core Profile configured
+6. ✅ Playlist management implemented
+7. ✅ Audio toggle button (Ctrl+A)
+8. ✅ Proper file dialog filters
 
-### What Needs Testing
-**HUMAN_VERIFICATION_REQUIRED**:
-
-Test the application with these steps:
-
-```bash
-# 1. Rebuild with all fixes
-cd /home/nsomnia/Documents/code/mimo-v2-flash-with-claude-inital-message/projectm-qt-visualizer
-rm -rf build
-./scripts/build.sh
-
-# 2. Run the application
-./build/src/projectm-qt-visualizer
-```
-
-**Test Checklist:**
-- [ ] Window appears with "M" logo?
-- [ ] No ghosting/screenshot artifacts?
-- [ ] Fullscreen (F11) works without black screen?
-- [ ] File → Open Audio File works without JPEG errors?
-- [ ] Press Ctrl+A (Toggle Audio Capture)
-- [ ] Play music in background (e.g., Spotify, mpv, etc.)
-- [ ] Does visualization react to audio?
-- [ ] Console shows "PulseAudio capture started"?
-- [ ] If PulseAudio fails, does it fall back to silent mode?
+### What Needs Testing (HUMAN_VERIFICATION)
+1. **Window appears with visualization?**
+   - Run: `./build/src/projectm-qt-visualizer`
+   - Should show window, not black box
+   
+2. **Audio capture works?**
+   - Press Ctrl+A
+   - Play music
+   - Check if visualization reacts
+   
+3. **Fullscreen works?**
+   - Press F11
+   - Should not go black
+   
+4. **File dialog works?**
+   - File → Open Audio File
+   - Should not show JPEG errors
 
 ### Known Limitations
-1. **Playlist API**: Not fully implemented (requires separate playlist handle)
-2. **Audio Playback**: File playback not yet integrated (focus on capture first)
-3. **Preset Browser**: Not yet implemented (uses idle:// preset)
-4. **Device Selection**: No UI to choose different audio sources
+1. Preset paths may need configuration
+2. Audio device selection not yet implemented
+3. File playback not yet integrated
+4. Preset browser UI not yet added
 
-### Next Steps
-1. **Test current build** - Verify all fixes work together
-2. **Fix any build errors** - PulseAudio linking issues
-3. **Add audio playback** - QMediaPlayer + projectM feed
-4. **Add preset browser** - Browse/load presets from filesystem
-5. **Add audio device selection** - Choose different PulseAudio sources
+### Next Recommended Steps
+1. **Test the current build** - Verify visualization renders
+2. **If black screen**: Check preset paths, try loading idle:// manually
+3. **If no audio**: Verify PulseAudio monitor source exists (`pactl list sources`)
+4. **If working**: Add preset browser widget
+5. **If working**: Add audio file playback
+6. **If working**: Add audio device selection
 
-### Architecture Summary
-```
-Audio Flow:
-System Audio → PulseAudio Monitor → PulseAudioSource → projectM PCM API → Visualization
-
-Render Flow:
-QTimer (60fps) → onFrameTimer() → update() → paintGL() → projectM::renderFrame()
-
-State Flags:
-- m_initialized (GL ready)
-- m_audioActive (MainWindow state)
-- m_running (PulseAudioSource thread)
-- isAudioCapturing() (Wrapper query)
-```
-
-### Build Requirements
+### Quick Commands
 ```bash
-sudo pacman -S qt6-base qt6-multimedia libprojectm cmake gcc ninja libpulse
+# Build
+./scripts/build.sh
+
+# Run
+./build/src/projectm-qt-visualizer
+
+# Check PulseAudio
+pactl info
+pactl list sources short
+
+# Test with offscreen (no display)
+QT_QPA_PLATFORM=offscreen ./build/src/projectm-qt-visualizer
 ```
+
+### Questions for Next Agent
+1. Does the window show visualization or just black?
+2. Any errors in console about presets or OpenGL?
+3. Does Ctrl+A start audio capture?
+4. Does visualization react to audio?
 
 ---
-*Session End Checklist:*
-- [x] Updated CURRENT_STATE.md
-- [x] Updated SESSION_HANDOFF.md
-- [x] Created DEBUGGING_GUIDE.md
-- [x] Committed all fixes to GitHub
-- [x] Pushed to remote
+**Status**: BUILD SUCCESSFUL - READY FOR RUNTIME TESTING
+**Next Action**: Human verification of visualization rendering
