@@ -15,4 +15,4 @@ cmake -G Ninja \
 cmake --build . -- -j1
 echo ""
 echo "=== Release build complete ==="
-echo "Binary: $BUILD_DIR/src/projectm-qt-visualizer"
+echo "Binary: $BUILD_DIR/projectm-qt-visualizer"

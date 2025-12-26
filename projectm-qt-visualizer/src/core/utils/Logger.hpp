@@ -1,18 +1,24 @@
 /**
  * @file Logger.hpp
- * @brief Simple logging utility.
- *
- * TODO: Implement file logging
- * For now, wraps qDebug/qWarning/qCritical
+ * @brief Logging utility with file output
  */
 #ifndef LOGGER_HPP
 #define LOGGER_HPP
+
 #include <QString>
-#include <QDebug>
-namespace Log {
-inline void debug(const QString& msg) { qDebug().noquote() << "[DEBUG]" << msg; }
-inline void info(const QString& msg) { qInfo().noquote() << "[INFO]" << msg; }
-inline void warn(const QString& msg) { qWarning().noquote() << "[WARN]" << msg; }
-inline void error(const QString& msg) { qCritical().noquote() << "[ERROR]" << msg; }
-}
+
+class Logger
+{
+public:
+    static void init(const QString& path = QString());
+    static void debug(const QString& msg);
+    static void info(const QString& msg);
+    static void warning(const QString& msg);
+    static void error(const QString& msg);
+    static void critical(const QString& msg);
+
+private:
+    static void log(const QString& message, const QString& level);
+};
+
 #endif // LOGGER_HPP

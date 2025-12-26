@@ -1,21 +1,16 @@
-/**
- * @file ProjectMWrapper.cpp
- * @brief Implementation of projectM v4 C API wrapper.
- * 
- * Based on projectm-visualizer/frontend-sdl2 implementation.
- * Follows the exact initialization and rendering pattern.
- */
 #include "ProjectMWrapper.hpp"
 #include <QDebug>
 #include <QStandardPaths>
 #include <QDir>
+#include <QFile>
+#include <QTextStream>
 
 #ifdef HAVE_PULSEAUDIO
 #include "../platform/linux/PulseAudioSource.hpp"
 #endif
 
 ProjectMWrapper::ProjectMWrapper()
-: m_silenceBuffer(2048, 0.0f) // Pre-allocate silence buffer
+: m_silenceBuffer(2048, 0.0f)
 {
 }
 
@@ -28,72 +23,57 @@ ProjectMWrapper::~ProjectMWrapper()
 bool ProjectMWrapper::initialize()
 {
     if (m_handle) {
-        qWarning() << "ProjectMWrapper::initialize() called on already initialized instance";
+        qWarning() << "Already initialized";
         return true;
     }
     
-    // STEP 1: Create projectM instance
+    // Create projectM
     m_handle = projectm_create();
     if (!m_handle) {
-        qCritical() << "Failed to create projectM instance!";
-        qCritical() << "This usually means OpenGL context is not properly initialized.";
+        qCritical() << "projectm_create() failed - OpenGL context issue";
         return false;
     }
     
-    qDebug() << "✓ projectM instance created successfully";
-    
-    // STEP 2: Configure core settings (SDL2 frontend defaults)
+    // Configure
     projectm_set_window_size(m_handle, m_width, m_height);
     projectm_set_fps(m_handle, 60);
-    projectm_set_mesh_size(m_handle, 48, 32);  // SDL2 default mesh
+    projectm_set_mesh_size(m_handle, 64, 64);  // Square power-of-2
     projectm_set_aspect_correction(m_handle, true);
-    
-    // STEP 3: Configure preset display settings
     projectm_set_preset_duration(m_handle, 30.0);
     projectm_set_soft_cut_duration(m_handle, 3.0);
-    
-    // STEP 4: Configure beat detection
     projectm_set_beat_sensitivity(m_handle, 1.0);
     projectm_set_hard_cut_enabled(m_handle, false);
-    projectm_set_hard_cut_duration(m_handle, 20.0);
-    projectm_set_hard_cut_sensitivity(m_handle, 1.0);
     
-    // STEP 5: Create playlist (required for proper preset management)
+    // Create playlist
     m_playlist = projectm_playlist_create(m_handle);
     if (!m_playlist) {
-        qCritical() << "Failed to create playlist!";
+        qCritical() << "Failed to create playlist";
         return false;
     }
     
-    // STEP 6: Configure playlist
-    projectm_playlist_set_shuffle(m_playlist, true);
-    
-    // STEP 7: Add preset paths
+    // Add preset paths
     QStringList presetPaths;
-    presetPaths << "/usr/share/projectM/presets"
-                << "/usr/local/share/projectM/presets"
-                << QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.projectM/presets";
+    presetPaths << "/usr/share/projectM/presets/presets_milkdrop"
+                << "/usr/share/projectM/presets/presets_stock"
+                << "/usr/share/projectM/presets/presets_projectM";
     
     for (const QString& path : presetPaths) {
         QDir dir(path);
         if (dir.exists()) {
-            qDebug() << "Adding preset path:" << path;
             projectm_playlist_add_path(m_playlist, path.toUtf8().constData(), true, false);
         }
     }
     
-    // STEP 8: Check playlist and load initial preset
     uint32_t playlistSize = projectm_playlist_size(m_playlist);
-    if (playlistSize == 0) {
-        qWarning() << "No presets found, using idle:// preset";
-        projectm_load_preset_file(m_handle, "idle://", false);
+    if (playlistSize > 0) {
+        projectm_playlist_set_shuffle(m_playlist, true);
+        projectm_playlist_play_next(m_playlist, true);
+        qDebug() << "Loaded preset from playlist (" << playlistSize << "total)";
     } else {
-        qDebug() << "Playlist has" << playlistSize << "presets";
-        // Play first preset
-        projectm_playlist_set_position(m_playlist, 0, true);
+        qWarning() << "No presets found, using idle://";
+        projectm_load_preset_file(m_handle, "idle://", false);
     }
     
-    qDebug() << "✓ projectM initialized successfully";
     return true;
 }
 
@@ -107,7 +87,6 @@ void ProjectMWrapper::destroy()
     if (m_handle) {
         projectm_destroy(m_handle);
         m_handle = nullptr;
-        qDebug() << "projectM destroyed";
     }
 }
 
@@ -120,21 +99,18 @@ void ProjectMWrapper::resize(int width, int height)
     
     if (m_handle) {
         projectm_set_window_size(m_handle, width, height);
-        qDebug() << "projectM resized to" << width << "x" << height;
     }
 }
 
 void ProjectMWrapper::renderFrame()
 {
-    if (!m_handle) {
-        return;
-    }
+    if (!m_handle) return;
     
-    // Check if mesh needs updating (SDL2 pattern)
+    // Check mesh
     size_t currentMeshX, currentMeshY;
     projectm_get_mesh_size(m_handle, &currentMeshX, &currentMeshY);
-    if (currentMeshX != 48 || currentMeshY != 32) {
-        projectm_set_mesh_size(m_handle, 48, 32);
+    if (currentMeshX != 64 || currentMeshY != 64) {
+        projectm_set_mesh_size(m_handle, 64, 64);
     }
     
     // Render
@@ -143,24 +119,16 @@ void ProjectMWrapper::renderFrame()
 
 void ProjectMWrapper::addPCMData(const float* data, unsigned int samples)
 {
-    if (!m_handle || !data || samples == 0) {
-        return;
-    }
-    
+    if (!m_handle || !data || samples == 0) return;
     projectm_pcm_add_float(m_handle, data, samples, PROJECTM_STEREO);
 }
 
 void ProjectMWrapper::feedSilence()
 {
-    if (!m_handle) {
-        return;
-    }
+    if (!m_handle) return;
     
-    // Only feed silence if NOT capturing audio
 #ifdef HAVE_PULSEAUDIO
-    if (m_audioSource && m_audioSource->isRunning()) {
-        return;
-    }
+    if (m_audioSource && m_audioSource->isRunning()) return;
 #endif
     
     projectm_pcm_add_float(m_handle, m_silenceBuffer.data(),
@@ -169,12 +137,8 @@ void ProjectMWrapper::feedSilence()
 
 bool ProjectMWrapper::loadPreset(const std::string& path)
 {
-    if (!m_handle) {
-        return false;
-    }
-    
+    if (!m_handle) return false;
     projectm_load_preset_file(m_handle, path.c_str(), true);
-    qDebug() << "Loaded preset:" << QString::fromStdString(path);
     return true;
 }
 
@@ -182,8 +146,6 @@ void ProjectMWrapper::nextPreset()
 {
     if (m_playlist && m_handle) {
         projectm_playlist_play_next(m_playlist, true);
-    } else {
-        qWarning() << "Cannot switch preset - playlist not initialized";
     }
 }
 
@@ -191,8 +153,6 @@ void ProjectMWrapper::previousPreset()
 {
     if (m_playlist && m_handle) {
         projectm_playlist_play_previous(m_playlist, true);
-    } else {
-        qWarning() << "Cannot switch preset - playlist not initialized";
     }
 }
 
@@ -201,39 +161,28 @@ void ProjectMWrapper::randomPreset()
     if (m_playlist && m_handle) {
         projectm_playlist_set_shuffle(m_playlist, true);
         projectm_playlist_play_next(m_playlist, true);
-    } else {
-        qWarning() << "Cannot randomize - playlist not initialized";
     }
 }
 
-// Audio capture methods
 bool ProjectMWrapper::startAudioCapture()
 {
 #ifdef HAVE_PULSEAUDIO
-    if (!m_handle) {
-        qWarning() << "Cannot start audio capture - projectM not initialized";
-        return false;
-    }
+    if (!m_handle) return false;
     
     if (m_audioSource) {
-        if (m_audioSource->isRunning()) {
-            qDebug() << "Audio capture already running";
-            return true;
-        }
+        if (m_audioSource->isRunning()) return true;
         m_audioSource.reset();
     }
     
     m_audioSource = std::make_unique<PulseAudioSource>(this);
     if (!m_audioSource->start()) {
-        qCritical() << "Failed to start PulseAudio capture:" << m_audioSource->getError().c_str();
+        qCritical() << "Failed to start audio:" << m_audioSource->getError().c_str();
         m_audioSource.reset();
         return false;
     }
     
-    qDebug() << "✓ Audio capture started successfully";
     return true;
 #else
-    qWarning() << "PulseAudio not available - audio capture disabled";
     return false;
 #endif
 }
@@ -244,7 +193,6 @@ void ProjectMWrapper::stopAudioCapture()
     if (m_audioSource) {
         m_audioSource->stop();
         m_audioSource.reset();
-        qDebug() << "Audio capture stopped";
     }
 #endif
 }
