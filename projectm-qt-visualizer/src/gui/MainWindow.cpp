@@ -16,7 +16,7 @@
 #include <QFileInfo>
 
 MainWindow::MainWindow(QWidget *parent)
-: QMainWindow(parent)
+: QMainWindow(parent), m_audioActive(false)
 {
     setupUi();
 }
@@ -71,15 +71,15 @@ void MainWindow::setupCentralWidget()
 
 void MainWindow::onOpenFile()
 {
-    // Use native file dialog to avoid Qt's image preview issues
+    // Use native file dialog
     QFileDialog dialog(this);
     dialog.setWindowTitle(tr("Open Audio File"));
     dialog.setDirectory(QStandardPaths::standardLocations(QStandardPaths::MusicLocation).value(0, QDir::homePath()));
     dialog.setFileMode(QFileDialog::ExistingFile);
-    dialog.setOption(QFileDialog::DontUseNativeDialog, false); // Use native dialog
+    dialog.setOption(QFileDialog::DontUseNativeDialog, false);
     dialog.setOption(QFileDialog::DontResolveSymlinks, true);
     
-    // Only show audio files - NO image filters to avoid JPEG errors
+    // Only show audio files
     QStringList filters;
     filters << "Audio Files (*.mp3 *.wav *.flac *.ogg *.m4a *.aac *.opus *.mid)"
             << "All Files (*)";
@@ -89,9 +89,8 @@ void MainWindow::onOpenFile()
         QString filePath = dialog.selectedFiles().first();
         if (!filePath.isEmpty()) {
             statusBar()->showMessage(tr("Opened: %1").arg(QFileInfo(filePath).fileName()));
-            // TODO: Pass to audio engine for playback
-            // m_audioEngine->loadFile(filePath);
             qDebug() << "Selected audio file:" << filePath;
+            // TODO: Pass to audio engine for playback
         }
     }
 }

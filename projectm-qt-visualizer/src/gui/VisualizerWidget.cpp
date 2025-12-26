@@ -23,7 +23,7 @@ VisualizerWidget::VisualizerWidget(QWidget *parent)
     m_frameTimer.setInterval(16); // ~60 FPS
     connect(&m_frameTimer, &QTimer::timeout, this, &VisualizerWidget::onFrameTimer);
     
-    // CRITICAL: Prevent Qt compositor caching that causes ghosting
+    // Prevent Qt compositor caching that causes ghosting
     setAttribute(Qt::WA_OpaquePaintEvent);
     setAttribute(Qt::WA_NoSystemBackground);
     setAttribute(Qt::WA_PaintOnScreen);
@@ -34,7 +34,6 @@ VisualizerWidget::VisualizerWidget(QWidget *parent)
 
 VisualizerWidget::~VisualizerWidget()
 {
-    // Ensure GL context for cleanup
     if (m_initialized) {
         makeCurrent();
         m_projectM.reset();
@@ -52,18 +51,20 @@ void VisualizerWidget::initializeGL()
     // Clear any existing GL errors
     while (glGetError() != GL_NO_ERROR);
     
-    qDebug() << "OpenGL initialized:";
+    qDebug() << "=== OpenGL Initialization ===";
     qDebug() << " Vendor:" << reinterpret_cast<const char*>(glGetString(GL_VENDOR));
     qDebug() << " Renderer:" << reinterpret_cast<const char*>(glGetString(GL_RENDERER));
     qDebug() << " Version:" << reinterpret_cast<const char*>(glGetString(GL_VERSION));
     
     // Set GL state that projectM expects
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
     
     // Initialize projectM
+    // CRITICAL: This must happen with GL context current
     m_projectM = std::make_unique<ProjectMWrapper>();
     if (!m_projectM->initialize()) {
         qCritical() << "Failed to initialize projectM!";
@@ -74,19 +75,20 @@ void VisualizerWidget::initializeGL()
     
     // Start render loop
     m_frameTimer.start();
-    qDebug() << "VisualizerWidget fully initialized - Chad mode activated";
+    qDebug() << "✓ VisualizerWidget fully initialized";
+    qDebug() << "=== Ready for rendering ===";
 }
 
 void VisualizerWidget::paintGL()
 {
     if (!m_initialized || !m_projectM) {
-        // Fallback: clear to "I'm broken" pink
+        // Fallback: clear to red to show error
         glClearColor(1.0f, 0.0f, 0.5f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         return;
     }
     
-    // CRITICAL: Explicitly clear before rendering to prevent ghosting
+    // Explicitly clear before rendering to prevent ghosting
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     

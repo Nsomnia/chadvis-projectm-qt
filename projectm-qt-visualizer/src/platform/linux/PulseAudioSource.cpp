@@ -1,6 +1,9 @@
 /**
  * @file PulseAudioSource.cpp
  * @brief PulseAudio/PipeWire audio capture implementation
+ *
+ * Captures system audio via PulseAudio and feeds it to projectM.
+ * Works with both PulseAudio and PipeWire (via pipewire-pulse).
  */
 #include "PulseAudioSource.hpp"
 #include "../projectm/ProjectMWrapper.hpp"
@@ -38,10 +41,8 @@ bool PulseAudioSource::start()
     ba.prebuf = -1;
     ba.fragsize = pa_usec_to_bytes(20000, &ss); // 20ms fragments
     
-    // Open stream to monitor (system audio)
-    // Using "default" will capture what's playing
-    // For PulseAudio: monitor source is typically "default.monitor"
-    // For PipeWire: works with default
+    // Open stream to monitor (system audio output)
+    // Try default.monitor first (PulseAudio)
     int error;
     m_stream = pa_simple_new(
         nullptr,                    // Default server
@@ -56,7 +57,8 @@ bool PulseAudioSource::start()
     );
     
     if (!m_stream) {
-        // Fallback: try without .monitor (might capture mic instead)
+        // Fallback: try without .monitor
+        // This might capture microphone instead
         m_stream = pa_simple_new(
             nullptr,
             "projectM-Visualizer",
