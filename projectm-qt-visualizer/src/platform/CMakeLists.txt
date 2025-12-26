@@ -12,8 +12,10 @@ if(UNIX AND NOT APPLE)
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${PULSEAUDIO_INCLUDE_DIRS}
         )
+        # Need both pulse and pulse-simple for pa_simple_* functions
         target_link_libraries(platform_lib INTERFACE
-            ${PULSEAUDIO_LIBRARIES}
+            pulse
+            pulse-simple
         )
     endif()
 endif()
