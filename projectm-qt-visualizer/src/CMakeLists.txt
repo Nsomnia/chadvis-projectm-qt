@@ -29,4 +29,5 @@ OpenGL::GL
 # Link PulseAudio if available
 if(PULSEAUDIO_FOUND)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${PULSEAUDIO_LIBRARIES})
+    target_include_directories(${PROJECT_NAME} PRIVATE ${PULSEAUDIO_INCLUDE_DIRS})
 endif()
