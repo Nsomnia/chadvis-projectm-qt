@@ -61,11 +61,16 @@ void VisualizerWindow::resizeEvent(QResizeEvent* event) {
     if (!initialized_) return;
     
     if (context_ && context_->makeCurrent(this)) {
-        projectM_.resize(event->size().width(), event->size().height());
+        int w = event->size().width();
+        int h = event->size().height();
+        
+        LOG_DEBUG("Resize event: {}x{}", w, h);
+        
+        projectM_.resize(w, h);
         
         if (!recording_) {
-            renderTarget_.resize(event->size().width(), event->size().height());
-            overlayTarget_.resize(event->size().width(), event->size().height());
+            renderTarget_.resize(w, h);
+            overlayTarget_.resize(w, h);
         }
         
         context_->doneCurrent();
@@ -133,9 +138,13 @@ void VisualizerWindow::initialize() {
 }
 
 void VisualizerWindow::render() {
-    if (!initialized_ || !isExposed()) return;
+    if (!initialized_ || !isExposed()) {
+        LOG_DEBUG("render() called but not initialized or not exposed");
+        return;
+    }
     
     if (context_->makeCurrent(this)) {
+        LOG_DEBUG("render() - frame {}", frameCount_);
         renderFrame();
         context_->swapBuffers(this);
         context_->doneCurrent();
@@ -144,48 +153,49 @@ void VisualizerWindow::render() {
         if (isExposed()) {
             requestUpdate();
         }
+    } else {
+        LOG_ERROR("Failed to make context current in render()");
     }
 }
 
 void VisualizerWindow::renderFrame() {
-    // Render to target (either window size or recording size)
-    u32 targetW = recording_ ? recordWidth_ : width();
-    u32 targetH = recording_ ? recordHeight_ : height();
-    
-    // Ensure render target is correct size
-    if (renderTarget_.width() != targetW || renderTarget_.height() != targetH) {
-        renderTarget_.resize(targetW, targetH);
-        overlayTarget_.resize(targetW, targetH);
-    }
-    
-    // Render ProjectM to target
-    projectM_.renderToTarget(renderTarget_);
-    
-    // Render overlay on top
-    if (overlayEngine_) {
-        overlayTarget_.bind();
-        glClearColor(0, 0, 0, 0);
-        glClear(GL_COLOR_BUFFER_BIT);
+    // For recording, use FBO. For normal display, render directly
+    if (recording_) {
+        // Recording path: render to FBO, emit signal
+        if (renderTarget_.width() != recordWidth_ || renderTarget_.height() != recordHeight_) {
+            renderTarget_.resize(recordWidth_, recordHeight_);
+            overlayTarget_.resize(recordWidth_, recordHeight_);
+        }
         
-        // Blit visualizer first
-        renderTarget_.blitTo(overlayTarget_, true);
+        projectM_.renderToTarget(renderTarget_);
         
-        // Then render overlay
-        overlayEngine_->render(overlayTarget_.width(), overlayTarget_.height());
-        overlayTarget_.unbind();
+        if (overlayEngine_) {
+            overlayTarget_.bind();
+            glClearColor(0, 0, 0, 0);
+            glClear(GL_COLOR_BUFFER_BIT);
+            renderTarget_.blitTo(overlayTarget_, true);
+            overlayEngine_->render(overlayTarget_.width(), overlayTarget_.height());
+            overlayTarget_.unbind();
+        }
         
-        // Blit result to screen
-        overlayTarget_.blitToScreen(width(), height(), true);
+        emit frameReady();
     } else {
-        // Just blit visualizer to screen
-        renderTarget_.blitToScreen(width(), height(), true);
+        // Normal display: render directly to default framebuffer
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width(), height());
+        
+        LOG_DEBUG("Rendering frame {} to {}x{} window", frameCount_, width(), height());
+        
+        // Let projectM render directly to screen
+        projectM_.render();
+        
+        // Render overlay if available
+        if (overlayEngine_) {
+            overlayEngine_->render(width(), height());
+        }
     }
     
     ++frameCount_;
-    
-    if (recording_) {
-        emit frameReady();
-    }
 }
 
 void VisualizerWindow::feedAudio(const f32* data, u32 frames, u32 channels) {
