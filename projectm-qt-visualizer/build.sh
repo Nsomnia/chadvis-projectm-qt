@@ -1,2 +1,10 @@
 #!/usr/bin/env bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release && make -C build -j$(nproc)
+# Build script - Ninja with 1 core (potato-safe mode)
+mkdir -p build
+cd build
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
+ninja -j1
+echo ""
+echo "=== Build complete ==="
+echo "Binary: ./build/vibechad-vidz"
+echo "I use Arch, BTW."
