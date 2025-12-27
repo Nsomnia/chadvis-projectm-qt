@@ -58,34 +58,34 @@ Before you embark on this glorious journey, ensure you have these bad boys insta
 *   **GLEW**
 *   **GLM**
 *   **FFmpeg** (libavcodec, libavformat, libavutil, libswscale, libswresample)
-*   **ProjectM** (v4 preferred. If you don't have it, consider running `scripts/install_projectm_v4_local.sh` or building it yourself. We're not your mom; figure it out.)
+*   **ProjectM-4** (libprojectM-4, libprojectM-4-playlist)
 
 On Arch Linux, you can probably snag most of these with pacman:
 ```bash
-sudo pacman -S cmake qt6-base qt6-multimedia qt6-svg spdlog fmt taglib tomlplusplus glew glm ffmpeg
-# For projectM, check AUR or build it. A script is provided for local build.
+sudo pacman -S cmake qt6-base qt6-multimedia qt6-svg spdlog fmt taglib \
+    tomlplusplus glew glm ffmpeg libprojectM
 ```
 
 ### The Sacred Ritual: Compilation
 
 ```bash
 # Clone this repo (if you haven't already, peasant)
-git clone https://github.com/Nsomnia/vibechad-vidz.git
-cd vibechad-vidz
+git clone https://github.com/Nsomnia/mimo-v2-flash-with-claude-inital-message.git
+cd mimo-v2-flash-with-claude-inital-message/projectm-qt-visualizer
 
-# Build the beast
+# Build the beast (use build.sh - it's Chad-approved)
+./build.sh
+
+# Or manually
 mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release # Or Debug, if you like living dangerously
-make -j$(nproc)
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
+ninja -j1  # Use 1 core for potato-safe mode
 
-# Install (because you're worth it)
-sudo make install
-```
-
-If `make install` gives you the cold shoulder, just run it from the `build` directory:
-```bash
+# Run from build directory
 ./vibechad-vidz
 ```
+
+**Note**: The build takes ~5-10 minutes. It's compiling modern C++20 with all the bells and whistles. Be patient.
 
 ### 📦 Arch User Repository (AUR)
 
@@ -134,3 +134,24 @@ The `VisualizerWindow` class (in `src/visualizer/VisualizerWindow.cpp`) replaces
 - Calls `swapBuffers()` explicitly
 
 This fixes the issue where projectM would initialize but only render 1 frame.
+
+## ✅ Current Status
+
+**Build Status**: ✅ WORKING - Compiles successfully  
+**Runtime Status**: ✅ WORKING - Application runs, initializes OpenGL, loads 8000+ presets  
+**Audio**: ⏳ TODO - Needs testing with actual audio playback  
+**Video Recording**: ⏳ TODO - Feature present but untested  
+
+**Test Output**:
+```
+[info] OpenGL: 4.6 (Core Profile) Mesa 25.3.1-arch1.3
+[info] Scanned 8386 presets from /usr/share/projectM/presets
+[info] ProjectM initialized: 402x248 @ 60 fps, 8386 presets
+[info] Visualizer window initialized
+```
+
+**Known Issues**:
+- Build takes ~5-10 minutes (C++20 with optimizations)
+- VDPAU warning if no NVIDIA GPU (harmless)
+- Audio playback needs testing
+- Video recording needs testing
