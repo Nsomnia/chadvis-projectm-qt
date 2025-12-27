@@ -73,7 +73,6 @@ private:
     void setupUpdateTimer();
     
     void updateWindowTitle();
-    void feedAudioToVisualizer();
     void executeWithPausedRendering(std::function<void()> action);
     
     // Components

@@ -190,6 +190,9 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     // Analyze audio
     currentSpectrum_ = analyzer_.analyze(samples, sampleRate, channels);
     spectrumUpdated.emitSignal(currentSpectrum_);
+    
+    // Emit PCM data for visualizer
+    pcmReceived.emitSignal(samples, samples.size() / 2, 2);
 }
 
 } // namespace vc
