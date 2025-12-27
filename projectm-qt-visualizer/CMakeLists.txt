@@ -76,6 +76,12 @@ if(NOT PROJECTM_FOUND)
     endif()
 endif()
 
+# Fix pkg-config bug: -l:projectM-4 -> -lprojectM-4
+if(PROJECTM_FOUND AND PROJECTM_LDFLAGS)
+    string(REPLACE "-l:projectM-4" "-lprojectM-4" PROJECTM_LDFLAGS_FIXED "${PROJECTM_LDFLAGS}")
+    set(PROJECTM_LDFLAGS "${PROJECTM_LDFLAGS_FIXED}")
+endif()
+
 # Source files organized by module - HEADERS MUST BE LISTED for AUTOMOC
 set(UTIL_SOURCES
     src/util/Types.hpp
@@ -198,8 +204,9 @@ target_link_libraries(vibechad-vidz PRIVATE
     ${TAGLIB_LIBRARIES}
     ${GLEW_LIBRARIES}
     ${FFMPEG_LIBRARIES}
-    ${PROJECTM_LIBRARIES}
+    projectM-4
     projectM-4-playlist
+    OpenGL
 )
 
 # Installation
