@@ -9,32 +9,32 @@ namespace vc::file {
 
 fs::path configDir() {
     if (const char* xdg = std::getenv("XDG_CONFIG_HOME")) {
-        return fs::path(xdg) / "vibechad";
+        return fs::path(xdg) / "chadvis-projectm-qt";
     }
     if (const char* home = std::getenv("HOME")) {
-        return fs::path(home) / ".config" / "vibechad";
+        return fs::path(home) / ".config" / "chadvis-projectm-qt";
     }
-    return fs::current_path() / ".vibechad";
+    return fs::current_path() / ".chadvis-projectm-qt";
 }
 
 fs::path dataDir() {
     if (const char* xdg = std::getenv("XDG_DATA_HOME")) {
-        return fs::path(xdg) / "vibechad";
+        return fs::path(xdg) / "chadvis-projectm-qt";
     }
     if (const char* home = std::getenv("HOME")) {
-        return fs::path(home) / ".local" / "share" / "vibechad";
+        return fs::path(home) / ".local" / "share" / "chadvis-projectm-qt";
     }
-    return fs::current_path() / ".vibechad-data";
+    return fs::current_path() / ".chadvis-projectm-qt-data";
 }
 
 fs::path cacheDir() {
     if (const char* xdg = std::getenv("XDG_CACHE_HOME")) {
-        return fs::path(xdg) / "vibechad";
+        return fs::path(xdg) / "chadvis-projectm-qt";
     }
     if (const char* home = std::getenv("HOME")) {
-        return fs::path(home) / ".cache" / "vibechad";
+        return fs::path(home) / ".cache" / "chadvis-projectm-qt";
     }
-    return fs::temp_directory_path() / "vibechad";
+    return fs::temp_directory_path() / "chadvis-projectm-qt";
 }
 
 fs::path presetsDir() {

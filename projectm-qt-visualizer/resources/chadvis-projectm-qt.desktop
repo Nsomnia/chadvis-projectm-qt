@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=VibeChad
+Name=ChadVis
 Comment=Chad-tier audio visualizer with recording
-Exec=vibechad %F
-Icon=vibechad
+Exec=chadvis-projectm-qt %F
+Icon=chadvis-projectm-qt
 Terminal=false
 Type=Application
 Categories=Audio;AudioVideo;Player;

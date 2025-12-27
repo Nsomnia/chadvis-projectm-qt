@@ -93,8 +93,8 @@ Result<AppOptions> Application::parseArgs() {
 
 Result<void> Application::init(const AppOptions& opts) {
     // Initialize logging first
-    Logger::init("vibechad", opts.debug);
-    LOG_INFO("VibeChad starting up. I use Arch btw.");
+    Logger::init("chadvis-projectm-qt", opts.debug);
+    LOG_INFO("chadvis-projectm-qt starting up. I use Arch btw.");
     
     // Load configuration
     if (opts.configFile) {
@@ -116,10 +116,10 @@ Result<void> Application::init(const AppOptions& opts) {
     
     // Create Qt application
     qapp_ = std::make_unique<QApplication>(argc_, argv_);
-    qapp_->setApplicationName("VibeChad");
+    qapp_->setApplicationName("ChadVis");
     qapp_->setApplicationVersion("1.0.0");
-    qapp_->setOrganizationName("VibeChad");
-    qapp_->setOrganizationDomain("github.com/vibechad");
+    qapp_->setOrganizationName("ChadVis");
+    qapp_->setOrganizationDomain("github.com/chadvis-projectm-qt");
     
     // Setup styling
     setupStyle();
@@ -264,16 +264,16 @@ void Application::setupStyle() {
 }
 
 void Application::printVersion() {
-    std::cout << "VibeChad Audio Player v1.0.0\n";
+    std::cout << "ChadVis Audio Player v1.0.0\n";
     std::cout << "Built with Qt " << qVersion() << "\n";
     std::cout << "\"I use Arch btw\"\n";
 }
 
 void Application::printHelp() {
     std::cout << R"(
-VibeChad - Chad-tier Audio Visualizer for Arch Linux
+ChadVis - Chad-tier Audio Visualizer for Arch Linux
 
-Usage: vibechad [options] [files...]
+Usage: chadvis-projectm-qt [options] [files...]
 
 Options:
   -h, --help              Show this help message
@@ -286,12 +286,12 @@ Options:
   --headless              Run without GUI (for batch processing)
 
 Examples:
-  vibechad ~/Music/*.flac
-  vibechad --record --output video.mp4 song.mp3
-  vibechad --preset "Aderrasi - Airhandler" playlist.m3u
+  chadvis-projectm-qt ~/Music/*.flac
+  chadvis-projectm-qt --record --output video.mp4 song.mp3
+  chadvis-projectm-qt --preset "Aderrasi - Airhandler" playlist.m3u
 
-Config: ~/.config/vibechad/config.toml
-Logs:   ~/.cache/vibechad/logs/
+Config: ~/.config/chadvis-projectm-qt/config.toml
+Logs:   ~/.cache/chadvis-projectm-qt/logs/
 
 Pro tips:
   - Drag and drop files onto the window
@@ -299,7 +299,7 @@ Pro tips:
   - Press R to toggle recording
   - Press Space to play/pause
 
-Report bugs at: https://github.com/yourusername/vibechad/issues
+Report bugs at: https://github.com/yourusername/chadvis-projectm-qt/issues
 Or don't. We're not your mom.
 )";
 }

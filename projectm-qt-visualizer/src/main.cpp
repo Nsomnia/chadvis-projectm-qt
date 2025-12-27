@@ -1,4 +1,4 @@
-// main.cpp - VibeChad Entry Point
+// main.cpp - ChadVis Entry Point
 // "Hello, World!" but with more bass drops
 //
 // ██╗   ██╗██╗██████╗ ███████╗ ██████╗██╗  ██╗ █████╗ ██████╗ 

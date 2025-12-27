@@ -1,12 +1,12 @@
 
 <p align="center">
-  <img src="../resources/icons/vibechad.svg" alt="vibechad logo" width="100"/>
+  <img src="../resources/icons/chadvis-projectm-qt.svg" alt="chadvis-projectm-qt logo" width="100"/>
 </p>
 
-<h1 align="center">⚔️ Contributing to VibeChad: Sharpen Your Blades (and Your Code) ⚔️</h1>
+<h1 align="center">⚔️ Contributing to ChadVis: Sharpen Your Blades (and Your Code) ⚔️</h1>
 
 <p align="center">
-  <i>So, you think you've got what it takes to join the ranks of the VibeChad developers? Excellent. We're always looking for fellow Chads (and Chadettes) who aren't afraid of a little C++ and a lot of good vibes. This isn't your average open-source project where we hold your hand. This is where you prove your mettle.</i>
+  <i>So, you think you've got what it takes to join the ranks of the ChadVis developers? Excellent. We're always looking for fellow Chads (and Chadettes) who aren't afraid of a little C++ and a lot of good vibes. This isn't your average open-source project where we hold your hand. This is where you prove your mettle.</i>
 </p>
 
 ---
@@ -23,11 +23,11 @@ We value:
 
 ---
 
-## 🚀 How to Contribute: The VibeChad Way
+## 🚀 How to Contribute: The ChadVis Way
 
 ### 🐛 Found a Bug? (Impossible, but okay)
 
-If you *somehow* stumble upon a bug, first, double-check your system. Did you update Arch recently? Are your drivers pristine? If, after extensive self-reflection, you still believe it's a VibeChad issue:
+If you *somehow* stumble upon a bug, first, double-check your system. Did you update Arch recently? Are your drivers pristine? If, after extensive self-reflection, you still believe it's a ChadVis issue:
 
 1.  **Search Existing Issues:** Has another Chad already reported this? Don't be that person who opens duplicates.
 2.  **Open a New Issue:** Provide *all* the relevant details.
@@ -39,7 +39,7 @@ If you *somehow* stumble upon a bug, first, double-check your system. Did you up
 
 ### ✨ Got an Idea for a Feature? (Be prepared to defend it)
 
-New features are great, but they need to align with the VibeChad vision.
+New features are great, but they need to align with the ChadVis vision.
 
 1.  **Open an Issue First:** Before you write a single line of code, describe your idea. Explain the *why*, not just the *what*.
 2.  **Discuss:** We'll debate it. We'll poke holes in it. We'll ask tough questions. If your idea survives, then and *only then*, consider writing code.
@@ -76,7 +76,7 @@ New features are great, but they need to align with the VibeChad vision.
 
 ## 🙏 Thank You, Chad
 
-Your contributions make VibeChad stronger, faster, and more visually stunning. May your compiles be swift and your bass drops heavy.
+Your contributions make ChadVis stronger, faster, and more visually stunning. May your compiles be swift and your bass drops heavy.
 
 ```
 ( ͡° ͜ʖ ͡°)

@@ -1,12 +1,12 @@
 
 <p align="center">
-  <img src="../resources/icons/vibechad.svg" alt="vibechad logo" width="100"/>
+  <img src="../resources/icons/chadvis-projectm-qt.svg" alt="chadvis-projectm-qt logo" width="100"/>
 </p>
 
-<h1 align="center">🤝 VibeChad Code of Conduct: Keepin' It Real (and Respectful) 🤝</h1>
+<h1 align="center">🤝 ChadVis Code of Conduct: Keepin' It Real (and Respectful) 🤝</h1>
 
 <p align="center">
-  <i>We're all here to make VibeChad the most epic audio visualizer on the planet. To do that, we need a community where everyone feels respected, valued, and can contribute without fear of being treated like a Windows user. This Code of Conduct outlines our expectations for participation within the VibeChad project and its community. Simply put: Don't be a dick.</i>
+  <i>We're all here to make ChadVis the most epic audio visualizer on the planet. To do that, we need a community where everyone feels respected, valued, and can contribute without fear of being treated like a Windows user. This Code of Conduct outlines our expectations for participation within the ChadVis project and its community. Simply put: Don't be a dick.</i>
 </p>
 
 ---
@@ -52,7 +52,7 @@ Project maintainers have the right and responsibility to remove, edit, or reject
 
 ---
 
-## 💀 Scope: Where the VibeChad Rules Apply
+## 💀 Scope: Where the ChadVis Rules Apply
 
 This Code of Conduct applies within all project spaces, and also applies when an individual is officially representing the project in public spaces. Examples of representing our project include using an official project e-mail address, posting via an official social media account, or acting as an appointed representative at an online or offline event.
 

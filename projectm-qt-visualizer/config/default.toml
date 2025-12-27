@@ -1,4 +1,4 @@
-# VibeChad Configuration
+# ChadVis Configuration
 # "I use Arch btw" - The config file
 
 [general]
@@ -28,7 +28,7 @@ default_font_size = 32
 # Example static text overlay (watermark)
 [[overlay.elements]]
 id = "watermark"
-text = "VibeChad Player"
+text = "ChadVis Player"
 position = { x = 0.02, y = 0.95 }  # Bottom-left, normalized coords
 font_size = 24
 color = "#FFFFFF"
@@ -51,8 +51,8 @@ visible = true
 
 [recording]
 enabled = true
-output_directory = "~/Videos/VibeChad"
-default_filename = "vibechad_{date}_{time}"
+output_directory = "~/Videos/ChadVis"
+default_filename = "chadvis-projectm-qt_{date}_{time}"
 container = "mp4"
 
 [recording.video]

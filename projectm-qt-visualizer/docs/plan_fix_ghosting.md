@@ -10,12 +10,12 @@ Fix the "ghost image of desktop" issue in the visualizer rendering canvas.
 
 ### visualizer [src/visualizer]
 
-#### [MODIFY] [RenderTarget.cpp](file:///home/nsomnia/Documents/code/vibechad-vidz/vibechad-vidz/src/visualizer/RenderTarget.cpp)
+#### [MODIFY] [RenderTarget.cpp](file:///home/nsomnia/Documents/code/chadvis-projectm-qt-vidz/chadvis-projectm-qt-vidz/src/visualizer/RenderTarget.cpp)
 -   **Update `create()` method**:
     -   After binding the framebuffer (`glBindFramebuffer`), call `glClearColor(0, 0, 0, 1)` and `glClear(GL_COLOR_BUFFER_BIT)`. (Or `(0,0,0,0)` if transparency is desired initially, but unlikely).
     -   This prevents undefined/garbage memory in the texture.
 
-#### [MODIFY] [VisualizerWidget.cpp](file:///home/nsomnia/Documents/code/vibechad-vidz/vibechad-vidz/src/visualizer/VisualizerWidget.cpp)
+#### [MODIFY] [VisualizerWidget.cpp](file:///home/nsomnia/Documents/code/chadvis-projectm-qt-vidz/chadvis-projectm-qt-vidz/src/visualizer/VisualizerWidget.cpp)
 -   **Update `initializeGL()`**:
     -   Explicitly call `glClearColor(0, 0, 0, 1)`.
 -   **Update `renderFrame()`**:

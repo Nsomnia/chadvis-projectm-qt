@@ -98,7 +98,6 @@ struct Size {
 class Config;
 class AudioEngine;
 class Playlist;
-class VisualizerWidget;
 class VisualizerWindow;
 class OverlayEngine;
 class VideoRecorder;

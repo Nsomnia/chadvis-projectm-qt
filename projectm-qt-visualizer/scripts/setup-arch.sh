@@ -22,7 +22,7 @@ if [[ ! -f /etc/arch-release ]]; then
     exit 1
 fi
 
-log_info "Welcome to VibeChad setup. I use Arch btw."
+log_info "Welcome to ChadVis setup. I use Arch btw."
 
 # Install official repo packages
 log_info "Installing packages from official repos..."
@@ -66,21 +66,21 @@ else
 fi
 
 # Create config directory
-mkdir -p ~/.config/vibechad
-if [[ ! -f ~/.config/vibechad/config.toml ]]; then
-    cp config/default.toml ~/.config/vibechad/config.toml
-    log_ok "Default config copied to ~/.config/vibechad/"
+mkdir -p ~/.config/chadvis-projectm-qt
+if [[ ! -f ~/.config/chadvis-projectm-qt/config.toml ]]; then
+    cp config/default.toml ~/.config/chadvis-projectm-qt/config.toml
+    log_ok "Default config copied to ~/.config/chadvis-projectm-qt/"
 fi
 
 # Build the project
-log_info "Building VibeChad..."
+log_info "Building ChadVis..."
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja -C build
 
 log_ok "Build complete!"
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  VibeChad is ready. Run: ./build/vibechad                 ║${NC}"
+echo -e "${GREEN}║  ChadVis is ready. Run: ./build/chadvis-projectm-qt                 ║${NC}"
 echo -e "${GREEN}║  Or install system-wide: sudo ninja -C build install      ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
