@@ -95,7 +95,42 @@ For the truly enlightened, `vibechad-vidz` might just land in the AUR eventually
 
 ## 🧠 Configuration (For the Control Freaks)
 
-VibeChad uses `toml++` for its configuration. The default configuration can be found in `config/default.toml`. Feel free to tweak it to your heart's content. Just try not to break everything. We're not responsible for your existential dread when your custom config vanishes into the ether.
+VibeChad uses `toml++` for configuration. Config files are stored in:
+
+### Config Locations (in order of priority):
+1. **User config**: `~/.config/vibechad/config.toml` (or `$XDG_CONFIG_HOME/vibechad/config.toml`)
+2. **System default**: `/usr/share/vibechad/config/default.toml` (installed by `make install`)
+3. **Built-in defaults**: If no file exists, the app uses hardcoded defaults
+
+### Creating Your Config:
+```bash
+# Copy the default config to your user directory
+mkdir -p ~/.config/vibechad
+cp /usr/share/vibechad/config/default.toml ~/.config/vibechad/config.toml
+
+# Edit it
+nano ~/.config/vibechad/config.toml
+```
+
+### Config Sections:
+- `[general]` - Debug mode, logging
+- `[audio]` - Audio device, sample rate
+- `[visualizer]` - FPS, preset path, beat sensitivity
+- `[recording]` - Video format, bitrate, output path
+- `[overlay]` - Text overlays, karaoke settings
+- `[ui]` - Window size, theme
+- `[keyboard]` - Custom key bindings
+
+**Note**: The app will automatically create the config directory if it doesn't exist. Changes are saved when you exit the application.
+
+### Presets Location:
+ProjectM presets are searched in this order:
+1. `/usr/share/projectM/presets`
+2. `/usr/local/share/projectM/presets`
+3. `/usr/share/projectm-presets`
+4. `~/.local/share/vibechad/presets` (fallback)
+
+To add custom presets, place them in `~/.local/share/vibechad/presets/`.
 
 ---
 

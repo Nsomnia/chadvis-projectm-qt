@@ -211,7 +211,7 @@ target_link_libraries(vibechad-vidz PRIVATE
 
 # Installation
 install(TARGETS vibechad-vidz DESTINATION bin)
-install(DIRECTORY config/ DESTINATION share/vibechad-vidz/config)
+install(DIRECTORY config/ DESTINATION share/vibechad/config)
 install(FILES resources/vibechad-vidz.desktop DESTINATION share/applications)
 install(FILES resources/icons/vibechad-vidz.svg DESTINATION share/icons/hicolor/scalable/apps)
 
