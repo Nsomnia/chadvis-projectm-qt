@@ -1,0 +1,17 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>styles/dark.qss</file>
+        <file>styles/gruvbox.qss</file>
+        <file>styles/nord.qss</file>
+        <file>icons/vibechad.svg</file>
+        <file>icons/play.svg</file>
+        <file>icons/pause.svg</file>
+        <file>icons/stop.svg</file>
+        <file>icons/next.svg</file>
+        <file>icons/prev.svg</file>
+        <file>icons/record.svg</file>
+        <file>icons/shuffle.svg</file>
+        <file>icons/repeat.svg</file>
+    </qresource>
+</RCC>

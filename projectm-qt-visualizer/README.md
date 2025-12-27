@@ -1,60 +1,136 @@
-# projectM Qt Visualizer
-**Chad's Audio Visualizer - "I use Arch, BTW"**
+<p align="center">
+  <img src="resources/icons/vibechad.svg" alt="vibechad logo" width="150"/>
+</p>
 
-A Qt6-based audio visualizer frontend for [projectM](https://github.com/projectm-visualizer/projectm) v4.
+<h1 align="center">vibechad-vidz: AI Music Video Creator & Automator</h1>
 
-**Status: ✅ WORKING** - Renders continuously, captures system audio via PulseAudio/PipeWire
+<p align="center">
+  <a href="https://github.com/Nsomnia/vibechad-vidz/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Nsomnia/vibechad-vidz/ci.yml?branch=main&label=Build%20Status&style=for-the-badge&logo=github" alt="Build Status"></a>
+  <a href="https://github.com/Nsomnia/vibechad-vidz/releases"><img src="https://img.shields.io/github/v/release/Nsomnia/vibechad-vidz?style=for-the-badge&label=Latest%20Release&logo=github" alt="Latest Release"></a>
+  <img src="https://img.shields.io/badge/Arch%20Linux-You%20know%20it-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="Arch Linux">
+  <img src="https://img.shields.io/badge/C%2B%2B20-Modern%20C%2B%2B-00599C?style=for-the-badge&logo=c%2B%2B&logoColor=white" alt="C++20">
+</p>
 
-## Features
-- ✅ **Continuous Rendering** - QWindow-based OpenGL with manual context management
-- ✅ **System Audio Capture** - PulseAudio/PipeWire monitor capture
-- ✅ **Preset Support** - 4000+ projectM presets via v4 C API
-- ✅ **Modern Qt6** - 60 FPS, double-buffered, Core Profile OpenGL
-- ✅ **Keyboard Controls** - N/P (presets), F11 (fullscreen), Ctrl+A (audio), ESC (quit)
+<p align="center">
+  <i>The ultimate tool for AI music creators who want to automate dope, milkdrop-style music videos without the hassle.</i>
+</p>
 
-## Quick Start
-### Dependencies (Arch Linux)
+---
+
+## 🎵 What is vibechad-vidz?
+
+`vibechad-vidz` is a music video creator and automator designed for the modern AI music creator. It's built on the legendary `ProjectM` visualization engine, giving you the power to create stunning, professional-looking music videos with a "leet" level of customization.
+
+This isn't just another visualizer. `vibechad-vidz` is a full-fledged video creation pipeline, with features like:
+
+*   **Advanced ProjectM Integration:** We're not just using ProjectM, we're extending it. Get ready for framebuffer rendering, animated text, and more.
+*   **Karaoke-style Lyrics:** Integrate lyrics directly into your videos for that professional touch.
+*   **YouTube Pipeline:** A streamlined workflow to get your creations from your desktop to YouTube with minimal fuss.
+*   **Sleek, Modern UI:** A user interface designed for power users who appreciate a clean, efficient workflow.
+
+If you're tired of the AI slop and want to create something truly unique, `vibechad-vidz` is for you.
+
+### ✨ Key Features (Because we don't do "basic")
+
+*   **Advanced ProjectM Integration:** Harness the full power of ProjectM for dynamic, psychedelic, and customizable visualizations. We didn't reinvent the wheel; we just put some sick rims on it.
+*   **Intuitive Qt6 UI:** A user interface so clean, your grandma could probably use it. But she won't, because she's too busy enjoying her vinyl collection.
+*   **Real-time Audio Analysis:** Analyzes your audio in real-time, feeding delicious data to ProjectM for visuals that actually react to your tunes, not just some pre-baked nonsense.
+*   **Overlay Engine:** Integrate text overlays. Because sometimes, you just need to drop some wisdom or memes on your visual output.
+*   **Built-in Video Recorder:** Capture your epic visual journeys directly within the app. Share your vibes with the less fortunate (i.e., non-Arch users).
+*   **Configurable to the Max:** Tweak every knob, slide every slider. Because true Chads customize everything.
+
+---
+
+## 🛠️ Get That Vibe: Building from Source
+
+You use Arch, BTW. So building from source is practically foreplay.
+
+### Prerequisites (The non-negotiables)
+
+Before you embark on this glorious journey, ensure you have these bad boys installed:
+
+*   **CMake** (>= 3.20)
+*   **Qt6** (Core, Gui, Widgets, Multimedia, OpenGLWidgets, Svg)
+*   **spdlog**
+*   **fmt**
+*   **taglib**
+*   **toml++**
+*   **GLEW**
+*   **GLM**
+*   **FFmpeg** (libavcodec, libavformat, libavutil, libswscale, libswresample)
+*   **ProjectM** (v4 preferred. If you don't have it, consider running `scripts/install_projectm_v4_local.sh` or building it yourself. We're not your mom; figure it out.)
+
+On Arch Linux, you can probably snag most of these with pacman:
 ```bash
-sudo pacman -S qt6-base qt6-multimedia libprojectm pulseaudio cmake gcc
+sudo pacman -S cmake qt6-base qt6-multimedia qt6-svg spdlog fmt taglib tomlplusplus glew glm ffmpeg
+# For projectM, check AUR or build it. A script is provided for local build.
 ```
 
-### Build & Run
+### The Sacred Ritual: Compilation
+
 ```bash
-./scripts/build.sh      # Ninja build, 1 core (potato-safe)
-./scripts/run_app.sh    # Launch visualizer
+# Clone this repo (if you haven't already, peasant)
+git clone https://github.com/Nsomnia/vibechad-vidz.git
+cd vibechad-vidz
+
+# Build the beast
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release # Or Debug, if you like living dangerously
+make -j$(nproc)
+
+# Install (because you're worth it)
+sudo make install
 ```
 
-### Manual Build
+If `make install` gives you the cold shoulder, just run it from the `build` directory:
 ```bash
-mkdir -p build && cd build
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ..
-cmake --build . -- -j1
-./projectm-qt-visualizer
+./vibechad-vidz
 ```
 
-## Architecture
-- **Main Entry**: `src/main_new.cpp` - QWindow-based entry point
-- **Visualizer**: `src/ProjectMWindow.cpp` - Manual GL context + requestUpdate() loop
-- **projectM Wrapper**: `src/projectm/ProjectMWrapper.cpp` - v4 C API wrapper
-- **Audio**: `src/platform/linux/PulseAudioSource.cpp` - Threaded capture
+### 📦 Arch User Repository (AUR)
 
-## Key Design Decisions
-1. **QWindow over QOpenGLWidget** - Avoids Qt's FBO conflicts with projectM
-2. **Manual GL Context** - Full control over OpenGL state
-3. **requestUpdate()** - Continuous rendering without throttling
-4. **Separate Audio Thread** - Non-blocking capture feeding projectM
+For the truly enlightened, `vibechad-vidz` might just land in the AUR eventually. Keep an eye out. Until then, compiling is character building.
 
-## Documentation
-- [Architecture](docs/ARCHITECTURE.md)
-- [Build Instructions](docs/BUILD_INSTRUCTIONS.md)
-- [Coding Standards](docs/CODING_STANDARDS.md)
-- [ProjectM v4 API Notes](docs/PROJECTM_V4_API_NOTES.md)
+---
 
-## For AI Agents
-See `.agent/` directory for:
-- [Prime Directive](.agent/AGENT_PRIME_DIRECTIVE.md)
-- [Current State](.agent/CURRENT_STATE.md)
-- [Next Tasks](.agent/NEXT_TASKS.md)
+## 🧠 Configuration (For the Control Freaks)
 
-## License
-MIT - Because Chad developers share their code.
+VibeChad uses `toml++` for its configuration. The default configuration can be found in `config/default.toml`. Feel free to tweak it to your heart's content. Just try not to break everything. We're not responsible for your existential dread when your custom config vanishes into the ether.
+
+---
+
+## 🤝 Contributing (Show Us Your Code, Chad)
+
+Think you can make VibeChad even more Chad-tier? Prove it. We welcome contributions, but only if they're up to snuff. No junior-dev-level pull requests, please. Read our `CONTRIBUTING.md` (once I write it, give me a minute) for the lowdown.
+
+---
+
+## 📜 License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
+(Yes, I will add a `LICENSE` file. Don't rush me.)
+
+---
+
+## 🚀 The Future (Because we're always elevating)
+
+We've got big plans, bigger vibes. Expect more features, more optimizations, and probably more "I use Arch, BTW" jokes. Stay tuned, stay Chad.
+
+```
+ ░░█░█░▀█▀░█▀▄░█▀▀░█▀▀░█░█░█▀█░█▀▄░░░░░█░█░▀█▀░█▀▄░▀▀█░░
+ ░░▀▄▀░░█░░█▀▄░█▀▀░█░░░█▀█░█▀█░█░█░▄▄▄░▀▄▀░░█░░█░█░▄▀░░░
+ ░░░▀░░▀▀▀░▀▀░░▀▀▀░▀▀▀░▀░▀░▀░▀░▀▀░░░░░░░▀░░▀▀▀░▀▀░░▀▀▀░░
+ ```
+
+## 🔧 Technical Fix: Black Canvas Issue
+
+**Problem**: QOpenGLWidget causes black canvas with projectM v4  
+**Solution**: Use QWindow with manual OpenGL context management
+
+The `VisualizerWindow` class (in `src/visualizer/VisualizerWindow.cpp`) replaces `VisualizerWidget`:
+- Creates its own `QOpenGLContext`
+- Uses `requestUpdate()` for continuous rendering
+- Calls `makeCurrent()` before each render
+- Calls `swapBuffers()` explicitly
+
+This fixes the issue where projectM would initialize but only render 1 frame.

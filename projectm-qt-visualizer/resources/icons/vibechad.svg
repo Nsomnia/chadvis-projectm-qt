@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00ff88;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00ccff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="url(#bgGrad)" stroke="url(#accentGrad)" stroke-width="3"/>
+  
+  <!-- Audio wave bars -->
+  <g fill="url(#accentGrad)">
+    <rect x="28" y="50" width="8" height="28" rx="2">
+      <animate attributeName="height" values="28;45;20;35;28" dur="0.8s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="50;42;54;46;50" dur="0.8s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="42" y="40" width="8" height="48" rx="2">
+      <animate attributeName="height" values="48;30;55;38;48" dur="0.6s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="40;49;36;45;40" dur="0.6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="56" y="32" width="8" height="64" rx="2">
+      <animate attributeName="height" values="64;45;70;50;64" dur="0.7s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="32;42;29;39;32" dur="0.7s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="70" y="38" width="8" height="52" rx="2">
+      <animate attributeName="height" values="52;65;40;58;52" dur="0.5s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="38;31;44;35;38" dur="0.5s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="84" y="45" width="8" height="38" rx="2">
+      <animate attributeName="height" values="38;25;48;32;38" dur="0.9s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="45;52;40;48;45" dur="0.9s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  
+  <!-- V and C letters stylized -->
+  <text x="64" y="108" font-family="sans-serif" font-size="18" font-weight="bold" 
+        fill="url(#accentGrad)" text-anchor="middle">VC</text>
+</svg>

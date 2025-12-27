@@ -1,0 +1,89 @@
+#pragma once
+// VisualizerWindow.hpp - QWindow-based visualization (fixes black canvas issue)
+// Uses manual GL context management instead of QOpenGLWidget
+
+#include "util/Types.hpp"
+#include "ProjectMBridge.hpp"
+#include "RenderTarget.hpp"
+
+#include <QWindow>
+#include <QOpenGLContext>
+#include <QOpenGLFunctions_3_3_Core>
+#include <QTimer>
+#include <memory>
+
+namespace vc {
+
+class OverlayEngine;
+
+class VisualizerWindow : public QWindow, protected QOpenGLFunctions_3_3_Core {
+    Q_OBJECT
+    
+public:
+    explicit VisualizerWindow(QWindow* parent = nullptr);
+    ~VisualizerWindow() override;
+    
+    // ProjectM access
+    ProjectMBridge& projectM() { return projectM_; }
+    const ProjectMBridge& projectM() const { return projectM_; }
+    
+    // Overlay
+    void setOverlayEngine(OverlayEngine* engine) { overlayEngine_ = engine; }
+    
+    // Recording support
+    RenderTarget& renderTarget() { return renderTarget_; }
+    void setRecordingSize(u32 width, u32 height);
+    bool isRecording() const { return recording_; }
+    void startRecording();
+    void stopRecording();
+    void setRenderRate(int fps);
+    void feedAudio(const f32* data, u32 frames, u32 channels);
+    
+public slots:
+    void toggleFullscreen();
+    
+signals:
+    void frameReady();
+    void fpsChanged(f32 actualFps);
+    
+protected:
+    void exposeEvent(QExposeEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+    
+private slots:
+    void render();  // Called by timer or requestUpdate()
+    void updateFPS();
+    
+private:
+    void initialize();
+    void renderFrame();
+    void renderOverlay();
+    void cleanup();
+    
+    std::unique_ptr<QOpenGLContext> context_;
+    
+    ProjectMBridge projectM_;
+    OverlayEngine* overlayEngine_{nullptr};
+    
+    RenderTarget renderTarget_;
+    RenderTarget overlayTarget_;
+    
+    QTimer renderTimer_;
+    QTimer fpsTimer_;
+    
+    bool recording_{false};
+    u32 recordWidth_{1920};
+    u32 recordHeight_{1080};
+    
+    u32 targetFps_{60};
+    u32 frameCount_{0};
+    f32 actualFps_{0.0f};
+    
+    bool initialized_{false};
+    bool fullscreen_{false};
+    QRect normalGeometry_;
+};
+
+} // namespace vc

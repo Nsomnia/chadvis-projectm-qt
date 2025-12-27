@@ -1,0 +1,46 @@
+#pragma once
+// VisualizerPanel.hpp - Container for visualizer with controls
+// The frame around the pretty colors
+
+#include "util/Types.hpp"
+#include "visualizer/VisualizerWindow.hpp"
+
+#include <QWidget>
+#include <QLabel>
+#include <QPushButton>
+
+namespace vc {
+
+class OverlayEngine;
+
+class VisualizerPanel : public QWidget {
+    Q_OBJECT
+    
+public:
+    explicit VisualizerPanel(QWidget* parent = nullptr);
+    
+    VisualizerWindow* visualizer() { return visualizerWindow_; }
+    void setOverlayEngine(OverlayEngine* engine);
+    
+signals:
+    void fullscreenRequested();
+    void presetChangeRequested();
+    void lockPresetToggled(bool locked);
+    
+public slots:
+    void updatePresetName(const QString& name);
+    void updateFPS(f32 fps);
+    
+private:
+    void setupUI();
+    
+    VisualizerWindow* visualizerWindow_{nullptr};
+    QLabel* presetLabel_{nullptr};
+    QLabel* fpsLabel_{nullptr};
+    QPushButton* fullscreenButton_{nullptr};
+    QPushButton* lockButton_{nullptr};
+    QPushButton* nextPresetButton_{nullptr};
+    QPushButton* prevPresetButton_{nullptr};
+};
+
+} // namespace vc

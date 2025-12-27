@@ -1,0 +1,148 @@
+/* gruvbox.qss - Gruvbox theme for terminal rice enthusiasts */
+
+* {
+    font-family: "Liberation Mono", "DejaVu Sans Mono", monospace;
+}
+
+QMainWindow, QDialog, QWidget {
+    background-color: #282828;
+    color: #ebdbb2;
+}
+
+QMenuBar {
+    background-color: #1d2021;
+    color: #ebdbb2;
+    border-bottom: 1px solid #3c3836;
+}
+
+QMenuBar::item:selected {
+    background-color: #3c3836;
+}
+
+QMenu {
+    background-color: #1d2021;
+    border: 1px solid #3c3836;
+}
+
+QMenu::item:selected {
+    background-color: #b8bb26;
+    color: #1d2021;
+}
+
+QPushButton {
+    background-color: #3c3836;
+    border: 1px solid #504945;
+    border-radius: 4px;
+    padding: 6px 12px;
+    color: #ebdbb2;
+}
+
+QPushButton:hover {
+    background-color: #504945;
+    border-color: #b8bb26;
+}
+
+QPushButton:pressed {
+    background-color: #1d2021;
+}
+
+QPushButton#playButton:checked {
+    background-color: #b8bb26;
+    color: #1d2021;
+}
+
+QPushButton#recordButton:checked {
+    background-color: #fb4934;
+    color: #1d2021;
+}
+
+QListWidget, QTreeWidget {
+    background-color: #1d2021;
+    border: 1px solid #3c3836;
+    color: #ebdbb2;
+}
+
+QListWidget::item:selected {
+    background-color: #b8bb26;
+    color: #1d2021;
+}
+
+QSlider::groove:horizontal {
+    height: 4px;
+    background: #3c3836;
+}
+
+QSlider::handle:horizontal {
+    background: #b8bb26;
+    width: 12px;
+    margin: -4px 0;
+    border-radius: 6px;
+}
+
+QSlider::sub-page:horizontal {
+    background: #b8bb26;
+}
+
+QLineEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+    background-color: #1d2021;
+    border: 1px solid #3c3836;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #ebdbb2;
+    selection-background-color: #b8bb26;
+    selection-color: #1d2021;
+}
+
+QGroupBox {
+    border: 1px solid #3c3836;
+    border-radius: 4px;
+    margin-top: 8px;
+}
+
+QGroupBox::title {
+    color: #b8bb26;
+}
+
+QTabWidget::pane {
+    border: 1px solid #3c3836;
+    background-color: #1d2021;
+}
+
+QTabBar::tab {
+    background-color: #3c3836;
+    border: 1px solid #504945;
+    padding: 6px 12px;
+}
+
+QTabBar::tab:selected {
+    background-color: #1d2021;
+    border-color: #b8bb26;
+    color: #b8bb26;
+}
+
+QScrollBar:vertical {
+    background-color: #1d2021;
+    width: 10px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #504945;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #b8bb26;
+}
+
+QLabel#titleLabel {
+    color: #fabd2f;
+    font-weight: bold;
+}
+
+QLabel#artistLabel {
+    color: #83a598;
+}
+
+QLabel#statusLabel {
+    color: #b8bb26;
+}
