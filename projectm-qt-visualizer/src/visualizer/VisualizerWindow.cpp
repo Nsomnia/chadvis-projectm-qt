@@ -159,6 +159,18 @@ void VisualizerWindow::render() {
 }
 
 void VisualizerWindow::renderFrame() {
+    // Feed audio data from queue (thread-safe)
+    // Feed all available audio to projectM
+    {
+        std::lock_guard lock(audioMutex_);
+        
+        if (!audioQueue_.empty()) {
+            // Feed all accumulated audio
+            projectM_.addPCMDataInterleaved(audioQueue_.data(), audioQueue_.size() / 2, 2);
+            audioQueue_.clear();
+        }
+    }
+
     // For recording, use FBO. For normal display, render directly
     if (recording_) {
         // Recording path: render to FBO, emit signal
@@ -186,6 +198,10 @@ void VisualizerWindow::renderFrame() {
         
         LOG_DEBUG("Rendering frame {} to {}x{} window", frameCount_, width(), height());
         
+        // Clear before rendering
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+
         // Let projectM render directly to screen
         projectM_.render();
         
@@ -199,9 +215,13 @@ void VisualizerWindow::renderFrame() {
 }
 
 void VisualizerWindow::feedAudio(const f32* data, u32 frames, u32 channels) {
-    projectM_.addPCMDataInterleaved(data, frames, channels);
+    std::lock_guard lock(audioMutex_);
+    // Append audio data to queue for the render thread to consume
+    // For now, assume stereo interleaved
+    usize offset = audioQueue_.size();
+    audioQueue_.resize(offset + frames * 2);
+    std::memcpy(audioQueue_.data() + offset, data, frames * 2 * sizeof(f32));
 }
-
 void VisualizerWindow::setRenderRate(int fps) {
     if (fps > 0) {
         targetFps_ = fps;

@@ -11,6 +11,8 @@
 #include <QOpenGLFunctions_3_3_Core>
 #include <QTimer>
 #include <memory>
+#include <mutex>
+#include <vector>
 
 namespace vc {
 
@@ -84,6 +86,11 @@ private:
     bool initialized_{false};
     bool fullscreen_{false};
     QRect normalGeometry_;
+    
+    // Audio buffer for thread-safe feeding
+    // Uses a queue to accumulate audio data and feed at render rate
+    std::mutex audioMutex_;
+    std::vector<f32> audioQueue_;  // Accumulates incoming audio data
 };
 
 } // namespace vc

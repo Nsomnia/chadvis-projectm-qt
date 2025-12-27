@@ -250,6 +250,11 @@ void MainWindow::setupConnections() {
         });
     });
     
+    // Audio engine PCM data -> feed to visualizer
+    audioEngine_->pcmReceived.connect([this](const std::vector<f32>& pcm, u32 frames, u32 channels) {
+        visualizerPanel_->visualizer()->feedAudio(pcm.data(), frames, channels);
+    });
+    
     // Overlay editor changes
     connect(overlayEditor_, &OverlayEditor::overlayChanged, this, [this] {
         overlayEngine_->config().saveToAppConfig();
@@ -270,9 +275,6 @@ void MainWindow::setupUpdateTimer() {
 }
 
 void MainWindow::onUpdateLoop() {
-    // Feed audio data to visualizer
-    feedAudioToVisualizer();
-    
     // Update overlay animations
     overlayEngine_->update(0.016f);
     
@@ -281,20 +283,6 @@ void MainWindow::onUpdateLoop() {
     if (spectrum.beatDetected) {
         overlayEngine_->onBeat(spectrum.beatIntensity);
     }
-}
-
-void MainWindow::feedAudioToVisualizer() {
-    if (!audioEngine_->isPlaying()) return;
-    
-    const auto& pcm = audioEngine_->currentPCM();
-    if (pcm.empty()) return;
-    
-    // Feed PCM data to ProjectM
-    visualizerPanel_->visualizer()->feedAudio(
-        pcm.data(), 
-        pcm.size() / 2,  // Frames (stereo)
-        2                 // Channels
-    );
 }
 
 void MainWindow::updateWindowTitle() {
