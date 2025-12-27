@@ -99,7 +99,7 @@ struct EncoderSettings {
     // Metadata
     std::string title;
     std::string artist;
-    std::string comment{"Recorded with VibeChad - I use Arch btw"};
+    std::string comment{"Recorded with ChadVis - I use Arch btw"};
     
     // Get container extension
     std::string containerExtension() const;

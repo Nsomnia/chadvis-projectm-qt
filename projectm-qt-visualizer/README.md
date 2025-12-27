@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="resources/icons/vibechad.svg" alt="vibechad logo" width="150"/>
+  <img src="resources/icons/chadvis-projectm-qt.svg" alt="chadvis-projectm-qt logo" width="150"/>
 </p>
 
-<h1 align="center">vibechad-vidz: AI Music Video Creator & Automator</h1>
+<h1 align="center">chadvis-projectm-qt: Qt6 projectM v4 Visualizer</h1>
 
 <p align="center">
-  <a href="https://github.com/Nsomnia/vibechad-vidz/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Nsomnia/vibechad-vidz/ci.yml?branch=main&label=Build%20Status&style=for-the-badge&logo=github" alt="Build Status"></a>
-  <a href="https://github.com/Nsomnia/vibechad-vidz/releases"><img src="https://img.shields.io/github/v/release/Nsomnia/vibechad-vidz?style=for-the-badge&label=Latest%20Release&logo=github" alt="Latest Release"></a>
+   <a href="https://github.com/Nsomnia/mimo-v2-flash-with-claude-inital-message/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Nsomnia/mimo-v2-flash-with-claude-inital-message/ci.yml?branch=main&label=Build%20Status&style=for-the-badge&logo=github" alt="Build Status"></a>
+   <a href="https://github.com/Nsomnia/mimo-v2-flash-with-claude-inital-message/releases"><img src="https://img.shields.io/github/v/release/Nsomnia/mimo-v2-flash-with-claude-inital-message?style=for-the-badge&label=Latest%20Release&logo=github" alt="Latest Release"></a>
   <img src="https://img.shields.io/badge/Arch%20Linux-You%20know%20it-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="Arch Linux">
   <img src="https://img.shields.io/badge/C%2B%2B20-Modern%20C%2B%2B-00599C?style=for-the-badge&logo=c%2B%2B&logoColor=white" alt="C++20">
 </p>
@@ -17,18 +17,17 @@
 
 ---
 
-## 🎵 What is vibechad-vidz?
+## 🎵 What is chadvis-projectm-qt?
 
-`vibechad-vidz` is a music video creator and automator designed for the modern AI music creator. It's built on the legendary `ProjectM` visualization engine, giving you the power to create stunning, professional-looking music videos with a "leet" level of customization.
+`chadvis-projectm-qt` is a modern Qt6-based visualizer for projectM v4, built with C++20. It provides a clean, efficient interface for rendering projectM presets with real-time audio visualization.
 
-This isn't just another visualizer. `vibechad-vidz` is a full-fledged video creation pipeline, with features like:
-
-*   **Advanced ProjectM Integration:** We're not just using ProjectM, we're extending it. Get ready for framebuffer rendering, animated text, and more.
-*   **Karaoke-style Lyrics:** Integrate lyrics directly into your videos for that professional touch.
-*   **YouTube Pipeline:** A streamlined workflow to get your creations from your desktop to YouTube with minimal fuss.
-*   **Sleek, Modern UI:** A user interface designed for power users who appreciate a clean, efficient workflow.
-
-If you're tired of the AI slop and want to create something truly unique, `vibechad-vidz` is for you.
+Key features:
+*   **projectM v4 Integration:** Full support for the latest projectM API
+*   **Qt6 Native:** Modern Qt6 widgets and OpenGL integration
+*   **C++20:** Modern C++ with smart pointers, Result types, and clean architecture
+*   **Video Recording:** Built-in FFmpeg-based video export
+*   **Overlay Engine:** Text overlays and custom graphics
+*   **Arch Linux Optimized:** Designed for the modern Linux desktop
 
 ### ✨ Key Features (Because we don't do "basic")
 
@@ -82,34 +81,34 @@ cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
 ninja -j1  # Use 1 core for potato-safe mode
 
 # Run from build directory
-./vibechad-vidz
+./chadvis-projectm-qt
 ```
 
 **Note**: The build takes ~5-10 minutes. It's compiling modern C++20 with all the bells and whistles. Be patient.
 
 ### 📦 Arch User Repository (AUR)
 
-For the truly enlightened, `vibechad-vidz` might just land in the AUR eventually. Keep an eye out. Until then, compiling is character building.
+For the truly enlightened, `chadvis-projectm-qt` might just land in the AUR eventually. Keep an eye out. Until then, compiling is character building.
 
 ---
 
 ## 🧠 Configuration (For the Control Freaks)
 
-VibeChad uses `toml++` for configuration. Config files are stored in:
+ChadVis uses `toml++` for configuration. Config files are stored in:
 
 ### Config Locations (in order of priority):
-1. **User config**: `~/.config/vibechad/config.toml` (or `$XDG_CONFIG_HOME/vibechad/config.toml`)
-2. **System default**: `/usr/share/vibechad/config/default.toml` (installed by `make install`)
+1. **User config**: `~/.config/chadvis-projectm-qt/config.toml` (or `$XDG_CONFIG_HOME/chadvis-projectm-qt/config.toml`)
+2. **System default**: `/usr/share/chadvis-projectm-qt/config/default.toml` (installed by `make install`)
 3. **Built-in defaults**: If no file exists, the app uses hardcoded defaults
 
 ### Creating Your Config:
 ```bash
 # Copy the default config to your user directory
-mkdir -p ~/.config/vibechad
-cp /usr/share/vibechad/config/default.toml ~/.config/vibechad/config.toml
+mkdir -p ~/.config/chadvis-projectm-qt
+cp /usr/share/chadvis-projectm-qt/config/default.toml ~/.config/chadvis-projectm-qt/config.toml
 
 # Edit it
-nano ~/.config/vibechad/config.toml
+nano ~/.config/chadvis-projectm-qt/config.toml
 ```
 
 ### Config Sections:
@@ -128,15 +127,15 @@ ProjectM presets are searched in this order:
 1. `/usr/share/projectM/presets`
 2. `/usr/local/share/projectM/presets`
 3. `/usr/share/projectm-presets`
-4. `~/.local/share/vibechad/presets` (fallback)
+4. `~/.local/share/chadvis-projectm-qt/presets` (fallback)
 
-To add custom presets, place them in `~/.local/share/vibechad/presets/`.
+To add custom presets, place them in `~/.local/share/chadvis-projectm-qt/presets/`.
 
 ---
 
 ## 🤝 Contributing (Show Us Your Code, Chad)
 
-Think you can make VibeChad even more Chad-tier? Prove it. We welcome contributions, but only if they're up to snuff. No junior-dev-level pull requests, please. Read our `CONTRIBUTING.md` (once I write it, give me a minute) for the lowdown.
+Think you can make ChadVis even more Chad-tier? Prove it. We welcome contributions, but only if they're up to snuff. No junior-dev-level pull requests, please. Read our `CONTRIBUTING.md` (once I write it, give me a minute) for the lowdown.
 
 ---
 

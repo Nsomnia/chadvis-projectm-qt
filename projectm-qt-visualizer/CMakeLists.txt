@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(vibechad-vidz VERSION 1.0.0 LANGUAGES CXX)
+project(chadvis-projectm-qt VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -175,12 +175,12 @@ set(ALL_SOURCES
 )
 
 # Qt resources
-set(RESOURCES resources/vibechad.qrc)
+set(RESOURCES resources/chadvis-projectm-qt.qrc)
 
 # Main executable
-add_executable(vibechad-vidz ${ALL_SOURCES} ${RESOURCES})
+add_executable(chadvis-projectm-qt ${ALL_SOURCES} ${RESOURCES})
 
-target_include_directories(vibechad-vidz PRIVATE
+target_include_directories(chadvis-projectm-qt-vidz PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${SPDLOG_INCLUDE_DIRS}
     ${FMT_INCLUDE_DIRS}
@@ -192,7 +192,7 @@ target_include_directories(vibechad-vidz PRIVATE
     ${PROJECTM_INCLUDE_DIRS}
 )
 
-target_link_libraries(vibechad-vidz PRIVATE
+target_link_libraries(chadvis-projectm-qt PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -209,14 +209,19 @@ target_link_libraries(vibechad-vidz PRIVATE
     OpenGL
 )
 
+if(PULSEAUDIO_FOUND)
+    target_link_libraries(chadvis-projectm-qt PRIVATE ${PULSEAUDIO_LIBRARIES} pulse-simple)
+    target_include_directories(chadvis-projectm-qt PRIVATE ${PULSEAUDIO_INCLUDE_DIRS})
+endif()
+
 # Installation
-install(TARGETS vibechad-vidz DESTINATION bin)
-install(DIRECTORY config/ DESTINATION share/vibechad/config)
-install(FILES resources/vibechad-vidz.desktop DESTINATION share/applications)
-install(FILES resources/icons/vibechad-vidz.svg DESTINATION share/icons/hicolor/scalable/apps)
+install(TARGETS chadvis-projectm-qt DESTINATION bin)
+install(DIRECTORY config/ DESTINATION share/chadvis-projectm-qt/config)
+install(FILES resources/chadvis-projectm-qt.desktop DESTINATION share/applications)
+install(FILES resources/icons/chadvis-projectm-qt.svg DESTINATION share/icons/hicolor/scalable/apps)
 
 # CPack for packaging
-set(CPACK_PACKAGE_NAME "vibechad-vidz")
+set(CPACK_PACKAGE_NAME "chadvis-projectm-qt")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Chad-tier audio visualizer for Arch Linux")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Qt6 projectM v4 visualizer with modern C++20")
 include(CPack)

@@ -31,7 +31,7 @@ namespace vc {
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
-    setWindowTitle("VibeChad - I use Arch btw");
+    setWindowTitle("ChadVis - I use Arch btw");
     setMinimumSize(1024, 768);
     resize(1400, 900);
     setAcceptDrops(true);
@@ -212,7 +212,7 @@ void MainWindow::setupMenuBar() {
     // Help menu
     auto* helpMenu = menuBar()->addMenu("&Help");
     
-    helpMenu->addAction("&About VibeChad", this, &MainWindow::onShowAbout);
+    helpMenu->addAction("&About ChadVis", this, &MainWindow::onShowAbout);
     helpMenu->addAction("About &Qt", qApp, &QApplication::aboutQt);
 }
 
@@ -298,7 +298,7 @@ void MainWindow::feedAudioToVisualizer() {
 }
 
 void MainWindow::updateWindowTitle() {
-    QString title = "VibeChad";
+    QString title = "ChadVis";
     
     if (const auto* item = audioEngine_->playlist().currentItem()) {
         title = QString::fromStdString(item->metadata.displayArtist()) + " - " +
@@ -339,7 +339,7 @@ void MainWindow::startRecording(const fs::path& outputPath) {
         std::tm tm = *std::localtime(&time);
         
         char buf[64];
-        std::strftime(buf, sizeof(buf), "vibechad_%Y%m%d_%H%M%S", &tm);
+        std::strftime(buf, sizeof(buf), "chadvis-projectm-qt_%Y%m%d_%H%M%S", &tm);
         
         path = CONFIG.recording().outputDirectory / 
                (std::string(buf) + EncoderSettings::fromConfig().containerExtension());
@@ -489,14 +489,14 @@ void MainWindow::onShowSettings() {
 }
 
 void MainWindow::onShowAbout() {
-    QMessageBox::about(this, "About VibeChad",
-        "<h2>VibeChad Audio Player</h2>"
+    QMessageBox::about(this, "About ChadVis",
+        "<h2>ChadVis Audio Player</h2>"
         "<p>Version 1.0.0</p>"
         "<p>A brutally customizable audio visualizer for Arch Linux.</p>"
         "<p>Built with Qt6, ProjectM, and the tears of junior developers.</p>"
         "<hr>"
         "<p><b>\"I use Arch btw\"</b></p>"
-        "<p>© 2024 The VibeChad Collective</p>"
+        "<p>© 2024 The ChadVis Collective</p>"
         "<p>Licensed under the MIT License</p>"
     );
 }

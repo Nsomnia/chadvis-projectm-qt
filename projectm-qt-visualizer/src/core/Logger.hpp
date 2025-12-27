@@ -12,7 +12,7 @@ namespace vc {
 
 class Logger {
 public:
-    static void init(std::string_view appName = "vibechad", bool debug = false);
+    static void init(std::string_view appName = "chadvis-projectm-qt", bool debug = false);
     static void shutdown();
     
     static std::shared_ptr<spdlog::logger>& get();

@@ -10,9 +10,9 @@
 namespace vc::file {
 
 // Get standard paths
-fs::path configDir();          // ~/.config/vibechad
-fs::path dataDir();            // ~/.local/share/vibechad
-fs::path cacheDir();           // ~/.cache/vibechad
+fs::path configDir();          // ~/.config/chadvis-projectm-qt
+fs::path dataDir();            // ~/.local/share/chadvis-projectm-qt
+fs::path cacheDir();           // ~/.cache/chadvis-projectm-qt
 fs::path presetsDir();         // /usr/share/projectM/presets or similar
 
 // Ensure directory exists

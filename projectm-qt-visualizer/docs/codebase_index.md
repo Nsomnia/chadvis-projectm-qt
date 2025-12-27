@@ -1,7 +1,7 @@
-# Codebase Index: vibechad-vidz
+# Codebase Index: chadvis-projectm-qt-vidz
 
 ## Overview
-vibechad-vidz is a music visualization application using Qt and libprojectM.
+chadvis-projectm-qt-vidz is a music visualization application using Qt and libprojectM.
 
 ## Directory Structure
 -   **src/**

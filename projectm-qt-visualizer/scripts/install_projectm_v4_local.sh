@@ -1,9 +1,9 @@
  	#!/bin/bash
-# install_projectm_v4_local.sh - Build ProjectM v4 locally for VibeChad
+# install_projectm_v4_local.sh - Build ProjectM v4 locally for ChadVis
 
 set -e
 
-echo "=== Installing ProjectM v4 locally for VibeChad ==="
+echo "=== Installing ProjectM v4 locally for ChadVis ==="
 echo "System has v3, we need v4. Building locally..."
 
 PROJECT_ROOT="$(pwd)"
@@ -116,7 +116,7 @@ endif()\
 fi
 
 echo ""
-echo "=== Now rebuild VibeChad ==="
+echo "=== Now rebuild ChadVis ==="
 echo "  rm -rf build"
 echo "  cmake -B build -DCMAKE_BUILD_TYPE=Release"
 echo "  make -C build -j\$(nproc)"

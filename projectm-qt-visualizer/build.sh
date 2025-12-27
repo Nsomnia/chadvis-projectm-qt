@@ -6,5 +6,5 @@ cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
 ninja -j1
 echo ""
 echo "=== Build complete ==="
-echo "Binary: ./build/vibechad-vidz"
+echo "Binary: ./build/chadvis-projectm-qt"
 echo "I use Arch, BTW."

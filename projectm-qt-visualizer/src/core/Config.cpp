@@ -85,7 +85,7 @@ Result<void> Config::loadDefault() {
     }
     
     // Try system default
-    fs::path systemDefault = "/usr/share/vibechad/config/default.toml";
+    fs::path systemDefault = "/usr/share/chadvis-projectm-qt/config/default.toml";
     if (fs::exists(systemDefault)) {
         // Copy to user config
         file::ensureDir(configDir);
@@ -102,7 +102,7 @@ Result<void> Config::loadDefault() {
     
     // Set sensible defaults
     visualizer_.presetPath = file::presetsDir();
-    recording_.outputDirectory = expandPath("~/Videos/VibeChad");
+    recording_.outputDirectory = expandPath("~/Videos/ChadVis");
     
     return Result<void>::ok();
 }
@@ -152,9 +152,9 @@ void Config::parseVisualizer(const toml::table& tbl) {
 void Config::parseRecording(const toml::table& tbl) {
     if (auto rec = tbl["recording"].as_table()) {
         recording_.enabled = get(*rec, "enabled", true);
-        auto outDir = get(*rec, "output_directory", std::string("~/Videos/VibeChad"));
+        auto outDir = get(*rec, "output_directory", std::string("~/Videos/ChadVis"));
         recording_.outputDirectory = expandPath(outDir);
-        recording_.defaultFilename = get(*rec, "default_filename", std::string("vibechad_{date}_{time}"));
+        recording_.defaultFilename = get(*rec, "default_filename", std::string("chadvis-projectm-qt_{date}_{time}"));
         recording_.container = get(*rec, "container", std::string("mp4"));
         
         if (auto video = (*rec)["video"].as_table()) {

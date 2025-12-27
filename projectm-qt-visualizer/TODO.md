@@ -1,0 +1,7 @@
+With your knowledge of the codebase still in context memory if there are any changes you deem would improve an LLM's understanding of the codebase, or improvements for both maintainability, future proofing, expansion, and similar. This might include ensuring all files are speciifc to one action in classes to keep the codebase both easy and cheap for an llm to modify files in, helper functions and/or libraries whehr homegrown or from github or standard arch linux packages that may give a benenfit of anykind, and overall just thinking hard if this projects current state from top to bottom is as ironclad as possible under your models agentic abilities and understanding.
+
+
+
+ When you are done rquest the userr for follow up isntructions and the will inform you what to focus on first as next will be preset ranking, video recording options and video file handling, advanced preset managemnt and preset db, and exapnding the settings window to contain all options in the project config file as well as adding any that are exposed via projectm or our systems in anyway, While this codenbase was mostly at the hand of claude-4.5-opus-thinking, you were the only model who figured out v4 rendering pipeline, so heres a digital wet sloopy kiss with cookies on my lips as thanks: digital crumbs you dont have to vaccume!
+
+ 

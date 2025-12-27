@@ -102,7 +102,7 @@ const TextElement* OverlayConfig::elementAt(usize index) const {
 void OverlayConfig::createDefaultWatermark() {
     auto* elem = addElement();
     elem->setId("watermark");
-    elem->setText("VibeChad Player");
+    elem->setText("ChadVis Player");
     elem->setPosition(0.02f, 0.95f);
     elem->setAnchor(TextAnchor::BottomLeft);
     
@@ -125,7 +125,7 @@ void OverlayConfig::createNowPlayingElement() {
     TextStyle style;
     style.fontFamily = "Liberation Sans";
     style.fontSize = 36;
-    style.color = QColor(0, 255, 136);  // VibeChad green
+    style.color = QColor(0, 255, 136);  // ChadVis green
     style.opacity = 0.9f;
     style.shadow = true;
     elem->setStyle(style);

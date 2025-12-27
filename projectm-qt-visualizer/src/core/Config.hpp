@@ -46,7 +46,7 @@ struct AudioEncoderConfig {
 struct RecordingConfig {
     bool enabled{true};
     fs::path outputDirectory;
-    std::string defaultFilename{"vibechad_{date}_{time}"};
+    std::string defaultFilename{"chadvis-projectm-qt_{date}_{time}"};
     std::string container{"mp4"};
     VideoEncoderConfig video;
     AudioEncoderConfig audio;
