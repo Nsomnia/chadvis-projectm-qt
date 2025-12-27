@@ -1,52 +1,74 @@
-#include <QApplication>
-#include <QSurfaceFormat>
-#include <QFile>
-#include <QTextStream>
-#include <QDateTime>
-#include "gui/MainWindow.hpp"
+// main.cpp - VibeChad Entry Point
+// "Hello, World!" but with more bass drops
+//
+// ██╗   ██╗██╗██████╗ ███████╗ ██████╗██╗  ██╗ █████╗ ██████╗ 
+// ██║   ██║██║██╔══██╗██╔════╝██╔════╝██║  ██║██╔══██╗██╔══██╗
+// ██║   ██║██║██████╔╝█████╗  ██║     ███████║███████║██║  ██║
+// ╚██╗ ██╔╝██║██╔══██╗██╔══╝  ██║     ██╔══██║██╔══██║██║  ██║
+//  ╚████╔╝ ██║██████╔╝███████╗╚██████╗██║  ██║██║  ██║██████╔╝
+//   ╚═══╝  ╚═╝╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ 
+//
+// I use Arch btw.
 
-// Simple file logging
-void fileLog(const QString& msg) {
-    QFile file("/tmp/projectm-qt-visualizer.log");
-    if (file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        QTextStream out(&file);
-        out << QDateTime::currentDateTime().toString("HH:mm:ss.zzz") << " " << msg << "\n";
+#include "core/Application.hpp"
+#include "core/Logger.hpp"
+
+#include <iostream>
+#include <csignal>
+
+namespace {
+
+vc::Application* g_app = nullptr;
+
+void signalHandler(int signal) {
+    if (signal == SIGINT || signal == SIGTERM) {
+        std::cout << "\nReceived signal " << signal << ", shutting down gracefully...\n";
+        if (g_app) {
+            g_app->quit();
+        }
     }
-    qDebug() << msg;
 }
 
-int main(int argc, char *argv[])
-{
-    // Clear old log
-    QFile::remove("/tmp/projectm-qt-visualizer.log");
-    fileLog("=== Starting application ===");
+} // namespace
+
+int main(int argc, char* argv[]) {
+    // Setup signal handlers
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
     
-    // Configure OpenGL
-    QSurfaceFormat format;
-    format.setVersion(3, 3);
-    format.setProfile(QSurfaceFormat::CoreProfile);
-    format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
-    format.setSwapInterval(0);
-    format.setRedBufferSize(8);
-    format.setGreenBufferSize(8);
-    format.setBlueBufferSize(8);
-    format.setAlphaBufferSize(8);
-    format.setDepthBufferSize(24);
-    QSurfaceFormat::setDefaultFormat(format);
-    fileLog("OpenGL format set: 3.3 Core Profile");
-    
-    QApplication app(argc, argv);
-    fileLog("QApplication created");
-    
-    MainWindow window;
-    fileLog("MainWindow created");
-    
-    window.show();
-    fileLog("Window shown");
-    
-    fileLog("Entering event loop");
-    int result = app.exec();
-    fileLog("Event loop exited");
-    
-    return result;
+    try {
+        // Create application
+        vc::Application app(argc, argv);
+        g_app = &app;
+        
+        // Parse command line arguments
+        auto optsResult = app.parseArgs();
+        if (!optsResult) {
+            std::cerr << "Error: " << optsResult.error().message << "\n";
+            std::cerr << "Try --help for usage information.\n";
+            return 1;
+        }
+        
+        auto opts = std::move(*optsResult);
+        
+        // Initialize application
+        auto initResult = app.init(opts);
+        if (!initResult) {
+            std::cerr << "Initialization failed: " << initResult.error().message << "\n";
+            return 1;
+        }
+        
+        // Run the event loop
+        int result = app.exec();
+        
+        g_app = nullptr;
+        return result;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal error: " << e.what() << "\n";
+        return 1;
+    } catch (...) {
+        std::cerr << "Unknown fatal error occurred.\n";
+        return 1;
+    }
 }

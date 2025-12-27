@@ -1,0 +1,307 @@
+
+#include "Application.hpp"
+#include "util/GLIncludes.hpp"
+#include "Config.hpp"
+#include "Logger.hpp"
+#include "audio/AudioEngine.hpp"
+#include "overlay/OverlayEngine.hpp"
+#include "recorder/VideoRecorder.hpp"
+#include "ui/MainWindow.hpp"
+#include "util/FileUtils.hpp"
+
+#include <QStyleFactory>
+#include <QFontDatabase>
+#include <QFile>
+#include <QDir>
+#include <iostream>
+
+namespace vc {
+
+Application* Application::instance_ = nullptr;
+
+Application::Application(int& argc, char** argv)
+    : argc_(argc)
+    , argv_(argv)
+{
+    instance_ = this;
+}
+
+Application::~Application() {
+    // Cleanup order matters
+    mainWindow_.reset();
+    videoRecorder_.reset();
+    overlayEngine_.reset();
+    audioEngine_.reset();
+    qapp_.reset();
+    
+    Logger::shutdown();
+    instance_ = nullptr;
+}
+
+Result<AppOptions> Application::parseArgs() {
+    AppOptions opts;
+    
+    for (int i = 1; i < argc_; ++i) {
+        std::string_view arg(argv_[i]);
+        
+        if (arg == "-h" || arg == "--help") {
+            printHelp();
+            std::exit(0);
+        }
+        else if (arg == "-v" || arg == "--version") {
+            printVersion();
+            std::exit(0);
+        }
+        else if (arg == "-d" || arg == "--debug") {
+            opts.debug = true;
+        }
+        else if (arg == "--headless") {
+            opts.headless = true;
+        }
+        else if (arg == "-r" || arg == "--record") {
+            opts.startRecording = true;
+        }
+        else if (arg == "-o" || arg == "--output") {
+            if (i + 1 >= argc_) {
+                return Result<AppOptions>::err("--output requires a path argument");
+            }
+            opts.outputFile = fs::path(argv_[++i]);
+        }
+        else if (arg == "-c" || arg == "--config") {
+            if (i + 1 >= argc_) {
+                return Result<AppOptions>::err("--config requires a path argument");
+            }
+            opts.configFile = fs::path(argv_[++i]);
+        }
+        else if (arg == "-p" || arg == "--preset") {
+            if (i + 1 >= argc_) {
+                return Result<AppOptions>::err("--preset requires a name argument");
+            }
+            opts.presetName = argv_[++i];
+        }
+        else if (arg[0] != '-') {
+            // Positional argument - input file
+            opts.inputFiles.push_back(fs::path(arg));
+        }
+        else {
+            return Result<AppOptions>::err(std::string("Unknown option: ") + std::string(arg));
+        }
+    }
+    
+    return Result<AppOptions>::ok(std::move(opts));
+}
+
+Result<void> Application::init(const AppOptions& opts) {
+    // Initialize logging first
+    Logger::init("vibechad", opts.debug);
+    LOG_INFO("VibeChad starting up. I use Arch btw.");
+    
+    // Load configuration
+    if (opts.configFile) {
+        if (auto result = CONFIG.load(*opts.configFile); !result) {
+            LOG_ERROR("Failed to load config: {}", result.error().message);
+            return result;
+        }
+    } else {
+        if (auto result = CONFIG.loadDefault(); !result) {
+            LOG_WARN("Failed to load default config: {}", result.error().message);
+            // Continue with defaults
+        }
+    }
+    
+    // Override debug from command line
+    if (opts.debug) {
+        CONFIG.setDebug(true);
+    }
+    
+    // Create Qt application
+    qapp_ = std::make_unique<QApplication>(argc_, argv_);
+    qapp_->setApplicationName("VibeChad");
+    qapp_->setApplicationVersion("1.0.0");
+    qapp_->setOrganizationName("VibeChad");
+    qapp_->setOrganizationDomain("github.com/vibechad");
+    
+    // Setup styling
+    setupStyle();
+    
+    // Initialize components
+    LOG_DEBUG("Initializing audio engine...");
+    audioEngine_ = std::make_unique<AudioEngine>();
+    if (auto result = audioEngine_->init(); !result) {
+        LOG_ERROR("Audio engine init failed: {}", result.error().message);
+        return result;
+    }
+    
+    LOG_DEBUG("Initializing overlay engine...");
+    overlayEngine_ = std::make_unique<OverlayEngine>();
+    overlayEngine_->init();
+    
+    LOG_DEBUG("Initializing video recorder...");
+    videoRecorder_ = std::make_unique<VideoRecorder>();
+    
+    // Create main window (unless headless)
+    if (!opts.headless) {
+        LOG_DEBUG("Creating main window...");
+        mainWindow_ = std::make_unique<MainWindow>();
+        mainWindow_->show();
+        
+        // Add input files to playlist
+        for (const auto& file : opts.inputFiles) {
+            if (fs::exists(file)) {
+                mainWindow_->addToPlaylist(file);
+            } else {
+                LOG_WARN("File not found: {}", file.string());
+            }
+        }
+        
+        // Auto-start recording if requested
+        if (opts.startRecording) {
+            if (opts.outputFile) {
+                mainWindow_->startRecording(*opts.outputFile);
+            } else {
+                mainWindow_->startRecording();
+            }
+        }
+        
+        // Set preset if specified
+        if (opts.presetName) {
+            mainWindow_->selectPreset(*opts.presetName);
+        }
+    }
+    
+    // Connect quit signal
+    connect(qapp_.get(), &QApplication::aboutToQuit, this, &Application::aboutToQuit);
+    
+    LOG_INFO("Initialization complete. Let's get this bread.");
+    return Result<void>::ok();
+}
+
+int Application::exec() {
+    if (!qapp_) {
+        LOG_ERROR("Application not initialized");
+        return 1;
+    }
+    return qapp_->exec();
+}
+
+void Application::quit() {
+    LOG_INFO("Shutting down...");
+    
+    // Stop recording if active
+    if (videoRecorder_ && videoRecorder_->isRecording()) {
+        videoRecorder_->stop();
+    }
+    
+    // Stop audio
+    if (audioEngine_) {
+        audioEngine_->stop();
+    }
+    
+    // Save config if dirty
+    if (CONFIG.isDirty()) {
+        CONFIG.save(CONFIG.configPath());
+    }
+    
+    if (qapp_) {
+        qapp_->quit();
+    }
+}
+
+void Application::setupStyle() {
+    // Use Fusion style as base (looks good on Linux)
+    qapp_->setStyle(QStyleFactory::create("Fusion"));
+    
+    // Load fonts
+    QFontDatabase::addApplicationFont(":/fonts/liberation-sans.ttf");
+    
+    // Load stylesheet based on theme
+    QString themeName = QString::fromStdString(CONFIG.ui().theme);
+    QString stylePath = QString(":/styles/%1.qss").arg(themeName);
+    
+    QFile styleFile(stylePath);
+    if (styleFile.open(QFile::ReadOnly | QFile::Text)) {
+        QString style = styleFile.readAll();
+        qapp_->setStyleSheet(style);
+        LOG_DEBUG("Loaded theme: {}", themeName.toStdString());
+    } else {
+        LOG_WARN("Theme not found: {}, using default", themeName.toStdString());
+        // Fallback dark theme inline
+        qapp_->setStyleSheet(R"(
+            QMainWindow, QDialog, QWidget {
+                background-color: #1e1e1e;
+                color: #ffffff;
+            }
+            QPushButton {
+                background-color: #3c3c3c;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 6px 12px;
+                color: #ffffff;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+            }
+            QListWidget, QTreeWidget, QTableWidget {
+                background-color: #252525;
+                border: 1px solid #3c3c3c;
+                color: #ffffff;
+            }
+            QSlider::groove:horizontal {
+                height: 4px;
+                background: #3c3c3c;
+            }
+            QSlider::handle:horizontal {
+                background: #00ff88;
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+        )");
+    }
+}
+
+void Application::printVersion() {
+    std::cout << "VibeChad Audio Player v1.0.0\n";
+    std::cout << "Built with Qt " << qVersion() << "\n";
+    std::cout << "\"I use Arch btw\"\n";
+}
+
+void Application::printHelp() {
+    std::cout << R"(
+VibeChad - Chad-tier Audio Visualizer for Arch Linux
+
+Usage: vibechad [options] [files...]
+
+Options:
+  -h, --help              Show this help message
+  -v, --version           Show version information
+  -d, --debug             Enable debug logging
+  -c, --config <path>     Use custom config file
+  -p, --preset <name>     Start with specific visualizer preset
+  -r, --record            Start recording immediately
+  -o, --output <path>     Output file for recording
+  --headless              Run without GUI (for batch processing)
+
+Examples:
+  vibechad ~/Music/*.flac
+  vibechad --record --output video.mp4 song.mp3
+  vibechad --preset "Aderrasi - Airhandler" playlist.m3u
+
+Config: ~/.config/vibechad/config.toml
+Logs:   ~/.cache/vibechad/logs/
+
+Pro tips:
+  - Drag and drop files onto the window
+  - Press F for fullscreen
+  - Press R to toggle recording
+  - Press Space to play/pause
+
+Report bugs at: https://github.com/yourusername/vibechad/issues
+Or don't. We're not your mom.
+)";
+}
+
+} // namespace vc

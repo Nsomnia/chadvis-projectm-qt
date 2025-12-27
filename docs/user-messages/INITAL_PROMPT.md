@@ -1,8 +1,3 @@
-Gmail	Mike Roatch <ssa.nsomnia@gmail.com>
-Project initial prompt
-Mike Roatch <ssa.nsomnia@gmail.com>	Thu, Dec 25, 2025 at 1:27 PM
-To: Mike Roatch <ssa.nsomnia@gmail.com>
-```markdown
 <<<SYSTEM_CONTEXT>>>
 platform: opencode_agentic_terminal
 user_os: arch_linux

@@ -1,0 +1,86 @@
+# VibeChad Configuration
+# "I use Arch btw" - The config file
+
+[general]
+debug = false
+check_updates = false  # We compile from source like real chads
+
+[audio]
+device = "default"     # PipeWire/PulseAudio device name
+buffer_size = 2048     # Audio buffer size in samples
+sample_rate = 44100    # Will be overridden by actual file
+
+[visualizer]
+preset_path = "/usr/share/projectM/presets"
+width = 1920
+height = 1080
+fps = 60
+beat_sensitivity = 1.0
+preset_duration = 30   # Seconds before auto-switching preset
+smooth_preset_duration = 5  # Transition time in seconds
+shuffle_presets = true
+
+[overlay]
+enabled = true
+default_font = "Liberation Sans"
+default_font_size = 32
+
+# Example static text overlay (watermark)
+[[overlay.elements]]
+id = "watermark"
+text = "VibeChad Player"
+position = { x = 0.02, y = 0.95 }  # Bottom-left, normalized coords
+font_size = 24
+color = "#FFFFFF"
+opacity = 0.7
+animation = "none"
+visible = true
+
+# Example animated text
+[[overlay.elements]]
+id = "now_playing"
+text = "{artist} - {title}"  # Supports metadata placeholders
+position = { x = 0.5, y = 0.05 }  # Top-center
+font_size = 36
+color = "#00FF88"
+opacity = 0.9
+animation = "fade_pulse"
+animation_speed = 1.0
+anchor = "center"  # "left", "center", "right"
+visible = true
+
+[recording]
+enabled = true
+output_directory = "~/Videos/VibeChad"
+default_filename = "vibechad_{date}_{time}"
+container = "mp4"
+
+[recording.video]
+codec = "libx264"
+crf = 18           # Quality: 15-23 is reasonable, lower = better
+preset = "medium"  # x264 preset: ultrafast to veryslow
+pixel_format = "yuv420p"
+width = 1920
+height = 1080
+fps = 60
+
+[recording.audio]
+codec = "aac"
+bitrate = 320      # kbps
+
+[ui]
+theme = "dark"     # "dark", "gruvbox", "nord"
+show_playlist = true
+show_presets = true
+show_debug_panel = false
+visualizer_background = "#000000"
+accent_color = "#00FF88"
+
+[keyboard]
+play_pause = "Space"
+next_track = "N"
+prev_track = "P"
+toggle_record = "R"
+toggle_fullscreen = "F"
+next_preset = "Right"
+prev_preset = "Left"

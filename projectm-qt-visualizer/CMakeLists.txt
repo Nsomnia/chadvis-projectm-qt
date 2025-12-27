@@ -1,100 +1,215 @@
 cmake_minimum_required(VERSION 3.20)
-project(projectm-qt-visualizer
-VERSION 0.1.0
-DESCRIPTION "Chad's projectM Visualizer - I use Arch, BTW"
-LANGUAGES CXX C
-)
-set(CMAKE_CXX_STANDARD 17)
+project(vibechad-vidz VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Qt6 setup
+#set(CMAKE_AUTOMOC ON)
+# Near the top, after project()
 set(CMAKE_AUTOMOC ON)
+# fsks compile up set(CMAKE_AUTOMOC_MOC_OPTIONS "-b" "stdafx.h")
+# Or, more simply, ensure headers are listed in sources
+# The key is that headers with Q_OBJECT must be in the source list
+
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS
-Core
-Gui
-Widgets
-OpenGL
-Multimedia
-)
-
-# projectM v4 via pkg-config
-find_package(PkgConfig REQUIRED)
-set(ENV{PKG_CONFIG_PATH} "/usr/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
-pkg_check_modules(PROJECTM4 REQUIRED projectM-4)
-
-# PulseAudio/PipeWire for audio capture
-pkg_check_modules(PULSEAUDIO libpulse)
-if(PULSEAUDIO_FOUND)
-    message(STATUS "PulseAudio/PipeWire found - audio capture enabled")
-    add_definitions(-DHAVE_PULSEAUDIO)
-else()
-    message(WARNING "PulseAudio not found - audio capture disabled")
+# Build type default
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# OpenGL
-find_package(OpenGL REQUIRED)
-
-# Include directories
-include_directories(
-${CMAKE_SOURCE_DIR}/src
-${PROJECTM4_INCLUDE_DIRS}
-)
-link_directories(
-${PROJECTM4_LIBRARY_DIRS}
+# Compiler warnings (we're professionals here)
+add_compile_options(
+    -Wall -Wextra -Wpedantic
+    -Wno-unused-parameter
 )
 
-# Source files
-set(SOURCES
-src/main_new.cpp
-src/ProjectMWindow.cpp
-src/projectm/ProjectMWrapper.cpp
-src/platform/linux/PulseAudioSource.cpp
-src/core/utils/Logger.cpp
+# Config-specific options
+add_compile_options(
+    "$<$<CONFIG:Debug>:-g3;-O0>"
+    "$<$<CONFIG:Release>:-O3;-march=native>"
 )
 
-# Headers
-set(HEADERS
-src/ProjectMWindow.hpp
-src/projectm/ProjectMWrapper.hpp
-src/platform/linux/PulseAudioSource.hpp
-src/core/utils/Logger.hpp
+# Find packages
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg)
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(SPDLOG REQUIRED spdlog)
+pkg_check_modules(FMT REQUIRED fmt)
+pkg_check_modules(TAGLIB REQUIRED taglib)
+pkg_check_modules(TOMLPP REQUIRED tomlplusplus)
+pkg_check_modules(GLEW REQUIRED glew)
+find_package(glm REQUIRED)
+pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale libswresample)
+
+# ProjectM - try pkg-config first, fallback to manual
+# Local ProjectM v4 installation
+set(PROJECTM_LOCAL_DIR "${CMAKE_SOURCE_DIR}/external/projectm-install")
+if(EXISTS "${PROJECTM_LOCAL_DIR}/include/projectM-4/projectM.h")
+    message(STATUS "Using local ProjectM v4 from ${PROJECTM_LOCAL_DIR}")
+    set(PROJECTM_INCLUDE_DIRS "${PROJECTM_LOCAL_DIR}/include")
+    set(PROJECTM_LIBRARIES "${PROJECTM_LOCAL_DIR}/lib/libprojectM-4.so")
+    set(PROJECTM_FOUND TRUE)
+    set(CMAKE_INSTALL_RPATH "${PROJECTM_LOCAL_DIR}/lib")
+    set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+endif()
+
+pkg_check_modules(PROJECTM projectM-4)
+if(NOT PROJECTM_FOUND)
+    # Fallback: try libprojectM
+    pkg_check_modules(PROJECTM libprojectM)
+endif()
+if(NOT PROJECTM_FOUND)
+    # Try to find manually built projectM
+    find_path(PROJECTM_INCLUDE_DIRS projectM-4/projectM.h
+        HINTS /usr/local/include /usr/include
+    )
+    find_library(PROJECTM_LIBRARIES projectM-4
+        HINTS /usr/local/lib /usr/lib
+    )
+    if(PROJECTM_INCLUDE_DIRS AND PROJECTM_LIBRARIES)
+        set(PROJECTM_FOUND TRUE)
+        message(STATUS "Found ProjectM manually: ${PROJECTM_LIBRARIES}")
+    else()
+        message(FATAL_ERROR "ProjectM not found. Install from AUR or build from source.")
+    endif()
+endif()
+
+# Source files organized by module - HEADERS MUST BE LISTED for AUTOMOC
+set(UTIL_SOURCES
+    src/util/Types.hpp
+    src/util/Result.hpp
+    src/util/Signal.hpp
+    src/util/FileUtils.hpp
+    src/util/FileUtils.cpp
 )
+
+set(CORE_SOURCES
+    src/core/Logger.hpp
+    src/core/Logger.cpp
+    src/core/Config.hpp
+    src/core/Config.cpp
+    src/core/Application.hpp
+    src/core/Application.cpp
+)
+
+set(AUDIO_SOURCES
+    src/audio/AudioEngine.hpp
+    src/audio/AudioEngine.cpp
+    src/audio/AudioAnalyzer.hpp
+    src/audio/AudioAnalyzer.cpp
+    src/audio/Playlist.hpp
+    src/audio/Playlist.cpp
+    src/audio/MediaMetadata.hpp
+    src/audio/MediaMetadata.cpp
+)
+
+set(VISUALIZER_SOURCES
+    src/visualizer/ProjectMBridge.hpp
+    src/visualizer/ProjectMBridge.cpp
+    src/visualizer/PresetManager.hpp
+    src/visualizer/PresetManager.cpp
+    src/visualizer/RenderTarget.hpp
+    src/visualizer/RenderTarget.cpp
+    src/visualizer/VisualizerWidget.hpp
+    src/visualizer/VisualizerWidget.cpp
+    src/visualizer/VisualizerWindow.hpp
+    src/visualizer/VisualizerWindow.cpp
+)
+
+set(OVERLAY_SOURCES
+    src/overlay/TextElement.hpp
+    src/overlay/TextElement.cpp
+    src/overlay/TextAnimator.hpp
+    src/overlay/TextAnimator.cpp
+    src/overlay/OverlayConfig.hpp
+    src/overlay/OverlayConfig.cpp
+    src/overlay/OverlayEngine.hpp
+    src/overlay/OverlayEngine.cpp
+)
+
+set(RECORDER_SOURCES
+    src/recorder/EncoderSettings.hpp
+    src/recorder/EncoderSettings.cpp
+    src/recorder/FrameGrabber.hpp
+    src/recorder/FrameGrabber.cpp
+    src/recorder/VideoRecorder.hpp
+    src/recorder/VideoRecorder.cpp
+)
+
+set(UI_SOURCES
+    src/ui/PlayerControls.hpp
+    src/ui/PlayerControls.cpp
+    src/ui/PlaylistView.hpp
+    src/ui/PlaylistView.cpp
+    src/ui/VisualizerPanel.hpp
+    src/ui/VisualizerPanel.cpp
+    src/ui/OverlayEditor.hpp
+    src/ui/OverlayEditor.cpp
+    src/ui/PresetBrowser.hpp
+    src/ui/PresetBrowser.cpp
+    src/ui/RecordingControls.hpp
+    src/ui/RecordingControls.cpp
+    src/ui/SettingsDialog.hpp
+    src/ui/SettingsDialog.cpp
+    src/ui/MainWindow.hpp
+    src/ui/MainWindow.cpp
+)
+
+set(ALL_SOURCES
+    src/main.cpp
+    ${UTIL_SOURCES}
+    ${CORE_SOURCES}
+    ${AUDIO_SOURCES}
+    ${VISUALIZER_SOURCES}
+    ${OVERLAY_SOURCES}
+    ${RECORDER_SOURCES}
+    ${UI_SOURCES}
+)
+
+# Qt resources
+set(RESOURCES resources/vibechad.qrc)
 
 # Main executable
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+add_executable(vibechad-vidz ${ALL_SOURCES} ${RESOURCES})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE
-Qt6::Core
-Qt6::Gui
-Qt6::Widgets
-Qt6::OpenGL
-Qt6::Multimedia
-projectM-4
-projectM-4-playlist
-OpenGL::GL
+target_include_directories(vibechad-vidz PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${SPDLOG_INCLUDE_DIRS}
+    ${FMT_INCLUDE_DIRS}
+    ${TAGLIB_INCLUDE_DIRS}
+    ${TOMLPP_INCLUDE_DIRS}
+    ${GLEW_INCLUDE_DIRS}
+    ${GLM_INCLUDE_DIRS}
+    ${FFMPEG_INCLUDE_DIRS}
+    ${PROJECTM_INCLUDE_DIRS}
 )
 
-if(PULSEAUDIO_FOUND)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${PULSEAUDIO_LIBRARIES} pulse-simple)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${PULSEAUDIO_INCLUDE_DIRS})
-endif()
+target_link_libraries(vibechad-vidz PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Multimedia
+    Qt6::OpenGLWidgets
+    Qt6::Svg
+    ${SPDLOG_LIBRARIES}
+    ${FMT_LIBRARIES}
+    ${TAGLIB_LIBRARIES}
+    ${GLEW_LIBRARIES}
+    ${FFMPEG_LIBRARIES}
+    ${PROJECTM_LIBRARIES}
+    projectM-4-playlist
+)
 
-# Print config
-message(STATUS "===========================================")
-message(STATUS " projectm-qt-visualizer Configuration")
-message(STATUS " I use Arch, BTW")
-message(STATUS "===========================================")
-message(STATUS " Version: ${PROJECT_VERSION}")
-message(STATUS " Qt6: ${Qt6_VERSION}")
-message(STATUS " projectM: ${PROJECTM4_VERSION}")
-if(PULSEAUDIO_FOUND)
-message(STATUS " PulseAudio: YES")
-else()
-message(STATUS " PulseAudio: NO")
-endif()
-message(STATUS " Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "===========================================")
+# Installation
+install(TARGETS vibechad-vidz DESTINATION bin)
+install(DIRECTORY config/ DESTINATION share/vibechad-vidz/config)
+install(FILES resources/vibechad-vidz.desktop DESTINATION share/applications)
+install(FILES resources/icons/vibechad-vidz.svg DESTINATION share/icons/hicolor/scalable/apps)
+
+# CPack for packaging
+set(CPACK_PACKAGE_NAME "vibechad-vidz")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Chad-tier audio visualizer for Arch Linux")
+include(CPack)

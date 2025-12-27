@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=VibeChad
+Comment=Chad-tier audio visualizer with recording
+Exec=vibechad %F
+Icon=vibechad
+Terminal=false
+Type=Application
+Categories=Audio;AudioVideo;Player;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/mp4;
+Keywords=music;audio;visualizer;projectm;recording;

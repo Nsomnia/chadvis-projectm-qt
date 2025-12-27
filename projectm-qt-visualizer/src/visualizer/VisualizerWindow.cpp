@@ -1,0 +1,301 @@
+#include "VisualizerWindow.hpp"
+#include "core/Config.hpp"
+#include "core/Logger.hpp"
+#include "overlay/OverlayEngine.hpp"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QGuiApplication>
+#include <QScreen>
+
+namespace vc {
+
+VisualizerWindow::VisualizerWindow(QWindow* parent)
+    : QWindow(parent)
+{
+    // Set surface format
+    QSurfaceFormat format;
+    format.setVersion(3, 3);
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
+    format.setSwapInterval(1);  // VSync
+    format.setSamples(4);  // MSAA
+    setFormat(format);
+    
+    // Create OpenGL context
+    context_ = std::make_unique<QOpenGLContext>(this);
+    context_->setFormat(format);
+    
+    // Set surface type
+    setSurfaceType(QWindow::OpenGLSurface);
+    
+    // FPS counter
+    fpsTimer_.setInterval(1000);
+    connect(&fpsTimer_, &QTimer::timeout, this, &VisualizerWindow::updateFPS);
+    
+    // Render timer (will be started after initialization)
+    connect(&renderTimer_, &QTimer::timeout, this, &VisualizerWindow::render);
+}
+
+VisualizerWindow::~VisualizerWindow() {
+    if (context_ && context_->makeCurrent(this)) {
+        projectM_.shutdown();
+        renderTarget_.destroy();
+        overlayTarget_.destroy();
+        context_->doneCurrent();
+    }
+}
+
+void VisualizerWindow::exposeEvent(QExposeEvent* event) {
+    Q_UNUSED(event);
+    
+    if (isExposed()) {
+        if (!initialized_) {
+            initialize();
+        }
+        render();  // Initial render
+    }
+}
+
+void VisualizerWindow::resizeEvent(QResizeEvent* event) {
+    if (!initialized_) return;
+    
+    if (context_ && context_->makeCurrent(this)) {
+        projectM_.resize(event->size().width(), event->size().height());
+        
+        if (!recording_) {
+            renderTarget_.resize(event->size().width(), event->size().height());
+            overlayTarget_.resize(event->size().width(), event->size().height());
+        }
+        
+        context_->doneCurrent();
+    }
+}
+
+void VisualizerWindow::initialize() {
+    if (!context_->create()) {
+        LOG_ERROR("Failed to create OpenGL context");
+        return;
+    }
+    
+    if (!context_->makeCurrent(this)) {
+        LOG_ERROR("Failed to make context current");
+        return;
+    }
+    
+    if (!initializeOpenGLFunctions()) {
+        LOG_ERROR("Failed to initialize OpenGL functions");
+        return;
+    }
+    
+    // Initialize GLEW
+    glewExperimental = GL_TRUE;
+    GLenum err = glewInit();
+    if (err != GLEW_OK) {
+        LOG_ERROR("GLEW init failed: {}", reinterpret_cast<const char*>(glewGetErrorString(err)));
+        return;
+    }
+    
+    LOG_INFO("OpenGL: {} - {}", 
+             reinterpret_cast<const char*>(glGetString(GL_VERSION)),
+             reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
+    
+    // Initialize ProjectM
+    const auto& vizConfig = CONFIG.visualizer();
+    
+    ProjectMConfig pmConfig;
+    pmConfig.width = width();
+    pmConfig.height = height();
+    pmConfig.fps = vizConfig.fps;
+    pmConfig.beatSensitivity = vizConfig.beatSensitivity;
+    pmConfig.presetPath = vizConfig.presetPath;
+    pmConfig.presetDuration = vizConfig.presetDuration;
+    pmConfig.transitionDuration = vizConfig.smoothPresetDuration;
+    pmConfig.shufflePresets = vizConfig.shufflePresets;
+    
+    if (auto result = projectM_.init(pmConfig); !result) {
+        LOG_ERROR("ProjectM init failed: {}", result.error().message);
+        return;
+    }
+    
+    // Create render targets
+    renderTarget_.create(width(), height());
+    overlayTarget_.create(width(), height());
+    
+    // Start render timer
+    setRenderRate(vizConfig.fps);
+    fpsTimer_.start();
+    
+    initialized_ = true;
+    LOG_INFO("Visualizer window initialized");
+    
+    context_->doneCurrent();
+}
+
+void VisualizerWindow::render() {
+    if (!initialized_ || !isExposed()) return;
+    
+    if (context_->makeCurrent(this)) {
+        renderFrame();
+        context_->swapBuffers(this);
+        context_->doneCurrent();
+        
+        // Request next frame
+        if (isExposed()) {
+            requestUpdate();
+        }
+    }
+}
+
+void VisualizerWindow::renderFrame() {
+    // Render to target (either window size or recording size)
+    u32 targetW = recording_ ? recordWidth_ : width();
+    u32 targetH = recording_ ? recordHeight_ : height();
+    
+    // Ensure render target is correct size
+    if (renderTarget_.width() != targetW || renderTarget_.height() != targetH) {
+        renderTarget_.resize(targetW, targetH);
+        overlayTarget_.resize(targetW, targetH);
+    }
+    
+    // Render ProjectM to target
+    projectM_.renderToTarget(renderTarget_);
+    
+    // Render overlay on top
+    if (overlayEngine_) {
+        overlayTarget_.bind();
+        glClearColor(0, 0, 0, 0);
+        glClear(GL_COLOR_BUFFER_BIT);
+        
+        // Blit visualizer first
+        renderTarget_.blitTo(overlayTarget_, true);
+        
+        // Then render overlay
+        overlayEngine_->render(overlayTarget_.width(), overlayTarget_.height());
+        overlayTarget_.unbind();
+        
+        // Blit result to screen
+        overlayTarget_.blitToScreen(width(), height(), true);
+    } else {
+        // Just blit visualizer to screen
+        renderTarget_.blitToScreen(width(), height(), true);
+    }
+    
+    ++frameCount_;
+    
+    if (recording_) {
+        emit frameReady();
+    }
+}
+
+void VisualizerWindow::feedAudio(const f32* data, u32 frames, u32 channels) {
+    projectM_.addPCMDataInterleaved(data, frames, channels);
+}
+
+void VisualizerWindow::setRenderRate(int fps) {
+    if (fps > 0) {
+        targetFps_ = fps;
+        renderTimer_.start(1000 / fps);
+        projectM_.setFPS(fps);
+    } else {
+        renderTimer_.stop();
+    }
+}
+
+void VisualizerWindow::setRecordingSize(u32 width, u32 height) {
+    recordWidth_ = width;
+    recordHeight_ = height;
+}
+
+void VisualizerWindow::startRecording() {
+    recording_ = true;
+    if (context_ && context_->makeCurrent(this)) {
+        renderTarget_.resize(recordWidth_, recordHeight_);
+        overlayTarget_.resize(recordWidth_, recordHeight_);
+        context_->doneCurrent();
+    }
+    LOG_INFO("Started recording at {}x{}", recordWidth_, recordHeight_);
+}
+
+void VisualizerWindow::stopRecording() {
+    recording_ = false;
+    if (context_ && context_->makeCurrent(this)) {
+        renderTarget_.resize(width(), height());
+        overlayTarget_.resize(width(), height());
+        context_->doneCurrent();
+    }
+    LOG_INFO("Stopped recording");
+}
+
+void VisualizerWindow::toggleFullscreen() {
+    if (fullscreen_) {
+        // Exit fullscreen
+        showNormal();
+        setGeometry(normalGeometry_);
+        fullscreen_ = false;
+    } else {
+        // Enter fullscreen
+        normalGeometry_ = geometry();
+        
+        // Get screen geometry
+        auto* screen = QGuiApplication::primaryScreen();
+        if (screen) {
+            setGeometry(screen->geometry());
+        }
+        
+        showFullScreen();
+        fullscreen_ = true;
+    }
+}
+
+void VisualizerWindow::updateFPS() {
+    actualFps_ = static_cast<f32>(frameCount_);
+    frameCount_ = 0;
+    emit fpsChanged(actualFps_);
+}
+
+void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
+    const auto& keys = CONFIG.keyboard();
+    QString key = event->text().toUpper();
+    if (key.isEmpty()) {
+        key = QKeySequence(event->key()).toString();
+    }
+    
+    std::string keyStr = key.toStdString();
+    
+    if (keyStr == keys.toggleFullscreen || event->key() == Qt::Key_F11) {
+        toggleFullscreen();
+    }
+    else if (keyStr == keys.nextPreset || event->key() == Qt::Key_Right) {
+        projectM_.nextPreset();
+    }
+    else if (keyStr == keys.prevPreset || event->key() == Qt::Key_Left) {
+        projectM_.previousPreset();
+    }
+    else if (event->key() == Qt::Key_R) {
+        projectM_.randomPreset();
+    }
+    else if (event->key() == Qt::Key_L) {
+        projectM_.lockPreset(!projectM_.isPresetLocked());
+    }
+    else if (event->key() == Qt::Key_Escape && fullscreen_) {
+        toggleFullscreen();
+    }
+    else if (event->key() == Qt::Key_N) {
+        projectM_.nextPreset();
+    }
+    else if (event->key() == Qt::Key_P) {
+        projectM_.previousPreset();
+    }
+}
+
+void VisualizerWindow::mouseDoubleClickEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) {
+        toggleFullscreen();
+    }
+    QWindow::mouseDoubleClickEvent(event);
+}
+
+} // namespace vc
+
+#include "moc_VisualizerWindow.cpp"

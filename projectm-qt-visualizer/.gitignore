@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+build-release/
 cmake-build-*/
 CMakeCache.txt
 CMakeFiles/
@@ -12,6 +13,7 @@ Makefile
 moc_*
 ui_*
 qrc_*
+
 # IDE and tooling
 .cache/
 .compile_commands/
@@ -21,6 +23,7 @@ compile_commands.json
 *.swp
 *.swo
 *~
+
 # Agent scratchpad
 scratch/
 # Backup graveyard
@@ -31,6 +34,7 @@ logs/*.log
 *_debug.cpp
 *_debug.hpp
 CMakeLists_new.txt
+
 # OS
 .DS_Store
 Thumbs.db
