@@ -147,17 +147,17 @@ void VisualizerWindow::render() {
         LOG_DEBUG("render() called but not initialized or not exposed");
         return;
     }
-    LOG_DEBUG("VisualizerWindow::render() - frame {}", frameCount_);
+    LOG_DEBUG("VisualizerWindow::render() - frame {}, isExposed: {}, initialized: {}", 
+              frameCount_, isExposed(), initialized_);
     
     if (context_->makeCurrent(this)) {
-        LOG_DEBUG("render() - frame {}", frameCount_);
+        LOG_DEBUG("render() - context made current, frame {}", frameCount_);
         renderFrame();
         context_->swapBuffers(this);
         context_->doneCurrent();
-        
-        // Timer will trigger next frame
+        LOG_DEBUG("render() - completed frame {}", frameCount_);
     } else {
-        LOG_ERROR("Failed to make context current in render()");
+        LOG_ERROR("Failed to make context current in render(), context valid: {}", context_->isValid());
     }
 }
 

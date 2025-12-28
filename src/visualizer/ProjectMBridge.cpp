@@ -96,7 +96,7 @@ void ProjectMBridge::render() {
         LOG_DEBUG("ProjectMBridge::render(): projectM_ is null");
         return;
     }
-    LOG_DEBUG("ProjectMBridge::render(): calling projectm_opengl_render_frame");
+    LOG_DEBUG("ProjectMBridge::render(): projectM_ handle = {}, calling projectm_opengl_render_frame", (void*)projectM_);
     projectm_opengl_render_frame(projectM_);
     LOG_DEBUG("ProjectMBridge::render(): projectm_opengl_render_frame returned");
 }
@@ -221,7 +221,7 @@ void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
         return;
     }
     
-    LOG_INFO("Loading preset: {} from {}", preset->name, preset->path.string());
+    LOG_INFO("Loading preset: {} from {} (handle: {})", preset->name, preset->path.string(), (void*)projectM_);
     
     // Check if file exists
     if (!fs::exists(preset->path)) {
