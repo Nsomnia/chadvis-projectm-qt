@@ -222,6 +222,13 @@ void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
     }
     
     LOG_INFO("Loading preset: {} from {}", preset->name, preset->path.string());
+    
+    // Check if file exists
+    if (!fs::exists(preset->path)) {
+        LOG_ERROR("Preset file does not exist: {}", preset->path.string());
+        return;
+    }
+    
     LOG_DEBUG("onPresetManagerChanged: About to call projectm_load_preset_file");
     projectm_load_preset_file(projectM_, preset->path.c_str(), true);
     LOG_DEBUG("onPresetManagerChanged: projectm_load_preset_file returned");
