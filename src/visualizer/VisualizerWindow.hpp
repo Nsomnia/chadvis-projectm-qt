@@ -57,6 +57,7 @@ protected:
 private slots:
     void render();  // Called by timer or requestUpdate()
     void updateFPS();
+    void onPresetRotationTimeout();
     
 private:
     void initialize();
@@ -74,6 +75,7 @@ private:
     
     QTimer renderTimer_;
     QTimer fpsTimer_;
+    QTimer presetRotationTimer_;
     
     bool recording_{false};
     u32 recordWidth_{1920};
