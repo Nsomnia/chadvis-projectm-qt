@@ -118,8 +118,6 @@ set(VISUALIZER_SOURCES
     src/visualizer/PresetManager.cpp
     src/visualizer/RenderTarget.hpp
     src/visualizer/RenderTarget.cpp
-    src/visualizer/VisualizerWidget.hpp
-    src/visualizer/VisualizerWidget.cpp
     src/visualizer/VisualizerWindow.hpp
     src/visualizer/VisualizerWindow.cpp
 )
@@ -180,7 +178,7 @@ set(RESOURCES resources/chadvis-projectm-qt.qrc)
 # Main executable
 add_executable(chadvis-projectm-qt ${ALL_SOURCES} ${RESOURCES})
 
-target_include_directories(chadvis-projectm-qt-vidz PRIVATE
+target_include_directories(chadvis-projectm-qt PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${SPDLOG_INCLUDE_DIRS}
     ${FMT_INCLUDE_DIRS}
