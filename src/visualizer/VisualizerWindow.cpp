@@ -133,6 +133,7 @@ void VisualizerWindow::initialize() {
     
     // Start render timer
     setRenderRate(vizConfig.fps);
+    renderTimer_.start();  // EXPLICITLY START RENDER TIMER
     fpsTimer_.start();
     
     initialized_ = true;
