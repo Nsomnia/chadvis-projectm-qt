@@ -71,6 +71,7 @@ scratch/
 # Backup graveyard
 .backup_graveyard/
 # Logs
+logs/
 logs/*.log
 # Debug/development files
 *_debug.cpp
