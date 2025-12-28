@@ -51,11 +51,12 @@ Result<void> ProjectMBridge::init(const ProjectMConfig& config) {
         onPresetManagerChanged(p);
     });
     
-    // Select initial preset
-    if (config.shufflePresets) {
-        presets_.selectRandom();
-    } else if (!presets_.empty()) {
+    // Select initial preset - always use first one for debugging
+    if (!presets_.empty()) {
         presets_.selectByIndex(0);
+        LOG_INFO("Loaded first preset: {}", presets_.current()->name);
+    } else {
+        LOG_WARN("No presets found!");
     }
     
     LOG_INFO("ProjectM initialized: {}x{} @ {} fps, {} presets", 
@@ -190,6 +191,7 @@ std::string ProjectMBridge::currentPresetName() const {
 void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
     if (!preset || !projectM_) return;
     
+    LOG_INFO("Loading preset: {} from {}", preset->name, preset->path.string());
     projectm_load_preset_file(projectM_, preset->path.c_str(), true);
     presetChanged.emitSignal(preset->name);
 }

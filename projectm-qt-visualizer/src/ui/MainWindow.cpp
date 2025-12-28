@@ -252,7 +252,9 @@ void MainWindow::setupConnections() {
     
     // Audio engine PCM data -> feed to visualizer
     audioEngine_->pcmReceived.connect([this](const std::vector<f32>& pcm, u32 frames, u32 channels) {
-        visualizerPanel_->visualizer()->feedAudio(pcm.data(), frames, channels);
+        if (!pcm.empty() && frames > 0) {
+            visualizerPanel_->visualizer()->feedAudio(pcm.data(), frames, channels);
+        }
     });
     
     // Overlay editor changes
