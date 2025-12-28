@@ -117,6 +117,7 @@ void VisualizerWindow::initialize() {
     pmConfig.presetDuration = vizConfig.presetDuration;
     pmConfig.transitionDuration = vizConfig.smoothPresetDuration;
     pmConfig.shufflePresets = vizConfig.shufflePresets;
+    pmConfig.forcePreset = vizConfig.forcePreset;
     
     if (auto result = projectM_.init(pmConfig); !result) {
         LOG_ERROR("ProjectM init failed: {}", result.error().message);

@@ -51,24 +51,22 @@ Result<void> ProjectMBridge::init(const ProjectMConfig& config) {
         onPresetManagerChanged(p);
     });
     
-    // Select initial preset - always use first one for debugging
+    // Select initial preset
     if (!presets_.empty()) {
-        // Try to find a specific test preset
-        bool loaded = false;
-        
-        // Try common test presets
-        const char* testPresets[] = {"11", "Geiss - Spiral", "Geiss - Reaction Diffusion 3", nullptr};
-        for (int i = 0; testPresets[i]; i++) {
-            if (presets_.selectByName(testPresets[i])) {
-                LOG_INFO("Loaded test preset: {}", testPresets[i]);
-                loaded = true;
-                break;
+        // Check if a specific preset is forced
+        if (!config.forcePreset.empty()) {
+            if (presets_.selectByName(config.forcePreset)) {
+                LOG_INFO("Forced preset loaded: {}", config.forcePreset);
+            } else {
+                LOG_WARN("Could not find forced preset: {}, using first available", config.forcePreset);
+                presets_.selectByIndex(0);
             }
-        }
-        
-        if (!loaded) {
+        } else if (config.shufflePresets) {
+            presets_.selectRandom();
+            LOG_INFO("Random preset selected: {}", presets_.current()->name);
+        } else {
             presets_.selectByIndex(0);
-            LOG_INFO("Loaded first preset: {}", presets_.current()->name);
+            LOG_INFO("First preset selected: {}", presets_.current()->name);
         }
     } else {
         LOG_WARN("No presets found!");

@@ -25,6 +25,7 @@ struct ProjectMConfig {
     u32 presetDuration{30};
     u32 transitionDuration{3};
     bool shufflePresets{true};
+    std::string forcePreset{};
     u32 meshX{128};
     u32 meshY{96};
 };

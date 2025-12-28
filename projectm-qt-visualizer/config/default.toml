@@ -19,6 +19,8 @@ beat_sensitivity = 1.0
 preset_duration = 30   # Seconds before auto-switching preset
 smooth_preset_duration = 5  # Transition time in seconds
 shuffle_presets = true
+# Force a specific preset for debugging (set to empty string to use shuffle/first)
+force_preset = ""
 
 [overlay]
 enabled = true
