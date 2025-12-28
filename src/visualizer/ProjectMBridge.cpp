@@ -34,6 +34,9 @@ Result<void> ProjectMBridge::init(const ProjectMConfig& config) {
     projectm_set_mesh_size(projectM_, config.meshX, config.meshY);
     projectm_set_preset_locked(projectM_, false);
     
+    LOG_INFO("ProjectM configured: fps={}, preset_duration={}, shuffle={}", 
+             config.fps, config.presetDuration, config.shufflePresets);
+    
     // Load presets
     if (!config.presetPath.empty() && fs::exists(config.presetPath)) {
         auto result = presets_.scan(config.presetPath);
