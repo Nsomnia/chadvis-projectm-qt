@@ -155,10 +155,7 @@ void VisualizerWindow::render() {
         context_->swapBuffers(this);
         context_->doneCurrent();
         
-        // Request next frame
-        if (isExposed()) {
-            requestUpdate();
-        }
+        // Timer will trigger next frame
     } else {
         LOG_ERROR("Failed to make context current in render()");
     }
