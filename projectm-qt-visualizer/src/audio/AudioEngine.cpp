@@ -192,6 +192,7 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     spectrumUpdated.emitSignal(currentSpectrum_);
     
     // Emit PCM data for visualizer
+    LOG_DEBUG("AudioEngine: Emitting {} samples ({} frames) to pcmReceived signal", samples.size(), samples.size() / 2);
     pcmReceived.emitSignal(samples, samples.size() / 2, 2);
 }
 

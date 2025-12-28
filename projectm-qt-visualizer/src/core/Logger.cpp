@@ -32,9 +32,9 @@ void Logger::init(std::string_view appName, bool debug) {
         // Create logger
         logger_ = std::make_shared<spdlog::logger>(std::string(appName), sinks.begin(), sinks.end());
         
-        // Set level
-        logger_->set_level(debug ? spdlog::level::trace : spdlog::level::info);
-        logger_->flush_on(spdlog::level::warn);
+        // Set level - FORCE DEBUG for troubleshooting
+        logger_->set_level(spdlog::level::debug);
+        logger_->flush_on(spdlog::level::debug);
         
         // Register as default
         spdlog::register_logger(logger_);

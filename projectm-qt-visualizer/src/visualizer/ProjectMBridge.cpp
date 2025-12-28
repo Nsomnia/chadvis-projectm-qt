@@ -53,8 +53,23 @@ Result<void> ProjectMBridge::init(const ProjectMConfig& config) {
     
     // Select initial preset - always use first one for debugging
     if (!presets_.empty()) {
-        presets_.selectByIndex(0);
-        LOG_INFO("Loaded first preset: {}", presets_.current()->name);
+        // Try to find a specific test preset
+        bool loaded = false;
+        
+        // Try common test presets
+        const char* testPresets[] = {"11", "Geiss - Spiral", "Geiss - Reaction Diffusion 3", nullptr};
+        for (int i = 0; testPresets[i]; i++) {
+            if (presets_.selectByName(testPresets[i])) {
+                LOG_INFO("Loaded test preset: {}", testPresets[i]);
+                loaded = true;
+                break;
+            }
+        }
+        
+        if (!loaded) {
+            presets_.selectByIndex(0);
+            LOG_INFO("Loaded first preset: {}", presets_.current()->name);
+        }
     } else {
         LOG_WARN("No presets found!");
     }

@@ -252,6 +252,7 @@ void MainWindow::setupConnections() {
     
     // Audio engine PCM data -> feed to visualizer
     audioEngine_->pcmReceived.connect([this](const std::vector<f32>& pcm, u32 frames, u32 channels) {
+        LOG_DEBUG("MainWindow: Received {} frames from audio engine", frames);
         if (!pcm.empty() && frames > 0) {
             visualizerPanel_->visualizer()->feedAudio(pcm.data(), frames, channels);
         }

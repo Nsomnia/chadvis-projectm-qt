@@ -203,7 +203,9 @@ void VisualizerWindow::renderFrame() {
         glClear(GL_COLOR_BUFFER_BIT);
 
         // Let projectM render directly to screen
+        LOG_DEBUG("VisualizerWindow::renderFrame: Calling projectM_.render()");
         projectM_.render();
+        LOG_DEBUG("VisualizerWindow::renderFrame: projectM_.render() completed");
         
         // Render overlay if available
         if (overlayEngine_) {
