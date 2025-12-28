@@ -177,7 +177,8 @@ void ProjectMBridge::setBeatSensitivity(f32 sensitivity) {
 void ProjectMBridge::loadPreset(const fs::path& path, bool smooth) {
     if (!projectM_) return;
     
-    projectm_load_preset_file(projectM_, path.c_str(), smooth);
+    LOG_INFO("loadPreset called with smooth={}", smooth);
+    projectm_load_preset_file(projectM_, path.c_str(), false);  // Force non-smooth
     presetChanged.emitSignal(path.stem().string());
     
     LOG_DEBUG("Loaded preset: {}", path.filename().string());
@@ -276,7 +277,7 @@ void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
     }
     
     LOG_DEBUG("  Calling projectm_load_preset_file");
-    projectm_load_preset_file(projectM_, preset->path.c_str(), true);
+    projectm_load_preset_file(projectM_, preset->path.c_str(), false);
     LOG_DEBUG("  projectm_load_preset_file returned");
     
     presetChanged.emitSignal(preset->name);
