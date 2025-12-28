@@ -19,6 +19,7 @@ Result<void> ProjectMBridge::init(const ProjectMConfig& config) {
     width_ = config.width;
     height_ = config.height;
     shuffleEnabled_ = config.shufflePresets;  // Store shuffle setting
+    LOG_INFO("ProjectMBridge::init() - shuffleEnabled_ = {}", shuffleEnabled_);
     
     // Create ProjectM instance
     projectM_ = projectm_create();
