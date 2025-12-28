@@ -218,10 +218,6 @@ void VisualizerWindow::renderFrame() {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, width(), height());
         
-        GLint currentFbo;
-        glGetIntegerv(GL_FRAMEBUFFER_BINDING, ¤tFbo);
-        LOG_DEBUG("Rendering frame {} to {}x{} window, FBO: {}", frameCount_, width(), height(), currentFbo);
-        
         // Clear before rendering
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
