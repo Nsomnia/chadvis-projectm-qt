@@ -173,11 +173,21 @@ void VisualizerWindow::render() {
     
     if (context_->makeCurrent(this)) {
         LOG_DEBUG("render() - context made current, frame {}", frameCount_);
+        
+        // Verify context is actually current
+        if (QOpenGLContext::currentContext() != context_.get()) {
+            LOG_ERROR("Context mismatch! currentContext() != context_");
+        }
+        
         renderFrame();
+        
+        LOG_DEBUG("render() - about to swap buffers");
         context_->swapBuffers(this);
+        LOG_DEBUG("render() - buffers swapped");
+        
         context_->doneCurrent();
         LOG_DEBUG("render() - completed frame {}", frameCount_);
-        LOG_INFO("RENDERED FRAME {}", frameCount_);  // UPPERCASE so it's easy to find
+        LOG_INFO("RENDERED FRAME {}", frameCount_);
     } else {
         LOG_ERROR("Failed to make context current in render(), context valid: {}", context_->isValid());
     }
