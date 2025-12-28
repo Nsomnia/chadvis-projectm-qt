@@ -26,7 +26,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "Running Ninja on all cores...""
+echo "Running Ninja on all cores..."
 # NOTE TODO: single core for potato-safe mode as a command line option
 ninja -j$(nproc)
 

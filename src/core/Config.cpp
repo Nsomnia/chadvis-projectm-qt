@@ -92,17 +92,42 @@ Result<void> Config::loadDefault() {
         std::error_code ec;
         fs::copy_file(systemDefault, defaultPath, ec);
         if (!ec) {
+            LOG_INFO("Copied default config to user directory: {}", defaultPath.string());
             return load(defaultPath);
+        } else {
+            LOG_WARN("Failed to copy system default config: {}", ec.message());
+        }
+    }
+    
+    // Check if project default.toml exists in the source tree (for development)
+    // This handles the case where running from source without installation
+    fs::path projectDefault = fs::path(__FILE__).parent_path().parent_path().parent_path() / "config" / "default.toml";
+    if (fs::exists(projectDefault)) {
+        file::ensureDir(configDir);
+        std::error_code ec;
+        fs::copy_file(projectDefault, defaultPath, ec);
+        if (!ec) {
+            LOG_INFO("Copied project default config to user directory: {}", defaultPath.string());
+            return load(defaultPath);
+        } else {
+            LOG_WARN("Failed to copy project default config: {}", ec.message());
         }
     }
     
     // Use built-in defaults
-    LOG_WARN("No config file found, using defaults");
+    LOG_WARN("No config file found, using built-in defaults");
     configPath_ = defaultPath;
     
     // Set sensible defaults
     visualizer_.presetPath = file::presetsDir();
     recording_.outputDirectory = expandPath("~/Videos/ChadVis");
+    
+    // Save the defaults to create the config file
+    if (auto result = save(defaultPath); !result) {
+        LOG_WARN("Failed to save default config: {}", result.error().message);
+    } else {
+        LOG_INFO("Created default config file: {}", defaultPath.string());
+    }
     
     return Result<void>::ok();
 }

@@ -270,6 +270,12 @@ void MainWindow::setupConnections() {
             // Frame is captured in the visualizer's render loop
         }
     });
+    
+    // Preset browser selection -> load preset
+    connect(presetBrowser_, &PresetBrowser::presetSelected, this, [this](const QString& path) {
+        visualizerPanel_->visualizer()->projectM().loadPreset(
+            fs::path(path.toStdString()), true);
+    });
 }
 
 void MainWindow::setupUpdateTimer() {
