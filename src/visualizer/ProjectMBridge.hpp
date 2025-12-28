@@ -85,6 +85,7 @@ private:
     u32 width_{1920};
     u32 height_{1080};
     bool presetLocked_{false};
+    bool shuffleEnabled_{false};
 };
 
 } // namespace vc
