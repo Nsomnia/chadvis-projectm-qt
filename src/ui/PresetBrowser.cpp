@@ -169,11 +169,16 @@ void PresetBrowser::onCategoryChanged(int index) {
 }
 
 void PresetBrowser::onPresetDoubleClicked(QListWidgetItem* item) {
-    if (!presetManager_) return;
+    if (!presetManager_) {
+        LOG_WARN("PresetBrowser: presetManager_ is null");
+        return;
+    }
     
     QString path = item->data(Qt::UserRole).toString();
+    LOG_DEBUG("PresetBrowser: Double-clicked preset: {}", path.toStdString());
     presetManager_->selectByPath(fs::path(path.toStdString()));
     emit presetSelected(path);
+    LOG_DEBUG("PresetBrowser: Emitted presetSelected signal for: {}", path.toStdString());
 }
 
 void PresetBrowser::onFavoriteClicked() {

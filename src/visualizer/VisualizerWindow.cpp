@@ -78,6 +78,7 @@ void VisualizerWindow::resizeEvent(QResizeEvent* event) {
 }
 
 void VisualizerWindow::initialize() {
+    LOG_INFO("VisualizerWindow::initialize() called");
     if (!context_->create()) {
         LOG_ERROR("Failed to create OpenGL context");
         return;
@@ -119,10 +120,12 @@ void VisualizerWindow::initialize() {
     pmConfig.shufflePresets = vizConfig.shufflePresets;
     pmConfig.forcePreset = vizConfig.forcePreset;
     
+    LOG_DEBUG("VisualizerWindow::initialize: About to init ProjectMBridge");
     if (auto result = projectM_.init(pmConfig); !result) {
         LOG_ERROR("ProjectM init failed: {}", result.error().message);
         return;
     }
+    LOG_DEBUG("VisualizerWindow::initialize: ProjectMBridge initialized successfully");
     
     // Create render targets
     renderTarget_.create(width(), height());
@@ -143,6 +146,7 @@ void VisualizerWindow::render() {
         LOG_DEBUG("render() called but not initialized or not exposed");
         return;
     }
+    LOG_DEBUG("VisualizerWindow::render() - frame {}", frameCount_);
     
     if (context_->makeCurrent(this)) {
         LOG_DEBUG("render() - frame {}", frameCount_);

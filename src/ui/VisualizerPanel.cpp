@@ -1,4 +1,5 @@
 #include "VisualizerPanel.hpp"
+#include "core/Logger.hpp"
 #include "overlay/OverlayEngine.hpp"
 #include "visualizer/VisualizerWindow.hpp"
 
@@ -46,7 +47,18 @@ void VisualizerPanel::setupUI() {
     prevPresetButton_->setFixedSize(28, 28);
     prevPresetButton_->setToolTip("Previous preset");
     connect(prevPresetButton_, &QPushButton::clicked, this, [this] {
-        visualizerWindow_->projectM().previousPreset();
+        LOG_DEBUG("VisualizerPanel: Previous preset button clicked");
+        if (!visualizerWindow_) {
+            LOG_ERROR("VisualizerPanel: visualizerWindow_ is null!");
+            return;
+        }
+        auto& pm = visualizerWindow_->projectM();
+        LOG_DEBUG("VisualizerPanel: projectM() returned, checking state...");
+        LOG_DEBUG("VisualizerPanel: isPresetLocked = {}", pm.isPresetLocked());
+        LOG_DEBUG("VisualizerPanel: presets().count() = {}", pm.presets().count());
+        LOG_DEBUG("VisualizerPanel: presets().currentIndex() = {}", pm.presets().currentIndex());
+        pm.previousPreset();
+        LOG_DEBUG("VisualizerPanel: previousPreset() called");
     });
     controlLayout->addWidget(prevPresetButton_);
     
@@ -59,7 +71,18 @@ void VisualizerPanel::setupUI() {
     nextPresetButton_->setFixedSize(28, 28);
     nextPresetButton_->setToolTip("Next preset");
     connect(nextPresetButton_, &QPushButton::clicked, this, [this] {
-        visualizerWindow_->projectM().nextPreset();
+        LOG_DEBUG("VisualizerPanel: Next preset button clicked");
+        if (!visualizerWindow_) {
+            LOG_ERROR("VisualizerPanel: visualizerWindow_ is null!");
+            return;
+        }
+        auto& pm = visualizerWindow_->projectM();
+        LOG_DEBUG("VisualizerPanel: projectM() returned, checking state...");
+        LOG_DEBUG("VisualizerPanel: isPresetLocked = {}", pm.isPresetLocked());
+        LOG_DEBUG("VisualizerPanel: presets().count() = {}", pm.presets().count());
+        LOG_DEBUG("VisualizerPanel: presets().currentIndex() = {}", pm.presets().currentIndex());
+        pm.nextPreset();
+        LOG_DEBUG("VisualizerPanel: nextPreset() called");
     });
     controlLayout->addWidget(nextPresetButton_);
     
@@ -94,11 +117,14 @@ void VisualizerPanel::setupUI() {
     // Connect visualizer signals
     connect(visualizerWindow_, &VisualizerWindow::fpsChanged, this, &VisualizerPanel::updateFPS);
     
+    LOG_INFO("VisualizerPanel: Connecting to presetChanged signal");
     visualizerWindow_->projectM().presetChanged.connect([this](const std::string& name) {
+        LOG_DEBUG("VisualizerPanel: Received presetChanged signal for: {}", name);
         QMetaObject::invokeMethod(this, [this, name] {
             updatePresetName(QString::fromStdString(name));
         });
     });
+    LOG_INFO("VisualizerPanel: Connected to presetChanged signal");
 }
 
 void VisualizerPanel::updatePresetName(const QString& name) {

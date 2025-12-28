@@ -272,10 +272,11 @@ void MainWindow::setupConnections() {
     });
     
     // Preset browser selection -> load preset
-    connect(presetBrowser_, &PresetBrowser::presetSelected, this, [this](const QString& path) {
-        visualizerPanel_->visualizer()->projectM().loadPreset(
-            fs::path(path.toStdString()), true);
-    });
+    // NOTE: PresetBrowser already calls presetManager_->selectByPath() which triggers
+    // the signal chain (PresetManager -> ProjectMBridge -> projectM_load_preset_file).
+    // The presetSelected signal is emitted but we don't need to connect to it here
+    // because the signal chain handles everything.
+    // connect(presetBrowser_, &PresetBrowser::presetSelected, ...);
 }
 
 void MainWindow::setupUpdateTimer() {

@@ -126,11 +126,14 @@ bool PresetManager::selectByName(const std::string& name) {
 }
 
 bool PresetManager::selectByPath(const fs::path& path) {
+    LOG_DEBUG("PresetManager::selectByPath: {}", path.string());
     for (usize i = 0; i < presets_.size(); ++i) {
         if (presets_[i].path == path && !presets_[i].blacklisted) {
+            LOG_DEBUG("PresetManager: Found preset at index {}, calling selectByIndex", i);
             return selectByIndex(i);
         }
     }
+    LOG_WARN("PresetManager: Could not find preset by path: {}", path.string());
     return false;
 }
 
@@ -151,18 +154,24 @@ bool PresetManager::selectRandom() {
 }
 
 bool PresetManager::selectNext() {
-    if (presets_.empty()) return false;
+    LOG_DEBUG("PresetManager::selectNext() called, current index: {}", currentIndex_);
+    if (presets_.empty()) {
+        LOG_WARN("PresetManager: No presets available");
+        return false;
+    }
     
     usize start = currentIndex_;
     do {
         currentIndex_ = (currentIndex_ + 1) % presets_.size();
         if (!presets_[currentIndex_].blacklisted) {
             presets_[currentIndex_].playCount++;
+            LOG_DEBUG("PresetManager: Selected next preset at index {}: {}", currentIndex_, presets_[currentIndex_].name);
             presetChanged.emitSignal(&presets_[currentIndex_]);
             return true;
         }
     } while (currentIndex_ != start);
     
+    LOG_WARN("PresetManager: All presets are blacklisted");
     return false;
 }
 

@@ -92,8 +92,13 @@ void ProjectMBridge::shutdown() {
 }
 
 void ProjectMBridge::render() {
-    if (!projectM_) return;
+    if (!projectM_) {
+        LOG_DEBUG("ProjectMBridge::render(): projectM_ is null");
+        return;
+    }
+    LOG_DEBUG("ProjectMBridge::render(): calling projectm_opengl_render_frame");
     projectm_opengl_render_frame(projectM_);
+    LOG_DEBUG("ProjectMBridge::render(): projectm_opengl_render_frame returned");
 }
 
 void ProjectMBridge::renderToTarget(RenderTarget& target) {
@@ -207,11 +212,21 @@ std::string ProjectMBridge::currentPresetName() const {
 }
 
 void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
-    if (!preset || !projectM_) return;
+    if (!preset) {
+        LOG_WARN("onPresetManagerChanged: preset is null");
+        return;
+    }
+    if (!projectM_) {
+        LOG_WARN("onPresetManagerChanged: projectM_ is null, cannot load preset: {}", preset->name);
+        return;
+    }
     
     LOG_INFO("Loading preset: {} from {}", preset->name, preset->path.string());
+    LOG_DEBUG("onPresetManagerChanged: About to call projectm_load_preset_file");
     projectm_load_preset_file(projectM_, preset->path.c_str(), true);
+    LOG_DEBUG("onPresetManagerChanged: projectm_load_preset_file returned");
     presetChanged.emitSignal(preset->name);
+    LOG_DEBUG("onPresetManagerChanged: Emitted presetChanged signal");
 }
 
 } // namespace vc
