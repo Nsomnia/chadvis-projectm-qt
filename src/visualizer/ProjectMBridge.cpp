@@ -179,20 +179,31 @@ void ProjectMBridge::loadPreset(const fs::path& path, bool smooth) {
 }
 
 void ProjectMBridge::nextPreset(bool smooth) {
-    if (presetLocked_) return;
+    LOG_INFO("ProjectMBridge::nextPreset() called");
+    LOG_DEBUG("  presetLocked_ = {}", presetLocked_);
+    LOG_DEBUG("  shuffleEnabled_ = {}", shuffleEnabled_);
+    LOG_DEBUG("  presets_.count() = {}", presets_.count());
+    LOG_DEBUG("  presets_.currentIndex() = {}", presets_.currentIndex());
     
-    LOG_DEBUG("ProjectMBridge::nextPreset() called, shuffleEnabled={}", shuffleEnabled_);
+    if (presetLocked_) {
+        LOG_WARN("Preset is locked, cannot change");
+        return;
+    }
     
     // If shuffle is enabled, select random preset instead of next
     if (shuffleEnabled_) {
         LOG_DEBUG("Shuffle enabled, selecting random preset");
         if (presets_.selectRandom()) {
             // onPresetManagerChanged will handle loading
+        } else {
+            LOG_WARN("Failed to select random preset");
         }
     } else {
         LOG_DEBUG("Shuffle disabled, selecting next preset");
         if (presets_.selectNext()) {
             // onPresetManagerChanged will handle loading
+        } else {
+            LOG_WARN("Failed to select next preset");
         }
     }
 }
@@ -239,28 +250,32 @@ std::string ProjectMBridge::currentPresetName() const {
 }
 
 void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
+    LOG_INFO("onPresetManagerChanged() called");
+    
     if (!preset) {
-        LOG_WARN("onPresetManagerChanged: preset is null");
+        LOG_WARN("  preset is null");
         return;
     }
     if (!projectM_) {
-        LOG_WARN("onPresetManagerChanged: projectM_ is null, cannot load preset: {}", preset->name);
+        LOG_WARN("  projectM_ is null, cannot load preset: {}", preset->name);
         return;
     }
     
-    LOG_INFO("Loading preset: {} from {} (handle: {})", preset->name, preset->path.string(), (void*)projectM_);
+    LOG_INFO("  Loading preset: {} from {}", preset->name, preset->path.string());
+    LOG_DEBUG("  projectM_ handle: {}", (void*)projectM_);
     
     // Check if file exists
     if (!fs::exists(preset->path)) {
-        LOG_ERROR("Preset file does not exist: {}", preset->path.string());
+        LOG_ERROR("  Preset file does not exist: {}", preset->path.string());
         return;
     }
     
-    LOG_DEBUG("onPresetManagerChanged: About to call projectm_load_preset_file");
+    LOG_DEBUG("  Calling projectm_load_preset_file");
     projectm_load_preset_file(projectM_, preset->path.c_str(), true);
-    LOG_DEBUG("onPresetManagerChanged: projectm_load_preset_file returned");
+    LOG_DEBUG("  projectm_load_preset_file returned");
+    
     presetChanged.emitSignal(preset->name);
-    LOG_DEBUG("onPresetManagerChanged: Emitted presetChanged signal");
+    LOG_DEBUG("  Emitted presetChanged signal");
 }
 
 } // namespace vc
