@@ -166,8 +166,12 @@ void VisualizerWindow::renderFrame() {
         
         if (!audioQueue_.empty()) {
             // Feed all accumulated audio
-            projectM_.addPCMDataInterleaved(audioQueue_.data(), audioQueue_.size() / 2, 2);
+            u32 frames = audioQueue_.size() / 2;
+            LOG_DEBUG("VisualizerWindow::renderFrame: Feeding {} frames to projectM", frames);
+            projectM_.addPCMDataInterleaved(audioQueue_.data(), frames, 2);
             audioQueue_.clear();
+        } else {
+            LOG_DEBUG("VisualizerWindow::renderFrame: No audio in queue");
         }
     }
 
@@ -223,6 +227,7 @@ void VisualizerWindow::feedAudio(const f32* data, u32 frames, u32 channels) {
     usize offset = audioQueue_.size();
     audioQueue_.resize(offset + frames * 2);
     std::memcpy(audioQueue_.data() + offset, data, frames * 2 * sizeof(f32));
+    LOG_DEBUG("VisualizerWindow::feedAudio: {} frames added, queue size: {} frames ({} bytes)", frames, audioQueue_.size() / 2, audioQueue_.size() * sizeof(f32));
 }
 void VisualizerWindow::setRenderRate(int fps) {
     if (fps > 0) {

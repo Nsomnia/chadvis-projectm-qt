@@ -123,7 +123,12 @@ void ProjectMBridge::addPCMData(const f32* data, u32 samples, u32 channels) {
 }
 
 void ProjectMBridge::addPCMDataInterleaved(const f32* data, u32 frames, u32 channels) {
-    if (!projectM_) return;
+    if (!projectM_) {
+        LOG_DEBUG("ProjectMBridge::addPCMDataInterleaved: projectM_ is null, skipping");
+        return;
+    }
+    
+    LOG_DEBUG("ProjectMBridge::addPCMDataInterleaved: {} frames, {} channels", frames, channels);
     
     if (channels == 1) {
         projectm_pcm_add_float(projectM_, data, frames, PROJECTM_MONO);
