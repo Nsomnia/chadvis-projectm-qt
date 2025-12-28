@@ -184,6 +184,7 @@ void VisualizerWindow::render() {
         LOG_DEBUG("render() - about to swap buffers");
         context_->swapBuffers(this);
         LOG_DEBUG("render() - buffers swapped");
+        LOG_INFO("FRAME {} SWAPPED TO SCREEN", frameCount_);
         
         context_->doneCurrent();
         LOG_DEBUG("render() - completed frame {}", frameCount_);
