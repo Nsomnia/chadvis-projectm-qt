@@ -18,6 +18,7 @@ Result<void> ProjectMBridge::init(const ProjectMConfig& config) {
     
     width_ = config.width;
     height_ = config.height;
+    shuffleEnabled_ = config.shufflePresets;  // Store shuffle setting
     
     // Create ProjectM instance
     projectM_ = projectm_create();
@@ -179,16 +180,38 @@ void ProjectMBridge::loadPreset(const fs::path& path, bool smooth) {
 void ProjectMBridge::nextPreset(bool smooth) {
     if (presetLocked_) return;
     
-    if (presets_.selectNext()) {
-        // onPresetManagerChanged will handle loading
+    LOG_DEBUG("ProjectMBridge::nextPreset() called, shuffleEnabled={}", shuffleEnabled_);
+    
+    // If shuffle is enabled, select random preset instead of next
+    if (shuffleEnabled_) {
+        LOG_DEBUG("Shuffle enabled, selecting random preset");
+        if (presets_.selectRandom()) {
+            // onPresetManagerChanged will handle loading
+        }
+    } else {
+        LOG_DEBUG("Shuffle disabled, selecting next preset");
+        if (presets_.selectNext()) {
+            // onPresetManagerChanged will handle loading
+        }
     }
 }
 
 void ProjectMBridge::previousPreset(bool smooth) {
     if (presetLocked_) return;
     
-    if (presets_.selectPrevious()) {
-        // onPresetManagerChanged will handle loading
+    LOG_DEBUG("ProjectMBridge::previousPreset() called, shuffleEnabled={}", shuffleEnabled_);
+    
+    // If shuffle is enabled, select random preset instead of previous
+    if (shuffleEnabled_) {
+        LOG_DEBUG("Shuffle enabled, selecting random preset");
+        if (presets_.selectRandom()) {
+            // onPresetManagerChanged will handle loading
+        }
+    } else {
+        LOG_DEBUG("Shuffle disabled, selecting previous preset");
+        if (presets_.selectPrevious()) {
+            // onPresetManagerChanged will handle loading
+        }
     }
 }
 

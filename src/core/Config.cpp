@@ -172,6 +172,7 @@ void Config::parseVisualizer(const toml::table& tbl) {
         visualizer_.smoothPresetDuration = get(*viz, "smooth_preset_duration", 5u);
         visualizer_.shufflePresets = get(*viz, "shuffle_presets", true);
         visualizer_.forcePreset = get(*viz, "force_preset", std::string());
+        LOG_INFO("Config: preset_duration={}, shuffle_presets={}", visualizer_.presetDuration, visualizer_.shufflePresets);
     }
 }
 
