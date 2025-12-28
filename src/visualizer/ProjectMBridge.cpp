@@ -104,6 +104,11 @@ void ProjectMBridge::render() {
     LOG_DEBUG("ProjectMBridge::render(): projectM_ handle = {}, calling projectm_opengl_render_frame", (void*)projectM_);
     projectm_opengl_render_frame(projectM_);
     LOG_DEBUG("ProjectMBridge::render(): projectm_opengl_render_frame returned");
+    
+    // Check current preset name
+    if (auto* preset = presets_.current()) {
+        LOG_DEBUG("ProjectMBridge::render(): Current preset = {}", preset->name);
+    }
 }
 
 void ProjectMBridge::renderToTarget(RenderTarget& target) {

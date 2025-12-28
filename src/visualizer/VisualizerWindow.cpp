@@ -135,6 +135,7 @@ void VisualizerWindow::initialize() {
     setRenderRate(vizConfig.fps);
     renderTimer_.start();  // EXPLICITLY START RENDER TIMER
     fpsTimer_.start();
+    LOG_INFO("Render timer started: {} fps, interval {}ms", vizConfig.fps, renderTimer_.interval());
     
     // Start preset rotation timer if duration > 0 and shuffle is enabled
     if (vizConfig.presetDuration > 0 && vizConfig.shufflePresets) {
@@ -176,6 +177,7 @@ void VisualizerWindow::render() {
         context_->swapBuffers(this);
         context_->doneCurrent();
         LOG_DEBUG("render() - completed frame {}", frameCount_);
+        LOG_INFO("RENDERED FRAME {}", frameCount_);  // UPPERCASE so it's easy to find
     } else {
         LOG_ERROR("Failed to make context current in render(), context valid: {}", context_->isValid());
     }
