@@ -63,7 +63,7 @@ public:
     Signal<const AudioSpectrum&> spectrumUpdated;
     Signal<> trackChanged;
     Signal<std::string> error;
-    Signal<const std::vector<f32>&, u32, u32> pcmReceived;  // data, frames, channels
+    Signal<const std::vector<f32>&, u32, u32, u32> pcmReceived;  // data, frames, channels, sampleRate
     
 private slots:
     void onPlayerStateChanged(QMediaPlayer::PlaybackState state);

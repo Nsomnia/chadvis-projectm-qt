@@ -39,7 +39,7 @@ public:
     void startRecording();
     void stopRecording();
     void setRenderRate(int fps);
-    void feedAudio(const f32* data, u32 frames, u32 channels);
+    void feedAudio(const f32* data, u32 frames, u32 channels, u32 sampleRate);
     
 public slots:
     void toggleFullscreen();
@@ -91,6 +91,7 @@ private:
     // Uses a queue to accumulate audio data and feed at render rate
     std::mutex audioMutex_;
     std::vector<f32> audioQueue_;  // Accumulates incoming audio data
+    u32 audioSampleRate_{48000};   // Current audio sample rate
 };
 
 } // namespace vc

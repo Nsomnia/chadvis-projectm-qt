@@ -251,10 +251,10 @@ void MainWindow::setupConnections() {
     });
     
     // Audio engine PCM data -> feed to visualizer
-    audioEngine_->pcmReceived.connect([this](const std::vector<f32>& pcm, u32 frames, u32 channels) {
+    audioEngine_->pcmReceived.connect([this](const std::vector<f32>& pcm, u32 frames, u32 channels, u32 sampleRate) {
         LOG_DEBUG("MainWindow: Received {} frames from audio engine", frames);
         if (!pcm.empty() && frames > 0) {
-            visualizerPanel_->visualizer()->feedAudio(pcm.data(), frames, channels);
+            visualizerPanel_->visualizer()->feedAudio(pcm.data(), frames, channels, sampleRate);
         }
     });
     
@@ -275,6 +275,8 @@ void MainWindow::setupConnections() {
 void MainWindow::setupUpdateTimer() {
     connect(&updateTimer_, &QTimer::timeout, this, &MainWindow::onUpdateLoop);
     updateTimer_.start(16);  // ~60 fps
+    
+
 }
 
 void MainWindow::onUpdateLoop() {

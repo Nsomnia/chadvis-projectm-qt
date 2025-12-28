@@ -1,88 +1,87 @@
-# ChadVis Configuration
-# "I use Arch btw" - The config file
+[audio]
+buffer_size = 2048
+device = 'default'
+sample_rate = 44100
 
 [general]
-debug = false
-check_updates = false  # We compile from source like real chads
+debug = true
 
-[audio]
-device = "default"     # PipeWire/PulseAudio device name
-buffer_size = 2048     # Audio buffer size in samples
-sample_rate = 44100    # Will be overridden by actual file
-
-[visualizer]
-preset_path = "/usr/share/projectM/presets"
-width = 1920
-height = 1080
-fps = 60
-beat_sensitivity = 1.0
-preset_duration = 30   # Seconds before auto-switching preset
-smooth_preset_duration = 5  # Transition time in seconds
-shuffle_presets = true
-# Force a specific preset for debugging (set to empty string to use shuffle/first)
-force_preset = ""
+[keyboard]
+next_preset = 'Right'
+next_track = 'N'
+play_pause = 'Space'
+prev_preset = 'Left'
+prev_track = 'P'
+toggle_fullscreen = 'F'
+toggle_record = 'R'
 
 [overlay]
 enabled = true
-default_font = "Liberation Sans"
-default_font_size = 32
 
-# Example static text overlay (watermark)
-[[overlay.elements]]
-id = "watermark"
-text = "ChadVis Player"
-position = { x = 0.02, y = 0.95 }  # Bottom-left, normalized coords
-font_size = 24
-color = "#FFFFFF"
-opacity = 0.7
-animation = "none"
-visible = true
+    [[overlay.elements]]
+    anchor = 'left'
+    animation = 'none'
+    animation_speed = 1.0
+    color = '#FFFFFFFF'
+    font_size = 24
+    id = 'watermark'
+    opacity = 0.69999998807907104
+    text = 'ChadVis Player'
+    visible = true
 
-# Example animated text
-[[overlay.elements]]
-id = "now_playing"
-text = "{artist} - {title}"  # Supports metadata placeholders
-position = { x = 0.5, y = 0.05 }  # Top-center
-font_size = 36
-color = "#00FF88"
-opacity = 0.9
-animation = "fade_pulse"
-animation_speed = 1.0
-anchor = "center"  # "left", "center", "right"
-visible = true
+        [overlay.elements.position]
+        x = 0.019999999552965164
+        y = 0.94999998807907104
+
+    [[overlay.elements]]
+    anchor = 'center'
+    animation = 'fade_pulse'
+    animation_speed = 1.0
+    color = '#00FF88FF'
+    font_size = 36
+    id = 'now_playing'
+    opacity = 0.89999997615814209
+    text = '{artist} - {title}'
+    visible = true
+
+        [overlay.elements.position]
+        x = 0.5
+        y = 0.05000000074505806
 
 [recording]
+container = 'mp4'
+default_filename = 'chadvis-projectm-qt_{date}_{time}'
 enabled = true
-output_directory = "~/Videos/ChadVis"
-default_filename = "chadvis-projectm-qt_{date}_{time}"
-container = "mp4"
+output_directory = '/home/nsomnia/Videos/ChadVis'
 
-[recording.video]
-codec = "libx264"
-crf = 18           # Quality: 15-23 is reasonable, lower = better
-preset = "medium"  # x264 preset: ultrafast to veryslow
-pixel_format = "yuv420p"
-width = 1920
-height = 1080
-fps = 60
+    [recording.audio]
+    bitrate = 320
+    codec = 'aac'
 
-[recording.audio]
-codec = "aac"
-bitrate = 320      # kbps
+    [recording.video]
+    codec = 'libx264'
+    crf = 18
+    fps = 60
+    height = 1080
+    pixel_format = 'yuv420p'
+    preset = 'medium'
+    width = 1920
 
 [ui]
-theme = "dark"     # "dark", "gruvbox", "nord"
+accent_color = '#00FF88FF'
+show_debug_panel = false
 show_playlist = true
 show_presets = true
-show_debug_panel = false
-visualizer_background = "#000000"
-accent_color = "#00FF88"
+theme = 'dark'
+visualizer_background = '#000000FF'
 
-[keyboard]
-play_pause = "Space"
-next_track = "N"
-prev_track = "P"
-toggle_record = "R"
-toggle_fullscreen = "F"
-next_preset = "Right"
-prev_preset = "Left"
+[visualizer]
+beat_sensitivity = 1.0
+force_preset = ''
+fps = 60
+height = 1080
+preset_duration = 30
+preset_path = '/usr/share/projectM/presets'
+shuffle_presets = true
+smooth_preset_duration = 5
+width = 1920

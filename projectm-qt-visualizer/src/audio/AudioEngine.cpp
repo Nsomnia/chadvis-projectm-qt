@@ -55,15 +55,20 @@ Result<void> AudioEngine::init() {
 }
 
 void AudioEngine::play() {
+    LOG_INFO("AudioEngine::play() CALLED");
     if (!playlist_.currentItem() && !playlist_.empty()) {
         playlist_.jumpTo(0);
+        LOG_INFO("Jumped to first playlist item");
     }
     
     if (player_->source().isEmpty() && playlist_.currentItem()) {
         loadCurrentTrack();
+        LOG_INFO("Loaded current track");
     }
     
+    LOG_INFO("Calling player_->play(), source={}", player_->source().toString().toStdString());
     player_->play();
+    LOG_INFO("player_->play() returned, state={}", static_cast<int>(player_->playbackState()));
 }
 
 void AudioEngine::pause() {
@@ -141,6 +146,8 @@ void AudioEngine::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 }
 
 void AudioEngine::onAudioBufferReceived(const QAudioBuffer& buffer) {
+    LOG_DEBUG("AudioEngine::onAudioBufferReceived: buffer valid={}, frames={}", 
+              buffer.isValid(), buffer.frameCount());
     processAudioBuffer(buffer);
 }
 
@@ -193,7 +200,7 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     
     // Emit PCM data for visualizer
     LOG_DEBUG("AudioEngine: Emitting {} samples ({} frames) to pcmReceived signal", samples.size(), samples.size() / 2);
-    pcmReceived.emitSignal(samples, samples.size() / 2, 2);
+    pcmReceived.emitSignal(samples, samples.size() / 2, 2, sampleRate);
 }
 
 } // namespace vc

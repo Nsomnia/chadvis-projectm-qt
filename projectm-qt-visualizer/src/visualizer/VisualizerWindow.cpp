@@ -161,16 +161,31 @@ void VisualizerWindow::render() {
 
 void VisualizerWindow::renderFrame() {
     // Feed audio data from queue (thread-safe)
-    // Feed all available audio to projectM
+    // Feed at the correct rate: sampleRate / fps
     {
         std::lock_guard lock(audioMutex_);
         
         if (!audioQueue_.empty()) {
-            // Feed all accumulated audio
-            u32 frames = audioQueue_.size() / 2;
-            LOG_DEBUG("VisualizerWindow::renderFrame: Feeding {} frames to projectM", frames);
-            projectM_.addPCMDataInterleaved(audioQueue_.data(), frames, 2);
-            audioQueue_.clear();
+            // Calculate frames needed for this render
+            // sampleRate / targetFps_ = frames per render
+            u32 framesToFeed = (audioSampleRate_ + targetFps_ - 1) / targetFps_;  // Round up
+            u32 availableFrames = audioQueue_.size() / 2;
+            
+            // Feed up to framesToFeed
+            u32 feedFrames = std::min(framesToFeed, availableFrames);
+            
+            if (feedFrames > 0) {
+                LOG_DEBUG("VisualizerWindow::renderFrame: Feeding {} of {} available frames (rate: {}Hz, fps: {})", 
+                          feedFrames, availableFrames, audioSampleRate_, targetFps_);
+                projectM_.addPCMDataInterleaved(audioQueue_.data(), feedFrames, 2);
+                
+                // Remove fed frames from queue
+                u32 feedElements = feedFrames * 2;
+                audioQueue_.erase(audioQueue_.begin(), audioQueue_.begin() + feedElements);
+            } else {
+                LOG_DEBUG("VisualizerWindow::renderFrame: No audio to feed (need {} frames, have {})", 
+                          framesToFeed, availableFrames);
+            }
         } else {
             LOG_DEBUG("VisualizerWindow::renderFrame: No audio in queue");
         }
@@ -221,8 +236,13 @@ void VisualizerWindow::renderFrame() {
     ++frameCount_;
 }
 
-void VisualizerWindow::feedAudio(const f32* data, u32 frames, u32 channels) {
+void VisualizerWindow::feedAudio(const f32* data, u32 frames, u32 channels, u32 sampleRate) {
     std::lock_guard lock(audioMutex_);
+    // Update sample rate if it changed
+    if (sampleRate != audioSampleRate_) {
+        LOG_INFO("Audio sample rate changed: {} -> {} Hz", audioSampleRate_, sampleRate);
+        audioSampleRate_ = sampleRate;
+    }
     // Append audio data to queue for the render thread to consume
     // For now, assume stereo interleaved
     usize offset = audioQueue_.size();
