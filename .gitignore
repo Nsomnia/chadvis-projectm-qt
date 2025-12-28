@@ -81,3 +81,11 @@ CMakeLists_new.txt
 # OS
 .DS_Store
 Thumbs.db
+
+# Qt Creator (if used)
+*.pro
+*.pri
+*.user
+*.files
+*.includes
+*.config
