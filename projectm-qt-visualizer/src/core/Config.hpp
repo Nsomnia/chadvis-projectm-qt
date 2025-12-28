@@ -62,6 +62,7 @@ struct VisualizerConfig {
     u32 presetDuration{30};
     u32 smoothPresetDuration{5};
     bool shufflePresets{true};
+    std::string forcePreset{};  // Force specific preset for debugging
 };
 
 // Audio configuration
