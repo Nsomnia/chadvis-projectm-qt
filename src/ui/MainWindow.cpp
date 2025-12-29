@@ -11,6 +11,7 @@
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
+#include "visualizer/VisualizerWindow.hpp"
 
 #include <QMenuBar>
 #include <QStatusBar>
@@ -25,6 +26,33 @@
 #include <QDropEvent>
 #include <QCloseEvent>
 #include <QKeyEvent>
+
+// RAII Guard to pause visualizer rendering during modal dialogs
+namespace vc_render_guard {
+    class RenderGuard {
+    public:
+        explicit RenderGuard(vc::VisualizerWindow* viz) : viz_(viz) {
+            if (viz_) {
+                wasVisible_ = viz_->isVisible();
+                if (wasVisible_) {
+                    viz_->setVisible(false);
+                    QApplication::processEvents();
+                }
+            }
+        }
+        ~RenderGuard() {
+            if (viz_ && wasVisible_) {
+                viz_->setVisible(true);
+            }
+        }
+        RenderGuard(const RenderGuard&) = delete;
+        RenderGuard& operator=(const RenderGuard&) = delete;
+    private:
+        vc::VisualizerWindow* viz_;
+        bool wasVisible_{false};
+    };
+}
+using vc_render_guard::RenderGuard;
 
 namespace vc {
 
@@ -451,46 +479,67 @@ void MainWindow::onStopRecording() {
 }
 
 void MainWindow::onOpenFiles() {
-    QStringList files = QFileDialog::getOpenFileNames(
-        this, "Open Audio Files", 
-        QDir::homePath(),
-        "Audio Files (*.mp3 *.flac *.ogg *.opus *.wav *.m4a *.aac);;All Files (*)"
-    );
+    // Guard to pause visualizer during dialog (prevents Wayland/Hyprland hang)
+    RenderGuard guard(visualizerPanel_->visualizer());
     
-    for (const auto& f : files) {
-        addToPlaylist(fs::path(f.toStdString()));
+    QFileDialog dialog(this, "Open Audio Files", QDir::homePath());
+    dialog.setNameFilters({"Audio Files (*.mp3 *.flac *.ogg *.opus *.wav *.m4a *.aac)", "All Files (*)"});
+    dialog.setFileMode(QFileDialog::ExistingFiles);
+    
+    // CRITICAL: Don't use native portal on Wayland (causes hangs)
+    dialog.setOption(QFileDialog::DontUseNativeDialog, true);
+    
+    if (dialog.exec()) {
+        QStringList files = dialog.selectedFiles();
+        for (const auto& f : files) {
+            addToPlaylist(fs::path(f.toStdString()));
+        }
     }
 }
 
 void MainWindow::onOpenFolder() {
-    QString dir = QFileDialog::getExistingDirectory(
-        this, "Open Folder", QDir::homePath());
+    // Guard to pause visualizer during dialog (prevents Wayland/Hyprland hang)
+    RenderGuard guard(visualizerPanel_->visualizer());
     
-    if (!dir.isEmpty()) {
-        addToPlaylist(fs::path(dir.toStdString()));
+    QFileDialog dialog(this, "Open Folder", QDir::homePath());
+    dialog.setOption(QFileDialog::DontUseNativeDialog, true);
+    
+    if (dialog.exec()) {
+        QString dir = dialog.selectedFiles().first();
+        if (!dir.isEmpty()) {
+            addToPlaylist(fs::path(dir.toStdString()));
+        }
     }
 }
 
 void MainWindow::onSavePlaylist() {
-    QString path = QFileDialog::getSaveFileName(
-        this, "Save Playlist", QDir::homePath(), "M3U Playlist (*.m3u)");
+    // Guard to pause visualizer during dialog (prevents Wayland/Hyprland hang)
+    RenderGuard guard(visualizerPanel_->visualizer());
     
-    if (!path.isEmpty()) {
+    QFileDialog dialog(this, "Save Playlist", QDir::homePath());
+    dialog.setNameFilter("M3U Playlist (*.m3u)");
+    dialog.setOption(QFileDialog::DontUseNativeDialog, true);
+    
+    if (dialog.exec()) {
+        QString path = dialog.selectedFiles().first();
         if (auto result = audioEngine_->playlist().saveM3U(path.toStdString()); !result) {
-            QMessageBox::warning(this, "Error", 
-                QString::fromStdString(result.error().message));
+            QMessageBox::warning(this, "Error", QString::fromStdString(result.error().message));
         }
     }
 }
 
 void MainWindow::onLoadPlaylist() {
-    QString path = QFileDialog::getOpenFileName(
-        this, "Load Playlist", QDir::homePath(), "M3U Playlist (*.m3u *.m3u8)");
+    // Guard to pause visualizer during dialog (prevents Wayland/Hyprland hang)
+    RenderGuard guard(visualizerPanel_->visualizer());
     
-    if (!path.isEmpty()) {
+    QFileDialog dialog(this, "Load Playlist", QDir::homePath());
+    dialog.setNameFilter("M3U Playlist (*.m3u *.m3u8)");
+    dialog.setOption(QFileDialog::DontUseNativeDialog, true);
+    
+    if (dialog.exec()) {
+        QString path = dialog.selectedFiles().first();
         if (auto result = audioEngine_->playlist().loadM3U(path.toStdString()); !result) {
-            QMessageBox::warning(this, "Error", 
-                QString::fromStdString(result.error().message));
+            QMessageBox::warning(this, "Error", QString::fromStdString(result.error().message));
         }
     }
 }

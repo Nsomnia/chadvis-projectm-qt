@@ -138,8 +138,12 @@ void VideoRecorder::submitVideoFrame(const u8* data, u32 width, u32 height, i64 
     frame.timestamp = timestamp;
     frame.data.assign(data, data + width * height * 4);
     
-    // For now, process synchronously since we have FrameGrabber handling queue
-    // In production, you'd use the frame grabber's async path
+    // TODO: PBO Async Recording
+    // Currently this blocks the render thread with sws_scale and encoding
+    // For production, implement:
+    // 1. Use PBO (Pixel Buffer Object) to async read from GPU
+    // 2. Push frame to FrameGrabber queue
+    // 3. Process in encodingThread to avoid render stutter
     processVideoFrame(frame);
 }
 

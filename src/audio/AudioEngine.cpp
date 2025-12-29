@@ -65,6 +65,10 @@ Result<void> AudioEngine::init() {
 
 void AudioEngine::play() {
     LOG_INFO("AudioEngine::play() CALLED");
+    
+    // Reset diagnostic flag for fresh start
+    bufferReceivedSinceLastCheck_ = false;
+    
     if (!playlist_.currentItem() && !playlist_.empty()) {
         playlist_.jumpTo(0);
         LOG_INFO("Jumped to first playlist item");
@@ -180,54 +184,51 @@ void AudioEngine::loadCurrentTrack() {
 }
 
 void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
-    LOG_INFO("AudioEngine::processAudioBuffer called");
+    // LOG_TRACE("AudioEngine::processAudioBuffer called"); // Too frequent for INFO
     if (!buffer.isValid()) return;
     
     const auto format = buffer.format();
     const auto sampleRate = format.sampleRate();
     const auto channels = format.channelCount();
+    const auto frameCount = buffer.frameCount();
+    const auto totalSamples = frameCount * channels;
     
-    // Convert to float samples
-    std::vector<f32> samples;
+    // Zero-allocation: reuse scratch buffer
+    if (scratchBuffer_.size() < totalSamples) {
+        scratchBuffer_.resize(totalSamples);
+    }
     
+    // Convert to float samples (in-place)
     if (format.sampleFormat() == QAudioFormat::Float) {
         const f32* data = buffer.constData<f32>();
-        samples.assign(data, data + buffer.frameCount() * channels);
+        std::copy(data, data + totalSamples, scratchBuffer_.begin());
     } 
     else if (format.sampleFormat() == QAudioFormat::Int16) {
         const i16* data = buffer.constData<i16>();
-        samples.resize(buffer.frameCount() * channels);
-        for (usize i = 0; i < samples.size(); ++i) {
-            samples[i] = static_cast<f32>(data[i]) / 32768.0f;
+        for (usize i = 0; i < totalSamples; ++i) {
+            scratchBuffer_[i] = static_cast<f32>(data[i]) / 32768.0f;
         }
     }
     else if (format.sampleFormat() == QAudioFormat::Int32) {
         const i32* data = buffer.constData<i32>();
-        samples.resize(buffer.frameCount() * channels);
-        for (usize i = 0; i < samples.size(); ++i) {
-            samples[i] = static_cast<f32>(data[i]) / 2147483648.0f;
+        for (usize i = 0; i < totalSamples; ++i) {
+            scratchBuffer_[i] = static_cast<f32>(data[i]) / 2147483648.0f;
         }
     }
     
     // Analyze audio
-    currentSpectrum_ = analyzer_.analyze(samples, sampleRate, channels);
+    currentSpectrum_ = analyzer_.analyze(scratchBuffer_, sampleRate, channels);
     spectrumUpdated.emitSignal(currentSpectrum_);
     
     // Feed to projectM if handle is set
     if (projectMHandle_) {
-        u32 frames = samples.size() / channels;
-        LOG_INFO("AudioEngine: About to feed {} frames ({} samples) to projectM, channels={}", 
-                 frames, samples.size(), channels);
-        projectm_pcm_add_float(projectMHandle_, samples.data(), frames, 
+        u32 frames = frameCount;
+        projectm_pcm_add_float(projectMHandle_, scratchBuffer_.data(), frames, 
                                channels == 2 ? PROJECTM_STEREO : PROJECTM_MONO);
-        LOG_INFO("AudioEngine: Fed {} frames to projectM", frames);
-    } else {
-        LOG_WARN("AudioEngine: No projectM handle set, cannot feed audio");
     }
     
     // Emit PCM data for visualizer
-    LOG_DEBUG("AudioEngine: Emitting {} samples ({} frames) to pcmReceived signal", samples.size(), samples.size() / 2);
-    pcmReceived.emitSignal(samples, samples.size() / 2, 2, sampleRate);
+    pcmReceived.emitSignal(scratchBuffer_, frameCount, channels, sampleRate);
 }
 
 

@@ -138,13 +138,21 @@ Result<void> Config::save(const fs::path& path) const {
     try {
         auto tbl = serialize();
         
-        std::ofstream file(path);
-        if (!file) {
-            return Result<void>::err("Failed to open config file for writing");
+        // Atomic write: write to temp file, then rename
+        fs::path tempPath = path;
+        tempPath += ".tmp";
+        
+        {
+            std::ofstream file(tempPath);
+            if (!file) {
+                return Result<void>::err("Failed to open temp config file for writing");
+            }
+            file << tbl;
         }
         
-        file << tbl;
-        LOG_INFO("Config saved to: {}", path.string());
+        // Rename is atomic on most filesystems
+        fs::rename(tempPath, path);
+        LOG_INFO("Config saved atomically to: {}", path.string());
         return Result<void>::ok();
         
     } catch (const std::exception& e) {
