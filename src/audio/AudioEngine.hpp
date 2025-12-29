@@ -99,6 +99,9 @@ private:
     f32 volume_{1.0f};
     bool autoPlayNext_{true};
     
+    // Zero-allocation scratch buffer for audio processing
+    std::vector<f32> scratchBuffer_;
+    
     // Diagnostic
     QTimer bufferCheckTimer_;
     bool bufferReceivedSinceLastCheck_{false};

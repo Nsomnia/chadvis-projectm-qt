@@ -11,6 +11,10 @@ set(CMAKE_AUTOMOC ON)
 # Or, more simply, ensure headers are listed in sources
 # The key is that headers with Q_OBJECT must be in the source list
 
+# Remove problematic compiler flags
+string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+string(REPLACE "-mno-direct-extern-access" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
