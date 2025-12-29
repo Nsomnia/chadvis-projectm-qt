@@ -79,6 +79,9 @@ Result<AppOptions> Application::parseArgs() {
             }
             opts.presetName = argv_[++i];
         }
+        else if (arg == "--default-preset") {
+            opts.useDefaultPreset = true;
+        }
         else if (arg[0] != '-') {
             // Positional argument - input file
             opts.inputFiles.push_back(fs::path(arg));
@@ -112,6 +115,11 @@ Result<void> Application::init(const AppOptions& opts) {
     // Override debug from command line
     if (opts.debug) {
         CONFIG.setDebug(true);
+    }
+    
+    // Override default preset from command line
+    if (opts.useDefaultPreset) {
+        CONFIG.visualizer().useDefaultPreset = true;
     }
     
     // Create Qt application
@@ -154,6 +162,12 @@ Result<void> Application::init(const AppOptions& opts) {
             }
         }
         
+        // Auto-play if files were added
+        if (!opts.inputFiles.empty()) {
+            LOG_INFO("Auto-playing first track");
+            mainWindow_->audioEngine()->play();
+        }
+        
         // Auto-start recording if requested
         if (opts.startRecording) {
             if (opts.outputFile) {
@@ -166,6 +180,9 @@ Result<void> Application::init(const AppOptions& opts) {
         // Set preset if specified
         if (opts.presetName) {
             mainWindow_->selectPreset(*opts.presetName);
+        } else if (opts.useDefaultPreset) {
+            // Don't select any preset - use projectM default
+            LOG_INFO("Using default projectM visualizer (no preset selected)");
         }
     }
     
@@ -276,19 +293,21 @@ ChadVis - Chad-tier Audio Visualizer for Arch Linux
 Usage: chadvis-projectm-qt [options] [files...]
 
 Options:
-  -h, --help              Show this help message
-  -v, --version           Show version information
-  -d, --debug             Enable debug logging
-  -c, --config <path>     Use custom config file
-  -p, --preset <name>     Start with specific visualizer preset
-  -r, --record            Start recording immediately
-  -o, --output <path>     Output file for recording
-  --headless              Run without GUI (for batch processing)
+   -h, --help              Show this help message
+   -v, --version           Show version information
+   -d, --debug             Enable debug logging
+   -c, --config <path>     Use custom config file
+   -p, --preset <name>     Start with specific visualizer preset
+   --default-preset        Use projectM's default visualizer (no preset)
+   -r, --record            Start recording immediately
+   -o, --output <path>     Output file for recording
+   --headless              Run without GUI (for batch processing)
 
 Examples:
-  chadvis-projectm-qt ~/Music/*.flac
-  chadvis-projectm-qt --record --output video.mp4 song.mp3
-  chadvis-projectm-qt --preset "Aderrasi - Airhandler" playlist.m3u
+   chadvis-projectm-qt ~/Music/*.flac
+   chadvis-projectm-qt --record --output video.mp4 song.mp3
+   chadvis-projectm-qt --preset "Aderrasi - Airhandler" playlist.m3u
+   chadvis-projectm-qt --default-preset song.mp3
 
 Config: ~/.config/chadvis-projectm-qt/config.toml
 Logs:   ~/.cache/chadvis-projectm-qt/logs/

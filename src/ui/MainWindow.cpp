@@ -56,6 +56,18 @@ MainWindow::MainWindow(QWidget* parent)
     statusBar()->showMessage("Ready. Drag and drop some music files to get started.");
     
     LOG_INFO("MainWindow initialized");
+    
+    // Set projectM handle on audio engine after visualizer is initialized
+    // VisualizerWindow initializes lazily on first expose, so we need to handle this
+    QTimer::singleShot(100, this, [this]() {
+        if (visualizerPanel_ && visualizerPanel_->visualizer()) {
+            auto& projectM = visualizerPanel_->visualizer()->projectM();
+            if (projectM.isInitialized()) {
+                audioEngine_->setProjectMHandle(projectM.getHandle());
+                LOG_INFO("Set projectM handle on audio engine (delayed)");
+            }
+        }
+    });
 }
 
 MainWindow::~MainWindow() {

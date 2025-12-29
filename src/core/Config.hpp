@@ -63,6 +63,7 @@ struct VisualizerConfig {
     u32 smoothPresetDuration{5};
     bool shufflePresets{true};
     std::string forcePreset{};  // Force specific preset for debugging
+    bool useDefaultPreset{false};  // Use default projectM visualizer (no preset)
 };
 
 // Audio configuration

@@ -57,7 +57,9 @@ Result<void> ProjectMBridge::init(const ProjectMConfig& config) {
     });
     
     // Select initial preset
-    if (!presets_.empty()) {
+    if (config.useDefaultPreset) {
+        LOG_INFO("Using default projectM visualizer (no preset)");
+    } else if (!presets_.empty()) {
         // Check if a specific preset is forced
         if (!config.forcePreset.empty()) {
             if (presets_.selectByName(config.forcePreset)) {
@@ -101,14 +103,16 @@ void ProjectMBridge::render() {
         LOG_DEBUG("ProjectMBridge::render(): projectM_ is null");
         return;
     }
-    LOG_DEBUG("ProjectMBridge::render(): projectM_ handle = {}, calling projectm_opengl_render_frame", (void*)projectM_);
-    projectm_opengl_render_frame(projectM_);
-    LOG_DEBUG("ProjectMBridge::render(): projectm_opengl_render_frame returned");
     
-    // Check current preset name
+    // Get preset name BEFORE render
+    std::string presetName = "unknown";
     if (auto* preset = presets_.current()) {
-        LOG_DEBUG("ProjectMBridge::render(): Current preset = {}", preset->name);
+        presetName = preset->name;
     }
+    
+    LOG_DEBUG("ProjectMBridge::render(): Rendering preset '{}' (handle={})", presetName, (void*)projectM_);
+    projectm_opengl_render_frame(projectM_);
+    LOG_DEBUG("ProjectMBridge::render(): Completed frame for preset '{}'", presetName);
 }
 
 void ProjectMBridge::renderToTarget(RenderTarget& target) {
@@ -146,8 +150,9 @@ void ProjectMBridge::addPCMDataInterleaved(const f32* data, u32 frames, u32 chan
     if (channels == 1) {
         projectm_pcm_add_float(projectM_, data, frames, PROJECTM_MONO);
     } else if (channels == 2) {
-        // v4 API: pass interleaved stereo directly
-        projectm_pcm_add_float(projectM_, data, frames * 2, PROJECTM_STEREO);
+        // v4 API: count is samples per channel, data is interleaved LRLRLR
+        // For stereo, pass frame count (not frame count * 2)
+        projectm_pcm_add_float(projectM_, data, frames, PROJECTM_STEREO);
     }
 }
 
@@ -267,21 +272,12 @@ void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
         return;
     }
     
-    LOG_INFO("  Loading preset: {} from {}", preset->name, preset->path.string());
-    LOG_DEBUG("  projectM_ handle: {}", (void*)projectM_);
+    LOG_INFO("  Preset selected: {} from {}", preset->name, preset->path.string());
     
-    // Check if file exists
-    if (!fs::exists(preset->path)) {
-        LOG_ERROR("  Preset file does not exist: {}", preset->path.string());
-        return;
-    }
-    
-    LOG_DEBUG("  Calling projectm_load_preset_file");
-    projectm_load_preset_file(projectM_, preset->path.c_str(), false);
-    LOG_DEBUG("  projectm_load_preset_file returned");
-    
+    // Emit signal first - VisualizerWindow will handle the actual loading
+    // This ensures it happens with proper GL context
     presetChanged.emitSignal(preset->name);
-    LOG_DEBUG("  Emitted presetChanged signal");
+    LOG_DEBUG("  Emitted presetChanged signal for: {}", preset->name);
 }
 
 } // namespace vc
