@@ -388,8 +388,8 @@ git clone <reference-repo> scratch/refs/<name>
 ## Quick Commands
 ```bash
 ./scripts/check_deps.sh # Verify dependencies
-./scripts/build.sh # Standard build
-./scripts/run_app.sh # Run the application
+./build.sh build # Standard build
+./build.sh run # Run the application
 ./scripts/utils/backup_file.sh # Safe "delete"
 ```
 ## Current Session Checklist
@@ -480,7 +480,7 @@ Expected: All dependencies found
 ### Task: First Successful Compile
 1. Implement minimal main.cpp
 2. Configure CMakeLists.txt properly
-3. Run ./scripts/build.sh
+3. Run ./build.sh build
 4. Fix any errors
 Goal: `build/projectm-qt-visualizer` binary exists
 ### Task: Empty Qt Window
@@ -533,11 +533,11 @@ Goal: `build/projectm-qt-visualizer` binary exists
 # Quick Reference Card
 ## Build Commands
 ```bash
-./scripts/build.sh # Debug build
+./build.sh build # Debug build
 ./scripts/build_release.sh # Release build
 ./scripts/build_clean.sh # Clean + rebuild
-./scripts/run_app.sh # Run application
-./scripts/run_tests.sh # Run test suite
+./build.sh run # Run application
+./build.sh test # Run test suite
 ```
 ## Safe Operations
 ```bash
@@ -1346,7 +1346,7 @@ add_test(NAME integration_tests COMMAND integration_tests)
 ## Steps
 1. Run the application:
 ```bash
-./scripts/run_app.sh
+./build.sh run
 ```
 2. Observe the window:
 - [ ] Window appears
@@ -1372,7 +1372,7 @@ Date: [date]
 Notes: [any observations]
 ```
 ```
-### FILE: scripts/build.sh
+### FILE: build.sh (unified build script)
 ```bash
 #!/usr/bin/env bash
 # Build script - Debug mode
@@ -1435,7 +1435,7 @@ echo ""
 echo "=== Release build complete ==="
 echo "Binary: $BUILD_DIR/src/projectm-qt-visualizer"
 ```
-### FILE: scripts/run_app.sh
+### FILE: build.sh (run command)
 ```bash
 #!/usr/bin/env bash
 # Run the application
@@ -1451,7 +1451,7 @@ echo "=== Running projectm-qt-visualizer ==="
 echo "I use Arch, BTW."
 exec "$BINARY" "$@"
 ```
-### FILE: scripts/run_tests.sh
+### FILE: build.sh (test command)
 ```bash
 #!/usr/bin/env bash
 # Run all tests
@@ -1596,7 +1596,7 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 echo "=== Safe Commit ==="
 echo "Building to verify code compiles..."
 cd "$PROJECT_ROOT"
-./scripts/build.sh
+./build.sh build
 echo ""
 echo "Build successful. Committing..."
 git add -A
@@ -1687,7 +1687,7 @@ sudo pacman -S github-cli lynx
 ## Build
 ### Debug Build (default)
 ```bash
-./scripts/build.sh
+./build.sh build
 ```
 ### Release Build
 ```bash
@@ -1699,11 +1699,11 @@ sudo pacman -S github-cli lynx
 ```
 ## Run
 ```bash
-./scripts/run_app.sh
+./build.sh run
 ```
 ## Test
 ```bash
-./scripts/run_tests.sh
+./build.sh test
 ```
 ## Troubleshooting
 See docs/troubleshooting/ for common issues.
@@ -1858,11 +1858,11 @@ sudo pacman -S qt6-base qt6-multimedia libprojectm cmake gcc
 ```
 ### Build
 ```bash
-./scripts/build.sh
+./build.sh build
 ```
 ### Run
 ```bash
-./scripts/run_app.sh
+./build.sh run
 ```
 ## Documentation
 - [Architecture](docs/ARCHITECTURE.md)
@@ -1938,11 +1938,11 @@ command: ./scripts/check_deps.sh
 on_failure: report_missing_packages
 6:
 action: attempt_first_build
-command: ./scripts/build.sh
+command: ./build.sh build
 on_failure: debug_and_document_in_known_issues
 7:
 action: if_build_succeeds
-command: ./scripts/run_app.sh
+command: ./build.sh run
 then: HUMAN_VERIFICATION_REQUIRED
 ask: |
 Please verify:

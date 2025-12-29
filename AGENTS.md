@@ -9,25 +9,25 @@
 ./scripts/check_deps.sh
 
 # Debug build (uses ninja with -j1 for potato-safe builds)
-./scripts/build.sh
+./build.sh build
 
 # Release build
-./scripts/build_release.sh
+./build.sh release
 
 # Clean rebuild
-./scripts/build_clean.sh
+./build.sh clean
 
 # Run application
-./scripts/run_app.sh
+./build.sh run
 
 # Run all tests
-./scripts/run_tests.sh
+./build.sh test
 ```
 
 ### Running Single Tests
 ```bash
 # Build first
-./scripts/build.sh
+./build.sh build
 
 # Run specific test executable
 cd build
@@ -245,7 +245,7 @@ System Audio → PulseAudio Monitor → PulseAudioSource → projectM PCM API �
 ### Running Tests
 ```bash
 # All tests
-./scripts/run_tests.sh
+./build.sh test
 
 # Specific test (after building)
 cd build
@@ -305,7 +305,7 @@ QT_LOGGING_RULES="qt.opengl=true" ./build/src/projectm-qt-visualizer
 ### Potato-Safe Builds
 - Uses ninja with `-j1` (single core)
 - Prevents system hang on low-end hardware
-- Configured in `scripts/build.sh`
+- Configured in `build.sh`
 
 ## Troubleshooting
 
@@ -315,7 +315,7 @@ QT_LOGGING_RULES="qt.opengl=true" ./build/src/projectm-qt-visualizer
 ./scripts/check_deps.sh
 
 # Clean and rebuild
-./scripts/build_clean.sh
+./build.sh clean
 ```
 
 ### Black screen
@@ -326,7 +326,7 @@ QT_LOGGING_RULES="qt.opengl=true" ./build/src/projectm-qt-visualizer
 ### No audio capture
 - Verify PulseAudio is running: `pactl info`
 - Check if monitor source exists: `pactl list sources`
-- Test with `./scripts/run_app.sh` and check console
+- Test with `./build.sh run` and check console
 
 ### Tests fail
 - Ensure build completed successfully
@@ -350,7 +350,7 @@ QT_LOGGING_RULES="qt.opengl=true" ./build/src/projectm-qt-visualizer
 ### After Finishing
 1. Update `.agent/CURRENT_STATE.md`
 2. Update `.agent/SESSION_HANDOFF.md`
-3. Run `./scripts/build.sh` (verify compiles)
+3. Run `./build.sh build` (verify compiles)
 4. Commit with `./scripts/git/commit_safe.sh`
 
 ## References

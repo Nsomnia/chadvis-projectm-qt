@@ -6,7 +6,7 @@ pkgver=1.0.0
 pkgrel=1
 pkgdesc="Qt6 projectM v4 visualizer with modern C++20 and video recording"
 arch=('x86_64')
-url="https://github.com/Nsomnia/mimo-v2-flash-with-claude-inital-message"
+url="https://github.com/Nsomnia/chadvis-projectm-qt"
 license=('MIT')
 depends=(
     'qt6-base'
@@ -31,11 +31,11 @@ optdepends=(
     'ttf-liberation: Default font'
     'ttf-dejavu: Alternative font'
 )
-source=("git+https://github.com/Nsomnia/mimo-v2-flash-with-claude-inital-message.git#tag=v${pkgver}")
+source=("git+https://github.com/Nsomnia/chadvis-projectm-qt.git#tag=v${pkgver}")
 sha256sums=('SKIP')
 
 build() {
-    cd "$srcdir/$pkgname/projectm-qt-visualizer"
+    cd "$srcdir/$pkgname"
     cmake -B build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr
@@ -43,7 +43,7 @@ build() {
 }
 
 package() {
-    cd "$srcdir/$pkgname/projectm-qt-visualizer"
+    cd "$srcdir/$pkgname"
     DESTDIR="$pkgdir" ninja -C build install
     
     # License

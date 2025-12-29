@@ -5,8 +5,8 @@
 <h1 align="center">chadvis-projectm-qt: Qt6 projectM v4 Visualizer</h1>
 
 <p align="center">
-   <a href="https://github.com/Nsomnia/mimo-v2-flash-with-claude-inital-message/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Nsomnia/mimo-v2-flash-with-claude-inital-message/ci.yml?branch=main&label=Build%20Status&style=for-the-badge&logo=github" alt="Build Status"></a>
-   <a href="https://github.com/Nsomnia/mimo-v2-flash-with-claude-inital-message/releases"><img src="https://img.shields.io/github/v/release/Nsomnia/mimo-v2-flash-with-claude-inital-message?style=for-the-badge&label=Latest%20Release&logo=github" alt="Latest Release"></a>
+   <a href="https://github.com/Nsomnia/chadvis-projectm-qt/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Nsomnia/chadvis-projectm-qt/ci.yml?branch=main&label=Build%20Status&style=for-the-badge&logo=github" alt="Build Status"></a>
+   <a href="https://github.com/Nsomnia/chadvis-projectm-qt/releases"><img src="https://img.shields.io/github/v/release/Nsomnia/chadvis-projectm-qt?style=for-the-badge&label=Latest%20Release&logo=github" alt="Latest Release"></a>
   <img src="https://img.shields.io/badge/Arch%20Linux-You%20know%20it-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="Arch Linux">
   <img src="https://img.shields.io/badge/C%2B%2B20-Modern%20C%2B%2B-00599C?style=for-the-badge&logo=c%2B%2B&logoColor=white" alt="C++20">
 </p>
@@ -69,11 +69,11 @@ sudo pacman -S cmake qt6-base qt6-multimedia qt6-svg spdlog fmt taglib \
 
 ```bash
 # Clone this repo (if you haven't already, peasant)
-git clone https://github.com/Nsomnia/mimo-v2-flash-with-claude-inital-message.git
-cd mimo-v2-flash-with-claude-inital-message/projectm-qt-visualizer
+git clone https://github.com/Nsomnia/chadvis-projectm-qt.git
+cd chadvis-projectm-qt
 
 # Build the beast (use build.sh - it's Chad-approved)
-./build.sh
+./build.sh build  # Or: ./build.sh run (builds and runs)
 
 # Or manually
 mkdir build && cd build

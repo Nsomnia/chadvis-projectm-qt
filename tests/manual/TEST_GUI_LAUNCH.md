@@ -7,7 +7,7 @@
 ## Steps
 1. Run the application:
 ```bash
-./scripts/run_app.sh
+./build.sh run
 ```
 2. Observe the window:
 - [ ] Window appears
