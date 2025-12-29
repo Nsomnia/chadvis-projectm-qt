@@ -30,6 +30,9 @@ public:
     // Public interface for Application
     void addToPlaylist(const fs::path& path);
     void addToPlaylist(const std::vector<fs::path>& paths);
+    
+    // Get audio engine for playback
+    AudioEngine* audioEngine() { return audioEngine_.get(); }
     void startRecording(const fs::path& outputPath = {});
     void stopRecording();
     void selectPreset(const std::string& name);

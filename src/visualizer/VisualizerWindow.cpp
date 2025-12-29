@@ -137,12 +137,14 @@ void VisualizerWindow::initialize() {
     fpsTimer_.start();
     LOG_INFO("Render timer started: {} fps, interval {}ms", vizConfig.fps, renderTimer_.interval());
     
-    // Start preset rotation timer if duration > 0 and shuffle is enabled
-    if (vizConfig.presetDuration > 0 && vizConfig.shufflePresets) {
+    // Start preset rotation timer if duration > 0, shuffle is enabled, and NOT using default preset
+    if (vizConfig.presetDuration > 0 && vizConfig.shufflePresets && !vizConfig.useDefaultPreset) {
         connect(&presetRotationTimer_, &QTimer::timeout, this, &VisualizerWindow::onPresetRotationTimeout);
         presetRotationTimer_.setInterval(vizConfig.presetDuration * 1000);
         presetRotationTimer_.start();
         LOG_INFO("Preset rotation timer started: {} seconds", vizConfig.presetDuration);
+    } else if (vizConfig.useDefaultPreset) {
+        LOG_INFO("Preset rotation disabled - using default visualizer");
     }
     
     initialized_ = true;

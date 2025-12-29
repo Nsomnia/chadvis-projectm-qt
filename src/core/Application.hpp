@@ -19,6 +19,7 @@ struct AppOptions {
     bool debug{false};
     bool headless{false};
     bool startRecording{false};
+    bool useDefaultPreset{false};
     std::optional<fs::path> outputFile;
     std::optional<fs::path> configFile;
     std::vector<fs::path> inputFiles;

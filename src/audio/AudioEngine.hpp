@@ -7,6 +7,7 @@
 #include "util/Signal.hpp"
 #include "AudioAnalyzer.hpp"
 #include "Playlist.hpp"
+#include <projectM-4/projectM.h>
 
 #include <QMediaPlayer>
 #include <QAudioOutput>
@@ -16,6 +17,8 @@
 #include <memory>
 
 namespace vc {
+
+class FFmpegAudioSource;
 
 enum class PlaybackState {
     Stopped,
@@ -41,6 +44,9 @@ public:
     void seek(Duration position);
     void setVolume(f32 volume);  // 0.0 - 1.0
     
+    // Set projectM handle for FFmpeg audio feeding
+    void setProjectMHandle(projectm_handle handle);
+    
     // State
     PlaybackState state() const { return state_; }
     Duration position() const;
@@ -62,7 +68,7 @@ public:
     Signal<Duration> durationChanged;
     Signal<const AudioSpectrum&> spectrumUpdated;
     Signal<> trackChanged;
-    Signal<std::string> error;
+    Signal<std::string> errorSignal;
     Signal<const std::vector<f32>&, u32, u32, u32> pcmReceived;  // data, frames, channels, sampleRate
     
 private slots:
@@ -77,10 +83,13 @@ private slots:
 private:
     void loadCurrentTrack();
     void processAudioBuffer(const QAudioBuffer& buffer);
+    void onFFmpegPCM(const std::vector<f32>& pcm, u32 frames, u32 channels, u32 sampleRate);
     
     std::unique_ptr<QMediaPlayer> player_;
     std::unique_ptr<QAudioOutput> audioOutput_;
     std::unique_ptr<QAudioBufferOutput> bufferOutput_;
+    
+    projectm_handle projectMHandle_{nullptr};
     
     Playlist playlist_;
     AudioAnalyzer analyzer_;
@@ -89,6 +98,10 @@ private:
     PlaybackState state_{PlaybackState::Stopped};
     f32 volume_{1.0f};
     bool autoPlayNext_{true};
+    
+    // Diagnostic
+    QTimer bufferCheckTimer_;
+    bool bufferReceivedSinceLastCheck_{false};
 };
 
 } // namespace vc

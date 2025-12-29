@@ -117,22 +117,18 @@ Duration AudioEngine::duration() const {
 }
 
 void AudioEngine::onPlayerStateChanged(QMediaPlayer::PlaybackState state) {
-    PlaybackState oldState = state_;
     switch (state) {
         case QMediaPlayer::StoppedState:
             state_ = PlaybackState::Stopped;
             break;
         case QMediaPlayer::PlayingState:
             state_ = PlaybackState::Playing;
-            bufferReceivedSinceLastCheck_ = false;
             break;
         case QMediaPlayer::PausedState:
             state_ = PlaybackState::Paused;
             break;
     }
     
-    LOG_INFO("AudioEngine: Player state changed from {} to {}", 
-             static_cast<int>(oldState), static_cast<int>(state_));
     stateChanged.emitSignal(state_);
 }
 
@@ -216,13 +212,9 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     // Feed to projectM if handle is set
     if (projectMHandle_) {
         u32 frames = samples.size() / channels;
-        LOG_INFO("AudioEngine: About to feed {} frames ({} samples) to projectM, channels={}", 
-                 frames, samples.size(), channels);
         projectm_pcm_add_float(projectMHandle_, samples.data(), frames, 
                                channels == 2 ? PROJECTM_STEREO : PROJECTM_MONO);
-        LOG_INFO("AudioEngine: Fed {} frames to projectM", frames);
-    } else {
-        LOG_WARN("AudioEngine: No projectM handle set, cannot feed audio");
+        LOG_DEBUG("AudioEngine: Fed {} frames to projectM", frames);
     }
     
     // Emit PCM data for visualizer

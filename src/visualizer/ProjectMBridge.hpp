@@ -26,6 +26,7 @@ struct ProjectMConfig {
     u32 transitionDuration{3};
     bool shufflePresets{true};
     std::string forcePreset{};
+    bool useDefaultPreset{false};
     u32 meshX{128};
     u32 meshY{96};
 };
@@ -72,6 +73,9 @@ public:
     u32 width() const { return width_; }
     u32 height() const { return height_; }
     std::string currentPresetName() const;
+    
+    // Internal access (for VisualizerWindow to load presets with GL context)
+    projectm_handle getHandle() { return projectM_; }
     
     // Signals
     Signal<std::string> presetChanged;

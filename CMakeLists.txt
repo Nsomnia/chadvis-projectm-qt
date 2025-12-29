@@ -109,6 +109,8 @@ set(AUDIO_SOURCES
     src/audio/Playlist.cpp
     src/audio/MediaMetadata.hpp
     src/audio/MediaMetadata.cpp
+    src/audio/FFmpegAudioSource.hpp
+    src/audio/FFmpegAudioSource.cpp
 )
 
 set(VISUALIZER_SOURCES
