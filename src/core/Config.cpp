@@ -172,16 +172,16 @@ void Config::parseVisualizer(const toml::table& tbl) {
     if (auto viz = tbl["visualizer"].as_table()) {
         auto pathStr = get(*viz, "preset_path", std::string("/usr/share/projectM/presets"));
         visualizer_.presetPath = expandPath(pathStr);
-        visualizer_.width = get(*viz, "width", 1920u);
-        visualizer_.height = get(*viz, "height", 1080u);
-        visualizer_.fps = get(*viz, "fps", 60u);
-        visualizer_.beatSensitivity = get(*viz, "beat_sensitivity", 1.0f);
+        visualizer_.width = std::clamp(get(*viz, "width", 1920u), 320u, 7680u);
+        visualizer_.height = std::clamp(get(*viz, "height", 1080u), 200u, 4320u);
+        visualizer_.fps = std::clamp(get(*viz, "fps", 60u), 10u, 240u);
+        visualizer_.beatSensitivity = std::clamp(get(*viz, "beat_sensitivity", 1.0f), 0.1f, 10.0f);
         visualizer_.presetDuration = get(*viz, "preset_duration", 30u);
-        visualizer_.smoothPresetDuration = get(*viz, "smooth_preset_duration", 5u);
+        visualizer_.smoothPresetDuration = std::clamp(get(*viz, "smooth_preset_duration", 5u), 0u, 30u);
         visualizer_.shufflePresets = get(*viz, "shuffle_presets", true);
         visualizer_.forcePreset = get(*viz, "force_preset", std::string());
         visualizer_.useDefaultPreset = get(*viz, "use_default_preset", false);
-        LOG_INFO("Config: preset_duration={}, shuffle_presets={}", visualizer_.presetDuration, visualizer_.shufflePresets);
+        LOG_INFO("Config: visualizer {}x{} @ {}fps", visualizer_.width, visualizer_.height, visualizer_.fps);
     }
 }
 
@@ -195,17 +195,24 @@ void Config::parseRecording(const toml::table& tbl) {
         
         if (auto video = (*rec)["video"].as_table()) {
             recording_.video.codec = get(*video, "codec", std::string("libx264"));
-            recording_.video.crf = get(*video, "crf", 18u);
+            recording_.video.crf = std::clamp(get(*video, "crf", 18u), 0u, 51u);
             recording_.video.preset = get(*video, "preset", std::string("medium"));
             recording_.video.pixelFormat = get(*video, "pixel_format", std::string("yuv420p"));
-            recording_.video.width = get(*video, "width", 1920u);
-            recording_.video.height = get(*video, "height", 1080u);
-            recording_.video.fps = get(*video, "fps", 60u);
+            
+            u32 w = std::clamp(get(*video, "width", 1920u), 320u, 7680u);
+            if (w % 2 != 0) w++; // FFmpeg H.264 likes even dimensions
+            recording_.video.width = w;
+            
+            u32 h = std::clamp(get(*video, "height", 1080u), 200u, 4320u);
+            if (h % 2 != 0) h++;
+            recording_.video.height = h;
+            
+            recording_.video.fps = std::clamp(get(*video, "fps", 60u), 10u, 120u);
         }
         
         if (auto audio = (*rec)["audio"].as_table()) {
             recording_.audio.codec = get(*audio, "codec", std::string("aac"));
-            recording_.audio.bitrate = get(*audio, "bitrate", 320u);
+            recording_.audio.bitrate = std::clamp(get(*audio, "bitrate", 320u), 64u, 640u);
         }
     }
 }

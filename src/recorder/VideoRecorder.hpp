@@ -1,26 +1,18 @@
 #pragma once
 // VideoRecorder.hpp - FFmpeg-based video recording
-// Where frames go to become MP4s
 
 #include "util/Types.hpp"
 #include "util/Result.hpp"
 #include "util/Signal.hpp"
 #include "EncoderSettings.hpp"
 #include "FrameGrabber.hpp"
+#include "FFmpegUtils.hpp"
 
 #include <thread>
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
-
-// Forward declarations for FFmpeg
-struct AVFormatContext;
-struct AVCodecContext;
-struct AVStream;
-struct AVFrame;
-struct AVPacket;
-struct SwsContext;
-struct SwrContext;
+#include <vector>
 
 namespace vc {
 
@@ -106,17 +98,17 @@ private:
     u32 audioChannels_{2};
     
     // FFmpeg contexts
-    AVFormatContext* formatCtx_{nullptr};
-    AVCodecContext* videoCodecCtx_{nullptr};
-    AVCodecContext* audioCodecCtx_{nullptr};
+    AVFormatContextPtr formatCtx_;
+    AVCodecContextPtr videoCodecCtx_;
+    AVCodecContextPtr audioCodecCtx_;
     AVStream* videoStream_{nullptr};
     AVStream* audioStream_{nullptr};
-    SwsContext* swsCtx_{nullptr};
-    SwrContext* swrCtx_{nullptr};
+    SwsContextPtr swsCtx_;
+    SwrContextPtr swrCtx_;
     
-    AVFrame* videoFrame_{nullptr};
-    AVFrame* audioFrame_{nullptr};
-    AVPacket* packet_{nullptr};
+    AVFramePtr videoFrame_;
+    AVFramePtr audioFrame_;
+    AVPacketPtr packet_;
     
     i64 videoFrameCount_{0};
     i64 audioFrameCount_{0};

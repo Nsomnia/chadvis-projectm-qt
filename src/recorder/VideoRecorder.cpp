@@ -3,30 +3,9 @@
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
 
-extern "C" {
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/opt.h>
-#include <libavutil/imgutils.h>
-#include <libavutil/channel_layout.h>
-#include <libavutil/mathematics.h>
-#include <libswscale/swscale.h>
-#include <libswresample/swresample.h>
-}
-
 #include <chrono>
 
 namespace vc {
-
-namespace {
-
-std::string ffmpegError(int err) {
-    char buf[AV_ERROR_MAX_STRING_SIZE];
-    av_strerror(err, buf, sizeof(buf));
-    return buf;
-}
-
-} // namespace
 
 VideoRecorder::VideoRecorder() = default;
 
@@ -113,7 +92,7 @@ Result<void> VideoRecorder::stop() {
         
         // Write trailer
         if (formatCtx_) {
-            av_write_trailer(formatCtx_);
+            av_write_trailer(formatCtx_.get());
         }
     }
     
@@ -131,19 +110,12 @@ Result<void> VideoRecorder::stop() {
 void VideoRecorder::submitVideoFrame(const u8* data, u32 width, u32 height, i64 timestamp) {
     if (state_ != RecordingState::Recording) return;
     
-    // Create frame and add to queue
     GrabbedFrame frame;
     frame.width = width;
     frame.height = height;
     frame.timestamp = timestamp;
     frame.data.assign(data, data + width * height * 4);
     
-    // TODO: PBO Async Recording
-    // Currently this blocks the render thread with sws_scale and encoding
-    // For production, implement:
-    // 1. Use PBO (Pixel Buffer Object) to async read from GPU
-    // 2. Push frame to FrameGrabber queue
-    // 3. Process in encodingThread to avoid render stutter
     processVideoFrame(frame);
 }
 
@@ -165,16 +137,13 @@ void VideoRecorder::encodingThread() {
     auto lastStatsUpdate = std::chrono::steady_clock::now();
     
     while (!shouldStop_) {
-        // Process video frames from grabber
         GrabbedFrame frame;
-        if (frameGrabber_.getNextFrame(frame, 16)) {  // ~60fps timeout
+        if (frameGrabber_.getNextFrame(frame, 16)) {
             processVideoFrame(frame);
         }
         
-        // Process audio
         processAudioBuffer();
         
-        // Update stats periodically
         auto now = std::chrono::steady_clock::now();
         if (now - lastStatsUpdate >= std::chrono::seconds(1)) {
             stats_.elapsed = Duration(
@@ -200,18 +169,15 @@ void VideoRecorder::processVideoFrame(const GrabbedFrame& frame) {
     
     if (!videoCodecCtx_ || !videoFrame_) return;
     
-    // Convert RGBA to YUV420P
     const u8* srcData[1] = { frame.data.data() };
     int srcLinesize[1] = { static_cast<int>(frame.width * 4) };
     
-    sws_scale(swsCtx_, srcData, srcLinesize, 0, frame.height,
+    sws_scale(swsCtx_.get(), srcData, srcLinesize, 0, frame.height,
               videoFrame_->data, videoFrame_->linesize);
     
-    // Set PTS
     videoFrame_->pts = videoFrameCount_++;
     
-    // Encode
-    if (encodeVideoFrame(videoFrame_)) {
+    if (encodeVideoFrame(videoFrame_.get())) {
         ++stats_.framesWritten;
     }
 }
@@ -225,16 +191,14 @@ void VideoRecorder::processAudioBuffer() {
     int channels = audioChannels_;
     
     while (audioBuffer_.size() >= static_cast<usize>(frameSize * channels)) {
-        // Fill audio frame
         std::vector<f32> samples(audioBuffer_.begin(), 
                                   audioBuffer_.begin() + frameSize * channels);
         audioBuffer_.erase(audioBuffer_.begin(), 
                            audioBuffer_.begin() + frameSize * channels);
         
-        // Convert to encoder format using swresample
         const u8* srcData[1] = { reinterpret_cast<const u8*>(samples.data()) };
         
-        int ret = swr_convert(swrCtx_, audioFrame_->data, frameSize,
+        int ret = swr_convert(swrCtx_.get(), audioFrame_->data, frameSize,
                               srcData, frameSize);
         if (ret < 0) {
             LOG_WARN("Audio resample error: {}", ffmpegError(ret));
@@ -244,10 +208,9 @@ void VideoRecorder::processAudioBuffer() {
         audioFrame_->pts = audioFrameCount_;
         audioFrameCount_ += frameSize;
         
-        // Lock FFmpeg mutex before encoding (shared state with video thread)
         {
             std::lock_guard lockFFmpeg(ffmpegMutex_);
-            encodeAudioFrame(audioFrame_);
+            encodeAudioFrame(audioFrame_.get());
         }
     }
 }
@@ -255,24 +218,23 @@ void VideoRecorder::processAudioBuffer() {
 Result<void> VideoRecorder::initFFmpeg() {
     int ret;
     
-    // Allocate format context
-    ret = avformat_alloc_output_context2(&formatCtx_, nullptr, nullptr, 
+    AVFormatContext* ctx = nullptr;
+    ret = avformat_alloc_output_context2(&ctx, nullptr, nullptr, 
                                           settings_.outputPath.c_str());
+    formatCtx_.reset(ctx);
+    
     if (ret < 0 || !formatCtx_) {
         return Result<void>::err("Failed to create output context: " + ffmpegError(ret));
     }
     
-    // Initialize video stream
     if (auto result = initVideoStream(); !result) {
         return result;
     }
     
-    // Initialize audio stream
     if (auto result = initAudioStream(); !result) {
         return result;
     }
     
-    // Open output file
     if (!(formatCtx_->oformat->flags & AVFMT_NOFILE)) {
         ret = avio_open(&formatCtx_->pb, settings_.outputPath.c_str(), AVIO_FLAG_WRITE);
         if (ret < 0) {
@@ -280,17 +242,15 @@ Result<void> VideoRecorder::initFFmpeg() {
         }
     }
     
-    // Write header
     AVDictionary* opts = nullptr;
-    ret = avformat_write_header(formatCtx_, &opts);
+    ret = avformat_write_header(formatCtx_.get(), &opts);
     av_dict_free(&opts);
     
     if (ret < 0) {
         return Result<void>::err("Failed to write header: " + ffmpegError(ret));
     }
     
-    // Allocate packet
-    packet_ = av_packet_alloc();
+    packet_.reset(av_packet_alloc());
     if (!packet_) {
         return Result<void>::err("Failed to allocate packet");
     }
@@ -300,25 +260,21 @@ Result<void> VideoRecorder::initFFmpeg() {
 }
 
 Result<void> VideoRecorder::initVideoStream() {
-    // Find encoder
     const AVCodec* codec = avcodec_find_encoder_by_name(settings_.video.codecName().c_str());
     if (!codec) {
         return Result<void>::err("Video codec not found: " + settings_.video.codecName());
     }
     
-    // Create stream
-    videoStream_ = avformat_new_stream(formatCtx_, nullptr);
+    videoStream_ = avformat_new_stream(formatCtx_.get(), nullptr);
     if (!videoStream_) {
         return Result<void>::err("Failed to create video stream");
     }
     
-    // Allocate codec context
-    videoCodecCtx_ = avcodec_alloc_context3(codec);
+    videoCodecCtx_.reset(avcodec_alloc_context3(codec));
     if (!videoCodecCtx_) {
         return Result<void>::err("Failed to allocate video codec context");
     }
     
-    // Configure codec
     videoCodecCtx_->width = settings_.video.width;
     videoCodecCtx_->height = settings_.video.height;
     videoCodecCtx_->time_base = AVRational{1, static_cast<int>(settings_.video.fps)};
@@ -332,36 +288,29 @@ Result<void> VideoRecorder::initVideoStream() {
         videoCodecCtx_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
     
-    // Codec-specific options
     AVDictionary* opts = nullptr;
-    
     if (settings_.video.codec == VideoCodec::H264 || 
         settings_.video.codec == VideoCodec::H265) {
         av_dict_set(&opts, "preset", settings_.video.presetName().c_str(), 0);
         av_dict_set(&opts, "crf", std::to_string(settings_.video.crf).c_str(), 0);
-        
-        // For better streaming/seeking
         av_dict_set(&opts, "tune", "zerolatency", 0);
     }
     
-    // Open codec
-    int ret = avcodec_open2(videoCodecCtx_, codec, &opts);
+    int ret = avcodec_open2(videoCodecCtx_.get(), codec, &opts);
     av_dict_free(&opts);
     
     if (ret < 0) {
         return Result<void>::err("Failed to open video codec: " + ffmpegError(ret));
     }
     
-    // Copy codec params to stream
-    ret = avcodec_parameters_from_context(videoStream_->codecpar, videoCodecCtx_);
+    ret = avcodec_parameters_from_context(videoStream_->codecpar, videoCodecCtx_.get());
     if (ret < 0) {
         return Result<void>::err("Failed to copy video codec params");
     }
     
     videoStream_->time_base = videoCodecCtx_->time_base;
     
-    // Allocate video frame
-    videoFrame_ = av_frame_alloc();
+    videoFrame_.reset(av_frame_alloc());
     if (!videoFrame_) {
         return Result<void>::err("Failed to allocate video frame");
     }
@@ -370,16 +319,15 @@ Result<void> VideoRecorder::initVideoStream() {
     videoFrame_->width = videoCodecCtx_->width;
     videoFrame_->height = videoCodecCtx_->height;
     
-    ret = av_frame_get_buffer(videoFrame_, 0);
+    ret = av_frame_get_buffer(videoFrame_.get(), 0);
     if (ret < 0) {
         return Result<void>::err("Failed to allocate video frame buffer");
     }
     
-    // Create swscale context for RGBA -> YUV conversion
-    swsCtx_ = sws_getContext(
+    swsCtx_.reset(sws_getContext(
         settings_.video.width, settings_.video.height, AV_PIX_FMT_RGBA,
         settings_.video.width, settings_.video.height, AV_PIX_FMT_YUV420P,
-        SWS_BILINEAR, nullptr, nullptr, nullptr);
+        SWS_BILINEAR, nullptr, nullptr, nullptr));
     
     if (!swsCtx_) {
         return Result<void>::err("Failed to create swscale context");
@@ -393,26 +341,22 @@ Result<void> VideoRecorder::initVideoStream() {
 }
 
 Result<void> VideoRecorder::initAudioStream() {
-    // Find encoder
     const AVCodec* codec = avcodec_find_encoder_by_name(settings_.audio.codecName().c_str());
     if (!codec) {
         LOG_WARN("Audio codec not found: {}, skipping audio", settings_.audio.codecName());
         return Result<void>::ok();
     }
     
-    // Create stream
-    audioStream_ = avformat_new_stream(formatCtx_, nullptr);
+    audioStream_ = avformat_new_stream(formatCtx_.get(), nullptr);
     if (!audioStream_) {
         return Result<void>::err("Failed to create audio stream");
     }
     
-    // Allocate codec context
-    audioCodecCtx_ = avcodec_alloc_context3(codec);
+    audioCodecCtx_.reset(avcodec_alloc_context3(codec));
     if (!audioCodecCtx_) {
         return Result<void>::err("Failed to allocate audio codec context");
     }
     
-    // Configure codec
     audioCodecCtx_->sample_rate = settings_.audio.sampleRate;
     audioCodecCtx_->bit_rate = settings_.audio.bitrate * 1000;
     
@@ -427,22 +371,19 @@ Result<void> VideoRecorder::initAudioStream() {
         audioCodecCtx_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
     
-    // Open codec
-    int ret = avcodec_open2(audioCodecCtx_, codec, nullptr);
+    int ret = avcodec_open2(audioCodecCtx_.get(), codec, nullptr);
     if (ret < 0) {
         return Result<void>::err("Failed to open audio codec: " + ffmpegError(ret));
     }
     
-    // Copy codec params to stream
-    ret = avcodec_parameters_from_context(audioStream_->codecpar, audioCodecCtx_);
+    ret = avcodec_parameters_from_context(audioStream_->codecpar, audioCodecCtx_.get());
     if (ret < 0) {
         return Result<void>::err("Failed to copy audio codec params");
     }
     
     audioStream_->time_base = audioCodecCtx_->time_base;
     
-    // Allocate audio frame
-    audioFrame_ = av_frame_alloc();
+    audioFrame_.reset(av_frame_alloc());
     if (!audioFrame_) {
         return Result<void>::err("Failed to allocate audio frame");
     }
@@ -453,23 +394,24 @@ Result<void> VideoRecorder::initAudioStream() {
     audioFrame_->nb_samples = audioCodecCtx_->frame_size;
     
     if (audioFrame_->nb_samples > 0) {
-        ret = av_frame_get_buffer(audioFrame_, 0);
+        ret = av_frame_get_buffer(audioFrame_.get(), 0);
         if (ret < 0) {
             return Result<void>::err("Failed to allocate audio frame buffer");
         }
     }
     
-    // Create swresample context
-    ret = swr_alloc_set_opts2(&swrCtx_,
+    SwrContext* s = nullptr;
+    ret = swr_alloc_set_opts2(&s,
         &audioCodecCtx_->ch_layout, audioCodecCtx_->sample_fmt, audioCodecCtx_->sample_rate,
         &layout, AV_SAMPLE_FMT_FLT, settings_.audio.sampleRate,
         0, nullptr);
+    swrCtx_.reset(s);
     
     if (ret < 0 || !swrCtx_) {
         return Result<void>::err("Failed to create swresample context");
     }
     
-    ret = swr_init(swrCtx_);
+    ret = swr_init(swrCtx_.get());
     if (ret < 0) {
         return Result<void>::err("Failed to init swresample: " + ffmpegError(ret));
     }
@@ -484,48 +426,14 @@ Result<void> VideoRecorder::initAudioStream() {
 void VideoRecorder::cleanupFFmpeg() {
     std::lock_guard lock(ffmpegMutex_);
     
-    if (packet_) {
-        av_packet_free(&packet_);
-        packet_ = nullptr;
-    }
-    
-    if (videoFrame_) {
-        av_frame_free(&videoFrame_);
-        videoFrame_ = nullptr;
-    }
-    
-    if (audioFrame_) {
-        av_frame_free(&audioFrame_);
-        audioFrame_ = nullptr;
-    }
-    
-    if (swsCtx_) {
-        sws_freeContext(swsCtx_);
-        swsCtx_ = nullptr;
-    }
-    
-    if (swrCtx_) {
-        swr_free(&swrCtx_);
-        swrCtx_ = nullptr;
-    }
-    
-    if (videoCodecCtx_) {
-        avcodec_free_context(&videoCodecCtx_);
-        videoCodecCtx_ = nullptr;
-    }
-    
-    if (audioCodecCtx_) {
-        avcodec_free_context(&audioCodecCtx_);
-        audioCodecCtx_ = nullptr;
-    }
-    
-    if (formatCtx_) {
-        if (formatCtx_->pb && !(formatCtx_->oformat->flags & AVFMT_NOFILE)) {
-            avio_closep(&formatCtx_->pb);
-        }
-        avformat_free_context(formatCtx_);
-        formatCtx_ = nullptr;
-    }
+    packet_.reset();
+    videoFrame_.reset();
+    audioFrame_.reset();
+    swsCtx_.reset();
+    swrCtx_.reset();
+    videoCodecCtx_.reset();
+    audioCodecCtx_.reset();
+    formatCtx_.reset();
     
     videoStream_ = nullptr;
     audioStream_ = nullptr;
@@ -534,23 +442,27 @@ void VideoRecorder::cleanupFFmpeg() {
 }
 
 bool VideoRecorder::encodeVideoFrame(AVFrame* frame) {
-    int ret = avcodec_send_frame(videoCodecCtx_, frame);
+    int ret = avcodec_send_frame(videoCodecCtx_.get(), frame);
     if (ret < 0) {
-        LOG_WARN("Error sending video frame: {}", ffmpegError(ret));
+        std::string errMsg = "Error sending video frame: " + ffmpegError(ret);
+        LOG_WARN("{}", errMsg);
+        error.emitSignal(errMsg);
         return false;
     }
     
     while (ret >= 0) {
-        ret = avcodec_receive_packet(videoCodecCtx_, packet_);
+        ret = avcodec_receive_packet(videoCodecCtx_.get(), packet_.get());
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         }
         if (ret < 0) {
-            LOG_WARN("Error receiving video packet: {}", ffmpegError(ret));
+            std::string errMsg = "Error receiving video packet: " + ffmpegError(ret);
+            LOG_WARN("{}", errMsg);
+            error.emitSignal(errMsg);
             return false;
         }
         
-        if (!writePacket(packet_, videoStream_)) {
+        if (!writePacket(packet_.get(), videoStream_)) {
             return false;
         }
     }
@@ -559,23 +471,27 @@ bool VideoRecorder::encodeVideoFrame(AVFrame* frame) {
 }
 
 bool VideoRecorder::encodeAudioFrame(AVFrame* frame) {
-    int ret = avcodec_send_frame(audioCodecCtx_, frame);
+    int ret = avcodec_send_frame(audioCodecCtx_.get(), frame);
     if (ret < 0) {
-        LOG_WARN("Error sending audio frame: {}", ffmpegError(ret));
+        std::string errMsg = "Error sending audio frame: " + ffmpegError(ret);
+        LOG_WARN("{}", errMsg);
+        error.emitSignal(errMsg);
         return false;
     }
     
     while (ret >= 0) {
-        ret = avcodec_receive_packet(audioCodecCtx_, packet_);
+        ret = avcodec_receive_packet(audioCodecCtx_.get(), packet_.get());
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         }
         if (ret < 0) {
-            LOG_WARN("Error receiving audio packet: {}", ffmpegError(ret));
+            std::string errMsg = "Error receiving audio packet: " + ffmpegError(ret);
+            LOG_WARN("{}", errMsg);
+            error.emitSignal(errMsg);
             return false;
         }
         
-        if (!writePacket(packet_, audioStream_)) {
+        if (!writePacket(packet_.get(), audioStream_)) {
             return false;
         }
     }
@@ -584,14 +500,13 @@ bool VideoRecorder::encodeAudioFrame(AVFrame* frame) {
 }
 
 bool VideoRecorder::writePacket(AVPacket* packet, AVStream* stream) {
-    // Rescale timestamps
     av_packet_rescale_ts(packet, 
         stream == videoStream_ ? videoCodecCtx_->time_base : audioCodecCtx_->time_base,
         stream->time_base);
     
     packet->stream_index = stream->index;
     
-    int ret = av_interleaved_write_frame(formatCtx_, packet);
+    int ret = av_interleaved_write_frame(formatCtx_.get(), packet);
     if (ret < 0) {
         LOG_WARN("Error writing packet: {}", ffmpegError(ret));
         return false;
@@ -602,23 +517,21 @@ bool VideoRecorder::writePacket(AVPacket* packet, AVStream* stream) {
 }
 
 void VideoRecorder::flushEncoders() {
-    // Flush video encoder
     if (videoCodecCtx_) {
-        avcodec_send_frame(videoCodecCtx_, nullptr);
+        avcodec_send_frame(videoCodecCtx_.get(), nullptr);
         
         int ret;
-        while ((ret = avcodec_receive_packet(videoCodecCtx_, packet_)) >= 0) {
-            writePacket(packet_, videoStream_);
+        while ((ret = avcodec_receive_packet(videoCodecCtx_.get(), packet_.get())) >= 0) {
+            writePacket(packet_.get(), videoStream_);
         }
     }
     
-    // Flush audio encoder
     if (audioCodecCtx_) {
-        avcodec_send_frame(audioCodecCtx_, nullptr);
+        avcodec_send_frame(audioCodecCtx_.get(), nullptr);
         
         int ret;
-        while ((ret = avcodec_receive_packet(audioCodecCtx_, packet_)) >= 0) {
-            writePacket(packet_, audioStream_);
+        while ((ret = avcodec_receive_packet(audioCodecCtx_.get(), packet_.get())) >= 0) {
+            writePacket(packet_.get(), audioStream_);
         }
     }
 }

@@ -71,17 +71,28 @@ public:
     
     // Emit signal to all connected slots
     void emitSignal(Args... args) {
-        std::lock_guard lock(mutex_);
-        emitting_ = true;
-        for (const auto& conn : slots_) {
-            if (conn.active) {
-                conn.callback(args...);
+        std::vector<Slot> slotsToCall;
+        {
+            std::lock_guard lock(mutex_);
+            emitting_ = true;
+            slotsToCall.reserve(slots_.size());
+            for (const auto& conn : slots_) {
+                if (conn.active) {
+                    slotsToCall.push_back(conn.callback);
+                }
             }
         }
-        emitting_ = false;
-        
-        // Cleanup inactive connections
-        std::erase_if(slots_, [](const Connection& c) { return !c.active; });
+
+        for (const auto& slot : slotsToCall) {
+            slot(args...);
+        }
+
+        {
+            std::lock_guard lock(mutex_);
+            emitting_ = false;
+            // Cleanup inactive connections
+            std::erase_if(slots_, [](const Connection& c) { return !c.active; });
+        }
     }
     
     // Operator() shorthand
