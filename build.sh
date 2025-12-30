@@ -62,7 +62,7 @@ build_debug() {
     fi
     
     echo "Running Ninja (single core for potato-safe)..."
-    ninja -j1
+    ninja -j$(nproc)
     
     if [ $? -ne 0 ]; then
         echo "Build failed!"

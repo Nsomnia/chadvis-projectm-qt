@@ -13,6 +13,7 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#include <atomic>
 
 namespace vc {
 
@@ -101,6 +102,10 @@ private:
     std::mutex audioMutex_;
     std::vector<f32> audioQueue_;  // Accumulates incoming audio data
     u32 audioSampleRate_{48000};   // Current audio sample rate
+    
+    // Preset loading protection
+    std::mutex presetLoadMutex_;   // Prevent concurrent preset loading
+    bool presetLoadInProgress_{false};  // Guard against reentrancy
 };
 
 } // namespace vc

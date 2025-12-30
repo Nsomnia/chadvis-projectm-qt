@@ -69,8 +69,12 @@ compile_commands.json
 *.swo
 *~
 
-# Agent scratchpad
+# Backup files and scratch
+*.backup
+*.bak
+*.tmp
 scratch/
+temp/
 # Backup graveyard
 .backup_graveyard/
 # Logs

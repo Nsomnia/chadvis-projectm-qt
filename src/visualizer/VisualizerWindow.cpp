@@ -382,15 +382,27 @@ void VisualizerWindow::updateFPS() {
 }
 
 void VisualizerWindow::loadPresetFromManager() {
+    // Prevent concurrent loading and reentrancy
+    std::lock_guard lock(presetLoadMutex_);
+    
+    if (presetLoadInProgress_) {
+        LOG_WARN("loadPresetFromManager() called while already in progress, ignoring");
+        return;
+    }
+    
+    presetLoadInProgress_ = true;
+    
     LOG_INFO("VisualizerWindow::loadPresetFromManager() called");
     
     if (!context_ || !context_->isValid()) {
         LOG_ERROR("Cannot load preset: OpenGL context not valid");
+        presetLoadInProgress_ = false;
         return;
     }
     
     if (!context_->makeCurrent(this)) {
         LOG_ERROR("Failed to make context current for preset loading");
+        presetLoadInProgress_ = false;
         return;
     }
     
@@ -402,6 +414,7 @@ void VisualizerWindow::loadPresetFromManager() {
     if (!preset) {
         LOG_ERROR("No preset selected in manager");
         presetLoading_ = false;
+        presetLoadInProgress_ = false;
         context_->doneCurrent();
         return;
     }
@@ -417,6 +430,7 @@ void VisualizerWindow::loadPresetFromManager() {
     
     // Reset loading flag
     presetLoading_ = false;
+    presetLoadInProgress_ = false;
     
     context_->doneCurrent();
 }

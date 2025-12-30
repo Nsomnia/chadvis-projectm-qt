@@ -1,16 +1,4 @@
 cmake_minimum_required(VERSION 3.20)
-project(chadvis-projectm-qt VERSION 1.0.0 LANGUAGES CXX)
-
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-#set(CMAKE_AUTOMOC ON)
-# Near the top, after project()
-set(CMAKE_AUTOMOC ON)
-# fsks compile up set(CMAKE_AUTOMOC_MOC_OPTIONS "-b" "stdafx.h")
-# Or, more simply, ensure headers are listed in sources
-# The key is that headers with Q_OBJECT must be in the source list
-
 # Remove problematic compiler flags that cause build failures
 # These flags can come from system config or Qt defaults
 string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -23,6 +11,17 @@ string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${
 # Also set them explicitly to ensure they stay clean
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "" FORCE)
+project(chadvis-projectm-qt VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+#set(CMAKE_AUTOMOC ON)
+# Near the top, after project()
+set(CMAKE_AUTOMOC ON)
+# fsks compile up set(CMAKE_AUTOMOC_MOC_OPTIONS "-b" "stdafx.h")
+# Or, more simply, ensure headers are listed in sources
+# The key is that headers with Q_OBJECT must be in the source list
 
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
