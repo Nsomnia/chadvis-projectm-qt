@@ -232,9 +232,6 @@ void VideoRecorder::processAudioBuffer() {
                            audioBuffer_.begin() + frameSize * channels);
         
         // Convert to encoder format using swresample
-        // For now, assuming float planar input matches
-        // In production, use swr_convert
-        
         const u8* srcData[1] = { reinterpret_cast<const u8*>(samples.data()) };
         
         int ret = swr_convert(swrCtx_, audioFrame_->data, frameSize,
@@ -247,7 +244,11 @@ void VideoRecorder::processAudioBuffer() {
         audioFrame_->pts = audioFrameCount_;
         audioFrameCount_ += frameSize;
         
-        encodeAudioFrame(audioFrame_);
+        // Lock FFmpeg mutex before encoding (shared state with video thread)
+        {
+            std::lock_guard lockFFmpeg(ffmpegMutex_);
+            encodeAudioFrame(audioFrame_);
+        }
     }
 }
 
