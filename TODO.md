@@ -70,3 +70,33 @@ All three fixes are now merged into `main` branch.
 
 **Last Updated**: 2025-12-30  
 **Status**: All critical fixes complete, ready for review
+
+---
+
+## 🚨 CRITICAL BUGS (From Claude Analysis)
+
+### Immediate Priority After Current Fixes:
+
+1. **Race Condition in VideoRecorder** (C1)
+   - `processAudioBuffer()` missing mutex lock
+   - File: `src/recorder/VideoRecorder.cpp`
+   - Risk: Data corruption, crashes
+
+2. **Memory Leak in FrameGrabber** (C2)
+   - PBO not unbound in error paths
+   - File: `src/recorder/FrameGrabber.cpp`
+   - Risk: GPU memory exhaustion
+
+3. **Use-After-Free in PresetBrowser** (C3)
+   - `itemData(index)` can become invalid
+   - File: `src/ui/PresetBrowser.cpp`
+   - Risk: Crashes, undefined behavior
+
+4. **Missing OpenGL Context** (C4)
+   - GL operations without `makeCurrent()`
+   - File: `src/visualizer/VisualizerWidget.cpp`
+   - Risk: GL errors, black screen
+
+---
+
+## See `.agent/TASKS.md` for full detailed task list
