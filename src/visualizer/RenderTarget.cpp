@@ -1,5 +1,6 @@
 #include "RenderTarget.hpp"
 #include "core/Logger.hpp"
+#include <QOpenGLContext>
 
 namespace vc {
 
@@ -35,6 +36,11 @@ RenderTarget& RenderTarget::operator=(RenderTarget&& other) noexcept {
 Result<void> RenderTarget::create(u32 width, u32 height, bool withDepth) {
     if (width == 0 || height == 0) {
         return Result<void>::err("Invalid render target size");
+    }
+    
+    // Verify OpenGL context is current
+    if (QOpenGLContext::currentContext() == nullptr) {
+        return Result<void>::err("No OpenGL context current for RenderTarget::create()");
     }
     
     destroy();
@@ -84,6 +90,16 @@ Result<void> RenderTarget::create(u32 width, u32 height, bool withDepth) {
 }
 
 void RenderTarget::destroy() {
+    // Only attempt GL operations if context is current
+    if (QOpenGLContext::currentContext() == nullptr) {
+        // Can't delete GL objects without context, just clear handles
+        depthBuffer_ = 0;
+        texture_ = 0;
+        fbo_ = 0;
+        width_ = height_ = 0;
+        return;
+    }
+    
     if (depthBuffer_) {
         glDeleteRenderbuffers(1, &depthBuffer_);
         depthBuffer_ = 0;
