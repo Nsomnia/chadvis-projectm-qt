@@ -117,11 +117,17 @@ bool PresetManager::selectByIndex(usize index) {
 }
 
 bool PresetManager::selectByName(const std::string& name) {
+    LOG_INFO("PresetManager::selectByName: searching for '{}'", name);
+    LOG_INFO("  Total presets: {}", presets_.size());
+    
     for (usize i = 0; i < presets_.size(); ++i) {
+        LOG_DEBUG("  Checking preset {}: '{}'", i, presets_[i].name);
         if (presets_[i].name == name && !presets_[i].blacklisted) {
+            LOG_INFO("  FOUND at index {}, calling selectByIndex", i);
             return selectByIndex(i);
         }
     }
+    LOG_WARN("  PRESET NOT FOUND: '{}'", name);
     return false;
 }
 

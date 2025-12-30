@@ -414,6 +414,7 @@ void MainWindow::stopRecording() {
 }
 
 void MainWindow::selectPreset(const std::string& name) {
+    LOG_INFO("MainWindow::selectPreset called with '{}'", name);
     visualizerPanel_->visualizer()->projectM().presets().selectByName(name);
 }
 
