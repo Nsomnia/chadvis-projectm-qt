@@ -4,54 +4,100 @@
 
 ## 🔴 CRITICAL - P0
 
-### 1. Preset Stuck on Default Visualizer
-**Problem**: No matter what settings user picks, system stays on default projectM visualizer
+### 1. Preset Selection Not Working
+**Problem**: Visualizer preset does NOT change regardless of settings
 
 **Symptoms**:
-- `--preset "Name"` ignored
-- GUI preset selection doesn't work
+- CLI `--preset` flag ignored
+- GUI preset selection ignored  
 - Config file preset ignored
+- Always shows default projectM visualizer
 
-**Files to Check**:
-- `src/visualizer/ProjectMBridge.cpp` - preset loading
-- `src/visualizer/VisualizerWindow.cpp` - preset change handling
-- `src/core/Application.cpp` - command line handling
+**Files to Investigate**:
+- `src/visualizer/ProjectMBridge.cpp` - preset loading logic
+- `src/visualizer/VisualizerWindow.cpp` - preset change handler
+- `src/core/Application.cpp` - command line preset handling
+- `src/ui/MainWindow.cpp` - GUI preset selection
 
-**Test**:
+**Test Commands**:
 ```bash
+# Test 1: CLI
 ./build.sh run --preset "Aderrasi - Airhandler"
-# Should show that preset, but shows default
+
+# Test 2: GUI
+# Launch app → Visualizer menu → select any preset
+
+# Test 3: Check logs for preset change attempts
+./build.sh run 2>&1 | grep -i preset
 ```
+
+**Debug Steps**:
+1. Add LOG_INFO in `ProjectMBridge::selectPreset()`
+2. Verify `projectm_load_preset_file()` is called
+3. Check if GL context is current during load
+4. Verify preset name matches available presets
 
 ---
 
-### 2. Visual Artifacts on Rapid Preset Changes
-**Problem**: Rapid preset changes cause 1-2 frames of artifacts/ghosting
+### 2. Flickering/Artifacts on Preset Change Attempts
+**Problem**: Redraw artifacts/flickering when trying to change preset
 
 **Symptoms**:
-- Ghosting when switching presets quickly
-- Lasts 1-2 frames
-- Race condition suspected
+- Visual corruption for 1-2 frames
+- Happens during preset change attempts
+- Looks like FBO not cleared or race condition
 
-**Files**:
-- `src/visualizer/ProjectMBridge.cpp`
-- `src/visualizer/VisualizerWindow.cpp`
-- `src/visualizer/RenderTarget.cpp`
+**Files to Check**:
+- `src/visualizer/ProjectMBridge.cpp` - preset change method
+- `src/visualizer/VisualizerWindow.cpp` - render loop
+- `src/visualizer/RenderTarget.cpp` - FBO management
+- `src/audio/AudioEngine.cpp` - audio feeding during transitions
 
 **Root Cause Theories**:
-1. FBO not cleared between loads
-2. Audio feeding during transition
-3. Race condition in render thread
+1. **FBO not cleared** on preset change
+2. **Audio continues feeding** during transition
+3. **Race condition** between render and preset load
+4. **projectM state** not reset properly
+
+**Fix Requirements**:
+- Clear FBO immediately on preset change
+- Pause audio feeding during transition
+- Ensure atomic preset operations
+
+---
+
+### 3. Excessive Debug Logging (Memory Risk)
+**Problem**: Frame render debug output is too verbose and frequent
+
+**Symptoms**:
+- Logs every frame with "RENDERED FRAME X"
+- Called 30-60 times per second
+- Memory risk from excessive I/O
+
+**Files to Fix**:
+- `src/visualizer/VisualizerWindow.cpp` - render() method
+- `src/audio/AudioEngine.cpp` - processAudioBuffer()
+
+**Current Code**:
+```cpp
+LOG_INFO("RENDERED FRAME {}", frameCount_);  // Too frequent!
+```
+
+**Fix**:
+- Change to `LOG_TRACE` or remove entirely
+- Only log every 10-30 frames if needed
+- Or use conditional logging based on debug flag
 
 ---
 
 ## 🟡 HIGH - P1
 
-### 3. Audio-Visual Sync Issues
-**Current**: `framesToFeed = (sampleRate + fps - 1) / fps`  
-**Issue**: Timer-based, causes jitter
+### 4. Audio-Visual Sync Issues
+**Status**: Identified but not fixed
+**Priority**: P1
 
-**Fix**: Feed all available audio, let projectM handle it
+**Current**: `framesToFeed = (sampleRate + fps - 1) / fps`  
+**Issue**: Timer-based calculation causes jitter
 
 **Files**:
 - `src/visualizer/VisualizerWindow.cpp` - renderFrame()
@@ -59,11 +105,11 @@
 
 ---
 
-### 4. Video Recording Threading
-**Problem**: `submitVideoFrame()` blocks render thread
+### 5. Video Recording Threading
+**Status**: Identified but not fixed
+**Priority**: P1
 
-**Current**: `processVideoFrame(frame)` on render thread  
-**Need**: PBO async + FrameGrabber queue
+**Problem**: `submitVideoFrame()` blocks render thread
 
 **Files**:
 - `src/recorder/VideoRecorder.cpp`
@@ -82,29 +128,30 @@
 
 ---
 
-## 📋 NEXT ACTIONS
+## 📋 IMMEDIATE ACTIONS
 
-1. **Fix preset selection bug** (P0)
-2. **Fix rapid change artifacts** (P0)
-3. **Improve audio sync** (P1)
-4. **Implement PBO recording** (P1)
+1. **Fix excessive logging** (quick win, reduces memory risk)
+2. **Fix preset selection** (critical functionality)
+3. **Fix flickering artifacts** (visual quality)
+4. **Improve audio sync** (performance)
 
 ---
 
-## 🎯 AGENT REMINDERS
+## 🎯 AGENT CHECKLIST
 
-**Before starting work**:
-- Check this file
-- Run `./build.sh check-deps`
-- Read the specific issue details
+**Before starting**:
+- [ ] Read `.agent/TASKS.md`
+- [ ] Run `./build.sh check-deps`
+- [ ] Identify which issue to fix
 
 **While working**:
-- ONE change at a time
-- Compile after each change
-- Test with `./build.sh run`
-- Update this file
+- [ ] ONE change at a time
+- [ ] Compile after each change
+- [ ] Test with `./build.sh run`
+- [ ] Check logs for issues
 
 **After finishing**:
-- Update this file
-- Run `./build.sh build`
-- Commit with proper message
+- [ ] Update this file
+- [ ] Run `./build.sh build`
+- [ ] Commit with proper message
+- [ ] Push to remote

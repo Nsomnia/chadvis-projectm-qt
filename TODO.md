@@ -1,30 +1,34 @@
-# ChadVis TODO
+# ChadVis TODO - Current Issues
 
-## Active Task Tracking
-**Current tasks are tracked in**: `.agent/TASKS.md`
+## Critical Problems (Fix Immediately)
 
-## Quick Reference
+### 1. Preset Selection Broken
+- **Issue**: Visualizer stays on default preset no matter what
+- **Impact**: Core functionality broken
+- **Files**: `src/visualizer/ProjectMBridge.cpp`, `src/visualizer/VisualizerWindow.cpp`
 
-### Build & Run
-```bash
-./build.sh build      # Debug build
-./build.sh run        # Build and run
-./build.sh test       # Run tests
-./build.sh help       # All commands
-```
+### 2. Flickering/Artifacts on Preset Change
+- **Issue**: Visual corruption when attempting preset changes
+- **Impact**: Poor user experience
+- **Files**: `src/visualizer/RenderTarget.cpp`, `src/visualizer/VisualizerWindow.cpp`
 
-### Current Critical Issues
-1. **Preset selection stuck on default** (P0)
-2. **Visual artifacts on rapid changes** (P0)
-
-### Completed Fixes
-- ✅ Zero-allocation audio hot path
-- ✅ Atomic config saving
-- ✅ Wayland/Hyprland hang fix
-- ✅ Diagnostic timer fix
-- ✅ Unified build system
-- ✅ Repository rename
+### 3. Excessive Debug Logging
+- **Issue**: Frame logs every frame (30-60x/sec), memory risk
+- **Impact**: Performance degradation, log spam
+- **Files**: `src/visualizer/VisualizerWindow.cpp`, `src/audio/AudioEngine.cpp`
 
 ---
 
-**For detailed task tracking, see `.agent/TASKS.md`**
+## Detailed Tracking
+See `.agent/TASKS.md` for full details, debug steps, and test commands.
+
+## Quick Commands
+```bash
+./build.sh build      # Build
+./build.sh run        # Run and test
+./build.sh test       # Run tests
+```
+
+---
+
+**Last Updated**: 2025-12-30
