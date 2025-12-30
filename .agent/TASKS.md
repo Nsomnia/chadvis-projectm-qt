@@ -38,6 +38,7 @@ git push origin main
 ## 🔴 CRITICAL - P0
 
 ### 1. Preset Selection Not Working
+**Status**: ✅ FIXED
 **Problem**: Visualizer preset does NOT change regardless of settings
 
 **Symptoms**:
@@ -70,7 +71,8 @@ git push origin main
 3. Check if GL context is current during load
 4. Verify preset name matches available presets
 
-**Branch**: `fix/preset-selection`
+**Branch**: `fix/preset-selection`  
+**Fix**: Added `projectm_load_preset_file()` call in `onPresetManagerChanged()`
 
 ---
 
