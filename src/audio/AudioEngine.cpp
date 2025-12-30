@@ -164,8 +164,8 @@ void AudioEngine::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
 void AudioEngine::onAudioBufferReceived(const QAudioBuffer& buffer) {
     bufferReceivedSinceLastCheck_ = true;
-    LOG_INFO("AudioEngine::onAudioBufferReceived: buffer valid={}, frames={}", 
-              buffer.isValid(), buffer.frameCount());
+    LOG_DEBUG("AudioEngine::onAudioBufferReceived: buffer valid={}, frames={}", 
+               buffer.isValid(), buffer.frameCount());
     processAudioBuffer(buffer);
 }
 

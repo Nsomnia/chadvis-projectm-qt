@@ -119,6 +119,7 @@ void VisualizerWindow::initialize() {
     pmConfig.transitionDuration = vizConfig.smoothPresetDuration;
     pmConfig.shufflePresets = vizConfig.shufflePresets;
     pmConfig.forcePreset = vizConfig.forcePreset;
+    pmConfig.useDefaultPreset = vizConfig.useDefaultPreset;
     
     // Connect to preset loading signal to pause audio during transitions
     // MUST be connected BEFORE init() so signals emitted during init are received

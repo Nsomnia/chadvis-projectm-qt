@@ -84,4 +84,5 @@ preset_duration = 30
 preset_path = '/usr/share/projectM/presets'
 shuffle_presets = true
 smooth_preset_duration = 5
+use_default_preset = false
 width = 1920

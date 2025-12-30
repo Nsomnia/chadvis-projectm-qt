@@ -169,23 +169,35 @@ The `VisualizerWindow` class (in `src/visualizer/VisualizerWindow.cpp`) replaces
 
 This fixes the issue where projectM would initialize but only render 1 frame.
 
-## ✅ Current Status
+## ✅ Current Status: v1.0-beta
 
 **Build Status**: ✅ WORKING - Compiles successfully  
-**Runtime Status**: ✅ WORKING - Application runs, initializes OpenGL, loads 8000+ presets  
-**Audio**: ⏳ TODO - Needs testing with actual audio playback  
-**Video Recording**: ⏳ TODO - Feature present but untested  
+**Runtime Status**: ✅ WORKING - All core features functional  
+**Audio**: ✅ WORKING - Real-time audio analysis and visualization  
+**Preset Selection**: ✅ WORKING - CLI, GUI, and default preset modes  
+**Video Recording**: ✅ WORKING - FFmpeg-based recording  
+**Critical Bugs**: ✅ FIXED - All 4 critical bugs resolved  
 
 **Test Output**:
 ```
-[info] OpenGL: 4.6 (Core Profile) Mesa 25.3.1-arch1.3
-[info] Scanned 8386 presets from /usr/share/projectM/presets
-[info] ProjectM initialized: 402x248 @ 60 fps, 8386 presets
+[info] OpenGL: 4.6 (Core Profile) Mesa 25.3.2-arch1.2
+[info] Scanned 8980 presets from /usr/share/projectM/presets
+[info] ProjectM initialized: 320x782 @ 30 fps, 8980 presets
 [info] Visualizer window initialized
+[info] AudioEngine: projectM handle set to 0x559416712ad0
 ```
+
+**v1.0-beta Features**:
+- ✅ Preset selection via CLI (`--preset`, `--default-preset`)
+- ✅ GUI preset browser with search and filtering
+- ✅ Next/Previous preset buttons (one-click, handles duplicates)
+- ✅ Real-time audio visualization
+- ✅ Video recording with FFmpeg
+- ✅ Text overlays and custom graphics
+- ✅ Configurable via TOML config files
+- ✅ Keyboard shortcuts (F11 fullscreen, R record, etc.)
 
 **Known Issues**:
 - Build takes ~5-10 minutes (C++20 with optimizations)
 - VDPAU warning if no NVIDIA GPU (harmless)
-- Audio playback needs testing
-- Video recording needs testing
+- Some debug logs still show in info mode (will be fixed)
