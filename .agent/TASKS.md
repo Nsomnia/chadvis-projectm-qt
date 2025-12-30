@@ -2,6 +2,39 @@
 **Last Updated**: 2025-12-30  
 **Session**: Active Development
 
+## 🚀 WORKFLOW RULES (NEW)
+
+### Branch Strategy
+```bash
+# Create feature branch for each fix
+git checkout -b fix/preset-selection
+git checkout -b fix/excessive-logging
+git checkout -b fix/flickering-artifacts
+
+# Work on branch, commit frequently
+git add .
+git commit -m "fix: description"
+git push origin fix/branch-name
+
+# When ready, create PR or merge
+git checkout main
+git merge fix/branch-name
+git push origin main
+```
+
+### Commit Frequency
+- **Commit after EVERY logical change**
+- **Push when compilation succeeds**
+- **Don't wait for "perfect" solution**
+- **Use descriptive commit messages**
+
+### Undo Strategy
+- **Use git revert** instead of chat history
+- **Branch isolation** prevents main corruption
+- **Frequent commits** = easy rollback
+
+---
+
 ## 🔴 CRITICAL - P0
 
 ### 1. Preset Selection Not Working
@@ -27,7 +60,7 @@
 # Test 2: GUI
 # Launch app → Visualizer menu → select any preset
 
-# Test 3: Check logs for preset change attempts
+# Test 3: Check logs
 ./build.sh run 2>&1 | grep -i preset
 ```
 
@@ -36,6 +69,34 @@
 2. Verify `projectm_load_preset_file()` is called
 3. Check if GL context is current during load
 4. Verify preset name matches available presets
+
+**Branch**: `fix/preset-selection`
+
+---
+
+### 3. Excessive Debug Logging (Memory Risk)
+**Problem**: Frame render debug output is too verbose and frequent
+
+**Symptoms**:
+- Logs every frame with "RENDERED FRAME X"
+- Called 30-60 times per second
+- Memory risk from excessive I/O
+
+**Files to Fix**:
+- `src/visualizer/VisualizerWindow.cpp` - render() method
+- `src/audio/AudioEngine.cpp` - processAudioBuffer()
+
+**Current Code**:
+```cpp
+LOG_INFO("RENDERED FRAME {}", frameCount_);  // Too frequent!
+```
+
+**Fix**:
+- Change to `LOG_TRACE` or remove entirely
+- Only log every 10-30 frames if needed
+- Or use conditional logging based on debug flag
+
+**Branch**: `fix/excessive-logging`
 
 ---
 
@@ -64,29 +125,7 @@
 - Pause audio feeding during transition
 - Ensure atomic preset operations
 
----
-
-### 3. Excessive Debug Logging (Memory Risk)
-**Problem**: Frame render debug output is too verbose and frequent
-
-**Symptoms**:
-- Logs every frame with "RENDERED FRAME X"
-- Called 30-60 times per second
-- Memory risk from excessive I/O
-
-**Files to Fix**:
-- `src/visualizer/VisualizerWindow.cpp` - render() method
-- `src/audio/AudioEngine.cpp` - processAudioBuffer()
-
-**Current Code**:
-```cpp
-LOG_INFO("RENDERED FRAME {}", frameCount_);  // Too frequent!
-```
-
-**Fix**:
-- Change to `LOG_TRACE` or remove entirely
-- Only log every 10-30 frames if needed
-- Or use conditional logging based on debug flag
+**Branch**: `fix/flickering-artifacts`
 
 ---
 
@@ -128,30 +167,38 @@ LOG_INFO("RENDERED FRAME {}", frameCount_);  // Too frequent!
 
 ---
 
-## 📋 IMMEDIATE ACTIONS
+## 📋 FIX ORDER: 1 → 3 → 2
 
-1. **Fix excessive logging** (quick win, reduces memory risk)
-2. **Fix preset selection** (critical functionality)
-3. **Fix flickering artifacts** (visual quality)
-4. **Improve audio sync** (performance)
+**Current Focus**: Issue #1 - Preset Selection Not Working
+
+**Next**: Issue #3 - Excessive Logging  
+**Then**: Issue #2 - Flickering Artifacts
 
 ---
 
 ## 🎯 AGENT CHECKLIST
 
 **Before starting**:
-- [ ] Read `.agent/TASKS.md`
+- [ ] Create branch: `git checkout -b fix/<issue-name>`
 - [ ] Run `./build.sh check-deps`
-- [ ] Identify which issue to fix
+- [ ] Read issue details
 
 **While working**:
 - [ ] ONE change at a time
 - [ ] Compile after each change
 - [ ] Test with `./build.sh run`
-- [ ] Check logs for issues
+- [ ] Commit frequently with descriptive messages
+- [ ] Push branch to remote
 
 **After finishing**:
 - [ ] Update this file
-- [ ] Run `./build.sh build`
-- [ ] Commit with proper message
-- [ ] Push to remote
+- [ ] Run `./build.sh build` (full verification)
+- [ ] Commit final changes
+- [ ] Push branch
+- [ ] Request user review/merge
+
+**Merge to main**:
+- [ ] User confirms satisfactory
+- [ ] `git checkout main`
+- [ ] `git merge fix/<branch-name>`
+- [ ] `git push origin main`
