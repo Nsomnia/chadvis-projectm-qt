@@ -255,9 +255,13 @@ bool AsyncFrameGrabber::getCompletedFrame(GrabbedFrame& frame) {
                 }
                 
                 return true;
+            } else {
+                // Map failed - unbind and mark slot as ready to prevent leak
+                glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+                slot.inUse = false;
+                slot.ready = true;
+                LOG_WARN("AsyncFrameGrabber: Failed to map PBO, slot leaked prevention");
             }
-            
-            glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         }
     }
     
