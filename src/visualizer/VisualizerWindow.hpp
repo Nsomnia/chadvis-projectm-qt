@@ -21,6 +21,9 @@ class OverlayEngine;
 class VisualizerWindow : public QWindow, protected QOpenGLFunctions_3_3_Core {
     Q_OBJECT
     
+signals:
+    void presetNameUpdated(const QString& name);
+    
 public:
     explicit VisualizerWindow(QWindow* parent = nullptr);
     ~VisualizerWindow() override;
@@ -28,6 +31,9 @@ public:
     // ProjectM access
     ProjectMBridge& projectM() { return projectM_; }
     const ProjectMBridge& projectM() const { return projectM_; }
+    
+    // Preset loading
+    void loadPresetFromManager();
     
     // Overlay
     void setOverlayEngine(OverlayEngine* engine) { overlayEngine_ = engine; }

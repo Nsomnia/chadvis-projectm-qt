@@ -49,6 +49,18 @@ Result<void> PresetManager::scan(const fs::path& directory, bool recursive) {
     });
     
     LOG_INFO("Scanned {} presets from {}", presets_.size(), directory.string());
+    
+    // Apply pending preset if one was requested before scanning
+    if (!pendingPresetName_.empty()) {
+        LOG_INFO("Applying pending preset request: '{}'", pendingPresetName_);
+        if (selectByName(pendingPresetName_)) {
+            LOG_INFO("Successfully selected pending preset: {}", pendingPresetName_);
+        } else {
+            LOG_WARN("Pending preset '{}' not found after scanning", pendingPresetName_);
+        }
+        pendingPresetName_.clear();
+    }
+    
     listChanged.emitSignal();
     
     return Result<void>::ok();
@@ -120,6 +132,14 @@ bool PresetManager::selectByName(const std::string& name) {
     LOG_INFO("PresetManager::selectByName: searching for '{}'", name);
     LOG_INFO("  Total presets: {}", presets_.size());
     
+    // If no presets loaded yet, store as pending
+    if (presets_.empty()) {
+        LOG_INFO("  No presets loaded yet, storing as pending preset");
+        pendingPresetName_ = name;
+        return false;
+    }
+    
+    // First try exact match
     for (usize i = 0; i < presets_.size(); ++i) {
         LOG_DEBUG("  Checking preset {}: '{}'", i, presets_[i].name);
         if (presets_[i].name == name && !presets_[i].blacklisted) {
@@ -127,6 +147,36 @@ bool PresetManager::selectByName(const std::string& name) {
             return selectByIndex(i);
         }
     }
+    
+    // If no exact match, try partial match (contains)
+    LOG_INFO("  No exact match, trying partial match");
+    for (usize i = 0; i < presets_.size(); ++i) {
+        if (presets_[i].blacklisted) continue;
+        
+        // Check if preset name contains the search string
+        if (presets_[i].name.find(name) != std::string::npos) {
+            LOG_INFO("  FOUND partial match at index {}: '{}'", i, presets_[i].name);
+            return selectByIndex(i);
+        }
+    }
+    
+    // If still no match, try case-insensitive partial match
+    LOG_INFO("  No partial match, trying case-insensitive");
+    std::string lowerName = name;
+    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+    
+    for (usize i = 0; i < presets_.size(); ++i) {
+        if (presets_[i].blacklisted) continue;
+        
+        std::string lowerPreset = presets_[i].name;
+        std::transform(lowerPreset.begin(), lowerPreset.end(), lowerPreset.begin(), ::tolower);
+        
+        if (lowerPreset.find(lowerName) != std::string::npos) {
+            LOG_INFO("  FOUND case-insensitive match at index {}: '{}'", i, presets_[i].name);
+            return selectByIndex(i);
+        }
+    }
+    
     LOG_WARN("  PRESET NOT FOUND: '{}'", name);
     return false;
 }
@@ -166,10 +216,17 @@ bool PresetManager::selectNext() {
         return false;
     }
     
+    // Get current preset name to skip duplicates
+    std::string currentName = presets_[currentIndex_].name;
+    
     usize start = currentIndex_;
     do {
         currentIndex_ = (currentIndex_ + 1) % presets_.size();
         if (!presets_[currentIndex_].blacklisted) {
+            // Skip presets with the same name as current
+            if (presets_[currentIndex_].name == currentName) {
+                continue;
+            }
             presets_[currentIndex_].playCount++;
             LOG_DEBUG("PresetManager: Selected next preset at index {}: {}", currentIndex_, presets_[currentIndex_].name);
             presetChanged.emitSignal(&presets_[currentIndex_]);
@@ -177,17 +234,24 @@ bool PresetManager::selectNext() {
         }
     } while (currentIndex_ != start);
     
-    LOG_WARN("PresetManager: All presets are blacklisted");
+    LOG_WARN("PresetManager: All presets are blacklisted or have same name");
     return false;
 }
 
 bool PresetManager::selectPrevious() {
     if (presets_.empty()) return false;
     
+    // Get current preset name to skip duplicates
+    std::string currentName = presets_[currentIndex_].name;
+    
     usize start = currentIndex_;
     do {
         currentIndex_ = (currentIndex_ == 0) ? presets_.size() - 1 : currentIndex_ - 1;
         if (!presets_[currentIndex_].blacklisted) {
+            // Skip presets with the same name as current
+            if (presets_[currentIndex_].name == currentName) {
+                continue;
+            }
             presets_[currentIndex_].playCount++;
             presetChanged.emitSignal(&presets_[currentIndex_]);
             return true;

@@ -119,12 +119,16 @@ void VisualizerPanel::setupUI() {
     
     LOG_INFO("VisualizerPanel: Connecting to presetChanged signal");
     visualizerWindow_->projectM().presetChanged.connect([this](const std::string& name) {
-        LOG_DEBUG("VisualizerPanel: Received presetChanged signal for: {}", name);
-        QMetaObject::invokeMethod(this, [this, name] {
-            updatePresetName(QString::fromStdString(name));
-        });
+        LOG_DEBUG("VisualizerPanel: Received ProjectMBridge::presetChanged signal for: {}", name);
+        // Note: Preset not loaded yet, just tracking selection
     });
-    LOG_INFO("VisualizerPanel: Connected to presetChanged signal");
+    
+    connect(visualizerWindow_, &VisualizerWindow::presetNameUpdated, this, [this](const QString& name) {
+        LOG_DEBUG("VisualizerPanel: Received VisualizerWindow::presetNameUpdated signal for: {}", name.toStdString());
+        updatePresetName(name);
+    });
+    
+    LOG_INFO("VisualizerPanel: Connected to preset signals");
 }
 
 void VisualizerPanel::updatePresetName(const QString& name) {

@@ -51,6 +51,11 @@ public:
     bool selectNext();
     bool selectPrevious();
     
+    // Pending preset (for command-line args before scanning)
+    void setPendingPreset(const std::string& name) { pendingPresetName_ = name; }
+    const std::string& pendingPreset() const { return pendingPresetName_; }
+    void clearPendingPreset() { pendingPresetName_.clear(); }
+    
     // Favorites & Blacklist
     void setFavorite(usize index, bool favorite);
     void setBlacklisted(usize index, bool blacklisted);
@@ -78,6 +83,7 @@ private:
     
     std::set<std::string> favoriteNames_;
     std::set<std::string> blacklistedNames_;
+    std::string pendingPresetName_;  // Preset requested before scanning
     
     std::mt19937 rng_{std::random_device{}()};
 };

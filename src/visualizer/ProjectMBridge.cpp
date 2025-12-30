@@ -39,6 +39,11 @@ Result<void> ProjectMBridge::init(const ProjectMConfig& config) {
     LOG_INFO("ProjectM configured: fps={}, preset_duration={}, shuffle={}", 
              config.fps, config.presetDuration, config.shufflePresets);
     
+    // Connect preset manager BEFORE scanning so signals are received
+    presets_.presetChanged.connect([this](const PresetInfo* p) {
+        onPresetManagerChanged(p);
+    });
+    
     // Load presets
     if (!config.presetPath.empty() && fs::exists(config.presetPath)) {
         auto result = presets_.scan(config.presetPath);
@@ -51,17 +56,18 @@ Result<void> ProjectMBridge::init(const ProjectMConfig& config) {
         presets_.loadState(statePath);
     }
     
-    // Connect preset manager
-    presets_.presetChanged.connect([this](const PresetInfo* p) {
-        onPresetManagerChanged(p);
-    });
-    
     // Select initial preset
     if (config.useDefaultPreset) {
         LOG_INFO("Using default projectM visualizer (no preset)");
     } else if (!presets_.empty()) {
-        // Check if a specific preset is forced
-        if (!config.forcePreset.empty()) {
+        // Check if a preset was already selected (e.g., from command-line before scanning)
+        // If currentIndex is not 0, a preset was already selected
+        bool presetAlreadySelected = presets_.currentIndex() > 0 && presets_.current() != nullptr;
+        
+        if (presetAlreadySelected) {
+            LOG_INFO("Preset already selected: {}", presets_.current()->name);
+        } else if (!config.forcePreset.empty()) {
+            // Check if a specific preset is forced
             if (presets_.selectByName(config.forcePreset)) {
                 LOG_INFO("Forced preset loaded: {}", config.forcePreset);
             } else {
@@ -276,20 +282,11 @@ void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
     LOG_INFO("  Preset path: {}", preset->path.string());
     LOG_INFO("  Preset exists: {}", fs::exists(preset->path) ? "YES" : "NO");
     
-    // Notify about loading start
-    presetLoading.emitSignal(true);
-    
-    // Load the new preset (false = no smooth transition)
-    LOG_INFO("  Calling projectm_load_preset_file...");
-    projectm_load_preset_file(projectM_, preset->path.c_str(), false);
-    LOG_INFO("  projectm_load_preset_file returned");
-    
-    // Notify about loading end
-    presetLoading.emitSignal(false);
-    
-    // Emit signal for UI updates
+    // Emit signal for VisualizerWindow to load with proper GL context
+    // VisualizerWindow will handle the actual loading
     presetChanged.emitSignal(preset->name);
-    LOG_DEBUG("  Emitted presetChanged signal for: {}", preset->name);
+    LOG_INFO("  Emitted presetChanged signal for: {}", preset->name);
+    LOG_INFO("  VisualizerWindow should load preset with GL context");
 }
 
 } // namespace vc

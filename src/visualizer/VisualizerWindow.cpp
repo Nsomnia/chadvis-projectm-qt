@@ -120,18 +120,26 @@ void VisualizerWindow::initialize() {
     pmConfig.shufflePresets = vizConfig.shufflePresets;
     pmConfig.forcePreset = vizConfig.forcePreset;
     
+    // Connect to preset loading signal to pause audio during transitions
+    // MUST be connected BEFORE init() so signals emitted during init are received
+    projectM_.presetLoading.connect([this](bool loading) {
+        presetLoading_ = loading;
+        LOG_DEBUG("VisualizerWindow: presetLoading_ = {}", loading);
+    });
+    
+    // Connect to presetChanged to actually load the preset with GL context
+    // MUST be connected BEFORE init() so signals emitted during init are received
+    projectM_.presetChanged.connect([this](const std::string& name) {
+        LOG_INFO("VisualizerWindow: Received presetChanged for '{}'", name);
+        loadPresetFromManager();
+    });
+    
     LOG_DEBUG("VisualizerWindow::initialize: About to init ProjectMBridge");
     if (auto result = projectM_.init(pmConfig); !result) {
         LOG_ERROR("ProjectM init failed: {}", result.error().message);
         return;
     }
     LOG_DEBUG("VisualizerWindow::initialize: ProjectMBridge initialized successfully");
-    
-    // Connect to preset loading signal to pause audio during transitions
-    projectM_.presetLoading.connect([this](bool loading) {
-        presetLoading_ = loading;
-        LOG_DEBUG("VisualizerWindow: presetLoading_ = {}", loading);
-    });
     
     // Create render targets
     renderTarget_.create(width(), height());
@@ -370,6 +378,46 @@ void VisualizerWindow::updateFPS() {
     actualFps_ = static_cast<f32>(frameCount_);
     frameCount_ = 0;
     emit fpsChanged(actualFps_);
+}
+
+void VisualizerWindow::loadPresetFromManager() {
+    LOG_INFO("VisualizerWindow::loadPresetFromManager() called");
+    
+    if (!context_ || !context_->isValid()) {
+        LOG_ERROR("Cannot load preset: OpenGL context not valid");
+        return;
+    }
+    
+    if (!context_->makeCurrent(this)) {
+        LOG_ERROR("Failed to make context current for preset loading");
+        return;
+    }
+    
+    // Set loading flag to pause audio and clear FBO
+    presetLoading_ = true;
+    
+    // Get the currently selected preset from the manager
+    const auto* preset = projectM_.presets().current();
+    if (!preset) {
+        LOG_ERROR("No preset selected in manager");
+        presetLoading_ = false;
+        context_->doneCurrent();
+        return;
+    }
+    
+    LOG_INFO("Loading preset: {} from {}", preset->name, preset->path.string());
+    
+    // Load the preset using projectM API
+    // The projectM handle is valid and we have GL context
+    projectm_load_preset_file(projectM_.getHandle(), preset->path.c_str(), false);
+    
+    LOG_INFO("Preset loaded: {}", preset->name);
+    emit presetNameUpdated(QString::fromStdString(preset->name));
+    
+    // Reset loading flag
+    presetLoading_ = false;
+    
+    context_->doneCurrent();
 }
 
 void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
