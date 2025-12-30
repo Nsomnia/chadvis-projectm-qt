@@ -274,8 +274,11 @@ void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
     
     LOG_INFO("  Preset selected: {} from {}", preset->name, preset->path.string());
     
-    // Emit signal first - VisualizerWindow will handle the actual loading
-    // This ensures it happens with proper GL context
+    // Actually load the preset into projectM
+    projectm_load_preset_file(projectM_, preset->path.c_str(), false);
+    LOG_DEBUG("  Loaded preset into projectM: {}", preset->name);
+    
+    // Emit signal for UI updates
     presetChanged.emitSignal(preset->name);
     LOG_DEBUG("  Emitted presetChanged signal for: {}", preset->name);
 }

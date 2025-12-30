@@ -1,6 +1,26 @@
 # AGENTS.md - projectM Qt Visualizer
 **"I use Arch, BTW" - This is a Chad developer's codebase.**
 
+## Tools
+
+## Some of the avialble tools to the agent based on `opencode stats`
+┌────────────────────────────────────────────────────────┐
+│                      TOOL USAGE                        │
+├────────────────────────────────────────────────────────┤
+│ bash               ████████████████████ 3116 (76.4%)   │
+│ read               ██                   433 (10.6%)    │
+│ edit               █                    289 ( 7.1%)    │
+│ write              █                    169 ( 4.1%)    │
+│ todowrite          █                     26 ( 0.6%)    │
+│ task               █                     17 ( 0.4%)    │
+│ grep               █                     12 ( 0.3%)    │
+│ glob               █                      8 ( 0.2%)    │
+│ list               █                      4 ( 0.1%)    │
+│ invalid            █                      2 ( 0.0%)    │
+│ websearch          █                      1 ( 0.0%)    │
+│ webfetch           █                      1 ( 0.0%)    │
+└────────────────────────────────────────────────────────┘
+
 ## Quick Start for Agents
 
 ### Build Commands
@@ -346,6 +366,7 @@ QT_LOGGING_RULES="qt.opengl=true" ./build/src/projectm-qt-visualizer
 - **Document in SESSION_HANDOFF.md**
 - **Use backup_file.sh** for any file deletion
 - **Ask human for visual/audio verification**
+- **Make commits to github as often as realisticly appropriate: as frquently as appropriate to have easy restoration without needing to access the chat context window and to have a more granular history during early stage with unstable core functionality going through rapid development and frequent changes.
 
 ### After Finishing
 1. Update `.agent/CURRENT_STATE.md`

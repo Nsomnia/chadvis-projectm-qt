@@ -5,6 +5,21 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# FIX: Remove problematic compiler flags that cause "Unknown argument" errors
+# These flags can come from system config, Qt defaults, or environment variables
+export CXXFLAGS=$(echo "$CXXFLAGS" | sed 's/-mno-direct-extern-access//g')
+export CFLAGS=$(echo "$CFLAGS" | sed 's/-mno-direct-extern-access//g')
+export CMAKE_CXX_FLAGS=$(echo "$CMAKE_CXX_FLAGS" | sed 's/-mno-direct-extern-access//g')
+export CMAKE_C_FLAGS=$(echo "$CMAKE_C_FLAGS" | sed 's/-mno-direct-extern-access//g')
+
+# Also filter from any Qt or system defaults
+export QMAKE_CXXFLAGS=$(echo "$QMAKE_CXXFLAGS" | sed 's/-mno-direct-extern-access//g')
+
+# FIX: Remove problematic compiler flags that cause build failures
+# These flags can come from system config or environment
+export CXXFLAGS=$(echo "$CXXFLAGS" | sed 's/-mno-direct-extern-access//g')
+export CFLAGS=$(echo "$CFLAGS" | sed 's/-mno-direct-extern-access//g')
+
 usage() {
     echo "Usage: $0 {build|release|clean|run|test|check-deps|help}"
     echo ""
