@@ -127,6 +127,12 @@ void VisualizerWindow::initialize() {
     }
     LOG_DEBUG("VisualizerWindow::initialize: ProjectMBridge initialized successfully");
     
+    // Connect to preset loading signal to pause audio during transitions
+    projectM_.presetLoading.connect([this](bool loading) {
+        presetLoading_ = loading;
+        LOG_DEBUG("VisualizerWindow: presetLoading_ = {}", loading);
+    });
+    
     // Create render targets
     renderTarget_.create(width(), height());
     overlayTarget_.create(width(), height());
@@ -197,6 +203,25 @@ void VisualizerWindow::render() {
 }
 
 void VisualizerWindow::renderFrame() {
+    // Handle preset transitions
+    if (presetLoading_) {
+        LOG_DEBUG("renderFrame: presetLoading_ is true, clearing FBO and skipping render");
+        // Clear the framebuffer to prevent ghosting from old preset
+        if (recording_) {
+            renderTarget_.bind();
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            renderTarget_.unbind();
+        } else {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, width(), height());
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+        // Skip audio feeding and projectM render during transition
+        return;
+    }
+    
     // Feed audio data from queue (thread-safe)
     // Feed at the correct rate: sampleRate / fps
     {

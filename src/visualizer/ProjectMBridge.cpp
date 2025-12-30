@@ -274,9 +274,15 @@ void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
     
     LOG_INFO("  Preset selected: {} from {}", preset->name, preset->path.string());
     
-    // Actually load the preset into projectM
+    // Notify about loading start
+    presetLoading.emitSignal(true);
+    
+    // Load the new preset
     projectm_load_preset_file(projectM_, preset->path.c_str(), false);
     LOG_DEBUG("  Loaded preset into projectM: {}", preset->name);
+    
+    // Notify about loading end
+    presetLoading.emitSignal(false);
     
     // Emit signal for UI updates
     presetChanged.emitSignal(preset->name);

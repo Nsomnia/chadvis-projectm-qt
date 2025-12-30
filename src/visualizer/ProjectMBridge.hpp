@@ -79,6 +79,7 @@ public:
     
     // Signals
     Signal<std::string> presetChanged;
+    Signal<bool> presetLoading;  // Notify about preset loading state
     
 private:
     void onPresetManagerChanged(const PresetInfo* preset);

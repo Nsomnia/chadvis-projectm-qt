@@ -68,6 +68,7 @@ private:
     std::unique_ptr<QOpenGLContext> context_;
     
     ProjectMBridge projectM_;
+    bool presetLoading_{false};  // Pause audio during preset transition
     OverlayEngine* overlayEngine_{nullptr};
     
     RenderTarget renderTarget_;
