@@ -3,7 +3,7 @@
 
 ## Tools
 
-## Some of the avialble tools to the agent based on `opencode stats`
+### Some of the avialble tools to the agent based on `opencode stats`
 ┌────────────────────────────────────────────────────────┐
 │                      TOOL USAGE                        │
 ├────────────────────────────────────────────────────────┤
@@ -20,6 +20,9 @@
 │ websearch          █                      1 ( 0.0%)    │
 │ webfetch           █                      1 ( 0.0%)    │
 └────────────────────────────────────────────────────────┘
+
+
+### Other user notes
 
 ## Quick Start for Agents
 

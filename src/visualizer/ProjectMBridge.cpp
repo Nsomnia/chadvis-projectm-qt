@@ -273,13 +273,16 @@ void ProjectMBridge::onPresetManagerChanged(const PresetInfo* preset) {
     }
     
     LOG_INFO("  Preset selected: {} from {}", preset->name, preset->path.string());
+    LOG_INFO("  Preset path: {}", preset->path.string());
+    LOG_INFO("  Preset exists: {}", fs::exists(preset->path) ? "YES" : "NO");
     
     // Notify about loading start
     presetLoading.emitSignal(true);
     
-    // Load the new preset
+    // Load the new preset (false = no smooth transition)
+    LOG_INFO("  Calling projectm_load_preset_file...");
     projectm_load_preset_file(projectM_, preset->path.c_str(), false);
-    LOG_DEBUG("  Loaded preset into projectM: {}", preset->name);
+    LOG_INFO("  projectm_load_preset_file returned");
     
     // Notify about loading end
     presetLoading.emitSignal(false);

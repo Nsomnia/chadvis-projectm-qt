@@ -179,6 +179,7 @@ Result<void> Application::init(const AppOptions& opts) {
         
         // Set preset if specified
         if (opts.presetName) {
+            LOG_INFO("Application: Requesting preset '{}'", *opts.presetName);
             mainWindow_->selectPreset(*opts.presetName);
         } else if (opts.useDefaultPreset) {
             // Don't select any preset - use projectM default

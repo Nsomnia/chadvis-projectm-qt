@@ -1,3 +1,6 @@
+# prevent uploading logs
+logs/
+
 # Prerequisites
 *.d
 
