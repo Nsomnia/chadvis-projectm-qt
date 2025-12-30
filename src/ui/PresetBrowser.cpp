@@ -116,9 +116,16 @@ void PresetBrowser::scrollToCurrent() {
     const auto* current = presetManager_->current();
     if (!current) return;
     
+    // Copy current path to avoid use-after-free if list is refreshed
+    std::string currentPath = current->path.string();
+    
     for (int i = 0; i < presetList_->count(); ++i) {
         auto* item = presetList_->item(i);
-        if (item->data(Qt::UserRole).toString().toStdString() == current->path.string()) {
+        if (!item) continue;
+        
+        // Copy data before any potential list modification
+        QString itemPath = item->data(Qt::UserRole).toString();
+        if (itemPath.toStdString() == currentPath) {
             presetList_->scrollToItem(item);
             presetList_->setCurrentItem(item);
             break;
@@ -174,11 +181,14 @@ void PresetBrowser::onPresetDoubleClicked(QListWidgetItem* item) {
         return;
     }
     
+    // Copy data before any potential modification
     QString path = item->data(Qt::UserRole).toString();
-    LOG_DEBUG("PresetBrowser: Double-clicked preset: {}", path.toStdString());
-    presetManager_->selectByPath(fs::path(path.toStdString()));
+    std::string pathStr = path.toStdString();
+    
+    LOG_DEBUG("PresetBrowser: Double-clicked preset: {}", pathStr);
+    presetManager_->selectByPath(fs::path(pathStr));
     emit presetSelected(path);
-    LOG_DEBUG("PresetBrowser: Emitted presetSelected signal for: {}", path.toStdString());
+    LOG_DEBUG("PresetBrowser: Emitted presetSelected signal for: {}", pathStr);
 }
 
 void PresetBrowser::onFavoriteClicked() {
@@ -187,9 +197,12 @@ void PresetBrowser::onFavoriteClicked() {
     auto* item = presetList_->currentItem();
     if (!item) return;
     
+    // Copy data before any potential modification
     QString path = item->data(Qt::UserRole).toString();
+    std::string pathStr = path.toStdString();
+    
     for (usize i = 0; i < presetManager_->allPresets().size(); ++i) {
-        if (presetManager_->allPresets()[i].path.string() == path.toStdString()) {
+        if (presetManager_->allPresets()[i].path.string() == pathStr) {
             presetManager_->toggleFavorite(i);
             break;
         }
@@ -202,9 +215,12 @@ void PresetBrowser::onBlacklistClicked() {
     auto* item = presetList_->currentItem();
     if (!item) return;
     
+    // Copy data before any potential modification
     QString path = item->data(Qt::UserRole).toString();
+    std::string pathStr = path.toStdString();
+    
     for (usize i = 0; i < presetManager_->allPresets().size(); ++i) {
-        if (presetManager_->allPresets()[i].path.string() == path.toStdString()) {
+        if (presetManager_->allPresets()[i].path.string() == pathStr) {
             presetManager_->toggleBlacklisted(i);
             break;
         }
