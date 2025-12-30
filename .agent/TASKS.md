@@ -208,3 +208,107 @@ LOG_INFO("RENDERED FRAME {}", frameCount_);  // Too frequent!
 - [ ] `git checkout main`
 - [ ] `git merge fix/<branch-name>`
 - [ ] `git push origin main`
+
+
+---
+
+## 🟢 HIGH PRIORITY - From CLAUDE_NOTES.md
+
+These are critical issues identified by Claude 4.5 Sonnet that need attention:
+
+### 🔴 CRITICAL - Should Fix Immediately
+
+#### C1. Race Condition in VideoRecorder
+**Problem**: `processAudioBuffer()` doesn't lock `ffmpegMutex_` but accesses shared state
+**Files**: `src/recorder/VideoRecorder.cpp`
+**Fix**: Add `std::lock_guard lock(ffmpegMutex_);` to `processAudioBuffer()`
+
+#### C2. Memory Leak in AsyncFrameGrabber
+**Problem**: PBO not unbound in error paths
+**Files**: `src/recorder/FrameGrabber.cpp`
+**Fix**: Ensure `glBindBuffer(GL_PIXEL_PACK_BUFFER, 0)` in all return paths
+
+#### C3. Use-After-Free in PresetBrowser
+**Problem**: `itemData(index)` can become invalid during updates
+**Files**: `src/ui/PresetBrowser.cpp`
+**Fix**: Copy data before potential updates
+
+#### C4. Missing OpenGL Context Check
+**Problem**: GL operations without `makeCurrent()`
+**Files**: `src/visualizer/VisualizerWidget.cpp`
+**Fix**: Add context management
+
+### 🟡 MAJOR - Should Fix Soon
+
+#### M1. Blocking UI Thread
+**Problem**: `onUpdateLoop()` runs at 60fps on main thread
+**Files**: `src/ui/MainWindow.cpp`
+**Fix**: Move to separate thread or use timer
+
+#### M2. No FFmpeg Error Recovery
+**Problem**: Recording stops permanently on first error
+**Files**: `src/recorder/VideoRecorder.cpp`
+**Fix**: Add retry logic or user notification
+
+#### M3. Signal/Slot Deadlock Risk
+**Problem**: Callbacks can lock same mutex
+**Files**: `src/util/Signal.hpp`
+**Fix**: Copy slots before calling
+
+#### M4. Resource Leaks in Error Paths
+**Problem**: FFmpeg resources not freed on early returns
+**Files**: `src/recorder/VideoRecorder.cpp`
+**Fix**: Use RAII wrappers
+
+### 🟢 IMPROVEMENTS - Nice to Have
+
+#### I1. RAII for FFmpeg Resources
+**Action**: Create wrapper classes for AVFrame, AVCodecContext, etc.
+
+#### I2. Configuration Validation
+**Action**: Add bounds checking for config values
+
+#### I3. Better Error Messages
+**Action**: Include context in error strings
+
+#### I4. Telemetry/Metrics
+**Action**: Add frame counters, FPS tracking
+
+### 🔧 REFACTORING
+
+#### R1. Extract FFmpeg Wrapper
+**Action**: Create `FFmpegEncoder` class
+
+#### R2. Split MainWindow
+**Action**: Extract AudioController, VisualizerController, RecordingController
+
+#### R3. Thread Safety in Signal
+**Action**: Copy slots before calling to prevent reentrancy issues
+
+---
+
+## 📋 ALL PRIORITIES
+
+### Current Focus: Testing Fixes 1, 2, 3
+1. ✅ Preset selection fix
+2. ✅ Flickering fix
+3. ✅ Logging fix
+
+### Next: Critical Bug Fixes (C1-C4)
+1. Race condition in VideoRecorder
+2. Memory leak in FrameGrabber
+3. Use-after-free in PresetBrowser
+4. Missing OpenGL context check
+
+### Then: Major Issues (M1-M4)
+1. Blocking UI thread
+2. FFmpeg error recovery
+3. Signal deadlock risk
+4. Resource leaks
+
+### Finally: Improvements & Refactoring
+1. RAII wrappers
+2. Validation
+3. Telemetry
+4. Architecture improvements
+
