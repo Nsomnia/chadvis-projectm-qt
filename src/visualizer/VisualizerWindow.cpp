@@ -170,11 +170,11 @@ void VisualizerWindow::render() {
         LOG_DEBUG("render() called but not initialized or not exposed");
         return;
     }
-    LOG_DEBUG("VisualizerWindow::render() - frame {}, isExposed: {}, initialized: {}", 
-              frameCount_, isExposed(), initialized_);
+    // LOG_DEBUG("VisualizerWindow::render() - frame {}, isExposed: {}, initialized: {}", 
+//             frameCount_, isExposed(), initialized_); // Too verbose
     
     if (context_->makeCurrent(this)) {
-        LOG_DEBUG("render() - context made current, frame {}", frameCount_);
+        // LOG_DEBUG("render() - context made current, frame {}", frameCount_); // Too verbose
         
         // Verify context is actually current
         if (QOpenGLContext::currentContext() != context_.get()) {
@@ -189,8 +189,8 @@ void VisualizerWindow::render() {
         
         
         context_->doneCurrent();
-        LOG_DEBUG("render() - completed frame {}", frameCount_);
-        LOG_INFO("RENDERED FRAME {}", frameCount_);
+        // LOG_DEBUG("render() - completed frame {}", frameCount_); // Too verbose
+        // LOG_INFO("RENDERED FRAME {}", frameCount_); // Too verbose, called 30-60x/sec
     } else {
         LOG_ERROR("Failed to make context current in render(), context valid: {}", context_->isValid());
     }
