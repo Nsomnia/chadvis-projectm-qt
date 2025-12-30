@@ -105,6 +105,7 @@ LOG_INFO("RENDERED FRAME {}", frameCount_);  // Too frequent!
 ---
 
 ### 2. Flickering/Artifacts on Preset Change Attempts
+**Status**: ✅ FIXED
 **Problem**: Redraw artifacts/flickering when trying to change preset
 
 **Symptoms**:
@@ -129,7 +130,8 @@ LOG_INFO("RENDERED FRAME {}", frameCount_);  // Too frequent!
 - Pause audio feeding during transition
 - Ensure atomic preset operations
 
-**Branch**: `fix/flickering-artifacts`
+**Branch**: `fix/flickering-artifacts`  
+**Fix**: Added presetLoading_ flag, clear FBO during transitions, pause audio feeding
 
 ---
 
