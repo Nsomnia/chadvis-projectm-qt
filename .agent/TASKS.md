@@ -294,12 +294,14 @@ These are critical issues identified by Claude 4.5 Sonnet that need attention:
 2. ✅ Flickering fix (presetLoading_ flag, FBO clearing)
 3. ✅ Logging fix (reduced verbosity)
 
-### Status: v1.0-beta Ready
+### Status: v1.0-beta Ready + Critical Fixes
 - All major preset selection issues resolved
 - Command-line `--preset` works correctly
 - Next/Previous buttons work with one click
 - Handles duplicate preset names gracefully
 - Proper GL context management for preset loading
+- ✅ C1: Race condition in VideoRecorder - FIXED
+- ✅ C2: Memory leak in FrameGrabber - FIXED
 
 ### Next: Critical Bug Fixes (C1-C4)
 1. ✅ Race condition in VideoRecorder - FIXED
