@@ -236,10 +236,11 @@ void VisualizerWindow::captureAsync() {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[nextIndex]);
         u8* ptr = (u8*)glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
         if (ptr) {
-            captureBuffer_.assign(ptr, ptr + size);
+            std::vector<u8> buffer(ptr,
+                                   ptr + size); // Copy from PBO to CPU RAM once
             glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
             emit frameCaptured(
-                    captureBuffer_.data(),
+                    std::move(buffer), // Pass moved vector to signal
                     recordWidth_,
                     recordHeight_,
                     std::chrono::duration_cast<std::chrono::microseconds>(

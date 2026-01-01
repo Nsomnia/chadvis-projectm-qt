@@ -25,7 +25,10 @@ class VisualizerWindow : public QWindow, protected QOpenGLFunctions_3_3_Core {
 signals:
     void presetNameUpdated(const QString& name);
     void frameReady();
-    void frameCaptured(const u8* data, u32 width, u32 height, i64 timestamp);
+    void frameCaptured(std::vector<u8> data,
+                       u32 width,
+                       u32 height,
+                       i64 timestamp);
     void fpsChanged(f32 actualFps);
 
 public:

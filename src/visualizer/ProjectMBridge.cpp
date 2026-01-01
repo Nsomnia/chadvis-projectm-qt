@@ -73,6 +73,7 @@ void ProjectMBridge::renderToTarget(RenderTarget& target) {
     if (target.width() != width_ || target.height() != height_)
         resize(target.width(), target.height());
     target.bind();
+    glViewport(0, 0, target.width(), target.height());
     projectm_opengl_render_frame(projectM_);
     target.unbind();
 }
