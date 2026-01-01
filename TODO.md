@@ -73,6 +73,16 @@ All three fixes are now merged into `main` branch.
 
 ---
 
+## 🚨 BUG REPORTS (New)
+
+1. **Preset Shuffling Issue**
+   - **Problem**: Presets do not shuffle automatically.
+   - **Status**: Investigating.
+
+2. **GUI Ghosting on Resize**
+   - **Problem**: Qt GUI shows behind visualizer when window is small.
+   - **Status**: Investigating.
+
 ## 🚨 CRITICAL BUGS (From Claude Analysis)
 
 ### Immediate Priority After Current Fixes:
