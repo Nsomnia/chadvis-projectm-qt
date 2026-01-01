@@ -1,6 +1,6 @@
 #pragma once
 // MainWindow.hpp - The main application window
-// Where everything comes together like Voltron
+// Now refactored to use specialized controllers for logic.
 
 #include "audio/AudioEngine.hpp"
 #include "overlay/OverlayEngine.hpp"
@@ -10,6 +10,7 @@
 #include <QMainWindow>
 #include <QTimer>
 #include <functional>
+#include <memory>
 
 namespace vc {
 
@@ -19,6 +20,10 @@ class VisualizerPanel;
 class PresetBrowser;
 class RecordingControls;
 class OverlayEditor;
+
+class AudioController;
+class VisualizerController;
+class RecordingController;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -31,13 +36,27 @@ public:
     void addToPlaylist(const fs::path& path);
     void addToPlaylist(const std::vector<fs::path>& paths);
 
-    // Get audio engine for playback
+    // Component Accessors
     AudioEngine* audioEngine() {
         return audioEngine_.get();
     }
+    VisualizerPanel* visualizerPanel() {
+        return visualizerPanel_;
+    }
+    VideoRecorder* videoRecorder() {
+        return videoRecorder_.get();
+    }
+    OverlayEngine* overlayEngine() {
+        return overlayEngine_.get();
+    }
+
     void startRecording(const fs::path& outputPath = {});
     void stopRecording();
     void selectPreset(const std::string& name);
+
+public slots:
+    void onStartRecording(const QString& outputPath);
+    void onStopRecording();
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -46,29 +65,12 @@ protected:
     void dropEvent(QDropEvent* event) override;
 
 private slots:
-    void onPlayClicked();
-    void onPauseClicked();
-    void onStopClicked();
-    void onNextClicked();
-    void onPreviousClicked();
-    void onSeekRequested(Duration position);
-    void onVolumeChanged(f32 volume);
-    void onShuffleToggled(bool enabled);
-    void onRepeatToggled(RepeatMode mode);
-
-    void onPlaylistTrackDoubleClicked(usize index);
-    void onFilesDropped(const QStringList& paths);
-
-    void onStartRecording(const QString& outputPath);
-    void onStopRecording();
-
     void onOpenFiles();
     void onOpenFolder();
     void onSavePlaylist();
     void onLoadPlaylist();
     void onShowSettings();
     void onShowAbout();
-
     void onUpdateLoop();
 
 private:
@@ -76,14 +78,17 @@ private:
     void setupMenuBar();
     void setupConnections();
     void setupUpdateTimer();
-
     void updateWindowTitle();
-    void executeWithPausedRendering(std::function<void()> action);
 
-    // Components
+    // Engines
     std::unique_ptr<AudioEngine> audioEngine_;
     std::unique_ptr<OverlayEngine> overlayEngine_;
     std::unique_ptr<VideoRecorder> videoRecorder_;
+
+    // Controllers
+    std::unique_ptr<AudioController> audioController_;
+    std::unique_ptr<VisualizerController> visualizerController_;
+    std::unique_ptr<RecordingController> recordingController_;
 
     // UI Widgets
     PlayerControls* playerControls_{nullptr};
@@ -93,14 +98,11 @@ private:
     RecordingControls* recordingControls_{nullptr};
     OverlayEditor* overlayEditor_{nullptr};
 
-    // Dock widgets for flexible layout
+    // Dock widgets
     QDockWidget* playlistDock_{nullptr};
     QDockWidget* toolsDock_{nullptr};
 
-    // Update timer
     QTimer updateTimer_;
-
-    // State
     bool isFullscreen_{false};
 };
 

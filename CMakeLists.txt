@@ -130,6 +130,8 @@ set(VISUALIZER_SOURCES
     src/visualizer/ProjectMBridge.cpp
     src/visualizer/PresetManager.hpp
     src/visualizer/PresetManager.cpp
+    src/visualizer/RatingManager.hpp
+    src/visualizer/RatingManager.cpp
     src/visualizer/RenderTarget.hpp
     src/visualizer/RenderTarget.cpp
     src/visualizer/VisualizerWindow.hpp
@@ -157,6 +159,12 @@ set(RECORDER_SOURCES
 )
 
 set(UI_SOURCES
+    src/ui/controllers/AudioController.hpp
+    src/ui/controllers/AudioController.cpp
+    src/ui/controllers/VisualizerController.hpp
+    src/ui/controllers/VisualizerController.cpp
+    src/ui/controllers/RecordingController.hpp
+    src/ui/controllers/RecordingController.cpp
     src/ui/PlayerControls.hpp
     src/ui/PlayerControls.cpp
     src/ui/PlaylistView.hpp

@@ -1,6 +1,6 @@
 #pragma once
-// VisualizerWindow.hpp - QWindow-based visualization (fixes black canvas issue)
-// Uses manual GL context management instead of QOpenGLWidget
+// VisualizerWindow.hpp - QWindow-based visualization
+// Now with Async PBO Recording for peak performance.
 
 #include "ProjectMBridge.hpp"
 #include "RenderTarget.hpp"
@@ -24,12 +24,14 @@ class VisualizerWindow : public QWindow, protected QOpenGLFunctions_3_3_Core {
 
 signals:
     void presetNameUpdated(const QString& name);
+    void frameReady();
+    void frameCaptured(const u8* data, u32 width, u32 height, i64 timestamp);
+    void fpsChanged(f32 actualFps);
 
 public:
     explicit VisualizerWindow(QWindow* parent = nullptr);
     ~VisualizerWindow() override;
 
-    // ProjectM access
     ProjectMBridge& projectM() {
         return projectM_;
     }
@@ -37,11 +39,8 @@ public:
         return projectM_;
     }
 
-    // Preset loading
     void loadPresetFromManager();
     void updateSettings();
-
-    // Overlay
     void setOverlayEngine(OverlayEngine* engine) {
         overlayEngine_ = engine;
     }
@@ -62,11 +61,6 @@ public:
 public slots:
     void toggleFullscreen();
 
-signals:
-    void frameReady();
-    void frameCaptured(const u8* data, u32 width, u32 height, i64 timestamp);
-    void fpsChanged(f32 actualFps);
-
 protected:
     void exposeEvent(QExposeEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
@@ -74,20 +68,21 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent* event) override;
 
 private slots:
-    void render(); // Called by timer or requestUpdate()
+    void render();
     void updateFPS();
     void onPresetRotationTimeout();
 
 private:
     void initialize();
     void renderFrame();
-    void renderOverlay();
+    void setupPBOs();
+    void destroyPBOs();
+    void captureAsync();
     void cleanup();
 
     std::unique_ptr<QOpenGLContext> context_;
-
     ProjectMBridge projectM_;
-    bool presetLoading_{false}; // Pause audio during preset transition
+    bool presetLoading_{false};
     OverlayEngine* overlayEngine_{nullptr};
 
     RenderTarget renderTarget_;
@@ -97,9 +92,14 @@ private:
     QTimer fpsTimer_;
     QTimer presetRotationTimer_;
 
+    // Recording & PBOs
     bool recording_{false};
     u32 recordWidth_{1920};
     u32 recordHeight_{1080};
+    GLuint pbos_[2]{0, 0};
+    u32 pboIndex_{0};
+    bool pboAvailable_{false};
+    std::vector<u8> captureBuffer_;
 
     u32 targetFps_{60};
     u32 frameCount_{0};
@@ -109,17 +109,12 @@ private:
     bool fullscreen_{false};
     QRect normalGeometry_;
 
-    // Audio buffer for thread-safe feeding
-    // Uses a queue to accumulate audio data and feed at render rate
     std::mutex audioMutex_;
-    std::vector<f32> audioQueue_; // Accumulates incoming audio data
-    u32 audioSampleRate_{48000}; // Current audio sample rate
+    std::vector<f32> audioQueue_;
+    u32 audioSampleRate_{48000};
 
-    // Preset loading protection
-    std::mutex presetLoadMutex_; // Prevent concurrent preset loading
-    bool presetLoadInProgress_{false}; // Guard against reentrancy
-
-    std::vector<u8> recordingBuffer_; // Buffer for grabbing frames
+    std::mutex presetLoadMutex_;
+    bool presetLoadInProgress_{false};
 };
 
 } // namespace vc

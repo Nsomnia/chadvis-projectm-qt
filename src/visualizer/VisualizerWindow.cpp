@@ -7,38 +7,32 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QScreen>
+#include <chrono>
 
 namespace vc {
 
 VisualizerWindow::VisualizerWindow(QWindow* parent) : QWindow(parent) {
-    // Set surface format
     QSurfaceFormat format;
     format.setVersion(3, 3);
     format.setProfile(QSurfaceFormat::CoreProfile);
     format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
-    format.setSwapInterval(1); // VSync
-    format.setSamples(4); // MSAA
-    format.setAlphaBufferSize(0); // Prevent GUI ghosting by disabling alpha for
-                                  // the window surface
+    format.setSwapInterval(1);
+    format.setSamples(4);
+    format.setAlphaBufferSize(0);
     setFormat(format);
 
-    // Create OpenGL context
     context_ = std::make_unique<QOpenGLContext>(this);
     context_->setFormat(format);
-
-    // Set surface type
     setSurfaceType(QWindow::OpenGLSurface);
 
-    // FPS counter
     fpsTimer_.setInterval(1000);
     connect(&fpsTimer_, &QTimer::timeout, this, &VisualizerWindow::updateFPS);
-
-    // Render timer (will be started after initialization)
     connect(&renderTimer_, &QTimer::timeout, this, &VisualizerWindow::render);
 }
 
 VisualizerWindow::~VisualizerWindow() {
     if (context_ && context_->makeCurrent(this)) {
+        this->destroyPBOs();
         projectM_.shutdown();
         renderTarget_.destroy();
         overlayTarget_.destroy();
@@ -48,69 +42,41 @@ VisualizerWindow::~VisualizerWindow() {
 
 void VisualizerWindow::exposeEvent(QExposeEvent* event) {
     Q_UNUSED(event);
-
     if (isExposed()) {
-        if (!initialized_) {
+        if (!initialized_)
             initialize();
-        }
-        render(); // Initial render
+        render();
     }
 }
 
 void VisualizerWindow::resizeEvent(QResizeEvent* event) {
     if (!initialized_)
         return;
-
     if (context_ && context_->makeCurrent(this)) {
         int w = event->size().width();
         int h = event->size().height();
-
-        LOG_DEBUG("Resize event: {}x{}", w, h);
-
         projectM_.resize(w, h);
-
         if (!recording_) {
             renderTarget_.resize(w, h);
             overlayTarget_.resize(w, h);
         }
-
         context_->doneCurrent();
     }
 }
 
 void VisualizerWindow::initialize() {
-    LOG_INFO("VisualizerWindow::initialize() called");
-    if (!context_->create()) {
-        LOG_ERROR("Failed to create OpenGL context");
+    if (!context_->create())
         return;
-    }
-
-    if (!context_->makeCurrent(this)) {
-        LOG_ERROR("Failed to make context current");
+    if (!context_->makeCurrent(this))
         return;
-    }
-
-    if (!initializeOpenGLFunctions()) {
-        LOG_ERROR("Failed to initialize OpenGL functions");
+    if (!initializeOpenGLFunctions())
         return;
-    }
 
-    // Initialize GLEW
     glewExperimental = GL_TRUE;
-    GLenum err = glewInit();
-    if (err != GLEW_OK) {
-        LOG_ERROR("GLEW init failed: {}",
-                  reinterpret_cast<const char*>(glewGetErrorString(err)));
+    if (glewInit() != GLEW_OK)
         return;
-    }
 
-    LOG_INFO("OpenGL: {} - {}",
-             reinterpret_cast<const char*>(glGetString(GL_VERSION)),
-             reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
-
-    // Initialize ProjectM
     const auto& vizConfig = CONFIG.visualizer();
-
     ProjectMConfig pmConfig;
     pmConfig.width = width();
     pmConfig.height = height();
@@ -120,247 +86,170 @@ void VisualizerWindow::initialize() {
     pmConfig.presetDuration = vizConfig.presetDuration;
     pmConfig.transitionDuration = vizConfig.smoothPresetDuration;
     pmConfig.shufflePresets = vizConfig.shufflePresets;
-    pmConfig.forcePreset = vizConfig.forcePreset;
     pmConfig.useDefaultPreset = vizConfig.useDefaultPreset;
 
-    // Connect to preset loading signal to pause audio during transitions
-    // MUST be connected BEFORE init() so signals emitted during init are
-    // received
-    projectM_.presetLoading.connect([this](bool loading) {
-        presetLoading_ = loading;
-        LOG_DEBUG("VisualizerWindow: presetLoading_ = {}", loading);
-    });
+    projectM_.presetLoading.connect(
+            [this](bool loading) { presetLoading_ = loading; });
+    projectM_.presetChanged.connect(
+            [this](const std::string& name) { loadPresetFromManager(); });
 
-    // Connect to presetChanged to actually load the preset with GL context
-    // MUST be connected BEFORE init() so signals emitted during init are
-    // received
-    projectM_.presetChanged.connect([this](const std::string& name) {
-        LOG_INFO("VisualizerWindow: Received presetChanged for '{}'", name);
-        loadPresetFromManager();
-    });
-
-    LOG_DEBUG("VisualizerWindow::initialize: About to init ProjectMBridge");
-    if (auto result = projectM_.init(pmConfig); !result) {
-        LOG_ERROR("ProjectM init failed: {}", result.error().message);
+    if (auto result = projectM_.init(pmConfig); !result)
         return;
-    }
-    LOG_DEBUG(
-            "VisualizerWindow::initialize: ProjectMBridge initialized "
-            "successfully");
 
-    // Create render targets
     renderTarget_.create(width(), height());
     overlayTarget_.create(width(), height());
 
-    // Start render timer
     setRenderRate(vizConfig.fps);
-    renderTimer_.start(); // EXPLICITLY START RENDER TIMER
+    renderTimer_.start();
     fpsTimer_.start();
-    LOG_INFO("Render timer started: {} fps, interval {}ms",
-             vizConfig.fps,
-             renderTimer_.interval());
 
-    // Start preset rotation timer if duration > 0, shuffle is enabled, and NOT
-    // using default preset
-    if (vizConfig.presetDuration > 0 && vizConfig.shufflePresets &&
-        !vizConfig.useDefaultPreset) {
+    if (vizConfig.presetDuration > 0 && !vizConfig.useDefaultPreset) {
         connect(&presetRotationTimer_,
                 &QTimer::timeout,
                 this,
                 &VisualizerWindow::onPresetRotationTimeout);
         presetRotationTimer_.setInterval(vizConfig.presetDuration * 1000);
         presetRotationTimer_.start();
-        LOG_INFO("Preset rotation timer started: {} seconds",
-                 vizConfig.presetDuration);
-    } else if (vizConfig.useDefaultPreset) {
-        LOG_INFO("Preset rotation disabled - using default visualizer");
     }
 
     initialized_ = true;
-    LOG_INFO("Visualizer window initialized");
-
     context_->doneCurrent();
 }
 
 void VisualizerWindow::onPresetRotationTimeout() {
-    LOG_DEBUG("VisualizerWindow::onPresetRotationTimeout() called");
-    // Only rotate if shuffle is enabled
-    if (CONFIG.visualizer().shufflePresets) {
-        LOG_DEBUG("Shuffle enabled, selecting random preset");
+    if (CONFIG.visualizer().shufflePresets)
         projectM_.randomPreset();
-    } else {
-        LOG_DEBUG("Shuffle disabled, selecting next preset");
+    else
         projectM_.nextPreset();
-    }
 }
 
 void VisualizerWindow::render() {
-    if (!initialized_ || !isExposed()) {
-        LOG_DEBUG("render() called but not initialized or not exposed");
+    if (!initialized_ || !isExposed())
         return;
-    }
-    // LOG_DEBUG("VisualizerWindow::render() - frame {}, isExposed: {},
-    // initialized: {}",
-    //             frameCount_, isExposed(), initialized_); // Too verbose
-
     if (context_->makeCurrent(this)) {
-        // LOG_DEBUG("render() - context made current, frame {}", frameCount_);
-        // // Too verbose
-
-        // Verify context is actually current
-        if (QOpenGLContext::currentContext() != context_.get()) {
-            LOG_ERROR("Context mismatch! currentContext() != context_");
-        }
-
         renderFrame();
-
-        LOG_DEBUG("render() - about to swap buffers");
         context_->swapBuffers(this);
-        LOG_DEBUG("render() - buffers swapped");
-
         context_->doneCurrent();
-        // LOG_DEBUG("render() - completed frame {}", frameCount_); // Too
-        // verbose LOG_INFO("RENDERED FRAME {}", frameCount_); // Too verbose,
-        // called 30-60x/sec
-    } else {
-        LOG_ERROR(
-                "Failed to make context current in render(), context valid: {}",
-                context_->isValid());
     }
 }
 
 void VisualizerWindow::renderFrame() {
-    // Handle preset transitions
     if (presetLoading_) {
-        LOG_DEBUG(
-                "renderFrame: presetLoading_ is true, clearing FBO and "
-                "skipping render");
-        // Clear the framebuffer to prevent ghosting from old preset
         if (recording_) {
             renderTarget_.bind();
-            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClearColor(0, 0, 0, 0);
             glClear(GL_COLOR_BUFFER_BIT);
             renderTarget_.unbind();
         } else {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glViewport(0, 0, width(), height());
-            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            projectM_.resetViewport(width(), height());
+            glClearColor(0, 0, 0, 1);
             glClear(GL_COLOR_BUFFER_BIT);
         }
-        // Skip audio feeding and projectM render during transition
         return;
     }
 
-    // Feed audio data from queue (thread-safe)
-    // Feed at the correct rate: sampleRate / fps
     {
         std::lock_guard lock(audioMutex_);
-
         if (!audioQueue_.empty()) {
-            // Calculate frames needed for this render
-            // sampleRate / targetFps_ = frames per render
-            u32 framesToFeed = (audioSampleRate_ + targetFps_ - 1) /
-                               targetFps_; // Round up
+            u32 framesToFeed = (audioSampleRate_ + targetFps_ - 1) / targetFps_;
             u32 availableFrames = audioQueue_.size() / 2;
-
-            // Feed up to framesToFeed
             u32 feedFrames = std::min(framesToFeed, availableFrames);
-
             if (feedFrames > 0) {
-                LOG_DEBUG(
-                        "VisualizerWindow::renderFrame: Feeding {} of {} "
-                        "available frames (rate: {}Hz, fps: {})",
-                        feedFrames,
-                        availableFrames,
-                        audioSampleRate_,
-                        targetFps_);
                 projectM_.addPCMDataInterleaved(
                         audioQueue_.data(), feedFrames, 2);
-
-                // Remove fed frames from queue
-                u32 feedElements = feedFrames * 2;
                 audioQueue_.erase(audioQueue_.begin(),
-                                  audioQueue_.begin() + feedElements);
-            } else {
-                LOG_DEBUG(
-                        "VisualizerWindow::renderFrame: No audio to feed (need "
-                        "{} frames, have {})",
-                        framesToFeed,
-                        availableFrames);
+                                  audioQueue_.begin() + (feedFrames * 2));
             }
-        } else {
-            LOG_DEBUG("VisualizerWindow::renderFrame: No audio in queue");
         }
     }
 
-    // For recording, use FBO. For normal display, render directly
     if (recording_) {
-        // Recording path: render to FBO, emit signal
         if (renderTarget_.width() != recordWidth_ ||
             renderTarget_.height() != recordHeight_) {
             renderTarget_.resize(recordWidth_, recordHeight_);
             overlayTarget_.resize(recordWidth_, recordHeight_);
+            this->setupPBOs();
         }
-
         projectM_.renderToTarget(renderTarget_);
-
         if (overlayEngine_) {
             overlayTarget_.bind();
             glClearColor(0, 0, 0, 0);
             glClear(GL_COLOR_BUFFER_BIT);
             renderTarget_.blitTo(overlayTarget_, true);
-            overlayEngine_->render(overlayTarget_.width(),
-                                   overlayTarget_.height());
-
-            // Capture the final frame with overlay
-            recordingBuffer_.resize(recordWidth_ * recordHeight_ * 4);
-            overlayTarget_.readPixels(
-                    recordingBuffer_.data(), GL_RGBA, GL_UNSIGNED_BYTE);
+            overlayEngine_->render(recordWidth_, recordHeight_);
+            this->captureAsync();
             overlayTarget_.unbind();
         } else {
-            // Capture raw projectM frame
-            recordingBuffer_.resize(recordWidth_ * recordHeight_ * 4);
-            renderTarget_.readPixels(
-                    recordingBuffer_.data(), GL_RGBA, GL_UNSIGNED_BYTE);
+            renderTarget_.bind();
+            this->captureAsync();
+            renderTarget_.unbind();
         }
-
-        emit frameCaptured(
-                recordingBuffer_.data(),
-                recordWidth_,
-                recordHeight_,
-                std::chrono::duration_cast<std::chrono::microseconds>(
-                        std::chrono::steady_clock::now().time_since_epoch())
-                        .count());
         emit frameReady();
     } else {
-        // Normal display: render directly to default framebuffer
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, width(), height());
-
-        // Clear before rendering
+        projectM_.resetViewport(width(), height());
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
-
-        // Let projectM render directly to screen
-        LOG_DEBUG("VisualizerWindow::renderFrame: Calling projectM_.render()");
         projectM_.render();
-        LOG_DEBUG(
-                "VisualizerWindow::renderFrame: projectM_.render() completed");
 
-        // Force alpha channel to 1.0 to prevent GUI ghosting/transparency
-        // issues on some platforms (e.g. Wayland)
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
-        // Render overlay if available
-        if (overlayEngine_) {
+        if (overlayEngine_)
             overlayEngine_->render(width(), height());
+    }
+    ++frameCount_;
+}
+
+void VisualizerWindow::setupPBOs() {
+    this->destroyPBOs();
+    glGenBuffers(2, pbos_);
+    u32 size = recordWidth_ * recordHeight_ * 4;
+    for (int i = 0; i < 2; ++i) {
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[i]);
+        glBufferData(GL_PIXEL_PACK_BUFFER, size, nullptr, GL_STREAM_READ);
+    }
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    pboIndex_ = 0;
+    pboAvailable_ = false;
+}
+
+void VisualizerWindow::destroyPBOs() {
+    if (pbos_[0])
+        glDeleteBuffers(2, pbos_);
+    pbos_[0] = pbos_[1] = 0;
+}
+
+void VisualizerWindow::captureAsync() {
+    u32 nextIndex = (pboIndex_ + 1) % 2;
+    u32 size = recordWidth_ * recordHeight_ * 4;
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[pboIndex_]);
+    glReadPixels(0,
+                 0,
+                 recordWidth_,
+                 recordHeight_,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 nullptr);
+    if (pboAvailable_) {
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[nextIndex]);
+        u8* ptr = (u8*)glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+        if (ptr) {
+            captureBuffer_.assign(ptr, ptr + size);
+            glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+            emit frameCaptured(
+                    captureBuffer_.data(),
+                    recordWidth_,
+                    recordHeight_,
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count());
         }
     }
-
-    ++frameCount_;
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    pboIndex_ = nextIndex;
+    pboAvailable_ = true;
 }
 
 void VisualizerWindow::feedAudio(const f32* data,
@@ -368,33 +257,20 @@ void VisualizerWindow::feedAudio(const f32* data,
                                  u32 channels,
                                  u32 sampleRate) {
     std::lock_guard lock(audioMutex_);
-    // Update sample rate if it changed
-    if (sampleRate != audioSampleRate_) {
-        LOG_INFO("Audio sample rate changed: {} -> {} Hz",
-                 audioSampleRate_,
-                 sampleRate);
+    if (sampleRate != audioSampleRate_)
         audioSampleRate_ = sampleRate;
-    }
-    // Append audio data to queue for the render thread to consume
-    // For now, assume stereo interleaved
     usize offset = audioQueue_.size();
     audioQueue_.resize(offset + frames * 2);
     std::memcpy(audioQueue_.data() + offset, data, frames * 2 * sizeof(f32));
-    LOG_DEBUG(
-            "VisualizerWindow::feedAudio: {} frames added, queue size: {} "
-            "frames ({} bytes)",
-            frames,
-            audioQueue_.size() / 2,
-            audioQueue_.size() * sizeof(f32));
 }
+
 void VisualizerWindow::setRenderRate(int fps) {
     if (fps > 0) {
         targetFps_ = fps;
         renderTimer_.start(1000 / fps);
         projectM_.setFPS(fps);
-    } else {
+    } else
         renderTimer_.stop();
-    }
 }
 
 void VisualizerWindow::setRecordingSize(u32 width, u32 height) {
@@ -407,37 +283,31 @@ void VisualizerWindow::startRecording() {
     if (context_ && context_->makeCurrent(this)) {
         renderTarget_.resize(recordWidth_, recordHeight_);
         overlayTarget_.resize(recordWidth_, recordHeight_);
+        this->setupPBOs();
         context_->doneCurrent();
     }
-    LOG_INFO("Started recording at {}x{}", recordWidth_, recordHeight_);
 }
 
 void VisualizerWindow::stopRecording() {
     recording_ = false;
     if (context_ && context_->makeCurrent(this)) {
+        this->destroyPBOs();
         renderTarget_.resize(width(), height());
         overlayTarget_.resize(width(), height());
         context_->doneCurrent();
     }
-    LOG_INFO("Stopped recording");
 }
 
 void VisualizerWindow::toggleFullscreen() {
     if (fullscreen_) {
-        // Exit fullscreen
         showNormal();
         setGeometry(normalGeometry_);
         fullscreen_ = false;
     } else {
-        // Enter fullscreen
         normalGeometry_ = geometry();
-
-        // Get screen geometry
         auto* screen = QGuiApplication::primaryScreen();
-        if (screen) {
+        if (screen)
             setGeometry(screen->geometry());
-        }
-
         showFullScreen();
         fullscreen_ = true;
     }
@@ -450,124 +320,65 @@ void VisualizerWindow::updateFPS() {
 }
 
 void VisualizerWindow::loadPresetFromManager() {
-    // Prevent concurrent loading and reentrancy
     std::lock_guard lock(presetLoadMutex_);
-
-    if (presetLoadInProgress_) {
-        LOG_WARN(
-                "loadPresetFromManager() called while already in progress, "
-                "ignoring");
+    if (presetLoadInProgress_)
         return;
-    }
-
     presetLoadInProgress_ = true;
-
-    LOG_INFO("VisualizerWindow::loadPresetFromManager() called");
-
-    if (!context_ || !context_->isValid()) {
-        LOG_ERROR("Cannot load preset: OpenGL context not valid");
+    if (!context_ || !context_->isValid() || !context_->makeCurrent(this)) {
         presetLoadInProgress_ = false;
         return;
     }
-
-    if (!context_->makeCurrent(this)) {
-        LOG_ERROR("Failed to make context current for preset loading");
-        presetLoadInProgress_ = false;
-        return;
-    }
-
-    // Set loading flag to pause audio and clear FBO
     presetLoading_ = true;
-
-    // Get the currently selected preset from the manager
     const auto* preset = projectM_.presets().current();
-    if (!preset) {
-        LOG_ERROR("No preset selected in manager");
-        presetLoading_ = false;
-        presetLoadInProgress_ = false;
-        context_->doneCurrent();
-        return;
+    if (preset) {
+        projectm_load_preset_file(
+                projectM_.getHandle(), preset->path.c_str(), false);
+        emit presetNameUpdated(QString::fromStdString(preset->name));
     }
-
-    LOG_INFO("Loading preset: {} from {}", preset->name, preset->path.string());
-
-    // Load the preset using projectM API
-    // The projectM handle is valid and we have GL context
-    projectm_load_preset_file(
-            projectM_.getHandle(), preset->path.c_str(), false);
-
-    LOG_INFO("Preset loaded: {}", preset->name);
-    emit presetNameUpdated(QString::fromStdString(preset->name));
-
-    // Reset loading flag
     presetLoading_ = false;
     presetLoadInProgress_ = false;
-
     context_->doneCurrent();
 }
 
 void VisualizerWindow::updateSettings() {
     if (!initialized_)
         return;
-
     const auto& vizConfig = CONFIG.visualizer();
-
-    // Update render rate
     setRenderRate(vizConfig.fps);
-
-    // Update projectM settings
     projectM_.setBeatSensitivity(vizConfig.beatSensitivity);
     projectM_.setShuffleEnabled(vizConfig.shufflePresets);
-
-    // Update preset rotation timer
     presetRotationTimer_.stop();
     if (vizConfig.presetDuration > 0 && !vizConfig.useDefaultPreset) {
         presetRotationTimer_.setInterval(vizConfig.presetDuration * 1000);
         presetRotationTimer_.start();
-        LOG_INFO("VisualizerWindow: Preset rotation timer updated: {} seconds",
-                 vizConfig.presetDuration);
-    } else {
-        LOG_INFO("VisualizerWindow: Preset rotation timer stopped");
     }
-
-    LOG_INFO("VisualizerWindow settings updated");
 }
 
 void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
     const auto& keys = CONFIG.keyboard();
     QString key = event->text().toUpper();
-    if (key.isEmpty()) {
+    if (key.isEmpty())
         key = QKeySequence(event->key()).toString();
-    }
-
     std::string keyStr = key.toStdString();
 
-    if (keyStr == keys.toggleFullscreen || event->key() == Qt::Key_F11) {
+    if (keyStr == keys.toggleFullscreen || event->key() == Qt::Key_F11)
         toggleFullscreen();
-    } else if (keyStr == keys.nextPreset || event->key() == Qt::Key_Right) {
+    else if (keyStr == keys.nextPreset || event->key() == Qt::Key_Right)
         projectM_.nextPreset();
-    } else if (keyStr == keys.prevPreset || event->key() == Qt::Key_Left) {
+    else if (keyStr == keys.prevPreset || event->key() == Qt::Key_Left)
         projectM_.previousPreset();
-    } else if (event->key() == Qt::Key_R) {
+    else if (event->key() == Qt::Key_R)
         projectM_.randomPreset();
-    } else if (event->key() == Qt::Key_L) {
+    else if (event->key() == Qt::Key_L)
         projectM_.lockPreset(!projectM_.isPresetLocked());
-    } else if (event->key() == Qt::Key_Escape && fullscreen_) {
+    else if (event->key() == Qt::Key_Escape && fullscreen_)
         toggleFullscreen();
-    } else if (event->key() == Qt::Key_N) {
-        projectM_.nextPreset();
-    } else if (event->key() == Qt::Key_P) {
-        projectM_.previousPreset();
-    }
 }
 
 void VisualizerWindow::mouseDoubleClickEvent(QMouseEvent* event) {
-    if (event->button() == Qt::LeftButton) {
+    if (event->button() == Qt::LeftButton)
         toggleFullscreen();
-    }
     QWindow::mouseDoubleClickEvent(event);
 }
 
 } // namespace vc
-
-#include "moc_VisualizerWindow.cpp"

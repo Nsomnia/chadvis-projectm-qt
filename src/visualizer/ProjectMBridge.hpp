@@ -57,6 +57,7 @@ public:
 
     // Configuration
     void resize(u32 width, u32 height);
+    void resetViewport(u32 width, u32 height);
     void setFPS(u32 fps);
     void setBeatSensitivity(f32 sensitivity);
     void setShuffleEnabled(bool enabled) {

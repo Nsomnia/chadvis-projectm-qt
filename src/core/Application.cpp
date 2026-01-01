@@ -8,6 +8,7 @@
 #include "ui/MainWindow.hpp"
 #include "util/FileUtils.hpp"
 #include "util/GLIncludes.hpp"
+#include "visualizer/RatingManager.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -138,6 +139,11 @@ Result<void> Application::init(const AppOptions& opts) {
 
     LOG_DEBUG("Initializing video recorder...");
     videoRecorder_ = std::make_unique<VideoRecorder>();
+
+    LOG_DEBUG("Initializing rating manager...");
+    if (auto result = RatingManager::instance().load(); !result) {
+        LOG_WARN("Failed to load preset ratings: {}", result.error().message);
+    }
 
     // Create main window (unless headless)
     if (!opts.headless) {
