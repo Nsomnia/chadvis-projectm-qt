@@ -99,7 +99,6 @@ private:
     OverlayEditor* overlayEditor_{nullptr};
 
     // Dock widgets
-    QDockWidget* playlistDock_{nullptr};
     QDockWidget* toolsDock_{nullptr};
 
     QTimer updateTimer_;

@@ -330,10 +330,16 @@ void VisualizerWindow::loadPresetFromManager() {
     }
     presetLoading_ = true;
     const auto* preset = projectM_.presets().current();
-    if (preset) {
-        projectm_load_preset_file(
-                projectM_.getHandle(), preset->path.c_str(), false);
+    auto handle = projectM_.getHandle();
+
+    if (preset && handle) {
+        LOG_DEBUG("Loading preset: {}", preset->name);
+        projectm_load_preset_file(handle, preset->path.c_str(), false);
         emit presetNameUpdated(QString::fromStdString(preset->name));
+    } else {
+        LOG_WARN("Cannot load preset: preset={}, handle={}",
+                 (void*)preset,
+                 (void*)handle);
     }
     presetLoading_ = false;
     presetLoadInProgress_ = false;

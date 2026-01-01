@@ -61,14 +61,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setupUpdateTimer();
 
     statusBar()->showMessage("Ready. I use Arch btw.");
-
-    QTimer::singleShot(100, this, [this]() {
-        if (visualizerPanel_ && visualizerPanel_->visualizer()) {
-            auto& pm = visualizerPanel_->visualizer()->projectM();
-            if (pm.isInitialized())
-                audioEngine_->setProjectMHandle(pm.getHandle());
-        }
-    });
 }
 
 MainWindow::~MainWindow() {
@@ -91,13 +83,9 @@ void MainWindow::setupUI() {
     addDockWidget(Qt::BottomDockWidgetArea, controlsDock);
 
     playlistView_ = new PlaylistView(this);
-    playlistDock_ = new QDockWidget("Playlist", this);
-    playlistDock_->setObjectName("PlaylistDock");
-    playlistDock_->setWidget(playlistView_);
-    playlistDock_->setMinimumWidth(250);
-    addDockWidget(Qt::LeftDockWidgetArea, playlistDock_);
 
     auto* rightTabs = new QTabWidget();
+    rightTabs->addTab(playlistView_, "Playlist");
     presetBrowser_ = new PresetBrowser();
     rightTabs->addTab(presetBrowser_, "Presets");
     recordingControls_ = new RecordingControls();
@@ -114,8 +102,7 @@ void MainWindow::setupUI() {
 
     audioController_->setupUI(playerControls_, playlistView_);
 
-    playlistDock_->setVisible(CONFIG.ui().showPlaylist);
-    toolsDock_->setVisible(CONFIG.ui().showPresets);
+    toolsDock_->setVisible(CONFIG.ui().showPresets || CONFIG.ui().showPlaylist);
 }
 
 void MainWindow::setupMenuBar() {
@@ -163,18 +150,6 @@ void MainWindow::setupMenuBar() {
             [this] { visualizerPanel_->visualizer()->toggleFullscreen(); },
             QKeySequence::FullScreen);
     viewMenu->addSeparator();
-
-    auto* showPlaylistAction = viewMenu->addAction("Show &Playlist");
-    showPlaylistAction->setCheckable(true);
-    showPlaylistAction->setChecked(playlistDock_->isVisible());
-    connect(showPlaylistAction,
-            &QAction::toggled,
-            playlistDock_,
-            &QDockWidget::setVisible);
-    connect(playlistDock_,
-            &QDockWidget::visibilityChanged,
-            showPlaylistAction,
-            &QAction::setChecked);
 
     auto* showToolsAction = viewMenu->addAction("Show &Tools");
     showToolsAction->setCheckable(true);
