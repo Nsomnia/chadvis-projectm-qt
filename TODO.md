@@ -73,15 +73,15 @@ All three fixes are now merged into `main` branch.
 
 ---
 
-## 🚨 BUG REPORTS (New)
+## 🚨 BUG REPORTS (Fixed)
 
 1. **Preset Shuffling Issue**
    - **Problem**: Presets do not shuffle automatically.
-   - **Status**: Investigating.
+   - **Status**: ✅ FIXED. Added `setShuffleEnabled` and `updateSettings()` to apply changes dynamically.
 
 2. **GUI Ghosting on Resize**
    - **Problem**: Qt GUI shows behind visualizer when window is small.
-   - **Status**: Investigating.
+   - **Status**: ✅ FIXED. Disabled alpha buffer in `QSurfaceFormat` and added alpha hardening in render loop.
 
 ## 🚨 CRITICAL BUGS (From Claude Analysis)
 

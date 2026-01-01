@@ -313,14 +313,18 @@ These are critical issues identified by Claude 4.5 Sonnet that need attention:
 All 4 critical bugs identified by Claude 4.5 Sonnet have been resolved.
 
 ### Then: Major Issues (M1-M4)
-1. Blocking UI thread
-2. FFmpeg error recovery
-3. Signal deadlock risk
-4. Resource leaks
+1. 🟡 Blocking UI thread - Investigating (M1)
+2. ✅ FFmpeg error recovery - FIXED (M2)
+3. ✅ Signal deadlock risk - FIXED (M3)
+4. ✅ Resource leaks - FIXED (M4)
 
 ### Finally: Improvements & Refactoring
-1. RAII wrappers
-2. Validation
-3. Telemetry
-4. Architecture improvements
+1. ✅ RAII wrappers - DONE (I1)
+2. ✅ Validation - DONE (I2)
+3. 🟢 Telemetry
+4. 🟢 Architecture improvements
+
+### 🚨 NEW BUGS
+1. ✅ Preset Shuffling Issue - FIXED.
+2. ✅ GUI Ghosting on Resize - FIXED.
 
