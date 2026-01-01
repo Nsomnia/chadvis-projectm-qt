@@ -1,6 +1,5 @@
 
 #include "Application.hpp"
-#include "util/GLIncludes.hpp"
 #include "Config.hpp"
 #include "Logger.hpp"
 #include "audio/AudioEngine.hpp"
@@ -8,21 +7,19 @@
 #include "recorder/VideoRecorder.hpp"
 #include "ui/MainWindow.hpp"
 #include "util/FileUtils.hpp"
+#include "util/GLIncludes.hpp"
 
-#include <QStyleFactory>
-#include <QFontDatabase>
-#include <QFile>
 #include <QDir>
+#include <QFile>
+#include <QFontDatabase>
+#include <QStyleFactory>
 #include <iostream>
 
 namespace vc {
 
 Application* Application::instance_ = nullptr;
 
-Application::Application(int& argc, char** argv)
-    : argc_(argc)
-    , argv_(argv)
-{
+Application::Application(int& argc, char** argv) : argc_(argc), argv_(argv) {
     instance_ = this;
 }
 
@@ -33,64 +30,58 @@ Application::~Application() {
     overlayEngine_.reset();
     audioEngine_.reset();
     qapp_.reset();
-    
+
     Logger::shutdown();
     instance_ = nullptr;
 }
 
 Result<AppOptions> Application::parseArgs() {
     AppOptions opts;
-    
+
     for (int i = 1; i < argc_; ++i) {
         std::string_view arg(argv_[i]);
-        
+
         if (arg == "-h" || arg == "--help") {
             printHelp();
             std::exit(0);
-        }
-        else if (arg == "-v" || arg == "--version") {
+        } else if (arg == "-v" || arg == "--version") {
             printVersion();
             std::exit(0);
-        }
-        else if (arg == "-d" || arg == "--debug") {
+        } else if (arg == "-d" || arg == "--debug") {
             opts.debug = true;
-        }
-        else if (arg == "--headless") {
+        } else if (arg == "--headless") {
             opts.headless = true;
-        }
-        else if (arg == "-r" || arg == "--record") {
+        } else if (arg == "-r" || arg == "--record") {
             opts.startRecording = true;
-        }
-        else if (arg == "-o" || arg == "--output") {
+        } else if (arg == "-o" || arg == "--output") {
             if (i + 1 >= argc_) {
-                return Result<AppOptions>::err("--output requires a path argument");
+                return Result<AppOptions>::err(
+                        "--output requires a path argument");
             }
             opts.outputFile = fs::path(argv_[++i]);
-        }
-        else if (arg == "-c" || arg == "--config") {
+        } else if (arg == "-c" || arg == "--config") {
             if (i + 1 >= argc_) {
-                return Result<AppOptions>::err("--config requires a path argument");
+                return Result<AppOptions>::err(
+                        "--config requires a path argument");
             }
             opts.configFile = fs::path(argv_[++i]);
-        }
-        else if (arg == "-p" || arg == "--preset") {
+        } else if (arg == "-p" || arg == "--preset") {
             if (i + 1 >= argc_) {
-                return Result<AppOptions>::err("--preset requires a name argument");
+                return Result<AppOptions>::err(
+                        "--preset requires a name argument");
             }
             opts.presetName = argv_[++i];
-        }
-        else if (arg == "--default-preset") {
+        } else if (arg == "--default-preset") {
             opts.useDefaultPreset = true;
-        }
-        else if (arg[0] != '-') {
+        } else if (arg[0] != '-') {
             // Positional argument - input file
             opts.inputFiles.push_back(fs::path(arg));
-        }
-        else {
-            return Result<AppOptions>::err(std::string("Unknown option: ") + std::string(arg));
+        } else {
+            return Result<AppOptions>::err(std::string("Unknown option: ") +
+                                           std::string(arg));
         }
     }
-    
+
     return Result<AppOptions>::ok(std::move(opts));
 }
 
@@ -98,7 +89,7 @@ Result<void> Application::init(const AppOptions& opts) {
     // Initialize logging first
     Logger::init("chadvis-projectm-qt", opts.debug);
     LOG_INFO("chadvis-projectm-qt starting up. I use Arch btw.");
-    
+
     // Load configuration
     if (opts.configFile) {
         if (auto result = CONFIG.load(*opts.configFile); !result) {
@@ -107,31 +98,32 @@ Result<void> Application::init(const AppOptions& opts) {
         }
     } else {
         if (auto result = CONFIG.loadDefault(); !result) {
-            LOG_WARN("Failed to load default config: {}", result.error().message);
+            LOG_WARN("Failed to load default config: {}",
+                     result.error().message);
             // Continue with defaults
         }
     }
-    
+
     // Override debug from command line
     if (opts.debug) {
         CONFIG.setDebug(true);
     }
-    
+
     // Override default preset from command line
     if (opts.useDefaultPreset) {
         CONFIG.visualizer().useDefaultPreset = true;
     }
-    
+
     // Create Qt application
     qapp_ = std::make_unique<QApplication>(argc_, argv_);
     qapp_->setApplicationName("ChadVis");
     qapp_->setApplicationVersion("1.0.0");
     qapp_->setOrganizationName("ChadVis");
     qapp_->setOrganizationDomain("github.com/chadvis-projectm-qt");
-    
+
     // Setup styling
     setupStyle();
-    
+
     // Initialize components
     LOG_DEBUG("Initializing audio engine...");
     audioEngine_ = std::make_unique<AudioEngine>();
@@ -139,35 +131,44 @@ Result<void> Application::init(const AppOptions& opts) {
         LOG_ERROR("Audio engine init failed: {}", result.error().message);
         return result;
     }
-    
+
     LOG_DEBUG("Initializing overlay engine...");
     overlayEngine_ = std::make_unique<OverlayEngine>();
     overlayEngine_->init();
-    
+
     LOG_DEBUG("Initializing video recorder...");
     videoRecorder_ = std::make_unique<VideoRecorder>();
-    
+
     // Create main window (unless headless)
     if (!opts.headless) {
         LOG_DEBUG("Creating main window...");
         mainWindow_ = std::make_unique<MainWindow>();
         mainWindow_->show();
-        
-        // Add input files to playlist
-        for (const auto& file : opts.inputFiles) {
-            if (fs::exists(file)) {
-                mainWindow_->addToPlaylist(file);
-            } else {
-                LOG_WARN("File not found: {}", file.string());
+
+        // Load last session playlist if no files specified
+        if (opts.inputFiles.empty()) {
+            auto lastSession = file::configDir() / "last_session.m3u";
+            if (fs::exists(lastSession)) {
+                LOG_INFO("Loading last session playlist...");
+                audioEngine_->playlist().loadM3U(lastSession);
+            }
+        } else {
+            // Add input files to playlist
+            for (const auto& file : opts.inputFiles) {
+                if (fs::exists(file)) {
+                    mainWindow_->addToPlaylist(file);
+                } else {
+                    LOG_WARN("File not found: {}", file.string());
+                }
             }
         }
-        
+
         // Auto-play if files were added
         if (!opts.inputFiles.empty()) {
             LOG_INFO("Auto-playing first track");
             mainWindow_->audioEngine()->play();
         }
-        
+
         // Auto-start recording if requested
         if (opts.startRecording) {
             if (opts.outputFile) {
@@ -176,7 +177,7 @@ Result<void> Application::init(const AppOptions& opts) {
                 mainWindow_->startRecording();
             }
         }
-        
+
         // Set preset if specified
         if (opts.presetName) {
             LOG_INFO("Application: Requesting preset '{}'", *opts.presetName);
@@ -186,10 +187,13 @@ Result<void> Application::init(const AppOptions& opts) {
             LOG_INFO("Using default projectM visualizer (no preset selected)");
         }
     }
-    
+
     // Connect quit signal
-    connect(qapp_.get(), &QApplication::aboutToQuit, this, &Application::aboutToQuit);
-    
+    connect(qapp_.get(),
+            &QApplication::aboutToQuit,
+            this,
+            &Application::aboutToQuit);
+
     LOG_INFO("Initialization complete. Let's get this bread.");
     return Result<void>::ok();
 }
@@ -204,22 +208,27 @@ int Application::exec() {
 
 void Application::quit() {
     LOG_INFO("Shutting down...");
-    
+
     // Stop recording if active
     if (videoRecorder_ && videoRecorder_->isRecording()) {
         videoRecorder_->stop();
     }
-    
+
     // Stop audio
     if (audioEngine_) {
+        // Save last session playlist
+        auto lastSession = file::configDir() / "last_session.m3u";
+        audioEngine_->playlist().saveM3U(lastSession);
+        LOG_DEBUG("Saved session playlist to {}", lastSession.string());
+
         audioEngine_->stop();
     }
-    
+
     // Save config if dirty
     if (CONFIG.isDirty()) {
         CONFIG.save(CONFIG.configPath());
     }
-    
+
     if (qapp_) {
         qapp_->quit();
     }
@@ -228,14 +237,14 @@ void Application::quit() {
 void Application::setupStyle() {
     // Use Fusion style as base (looks good on Linux)
     qapp_->setStyle(QStyleFactory::create("Fusion"));
-    
+
     // Load fonts
     QFontDatabase::addApplicationFont(":/fonts/liberation-sans.ttf");
-    
+
     // Load stylesheet based on theme
     QString themeName = QString::fromStdString(CONFIG.ui().theme);
     QString stylePath = QString(":/styles/%1.qss").arg(themeName);
-    
+
     QFile styleFile(stylePath);
     if (styleFile.open(QFile::ReadOnly | QFile::Text)) {
         QString style = styleFile.readAll();
