@@ -325,6 +325,8 @@ All 4 critical bugs identified by Claude 4.5 Sonnet have been resolved.
 4. 🟢 Architecture improvements
 
 ### 🚨 NEW BUGS
-1. ✅ Preset Shuffling Issue - FIXED.
-2. ✅ GUI Ghosting on Resize - FIXED.
+1. ✅ Preset Shuffling Issue - FIXED. Added manual timer control and UI toggles.
+2. ✅ GUI Ghosting on Resize - FIXED. Disabled alpha buffer.
+3. ✅ Recording Output Issue - FIXED. Corrected frame submission and audio feeding.
+4. ✅ UI Panel Persistence - FIXED. Consolidated Tools dock and added visibility tracking.
 

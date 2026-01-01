@@ -311,9 +311,26 @@ void VisualizerWindow::renderFrame() {
             renderTarget_.blitTo(overlayTarget_, true);
             overlayEngine_->render(overlayTarget_.width(),
                                    overlayTarget_.height());
+
+            // Capture the final frame with overlay
+            recordingBuffer_.resize(recordWidth_ * recordHeight_ * 4);
+            overlayTarget_.readPixels(
+                    recordingBuffer_.data(), GL_RGBA, GL_UNSIGNED_BYTE);
             overlayTarget_.unbind();
+        } else {
+            // Capture raw projectM frame
+            recordingBuffer_.resize(recordWidth_ * recordHeight_ * 4);
+            renderTarget_.readPixels(
+                    recordingBuffer_.data(), GL_RGBA, GL_UNSIGNED_BYTE);
         }
 
+        emit frameCaptured(
+                recordingBuffer_.data(),
+                recordWidth_,
+                recordHeight_,
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch())
+                        .count());
         emit frameReady();
     } else {
         // Normal display: render directly to default framebuffer

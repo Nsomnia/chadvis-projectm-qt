@@ -64,6 +64,7 @@ public slots:
 
 signals:
     void frameReady();
+    void frameCaptured(const u8* data, u32 width, u32 height, i64 timestamp);
     void fpsChanged(f32 actualFps);
 
 protected:
@@ -117,6 +118,8 @@ private:
     // Preset loading protection
     std::mutex presetLoadMutex_; // Prevent concurrent preset loading
     bool presetLoadInProgress_{false}; // Guard against reentrancy
+
+    std::vector<u8> recordingBuffer_; // Buffer for grabbing frames
 };
 
 } // namespace vc

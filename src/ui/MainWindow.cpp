@@ -151,14 +151,15 @@ void MainWindow::setupUI() {
     overlayEditor_->setOverlayEngine(overlayEngine_.get());
     rightTabs->addTab(overlayEditor_, "Overlay");
 
-    auto* rightDock = new QDockWidget("Tools", this);
-    rightDock->setWidget(rightTabs);
-    rightDock->setMinimumWidth(300);
-    addDockWidget(Qt::RightDockWidgetArea, rightDock);
+    toolsDock_ = new QDockWidget("Tools", this);
+    toolsDock_->setObjectName("ToolsDock");
+    toolsDock_->setWidget(rightTabs);
+    toolsDock_->setMinimumWidth(300);
+    addDockWidget(Qt::RightDockWidgetArea, toolsDock_);
 
     // Show/hide based on config
     playlistDock_->setVisible(CONFIG.ui().showPlaylist);
-    rightDock->setVisible(CONFIG.ui().showPresets);
+    toolsDock_->setVisible(CONFIG.ui().showPresets);
 }
 
 void MainWindow::setupMenuBar() {
@@ -222,11 +223,27 @@ void MainWindow::setupMenuBar() {
 
     auto* showPlaylistAction = viewMenu->addAction("Show &Playlist");
     showPlaylistAction->setCheckable(true);
-    showPlaylistAction->setChecked(CONFIG.ui().showPlaylist);
+    showPlaylistAction->setChecked(playlistDock_->isVisible());
     connect(showPlaylistAction,
             &QAction::toggled,
             playlistDock_,
             &QDockWidget::setVisible);
+    connect(playlistDock_,
+            &QDockWidget::visibilityChanged,
+            showPlaylistAction,
+            &QAction::setChecked);
+
+    auto* showToolsAction = viewMenu->addAction("Show &Tools");
+    showToolsAction->setCheckable(true);
+    showToolsAction->setChecked(toolsDock_->isVisible());
+    connect(showToolsAction,
+            &QAction::toggled,
+            toolsDock_,
+            &QDockWidget::setVisible);
+    connect(toolsDock_,
+            &QDockWidget::visibilityChanged,
+            showToolsAction,
+            &QAction::setChecked);
 
     // Visualizer menu
     auto* vizMenu = menuBar()->addMenu("&Visualizer");
@@ -257,6 +274,22 @@ void MainWindow::setupMenuBar() {
     lockPresetAction->setCheckable(true);
     connect(lockPresetAction, &QAction::toggled, this, [this](bool locked) {
         visualizerPanel_->visualizer()->projectM().lockPreset(locked);
+    });
+
+    auto* shuffleAction = vizMenu->addAction("&Shuffle Presets");
+    shuffleAction->setCheckable(true);
+    shuffleAction->setChecked(CONFIG.visualizer().shufflePresets);
+    connect(shuffleAction, &QAction::toggled, this, [this](bool enabled) {
+        CONFIG.visualizer().shufflePresets = enabled;
+        visualizerPanel_->visualizer()->updateSettings();
+    });
+
+    auto* autoRotateAction = vizMenu->addAction("&Auto-Rotate Presets");
+    autoRotateAction->setCheckable(true);
+    autoRotateAction->setChecked(CONFIG.visualizer().presetDuration > 0);
+    connect(autoRotateAction, &QAction::toggled, this, [this](bool enabled) {
+        CONFIG.visualizer().presetDuration = enabled ? 30 : 0;
+        visualizerPanel_->visualizer()->updateSettings();
     });
 
     // Recording menu
@@ -365,6 +398,11 @@ void MainWindow::setupConnections() {
         if (!pcm.empty() && frames > 0) {
             visualizerPanel_->visualizer()->feedAudio(
                     pcm.data(), frames, channels, sampleRate);
+
+            if (videoRecorder_->isRecording()) {
+                videoRecorder_->submitAudioSamples(
+                        pcm.data(), frames, channels, sampleRate);
+            }
         }
     });
 
@@ -375,13 +413,12 @@ void MainWindow::setupConnections() {
 
     // Visualizer frame ready -> feed to recorder
     connect(visualizerPanel_->visualizer(),
-            &VisualizerWindow::frameReady,
+            &VisualizerWindow::frameCaptured,
             this,
-            [this] {
+            [this](const u8* data, u32 width, u32 height, i64 timestamp) {
                 if (videoRecorder_->isRecording()) {
-                    auto& target =
-                            visualizerPanel_->visualizer()->renderTarget();
-                    // Frame is captured in the visualizer's render loop
+                    videoRecorder_->submitVideoFrame(
+                            data, width, height, timestamp);
                 }
             });
 

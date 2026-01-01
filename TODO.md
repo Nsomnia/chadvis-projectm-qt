@@ -77,11 +77,19 @@ All three fixes are now merged into `main` branch.
 
 1. **Preset Shuffling Issue**
    - **Problem**: Presets do not shuffle automatically.
-   - **Status**: ✅ FIXED. Added `setShuffleEnabled` and `updateSettings()` to apply changes dynamically.
+   - **Status**: ✅ FIXED. Added `setShuffleEnabled` and `updateSettings()` to apply changes dynamically. Added "Auto-Rotate" and "Shuffle" toggles to Visualizer menu.
 
 2. **GUI Ghosting on Resize**
    - **Problem**: Qt GUI shows behind visualizer when window is small.
    - **Status**: ✅ FIXED. Disabled alpha buffer in `QSurfaceFormat` and added alpha hardening in render loop.
+
+3. **Recording Output Issue**
+   - **Problem**: Recording produced empty files (261 bytes).
+   - **Status**: ✅ FIXED. Implemented frame capture in `VisualizerWindow` and connected it to `VideoRecorder`. Added audio sample feeding to the recorder.
+
+4. **UI Panel Management**
+   - **Problem**: Playlist toggle state not tracked; Tools panel could not be re-opened.
+   - **Status**: ✅ FIXED. Added "Show Tools" to View menu and implemented visibility tracking for both docks.
 
 ## 🚨 CRITICAL BUGS (From Claude Analysis)
 
