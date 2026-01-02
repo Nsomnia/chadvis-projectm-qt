@@ -147,6 +147,8 @@ set(OVERLAY_SOURCES
     src/overlay/OverlayConfig.cpp
     src/overlay/OverlayEngine.hpp
     src/overlay/OverlayEngine.cpp
+    src/overlay/OverlayRenderer.hpp
+    src/overlay/OverlayRenderer.cpp
 )
 
 set(RECORDER_SOURCES

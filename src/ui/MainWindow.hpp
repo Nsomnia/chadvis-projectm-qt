@@ -2,6 +2,10 @@
 // MainWindow.hpp - The main application window
 // Now refactored to use specialized controllers for logic.
 
+// clang-format off
+#include "util/GLIncludes.hpp" // Must be first
+// clang-format on
+
 #include "audio/AudioEngine.hpp"
 #include "overlay/OverlayEngine.hpp"
 #include "recorder/VideoRecorder.hpp"

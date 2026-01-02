@@ -176,7 +176,10 @@ void VisualizerWindow::renderFrame() {
             glClearColor(0, 0, 0, 0);
             glClear(GL_COLOR_BUFFER_BIT);
             renderTarget_.blitTo(overlayTarget_, true);
+
+            // Render overlay directly
             overlayEngine_->render(recordWidth_, recordHeight_);
+
             this->captureAsync();
             overlayTarget_.unbind();
         } else {
@@ -196,8 +199,9 @@ void VisualizerWindow::renderFrame() {
         glClear(GL_COLOR_BUFFER_BIT);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
-        if (overlayEngine_)
+        if (overlayEngine_) {
             overlayEngine_->render(width(), height());
+        }
     }
     ++frameCount_;
 }

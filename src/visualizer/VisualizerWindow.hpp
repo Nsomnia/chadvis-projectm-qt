@@ -4,6 +4,7 @@
 
 #include "ProjectMBridge.hpp"
 #include "RenderTarget.hpp"
+#include "util/GLIncludes.hpp"
 #include "util/Types.hpp"
 
 #include <QOpenGLContext>
