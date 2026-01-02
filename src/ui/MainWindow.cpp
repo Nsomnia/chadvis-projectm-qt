@@ -6,9 +6,11 @@
 #include "PresetBrowser.hpp"
 #include "RecordingControls.hpp"
 #include "SettingsDialog.hpp"
+#include "SunoBrowser.hpp"
 #include "VisualizerPanel.hpp"
 #include "controllers/AudioController.hpp"
 #include "controllers/RecordingController.hpp"
+#include "controllers/SunoController.hpp"
 #include "controllers/VisualizerController.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
@@ -56,6 +58,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             &visualizerPanel_->visualizer()->projectM(), this);
     recordingController_ =
             std::make_unique<RecordingController>(videoRecorder_.get(), this);
+    sunoController_ = std::make_unique<suno::SunoController>(
+            audioEngine_.get(), overlayEngine_.get(), this);
 
     setupConnections();
     setupUpdateTimer();
@@ -93,6 +97,9 @@ void MainWindow::setupUI() {
     overlayEditor_ = new OverlayEditor();
     overlayEditor_->setOverlayEngine(overlayEngine_.get());
     rightTabs->addTab(overlayEditor_, "Overlay");
+
+    auto* sunoBrowser = new suno::SunoBrowser(sunoController_.get(), this);
+    rightTabs->addTab(sunoBrowser, "Suno");
 
     toolsDock_ = new QDockWidget("Tools", this);
     toolsDock_->setObjectName("ToolsDock");

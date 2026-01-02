@@ -173,6 +173,8 @@ set(UI_SOURCES
     src/ui/controllers/VisualizerController.cpp
     src/ui/controllers/RecordingController.hpp
     src/ui/controllers/RecordingController.cpp
+    src/ui/controllers/SunoController.hpp
+    src/ui/controllers/SunoController.cpp
     src/ui/PlayerControls.hpp
     src/ui/PlayerControls.cpp
     src/ui/PlaylistView.hpp
@@ -181,6 +183,8 @@ set(UI_SOURCES
     src/ui/VisualizerPanel.cpp
     src/ui/OverlayEditor.hpp
     src/ui/OverlayEditor.cpp
+    src/ui/SunoBrowser.hpp
+    src/ui/SunoBrowser.cpp
     src/ui/PresetBrowser.hpp
     src/ui/PresetBrowser.cpp
     src/ui/RecordingControls.hpp

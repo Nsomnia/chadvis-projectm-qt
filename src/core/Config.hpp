@@ -143,6 +143,9 @@ public:
     const KeyboardConfig& keyboard() const {
         return keyboard_;
     }
+    const SunoConfig& suno() const {
+        return suno_;
+    }
 
     // Section accessors (mutable)
     AudioConfig& audio() {
@@ -164,6 +167,10 @@ public:
     KeyboardConfig& keyboard() {
         markDirty();
         return keyboard_;
+    }
+    SunoConfig& suno() {
+        markDirty();
+        return suno_;
     }
 
     // Overlay elements

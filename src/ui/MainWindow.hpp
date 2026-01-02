@@ -29,6 +29,10 @@ class AudioController;
 class VisualizerController;
 class RecordingController;
 
+namespace suno {
+class SunoController;
+}
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
@@ -93,6 +97,7 @@ private:
     std::unique_ptr<AudioController> audioController_;
     std::unique_ptr<VisualizerController> visualizerController_;
     std::unique_ptr<RecordingController> recordingController_;
+    std::unique_ptr<suno::SunoController> sunoController_;
 
     // UI Widgets
     PlayerControls* playerControls_{nullptr};
