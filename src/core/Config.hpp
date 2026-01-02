@@ -2,12 +2,12 @@
 // Config.hpp - TOML configuration management
 // Because hardcoding values is a code smell and we're not animals
 
-#include "util/Types.hpp"
-#include "util/Result.hpp"
 #include <toml++/toml.h>
+#include <mutex>
 #include <optional>
 #include <vector>
-#include <mutex>
+#include "util/Result.hpp"
+#include "util/Types.hpp"
 
 namespace vc {
 
@@ -21,7 +21,7 @@ struct OverlayElementConfig {
     f32 opacity{1.0f};
     std::string animation{"none"};
     f32 animationSpeed{1.0f};
-    std::string anchor{"left"};  // left, center, right
+    std::string anchor{"left"}; // left, center, right
     bool visible{true};
 };
 
@@ -62,8 +62,8 @@ struct VisualizerConfig {
     u32 presetDuration{30};
     u32 smoothPresetDuration{5};
     bool shufflePresets{true};
-    std::string forcePreset{};  // Force specific preset for debugging
-    bool useDefaultPreset{false};  // Use default projectM visualizer (no preset)
+    std::string forcePreset{}; // Force specific preset for debugging
+    bool useDefaultPreset{false}; // Use default projectM visualizer (no preset)
 };
 
 // Audio configuration
@@ -94,54 +94,105 @@ struct KeyboardConfig {
     std::string prevPreset{"Left"};
 };
 
+struct SunoConfig {
+    std::string token;
+    fs::path downloadPath;
+    bool autoDownload{false};
+    bool saveLyrics{true};
+    bool embedMetadata{true};
+};
+
 // Main configuration class
 class Config {
 public:
     // Singleton access
     static Config& instance();
-    
+
     // Load/save
     Result<void> load(const fs::path& path);
     Result<void> save(const fs::path& path) const;
     Result<void> loadDefault();
-    
+
     // Get config file path
-    fs::path configPath() const { return configPath_; }
-    
+    fs::path configPath() const {
+        return configPath_;
+    }
+
     // General
-    bool debug() const { return debug_; }
-    void setDebug(bool v) { debug_ = v; markDirty(); }
-    
+    bool debug() const {
+        return debug_;
+    }
+    void setDebug(bool v) {
+        debug_ = v;
+        markDirty();
+    }
+
     // Section accessors (const)
-    const AudioConfig& audio() const { return audio_; }
-    const VisualizerConfig& visualizer() const { return visualizer_; }
-    const RecordingConfig& recording() const { return recording_; }
-    const UIConfig& ui() const { return ui_; }
-    const KeyboardConfig& keyboard() const { return keyboard_; }
-    
+    const AudioConfig& audio() const {
+        return audio_;
+    }
+    const VisualizerConfig& visualizer() const {
+        return visualizer_;
+    }
+    const RecordingConfig& recording() const {
+        return recording_;
+    }
+    const UIConfig& ui() const {
+        return ui_;
+    }
+    const KeyboardConfig& keyboard() const {
+        return keyboard_;
+    }
+
     // Section accessors (mutable)
-    AudioConfig& audio() { markDirty(); return audio_; }
-    VisualizerConfig& visualizer() { markDirty(); return visualizer_; }
-    RecordingConfig& recording() { markDirty(); return recording_; }
-    UIConfig& ui() { markDirty(); return ui_; }
-    KeyboardConfig& keyboard() { markDirty(); return keyboard_; }
-    
+    AudioConfig& audio() {
+        markDirty();
+        return audio_;
+    }
+    VisualizerConfig& visualizer() {
+        markDirty();
+        return visualizer_;
+    }
+    RecordingConfig& recording() {
+        markDirty();
+        return recording_;
+    }
+    UIConfig& ui() {
+        markDirty();
+        return ui_;
+    }
+    KeyboardConfig& keyboard() {
+        markDirty();
+        return keyboard_;
+    }
+
     // Overlay elements
-    const std::vector<OverlayElementConfig>& overlayElements() const { return overlayElements_; }
-    std::vector<OverlayElementConfig>& overlayElements() { markDirty(); return overlayElements_; }
-    
+    const std::vector<OverlayElementConfig>& overlayElements() const {
+        return overlayElements_;
+    }
+    std::vector<OverlayElementConfig>& overlayElements() {
+        markDirty();
+        return overlayElements_;
+    }
+
     void addOverlayElement(OverlayElementConfig elem);
     void removeOverlayElement(const std::string& id);
     OverlayElementConfig* findOverlayElement(const std::string& id);
-    
+
     // Dirty tracking for auto-save
-    bool isDirty() const { return dirty_; }
-    void markClean() { dirty_ = false; }
-    
+    bool isDirty() const {
+        return dirty_;
+    }
+    void markClean() {
+        dirty_ = false;
+    }
+
 private:
     Config() = default;
-    void markDirty() { dirty_ = true; }
-    
+    void markDirty() {
+        dirty_ = true;
+    }
+
     // Parse helpers
     void parseAudio(const toml::table& tbl);
     void parseVisualizer(const toml::table& tbl);
@@ -149,21 +200,23 @@ private:
     void parseOverlay(const toml::table& tbl);
     void parseUI(const toml::table& tbl);
     void parseKeyboard(const toml::table& tbl);
-    
+    void parseSuno(const toml::table& tbl);
+
     // Serialize helpers
     toml::table serialize() const;
-    
+
     fs::path configPath_;
     bool dirty_{false};
     bool debug_{false};
-    
+
     AudioConfig audio_;
     VisualizerConfig visualizer_;
     RecordingConfig recording_;
     UIConfig ui_;
     KeyboardConfig keyboard_;
+    SunoConfig suno_;
     std::vector<OverlayElementConfig> overlayElements_;
-    
+
     mutable std::mutex mutex_;
 };
 

@@ -44,7 +44,7 @@ add_compile_options(
 )
 
 # Find packages
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network)
 find_package(PkgConfig REQUIRED)
 
 pkg_check_modules(SPDLOG REQUIRED spdlog)
@@ -138,6 +138,12 @@ set(VISUALIZER_SOURCES
     src/visualizer/VisualizerWindow.cpp
 )
 
+set(SUNO_SOURCES
+    src/suno/SunoModels.hpp
+    src/suno/SunoClient.hpp
+    src/suno/SunoClient.cpp
+)
+
 set(OVERLAY_SOURCES
     src/overlay/TextElement.hpp
     src/overlay/TextElement.cpp
@@ -191,6 +197,7 @@ set(ALL_SOURCES
     ${CORE_SOURCES}
     ${AUDIO_SOURCES}
     ${VISUALIZER_SOURCES}
+    ${SUNO_SOURCES}
     ${OVERLAY_SOURCES}
     ${RECORDER_SOURCES}
     ${UI_SOURCES}
@@ -221,6 +228,7 @@ target_link_libraries(chadvis-projectm-qt PRIVATE
     Qt6::Multimedia
     Qt6::OpenGLWidgets
     Qt6::Svg
+    Qt6::Network
     ${SPDLOG_LIBRARIES}
     ${FMT_LIBRARIES}
     ${TAGLIB_LIBRARIES}
