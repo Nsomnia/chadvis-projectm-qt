@@ -150,6 +150,43 @@ void SettingsDialog::setupUI() {
 
     tabWidget_->addTab(recTab, "Recording");
 
+    // === Suno Tab ===
+    auto* sunoTab = new QWidget();
+    auto* sunoLayout = new QFormLayout(sunoTab);
+
+    sunoTokenEdit_ = new QLineEdit();
+    sunoTokenEdit_->setEchoMode(QLineEdit::PasswordEchoOnEdit);
+    sunoLayout->addRow("API Token:", sunoTokenEdit_);
+
+    sunoCookieEdit_ = new QLineEdit();
+    sunoCookieEdit_->setEchoMode(QLineEdit::PasswordEchoOnEdit);
+    sunoLayout->addRow("Cookie:", sunoCookieEdit_);
+
+    auto* sunoPathLayout = new QHBoxLayout();
+    sunoDownloadPathEdit_ = new QLineEdit();
+    sunoPathLayout->addWidget(sunoDownloadPathEdit_);
+    auto* browseSunoBtn = new QPushButton("...");
+    browseSunoBtn->setFixedWidth(30);
+    connect(browseSunoBtn, &QPushButton::clicked, this, [this] {
+        QString dir = QFileDialog::getExistingDirectory(
+                this,
+                "Select Suno Download Directory",
+                sunoDownloadPathEdit_->text());
+        if (!dir.isEmpty()) {
+            sunoDownloadPathEdit_->setText(dir);
+        }
+    });
+    sunoPathLayout->addWidget(browseSunoBtn);
+    sunoLayout->addRow("Download Path:", sunoPathLayout);
+
+    sunoAutoDownloadCheck_ = new QCheckBox("Auto-download synced tracks");
+    sunoLayout->addRow("", sunoAutoDownloadCheck_);
+
+    sunoSaveLyricsCheck_ = new QCheckBox("Save lyrics to database");
+    sunoLayout->addRow("", sunoSaveLyricsCheck_);
+
+    tabWidget_->addTab(sunoTab, "Suno");
+
     layout->addWidget(tabWidget_);
 
     // Dialog buttons
@@ -204,6 +241,13 @@ void SettingsDialog::loadSettings() {
     crfSpin_->setValue(CONFIG.recording().video.crf);
     encoderPresetCombo_->setCurrentText(
             QString::fromStdString(CONFIG.recording().video.preset));
+
+    sunoTokenEdit_->setText(QString::fromStdString(CONFIG.suno().token));
+    sunoCookieEdit_->setText(QString::fromStdString(CONFIG.suno().cookie));
+    sunoDownloadPathEdit_->setText(
+            QString::fromStdString(CONFIG.suno().downloadPath.string()));
+    sunoAutoDownloadCheck_->setChecked(CONFIG.suno().autoDownload);
+    sunoSaveLyricsCheck_->setChecked(CONFIG.suno().saveLyrics);
 }
 
 void SettingsDialog::saveSettings() {
@@ -229,6 +273,12 @@ void SettingsDialog::saveSettings() {
     CONFIG.recording().video.crf = crfSpin_->value();
     CONFIG.recording().video.preset =
             encoderPresetCombo_->currentText().toStdString();
+
+    CONFIG.suno().token = sunoTokenEdit_->text().toStdString();
+    CONFIG.suno().cookie = sunoCookieEdit_->text().toStdString();
+    CONFIG.suno().downloadPath = sunoDownloadPathEdit_->text().toStdString();
+    CONFIG.suno().autoDownload = sunoAutoDownloadCheck_->isChecked();
+    CONFIG.suno().saveLyrics = sunoSaveLyricsCheck_->isChecked();
 
     CONFIG.save(CONFIG.configPath());
 }

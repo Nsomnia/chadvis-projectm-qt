@@ -64,8 +64,12 @@ void SunoController::refreshLibrary() {
     client_->fetchLibrary();
 }
 
-void SunoController::syncDatabase() {
-    refreshLibrary();
+void SunoController::syncDatabase(bool forceAuth) {
+    if (forceAuth) {
+        showCookieDialog();
+    } else {
+        refreshLibrary();
+    }
 }
 
 void SunoController::showCookieDialog() {

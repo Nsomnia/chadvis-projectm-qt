@@ -38,7 +38,7 @@ public:
     // Logic
     void downloadAndPlay(const SunoClip& clip);
     void refreshLibrary();
-    void syncDatabase();
+    void syncDatabase(bool forceAuth = false);
     void showCookieDialog();
 
     // Signal for UI

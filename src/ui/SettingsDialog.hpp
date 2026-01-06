@@ -55,6 +55,13 @@ private:
     QComboBox* videoCodecCombo_{nullptr};
     QSpinBox* crfSpin_{nullptr};
     QComboBox* encoderPresetCombo_{nullptr};
+
+    // Suno
+    QLineEdit* sunoTokenEdit_{nullptr};
+    QLineEdit* sunoCookieEdit_{nullptr};
+    QLineEdit* sunoDownloadPathEdit_{nullptr};
+    QCheckBox* sunoAutoDownloadCheck_{nullptr};
+    QCheckBox* sunoSaveLyricsCheck_{nullptr};
 };
 
 } // namespace vc
