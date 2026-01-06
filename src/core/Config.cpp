@@ -67,6 +67,7 @@ Result<void> Config::load(const fs::path& path) {
         parseOverlay(tbl);
         parseUI(tbl);
         parseKeyboard(tbl);
+        parseSuno(tbl);
 
         dirty_ = false;
         LOG_INFO("Config loaded from: {}", path.string());
@@ -311,6 +312,20 @@ void Config::parseKeyboard(const toml::table& tbl) {
     }
 }
 
+void Config::parseSuno(const toml::table& tbl) {
+    if (auto suno = tbl["suno"].as_table()) {
+        suno_.token = get(*suno, "token", std::string());
+        suno_.cookie = get(*suno, "cookie", std::string());
+        auto pathStr = get(*suno, "download_path", std::string());
+        if (!pathStr.empty()) {
+            suno_.downloadPath = expandPath(pathStr);
+        }
+        suno_.autoDownload = get(*suno, "auto_download", false);
+        suno_.saveLyrics = get(*suno, "save_lyrics", true);
+        suno_.embedMetadata = get(*suno, "embed_metadata", true);
+    }
+}
+
 toml::table Config::serialize() const {
     toml::table root;
 
@@ -403,6 +418,15 @@ toml::table Config::serialize() const {
                             {"toggle_fullscreen", keyboard_.toggleFullscreen},
                             {"next_preset", keyboard_.nextPreset},
                             {"prev_preset", keyboard_.prevPreset}});
+
+    // Suno
+    root.insert("suno",
+                toml::table{{"token", suno_.token},
+                            {"cookie", suno_.cookie},
+                            {"download_path", suno_.downloadPath.string()},
+                            {"auto_download", suno_.autoDownload},
+                            {"save_lyrics", suno_.saveLyrics},
+                            {"embed_metadata", suno_.embedMetadata}});
 
     return root;
 }

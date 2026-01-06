@@ -96,6 +96,7 @@ struct KeyboardConfig {
 
 struct SunoConfig {
     std::string token;
+    std::string cookie;
     fs::path downloadPath;
     bool autoDownload{false};
     bool saveLyrics{true};

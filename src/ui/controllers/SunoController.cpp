@@ -39,9 +39,12 @@ SunoController::SunoController(AudioEngine* audioEngine,
     fs::path dbPath = file::dataDir() / "suno_library.db";
     db_.init(dbPath.string());
 
-    // Load token from config
+    // Load token/cookie from config
     if (!CONFIG.suno().token.empty()) {
         client_->setToken(CONFIG.suno().token);
+    }
+    if (!CONFIG.suno().cookie.empty()) {
+        client_->setCookie(CONFIG.suno().cookie);
     }
 
     downloadDir_ = CONFIG.suno().downloadPath;
@@ -70,7 +73,9 @@ void SunoController::showCookieDialog() {
     if (dialog->exec() == QDialog::Accepted) {
         std::string cookie = dialog->getCookie().toStdString();
         client_->setCookie(cookie);
-        // We could save this to config too
+        // Save to config
+        CONFIG.suno().cookie = cookie;
+        CONFIG.save(CONFIG.configPath());
         client_->fetchLibrary();
     }
     dialog->deleteLater();
