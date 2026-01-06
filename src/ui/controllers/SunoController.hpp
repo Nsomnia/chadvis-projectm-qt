@@ -4,6 +4,7 @@
 
 #include <QNetworkAccessManager>
 #include <QObject>
+#include <deque>
 #include <filesystem>
 #include <memory>
 #include "suno/SunoClient.hpp"
@@ -53,6 +54,7 @@ public slots:
 private:
     void downloadAudio(const SunoClip& clip);
     void processDownloadedFile(const SunoClip& clip, const fs::path& path);
+    void processLyricsQueue();
 
     AudioEngine* audioEngine_;
     OverlayEngine* overlayEngine_;
@@ -61,6 +63,8 @@ private:
     QNetworkAccessManager* networkManager_;
 
     fs::path downloadDir_;
+    std::deque<std::string> lyricsQueue_;
+    int activeLyricsRequests_{0};
 };
 
 } // namespace suno
