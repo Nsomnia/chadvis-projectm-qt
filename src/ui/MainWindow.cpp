@@ -69,9 +69,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
 MainWindow::~MainWindow() {
     updateTimer_.stop();
-    if (videoRecorder_->isRecording())
+    if (videoRecorder_ && videoRecorder_->isRecording())
         videoRecorder_->stop();
-    audioEngine_->stop();
+
+    // Destroy central widget (VisualizerWindow) first to stop its timers
+    // and prevent it from calling into OverlayEngine while engines are being
+    // destroyed.
+    delete centralWidget();
+
+    sunoController_.reset();
+    recordingController_.reset();
+    audioController_.reset();
+    videoRecorder_.reset();
+    overlayEngine_.reset();
+    audioEngine_.reset();
 }
 
 void MainWindow::setupUI() {

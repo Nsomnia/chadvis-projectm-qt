@@ -23,8 +23,8 @@ SunoController::SunoController(AudioEngine* audioEngine,
       overlayEngine_(overlayEngine),
       client_(std::make_unique<SunoClient>(nullptr)),
       networkManager_(new QNetworkAccessManager(this)) {
-    // Set client parent manually to avoid conversion issues if any
-    client_->setParent(this);
+    // client_ is a unique_ptr, do NOT set parent to avoid double-free
+    // but we can connect signals safely because client_ is a QObject
 
     // Connect client signals
     client_->libraryFetched.connect(
@@ -86,16 +86,30 @@ void SunoController::onLibraryFetched(const std::vector<SunoClip>& clips) {
     db_.saveClips(clips);
     libraryUpdated.emitSignal(clips);
 
-    // Automatically fetch aligned lyrics for clips that don't have them
+    // Queue aligned lyrics for clips that don't have them
     for (const auto& clip : clips) {
         if (db_.getAlignedLyrics(clip.id).isErr()) {
-            client_->fetchAlignedLyrics(clip.id);
+            lyricsQueue_.push_back(clip.id);
         }
+    }
+    processLyricsQueue();
+}
+
+void SunoController::processLyricsQueue() {
+    // Limit concurrent requests to 5
+    while (activeLyricsRequests_ < 5 && !lyricsQueue_.empty()) {
+        std::string id = lyricsQueue_.front();
+        lyricsQueue_.pop_front();
+        activeLyricsRequests_++;
+        client_->fetchAlignedLyrics(id);
     }
 }
 
 void SunoController::onAlignedLyricsFetched(const std::string& clipId,
                                             const std::string& json) {
+    activeLyricsRequests_ = std::max(0, activeLyricsRequests_ - 1);
+    processLyricsQueue();
+
     LOG_INFO("SunoController: Fetched aligned lyrics for {}", clipId);
     db_.saveAlignedLyrics(clipId, json);
 
@@ -130,6 +144,9 @@ void SunoController::onAlignedLyricsFetched(const std::string& clipId,
 }
 
 void SunoController::onError(const std::string& message) {
+    activeLyricsRequests_ = std::max(0, activeLyricsRequests_ - 1);
+    processLyricsQueue();
+
     LOG_ERROR("SunoController: {}", message);
     statusMessage.emitSignal(message);
 }

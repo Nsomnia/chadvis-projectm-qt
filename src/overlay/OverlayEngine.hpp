@@ -13,6 +13,7 @@
 #include <QImage>
 #include <QPainter>
 #include <memory>
+#include <mutex>
 
 namespace vc {
 
@@ -83,6 +84,7 @@ private:
     u32 lastHeight_{0};
     bool enabled_{true};
     bool needsUpload_{false};
+    mutable std::mutex mutex_;
 };
 
 } // namespace vc
