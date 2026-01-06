@@ -10,7 +10,7 @@ namespace vc::ui {
 SunoCookieDialog::SunoCookieDialog(QWidget* parent) : QDialog(parent) {
     setupUI();
     setWindowTitle("Suno AI Authentication");
-    resize(500, 400);
+    resize(600, 500);
 }
 
 SunoCookieDialog::~SunoCookieDialog() = default;
@@ -19,16 +19,19 @@ void SunoCookieDialog::setupUI() {
     auto* layout = new QVBoxLayout(this);
 
     auto* introLabel = new QLabel(
-            "To sync your Suno library, we need your session cookie/token.\n\n"
-            "<b>How to get it:</b>\n"
-            "1. Open <b>suno.com/create</b> and log in.\n"
-            "2. Press <b>F12</b> to open Developer Tools.\n"
-            "3. Go to the <b>Network</b> tab and refresh the page.\n"
-            "4. Filter for <b>?__clerk</b> or <b>tokens</b>.\n"
-            "5. Click a request, go to <b>Headers</b>, find the <b>Cookie</b> "
-            "header.\n"
-            "6. Copy the <b>entire value</b> of the Cookie header.\n\n"
-            "Alternatively, try running this in the <b>Console</b> tab:",
+            "<h3>Suno Authentication Required</h3>"
+            "To sync your library, you need to provide your session "
+            "cookie.<br><br>"
+            "<b>Method 1: Network Tab (Recommended)</b><br>"
+            "1. Open <b>suno.com/create</b> and log in.<br>"
+            "2. Press <b>F12</b> and go to the <b>Network</b> tab.<br>"
+            "3. Refresh the page.<br>"
+            "4. Filter for <b>?__clerk_api_version</b>.<br>"
+            "5. Click the request, find the <b>Cookie</b> header in 'Request "
+            "Headers'.<br>"
+            "6. Copy the <b>entire value</b> (starts with __client...).<br><br>"
+            "<b>Method 2: Console Snippet</b><br>"
+            "Run this in the <b>Console</b> tab and copy the result:",
             this);
     introLabel->setWordWrap(true);
     layout->addWidget(introLabel);
@@ -37,14 +40,9 @@ void SunoCookieDialog::setupUI() {
     snippetDisplay_->setReadOnly(true);
     snippetDisplay_->setPlainText(
             "(function() {\n"
-            "  const c = document.cookie.split('; ').find(row => "
-            "row.startsWith('__client='));\n"
-            "  if (c) {\n"
-            "    prompt('Copy your Suno Cookie:', document.cookie);\n"
-            "  } else {\n"
-            "    alert('__client cookie not found! Please refresh or ensure "
-            "you are logged in.');\n"
-            "  }\n"
+            "  const c = document.cookie;\n"
+            "  console.log('Copy this:', c);\n"
+            "  prompt('Copy your Suno Cookie:', c);\n"
             "})();");
     snippetDisplay_->setMaximumHeight(100);
     layout->addWidget(snippetDisplay_);
@@ -56,14 +54,15 @@ void SunoCookieDialog::setupUI() {
             &SunoCookieDialog::onCopySnippet);
     layout->addWidget(copySnippetBtn_);
 
-    auto* inputLabel = new QLabel("Paste your cookie here:", this);
+    auto* inputLabel = new QLabel("<b>Paste Cookie Here:</b>", this);
     layout->addWidget(inputLabel);
 
     cookieInput_ = new QTextEdit(this);
+    cookieInput_->setPlaceholderText("__client=eyJ...; _ga=...");
     layout->addWidget(cookieInput_);
 
     auto* btnLayout = new QHBoxLayout();
-    okBtn_ = new QPushButton("OK", this);
+    okBtn_ = new QPushButton("Connect", this);
     cancelBtn_ = new QPushButton("Cancel", this);
     btnLayout->addStretch();
     btnLayout->addWidget(okBtn_);
