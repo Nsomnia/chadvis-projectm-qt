@@ -6,9 +6,14 @@ This document provides essential information for agentic coding agents operating
 
 The project uses CMake (3.20+) and Ninja. A `build.sh` script is provided for common tasks.
 
+**CRITICAL: DO NOT COMPILE THE CODE YOURSELF.**
+Compiling this project requires significant resources and has a high probability of hanging the user's system. 
+**ALWAYS** ask the user to compile the code after you have applied your changes.
+Provide the command for them to run: `./build.sh build`
+
 **Note:** If you encounter errors regarding `-mno-direct-extern-access`, this is a known issue with certain system configurations and Qt. The `build.sh` and `CMakeLists.txt` contain fixes to filter this flag out.
 
-- **Build (Debug):** `./build.sh build`
+- **Build (Debug):** `./build.sh build` (User runs this)
 - **Build (Release):** `./build.sh release` (optimized)
 - **Clean:** `./build.sh clean`
 - **Run:** `./build.sh run [args]`

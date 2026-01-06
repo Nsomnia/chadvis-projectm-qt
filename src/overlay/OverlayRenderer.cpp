@@ -56,12 +56,12 @@ void OverlayRenderer::init() {
     // Setup Quad
     // x, y, u, v
     float vertices[] = {
-            -1.0f, 1.0f,  0.0f, 1.0f, // Top Left
-            -1.0f, -1.0f, 0.0f, 0.0f, // Bottom Left
-            1.0f,  -1.0f, 1.0f, 0.0f, // Bottom Right
-            -1.0f, 1.0f,  0.0f, 1.0f, // Top Left (tri 2)
-            1.0f,  -1.0f, 1.0f, 0.0f, // Bottom Right
-            1.0f,  1.0f,  1.0f, 1.0f // Top Right
+            -1.0f, 1.0f,  0.0f, 0.0f, // Top Left
+            -1.0f, -1.0f, 0.0f, 1.0f, // Bottom Left
+            1.0f,  -1.0f, 1.0f, 1.0f, // Bottom Right
+            -1.0f, 1.0f,  0.0f, 0.0f, // Top Left (tri 2)
+            1.0f,  -1.0f, 1.0f, 1.0f, // Bottom Right
+            1.0f,  1.0f,  1.0f, 0.0f // Top Right
     };
 
     if (!vao_.create())

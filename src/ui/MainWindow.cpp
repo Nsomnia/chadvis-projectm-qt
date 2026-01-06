@@ -50,16 +50,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Controllers
     audioController_ =
             std::make_unique<AudioController>(audioEngine_.get(), this);
+    recordingController_ =
+            std::make_unique<RecordingController>(videoRecorder_.get(), this);
+    sunoController_ = std::make_unique<suno::SunoController>(
+            audioEngine_.get(), overlayEngine_.get(), this);
 
     setupUI();
     setupMenuBar();
 
     visualizerController_ = std::make_unique<VisualizerController>(
             &visualizerPanel_->visualizer()->projectM(), this);
-    recordingController_ =
-            std::make_unique<RecordingController>(videoRecorder_.get(), this);
-    sunoController_ = std::make_unique<suno::SunoController>(
-            audioEngine_.get(), overlayEngine_.get(), this);
 
     setupConnections();
     setupUpdateTimer();
