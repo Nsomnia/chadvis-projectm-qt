@@ -199,41 +199,6 @@ void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
     }
 }
 
-refreshAuthToken([this, page](bool success) {
-    if (!success) {
-        errorOccurred.emitSignal("Authentication refresh failed");
-        return;
-    }
-    QString url = QString("/feed/?page=%1").arg(page);
-    QNetworkReply* reply = manager_->get(createRequest(url));
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        onLibraryReply(reply);
-    });
-});
-}
-
-void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
-    if (!isAuthenticated())
-        return;
-
-    refreshAuthToken([this, clipId](bool success) {
-        if (!success)
-            return;
-        QString url = QString("/gen/%1/aligned_lyrics/v2/")
-                              .arg(QString::fromStdString(clipId));
-        QNetworkReply* reply = manager_->get(createRequest(url));
-
-        connect(reply, &QNetworkReply::finished, this, [this, reply, clipId]() {
-            reply->deleteLater();
-            if (reply->error() == QNetworkReply::NoError) {
-                alignedLyricsFetched.emitSignal(clipId,
-                                                reply->readAll().toStdString());
-            }
-        });
-    });
-}
-
 void SunoClient::onLibraryReply(QNetworkReply* reply) {
     reply->deleteLater();
 
@@ -243,17 +208,6 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
     }
 
     QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-    if (!doc.isArray()) {
-        // Sometimes it wraps in { "clips": [...] } or similar?
-        // Based on Python code: [{"id": ...}, ...] or {"clips": [...]}
-        if (doc.isObject() && doc.object().contains("clips")) {
-            // Handle wrapped object
-        } else {
-            // errorOccurred.emitSignal("Invalid JSON response format");
-            // return;
-        }
-    }
-
     std::vector<SunoClip> clips;
     QJsonArray array;
 
@@ -262,7 +216,6 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
     } else if (doc.isObject() && doc.object().contains("clips")) {
         array = doc.object()["clips"].toArray();
     } else if (doc.isObject() && doc.object().contains("project_clips")) {
-        // Projects often wrap clips in "project_clips": [{"clip": {...}}]
         QJsonArray projClips = doc.object()["project_clips"].toArray();
         for (const auto& item : projClips) {
             if (item.toObject().contains("clip")) {
