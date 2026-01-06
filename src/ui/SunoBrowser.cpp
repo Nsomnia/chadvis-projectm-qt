@@ -34,7 +34,7 @@ void SunoBrowser::setupUI() {
     refreshBtn_ = new QPushButton("Refresh");
     topLayout->addWidget(refreshBtn_);
 
-    syncBtn_ = new QPushButton("Sync");
+    syncBtn_ = new QPushButton("Authenticate / Sync");
     topLayout->addWidget(syncBtn_);
 
     layout->addLayout(topLayout);
