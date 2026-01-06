@@ -24,12 +24,16 @@ public:
 
     // Configuration
     void setToken(const std::string& token);
+    void setCookie(const std::string& cookie);
     bool isAuthenticated() const;
 
     // API Methods
     // Fetch songs from "My Library" (Feed)
     // page: 1-based index
     void fetchLibrary(int page = 1);
+
+    // Fetch aligned lyrics for a clip
+    void fetchAlignedLyrics(const std::string& clipId);
 
     // Fetch projects/workspaces
     void fetchProjects(int page = 1);
@@ -40,6 +44,7 @@ public:
     // Signals
     Signal<const std::vector<SunoClip>&> libraryFetched;
     Signal<const std::vector<SunoProject>&> projectsFetched;
+    Signal<std::string, std::string> alignedLyricsFetched; // clipId, json
     Signal<std::string> errorOccurred; // Error message
 
 private slots:
@@ -52,6 +57,7 @@ private:
 
     QNetworkAccessManager* manager_;
     std::string token_;
+    std::string cookie_;
 
     const QString API_BASE = "https://studio-api.prod.suno.com/api";
 };

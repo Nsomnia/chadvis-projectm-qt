@@ -3,9 +3,13 @@
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "overlay/OverlayEngine.hpp"
+#include "ui/SunoCookieDialog.hpp"
 #include "util/FileUtils.hpp"
 
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QNetworkReply>
 #include <QUrl>
 
@@ -17,12 +21,23 @@ SunoController::SunoController(AudioEngine* audioEngine,
     : QObject(parent),
       audioEngine_(audioEngine),
       overlayEngine_(overlayEngine),
-      client_(std::make_unique<SunoClient>(this)),
+      client_(std::make_unique<SunoClient>(nullptr)),
       networkManager_(new QNetworkAccessManager(this)) {
+    // Set client parent manually to avoid conversion issues if any
+    client_->setParent(this);
+
     // Connect client signals
     client_->libraryFetched.connect(
             [this](const auto& clips) { onLibraryFetched(clips); });
+    client_->alignedLyricsFetched.connect(
+            [this](const auto& id, const auto& json) {
+                onAlignedLyricsFetched(id, json);
+            });
     client_->errorOccurred.connect([this](const auto& msg) { onError(msg); });
+
+    // Initialize database
+    fs::path dbPath = file::dataDir() / "suno_library.db";
+    db_.init(dbPath.string());
 
     // Load token from config
     if (!CONFIG.suno().token.empty()) {
@@ -40,19 +55,78 @@ SunoController::~SunoController() = default;
 
 void SunoController::refreshLibrary() {
     if (!client_->isAuthenticated()) {
-        LOG_WARN("SunoController: Cannot refresh, not authenticated");
+        showCookieDialog();
         return;
     }
     client_->fetchLibrary();
 }
 
+void SunoController::syncDatabase() {
+    refreshLibrary();
+}
+
+void SunoController::showCookieDialog() {
+    auto* dialog = new ui::SunoCookieDialog();
+    if (dialog->exec() == QDialog::Accepted) {
+        std::string cookie = dialog->getCookie().toStdString();
+        client_->setCookie(cookie);
+        // We could save this to config too
+        client_->fetchLibrary();
+    }
+    dialog->deleteLater();
+}
+
 void SunoController::onLibraryFetched(const std::vector<SunoClip>& clips) {
     LOG_INFO("SunoController: Fetched {} clips", clips.size());
+    db_.saveClips(clips);
     libraryUpdated.emitSignal(clips);
+
+    // Automatically fetch aligned lyrics for clips that don't have them
+    for (const auto& clip : clips) {
+        if (db_.getAlignedLyrics(clip.id).isErr()) {
+            client_->fetchAlignedLyrics(clip.id);
+        }
+    }
+}
+
+void SunoController::onAlignedLyricsFetched(const std::string& clipId,
+                                            const std::string& json) {
+    LOG_INFO("SunoController: Fetched aligned lyrics for {}", clipId);
+    db_.saveAlignedLyrics(clipId, json);
+
+    // If this is the currently playing clip, update overlay
+    // (Assuming we have a way to know what's playing)
+
+    // Parse JSON
+    QJsonDocument doc =
+            QJsonDocument::fromJson(QByteArray::fromStdString(json));
+    if (doc.isArray() || (doc.isObject() && doc.object().contains("words"))) {
+        AlignedLyrics lyrics;
+        lyrics.songId = clipId;
+
+        QJsonArray arr =
+                doc.isArray() ? doc.array() : doc.object()["words"].toArray();
+        // In some versions it's "aligned_words"
+        if (arr.isEmpty() && doc.isObject()) {
+            arr = doc.object()["aligned_words"].toArray();
+        }
+
+        for (const auto& val : arr) {
+            QJsonObject obj = val.toObject();
+            AlignedWord w;
+            w.word = obj["word"].toString().toStdString();
+            w.start_s = obj["start_s"].toDouble(obj["start"].toDouble());
+            w.end_s = obj["end_s"].toDouble(obj["end"].toDouble());
+            w.score = obj["p_align"].toDouble(obj["score"].toDouble());
+            lyrics.words.push_back(w);
+        }
+        overlayEngine_->setAlignedLyrics(lyrics);
+    }
 }
 
 void SunoController::onError(const std::string& message) {
     LOG_ERROR("SunoController: {}", message);
+    statusMessage.emitSignal(message);
 }
 
 void SunoController::downloadAndPlay(const SunoClip& clip) {
@@ -98,14 +172,13 @@ void SunoController::downloadAudio(const SunoClip& clip) {
 
 void SunoController::processDownloadedFile(const SunoClip& clip,
                                            const fs::path& path) {
-    // 1. Embed metadata/lyrics (Todo)
-    // 2. Add to playlist
     audioEngine_->playlist().addFile(path);
 
-    // 3. Update overlay with lyrics if playing
-    if (!clip.metadata.lyrics.empty()) {
-        LOG_INFO("SunoController: Found lyrics ({} chars)",
-                 clip.metadata.lyrics.size());
+    // If we have aligned lyrics, prepare them for overlay
+    auto lyricsRes = db_.getAlignedLyrics(clip.id);
+    if (lyricsRes.isOk()) {
+        LOG_INFO("SunoController: Loaded aligned lyrics for {}", clip.title);
+        // TODO: Pass to overlay engine
     }
 }
 

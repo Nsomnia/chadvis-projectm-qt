@@ -7,6 +7,7 @@
 #include "TextAnimator.hpp"
 #include "TextElement.hpp"
 #include "audio/MediaMetadata.hpp"
+#include "suno/SunoLyrics.hpp"
 #include "util/Types.hpp"
 
 #include <QImage>
@@ -40,6 +41,8 @@ public:
     void update(f32 deltaTime);
     void onBeat(f32 intensity);
     void updateMetadata(const MediaMetadata& meta);
+    void setAlignedLyrics(const suno::AlignedLyrics& lyrics);
+    void updatePlaybackTime(f32 time_s);
 
     // Rendering
     // 1. Updates animation state
@@ -69,6 +72,8 @@ private:
     OverlayConfig config_;
     TextAnimator animator_;
     MediaMetadata currentMetadata_;
+    suno::AlignedLyrics alignedLyrics_;
+    f32 playbackTime_{0.0f};
 
     // Rendering Resources
     std::unique_ptr<OverlayRenderer> renderer_;

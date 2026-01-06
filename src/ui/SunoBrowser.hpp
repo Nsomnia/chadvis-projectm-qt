@@ -25,6 +25,7 @@ public slots:
 
 private slots:
     void onRefreshClicked();
+    void onSyncClicked();
     void onItemDoubleClicked(QListWidgetItem* item);
 
 private:
@@ -34,6 +35,7 @@ private:
 
     QListWidget* clipList_;
     QPushButton* refreshBtn_;
+    QPushButton* syncBtn_;
     QLineEdit* searchEdit_;
     QLabel* statusLabel_;
 

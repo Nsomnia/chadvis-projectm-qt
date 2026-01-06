@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <memory>
 #include "suno/SunoClient.hpp"
+#include "suno/SunoDatabase.hpp"
+#include "suno/SunoLyrics.hpp"
 #include "util/Result.hpp"
 #include "util/Signal.hpp"
 
@@ -35,12 +37,17 @@ public:
     // Logic
     void downloadAndPlay(const SunoClip& clip);
     void refreshLibrary();
+    void syncDatabase();
+    void showCookieDialog();
 
     // Signal for UI
     Signal<const std::vector<SunoClip>&> libraryUpdated;
+    Signal<const std::string&> statusMessage;
 
 public slots:
     void onLibraryFetched(const std::vector<SunoClip>& clips);
+    void onAlignedLyricsFetched(const std::string& clipId,
+                                const std::string& json);
     void onError(const std::string& message);
 
 private:
@@ -50,6 +57,7 @@ private:
     AudioEngine* audioEngine_;
     OverlayEngine* overlayEngine_;
     std::unique_ptr<SunoClient> client_;
+    SunoDatabase db_;
     QNetworkAccessManager* networkManager_;
 
     fs::path downloadDir_;
