@@ -149,7 +149,7 @@ void SunoClient::fetchLibrary(int page) {
     }
 
     auto proceed = [this, page] {
-        QString url = QString("/feed/?page=%1").arg(page);
+        QString url = QString("/feed/v2?page=%1").arg(page);
         QNetworkReply* reply = manager_->get(createRequest(url));
 
         connect(reply, &QNetworkReply::finished, this, [this, reply]() {
