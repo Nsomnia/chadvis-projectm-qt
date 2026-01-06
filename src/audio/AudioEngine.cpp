@@ -91,6 +91,11 @@ void AudioEngine::play() {
         LOG_INFO("Loaded current track");
     }
 
+    if (player_->source().isEmpty()) {
+        LOG_WARN("AudioEngine: Cannot play, no source loaded");
+        return;
+    }
+
     LOG_INFO("Calling player_->play(), source={}",
              player_->source().toString().toStdString());
     player_->play();
@@ -203,10 +208,10 @@ void AudioEngine::loadCurrentTrack() {
 }
 
 void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
-    // LOG_TRACE("AudioEngine::processAudioBuffer called"); // Too frequent for
-    // INFO
     if (!buffer.isValid())
         return;
+
+    std::lock_guard lock(audioMutex_);
 
     const auto format = buffer.format();
     const auto sampleRate = format.sampleRate();

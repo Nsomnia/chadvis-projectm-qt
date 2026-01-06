@@ -15,6 +15,7 @@
 #include <QMediaPlayer>
 #include <QTimer>
 #include <memory>
+#include <mutex>
 
 namespace vc {
 
@@ -62,10 +63,12 @@ public:
     }
 
     // Audio analysis for visualizer
-    const AudioSpectrum& currentSpectrum() const {
+    AudioSpectrum currentSpectrum() const {
+        std::lock_guard lock(audioMutex_);
         return currentSpectrum_;
     }
-    const std::vector<f32>& currentPCM() const {
+    std::vector<f32> currentPCM() const {
+        std::lock_guard lock(audioMutex_);
         return analyzer_.pcmData();
     }
 
@@ -114,6 +117,7 @@ private:
     // Diagnostic
     QTimer bufferCheckTimer_;
     bool bufferReceivedSinceLastCheck_{false};
+    mutable std::mutex audioMutex_;
 };
 
 } // namespace vc
