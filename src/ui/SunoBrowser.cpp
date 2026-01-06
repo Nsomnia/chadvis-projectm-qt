@@ -62,8 +62,8 @@ void SunoBrowser::onRefreshClicked() {
 }
 
 void SunoBrowser::onSyncClicked() {
-    statusLabel_->setText("Syncing...");
-    controller_->syncDatabase();
+    statusLabel_->setText("Opening Auth Dialog...");
+    controller_->syncDatabase(true);
 }
 
 void SunoBrowser::updateList(const std::vector<SunoClip>& clips) {

@@ -148,18 +148,69 @@ void SunoClient::fetchLibrary(int page) {
         return;
     }
 
-    refreshAuthToken([this, page](bool success) {
-        if (!success) {
-            errorOccurred.emitSignal("Authentication refresh failed");
-            return;
-        }
+    auto proceed = [this, page] {
         QString url = QString("/feed/?page=%1").arg(page);
         QNetworkReply* reply = manager_->get(createRequest(url));
 
         connect(reply, &QNetworkReply::finished, this, [this, reply]() {
             onLibraryReply(reply);
         });
+    };
+
+    if (token_.empty() && !cookie_.empty()) {
+        refreshAuthToken([this, proceed](bool success) {
+            if (!success) {
+                errorOccurred.emitSignal("Authentication refresh failed");
+                return;
+            }
+            proceed();
+        });
+    } else {
+        proceed();
+    }
+}
+
+void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
+    if (!isAuthenticated())
+        return;
+
+    auto proceed = [this, clipId] {
+        QString url = QString("/gen/%1/aligned_lyrics/v2/")
+                              .arg(QString::fromStdString(clipId));
+        QNetworkReply* reply = manager_->get(createRequest(url));
+
+        connect(reply, &QNetworkReply::finished, this, [this, reply, clipId]() {
+            reply->deleteLater();
+            if (reply->error() == QNetworkReply::NoError) {
+                alignedLyricsFetched.emitSignal(clipId,
+                                                reply->readAll().toStdString());
+            }
+        });
+    };
+
+    if (token_.empty() && !cookie_.empty()) {
+        refreshAuthToken([this, proceed](bool success) {
+            if (!success)
+                return;
+            proceed();
+        });
+    } else {
+        proceed();
+    }
+}
+
+refreshAuthToken([this, page](bool success) {
+    if (!success) {
+        errorOccurred.emitSignal("Authentication refresh failed");
+        return;
+    }
+    QString url = QString("/feed/?page=%1").arg(page);
+    QNetworkReply* reply = manager_->get(createRequest(url));
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        onLibraryReply(reply);
     });
+});
 }
 
 void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
@@ -259,6 +310,7 @@ void SunoClient::handleNetworkError(QNetworkReply* reply) {
     if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() ==
         401) {
         err = "Unauthorized: Token expired or invalid";
+        token_.clear(); // Clear token so next call attempts refresh
     }
     errorOccurred.emitSignal(err);
     LOG_ERROR("SunoClient API Error: {}", err);
