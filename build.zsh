@@ -7,7 +7,7 @@ readonly SCRIPT_DIR="${0:A:h}"
 readonly BUILD_DIR="${SCRIPT_DIR}/build"
 readonly BINARY_NAME="chadvis-projectm-qt"
 readonly BINARY_PATH="${BUILD_DIR}/${BINARY_NAME}"
-readonly N4500_CORES=2
+readonly N4500_CORES=1
 readonly N4500_ARCH="tremont"
 
 readonly -a CPU_OPT_FLAGS=(
@@ -183,9 +183,9 @@ cmd_help() {
     print -P "%BUsage:%b ${0:t} <command> [args...]"
     print -P "%BCommands:%b"
     print "  build           Incremental debug build"
-    print "  release         Incremental release build (LTO)"
+    # preent confusion for dev cycle --- print "  release         Incremental release build (LTO)"
     print "  rebuild         Clean debug build"
-    print "  rebuild-release Clean release build"
+    # print "  rebuild-release Clean release build"
     print "  clean           Remove build artifacts"
     print "  run [args]      Build if needed, launch"
     print "  test            Run tests"
@@ -194,7 +194,9 @@ cmd_help() {
 }
 
 typeset -A DISPATCH=(
-    [build]=cmd_build [release]=cmd_release [rebuild]=cmd_rebuild [rebuild-release]=cmd_rebuild_release
+    [build]=cmd_build
+    [rebuild]=cmd_rebuild
+    # [release]=cmd_release [rebuild-release]=cmd_rebuild_release
     [clean]=cmd_clean [run]=cmd_run [test]=cmd_test
     [check-deps]=cmd_check_deps [check]=cmd_check_deps [deps]=cmd_check_deps
     [help]=cmd_help [-h]=cmd_help [--help]=cmd_help
