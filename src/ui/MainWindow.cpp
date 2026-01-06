@@ -48,18 +48,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     videoRecorder_ = std::make_unique<VideoRecorder>();
 
     // Controllers
+    // Note: Pass nullptr as parent because we manage lifetime via unique_ptr
+    // Passing 'this' would cause double-free (unique_ptr + QObject tree)
     audioController_ =
-            std::make_unique<AudioController>(audioEngine_.get(), this);
-    recordingController_ =
-            std::make_unique<RecordingController>(videoRecorder_.get(), this);
+            std::make_unique<AudioController>(audioEngine_.get(), nullptr);
+    recordingController_ = std::make_unique<RecordingController>(
+            videoRecorder_.get(), nullptr);
     sunoController_ = std::make_unique<suno::SunoController>(
-            audioEngine_.get(), overlayEngine_.get(), this);
+            audioEngine_.get(), overlayEngine_.get(), nullptr);
 
     setupUI();
     setupMenuBar();
 
     visualizerController_ = std::make_unique<VisualizerController>(
-            &visualizerPanel_->visualizer()->projectM(), this);
+            &visualizerPanel_->visualizer()->projectM(), nullptr);
 
     setupConnections();
     setupUpdateTimer();
