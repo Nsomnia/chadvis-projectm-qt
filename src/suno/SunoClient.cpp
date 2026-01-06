@@ -16,14 +16,25 @@ void SunoClient::setToken(const std::string& token) {
     token_ = token;
 }
 
+void SunoClient::setCookie(const std::string& cookie) {
+    cookie_ = cookie;
+}
+
 bool SunoClient::isAuthenticated() const {
-    return !token_.empty();
+    return !token_.empty() || !cookie_.empty();
 }
 
 QNetworkRequest SunoClient::createRequest(const QString& endpoint) {
     QNetworkRequest request(QUrl(API_BASE + endpoint));
-    request.setRawHeader("Authorization",
-                         QString::fromStdString("Bearer " + token_).toUtf8());
+    if (!token_.empty()) {
+        request.setRawHeader(
+                "Authorization",
+                QString::fromStdString("Bearer " + token_).toUtf8());
+    }
+    if (!cookie_.empty()) {
+        request.setRawHeader("Cookie",
+                             QString::fromStdString(cookie_).toUtf8());
+    }
     request.setRawHeader(
             "User-Agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -42,6 +53,23 @@ void SunoClient::fetchLibrary(int page) {
 
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         onLibraryReply(reply);
+    });
+}
+
+void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
+    if (!isAuthenticated())
+        return;
+
+    QString url = QString("/gen/%1/aligned_lyrics/v2/")
+                          .arg(QString::fromStdString(clipId));
+    QNetworkReply* reply = manager_->get(createRequest(url));
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, clipId]() {
+        reply->deleteLater();
+        if (reply->error() == QNetworkReply::NoError) {
+            alignedLyricsFetched.emitSignal(clipId,
+                                            reply->readAll().toStdString());
+        }
     });
 }
 

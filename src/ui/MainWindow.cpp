@@ -248,6 +248,13 @@ void MainWindow::setupConnections() {
         });
     });
 
+    audioEngine_->positionChanged.connect([this](Duration pos) {
+        QMetaObject::invokeMethod(this, [this, pos] {
+            overlayEngine_->updatePlaybackTime(static_cast<f32>(pos.count()) /
+                                               1000.0f);
+        });
+    });
+
     connect(overlayEditor_, &OverlayEditor::overlayChanged, this, [this] {
         overlayEngine_->config().saveToAppConfig();
     });

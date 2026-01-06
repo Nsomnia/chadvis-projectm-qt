@@ -13,6 +13,12 @@ SunoBrowser::SunoBrowser(SunoController* controller, QWidget* parent)
     controller_->libraryUpdated.connect([this](const auto& clips) {
         QMetaObject::invokeMethod(this, [this, clips] { updateList(clips); });
     });
+
+    controller_->statusMessage.connect([this](const auto& msg) {
+        QMetaObject::invokeMethod(this, [this, msg] {
+            statusLabel_->setText(QString::fromStdString(msg));
+        });
+    });
 }
 
 SunoBrowser::~SunoBrowser() = default;
@@ -27,6 +33,10 @@ void SunoBrowser::setupUI() {
 
     refreshBtn_ = new QPushButton("Refresh");
     topLayout->addWidget(refreshBtn_);
+
+    syncBtn_ = new QPushButton("Sync");
+    topLayout->addWidget(syncBtn_);
+
     layout->addLayout(topLayout);
 
     clipList_ = new QListWidget();
@@ -39,6 +49,7 @@ void SunoBrowser::setupUI() {
             &QPushButton::clicked,
             this,
             &SunoBrowser::onRefreshClicked);
+    connect(syncBtn_, &QPushButton::clicked, this, &SunoBrowser::onSyncClicked);
     connect(clipList_,
             &QListWidget::itemDoubleClicked,
             this,
@@ -48,6 +59,11 @@ void SunoBrowser::setupUI() {
 void SunoBrowser::onRefreshClicked() {
     statusLabel_->setText("Fetching...");
     controller_->refreshLibrary();
+}
+
+void SunoBrowser::onSyncClicked() {
+    statusLabel_->setText("Syncing...");
+    controller_->syncDatabase();
 }
 
 void SunoBrowser::updateList(const std::vector<SunoClip>& clips) {
