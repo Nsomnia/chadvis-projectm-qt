@@ -18,6 +18,19 @@ void SunoClient::setToken(const std::string& token) {
 
 void SunoClient::setCookie(const std::string& cookie) {
     cookie_ = cookie;
+
+    // Try to extract JWT from __session cookie if present
+    // Some session strings have __session=eyJ...
+    size_t pos = cookie_.find("__session=");
+    if (pos != std::string::npos) {
+        size_t start = pos + 10;
+        size_t end = cookie_.find(";", start);
+        std::string potentialToken = cookie_.substr(start, end - start);
+        if (potentialToken.starts_with("eyJ")) {
+            token_ = potentialToken;
+            LOG_INFO("SunoClient: Extracted JWT from __session cookie");
+        }
+    }
 }
 
 bool SunoClient::isAuthenticated() const {

@@ -22,16 +22,18 @@ void SunoCookieDialog::setupUI() {
             "<h3>Suno Authentication Required</h3>"
             "To sync your library, you need to provide your session "
             "cookie.<br><br>"
-            "<b>Method 1: Network Tab (Recommended)</b><br>"
+            "<b>Method 1: Network Tab (Reliable)</b><br>"
             "1. Open <b>suno.com/create</b> and log in.<br>"
             "2. Press <b>F12</b> and go to the <b>Network</b> tab.<br>"
             "3. Refresh the page.<br>"
             "4. Filter for <b>?__clerk_api_version</b>.<br>"
-            "5. Click the request, find the <b>Cookie</b> header in 'Request "
-            "Headers'.<br>"
-            "6. Copy the <b>entire value</b> (starts with __client...).<br><br>"
-            "<b>Method 2: Console Snippet</b><br>"
-            "Run this in the <b>Console</b> tab and copy the result:",
+            "5. Click the request, find <b>Cookie</b> in the 'Request Headers' "
+            "section.<br>"
+            "6. Copy the <b>entire value</b> (starts with __client... or "
+            "contains __session...).<br><br>"
+            "<b>Method 2: Console Snippet (Quick but might fail)</b><br>"
+            "Run this in the <b>Console</b> tab. <i>Note: This may not work if "
+            "cookies are secure/HttpOnly.</i>",
             this);
     introLabel->setWordWrap(true);
     layout->addWidget(introLabel);
@@ -41,8 +43,13 @@ void SunoCookieDialog::setupUI() {
     snippetDisplay_->setPlainText(
             "(function() {\n"
             "  const c = document.cookie;\n"
-            "  console.log('Copy this:', c);\n"
-            "  prompt('Copy your Suno Cookie:', c);\n"
+            "  if (!c.includes('__client=') && !c.includes('__session=')) {\n"
+            "    alert('Required cookies missing from script access! Please "
+            "use Method 1 (Network Tab) instead.');\n"
+            "  } else {\n"
+            "    console.log('Copy this:', c);\n"
+            "    prompt('Copy your Suno Cookie:', c);\n"
+            "  }\n"
             "})();");
     snippetDisplay_->setMaximumHeight(100);
     layout->addWidget(snippetDisplay_);
