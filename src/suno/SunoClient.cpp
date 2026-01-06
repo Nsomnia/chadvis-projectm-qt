@@ -24,6 +24,93 @@ bool SunoClient::isAuthenticated() const {
     return !token_.empty() || !cookie_.empty();
 }
 
+void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
+    if (cookie_.empty()) {
+        if (callback)
+            callback(false);
+        return;
+    }
+
+    // Step 1: Get Session ID if we don't have it
+    if (clerkSid_.empty()) {
+        QString url = QString("%1/client?_is_native=true&_clerk_js_version=%2")
+                              .arg(CLERK_BASE)
+                              .arg(QString::fromStdString(clerkVersion_));
+        QNetworkRequest req((QUrl(url)));
+        req.setRawHeader("Cookie", QString::fromStdString(cookie_).toUtf8());
+        req.setRawHeader(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+        QNetworkReply* reply = manager_->get(req);
+        connect(reply,
+                &QNetworkReply::finished,
+                this,
+                [this, reply, callback]() {
+                    reply->deleteLater();
+                    if (reply->error() == QNetworkReply::NoError) {
+                        QJsonDocument doc =
+                                QJsonDocument::fromJson(reply->readAll());
+                        clerkSid_ =
+                                doc.object()["response"]
+                                        .toObject()["last_active_session_id"]
+                                        .toString()
+                                        .toStdString();
+                        if (!clerkSid_.empty()) {
+                            // Recurse to Step 2
+                            refreshAuthToken(callback);
+                        } else {
+                            LOG_ERROR(
+                                    "SunoClient: Failed to extract Clerk SID");
+                            if (callback)
+                                callback(false);
+                        }
+                    } else {
+                        LOG_ERROR(
+                                "SunoClient: Clerk Session ID request failed: "
+                                "{}",
+                                reply->errorString().toStdString());
+                        if (callback)
+                            callback(false);
+                    }
+                });
+        return;
+    }
+
+    // Step 2: Get JWT Token
+    QString url = QString("%1/client/sessions/%2/"
+                          "tokens?_is_native=true&_clerk_js_version=%3")
+                          .arg(CLERK_BASE)
+                          .arg(QString::fromStdString(clerkSid_))
+                          .arg(QString::fromStdString(clerkVersion_));
+    QNetworkRequest req((QUrl(url)));
+    req.setRawHeader("Cookie", QString::fromStdString(cookie_).toUtf8());
+    req.setRawHeader(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+    // Use POST as seen in dev tools
+    QNetworkReply* reply = manager_->post(req, QByteArray());
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback]() {
+        reply->deleteLater();
+        if (reply->error() == QNetworkReply::NoError) {
+            QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            token_ = doc.object()["jwt"].toString().toStdString();
+            LOG_INFO("SunoClient: Refreshed auth token ({}...)",
+                     token_.substr(0, 10));
+            if (callback)
+                callback(!token_.empty());
+        } else {
+            LOG_ERROR("SunoClient: Clerk Token request failed: {}",
+                      reply->errorString().toStdString());
+            if (callback)
+                callback(false);
+        }
+    });
+}
+
 QNetworkRequest SunoClient::createRequest(const QString& endpoint) {
     QNetworkRequest request(QUrl(API_BASE + endpoint));
     if (!token_.empty()) {
@@ -48,11 +135,17 @@ void SunoClient::fetchLibrary(int page) {
         return;
     }
 
-    QString url = QString("/feed/?page=%1").arg(page);
-    QNetworkReply* reply = manager_->get(createRequest(url));
+    refreshAuthToken([this, page](bool success) {
+        if (!success) {
+            errorOccurred.emitSignal("Authentication refresh failed");
+            return;
+        }
+        QString url = QString("/feed/?page=%1").arg(page);
+        QNetworkReply* reply = manager_->get(createRequest(url));
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        onLibraryReply(reply);
+        connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+            onLibraryReply(reply);
+        });
     });
 }
 
@@ -60,16 +153,20 @@ void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
     if (!isAuthenticated())
         return;
 
-    QString url = QString("/gen/%1/aligned_lyrics/v2/")
-                          .arg(QString::fromStdString(clipId));
-    QNetworkReply* reply = manager_->get(createRequest(url));
+    refreshAuthToken([this, clipId](bool success) {
+        if (!success)
+            return;
+        QString url = QString("/gen/%1/aligned_lyrics/v2/")
+                              .arg(QString::fromStdString(clipId));
+        QNetworkReply* reply = manager_->get(createRequest(url));
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, clipId]() {
-        reply->deleteLater();
-        if (reply->error() == QNetworkReply::NoError) {
-            alignedLyricsFetched.emitSignal(clipId,
-                                            reply->readAll().toStdString());
-        }
+        connect(reply, &QNetworkReply::finished, this, [this, reply, clipId]() {
+            reply->deleteLater();
+            if (reply->error() == QNetworkReply::NoError) {
+                alignedLyricsFetched.emitSignal(clipId,
+                                                reply->readAll().toStdString());
+            }
+        });
     });
 }
 

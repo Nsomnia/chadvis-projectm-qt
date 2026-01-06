@@ -27,6 +27,9 @@ public:
     void setCookie(const std::string& cookie);
     bool isAuthenticated() const;
 
+    // Refresh Bearer token using cookie (Clerk API)
+    void refreshAuthToken(std::function<void(bool)> callback = nullptr);
+
     // API Methods
     // Fetch songs from "My Library" (Feed)
     // page: 1-based index
@@ -58,8 +61,11 @@ private:
     QNetworkAccessManager* manager_;
     std::string token_;
     std::string cookie_;
+    std::string clerkSid_;
+    std::string clerkVersion_{"5.117.0"};
 
     const QString API_BASE = "https://studio-api.prod.suno.com/api";
+    const QString CLERK_BASE = "https://auth.suno.com/v1";
 };
 
 } // namespace vc::suno
