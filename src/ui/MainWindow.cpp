@@ -12,6 +12,7 @@
 #include "controllers/RecordingController.hpp"
 #include "controllers/SunoController.hpp"
 #include "controllers/VisualizerController.hpp"
+#include "core/Application.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
@@ -38,30 +39,30 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resize(1400, 900);
     setAcceptDrops(true);
 
-    audioEngine_ = std::make_unique<AudioEngine>();
-    if (auto result = audioEngine_->init(); !result) {
-        LOG_ERROR("AudioEngine Init Failed: {}", result.error().message);
-    }
+    // Get engines from Application singleton
+    audioEngine_ = APP->audioEngine();
+    overlayEngine_ = APP->overlayEngine();
+    videoRecorder_ = APP->videoRecorder();
 
-    overlayEngine_ = std::make_unique<OverlayEngine>();
-    overlayEngine_->init();
-    videoRecorder_ = std::make_unique<VideoRecorder>();
+    if (!audioEngine_ || !overlayEngine_ || !videoRecorder_) {
+        LOG_ERROR(
+                "MainWindow: One or more engines are null! APP is likely not "
+                "initialized.");
+    }
 
     // Controllers
     // Note: Pass nullptr as parent because we manage lifetime via unique_ptr
-    // Passing 'this' would cause double-free (unique_ptr + QObject tree)
-    audioController_ =
-            std::make_unique<AudioController>(audioEngine_.get(), nullptr);
-    recordingController_ = std::make_unique<RecordingController>(
-            videoRecorder_.get(), nullptr);
+    audioController_ = std::make_unique<AudioController>(audioEngine_, this);
+    recordingController_ =
+            std::make_unique<RecordingController>(videoRecorder_, this);
     sunoController_ = std::make_unique<suno::SunoController>(
-            audioEngine_.get(), overlayEngine_.get(), nullptr);
+            audioEngine_, overlayEngine_, this);
 
     setupUI();
     setupMenuBar();
 
     visualizerController_ = std::make_unique<VisualizerController>(
-            &visualizerPanel_->visualizer()->projectM(), nullptr);
+            &visualizerPanel_->visualizer()->projectM(), this);
 
     setupConnections();
     setupUpdateTimer();
@@ -71,25 +72,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
 MainWindow::~MainWindow() {
     updateTimer_.stop();
+
     if (videoRecorder_ && videoRecorder_->isRecording())
         videoRecorder_->stop();
 
-    // Destroy central widget (VisualizerWindow) first to stop its timers
-    // and prevent it from calling into OverlayEngine while engines are being
-    // destroyed.
+    // Destroy central widget (VisualizerWindow) first
     delete centralWidget();
 
+    // Reset controllers explicitly
     sunoController_.reset();
     recordingController_.reset();
     audioController_.reset();
-    videoRecorder_.reset();
-    overlayEngine_.reset();
-    audioEngine_.reset();
+    visualizerController_.reset();
 }
 
 void MainWindow::setupUI() {
     visualizerPanel_ = new VisualizerPanel(this);
-    visualizerPanel_->setOverlayEngine(overlayEngine_.get());
+    visualizerPanel_->setOverlayEngine(overlayEngine_);
     setCentralWidget(visualizerPanel_);
 
     playerControls_ = new PlayerControls(this);
@@ -108,7 +107,7 @@ void MainWindow::setupUI() {
     recordingControls_ = new RecordingControls();
     rightTabs->addTab(recordingControls_, "Recording");
     overlayEditor_ = new OverlayEditor();
-    overlayEditor_->setOverlayEngine(overlayEngine_.get());
+    overlayEditor_->setOverlayEngine(overlayEngine_);
     rightTabs->addTab(overlayEditor_, "Overlay");
 
     auto* sunoBrowser = new suno::SunoBrowser(sunoController_.get(), this);

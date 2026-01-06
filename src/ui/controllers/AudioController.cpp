@@ -9,8 +9,8 @@
 
 namespace vc {
 
-AudioController::AudioController(AudioEngine* engine, MainWindow* parent)
-    : QObject(parent), engine_(engine), window_(parent) {
+AudioController::AudioController(AudioEngine* engine, MainWindow* window)
+    : QObject(nullptr), engine_(engine), window_(window) {
 }
 
 void AudioController::setupUI(PlayerControls* controls, PlaylistView* view) {

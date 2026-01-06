@@ -46,16 +46,16 @@ public:
 
     // Component Accessors
     AudioEngine* audioEngine() {
-        return audioEngine_.get();
+        return audioEngine_;
     }
     VisualizerPanel* visualizerPanel() {
         return visualizerPanel_;
     }
     VideoRecorder* videoRecorder() {
-        return videoRecorder_.get();
+        return videoRecorder_;
     }
     OverlayEngine* overlayEngine() {
-        return overlayEngine_.get();
+        return overlayEngine_;
     }
 
     void startRecording(const fs::path& outputPath = {});
@@ -88,10 +88,10 @@ private:
     void setupUpdateTimer();
     void updateWindowTitle();
 
-    // Engines
-    std::unique_ptr<AudioEngine> audioEngine_;
-    std::unique_ptr<OverlayEngine> overlayEngine_;
-    std::unique_ptr<VideoRecorder> videoRecorder_;
+    // Engines (Managed by Application)
+    AudioEngine* audioEngine_{nullptr};
+    OverlayEngine* overlayEngine_{nullptr};
+    VideoRecorder* videoRecorder_{nullptr};
 
     // Controllers
     std::unique_ptr<AudioController> audioController_;

@@ -10,8 +10,8 @@
 namespace vc {
 
 RecordingController::RecordingController(VideoRecorder* recorder,
-                                         MainWindow* parent)
-    : QObject(parent), recorder_(recorder), window_(parent) {
+                                         MainWindow* window)
+    : QObject(nullptr), recorder_(recorder), window_(window) {
 }
 
 void RecordingController::setupUI(RecordingControls* controls) {

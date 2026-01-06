@@ -10,8 +10,8 @@
 namespace vc {
 
 VisualizerController::VisualizerController(ProjectMBridge* bridge,
-                                           MainWindow* parent)
-    : QObject(parent), bridge_(bridge), window_(parent) {
+                                           MainWindow* window)
+    : QObject(nullptr), bridge_(bridge), window_(window) {
 }
 
 void VisualizerController::setupUI(VisualizerPanel* panel,

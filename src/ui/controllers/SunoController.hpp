@@ -19,6 +19,7 @@ namespace vc {
 
 class AudioEngine;
 class OverlayEngine;
+class MainWindow;
 
 namespace suno {
 
@@ -28,7 +29,7 @@ class SunoController : public QObject {
 public:
     explicit SunoController(AudioEngine* audioEngine,
                             OverlayEngine* overlayEngine,
-                            QObject* parent = nullptr);
+                            MainWindow* window);
     ~SunoController() override;
 
     SunoClient* client() {
@@ -58,6 +59,7 @@ private:
 
     AudioEngine* audioEngine_;
     OverlayEngine* overlayEngine_;
+    MainWindow* window_;
     std::unique_ptr<SunoClient> client_;
     SunoDatabase db_;
     QNetworkAccessManager* networkManager_;

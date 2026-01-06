@@ -17,10 +17,11 @@ namespace vc::suno {
 
 SunoController::SunoController(AudioEngine* audioEngine,
                                OverlayEngine* overlayEngine,
-                               QObject* parent)
-    : QObject(parent),
+                               MainWindow* window)
+    : QObject(nullptr),
       audioEngine_(audioEngine),
       overlayEngine_(overlayEngine),
+      window_(window),
       client_(std::make_unique<SunoClient>(nullptr)),
       networkManager_(new QNetworkAccessManager(this)) {
     // client_ is a unique_ptr, do NOT set parent to avoid double-free
