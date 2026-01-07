@@ -48,9 +48,11 @@ private:
     QSpinBox* presetDurationSpin_{nullptr};
     QCheckBox* autoRotateCheck_{nullptr};
     QCheckBox* shufflePresetsCheck_{nullptr};
+    QCheckBox* lowResourceCheck_{nullptr};
 
     // Recording
     QLineEdit* outputDirEdit_{nullptr};
+    QCheckBox* autoRecordCheck_{nullptr};
     QComboBox* containerCombo_{nullptr};
     QComboBox* videoCodecCombo_{nullptr};
     QSpinBox* crfSpin_{nullptr};

@@ -216,8 +216,8 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     const auto format = buffer.format();
     const auto sampleRate = format.sampleRate();
     const auto channels = format.channelCount();
-    const auto frameCount = buffer.frameCount();
-    const auto totalSamples = frameCount * channels;
+    const auto frameCount = static_cast<usize>(buffer.frameCount());
+    const usize totalSamples = frameCount * static_cast<usize>(channels);
 
     // Zero-allocation: reuse scratch buffer
     if (scratchBuffer_.size() < totalSamples) {
@@ -245,7 +245,10 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     spectrumUpdated.emitSignal(currentSpectrum_);
 
     // Emit PCM data for visualizer
-    pcmReceived.emitSignal(scratchBuffer_, frameCount, channels, sampleRate);
+    pcmReceived.emitSignal(scratchBuffer_,
+                           static_cast<u32>(frameCount),
+                           static_cast<u32>(channels),
+                           static_cast<u32>(sampleRate));
 }
 
 } // namespace vc

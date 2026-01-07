@@ -1,11 +1,14 @@
 #include "RecordingController.hpp"
 #include "audio/AudioEngine.hpp"
+#include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "recorder/VideoRecorder.hpp"
 #include "ui/MainWindow.hpp"
 #include "ui/RecordingControls.hpp"
 #include "ui/VisualizerPanel.hpp"
 #include "visualizer/VisualizerWindow.hpp"
+
+#include <QTimer>
 
 namespace vc {
 
@@ -57,7 +60,24 @@ void RecordingController::connectSignals() {
     window_->audioEngine()->trackChanged.connect([this] {
         if (recorder_->isRecording()) {
             LOG_INFO("Track changed, stopping recording.");
-            QMetaObject::invokeMethod(window_, &MainWindow::onStopRecording);
+            window_->onStopRecording();
+        }
+
+        if (CONFIG.recording().autoRecord) {
+            LOG_INFO("Auto-record enabled, starting recording for new track.");
+            QTimer::singleShot(500, this, [this] {
+                if (window_->audioEngine()->isPlaying()) {
+                    window_->onStartRecording("");
+                }
+            });
+        }
+    });
+
+    // Auto-stop when audio stops completely
+    window_->audioEngine()->stateChanged.connect([this](PlaybackState state) {
+        if (state == PlaybackState::Stopped && recorder_->isRecording()) {
+            LOG_INFO("Audio stopped, stopping recording.");
+            window_->onStopRecording();
         }
     });
 }

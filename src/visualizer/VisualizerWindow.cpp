@@ -55,7 +55,8 @@ void VisualizerWindow::resizeEvent(QResizeEvent* event) {
     if (context_ && context_->makeCurrent(this)) {
         int w = event->size().width();
         int h = event->size().height();
-        projectM_.resize(w, h);
+
+        // Internal projectM resize handled in renderFrame for lowResourceMode
         if (!recording_) {
             renderTarget_.resize(w, h);
             overlayTarget_.resize(w, h);
@@ -141,7 +142,8 @@ void VisualizerWindow::renderFrame() {
             glClear(GL_COLOR_BUFFER_BIT);
             renderTarget_.unbind();
         } else {
-            projectM_.resetViewport(width(), height());
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, width(), height());
             glClearColor(0, 0, 0, 1);
             glClear(GL_COLOR_BUFFER_BIT);
         }
@@ -168,6 +170,7 @@ void VisualizerWindow::renderFrame() {
             renderTarget_.height() != recordHeight_) {
             renderTarget_.resize(recordWidth_, recordHeight_);
             overlayTarget_.resize(recordWidth_, recordHeight_);
+            projectM_.resize(recordWidth_, recordHeight_);
             this->setupPBOs();
         }
         projectM_.renderToTarget(renderTarget_);
@@ -189,18 +192,33 @@ void VisualizerWindow::renderFrame() {
         }
         emit frameReady();
     } else {
-        projectM_.resetViewport(width(), height());
-        glClearColor(0, 0, 0, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-        projectM_.render();
+        u32 w = width();
+        u32 h = height();
+        u32 renderW = w;
+        u32 renderH = h;
 
-        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+        if (CONFIG.visualizer().lowResourceMode) {
+            renderW = std::max(160u, w / 2);
+            renderH = std::max(120u, h / 2);
+        }
+
+        if (renderTarget_.width() != renderW ||
+            renderTarget_.height() != renderH) {
+            renderTarget_.resize(renderW, renderH);
+            projectM_.resize(renderW, renderH);
+        }
+
+        projectM_.renderToTarget(renderTarget_);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, w, h);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
-        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+        renderTarget_.blitToScreen(w, h, true);
 
         if (overlayEngine_) {
-            overlayEngine_->render(width(), height());
+            overlayEngine_->render(w, h);
         }
     }
     ++frameCount_;
@@ -288,6 +306,7 @@ void VisualizerWindow::startRecording() {
     if (context_ && context_->makeCurrent(this)) {
         renderTarget_.resize(recordWidth_, recordHeight_);
         overlayTarget_.resize(recordWidth_, recordHeight_);
+        projectM_.resize(recordWidth_, recordHeight_);
         this->setupPBOs();
         context_->doneCurrent();
     }
@@ -299,6 +318,7 @@ void VisualizerWindow::stopRecording() {
         this->destroyPBOs();
         renderTarget_.resize(width(), height());
         overlayTarget_.resize(width(), height());
+        projectM_.resize(width(), height());
         context_->doneCurrent();
     }
 }

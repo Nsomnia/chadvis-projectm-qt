@@ -45,6 +45,7 @@ struct AudioEncoderConfig {
 // Recording configuration
 struct RecordingConfig {
     bool enabled{true};
+    bool autoRecord{false};
     fs::path outputDirectory;
     std::string defaultFilename{"chadvis-projectm-qt_{date}_{time}"};
     std::string container{"mp4"};
@@ -64,6 +65,7 @@ struct VisualizerConfig {
     bool shufflePresets{true};
     std::string forcePreset{}; // Force specific preset for debugging
     bool useDefaultPreset{false}; // Use default projectM visualizer (no preset)
+    bool lowResourceMode{false};
 };
 
 // Audio configuration

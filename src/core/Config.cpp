@@ -195,6 +195,7 @@ void Config::parseVisualizer(const toml::table& tbl) {
         visualizer_.shufflePresets = get(*viz, "shuffle_presets", true);
         visualizer_.forcePreset = get(*viz, "force_preset", std::string());
         visualizer_.useDefaultPreset = get(*viz, "use_default_preset", false);
+        visualizer_.lowResourceMode = get(*viz, "low_resource_mode", false);
         LOG_INFO("Config: visualizer {}x{} @ {}fps",
                  visualizer_.width,
                  visualizer_.height,
@@ -205,6 +206,7 @@ void Config::parseVisualizer(const toml::table& tbl) {
 void Config::parseRecording(const toml::table& tbl) {
     if (auto rec = tbl["recording"].as_table()) {
         recording_.enabled = get(*rec, "enabled", true);
+        recording_.autoRecord = get(*rec, "auto_record", false);
         auto outDir =
                 get(*rec, "output_directory", std::string("~/Videos/ChadVis"));
         recording_.outputDirectory = expandPath(outDir);
@@ -354,7 +356,8 @@ toml::table Config::serialize() const {
                          static_cast<i64>(visualizer_.smoothPresetDuration)},
                         {"shuffle_presets", visualizer_.shufflePresets},
                         {"force_preset", visualizer_.forcePreset},
-                        {"use_default_preset", visualizer_.useDefaultPreset}});
+                        {"use_default_preset", visualizer_.useDefaultPreset},
+                        {"low_resource_mode", visualizer_.lowResourceMode}});
 
     // Recording
     toml::table recVideo{{"codec", recording_.video.codec},
@@ -371,6 +374,7 @@ toml::table Config::serialize() const {
 
     root.insert("recording",
                 toml::table{{"enabled", recording_.enabled},
+                            {"auto_record", recording_.autoRecord},
                             {"output_directory",
                              recording_.outputDirectory.string()},
                             {"default_filename", recording_.defaultFilename},

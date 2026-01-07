@@ -100,6 +100,9 @@ void SettingsDialog::setupUI() {
     shufflePresetsCheck_ = new QCheckBox("Shuffle presets");
     vizLayout->addRow("", shufflePresetsCheck_);
 
+    lowResourceCheck_ = new QCheckBox("Low Resource Mode (Half-res render)");
+    vizLayout->addRow("", lowResourceCheck_);
+
     tabWidget_->addTab(vizTab, "Visualizer");
 
     // === Recording Tab ===
@@ -120,6 +123,9 @@ void SettingsDialog::setupUI() {
     });
     outDirLayout->addWidget(browseOutBtn);
     recLayout->addRow("Output Directory:", outDirLayout);
+
+    autoRecordCheck_ = new QCheckBox("Auto-record tracks (Automagical mode)");
+    recLayout->addRow("", autoRecordCheck_);
 
     containerCombo_ = new QComboBox();
     containerCombo_->addItems({"mp4", "mkv", "webm", "mov"});
@@ -231,9 +237,11 @@ void SettingsDialog::loadSettings() {
                                           : 30);
     autoRotateCheck_->setChecked(CONFIG.visualizer().presetDuration > 0);
     shufflePresetsCheck_->setChecked(CONFIG.visualizer().shufflePresets);
+    lowResourceCheck_->setChecked(CONFIG.visualizer().lowResourceMode);
 
     outputDirEdit_->setText(QString::fromStdString(
             CONFIG.recording().outputDirectory.string()));
+    autoRecordCheck_->setChecked(CONFIG.recording().autoRecord);
     containerCombo_->setCurrentText(
             QString::fromStdString(CONFIG.recording().container));
     videoCodecCombo_->setCurrentText(
@@ -265,8 +273,10 @@ void SettingsDialog::saveSettings() {
     CONFIG.visualizer().presetDuration =
             autoRotateCheck_->isChecked() ? presetDurationSpin_->value() : 0;
     CONFIG.visualizer().shufflePresets = shufflePresetsCheck_->isChecked();
+    CONFIG.visualizer().lowResourceMode = lowResourceCheck_->isChecked();
 
     CONFIG.recording().outputDirectory = outputDirEdit_->text().toStdString();
+    CONFIG.recording().autoRecord = autoRecordCheck_->isChecked();
     CONFIG.recording().container = containerCombo_->currentText().toStdString();
     CONFIG.recording().video.codec =
             videoCodecCombo_->currentText().toStdString();

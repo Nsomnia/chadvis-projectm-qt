@@ -36,6 +36,7 @@ Key features:
 *   **Real-time Audio Analysis:** Analyzes your audio in real-time, feeding delicious data to ProjectM for visuals that actually react to your tunes, not just some pre-baked nonsense.
 *   **Overlay Engine:** Integrate text overlays. Because sometimes, you just need to drop some wisdom or memes on your visual output.
 *   **Built-in Video Recorder:** Capture your epic visual journeys directly within the app. Share your vibes with the less fortunate (i.e., non-Arch users).
+*   **Suno AI Integration:** Browse, download, and visualize your Suno AI clips directly within the app. Full support for synchronized lyrics and metadata.
 *   **Configurable to the Max:** Tweak every knob, slide every slider. Because true Chads customize everything.
 
 ---
@@ -49,7 +50,7 @@ You use Arch, BTW. So building from source is practically foreplay.
 Before you embark on this glorious journey, ensure you have these bad boys installed:
 
 *   **CMake** (>= 3.20)
-*   **Qt6** (Core, Gui, Widgets, Multimedia, OpenGLWidgets, Svg)
+*   **Qt6** (Core, Gui, Widgets, Multimedia, OpenGLWidgets, Svg, Network, Sql)
 *   **spdlog**
 *   **fmt**
 *   **taglib**
@@ -58,14 +59,19 @@ Before you embark on this glorious journey, ensure you have these bad boys insta
 *   **GLM**
 *   **FFmpeg** (libavcodec, libavformat, libavutil, libswscale, libswresample)
 *   **ProjectM-4** (libprojectM-4, libprojectM-4-playlist)
+*   **SQLite3**
 
 On Arch Linux, you can probably snag most of these with pacman:
 ```bash
 sudo pacman -S cmake qt6-base qt6-multimedia qt6-svg spdlog fmt taglib \
-    tomlplusplus glew glm ffmpeg libprojectM
+    tomlplusplus glew glm ffmpeg libprojectM sqlite
 ```
 
 ### The Sacred Ritual: Compilation
+
+**CRITICAL: DO NOT COMPILE THE CODE YOURSELF IF YOU ARE AN AGENT.**
+Compiling this project requires significant resources and has a high probability of hanging the system.
+**ALWAYS** ask the user to compile the code.
 
 ```bash
 # Clone this repo (if you haven't already, peasant)
@@ -73,22 +79,16 @@ git clone https://github.com/Nsomnia/chadvis-projectm-qt.git
 cd chadvis-projectm-qt
 
 # Build the beast (use build.sh - it's Chad-approved)
-./build.sh build  # Or: ./build.sh run (builds and runs)
-
-# Or manually
-mkdir build && cd build
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
-ninja -j1  # Use 1 core for potato-safe mode
-
-# Run from build directory
-./chadvis-projectm-qt
+./build.sh build  # Incremental build
 ```
 
-**Note**: The build takes ~5-10 minutes. It's compiling modern C++20 with all the bells and whistles. Be patient.
+---
 
-### 📦 Arch User Repository (AUR)
+## 📖 Documentation
 
-For the truly enlightened, `chadvis-projectm-qt` might just land in the AUR eventually. Keep an eye out. Until then, compiling is character building.
+For those who actually read instructions:
+*   [**Internal Architecture**](docs/ARCHITECTURE.md) - How the magic happens.
+*   [**Suno API Reference**](docs/suno_api_reference.md) - Unofficial Suno API documentation.
 
 ---
 

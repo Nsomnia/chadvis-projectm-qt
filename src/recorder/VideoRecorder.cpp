@@ -362,8 +362,9 @@ Result<void> VideoRecorder::initVideoStream() {
     AVDictionary* opts = nullptr;
     if (settings_.video.codec == VideoCodec::H264 ||
         settings_.video.codec == VideoCodec::H265) {
-        av_dict_set(&opts, "preset", "ultrafast", 0);
-        av_dict_set(&opts, "crf", "23", 0); // Force CRF 23 for N4500
+        av_dict_set(&opts, "preset", settings_.video.presetName().c_str(), 0);
+        av_dict_set(
+                &opts, "crf", std::to_string(settings_.video.crf).c_str(), 0);
         av_dict_set(&opts, "tune", "zerolatency", 0);
     }
 
