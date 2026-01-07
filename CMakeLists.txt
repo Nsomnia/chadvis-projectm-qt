@@ -8,6 +8,19 @@ string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C
 string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL}")
 string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 
+### cmake/ninja machine readable token efficiency
+## To make CMake output more token-efficient for an agent, you can modify the verbosity settings. Here are a few approaches:
+# 1. Use --no-color flag:
+# cmake --no-color [options] [source_dir]
+# 2. Set CMAKE_COLOR_NONE environment variable:
+# export CMAKE_COLOR_NONE=ON
+# 3. Modify CMakeLists.txt:
+set(CMAKE_COLOR_NONE ON)
+# 4. Use --output-on-error instead of --verbose:
+# cmake --output-on-error [options] [source_dir]
+# 5. Redirect output to /dev/null:
+# cmake [options] [source_dir] > /dev/null 2>&1
+
 # Also set them explicitly to ensure they stay clean
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "" FORCE)
@@ -177,6 +190,8 @@ set(UI_SOURCES
     src/ui/controllers/RecordingController.cpp
     src/ui/controllers/SunoController.hpp
     src/ui/controllers/SunoController.cpp
+    src/ui/MarqueeLabel.hpp
+    src/ui/MarqueeLabel.cpp
     src/ui/PlayerControls.hpp
     src/ui/PlayerControls.cpp
     src/ui/PlaylistView.hpp

@@ -2,24 +2,24 @@
 // PlayerControls.hpp - Transport controls widget
 // Play, pause, stop - the holy trinity
 
-#include "util/Types.hpp"
 #include "audio/AudioEngine.hpp"
+#include "util/Types.hpp"
 
-#include <QWidget>
+#include <QLabel>
 #include <QPushButton>
 #include <QSlider>
-#include <QLabel>
+#include <QWidget>
 
 namespace vc {
 
 class PlayerControls : public QWidget {
     Q_OBJECT
-    
+
 public:
     explicit PlayerControls(QWidget* parent = nullptr);
-    
+
     void setAudioEngine(AudioEngine* engine);
-    
+
 signals:
     void playClicked();
     void pauseClicked();
@@ -30,13 +30,14 @@ signals:
     void repeatToggled(RepeatMode mode);
     void seekRequested(Duration position);
     void volumeChanged(f32 volume);
-    
+
 public slots:
     void updatePlaybackState(PlaybackState state);
     void updatePosition(Duration position);
     void updateDuration(Duration duration);
     void updateTrackInfo(const MediaMetadata& meta);
-    
+    void setControlsEnabled(bool enabled);
+
 private slots:
     void onPlayPauseClicked();
     void onSeekSliderPressed();
@@ -45,14 +46,14 @@ private slots:
     void onVolumeSliderChanged(int value);
     void onShuffleClicked();
     void onRepeatClicked();
-    
+
 private:
     void setupUI();
     void updateSeekSlider();
     QString formatTime(Duration dur);
-    
+
     AudioEngine* audioEngine_{nullptr};
-    
+
     // Buttons
     QPushButton* prevButton_{nullptr};
     QPushButton* playPauseButton_{nullptr};
@@ -60,23 +61,23 @@ private:
     QPushButton* nextButton_{nullptr};
     QPushButton* shuffleButton_{nullptr};
     QPushButton* repeatButton_{nullptr};
-    
+
     // Seek bar
     QSlider* seekSlider_{nullptr};
     QLabel* currentTimeLabel_{nullptr};
     QLabel* totalTimeLabel_{nullptr};
     bool seeking_{false};
-    
+
     // Volume
     QSlider* volumeSlider_{nullptr};
     QPushButton* muteButton_{nullptr};
     f32 lastVolume_{1.0f};
-    
+
     // Track info
     QLabel* titleLabel_{nullptr};
     QLabel* artistLabel_{nullptr};
     QLabel* albumArtLabel_{nullptr};
-    
+
     Duration currentPosition_{0};
     Duration currentDuration_{0};
     PlaybackState currentState_{PlaybackState::Stopped};

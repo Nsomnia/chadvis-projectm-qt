@@ -99,6 +99,9 @@ private:
                      u32 channels,
                      u32 sampleRate);
 
+    void loadLastPlaylist();
+    void saveLastPlaylist();
+
     std::unique_ptr<QMediaPlayer> player_;
     std::unique_ptr<QAudioOutput> audioOutput_;
     std::unique_ptr<QAudioBufferOutput> bufferOutput_;

@@ -1,6 +1,7 @@
 #include "AudioEngine.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
+#include "util/FileUtils.hpp"
 
 #include <QAudioDevice>
 #include <QMediaDevices>
@@ -58,6 +59,10 @@ Result<void> AudioEngine::init() {
     // Connect playlist signals
     playlist_.currentChanged.connect(
             [this](usize index) { onPlaylistCurrentChanged(index); });
+    playlist_.changed.connect([this] { saveLastPlaylist(); });
+
+    // Load last session playlist
+    loadLastPlaylist();
 
     // Diagnostic timer to check if audio is being received
     connect(&bufferCheckTimer_, &QTimer::timeout, this, [this]() {
@@ -205,6 +210,23 @@ void AudioEngine::loadCurrentTrack() {
     LOG_INFO("Loading track: {}", item->path.filename().string());
     player_->setSource(
             QUrl::fromLocalFile(QString::fromStdString(item->path.string())));
+}
+
+void AudioEngine::loadLastPlaylist() {
+    auto path = file::configDir() / "last_session.m3u";
+    if (fs::exists(path)) {
+        LOG_INFO("Loading last session playlist...");
+        playlist_.loadM3U(path);
+
+        // Try to load last index if it exists in a separate file or config
+        // For now, just loading the files is a huge improvement
+    }
+}
+
+void AudioEngine::saveLastPlaylist() {
+    auto path = file::configDir() / "last_session.m3u";
+    file::ensureDir(path.parent_path());
+    playlist_.saveM3U(path);
 }
 
 void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {

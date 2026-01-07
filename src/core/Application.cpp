@@ -151,15 +151,8 @@ Result<void> Application::init(const AppOptions& opts) {
         mainWindow_ = std::make_unique<MainWindow>();
         mainWindow_->show();
 
-        // Load last session playlist if no files specified
-        if (opts.inputFiles.empty()) {
-            auto lastSession = file::configDir() / "last_session.m3u";
-            if (fs::exists(lastSession)) {
-                LOG_INFO("Loading last session playlist...");
-                audioEngine_->playlist().loadM3U(lastSession);
-            }
-        } else {
-            // Add input files to playlist
+        // Add input files to playlist if any
+        if (!opts.inputFiles.empty()) {
             for (const auto& file : opts.inputFiles) {
                 if (fs::exists(file)) {
                     mainWindow_->addToPlaylist(file);

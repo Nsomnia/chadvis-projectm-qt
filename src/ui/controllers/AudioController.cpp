@@ -70,6 +70,15 @@ void AudioController::connectSignals() {
         });
     });
 
+    engine_->playlist().changed.connect([this] {
+        QMetaObject::invokeMethod(this, [this] {
+            controls_->setControlsEnabled(!engine_->playlist().empty());
+        });
+    });
+
+    // Initial state
+    controls_->setControlsEnabled(!engine_->playlist().empty());
+
     engine_->pcmReceived.connect([this](const std::vector<f32>& pcm,
                                         u32 frames,
                                         u32 channels,

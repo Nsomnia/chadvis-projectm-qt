@@ -143,10 +143,7 @@ void ProjectMBridge::nextPreset(bool smooth) {
 void ProjectMBridge::previousPreset(bool smooth) {
     if (presetLocked_)
         return;
-    if (shuffleEnabled_)
-        presets_.selectRandom();
-    else
-        presets_.selectPrevious();
+    presets_.selectPrevious();
 }
 
 void ProjectMBridge::randomPreset(bool smooth) {

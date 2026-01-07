@@ -116,8 +116,9 @@ void MainWindow::setupUI() {
     toolsDock_ = new QDockWidget("Tools", this);
     toolsDock_->setObjectName("ToolsDock");
     toolsDock_->setWidget(rightTabs);
-    toolsDock_->setMinimumWidth(300);
+    toolsDock_->setMinimumWidth(200);
     addDockWidget(Qt::RightDockWidgetArea, toolsDock_);
+    resizeDocks({toolsDock_}, {250}, Qt::Horizontal);
 
     audioController_->setupUI(playerControls_, playlistView_);
 

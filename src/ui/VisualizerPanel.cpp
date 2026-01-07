@@ -1,4 +1,5 @@
 #include "VisualizerPanel.hpp"
+#include "MarqueeLabel.hpp"
 #include "core/Logger.hpp"
 #include "overlay/OverlayEngine.hpp"
 #include "visualizer/VisualizerWindow.hpp"
@@ -49,26 +50,14 @@ void VisualizerPanel::setupUI() {
     prevPresetButton_->setFixedSize(28, 28);
     prevPresetButton_->setToolTip("Previous preset");
     connect(prevPresetButton_, &QPushButton::clicked, this, [this] {
-        LOG_DEBUG("VisualizerPanel: Previous preset button clicked");
-        if (!visualizerWindow_) {
-            LOG_ERROR("VisualizerPanel: visualizerWindow_ is null!");
-            return;
-        }
-        auto& pm = visualizerWindow_->projectM();
-        LOG_DEBUG("VisualizerPanel: projectM() returned, checking state...");
-        LOG_DEBUG("VisualizerPanel: isPresetLocked = {}", pm.isPresetLocked());
-        LOG_DEBUG("VisualizerPanel: presets().count() = {}",
-                  pm.presets().count());
-        LOG_DEBUG("VisualizerPanel: presets().currentIndex() = {}",
-                  pm.presets().currentIndex());
-        pm.previousPreset();
-        LOG_DEBUG("VisualizerPanel: previousPreset() called");
+        visualizerWindow_->projectM().previousPreset();
     });
     controlLayout->addWidget(prevPresetButton_);
 
-    presetLabel_ = new QLabel("No preset");
+    presetLabel_ = new MarqueeLabel();
     presetLabel_->setAlignment(Qt::AlignCenter);
     presetLabel_->setStyleSheet("color: #00ff88; font-weight: bold;");
+    presetLabel_->setText("No preset");
     controlLayout->addWidget(presetLabel_, 1);
 
     nextPresetButton_ = new QPushButton("▶");
@@ -151,11 +140,7 @@ void VisualizerPanel::setupUI() {
 }
 
 void VisualizerPanel::updatePresetName(const QString& name) {
-    QString display = name;
-    if (display.length() > 50) {
-        display = display.left(47) + "...";
-    }
-    presetLabel_->setText(display);
+    presetLabel_->setText(name);
     presetLabel_->setToolTip(name);
 }
 
