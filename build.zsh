@@ -7,7 +7,7 @@ readonly SCRIPT_DIR="${0:A:h}"
 readonly BUILD_DIR="${SCRIPT_DIR}/build"
 readonly BINARY_NAME="chadvis-projectm-qt"
 readonly BINARY_PATH="${BUILD_DIR}/${BINARY_NAME}"
-readonly N4500_CORES=1
+readonly N4500_CORES=$(nproc) # can also use an integer
 readonly N4500_ARCH="tremont"
 
 readonly -a CPU_OPT_FLAGS=(

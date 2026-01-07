@@ -19,6 +19,7 @@ VisualizerWindow::VisualizerWindow(QWindow* parent) : QWindow(parent) {
     format.setSwapInterval(1);
     format.setSamples(4);
     format.setAlphaBufferSize(0);
+    format.setDepthBufferSize(24);
     setFormat(format);
 
     context_ = std::make_unique<QOpenGLContext>(this);
@@ -50,13 +51,11 @@ void VisualizerWindow::exposeEvent(QExposeEvent* event) {
 }
 
 void VisualizerWindow::resizeEvent(QResizeEvent* event) {
+    Q_UNUSED(event);
     if (!initialized_)
         return;
     if (context_ && context_->makeCurrent(this)) {
-        int w = event->size().width();
-        int h = event->size().height();
-
-        // FBOs will be resized in renderFrame if needed
+        // FBOs and projectM will be resized in renderFrame if needed
         context_->doneCurrent();
     }
 }
@@ -93,8 +92,9 @@ void VisualizerWindow::initialize() {
     if (auto result = projectM_.init(pmConfig); !result)
         return;
 
-    renderTarget_.create(width(), height());
-    overlayTarget_.create(width(), height());
+    // Use withDepth=true for projectM rendering
+    renderTarget_.create(width(), height(), true);
+    overlayTarget_.create(width(), height(), false);
 
     setRenderRate(vizConfig.fps);
     renderTimer_.start();
@@ -136,6 +136,8 @@ void VisualizerWindow::renderFrame() {
     if (w == 0 || h == 0)
         return;
 
+    bool useFBO = recording_ || CONFIG.visualizer().lowResourceMode;
+
     // 1. Determine rendering resolution
     u32 renderW = w;
     u32 renderH = h;
@@ -147,79 +149,88 @@ void VisualizerWindow::renderFrame() {
         renderH = std::max(120u, h / 2);
     }
 
-    // 2. Ensure FBO is sized correctly
-    if (renderTarget_.width() != renderW || renderTarget_.height() != renderH) {
-        renderTarget_.resize(renderW, renderH);
-        projectM_.resize(renderW, renderH);
-    }
-
-    // 3. Clear background
-    if (presetLoading_) {
-        renderTarget_.bind();
-        glClearColor(0, 0, 0, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-        renderTarget_.unbind();
-    } else {
-        // Feed audio data
-        {
-            std::lock_guard lock(audioMutex_);
-            if (!audioQueue_.empty()) {
-                u32 framesToFeed =
-                        (audioSampleRate_ + targetFps_ - 1) / targetFps_;
-                u32 availableFrames = audioQueue_.size() / 2;
-                u32 feedFrames = std::min(framesToFeed, availableFrames);
-                if (feedFrames > 0) {
-                    projectM_.addPCMDataInterleaved(
-                            audioQueue_.data(), feedFrames, 2);
-                    audioQueue_.erase(audioQueue_.begin(),
-                                      audioQueue_.begin() + (feedFrames * 2));
-                }
+    // 2. Feed audio data
+    {
+        std::lock_guard lock(audioMutex_);
+        if (!audioQueue_.empty()) {
+            u32 framesToFeed = (audioSampleRate_ + targetFps_ - 1) / targetFps_;
+            u32 availableFrames = audioQueue_.size() / 2;
+            u32 feedFrames = std::min(framesToFeed, availableFrames);
+            if (feedFrames > 0) {
+                projectM_.addPCMDataInterleaved(
+                        audioQueue_.data(), feedFrames, 2);
+                audioQueue_.erase(audioQueue_.begin(),
+                                  audioQueue_.begin() + (feedFrames * 2));
             }
         }
-
-        // Render ProjectM to FBO
-        projectM_.renderToTarget(renderTarget_);
     }
 
-    // 4. Output to screen or recorder
-    if (recording_) {
-        if (overlayTarget_.width() != renderW ||
-            overlayTarget_.height() != renderH) {
-            overlayTarget_.resize(renderW, renderH);
-            this->setupPBOs();
+    if (useFBO) {
+        // Ensure FBO is sized correctly
+        if (renderTarget_.width() != renderW ||
+            renderTarget_.height() != renderH) {
+            renderTarget_.resize(renderW, renderH);
+            projectM_.resize(renderW, renderH);
         }
 
-        if (overlayEngine_) {
-            overlayTarget_.bind();
-            glClearColor(0, 0, 0, 0);
-            glClear(GL_COLOR_BUFFER_BIT);
-            renderTarget_.blitTo(overlayTarget_, true);
-            overlayEngine_->render(renderW, renderH);
-            this->captureAsync();
-            overlayTarget_.unbind();
-        } else {
+        if (presetLoading_) {
             renderTarget_.bind();
-            this->captureAsync();
+            glClearColor(0, 0, 0, 1);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             renderTarget_.unbind();
+        } else {
+            projectM_.renderToTarget(renderTarget_);
         }
-        emit frameReady();
 
-        // Also blit to screen so user can see what's being recorded
-        glBindFramebuffer(GL_FRAMEBUFFER, context_->defaultFramebufferObject());
-        glViewport(0, 0, w, h);
-        renderTarget_.blitToScreen(w, h, true);
-    } else {
-        // Output to screen
+        // Output from FBO
+        if (recording_) {
+            if (overlayTarget_.width() != renderW ||
+                overlayTarget_.height() != renderH) {
+                overlayTarget_.resize(renderW, renderH);
+                this->setupPBOs();
+            }
+
+            if (overlayEngine_) {
+                overlayTarget_.bind();
+                glClearColor(0, 0, 0, 0);
+                glClear(GL_COLOR_BUFFER_BIT);
+                renderTarget_.blitTo(overlayTarget_, true);
+                overlayEngine_->render(renderW, renderH);
+                this->captureAsync();
+                overlayTarget_.unbind();
+            } else {
+                renderTarget_.bind();
+                this->captureAsync();
+                renderTarget_.unbind();
+            }
+            emit frameReady();
+        }
+
+        // Blit back to screen
         glBindFramebuffer(GL_FRAMEBUFFER, context_->defaultFramebufferObject());
         glViewport(0, 0, w, h);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
-
         renderTarget_.blitToScreen(w, h, true);
+    } else {
+        // Direct to screen (Peak Performance Mode)
+        projectM_.resetViewport(w, h);
+        if (presetLoading_) {
+            glClearColor(0, 0, 0, 1);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        } else {
+            projectM_.render();
 
-        if (overlayEngine_) {
-            overlayEngine_->render(w, h);
+            // ProjectM often leaves alpha at 0, which breaks some compositors
+            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+            glClearColor(0, 0, 0, 1);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         }
+    }
+
+    if (overlayEngine_) {
+        overlayEngine_->render(w, h);
     }
 
     ++frameCount_;
@@ -317,7 +328,7 @@ void VisualizerWindow::stopRecording() {
     recording_ = false;
     if (context_ && context_->makeCurrent(this)) {
         this->destroyPBOs();
-        // Resize will be handled in next renderFrame
+        // Resize back to window resolution handled in next renderFrame
         context_->doneCurrent();
     }
 }

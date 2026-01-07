@@ -1,6 +1,13 @@
 # notes about suno
 Awesomelist_Awesome-Suno_by_Zizwar_on-github.md
 
+# Agent internal notes
+.agent/
+.backup_graveyard/
+logs/
+scratch/
+*.tmp
+*.log
 # prevent uploading logs
 logs/
 
