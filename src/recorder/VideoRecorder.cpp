@@ -10,9 +10,10 @@ namespace vc {
 VideoRecorder::VideoRecorder() = default;
 
 VideoRecorder::~VideoRecorder() {
-    if (isRecording()) {
-        stop();
-    }
+    LOG_TRACE("VideoRecorder::~VideoRecorder() CALLED");
+    // Ensure recording is stopped and thread is joined
+    stop();
+    LOG_TRACE("VideoRecorder::~VideoRecorder() FINISHED");
 }
 
 Result<void> VideoRecorder::start(const EncoderSettings& settings) {
