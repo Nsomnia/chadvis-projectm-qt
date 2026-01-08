@@ -150,7 +150,9 @@ bool PresetManager::selectByIndex(usize index) {
     presets_[currentIndex_].playCount++;
     presetChanged.emitSignal(&presets_[currentIndex_]);
 
-    LOG_DEBUG("Selected preset: {}", presets_[currentIndex_].name);
+    LOG_DEBUG("Selected preset: {} (index={})",
+              presets_[currentIndex_].name,
+              currentIndex_);
     return true;
 }
 
@@ -250,8 +252,13 @@ bool PresetManager::selectRandom() {
 }
 
 bool PresetManager::selectNext() {
-    LOG_DEBUG("PresetManager::selectNext() called, current index: {}",
-              currentIndex_);
+    LOG_DEBUG(
+            "PresetManager::selectNext() called, current index: {}, history "
+            "pos: {}/{}",
+            currentIndex_,
+            historyPosition_,
+            history_.size());
+
     if (presets_.empty()) {
         LOG_WARN("PresetManager: No presets available");
         return false;
@@ -263,34 +270,48 @@ bool PresetManager::selectNext() {
         currentIndex_ = history_[historyPosition_];
         presets_[currentIndex_].playCount++;
         presetChanged.emitSignal(&presets_[currentIndex_]);
+        LOG_DEBUG("Advanced to next item in history: {} (pos {})",
+                  presets_[currentIndex_].name,
+                  historyPosition_);
         return true;
     }
 
-    // Otherwise pick next or random
-    if (history_.empty()) {
-        return selectByIndex(0);
-    }
-
-    // Get current preset name to skip duplicates
-    std::string currentName = presets_[currentIndex_].name;
+    // Otherwise pick next sequentially
+    std::string currentName = current() ? current()->name : "";
 
     usize start = currentIndex_;
+    usize nextIndex = currentIndex_;
+    bool found = false;
+
     do {
-        currentIndex_ = (currentIndex_ + 1) % presets_.size();
-        if (!presets_[currentIndex_].blacklisted) {
+        nextIndex = (nextIndex + 1) % presets_.size();
+        if (!presets_[nextIndex].blacklisted) {
             // Skip presets with the same name as current
-            if (presets_[currentIndex_].name == currentName) {
+            if (!currentName.empty() &&
+                presets_[nextIndex].name == currentName) {
                 continue;
             }
-            return selectByIndex(currentIndex_);
+            found = true;
+            break;
         }
-    } while (currentIndex_ != start);
+    } while (nextIndex != start);
+
+    if (found) {
+        return selectByIndex(nextIndex);
+    }
 
     LOG_WARN("PresetManager: All presets are blacklisted or have same name");
     return false;
 }
 
 bool PresetManager::selectPrevious() {
+    LOG_DEBUG(
+            "PresetManager::selectPrevious() called, current index: {}, "
+            "history pos: {}/{}",
+            currentIndex_,
+            historyPosition_,
+            history_.size());
+
     if (presets_.empty())
         return false;
 
@@ -300,25 +321,35 @@ bool PresetManager::selectPrevious() {
         currentIndex_ = history_[historyPosition_];
         presets_[currentIndex_].playCount++;
         presetChanged.emitSignal(&presets_[currentIndex_]);
+        LOG_DEBUG("Returned to previous item in history: {} (pos {})",
+                  presets_[currentIndex_].name,
+                  historyPosition_);
         return true;
     }
 
     // Otherwise standard logic
-    // Get current preset name to skip duplicates
-    std::string currentName = presets_[currentIndex_].name;
+    std::string currentName = current() ? current()->name : "";
 
     usize start = currentIndex_;
+    usize prevIndex = currentIndex_;
+    bool found = false;
+
     do {
-        currentIndex_ =
-                (currentIndex_ == 0) ? presets_.size() - 1 : currentIndex_ - 1;
-        if (!presets_[currentIndex_].blacklisted) {
+        prevIndex = (prevIndex == 0) ? presets_.size() - 1 : prevIndex - 1;
+        if (!presets_[prevIndex].blacklisted) {
             // Skip presets with the same name as current
-            if (presets_[currentIndex_].name == currentName) {
+            if (!currentName.empty() &&
+                presets_[prevIndex].name == currentName) {
                 continue;
             }
-            return selectByIndex(currentIndex_);
+            found = true;
+            break;
         }
-    } while (currentIndex_ != start);
+    } while (prevIndex != start);
+
+    if (found) {
+        return selectByIndex(prevIndex);
+    }
 
     return false;
 }
