@@ -294,9 +294,31 @@ void VisualizerWindow::feedAudio(const f32* data,
     std::lock_guard lock(audioMutex_);
     if (sampleRate != audioSampleRate_)
         audioSampleRate_ = sampleRate;
+
     usize offset = audioQueue_.size();
-    audioQueue_.resize(offset + frames * 2);
-    std::memcpy(audioQueue_.data() + offset, data, frames * 2 * sizeof(f32));
+    if (channels == 2) {
+        audioQueue_.resize(offset + frames * 2);
+        std::memcpy(
+                audioQueue_.data() + offset, data, frames * 2 * sizeof(f32));
+    } else if (channels == 1) {
+        // Upmix mono to stereo by duplicating samples
+        audioQueue_.resize(offset + frames * 2);
+        f32* dest = audioQueue_.data() + offset;
+        for (u32 i = 0; i < frames; ++i) {
+            dest[i * 2] = data[i];
+            dest[i * 2 + 1] = data[i];
+        }
+    } else {
+        // Fallback for other channel counts (e.g. multi-channel) - take first 2
+        // channels or pad with silence
+        audioQueue_.resize(offset + frames * 2);
+        f32* dest = audioQueue_.data() + offset;
+        for (u32 i = 0; i < frames; ++i) {
+            dest[i * 2] = data[i * channels];
+            dest[i * 2 + 1] = (channels > 1) ? data[i * channels + 1]
+                                             : data[i * channels];
+        }
+    }
 }
 
 void VisualizerWindow::setRenderRate(int fps) {

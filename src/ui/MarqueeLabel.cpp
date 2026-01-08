@@ -35,6 +35,10 @@ void MarqueeLabel::paintEvent(QPaintEvent* event) {
     }
 
     QPainter painter(this);
+    // Use the stylesheet/color from QLabel
+    painter.setPen(palette().color(QPalette::WindowText));
+    painter.setFont(font());
+
     QFontMetrics fm(font());
     int textWidth = fm.horizontalAdvance(text());
     int y = (height() + fm.ascent() - fm.descent()) / 2;
@@ -42,15 +46,18 @@ void MarqueeLabel::paintEvent(QPaintEvent* event) {
     // Draw text with offset
     painter.drawText(offset_, y, text());
 
-    // Draw second copy for continuous loop if needed
+    // Draw second copy for continuous loop
+    int gap = 80;
     if (offset_ < 0) {
-        painter.drawText(offset_ + textWidth + 40, y, text());
+        painter.drawText(offset_ + textWidth + gap, y, text());
     }
 }
 
 void MarqueeLabel::resizeEvent(QResizeEvent* event) {
     QLabel::resizeEvent(event);
-    setText(text()); // Re-evaluate scrolling
+    // Use the current text to re-evaluate scrolling
+    QString currentText = text();
+    setText(currentText);
 }
 
 void MarqueeLabel::onTimeout() {
@@ -59,9 +66,10 @@ void MarqueeLabel::onTimeout() {
 
     QFontMetrics fm(font());
     int textWidth = fm.horizontalAdvance(text());
+    int gap = 80;
 
     offset_ -= 1;
-    if (offset_ < -(textWidth + 40)) {
+    if (offset_ <= -(textWidth + gap)) {
         offset_ = 0;
     }
     update();
