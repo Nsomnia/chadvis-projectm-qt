@@ -107,6 +107,14 @@ else()
     )
 endif()
 
+# KissFFT - replace custom FFT implementation
+CPMAddPackage(
+    NAME kissfft
+    GIT_REPOSITORY https://github.com/mborgerding/kissfft.git
+    VERSION 131.1.0
+    OPTIONS "KISS_FFT_STATIC ON" "KISS_FFT_DATATYPE=float" "KISS_FFT_USE_ALLOCA ON"
+)
+
 # Large libraries - keep as system dependencies
 pkg_check_modules(TAGLIB REQUIRED taglib)
 pkg_check_modules(GLEW REQUIRED glew)
@@ -286,6 +294,7 @@ target_include_directories(chadvis-projectm-qt PRIVATE
     ${GLM_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIRS}
     ${PROJECTM_INCLUDE_DIRS}
+    ${KISSFFT_INCLUDE_DIRS}
 )
 
 # Link CPM or system packages
@@ -305,6 +314,12 @@ if(TARGET tomlplusplus::tomlplusplus)
     target_link_libraries(chadvis-projectm-qt PRIVATE tomlplusplus::tomlplusplus)
 elseif(CPM_tomlplusplus)
     target_link_libraries(chadvis-projectm-qt PRIVATE CPM_tomlplusplus)
+endif()
+
+if(TARGET kissfft::kissfft)
+    target_link_libraries(chadvis-projectm-qt PRIVATE kissfft::kissfft)
+elseif(CPM_kissfft)
+    target_link_libraries(chadvis-projectm-qt PRIVATE CPM_kissfft)
 endif()
 
 # System packages (TAGLIB, GLEW, FFmpeg, ProjectM) - always link if found
