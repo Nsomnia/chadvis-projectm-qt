@@ -7,12 +7,18 @@
 #include "util/GLIncludes.hpp"
 #include "util/Types.hpp"
 
+// Suppress GLEW/Qt compatibility warnings (harmless, expected)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcpp"
+
 #include <QOpenGLContext>
 #include <QOpenGLFunctions_3_3_Core>
 #include <QTimer>
 #include <QWindow>
 #include <atomic>
 #include <memory>
+
+#pragma GCC diagnostic pop
 #include <mutex>
 #include <vector>
 
