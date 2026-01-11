@@ -3,9 +3,9 @@
 // Math that makes pretty colors go brrr
 // Uses KissFFT for SIMD-optimized FFT (replaces custom implementation)
 
-#include <array>
-#include <complex>
-#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <numeric>
 #include "util/Types.hpp"
 
 // Forward declarations for KissFFT types
@@ -46,17 +46,14 @@ public:
     void reset();
 
 private:
-    void performFFT(std::span<const vc::f32> input);
+    void performKissFFT(std::span<const vc::f32> input,
+                        std::span<vc::f32> magnitudes);
     void applyWindow(std::span<vc::f32> samples);
     vc::f32 detectBeat(vc::f32 currentEnergy);
 
-    // KissFFT state (allocated when using KissFFT)
-    void* kissState_{nullptr};
-
-    // FFT buffers (for custom FFT or KissFFT integration)
-    std::vector<std::complex<vc::f32>> fftBuffer_;
-    std::vector<vc::f32> windowFunction_;
-    std::vector<vc::f32> magnitudes_;
+    // KissFFT scratch arrays (pre-allocated to avoid per-FFT allocation)
+    kiss_fft_cpx scratchCx_[FFT_SIZE];
+    kiss_fft_cpx scratchCxOut_[FFT_SIZE];
 
     // PCM buffer for ProjectM
     std::vector<vc::f32> pcmBuffer_;
