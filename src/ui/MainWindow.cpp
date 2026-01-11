@@ -128,47 +128,38 @@ void MainWindow::setupUI() {
 void MainWindow::setupMenuBar() {
     auto* fileMenu = menuBar()->addMenu("&File");
     fileMenu->addAction("&Open Files...",
+                        QKeySequence::Open,
                         this,
-                        &MainWindow::onOpenFiles,
-                        QKeySequence::Open);
+                        &MainWindow::onOpenFiles);
     fileMenu->addAction("Open &Folder...",
+                        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O),
                         this,
-                        &MainWindow::onOpenFolder,
-                        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
+                        &MainWindow::onOpenFolder);
     fileMenu->addSeparator();
     fileMenu->addAction("&Save Playlist...", this, &MainWindow::onSavePlaylist);
     fileMenu->addAction("&Load Playlist...", this, &MainWindow::onLoadPlaylist);
     fileMenu->addSeparator();
-    fileMenu->addAction("E&xit", this, &QMainWindow::close, QKeySequence::Quit);
+    fileMenu->addAction("E&xit", QKeySequence::Quit, this, &QMainWindow::close);
 
     auto* playbackMenu = menuBar()->addMenu("&Playback");
     playbackMenu->addAction(
-            "&Play/Pause",
-            this,
-            [this] { audioEngine_->togglePlayPause(); },
-            QKeySequence(Qt::Key_Space));
-    playbackMenu->addAction(
-            "&Stop",
-            this,
-            [this] { audioEngine_->stop(); },
-            QKeySequence(Qt::Key_S));
-    playbackMenu->addAction(
-            "&Next",
-            this,
-            [this] { audioEngine_->playlist().next(); },
-            QKeySequence(Qt::Key_N));
-    playbackMenu->addAction(
-            "&Previous",
-            this,
-            [this] { audioEngine_->playlist().previous(); },
-            QKeySequence(Qt::Key_P));
+            "&Play/Pause", QKeySequence(Qt::Key_Space), this, [this] {
+                audioEngine_->togglePlayPause();
+            });
+    playbackMenu->addAction("&Stop", QKeySequence(Qt::Key_S), this, [this] {
+        audioEngine_->stop();
+    });
+    playbackMenu->addAction("&Next", QKeySequence(Qt::Key_N), this, [this] {
+        audioEngine_->playlist().next();
+    });
+    playbackMenu->addAction("&Previous", QKeySequence(Qt::Key_P), this, [this] {
+        audioEngine_->playlist().previous();
+    });
 
     auto* viewMenu = menuBar()->addMenu("&View");
-    viewMenu->addAction(
-            "&Fullscreen",
-            this,
-            [this] { visualizerPanel_->visualizer()->toggleFullscreen(); },
-            QKeySequence::FullScreen);
+    viewMenu->addAction("&Fullscreen", QKeySequence::FullScreen, this, [this] {
+        visualizerPanel_->visualizer()->toggleFullscreen();
+    });
     viewMenu->addSeparator();
 
     auto* showToolsAction = viewMenu->addAction("Show &Tools");
@@ -185,24 +176,16 @@ void MainWindow::setupMenuBar() {
 
     auto* vizMenu = menuBar()->addMenu("&Visualizer");
     vizMenu->addAction(
-            "&Next Preset",
-            this,
-            [this] { visualizerPanel_->visualizer()->projectM().nextPreset(); },
-            QKeySequence(Qt::Key_Right));
+            "&Next Preset", QKeySequence(Qt::Key_Right), this, [this] {
+                visualizerPanel_->visualizer()->projectM().nextPreset();
+            });
     vizMenu->addAction(
-            "&Previous Preset",
-            this,
-            [this] {
+            "&Previous Preset", QKeySequence(Qt::Key_Left), this, [this] {
                 visualizerPanel_->visualizer()->projectM().previousPreset();
-            },
-            QKeySequence(Qt::Key_Left));
-    vizMenu->addAction(
-            "&Random Preset",
-            this,
-            [this] {
-                visualizerPanel_->visualizer()->projectM().randomPreset();
-            },
-            QKeySequence(Qt::Key_R));
+            });
+    vizMenu->addAction("&Random Preset", QKeySequence(Qt::Key_R), this, [this] {
+        visualizerPanel_->visualizer()->projectM().randomPreset();
+    });
 
     auto* lockAction = vizMenu->addAction("&Lock Preset");
     lockAction->setCheckable(true);
@@ -227,19 +210,18 @@ void MainWindow::setupMenuBar() {
     });
 
     auto* recordMenu = menuBar()->addMenu("&Recording");
-    recordMenu->addAction(
-            "&Start Recording",
-            this,
-            [this] { onStartRecording(""); },
-            QKeySequence(Qt::CTRL | Qt::Key_R));
+    recordMenu->addAction("&Start Recording",
+                          QKeySequence(Qt::CTRL | Qt::Key_R),
+                          this,
+                          [this] { onStartRecording(""); });
     recordMenu->addAction(
             "S&top Recording", this, &MainWindow::onStopRecording);
 
     auto* toolsMenu = menuBar()->addMenu("&Tools");
     toolsMenu->addAction("&Settings...",
+                         QKeySequence::Preferences,
                          this,
-                         &MainWindow::onShowSettings,
-                         QKeySequence::Preferences);
+                         &MainWindow::onShowSettings);
 
     auto* helpMenu = menuBar()->addMenu("&Help");
     helpMenu->addAction("&About ChadVis", this, &MainWindow::onShowAbout);

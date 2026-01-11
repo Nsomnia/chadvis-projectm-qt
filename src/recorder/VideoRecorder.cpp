@@ -5,6 +5,12 @@
 
 #include <chrono>
 
+#include <libavcodec/version.h>
+#if LIBAVCODEC_VERSION_MAJOR >= 60
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 namespace vc {
 
 VideoRecorder::VideoRecorder() = default;
@@ -451,6 +457,9 @@ Result<void> VideoRecorder::initAudioStream() {
 
     audioCodecCtx_->sample_fmt =
             codec->sample_fmts ? codec->sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
+#if LIBAVCODEC_VERSION_MAJOR >= 60
+#pragma GCC diagnostic pop
+#endif
     audioCodecCtx_->time_base =
             AVRational{1, static_cast<int>(settings_.audio.sampleRate)};
 
