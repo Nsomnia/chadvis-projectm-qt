@@ -44,6 +44,14 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Include CPM.cmake for header-only libraries
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/CPM.cmake")
+    file(DOWNLOAD
+         https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.0/CPM.cmake
+         ${CMAKE_SOURCE_DIR}/cmake/CPM.cmake)
+endif()
+include(${CMAKE_SOURCE_DIR}/cmake/CPM.cmake)
+
 # Compiler warnings (we're professionals here)
 add_compile_options(
     -Wall -Wextra -Wpedantic
@@ -60,10 +68,47 @@ add_compile_options(
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network Sql)
 find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(SPDLOG REQUIRED spdlog)
-pkg_check_modules(FMT REQUIRED fmt)
+# Header-only libraries: try system first, fallback to CPM
+# spdlog - for logging
+find_package(spdlog CONFIG QUIET)
+if(TARGET spdlog::spdlog)
+    message(STATUS "Using system spdlog")
+else()
+    CPMAddPackage(
+        NAME spdlog
+        GIT_REPOSITORY https://github.com/gabime/spdlog.git
+        VERSION 1.14.1
+        OPTIONS "SPDLOG_BUILD_SHARED OFF" "SPDLOG_FMT_EXTERNAL ON"
+    )
+endif()
+
+# fmt - for string formatting
+find_package(fmt CONFIG QUIET)
+if(TARGET fmt::fmt)
+    message(STATUS "Using system fmt")
+else()
+    CPMAddPackage(
+        NAME fmt
+        GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+        VERSION 11.0.2
+        OPTIONS "FMT_INSTALL OFF"
+    )
+endif()
+
+# toml++ - for config parsing
+find_package(tomlplusplus CONFIG QUIET)
+if(TARGET tomlplusplus::tomlplusplus)
+    message(STATUS "Using system toml++")
+else()
+    CPMAddPackage(
+        NAME tomlplusplus
+        GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
+        VERSION 3.4.0
+    )
+endif()
+
+# Large libraries - keep as system dependencies
 pkg_check_modules(TAGLIB REQUIRED taglib)
-pkg_check_modules(TOMLPP REQUIRED tomlplusplus)
 pkg_check_modules(GLEW REQUIRED glew)
 find_package(glm REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale libswresample)
@@ -236,7 +281,6 @@ target_include_directories(chadvis-projectm-qt PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${SPDLOG_INCLUDE_DIRS}
     ${FMT_INCLUDE_DIRS}
-    ${TAGLIB_INCLUDE_DIRS}
     ${TOMLPP_INCLUDE_DIRS}
     ${GLEW_INCLUDE_DIRS}
     ${GLM_INCLUDE_DIRS}
@@ -244,6 +288,26 @@ target_include_directories(chadvis-projectm-qt PRIVATE
     ${PROJECTM_INCLUDE_DIRS}
 )
 
+# Link CPM or system packages
+if(TARGET spdlog::spdlog)
+    target_link_libraries(chadvis-projectm-qt PRIVATE spdlog::spdlog)
+elseif(CPM_spdlog)
+    target_link_libraries(chadvis-projectm-qt PRIVATE CPM_spdlog)
+endif()
+
+if(TARGET fmt::fmt)
+    target_link_libraries(chadvis-projectm-qt PRIVATE fmt::fmt)
+elseif(CPM_fmt)
+    target_link_libraries(chadvis-projectm-qt PRIVATE CPM_fmt)
+endif()
+
+if(TARGET tomlplusplus::tomlplusplus)
+    target_link_libraries(chadvis-projectm-qt PRIVATE tomlplusplus::tomlplusplus)
+elseif(CPM_tomlplusplus)
+    target_link_libraries(chadvis-projectm-qt PRIVATE CPM_tomlplusplus)
+endif()
+
+# System packages (TAGLIB, GLEW, FFmpeg, ProjectM) - always link if found
 target_link_libraries(chadvis-projectm-qt PRIVATE
     Qt6::Core
     Qt6::Gui
@@ -253,8 +317,6 @@ target_link_libraries(chadvis-projectm-qt PRIVATE
     Qt6::Svg
     Qt6::Network
     Qt6::Sql
-    ${SPDLOG_LIBRARIES}
-    ${FMT_LIBRARIES}
     ${TAGLIB_LIBRARIES}
     ${GLEW_LIBRARIES}
     ${FFMPEG_LIBRARIES}
