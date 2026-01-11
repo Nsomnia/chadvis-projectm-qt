@@ -113,6 +113,8 @@ Result<void> Application::init(const AppOptions& opts) {
     // Override default preset from command line
     if (opts.useDefaultPreset) {
         CONFIG.visualizer().useDefaultPreset = true;
+    } else {
+        CONFIG.visualizer().useDefaultPreset = false;
     }
 
     // Create Qt application
