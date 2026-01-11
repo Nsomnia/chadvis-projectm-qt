@@ -196,6 +196,16 @@ void Config::parseVisualizer(const toml::table& tbl) {
         visualizer_.forcePreset = get(*viz, "force_preset", std::string());
         visualizer_.useDefaultPreset = get(*viz, "use_default_preset", false);
         visualizer_.lowResourceMode = get(*viz, "low_resource_mode", false);
+
+        if (auto paths = (*viz)["texture_paths"].as_array()) {
+            visualizer_.texturePaths.clear();
+            for (const auto& p : *paths) {
+                if (auto s = p.value<std::string>()) {
+                    visualizer_.texturePaths.push_back(expandPath(*s));
+                }
+            }
+        }
+
         LOG_INFO("Config: visualizer {}x{} @ {}fps",
                  visualizer_.width,
                  visualizer_.height,
@@ -207,6 +217,10 @@ void Config::parseRecording(const toml::table& tbl) {
     if (auto rec = tbl["recording"].as_table()) {
         recording_.enabled = get(*rec, "enabled", true);
         recording_.autoRecord = get(*rec, "auto_record", false);
+        recording_.recordEntireSong = get(*rec, "record_entire_song", false);
+        recording_.restartTrackOnRecord =
+                get(*rec, "restart_track_on_record", false);
+        recording_.stopAtTrackEnd = get(*rec, "stop_at_track_end", false);
         auto outDir =
                 get(*rec, "output_directory", std::string("~/Videos/ChadVis"));
         recording_.outputDirectory = expandPath(outDir);
@@ -359,6 +373,15 @@ toml::table Config::serialize() const {
                         {"use_default_preset", visualizer_.useDefaultPreset},
                         {"low_resource_mode", visualizer_.lowResourceMode}});
 
+    // Add texture paths to visualizer table
+    if (auto vizTable = root["visualizer"].as_table()) {
+        toml::array pathsArr;
+        for (const auto& p : visualizer_.texturePaths) {
+            pathsArr.push_back(p.string());
+        }
+        vizTable->insert("texture_paths", pathsArr);
+    }
+
     // Recording
     toml::table recVideo{{"codec", recording_.video.codec},
                          {"crf", static_cast<i64>(recording_.video.crf)},
@@ -375,6 +398,10 @@ toml::table Config::serialize() const {
     root.insert("recording",
                 toml::table{{"enabled", recording_.enabled},
                             {"auto_record", recording_.autoRecord},
+                            {"record_entire_song", recording_.recordEntireSong},
+                            {"restart_track_on_record",
+                             recording_.restartTrackOnRecord},
+                            {"stop_at_track_end", recording_.stopAtTrackEnd},
                             {"output_directory",
                              recording_.outputDirectory.string()},
                             {"default_filename", recording_.defaultFilename},

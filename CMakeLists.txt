@@ -29,15 +29,11 @@ project(chadvis-projectm-qt VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-#set(CMAKE_AUTOMOC ON)
-# Near the top, after project()
-set(CMAKE_AUTOMOC ON)
-# fsks compile up set(CMAKE_AUTOMOC_MOC_OPTIONS "-b" "stdafx.h")
-# Or, more simply, ensure headers are listed in sources
-# The key is that headers with Q_OBJECT must be in the source list
 
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
+# Disable global Qt automatic features to prevent overhead on dependencies (like kissfft)
+set(CMAKE_AUTOMOC OFF)
+set(CMAKE_AUTORCC OFF)
+set(CMAKE_AUTOUIC OFF)
 
 # Build type default
 if(NOT CMAKE_BUILD_TYPE)
@@ -111,6 +107,7 @@ endif()
 CPMAddPackage(
     NAME kissfft
     GIT_REPOSITORY https://github.com/mborgerding/kissfft.git
+    GIT_TAG 131.1.0
     VERSION 131.1.0
     OPTIONS "KISS_FFT_STATIC ON" "KISS_FFT_DATATYPE=float" "KISS_FFT_USE_ALLOCA ON"
 )
@@ -284,6 +281,13 @@ set(RESOURCES resources/chadvis-projectm-qt.qrc)
 
 # Main executable
 add_executable(chadvis-projectm-qt ${ALL_SOURCES} ${RESOURCES})
+
+# Enable Qt automatic features for the main target only
+set_target_properties(chadvis-projectm-qt PROPERTIES
+    AUTOMOC ON
+    AUTORCC ON
+    AUTOUIC ON
+)
 
 target_include_directories(chadvis-projectm-qt PRIVATE
     ${CMAKE_SOURCE_DIR}/src

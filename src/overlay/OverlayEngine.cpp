@@ -25,6 +25,12 @@ void OverlayEngine::init() {
     // Renderer init is delayed until render() ensures GL context
 }
 
+void OverlayEngine::cleanup() {
+    if (renderer_) {
+        renderer_->cleanup();
+    }
+}
+
 void OverlayEngine::update(f32 deltaTime) {
     if (!enabled_)
         return;
@@ -154,7 +160,6 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
                                    activeIdx + 5);
 
                 painter.setFont(QFont("Arial", 28, QFont::Bold));
-                QString lineText;
                 f32 currentX = width * 0.1f;
                 f32 centerY = height * 0.85f;
 
@@ -162,8 +167,6 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
                     const auto& w = alignedLyrics_.words[i];
                     bool active = (i == activeIdx);
 
-                    painter.setPen(active ? Qt::yellow : Qt::white);
-                    // Shadow for visibility
                     painter.setPen(Qt::black);
                     painter.drawText(currentX + 2,
                                      centerY + 2,

@@ -24,6 +24,7 @@ public:
 
     // Initialize (Load config, setup renderer)
     void init();
+    void cleanup();
 
     // Configuration Access
     OverlayConfig& config() {

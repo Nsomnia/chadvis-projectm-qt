@@ -108,6 +108,12 @@ Result<void> Application::init(const AppOptions& opts) {
     // Override debug from command line
     if (opts.debug) {
         CONFIG.setDebug(true);
+        // Re-init logger with debug enabled
+        Logger::init("chadvis-projectm-qt", true);
+    } else if (CONFIG.debug()) {
+        // Ensure logger respects config file debug setting if not overridden by
+        // CLI
+        Logger::init("chadvis-projectm-qt", true);
     }
 
     // Override default preset from command line

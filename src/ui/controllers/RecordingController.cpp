@@ -8,6 +8,8 @@
 #include "ui/VisualizerPanel.hpp"
 #include "visualizer/VisualizerWindow.hpp"
 
+#include <QCheckBox>
+#include <QPushButton>
 #include <QTimer>
 
 namespace vc {
@@ -25,13 +27,18 @@ void RecordingController::setupUI(RecordingControls* controls) {
 void RecordingController::connectSignals() {
     connect(controls_,
             &RecordingControls::startRecordingRequested,
-            [this](const QString& path) { window_->onStartRecording(path); });
+            [this](const QString& path) {
+                if (CONFIG.recording().recordEntireSong ||
+                    CONFIG.recording().restartTrackOnRecord) {
+                    window_->audioEngine()->seek(Duration(0));
+                }
+                window_->onStartRecording(path);
+            });
 
     connect(controls_, &RecordingControls::stopRecordingRequested, [this] {
         window_->onStopRecording();
     });
 
-    // Connect visualizer frames to recorder
     auto* visualizer = window_->visualizerPanel()->visualizer();
     connect(
             visualizer,
@@ -59,8 +66,12 @@ void RecordingController::connectSignals() {
     // Auto-stop recording on track change
     window_->audioEngine()->trackChanged.connect([this] {
         if (recorder_->isRecording()) {
-            LOG_INFO("Track changed, stopping recording.");
-            window_->onStopRecording();
+            if (CONFIG.recording().recordEntireSong ||
+                CONFIG.recording().stopAtTrackEnd ||
+                CONFIG.recording().autoRecord) {
+                LOG_INFO("Track changed, stopping recording.");
+                window_->onStopRecording();
+            }
         }
 
         if (CONFIG.recording().autoRecord) {

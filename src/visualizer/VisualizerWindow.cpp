@@ -17,7 +17,7 @@ VisualizerWindow::VisualizerWindow(QWindow* parent) : QWindow(parent) {
     format.setProfile(QSurfaceFormat::CoreProfile);
     format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
     format.setSwapInterval(1);
-    format.setSamples(4);
+    format.setSamples(0);
     format.setAlphaBufferSize(0);
     format.setDepthBufferSize(24);
     setFormat(format);
@@ -33,6 +33,9 @@ VisualizerWindow::VisualizerWindow(QWindow* parent) : QWindow(parent) {
 
 VisualizerWindow::~VisualizerWindow() {
     if (context_ && context_->makeCurrent(this)) {
+        if (overlayEngine_) {
+            overlayEngine_->cleanup();
+        }
         this->destroyPBOs();
         projectM_.shutdown();
         renderTarget_.destroy();
@@ -55,7 +58,6 @@ void VisualizerWindow::resizeEvent(QResizeEvent* event) {
     if (!initialized_)
         return;
     if (context_ && context_->makeCurrent(this)) {
-        // FBOs and projectM will be resized in renderFrame if needed
         context_->doneCurrent();
     }
 }
@@ -71,6 +73,8 @@ void VisualizerWindow::initialize() {
     glewExperimental = GL_TRUE;
     if (glewInit() != GLEW_OK)
         return;
+
+    initBlitResources();
 
     const auto& vizConfig = CONFIG.visualizer();
     ProjectMConfig pmConfig;
@@ -89,35 +93,26 @@ void VisualizerWindow::initialize() {
     projectM_.presetChanged.connect(
             [this](const std::string& name) { loadPresetFromManager(); });
 
-    if (auto result = projectM_.init(pmConfig); !result)
+    if (auto result = projectM_.init(pmConfig); !result) {
+        LOG_ERROR("ProjectM init failed: {}", result.error().message);
         return;
+    }
 
-    // Use withDepth=true for projectM rendering
-    renderTarget_.create(width(), height(), true);
-    overlayTarget_.create(width(), height(), false);
+    if (auto res = renderTarget_.create(width(), height(), true); !res) {
+        LOG_ERROR("Failed to create render target: {}", res.error().message);
+    }
+    if (auto res = overlayTarget_.create(width(), height(), false); !res) {
+        LOG_ERROR("Failed to create overlay target: {}", res.error().message);
+    }
 
     setRenderRate(vizConfig.fps);
     renderTimer_.start();
     fpsTimer_.start();
 
-    if (vizConfig.presetDuration > 0 && !vizConfig.useDefaultPreset) {
-        connect(&presetRotationTimer_,
-                &QTimer::timeout,
-                this,
-                &VisualizerWindow::onPresetRotationTimeout);
-        presetRotationTimer_.setInterval(vizConfig.presetDuration * 1000);
-        presetRotationTimer_.start();
-    }
+    // Timer removed, projectM handles duration internally now
 
     initialized_ = true;
     context_->doneCurrent();
-}
-
-void VisualizerWindow::onPresetRotationTimeout() {
-    if (CONFIG.visualizer().shufflePresets)
-        projectM_.randomPreset();
-    else
-        projectM_.nextPreset();
 }
 
 void VisualizerWindow::render() {
@@ -136,20 +131,14 @@ void VisualizerWindow::renderFrame() {
     if (w == 0 || h == 0)
         return;
 
-    bool useFBO = recording_ || CONFIG.visualizer().lowResourceMode;
+    u32 renderW = recording_ ? recordWidth_ : w;
+    u32 renderH = recording_ ? recordHeight_ : h;
 
-    // 1. Determine rendering resolution
-    u32 renderW = w;
-    u32 renderH = h;
-    if (recording_) {
-        renderW = recordWidth_;
-        renderH = recordHeight_;
-    } else if (CONFIG.visualizer().lowResourceMode) {
+    if (CONFIG.visualizer().lowResourceMode && !recording_) {
         renderW = std::max(160u, w / 2);
         renderH = std::max(120u, h / 2);
     }
 
-    // 2. Feed audio data
     {
         std::lock_guard lock(audioMutex_);
         if (!audioQueue_.empty()) {
@@ -165,8 +154,9 @@ void VisualizerWindow::renderFrame() {
         }
     }
 
+    bool useFBO = recording_ || CONFIG.visualizer().lowResourceMode;
+
     if (useFBO) {
-        // Ensure FBO is sized correctly
         if (renderTarget_.width() != renderW ||
             renderTarget_.height() != renderH) {
             renderTarget_.resize(renderW, renderH);
@@ -182,58 +172,134 @@ void VisualizerWindow::renderFrame() {
             projectM_.renderToTarget(renderTarget_);
         }
 
-        // Output from FBO
         if (recording_) {
-            if (overlayTarget_.width() != renderW ||
-                overlayTarget_.height() != renderH) {
-                overlayTarget_.resize(renderW, renderH);
-                this->setupPBOs();
-            }
-
+            renderTarget_.bind();
             if (overlayEngine_) {
-                overlayTarget_.bind();
-                glClearColor(0, 0, 0, 0);
-                glClear(GL_COLOR_BUFFER_BIT);
-                renderTarget_.blitTo(overlayTarget_, true);
                 overlayEngine_->render(renderW, renderH);
-                this->captureAsync();
-                overlayTarget_.unbind();
-            } else {
-                renderTarget_.bind();
-                this->captureAsync();
-                renderTarget_.unbind();
             }
+            this->captureAsync();
+            renderTarget_.unbind();
             emit frameReady();
         }
 
-        // Blit back to screen
-        glBindFramebuffer(GL_FRAMEBUFFER, context_->defaultFramebufferObject());
+        GLuint targetFbo = context_->defaultFramebufferObject();
+        glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
         glViewport(0, 0, w, h);
-        glClearColor(0, 0, 0, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-        renderTarget_.blitToScreen(w, h, true);
+
+        GLuint tex = renderTarget_.texture();
+        if (tex) {
+            drawTexture(tex);
+        }
+
+        if (!recording_ && overlayEngine_) {
+            overlayEngine_->render(w, h);
+        }
     } else {
-        // Direct to screen (Peak Performance Mode)
-        projectM_.resetViewport(w, h);
+        GLuint targetFbo = context_->defaultFramebufferObject();
+        glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
+        glViewport(0, 0, w, h);
+
         if (presetLoading_) {
             glClearColor(0, 0, 0, 1);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         } else {
+            projectM_.resetViewport(w, h);
             projectM_.render();
 
-            // ProjectM often leaves alpha at 0, which breaks some compositors
             glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
             glClearColor(0, 0, 0, 1);
             glClear(GL_COLOR_BUFFER_BIT);
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         }
-    }
 
-    if (overlayEngine_) {
-        overlayEngine_->render(w, h);
+        if (overlayEngine_) {
+            overlayEngine_->render(w, h);
+        }
     }
 
     ++frameCount_;
+}
+
+void VisualizerWindow::initBlitResources() {
+    if (blitProgram_)
+        return;
+
+    blitProgram_ = std::make_unique<QOpenGLShaderProgram>();
+
+    const char* vertSource = R"(
+        #version 330 core
+        layout (location = 0) in vec2 position;
+        layout (location = 1) in vec2 texCoord;
+        out vec2 TexCoord;
+        void main() {
+            gl_Position = vec4(position, 0.0, 1.0);
+            TexCoord = texCoord;
+        }
+    )";
+
+    const char* fragSource = R"(
+        #version 330 core
+        in vec2 TexCoord;
+        out vec4 color;
+        uniform sampler2D tex;
+        void main() {
+            vec4 c = texture(tex, TexCoord);
+            color = vec4(c.rgb, 1.0);
+        }
+    )";
+
+    blitProgram_->addShaderFromSourceCode(QOpenGLShader::Vertex, vertSource);
+    blitProgram_->addShaderFromSourceCode(QOpenGLShader::Fragment, fragSource);
+    blitProgram_->link();
+
+    float vertices[] = {
+            -1.0f, 1.0f,  0.0f, 1.0f, // Top Left
+            -1.0f, -1.0f, 0.0f, 0.0f, // Bottom Left
+            1.0f,  -1.0f, 1.0f, 0.0f, // Bottom Right
+            -1.0f, 1.0f,  0.0f, 1.0f, // Top Left
+            1.0f,  -1.0f, 1.0f, 0.0f, // Bottom Right
+            1.0f,  1.0f,  1.0f, 1.0f // Top Right
+    };
+
+    blitVao_.create();
+    blitVao_.bind();
+
+    blitVbo_.create();
+    blitVbo_.bind();
+    blitVbo_.allocate(vertices, sizeof(vertices));
+
+    blitProgram_->enableAttributeArray(0);
+    blitProgram_->setAttributeBuffer(0, GL_FLOAT, 0, 2, 4 * sizeof(float));
+
+    blitProgram_->enableAttributeArray(1);
+    blitProgram_->setAttributeBuffer(
+            1, GL_FLOAT, 2 * sizeof(float), 2, 4 * sizeof(float));
+
+    blitVbo_.release();
+    blitVao_.release();
+
+    LOG_DEBUG("Blit resources initialized");
+}
+
+void VisualizerWindow::drawTexture(GLuint textureId) {
+    if (!blitProgram_ || !textureId)
+        return;
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+
+    blitProgram_->bind();
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    blitProgram_->setUniformValue("tex", 0);
+
+    blitVao_.bind();
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    blitVao_.release();
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    blitProgram_->release();
 }
 
 void VisualizerWindow::setupPBOs() {
@@ -270,11 +336,10 @@ void VisualizerWindow::captureAsync() {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[nextIndex]);
         u8* ptr = (u8*)glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
         if (ptr) {
-            std::vector<u8> buffer(ptr,
-                                   ptr + size); // Copy from PBO to CPU RAM once
+            std::vector<u8> buffer(ptr, ptr + size);
             glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
             emit frameCaptured(
-                    std::move(buffer), // Pass moved vector to signal
+                    std::move(buffer),
                     recordWidth_,
                     recordHeight_,
                     std::chrono::duration_cast<std::chrono::microseconds>(
@@ -301,7 +366,6 @@ void VisualizerWindow::feedAudio(const f32* data,
         std::memcpy(
                 audioQueue_.data() + offset, data, frames * 2 * sizeof(f32));
     } else if (channels == 1) {
-        // Upmix mono to stereo by duplicating samples
         audioQueue_.resize(offset + frames * 2);
         f32* dest = audioQueue_.data() + offset;
         for (u32 i = 0; i < frames; ++i) {
@@ -309,8 +373,6 @@ void VisualizerWindow::feedAudio(const f32* data,
             dest[i * 2 + 1] = data[i];
         }
     } else {
-        // Fallback for other channel counts (e.g. multi-channel) - take first 2
-        // channels or pad with silence
         audioQueue_.resize(offset + frames * 2);
         f32* dest = audioQueue_.data() + offset;
         for (u32 i = 0; i < frames; ++i) {
@@ -339,7 +401,6 @@ void VisualizerWindow::startRecording() {
     recording_ = true;
     if (context_ && context_->makeCurrent(this)) {
         renderTarget_.resize(recordWidth_, recordHeight_);
-        overlayTarget_.resize(recordWidth_, recordHeight_);
         projectM_.resize(recordWidth_, recordHeight_);
         this->setupPBOs();
         context_->doneCurrent();
@@ -350,7 +411,6 @@ void VisualizerWindow::stopRecording() {
     recording_ = false;
     if (context_ && context_->makeCurrent(this)) {
         this->destroyPBOs();
-        // Resize back to window resolution handled in next renderFrame
         context_->doneCurrent();
     }
 }
@@ -410,11 +470,13 @@ void VisualizerWindow::updateSettings() {
     setRenderRate(vizConfig.fps);
     projectM_.setBeatSensitivity(vizConfig.beatSensitivity);
     projectM_.setShuffleEnabled(vizConfig.shufflePresets);
-    presetRotationTimer_.stop();
-    if (vizConfig.presetDuration > 0 && !vizConfig.useDefaultPreset) {
-        presetRotationTimer_.setInterval(vizConfig.presetDuration * 1000);
-        presetRotationTimer_.start();
+
+    if (vizConfig.useDefaultPreset) {
+        projectM_.setPresetDuration(0);
+    } else {
+        projectM_.setPresetDuration(vizConfig.presetDuration);
     }
+    projectM_.setSoftCutDuration(vizConfig.smoothPresetDuration);
 }
 
 void VisualizerWindow::keyPressEvent(QKeyEvent* event) {

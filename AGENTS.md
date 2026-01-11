@@ -71,10 +71,10 @@ Use the `LOG_*` macros defined in `src/core/Logger.hpp`.
 
 - **Core:** `Application` (Singleton entry), `Config` (TOML-based singleton via `CONFIG` macro), `Logger`.
 - **Audio:** `AudioEngine` manages playback via Qt Multimedia and FFmpeg. Uses `AudioAnalyzer` for spectrum data.
-- **Visualizer:** `ProjectMBridge` wraps projectM v4. `VisualizerWindow` (QOpenGLWidget) handles rendering.
+- **Visualizer:** `ProjectMBridge` wraps projectM v4. `VisualizerWindow` (QWindow) handles rendering via direct OpenGL context management.
 - **UI:** Qt-based `MainWindow` with dockable widgets (`PlaylistView`, `PresetBrowser`, etc.).
 - **Overlay:** `OverlayEngine` renders dynamic text elements on top of the visualizer.
-- **Recorder:** `VideoRecorder` handles FFmpeg-based encoding in a dedicated thread.
+- **Recorder:** `VideoRecorder` handles FFmpeg-based encoding in a dedicated `std::jthread`.
 - **Signals:** Uses both Qt signals/slots and a lightweight `vc::Signal<T>` template for non-QObject classes.
 
 ## 📝 Best Practices
@@ -83,6 +83,7 @@ Use the `LOG_*` macros defined in `src/core/Logger.hpp`.
 - Avoid allocations in the audio/render hot paths. Use `scratchBuffer_` or pre-allocated vectors.
 - Use `std::string_view` for read-only string parameters to avoid unnecessary copies.
 - Prefer `std::span` for passing contiguous data (audio buffers, image data).
+- **Rendering:** `VisualizerWindow` manages its own OpenGL context and resources. Use `makeCurrent` before any GL operations.
 
 ### Header Hygiene
 - Use `#pragma once` in all headers.
@@ -98,6 +99,7 @@ Use the `LOG_*` macros defined in `src/core/Logger.hpp`.
 - Use `std::unique_ptr` for QObjects not managed by parent-child ownership.
 - Prefer modern `connect(sender, &Sender::signal, receiver, &Receiver::slot)` syntax.
 - If a class doesn't need Qt features, avoid `QObject` to keep it lightweight.
+- **Thread Safety:** Ensure UI updates happen on the main thread (use `QTimer` or signals).
 
 ### Humor & Style
 - Maintain the "Arch Linux", "Chad developer", "Junior vs Senior devops", and any other relevent humor where appropriate. Heavily in the documentation ("I use Arch btw"), where intended for the end-user.
@@ -109,5 +111,11 @@ Use the `LOG_*` macros defined in `src/core/Logger.hpp`.
 
 ---
 
-# DeepWiki Codebase Analysys (as of version: unknown)
-- As of last update, see .md files or raw .html full file in: `docs/deepwiki/20260109_142042/Nsomnia/chadvis-projectm-qt``
+# DeepWiki Codebase Analysys (as of version: v1.0-RC1)
+- As of last update, see .md files or raw .html full file in: `docs/deepwiki/`
+- **Recent Changes:**
+    - Switched `VisualizerWindow` to `QWindow` + `QOpenGLContext` for manual control.
+    - Implemented `VideoRecorder` with `std::jthread` and native FFmpeg integration.
+    - Added `OverlayEngine` for high-performance text rendering.
+    - Fixed black screen issues via `initBlitResources` and shader-based alpha forcing.
+

@@ -93,6 +93,28 @@ void OverlayRenderer::init() {
     LOG_INFO("OverlayRenderer: Initialized GL resources");
 }
 
+void OverlayRenderer::cleanup() {
+    if (!initialized_)
+        return;
+
+    if (texture_ && texture_->isCreated()) {
+        texture_->destroy();
+    }
+    texture_.reset();
+
+    if (vbo_.isCreated()) {
+        vbo_.destroy();
+    }
+
+    if (vao_.isCreated()) {
+        vao_.destroy();
+    }
+
+    program_.reset();
+    initialized_ = false;
+    LOG_DEBUG("OverlayRenderer: Cleaned up GL resources");
+}
+
 void OverlayRenderer::upload(const QImage& image) {
     if (!initialized_)
         init();

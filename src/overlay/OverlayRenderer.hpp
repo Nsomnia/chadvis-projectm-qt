@@ -21,6 +21,7 @@ public:
 
     // Initialize GL resources (must be called with context current)
     void init();
+    void cleanup();
 
     // Upload CPU image to GPU texture
     void upload(const QImage& image);
