@@ -7,17 +7,9 @@ This document provides essential information for agentic coding agents operating
 The project uses CMake (3.20+) and Ninja. A `build.sh` script is provided for common tasks.
 
 **CRITICAL: DO NOT COMPILE THE CODE YOURSELF.**
-Compiling this project requires significant resources and has a high probability of hanging the user's system. 
-**ALWAYS** ask the user to compile the code after you have applied your changes.
-Provide the command for them to run: `./build.sh build`
+- **AVailable Compile Options:** Due to a starnge opencode and C++ 20 bug it hangs the users system. You may instead either chain manual compilation commands for all changed source code files, or simply inform the user to compile in which case they will either respond with any errors or place them in a file within ``.agent`` for the Agent to analyze.
 
-**Note:** If you encounter errors regarding `-mno-direct-extern-access`, this is a known issue with certain system configurations and Qt. The `build.sh` and `CMakeLists.txt` contain fixes to filter this flag out.
-
-- **Build (Debug):** `./build.sh build` (User runs this)
-- **Build (Release):** `./build.sh release` (optimized)
-- **Clean:** `./build.sh clean`
-- **Run:** `./build.sh run [args]`
-- **Check Dependencies:** `./build.sh check-deps`
+**Note:** If you encounter errors regarding `-mno-direct-extern-access`, this is a known issue with Qt and can be ignored.
 
 ## 🧪 Testing
 
@@ -52,7 +44,7 @@ The project uses `QtTest` for unit and integration testing.
 - Time: `Duration` (`std::chrono::milliseconds`), `TimePoint`
 
 ### Error Handling
-Always use `vc::Result<T>` (from `src/util/Result.hpp`).
+Use `vc::Result<T>` (from `src/util/Result.hpp`).
 ```cpp
 Result<void> init() {
     if (failed) return Result<void>::err("Detailed error message");
@@ -108,6 +100,14 @@ Use the `LOG_*` macros defined in `src/core/Logger.hpp`.
 - If a class doesn't need Qt features, avoid `QObject` to keep it lightweight.
 
 ### Humor & Style
-- Maintain the "Arch Linux" flavor in internal messages and logs ("I use Arch btw"), where appropriate, but heavily in any documents intended for the end user.
-- Keep comments high-value and direct. No "fluff".
-- If it's a "potato-safe" operation, mention it.
+- Maintain the "Arch Linux", "Chad developer", "Junior vs Senior devops", and any other relevent humor where appropriate. Heavily in the documentation ("I use Arch btw"), where intended for the end-user.
+- Keep comments high-value and direct. No "fluff". The codebase only has to be commented for agent intake as there is not likely to be any human development work direclty in the c++ code.
+
+### Agent friendly file reccomendations
+- While not forced, it is generally more token usage efficient and easier for agentic model workflow processes to have smaller files rather than monoliths. Whenever appropriate make new files for new items such as classes, headers, or extended documentation. Follow best industry standards and project aware best practices. If a file becomes large, and especially if this causes edit failures for the agent, then refactor the project structure such that these monolothiic/large files are split up. 
+- Make file names very clear as to their purpose. File names do not use very many tokens, and makes expoloring the codebase easier.
+
+---
+
+# DeepWiki Codebase Analysys (as of version: unknown)
+- As of last update, see .md files or raw .html full file in: `docs/deepwiki/20260109_142042/Nsomnia/chadvis-projectm-qt``
