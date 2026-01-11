@@ -1,13 +1,17 @@
-#include "AudioAnalyzer.hpp"
-#include <algorithm>
+#pragma once
+// AudioAnalyzer.hpp - FFT analysis for visualizer data
+// Math that makes pretty colors go brrr
+
 #include <cmath>
 #include <numeric>
+#include "util/Types.hpp"
 
 namespace vc {
 
 constexpr usize FFT_SIZE = 2048;
 constexpr usize SPECTRUM_SIZE = FFT_SIZE / 2;
 
+// Frequency band data for visualizer
 struct AudioSpectrum {
     std::array<vc::f32, SPECTRUM_SIZE> magnitudes{};
     vc::f32 leftLevel{0.0f};
@@ -31,6 +35,8 @@ public:
     void reset();
 
 private:
+    void performKissFFT(std::span<const vc::f32> input,
+                        std::span<vc::f32> magnitudes);
     vc::f32 detectBeat(vc::f32 currentEnergy);
 
     std::vector<vc::f32> pcmBuffer_;
@@ -43,4 +49,5 @@ private:
     std::array<vc::f32, SPECTRUM_SIZE> smoothedMagnitudes_{};
     vc::f32 smoothingFactor_{0.3f};
 };
-} // namespace vc
+}
+}
