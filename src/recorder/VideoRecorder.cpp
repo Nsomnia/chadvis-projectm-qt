@@ -17,7 +17,6 @@ VideoRecorder::VideoRecorder() = default;
 
 VideoRecorder::~VideoRecorder() {
     LOG_TRACE("VideoRecorder::~VideoRecorder() CALLED");
-    // Ensure recording is stopped and thread is joined
     stop();
     LOG_TRACE("VideoRecorder::~VideoRecorder() FINISHED");
 }
@@ -27,17 +26,13 @@ Result<void> VideoRecorder::start(const EncoderSettings& settings) {
         return Result<void>::err("Recording already in progress");
     }
 
-    // Validate settings
     if (auto result = settings.validate(); !result) {
         return result;
     }
 
     settings_ = settings;
-
-    // Ensure output directory exists
     file::ensureDir(settings_.outputPath.parent_path());
 
-    // Initialize FFmpeg
     state_ = RecordingState::Starting;
     stateChanged.emitSignal(state_);
 
@@ -48,21 +43,18 @@ Result<void> VideoRecorder::start(const EncoderSettings& settings) {
         return result;
     }
 
-    // Reset stats
     stats_ = RecordingStats{};
     stats_.currentFile = settings_.outputPath.string();
     statsUpdated.emitSignal(stats_);
 
-    // Start encoding thread
     shouldStop_ = false;
     frameGrabber_.setSize(settings_.video.width, settings_.video.height);
     frameGrabber_.start();
 
-    startTime_ = std::chrono::duration_cast<std::chrono::microseconds>(
-                         std::chrono::steady_clock::now().time_since_epoch())
-                         .count();
+    startTime_ = std::chrono::steady_clock::now();
 
-    encodingThread_ = std::thread(&VideoRecorder::encodingThread, this);
+    encodingThread_ =
+            std::jthread([this](std::stop_token st) { encodingThread(st); });
 
     state_ = RecordingState::Recording;
     stateChanged.emitSignal(state_);
@@ -82,25 +74,23 @@ Result<void> VideoRecorder::stop() {
         return Result<void>::ok();
     }
 
+    LOG_DEBUG("VideoRecorder::stop() requested");
     state_ = RecordingState::Stopping;
     stateChanged.emitSignal(state_);
 
-    // Signal thread to stop
     shouldStop_ = true;
     frameGrabber_.stop();
+    encodingThread_.request_stop();
 
-    // Wait for encoding thread
     if (encodingThread_.joinable()) {
         encodingThread_.join();
     }
 
-    // Flush encoders and finalize file
     {
         std::lock_guard lock(ffmpegMutex_);
         flushEncoders();
 
-        // Write trailer
-        if (formatCtx_) {
+        if (formatCtx_ && formatCtx_->pb) {
             av_write_trailer(formatCtx_.get());
         }
     }
@@ -128,9 +118,8 @@ void VideoRecorder::submitVideoFrame(std::vector<u8>&& data,
     frame.width = width;
     frame.height = height;
     frame.timestamp = timestamp;
-    frame.data = std::move(data); // ZERO COPY (move)
+    frame.data = std::move(data);
 
-    // Push to queue for background processing
     frameGrabber_.pushFrame(std::move(frame));
 }
 
@@ -145,12 +134,8 @@ void VideoRecorder::submitVideoFrame(const u8* data,
     frame.width = width;
     frame.height = height;
     frame.timestamp = timestamp;
-    frame.data.assign(
-            data,
-            data + width * height *
-                            4); // Still needed for legacy/const u8 paths
+    frame.data.assign(data, data + width * height * 4);
 
-    // Push to queue for background processing
     frameGrabber_.pushFrame(std::move(frame));
 }
 
@@ -158,15 +143,8 @@ void VideoRecorder::submitAudioSamples(const f32* data,
                                        u32 samples,
                                        u32 channels,
                                        u32 sampleRate) {
-    if (state_ != RecordingState::Recording)
+    if (state_ != RecordingState::Recording || !audioStream_)
         return;
-    if (!audioStream_)
-        return;
-
-    // Check if audio is actually playing (not just silence/paused)
-    // This helps avoid recording while paused if the visualizer is still
-    // submitting frames However, the AudioEngine usually doesn't call this when
-    // paused.
 
     std::lock_guard lock(audioMutex_);
     audioSampleRate_ = sampleRate;
@@ -176,12 +154,12 @@ void VideoRecorder::submitAudioSamples(const f32* data,
     audioBuffer_.insert(audioBuffer_.end(), data, data + size);
 }
 
-void VideoRecorder::encodingThread() {
+void VideoRecorder::encodingThread(std::stop_token stopToken) {
     LOG_DEBUG("Encoding thread started");
 
     auto lastStatsUpdate = std::chrono::steady_clock::now();
 
-    while (true) {
+    while (!stopToken.stop_requested()) {
         GrabbedFrame frame;
         bool hasVideo = frameGrabber_.getNextFrame(frame, 10);
         if (hasVideo) {
@@ -196,12 +174,10 @@ void VideoRecorder::encodingThread() {
 
         auto now = std::chrono::steady_clock::now();
         if (now - lastStatsUpdate >= std::chrono::seconds(1)) {
-            stats_.elapsed = Duration(
+            auto elapsed = now - startTime_;
+            stats_.elapsed =
                     std::chrono::duration_cast<std::chrono::milliseconds>(
-                            now -
-                            std::chrono::steady_clock::time_point(
-                                    std::chrono::microseconds(startTime_)))
-                            .count());
+                            elapsed);
 
             if (stats_.elapsed.count() > 0) {
                 stats_.avgFps = static_cast<f64>(stats_.framesWritten) *
@@ -218,7 +194,6 @@ void VideoRecorder::encodingThread() {
 }
 
 void VideoRecorder::processVideoFrame(const GrabbedFrame& frame) {
-    // Only process if we have valid data
     if (frame.data.empty())
         return;
 

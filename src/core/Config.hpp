@@ -46,6 +46,9 @@ struct AudioEncoderConfig {
 struct RecordingConfig {
     bool enabled{true};
     bool autoRecord{false};
+    bool recordEntireSong{false};
+    bool restartTrackOnRecord{false};
+    bool stopAtTrackEnd{false};
     fs::path outputDirectory;
     std::string defaultFilename{"chadvis-projectm-qt_{date}_{time}"};
     std::string container{"mp4"};
@@ -66,6 +69,7 @@ struct VisualizerConfig {
     std::string forcePreset{}; // Force specific preset for debugging
     bool useDefaultPreset{false}; // Use default projectM visualizer (no preset)
     bool lowResourceMode{false};
+    std::vector<fs::path> texturePaths;
 };
 
 // Audio configuration

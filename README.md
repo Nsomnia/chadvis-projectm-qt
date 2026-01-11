@@ -114,13 +114,23 @@ nano ~/.config/chadvis-projectm-qt/config.toml
 ### Config Sections:
 - `[general]` - Debug mode, logging
 - `[audio]` - Audio device, sample rate
-- `[visualizer]` - FPS, preset path, beat sensitivity
+- `[visualizer]` - FPS, preset path, beat sensitivity, texture_paths
 - `[recording]` - Video format, bitrate, output path
 - `[overlay]` - Text overlays, karaoke settings
 - `[ui]` - Window size, theme
 - `[keyboard]` - Custom key bindings
 
 **Note**: The app will automatically create the config directory if it doesn't exist. Changes are saved when you exit the application.
+
+### Textures:
+To use custom textures (fixing missing texture errors in some Milkdrop presets), add paths to your config:
+```toml
+[visualizer]
+texture_paths = [
+    "/usr/share/projectM/textures",
+    "/home/user/.local/share/projectM/textures"
+]
+```
 
 ### Presets Location:
 ProjectM presets are searched in this order:
@@ -169,35 +179,40 @@ The `VisualizerWindow` class (in `src/visualizer/VisualizerWindow.cpp`) replaces
 
 This fixes the issue where projectM would initialize but only render 1 frame.
 
-## ✅ Current Status: v1.0-beta
+## ✅ Current Status: v1.0-RC1
 
-**Build Status**: ✅ WORKING - Compiles successfully  
-**Runtime Status**: ✅ WORKING - All core features functional  
-**Audio**: ✅ WORKING - Real-time audio analysis and visualization  
-**Preset Selection**: ✅ WORKING - CLI, GUI, and default preset modes  
-**Video Recording**: ✅ WORKING - FFmpeg-based recording  
-**Critical Bugs**: ✅ FIXED - All 4 critical bugs resolved  
+**Build Status**: ✅ WORKING - Compiles successfully
+**Runtime Status**: ✅ WORKING - All core features functional
+**Audio**: ✅ WORKING - Real-time audio analysis and visualization
+**Preset Selection**: ✅ WORKING - CLI, GUI, and default preset modes
+**Video Recording**: ✅ WORKING - FFmpeg-based recording with native opacity fix
+**Critical Bugs**: ✅ FIXED - Black screen, infinite loop, and shutdown hang resolved
 
 **Test Output**:
 ```
 [info] OpenGL: 4.6 (Core Profile) Mesa 25.3.2-arch1.2
 [info] Scanned 8980 presets from /usr/share/projectM/presets
-[info] ProjectM initialized: 320x782 @ 30 fps, 8980 presets
+[info] ProjectM initialized: 1920x1080 @ 60 fps, 8980 presets
 [info] Visualizer window initialized
-[info] AudioEngine: projectM handle set to 0x559416712ad0
 ```
 
-**v1.0-beta Features**:
+**v1.0-RC1 Features**:
 - ✅ Preset selection via CLI (`--preset`, `--default-preset`)
 - ✅ GUI preset browser with search and filtering
-- ✅ Next/Previous preset buttons (one-click, handles duplicates)
-- ✅ Real-time audio visualization
-- ✅ Video recording with FFmpeg
+- ✅ Native ProjectM v4 Callback integration for perfect sync
+- ✅ Real-time audio visualization with lock-free feeding
+- ✅ Video recording with FFmpeg (hardware accelerated where available)
 - ✅ Text overlays and custom graphics
 - ✅ Configurable via TOML config files
+- ✅ Multiple texture search paths support
 - ✅ Keyboard shortcuts (F11 fullscreen, R record, etc.)
 
+**Fixed Issues**:
+- Black canvas during recording (Fixed via shader-based alpha force)
+- Infinite recording loop on track change
+- Slow shutdown/hang
+- Build system transparency
+
 **Known Issues**:
-- Build takes ~5-10 minutes (C++20 with optimizations)
-- VDPAU warning if no NVIDIA GPU (harmless)
-- Some debug logs still show in info mode (will be fixed)
+- Build takes ~2-5 minutes (C++20 heavy)
+

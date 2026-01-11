@@ -1,16 +1,23 @@
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDateTime>
+#include <QFileDialog>
+#include <QGroupBox>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QProgressBar>
+#include <QPushButton>
+#include <QRegularExpression>
+#include <QVBoxLayout>
+#include <QWidget>
+
 #include "RecordingControls.hpp"
 #include "core/Config.hpp"
 #include "ui/MainWindow.hpp"
 #include "ui/VisualizerPanel.hpp"
 #include "util/FileUtils.hpp"
 #include "visualizer/VisualizerWindow.hpp"
-
-#include <QDateTime>
-#include <QFileDialog>
-#include <QGroupBox>
-#include <QHBoxLayout>
-#include <QLabel>
-#include <QVBoxLayout>
 
 namespace vc {
 
@@ -85,6 +92,33 @@ void RecordingControls::setupUI() {
             this,
             &RecordingControls::onRecordButtonClicked);
     recordLayout->addWidget(recordButton_);
+
+    auto* optionsLayout = new QVBoxLayout();
+    restartTrackCheck_ = new QCheckBox("Restart track on start");
+    stopAtEndCheck_ = new QCheckBox("Stop at track end");
+    recordEntireSongCheck_ = new QCheckBox("Record entire song (Auto)");
+
+    restartTrackCheck_->setChecked(CONFIG.recording().restartTrackOnRecord);
+    stopAtEndCheck_->setChecked(CONFIG.recording().stopAtTrackEnd);
+    recordEntireSongCheck_->setChecked(CONFIG.recording().recordEntireSong);
+
+    connect(restartTrackCheck_, &QCheckBox::toggled, this, [](bool checked) {
+        CONFIG.recording().restartTrackOnRecord = checked;
+    });
+    connect(stopAtEndCheck_, &QCheckBox::toggled, this, [](bool checked) {
+        CONFIG.recording().stopAtTrackEnd = checked;
+    });
+    connect(recordEntireSongCheck_,
+            &QCheckBox::toggled,
+            this,
+            [](bool checked) {
+                CONFIG.recording().recordEntireSong = checked;
+            });
+
+    optionsLayout->addWidget(restartTrackCheck_);
+    optionsLayout->addWidget(stopAtEndCheck_);
+    optionsLayout->addWidget(recordEntireSongCheck_);
+    recordLayout->addLayout(optionsLayout);
 
     layout->addWidget(recordGroup);
 

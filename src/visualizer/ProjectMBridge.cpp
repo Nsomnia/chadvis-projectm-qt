@@ -5,6 +5,14 @@
 
 namespace vc {
 
+// Callback wrapper
+static void presetSwitchRequested(bool is_hard_cut, void* user_data) {
+    auto* bridge = static_cast<ProjectMBridge*>(user_data);
+    if (bridge) {
+        bridge->nextPreset(true);
+    }
+}
+
 ProjectMBridge::ProjectMBridge() = default;
 
 ProjectMBridge::~ProjectMBridge() {
@@ -25,7 +33,38 @@ Result<void> ProjectMBridge::init(const ProjectMConfig& config) {
     projectm_set_window_size(projectM_, width_, height_);
     projectm_set_fps(projectM_, config.fps);
     projectm_set_beat_sensitivity(projectM_, config.beatSensitivity);
-    projectm_set_preset_duration(projectM_, 0);
+
+    // Callbacks
+    projectm_set_preset_switch_requested_event_callback(
+            projectM_, &presetSwitchRequested, this);
+
+    // Texture paths
+    if (!config.texturePaths.empty()) {
+        std::vector<std::string> pathStrings;
+        std::vector<const char*> paths;
+        pathStrings.reserve(config.texturePaths.size());
+        paths.reserve(config.texturePaths.size());
+
+        for (const auto& p : config.texturePaths) {
+            if (fs::exists(p)) {
+                pathStrings.push_back(p.string());
+                paths.push_back(pathStrings.back().c_str());
+            }
+        }
+
+        if (!paths.empty()) {
+            projectm_set_texture_search_paths(
+                    projectM_, paths.data(), paths.size());
+        }
+    }
+
+    // Preset duration logic
+    if (config.useDefaultPreset) {
+        projectm_set_preset_duration(projectM_, 0);
+    } else {
+        projectm_set_preset_duration(projectM_, config.presetDuration);
+    }
+
     projectm_set_soft_cut_duration(projectM_, config.transitionDuration);
     projectm_set_mesh_size(projectM_, config.meshX, config.meshY);
     projectm_set_preset_locked(projectM_, false);
@@ -122,6 +161,16 @@ void ProjectMBridge::setFPS(u32 fps) {
 void ProjectMBridge::setBeatSensitivity(f32 s) {
     if (projectM_)
         projectm_set_beat_sensitivity(projectM_, s);
+}
+
+void ProjectMBridge::setPresetDuration(double duration) {
+    if (projectM_)
+        projectm_set_preset_duration(projectM_, duration);
+}
+
+void ProjectMBridge::setSoftCutDuration(double duration) {
+    if (projectM_)
+        projectm_set_soft_cut_duration(projectM_, duration);
 }
 
 void ProjectMBridge::loadPreset(const fs::path& path, bool smooth) {

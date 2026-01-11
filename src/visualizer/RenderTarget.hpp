@@ -66,7 +66,10 @@ public:
 
     // Blit to another target
     void blitTo(RenderTarget& other, bool linear = true);
-    void blitToScreen(u32 screenWidth, u32 screenHeight, bool linear = true);
+    void blitToScreen(u32 screenWidth,
+                      u32 screenHeight,
+                      bool linear = true,
+                      GLuint targetFbo = 0);
 
 private:
     GLuint fbo_{0};

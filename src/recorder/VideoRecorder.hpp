@@ -74,7 +74,7 @@ public:
 
 private:
     // Encoding thread
-    void encodingThread();
+    void encodingThread(std::stop_token stopToken);
     void processVideoFrame(const GrabbedFrame& frame);
     void processAudioBuffer();
     void flushEncoders();
@@ -96,7 +96,7 @@ private:
     RecordingStats stats_;
 
     // Threading
-    std::thread encodingThread_;
+    std::jthread encodingThread_;
     std::atomic<bool> shouldStop_{false};
     FrameGrabber frameGrabber_;
 
@@ -121,7 +121,7 @@ private:
 
     i64 videoFrameCount_{0};
     i64 audioFrameCount_{0};
-    i64 startTime_{0};
+    TimePoint startTime_;
 
     std::mutex ffmpegMutex_;
 };

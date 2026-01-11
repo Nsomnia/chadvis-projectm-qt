@@ -29,6 +29,7 @@ struct ProjectMConfig {
     bool useDefaultPreset{false};
     u32 meshX{128};
     u32 meshY{96};
+    std::vector<fs::path> texturePaths;
 };
 
 class ProjectMBridge {
@@ -60,6 +61,8 @@ public:
     void resetViewport(u32 width, u32 height);
     void setFPS(u32 fps);
     void setBeatSensitivity(f32 sensitivity);
+    void setPresetDuration(double duration);
+    void setSoftCutDuration(double duration);
     void setShuffleEnabled(bool enabled) {
         shuffleEnabled_ = enabled;
     }

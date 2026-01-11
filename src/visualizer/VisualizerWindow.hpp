@@ -11,8 +11,11 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcpp"
 
+#include <QOpenGLBuffer>
 #include <QOpenGLContext>
 #include <QOpenGLFunctions_3_3_Core>
+#include <QOpenGLShaderProgram>
+#include <QOpenGLVertexArrayObject>
 #include <QTimer>
 #include <QWindow>
 #include <atomic>
@@ -90,6 +93,13 @@ private:
     void captureAsync();
     void cleanup();
 
+    // Blit resources
+    std::unique_ptr<QOpenGLShaderProgram> blitProgram_;
+    QOpenGLVertexArrayObject blitVao_;
+    QOpenGLBuffer blitVbo_;
+    void initBlitResources();
+    void drawTexture(GLuint textureId);
+
     std::unique_ptr<QOpenGLContext> context_;
     ProjectMBridge projectM_;
     bool presetLoading_{false};
@@ -100,7 +110,6 @@ private:
 
     QTimer renderTimer_;
     QTimer fpsTimer_;
-    QTimer presetRotationTimer_;
 
     // Recording & PBOs
     bool recording_{false};
