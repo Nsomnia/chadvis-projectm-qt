@@ -163,6 +163,9 @@ void VisualizerWindow::renderFrame() {
         return;
     }
 
+    // CRITICAL: Sync pending projectM state changes with active context
+    projectM_.syncState();
+
     u32 renderW = recording_ ? recordWidth_ : w;
     u32 renderH = recording_ ? recordHeight_ : h;
 
@@ -456,6 +459,22 @@ void VisualizerWindow::toggleFullscreen() {
     }
 }
 
+void VisualizerWindow::nextPreset(bool smooth) {
+    projectM_.nextPreset(smooth);
+}
+
+void VisualizerWindow::previousPreset(bool smooth) {
+    projectM_.previousPreset(smooth);
+}
+
+void VisualizerWindow::randomPreset(bool smooth) {
+    projectM_.randomPreset(smooth);
+}
+
+void VisualizerWindow::lockPreset(bool locked) {
+    projectM_.lockPreset(locked);
+}
+
 void VisualizerWindow::updateFPS() {
     actualFps_ = static_cast<f32>(frameCount_);
     frameCount_ = 0;
@@ -464,13 +483,13 @@ void VisualizerWindow::updateFPS() {
 
 void VisualizerWindow::loadPresetFromManager() {
     std::lock_guard lock(presetLoadMutex_);
-    if (presetLoadInProgress_)
+    if (presetLoadInProgress_ || !initialized_)
         return;
     presetLoadInProgress_ = true;
     
     const auto* preset = projectM_.presets().current();
     if (preset) {
-        LOG_DEBUG("Loading preset from manager: {}", preset->name);
+        LOG_DEBUG("VisualizerWindow: Loading current preset from manager: {}", preset->name);
         projectM_.presets().selectByName(preset->name);
     }
     
@@ -482,15 +501,19 @@ void VisualizerWindow::updateSettings() {
         return;
     const auto& vizConfig = CONFIG.visualizer();
     setRenderRate(vizConfig.fps);
-    projectM_.engine().setBeatSensitivity(vizConfig.beatSensitivity);
-    projectM_.lockPreset(false);
+    
+    if (context_ && context_->makeCurrent(this)) {
+        projectM_.engine().setBeatSensitivity(vizConfig.beatSensitivity);
+        projectM_.lockPreset(false);
 
-    if (vizConfig.useDefaultPreset) {
-        projectM_.engine().setPresetDuration(0);
-    } else {
-        projectM_.engine().setPresetDuration(vizConfig.presetDuration);
+        if (vizConfig.useDefaultPreset) {
+            projectM_.engine().setPresetDuration(0);
+        } else {
+            projectM_.engine().setPresetDuration(vizConfig.presetDuration);
+        }
+        projectM_.engine().setSoftCutDuration(vizConfig.smoothPresetDuration);
+        context_->doneCurrent();
     }
-    projectM_.engine().setSoftCutDuration(vizConfig.smoothPresetDuration);
 }
 
 void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
@@ -503,13 +526,13 @@ void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
     if (keyStr == keys.toggleFullscreen || event->key() == Qt::Key_F11)
         toggleFullscreen();
     else if (keyStr == keys.nextPreset || event->key() == Qt::Key_Right)
-        projectM_.nextPreset();
+        nextPreset();
     else if (keyStr == keys.prevPreset || event->key() == Qt::Key_Left)
-        projectM_.previousPreset();
+        previousPreset();
     else if (event->key() == Qt::Key_R)
-        projectM_.randomPreset();
+        randomPreset();
     else if (event->key() == Qt::Key_L)
-        projectM_.lockPreset(!projectM_.isPresetLocked());
+        lockPreset(!projectM_.isPresetLocked());
     else if (event->key() == Qt::Key_Escape && fullscreen_)
         toggleFullscreen();
 }

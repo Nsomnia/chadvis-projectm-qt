@@ -14,8 +14,9 @@ static void presetSwitchRequested(bool is_hard_cut, void* user_data) {
 }
 
 Bridge::Bridge() {
-    playlist_.switched.connect(
-            [this](bool hard, u32 index) { onPlaylistSwitched(hard, index); });
+    playlist_.switched.connect([this](bool hard, u32 index) {
+        onPlaylistSwitched(hard, index);
+    });
 }
 
 Bridge::~Bridge() {
@@ -24,7 +25,7 @@ Bridge::~Bridge() {
 
 Result<void> Bridge::init(const ProjectMConfig& config) {
     LOG_INFO("Bridge: Initializing projectM components");
-
+    
     if (isInitialized())
         shutdown();
 
@@ -40,8 +41,7 @@ Result<void> Bridge::init(const ProjectMConfig& config) {
     eCfg.texturePaths = config.texturePaths;
 
     auto res = engine_.init(eCfg);
-    if (!res)
-        return res;
+    if (!res) return res;
 
     if (!playlist_.init(engine_.handle())) {
         return Result<void>::err("Failed to initialize native playlist");
@@ -51,8 +51,9 @@ Result<void> Bridge::init(const ProjectMConfig& config) {
     projectm_set_preset_switch_requested_event_callback(
             engine_.handle(), &presetSwitchRequested, this);
 
-    presetManager_.presetChanged.connect(
-            [this](const PresetInfo* p) { onPresetManagerChanged(p); });
+    presetManager_.presetChanged.connect([this](const PresetInfo* p) {
+        onPresetManagerChanged(p);
+    });
 
     scanPresets(config.presetPath);
     presetManager_.loadState(file::configDir() / "preset_state.txt");
@@ -78,17 +79,20 @@ void Bridge::shutdown() {
 }
 
 Result<void> Bridge::scanPresets(const fs::path& path) {
-    if (path == lastPresetPath_ && !presetManager_.empty()) {
+    bool managerEmpty = presetManager_.empty();
+    bool playlistEmpty = !playlist_.handle() || playlist_.size() == 0;
+
+    if (path == lastPresetPath_ && !managerEmpty && !playlistEmpty) {
         return Result<void>::ok();
     }
 
     LOG_INFO("Bridge: Scanning presets in '{}'", path.string());
-
-    if (presetManager_.empty() || path != lastPresetPath_) {
+    
+    if (managerEmpty || path != lastPresetPath_) {
         presetManager_.scan(path);
     }
 
-    if (playlist_.handle()) {
+    if (playlist_.handle() && (playlistEmpty || path != lastPresetPath_)) {
         playlist_.clear();
         u32 added = playlist_.addPath(path.string(), true);
         if (added > 0) {
@@ -101,38 +105,59 @@ Result<void> Bridge::scanPresets(const fs::path& path) {
     return Result<void>::ok();
 }
 
-void Bridge::nextPreset(bool smooth) {
-    if (playlist_.size() > 0) {
-        playlist_.next(!smooth);
-    } else {
-        presetManager_.selectNext();
+void Bridge::syncState() {
+    if (!isInitialized()) return;
+
+    {
+        std::lock_guard<std::mutex> lock(loadMutex_);
+        if (!pendingLoadPath_.empty()) {
+            engine_.loadPreset(pendingLoadPath_, !pendingSmooth_);
+            pendingLoadPath_.clear();
+        }
     }
+
+    int pos = pendingPosition_.exchange(-1);
+    if (pos != -1) {
+        playlist_.setPosition(static_cast<u32>(pos), !pendingSmooth_);
+    }
+
+    if (pendingNext_.exchange(false)) {
+        playlist_.next(!pendingSmooth_);
+    }
+    if (pendingPrev_.exchange(false)) {
+        playlist_.previous(!pendingSmooth_);
+    }
+    if (pendingRandom_.exchange(false)) {
+        if (playlist_.size() > 0) {
+            std::uniform_int_distribution<u32> dist(0, playlist_.size() - 1);
+            playlist_.setPosition(dist(rng_), !pendingSmooth_);
+        }
+    }
+
+    if (pendingLockChange_.exchange(false)) {
+        engine_.setPresetLocked(pendingLock_);
+    }
+}
+
+void Bridge::nextPreset(bool smooth) {
+    pendingSmooth_ = smooth;
+    pendingNext_ = true;
 }
 
 void Bridge::previousPreset(bool smooth) {
-    if (playlist_.size() > 0) {
-        playlist_.previous(!smooth);
-    } else {
-        presetManager_.selectPrevious();
-    }
+    pendingSmooth_ = smooth;
+    pendingPrev_ = true;
 }
 
 void Bridge::randomPreset(bool smooth) {
-    if (playlist_.size() > 0) {
-        if (playlist_.size() == 1) {
-            playlist_.setPosition(0, !smooth);
-        } else {
-            std::uniform_int_distribution<u32> dist(0, playlist_.size() - 1);
-            playlist_.setPosition(dist(rng_), !smooth);
-        }
-    } else {
-        presetManager_.selectRandom();
-    }
+    pendingSmooth_ = smooth;
+    pendingRandom_ = true;
 }
 
 void Bridge::lockPreset(bool locked) {
     presetLocked_ = locked;
-    engine_.setPresetLocked(locked);
+    pendingLock_ = locked;
+    pendingLockChange_ = true;
 }
 
 std::string Bridge::currentPresetName() const {
@@ -144,23 +169,24 @@ void Bridge::onPresetManagerChanged(const PresetInfo* preset) {
     if (!preset || syncingFromNative_)
         return;
 
-    if (playlist_.handle()) {
+    if (playlist_.handle() && playlist_.size() > 0) {
         for (u32 i = 0; i < playlist_.size(); ++i) {
             if (fs::path(playlist_.itemAt(i)) == preset->path) {
-                playlist_.setPosition(i, false);
+                pendingPosition_ = static_cast<int>(i);
+                pendingSmooth_ = false;
                 return;
             }
         }
     }
 
-    engine_.loadPreset(preset->path.string(), false);
-    presetChanged.emitSignal(preset->name);
+    std::lock_guard<std::mutex> lock(loadMutex_);
+    pendingLoadPath_ = preset->path.string();
+    pendingSmooth_ = false;
 }
 
 void Bridge::onPlaylistSwitched(bool is_hard_cut, u32 index) {
     std::string path = playlist_.itemAt(index);
-    if (path.empty())
-        return;
+    if (path.empty()) return;
 
     fs::path p(path);
     std::string name = p.stem().string();

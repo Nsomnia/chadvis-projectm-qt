@@ -175,20 +175,20 @@ void MainWindow::setupMenuBar() {
     auto* vizMenu = menuBar()->addMenu("&Visualizer");
     vizMenu->addAction(
             "&Next Preset", QKeySequence(Qt::Key_Right), this, [this] {
-                visualizerPanel_->visualizer()->projectM().nextPreset();
+                visualizerPanel_->visualizer()->nextPreset();
             });
     vizMenu->addAction(
             "&Previous Preset", QKeySequence(Qt::Key_Left), this, [this] {
-                visualizerPanel_->visualizer()->projectM().previousPreset();
+                visualizerPanel_->visualizer()->previousPreset();
             });
     vizMenu->addAction("&Random Preset", QKeySequence(Qt::Key_R), this, [this] {
-        visualizerPanel_->visualizer()->projectM().randomPreset();
+        visualizerPanel_->visualizer()->randomPreset();
     });
 
     auto* lockAction = vizMenu->addAction("&Lock Preset");
     lockAction->setCheckable(true);
     connect(lockAction, &QAction::toggled, this, [this](bool locked) {
-        visualizerPanel_->visualizer()->projectM().lockPreset(locked);
+        visualizerPanel_->visualizer()->lockPreset(locked);
     });
 
     auto* shuffleAction = vizMenu->addAction("&Shuffle Presets");
@@ -332,7 +332,12 @@ void MainWindow::stopRecording() {
 }
 
 void MainWindow::selectPreset(const std::string& name) {
-    visualizerPanel_->visualizer()->projectM().presets().selectByName(name);
+    if (visualizerPanel_ && visualizerPanel_->visualizer()) {
+        // We don't have a direct "selectByName" on VisualizerWindow yet, 
+        // but loadPresetFromManager uses the current selection.
+        visualizerPanel_->visualizer()->projectM().presets().selectByName(name);
+        visualizerPanel_->visualizer()->loadPresetFromManager();
+    }
 }
 void MainWindow::onStartRecording(const QString& path) {
     startRecording(path.toStdString());

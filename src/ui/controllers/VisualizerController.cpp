@@ -24,7 +24,9 @@ void VisualizerController::setupUI(VisualizerPanel* panel,
 
 void VisualizerController::connectSignals() {
     connect(panel_, &VisualizerPanel::lockPresetToggled, [this](bool locked) {
-        bridge_->lockPreset(locked);
+        if (panel_ && panel_->visualizer()) {
+            panel_->visualizer()->lockPreset(locked);
+        }
     });
 
     bridge_->presetChanged.connect([this](const std::string& name) {
