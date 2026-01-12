@@ -197,6 +197,9 @@ void Config::parseVisualizer(const toml::table& tbl) {
         visualizer_.useDefaultPreset = get(*viz, "use_default_preset", false);
         visualizer_.lowResourceMode = get(*viz, "low_resource_mode", false);
 
+        LOG_DEBUG("Config::parseVisualizer: preset_path raw='{}'",
+                  get(*viz, "preset_path", std::string("NOT_FOUND")));
+
         if (auto paths = (*viz)["texture_paths"].as_array()) {
             visualizer_.texturePaths.clear();
             for (const auto& p : *paths) {
@@ -206,10 +209,32 @@ void Config::parseVisualizer(const toml::table& tbl) {
             }
         }
 
-        LOG_INFO("Config: visualizer {}x{} @ {}fps",
+        // Auto-populate textures if empty
+        if (visualizer_.texturePaths.empty()) {
+            // Try standard location relative to presets
+            auto texPath = visualizer_.presetPath.parent_path() / "textures";
+            if (fs::exists(texPath)) {
+                visualizer_.texturePaths.push_back(texPath);
+                LOG_INFO("Config: Automatically added texture path: '{}'",
+                         texPath.string());
+            } else {
+                // Try fallback
+                auto fallback = file::presetsDir().parent_path() / "textures";
+                if (fs::exists(fallback)) {
+                    visualizer_.texturePaths.push_back(fallback);
+                    LOG_INFO(
+                            "Config: Automatically added fallback texture "
+                            "path: '{}'",
+                            fallback.string());
+                }
+            }
+        }
+
+        LOG_INFO("Config: visualizer {}x{} @ {}fps, presets: '{}'",
                  visualizer_.width,
                  visualizer_.height,
-                 visualizer_.fps);
+                 visualizer_.fps,
+                 visualizer_.presetPath.string());
     }
 }
 

@@ -18,7 +18,19 @@ Result<void> PresetManager::scan(const fs::path& directory, bool recursive) {
     scanDirectory_ = directory;
     presets_.clear();
 
+    LOG_INFO("PresetManager: Scanning directory '{}' (recursive={})",
+             directory.string(),
+             recursive);
+
+    std::string extensionsLog;
+    for (const auto& ext : file::presetExtensions) {
+        extensionsLog += ext + " ";
+    }
+    LOG_DEBUG("PresetManager: Looking for extensions: {}", extensionsLog);
+
     auto files = file::listFiles(directory, file::presetExtensions, recursive);
+    LOG_INFO("PresetManager: file::listFiles found {} potential preset files",
+             files.size());
 
     for (const auto& path : files) {
         PresetInfo info;

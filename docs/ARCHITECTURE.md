@@ -22,6 +22,7 @@ Engines are low-level components that handle heavy lifting. They are owned by `A
 A specialized `QWindow` that manages its own OpenGL context.
 - **Why QWindow?** We use `QWindow` instead of `QOpenGLWidget` to gain manual control over the swap chain and context, which is required for stable projectM v4 rendering.
 - **PBO Capture:** Uses Pixel Buffer Objects (PBOs) for zero-copy frame capturing during recording.
+- **Shader Blit:** Uses a custom shader pass to blit the final render to the screen, ensuring correct alpha/opacity handling across different Linux compositors.
 
 ### 4. The Logic: Controllers
 Controllers bridge the gap between the UI and the Engines. They live in `src/ui/controllers/`.

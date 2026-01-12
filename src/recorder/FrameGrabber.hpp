@@ -2,6 +2,7 @@
 // FrameGrabber.hpp - OpenGL frame capture
 // Stealing pixels from the GPU like a pro
 
+#include <QOpenGLFunctions_3_3_Core>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -21,7 +22,7 @@ struct GrabbedFrame {
     u32 frameNumber{0};
 };
 
-class FrameGrabber {
+class FrameGrabber : protected QOpenGLFunctions_3_3_Core {
 public:
     FrameGrabber();
     ~FrameGrabber();
@@ -90,7 +91,7 @@ private:
 };
 
 // PBO-based async frame grabber for better performance
-class AsyncFrameGrabber {
+class AsyncFrameGrabber : protected QOpenGLFunctions_3_3_Core {
 public:
     AsyncFrameGrabber();
     ~AsyncFrameGrabber();

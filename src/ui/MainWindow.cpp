@@ -17,6 +17,7 @@
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
 #include "visualizer/VisualizerWindow.hpp"
+#include "visualizer/projectm/Bridge.hpp"
 
 #include <QCloseEvent>
 #include <QDockWidget>
@@ -39,7 +40,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resize(1400, 900);
     setAcceptDrops(true);
 
-    // Get engines from Application singleton
     audioEngine_ = APP->audioEngine();
     overlayEngine_ = APP->overlayEngine();
     videoRecorder_ = APP->videoRecorder();
@@ -50,8 +50,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                 "initialized.");
     }
 
-    // Controllers
-    // Note: Pass nullptr as parent because we manage lifetime via unique_ptr
     audioController_ = std::make_unique<AudioController>(audioEngine_, this);
     recordingController_ =
             std::make_unique<RecordingController>(videoRecorder_, this);
@@ -63,6 +61,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     visualizerController_ = std::make_unique<VisualizerController>(
             &visualizerPanel_->visualizer()->projectM(), this);
+
+    visualizerPanel_->visualizer()->projectM().scanPresets(CONFIG.visualizer().presetPath);
 
     setupConnections();
     setupUpdateTimer();
@@ -76,10 +76,8 @@ MainWindow::~MainWindow() {
     if (videoRecorder_ && videoRecorder_->isRecording())
         videoRecorder_->stop();
 
-    // Destroy central widget (VisualizerWindow) first
     delete centralWidget();
 
-    // Reset controllers explicitly
     sunoController_.reset();
     recordingController_.reset();
     audioController_.reset();

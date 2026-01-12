@@ -4,12 +4,12 @@
 #include "ui/MainWindow.hpp"
 #include "ui/PresetBrowser.hpp"
 #include "ui/VisualizerPanel.hpp"
-#include "visualizer/ProjectMBridge.hpp"
+#include "visualizer/projectm/Bridge.hpp"
 #include "visualizer/VisualizerWindow.hpp"
 
 namespace vc {
 
-VisualizerController::VisualizerController(ProjectMBridge* bridge,
+VisualizerController::VisualizerController(pm::Bridge* bridge,
                                            MainWindow* window)
     : QObject(nullptr), bridge_(bridge), window_(window) {
 }
@@ -23,18 +23,15 @@ void VisualizerController::setupUI(VisualizerPanel* panel,
 }
 
 void VisualizerController::connectSignals() {
-    // Visualizer panel signals
     connect(panel_, &VisualizerPanel::lockPresetToggled, [this](bool locked) {
         bridge_->lockPreset(locked);
     });
 
-    // bridge signals
     bridge_->presetChanged.connect([this](const std::string& name) {
         LOG_DEBUG("VisualizerController: Preset changed to {}", name);
     });
 
     bridge_->presetLoading.connect([this](bool loading) {
-        // Handled in VisualizerWindow
     });
 }
 

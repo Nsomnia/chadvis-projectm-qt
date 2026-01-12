@@ -50,17 +50,20 @@ New features are great, but they need to align with the ChadVis vision.
 2.  **Create a New Branch:** Name it something sensible. `feature/your-awesome-feature` or `bugfix/that-pesky-bug`.
 3.  **Code Your Heart Out:**
     *   **C++20 Standard:** Use it. Love it. Live it.
-    *   **Indentation:** Spaces, not tabs. 4 spaces. Fight me in the comments, but not in the code.
-    *   **Naming Conventions:** Follow existing patterns (`CamelCase` for classes, `snake_case` for variables/functions).
-    *   **Comments:** Explain *why*, not *what*. If your code needs extensive comments to be understood, it's probably too complex.
-    *   **Tests:** If your change is significant, consider adding a unit test. We're not savages.
-    *   **Build & Test:** Ensure your code compiles without warnings and runs flawlessly on *your* Arch system.
+    *   **Indentation:** Spaces, not tabs. 4 spaces.
+    *   **Naming Conventions:** Follow existing patterns (`PascalCase` for classes, `camelCase` for variables/functions, `camelCase_` for private members).
+    *   **Error Handling:** Use `vc::Result<T>`. No exceptions allowed in the visualizer core.
+    *   **Memory Management:** `std::unique_ptr` for everything. If you use `std::shared_ptr`, you better have a good reason.
+    *   **Signals & Slots:** Use the modern `connect(a, &A::sig, b, &B::slot)` syntax.
+    *   **Tests:** Add a `QtTest` in `tests/unit/` for any new logic.
+    *   **Build & Test:** Ensure your code compiles without warnings and runs flawlessly on *your* Arch system. Use `./build.sh build`.
 4.  **Commit Messages:** Descriptive, concise. Start with a verb (e.g., `feat: Add new visualization mode`, `fix: Resolve segfault in audio engine`).
 5.  **Push to Your Fork:**
 6.  **Open a Pull Request (PR):**
     *   **Reference Issues:** Link to the issue your PR addresses (e.g., `Closes #123`).
     *   **Describe Your Changes:** Don't just say "fixes bug." Explain *how* you fixed it and *why* your solution is superior.
     *   **Be Patient:** We're busy Chads. We'll review it when we have time. Be prepared for constructive criticism. Take it like a Chad.
+
 
 ---
 

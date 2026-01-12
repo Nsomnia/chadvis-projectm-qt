@@ -189,8 +189,13 @@ set(AUDIO_SOURCES
 )
 
 set(VISUALIZER_SOURCES
-    src/visualizer/ProjectMBridge.hpp
-    src/visualizer/ProjectMBridge.cpp
+    src/visualizer/projectm/Config.hpp
+    src/visualizer/projectm/Engine.hpp
+    src/visualizer/projectm/Engine.cpp
+    src/visualizer/projectm/Playlist.hpp
+    src/visualizer/projectm/Playlist.cpp
+    src/visualizer/projectm/Bridge.hpp
+    src/visualizer/projectm/Bridge.cpp
     src/visualizer/PresetManager.hpp
     src/visualizer/PresetManager.cpp
     src/visualizer/RatingManager.hpp
