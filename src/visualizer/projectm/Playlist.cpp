@@ -3,9 +3,7 @@
 
 namespace vc::pm {
 
-void Playlist::onSwitched(bool is_hard_cut,
-                          unsigned int index,
-                          void* user_data) {
+void Playlist::onSwitched(bool is_hard_cut, unsigned int index, void* user_data) {
     auto* self = static_cast<Playlist*>(user_data);
     if (self) {
         self->switched.emitSignal(is_hard_cut, static_cast<u32>(index));
@@ -28,8 +26,7 @@ bool Playlist::init(projectm_handle engine) {
         return false;
     }
 
-    projectm_playlist_set_preset_switched_event_callback(
-            handle_, &Playlist::onSwitched, this);
+    projectm_playlist_set_preset_switched_event_callback(handle_, &Playlist::onSwitched, this);
     return true;
 }
 
@@ -56,11 +53,7 @@ void Playlist::sort() {
         return;
     u32 count = size();
     if (count > 0) {
-        projectm_playlist_sort(handle_,
-                               0,
-                               count,
-                               SORT_PREDICATE_FULL_PATH,
-                               SORT_ORDER_ASCENDING);
+        projectm_playlist_sort(handle_, 0, count, SORT_PREDICATE_FULL_PATH, SORT_ORDER_ASCENDING);
     }
 }
 
@@ -70,17 +63,17 @@ void Playlist::setShuffle(bool enabled) {
 }
 
 void Playlist::next(bool immediate) {
-    if (handle_)
+    if (handle_ && size() > 0)
         projectm_playlist_play_next(handle_, immediate);
 }
 
 void Playlist::previous(bool immediate) {
-    if (handle_)
+    if (handle_ && size() > 0)
         projectm_playlist_play_previous(handle_, immediate);
 }
 
 void Playlist::setPosition(u32 index, bool immediate) {
-    if (handle_)
+    if (handle_ && index < size())
         projectm_playlist_set_position(handle_, index, immediate);
 }
 
@@ -91,7 +84,7 @@ u32 Playlist::size() const {
 }
 
 std::string Playlist::itemAt(u32 index) const {
-    if (!handle_)
+    if (!handle_ || index >= size())
         return "";
     char* path = projectm_playlist_item(handle_, index);
     if (!path)

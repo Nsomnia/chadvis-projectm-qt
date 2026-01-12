@@ -48,7 +48,7 @@ void VisualizerPanel::setupUI() {
     prevPresetButton_->setFixedSize(28, 28);
     prevPresetButton_->setToolTip("Previous preset");
     connect(prevPresetButton_, &QPushButton::clicked, this, [this] {
-        visualizerWindow_->projectM().previousPreset();
+        visualizerWindow_->previousPreset();
     });
     controlLayout->addWidget(prevPresetButton_);
 
@@ -63,7 +63,7 @@ void VisualizerPanel::setupUI() {
     nextPresetButton_->setToolTip("Next preset");
     connect(nextPresetButton_, &QPushButton::clicked, this, [this] {
         if (visualizerWindow_) {
-            visualizerWindow_->projectM().nextPreset();
+            visualizerWindow_->nextPreset();
         }
     });
     controlLayout->addWidget(nextPresetButton_);
@@ -73,7 +73,7 @@ void VisualizerPanel::setupUI() {
     lockButton_->setCheckable(true);
     lockButton_->setToolTip("Lock preset");
     connect(lockButton_, &QPushButton::clicked, this, [this](bool checked) {
-        visualizerWindow_->projectM().lockPreset(checked);
+        visualizerWindow_->lockPreset(checked);
         lockButton_->setText(checked ? "🔒" : "🔓");
         emit lockPresetToggled(checked);
     });

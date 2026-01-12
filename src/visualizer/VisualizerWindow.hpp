@@ -1,7 +1,7 @@
 #pragma once
 
-#include "projectm/Bridge.hpp"
 #include "RenderTarget.hpp"
+#include "projectm/Bridge.hpp"
 #include "util/GLIncludes.hpp"
 #include "util/Types.hpp"
 
@@ -49,6 +49,12 @@ public:
     void setOverlayEngine(OverlayEngine* engine) {
         overlayEngine_ = engine;
     }
+
+    // Preset control with GL context safety
+    void nextPreset(bool smooth = true);
+    void previousPreset(bool smooth = true);
+    void randomPreset(bool smooth = true);
+    void lockPreset(bool locked);
 
     RenderTarget& renderTarget() {
         return renderTarget_;
