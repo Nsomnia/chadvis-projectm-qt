@@ -25,10 +25,9 @@ void VisualizerPanel::setupUI() {
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(4);
 
-    // Create VisualizerWindow (QWindow)
     visualizerWindow_ = new VisualizerWindow();
+    visualizerWindow_->show();
 
-    // Embed it using createWindowContainer
     auto* visualizerContainer =
             QWidget::createWindowContainer(visualizerWindow_, this);
     visualizerContainer->setSizePolicy(QSizePolicy::Expanding,
@@ -39,7 +38,6 @@ void VisualizerPanel::setupUI() {
     visualizerContainer->setAttribute(Qt::WA_NoSystemBackground);
     layout->addWidget(visualizerContainer, 1);
 
-    // Control bar
     auto* controlBar = new QWidget();
     controlBar->setMaximumHeight(40);
     auto* controlLayout = new QHBoxLayout(controlBar);
@@ -64,20 +62,9 @@ void VisualizerPanel::setupUI() {
     nextPresetButton_->setFixedSize(28, 28);
     nextPresetButton_->setToolTip("Next preset");
     connect(nextPresetButton_, &QPushButton::clicked, this, [this] {
-        LOG_DEBUG("VisualizerPanel: Next preset button clicked");
-        if (!visualizerWindow_) {
-            LOG_ERROR("VisualizerPanel: visualizerWindow_ is null!");
-            return;
+        if (visualizerWindow_) {
+            visualizerWindow_->projectM().nextPreset();
         }
-        auto& pm = visualizerWindow_->projectM();
-        LOG_DEBUG("VisualizerPanel: projectM() returned, checking state...");
-        LOG_DEBUG("VisualizerPanel: isPresetLocked = {}", pm.isPresetLocked());
-        LOG_DEBUG("VisualizerPanel: presets().count() = {}",
-                  pm.presets().count());
-        LOG_DEBUG("VisualizerPanel: presets().currentIndex() = {}",
-                  pm.presets().currentIndex());
-        pm.nextPreset();
-        LOG_DEBUG("VisualizerPanel: nextPreset() called");
     });
     controlLayout->addWidget(nextPresetButton_);
 
@@ -109,34 +96,17 @@ void VisualizerPanel::setupUI() {
 
     layout->addWidget(controlBar);
 
-    // Connect visualizer signals
     connect(visualizerWindow_,
             &VisualizerWindow::fpsChanged,
             this,
             &VisualizerPanel::updateFPS);
 
-    LOG_INFO("VisualizerPanel: Connecting to presetChanged signal");
-    visualizerWindow_->projectM().presetChanged.connect(
-            [this](const std::string& name) {
-                LOG_DEBUG(
-                        "VisualizerPanel: Received "
-                        "ProjectMBridge::presetChanged signal for: {}",
-                        name);
-                // Note: Preset not loaded yet, just tracking selection
-            });
-
     connect(visualizerWindow_,
             &VisualizerWindow::presetNameUpdated,
             this,
             [this](const QString& name) {
-                LOG_DEBUG(
-                        "VisualizerPanel: Received "
-                        "VisualizerWindow::presetNameUpdated signal for: {}",
-                        name.toStdString());
                 updatePresetName(name);
             });
-
-    LOG_INFO("VisualizerPanel: Connected to preset signals");
 }
 
 void VisualizerPanel::updatePresetName(const QString& name) {

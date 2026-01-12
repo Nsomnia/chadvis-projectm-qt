@@ -4,7 +4,10 @@
 
 namespace vc {
 
-class ProjectMBridge;
+namespace pm {
+class Bridge;
+}
+
 class VisualizerPanel;
 class PresetBrowser;
 class MainWindow;
@@ -12,13 +15,13 @@ class MainWindow;
 class VisualizerController : public QObject {
     Q_OBJECT
 public:
-    explicit VisualizerController(ProjectMBridge* bridge, MainWindow* parent);
+    explicit VisualizerController(pm::Bridge* bridge, MainWindow* parent);
 
     void setupUI(VisualizerPanel* panel, PresetBrowser* browser);
     void connectSignals();
 
 private:
-    ProjectMBridge* bridge_;
+    pm::Bridge* bridge_;
     MainWindow* window_;
     VisualizerPanel* panel_{nullptr};
     PresetBrowser* browser_{nullptr};

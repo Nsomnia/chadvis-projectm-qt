@@ -1,15 +1,9 @@
 #pragma once
-// VisualizerWindow.hpp - QWindow-based visualization
-// Now with Async PBO Recording for peak performance.
 
-#include "ProjectMBridge.hpp"
+#include "projectm/Bridge.hpp"
 #include "RenderTarget.hpp"
 #include "util/GLIncludes.hpp"
 #include "util/Types.hpp"
-
-// Suppress GLEW/Qt compatibility warnings (harmless, expected)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcpp"
 
 #include <QOpenGLBuffer>
 #include <QOpenGLContext>
@@ -20,8 +14,6 @@
 #include <QWindow>
 #include <atomic>
 #include <memory>
-
-#pragma GCC diagnostic pop
 #include <mutex>
 #include <vector>
 
@@ -45,10 +37,10 @@ public:
     explicit VisualizerWindow(QWindow* parent = nullptr);
     ~VisualizerWindow() override;
 
-    ProjectMBridge& projectM() {
+    pm::Bridge& projectM() {
         return projectM_;
     }
-    const ProjectMBridge& projectM() const {
+    const pm::Bridge& projectM() const {
         return projectM_;
     }
 
@@ -58,7 +50,6 @@ public:
         overlayEngine_ = engine;
     }
 
-    // Recording support
     RenderTarget& renderTarget() {
         return renderTarget_;
     }
@@ -83,7 +74,6 @@ protected:
 private slots:
     void render();
     void updateFPS();
-    void onPresetRotationTimeout();
 
 private:
     void initialize();
@@ -93,7 +83,6 @@ private:
     void captureAsync();
     void cleanup();
 
-    // Blit resources
     std::unique_ptr<QOpenGLShaderProgram> blitProgram_;
     QOpenGLVertexArrayObject blitVao_;
     QOpenGLBuffer blitVbo_;
@@ -101,7 +90,6 @@ private:
     void drawTexture(GLuint textureId);
 
     std::unique_ptr<QOpenGLContext> context_;
-    ProjectMBridge projectM_;
     bool presetLoading_{false};
     OverlayEngine* overlayEngine_{nullptr};
 
@@ -111,7 +99,6 @@ private:
     QTimer renderTimer_;
     QTimer fpsTimer_;
 
-    // Recording & PBOs
     bool recording_{false};
     u32 recordWidth_{1920};
     u32 recordHeight_{1080};
@@ -134,6 +121,8 @@ private:
 
     std::mutex presetLoadMutex_;
     bool presetLoadInProgress_{false};
+
+    pm::Bridge projectM_;
 };
 
 } // namespace vc

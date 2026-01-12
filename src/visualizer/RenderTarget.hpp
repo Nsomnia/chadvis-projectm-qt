@@ -2,19 +2,13 @@
 // RenderTarget.hpp - OpenGL framebuffer management
 // Because rendering to a texture shouldn't require a PhD
 
-#include "util/GLIncludes.hpp"
+#include <QOpenGLFunctions_3_3_Core>
 #include "util/Result.hpp"
 #include "util/Types.hpp"
 
-// Suppress GLEW/Qt compatibility warnings (harmless, expected)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcpp"
-
-#include "util/GLIncludes.hpp"
-
 namespace vc {
 
-class RenderTarget {
+class RenderTarget : protected QOpenGLFunctions_3_3_Core {
 public:
     RenderTarget();
     ~RenderTarget();

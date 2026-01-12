@@ -55,29 +55,40 @@ void VisualizerWindow::exposeEvent(QExposeEvent* event) {
 
 void VisualizerWindow::resizeEvent(QResizeEvent* event) {
     Q_UNUSED(event);
-    if (!initialized_)
-        return;
+    if (!initialized_) {
+        LOG_INFO("VisualizerWindow: resizeEvent triggering lazy initialization");
+        initialize();
+    }
     if (context_ && context_->makeCurrent(this)) {
         context_->doneCurrent();
     }
 }
 
 void VisualizerWindow::initialize() {
-    if (!context_->create())
+    LOG_INFO("VisualizerWindow: initialize() started");
+    if (!context_->create()) {
+        LOG_ERROR("VisualizerWindow: Failed to create OpenGL context");
         return;
-    if (!context_->makeCurrent(this))
-        return;
-    if (!initializeOpenGLFunctions())
-        return;
+    }
+    LOG_DEBUG("VisualizerWindow: OpenGL context created");
 
-    glewExperimental = GL_TRUE;
-    if (glewInit() != GLEW_OK)
+    if (!context_->makeCurrent(this)) {
+        LOG_ERROR("VisualizerWindow: Failed to make context current");
         return;
+    }
+    LOG_DEBUG("VisualizerWindow: Context made current");
+
+    if (!initializeOpenGLFunctions()) {
+        LOG_ERROR("VisualizerWindow: Failed to initialize OpenGL functions");
+        return;
+    }
+    LOG_DEBUG("VisualizerWindow: OpenGL functions initialized");
 
     initBlitResources();
+    LOG_DEBUG("VisualizerWindow: Blit resources initialized");
 
     const auto& vizConfig = CONFIG.visualizer();
-    ProjectMConfig pmConfig;
+    pm::ProjectMConfig pmConfig;
     pmConfig.width = width();
     pmConfig.height = height();
     pmConfig.fps = vizConfig.fps;
@@ -87,31 +98,48 @@ void VisualizerWindow::initialize() {
     pmConfig.transitionDuration = vizConfig.smoothPresetDuration;
     pmConfig.shufflePresets = vizConfig.shufflePresets;
     pmConfig.useDefaultPreset = vizConfig.useDefaultPreset;
+    pmConfig.texturePaths = vizConfig.texturePaths;
+
+    LOG_INFO(
+            "VisualizerWindow: Initializing projectM with preset path: '{}', "
+            "{} texture paths",
+            pmConfig.presetPath.string(),
+            pmConfig.texturePaths.size());
 
     projectM_.presetLoading.connect(
             [this](bool loading) { presetLoading_ = loading; });
     projectM_.presetChanged.connect(
-            [this](const std::string& name) { loadPresetFromManager(); });
+            [this](const std::string& name) { 
+                emit presetNameUpdated(QString::fromStdString(name)); 
+            });
 
     if (auto result = projectM_.init(pmConfig); !result) {
-        LOG_ERROR("ProjectM init failed: {}", result.error().message);
+        LOG_ERROR("VisualizerWindow: projectM init failed: {}",
+                  result.error().message);
+        return;
+    }
+    LOG_INFO("VisualizerWindow: projectM initialized successfully");
+
+    if (!context_->makeCurrent(this)) {
+        LOG_ERROR("VisualizerWindow: Failed to re-bind context for target creation");
         return;
     }
 
     if (auto res = renderTarget_.create(width(), height(), true); !res) {
-        LOG_ERROR("Failed to create render target: {}", res.error().message);
+        LOG_ERROR("VisualizerWindow: Failed to create render target: {}",
+                  res.error().message);
     }
     if (auto res = overlayTarget_.create(width(), height(), false); !res) {
-        LOG_ERROR("Failed to create overlay target: {}", res.error().message);
+        LOG_ERROR("VisualizerWindow: Failed to create overlay target: {}",
+                  res.error().message);
     }
 
     setRenderRate(vizConfig.fps);
     renderTimer_.start();
     fpsTimer_.start();
 
-    // Timer removed, projectM handles duration internally now
-
     initialized_ = true;
+    LOG_INFO("VisualizerWindow: initialization complete");
     context_->doneCurrent();
 }
 
@@ -128,8 +156,12 @@ void VisualizerWindow::render() {
 void VisualizerWindow::renderFrame() {
     u32 w = width();
     u32 h = height();
-    if (w == 0 || h == 0)
+    if (w == 0 || h == 0 || !projectM_.isInitialized())
         return;
+
+    if (!renderTarget_.isValid()) {
+        return;
+    }
 
     u32 renderW = recording_ ? recordWidth_ : w;
     u32 renderH = recording_ ? recordHeight_ : h;
@@ -146,7 +178,7 @@ void VisualizerWindow::renderFrame() {
             u32 availableFrames = audioQueue_.size() / 2;
             u32 feedFrames = std::min(framesToFeed, availableFrames);
             if (feedFrames > 0) {
-                projectM_.addPCMDataInterleaved(
+                projectM_.engine().addPCMDataInterleaved(
                         audioQueue_.data(), feedFrames, 2);
                 audioQueue_.erase(audioQueue_.begin(),
                                   audioQueue_.begin() + (feedFrames * 2));
@@ -160,7 +192,7 @@ void VisualizerWindow::renderFrame() {
         if (renderTarget_.width() != renderW ||
             renderTarget_.height() != renderH) {
             renderTarget_.resize(renderW, renderH);
-            projectM_.resize(renderW, renderH);
+            projectM_.engine().resize(renderW, renderH);
         }
 
         if (presetLoading_) {
@@ -169,7 +201,7 @@ void VisualizerWindow::renderFrame() {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             renderTarget_.unbind();
         } else {
-            projectM_.renderToTarget(renderTarget_);
+            projectM_.engine().renderToTarget(renderTarget_);
         }
 
         if (recording_) {
@@ -203,8 +235,8 @@ void VisualizerWindow::renderFrame() {
             glClearColor(0, 0, 0, 1);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         } else {
-            projectM_.resetViewport(w, h);
-            projectM_.render();
+            projectM_.engine().resize(w, h);
+            projectM_.engine().render();
 
             glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
             glClearColor(0, 0, 0, 1);
@@ -325,13 +357,7 @@ void VisualizerWindow::captureAsync() {
     u32 nextIndex = (pboIndex_ + 1) % 2;
     u32 size = recordWidth_ * recordHeight_ * 4;
     glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[pboIndex_]);
-    glReadPixels(0,
-                 0,
-                 recordWidth_,
-                 recordHeight_,
-                 GL_RGBA,
-                 GL_UNSIGNED_BYTE,
-                 nullptr);
+    glReadPixels(0, 0, recordWidth_, recordHeight_, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     if (pboAvailable_) {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[nextIndex]);
         u8* ptr = (u8*)glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
@@ -387,7 +413,7 @@ void VisualizerWindow::setRenderRate(int fps) {
     if (fps > 0) {
         targetFps_ = fps;
         renderTimer_.start(1000 / fps);
-        projectM_.setFPS(fps);
+        projectM_.engine().setFPS(fps);
     } else
         renderTimer_.stop();
 }
@@ -401,7 +427,7 @@ void VisualizerWindow::startRecording() {
     recording_ = true;
     if (context_ && context_->makeCurrent(this)) {
         renderTarget_.resize(recordWidth_, recordHeight_);
-        projectM_.resize(recordWidth_, recordHeight_);
+        projectM_.engine().resize(recordWidth_, recordHeight_);
         this->setupPBOs();
         context_->doneCurrent();
     }
@@ -441,26 +467,14 @@ void VisualizerWindow::loadPresetFromManager() {
     if (presetLoadInProgress_)
         return;
     presetLoadInProgress_ = true;
-    if (!context_ || !context_->isValid() || !context_->makeCurrent(this)) {
-        presetLoadInProgress_ = false;
-        return;
-    }
-    presetLoading_ = true;
+    
     const auto* preset = projectM_.presets().current();
-    auto handle = projectM_.getHandle();
-
-    if (preset && handle) {
-        LOG_DEBUG("Loading preset: {}", preset->name);
-        projectm_load_preset_file(handle, preset->path.c_str(), false);
-        emit presetNameUpdated(QString::fromStdString(preset->name));
-    } else {
-        LOG_WARN("Cannot load preset: preset={}, handle={}",
-                 (void*)preset,
-                 (void*)handle);
+    if (preset) {
+        LOG_DEBUG("Loading preset from manager: {}", preset->name);
+        projectM_.presets().selectByName(preset->name);
     }
-    presetLoading_ = false;
+    
     presetLoadInProgress_ = false;
-    context_->doneCurrent();
 }
 
 void VisualizerWindow::updateSettings() {
@@ -468,15 +482,15 @@ void VisualizerWindow::updateSettings() {
         return;
     const auto& vizConfig = CONFIG.visualizer();
     setRenderRate(vizConfig.fps);
-    projectM_.setBeatSensitivity(vizConfig.beatSensitivity);
-    projectM_.setShuffleEnabled(vizConfig.shufflePresets);
+    projectM_.engine().setBeatSensitivity(vizConfig.beatSensitivity);
+    projectM_.lockPreset(false);
 
     if (vizConfig.useDefaultPreset) {
-        projectM_.setPresetDuration(0);
+        projectM_.engine().setPresetDuration(0);
     } else {
-        projectM_.setPresetDuration(vizConfig.presetDuration);
+        projectM_.engine().setPresetDuration(vizConfig.presetDuration);
     }
-    projectM_.setSoftCutDuration(vizConfig.smoothPresetDuration);
+    projectM_.engine().setSoftCutDuration(vizConfig.smoothPresetDuration);
 }
 
 void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
