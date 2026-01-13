@@ -122,6 +122,7 @@ void PresetBrowser::onStarClicked() {
     std::string path = item->data(Qt::UserRole).toString().toStdString();
     std::string name = item->text()
                                .remove("★ ")
+                               .remove("⊘ ")
                                .remove(QRegularExpression("\\[.*\\] "))
                                .toStdString();
 
@@ -155,10 +156,26 @@ void PresetBrowser::onCurrentRowChanged(int row) {
         return;
     std::string name = item->text()
                                .remove("★ ")
+                               .remove("⊘ ")
                                .remove(QRegularExpression("\\[.*\\] "))
                                .toStdString();
     int rating = RatingManager::instance().getRating(name);
     updateRatingDisplay(rating);
+
+    // Update button states
+    QString path = item->data(Qt::UserRole).toString();
+    if (presetManager_) {
+        // Find the preset to get its state
+        // Note: activePresets() might not contain it if it's blacklisted and we
+        // are viewing all So we iterate allPresets
+        for (const auto& p : presetManager_->allPresets()) {
+            if (p.path.string() == path.toStdString()) {
+                favoriteButton_->setChecked(p.favorite);
+                blacklistButton_->setChecked(p.blacklisted);
+                break;
+            }
+        }
+    }
 }
 
 void PresetBrowser::refresh() {
@@ -170,6 +187,8 @@ void PresetBrowser::refresh() {
     std::vector<const PresetInfo*> presets;
     if (currentCategory_ == "__favorites__")
         presets = presetManager_->favoritePresets();
+    else if (currentCategory_ == "__blacklisted__")
+        presets = presetManager_->blacklistedPresets();
     else if (!searchQuery_.empty())
         presets = presetManager_->search(searchQuery_);
     else if (!currentCategory_.empty())
@@ -257,13 +276,21 @@ void PresetBrowser::populateList(
         int rating = RatingManager::instance().getRating(preset->name);
         QString ratingStr =
                 QString("[%1]").arg(QString(rating, '*').leftJustified(5, '.'));
-        QString name = (preset->favorite ? "★ " : "") + ratingStr + " " +
-                       QString::fromStdString(preset->name);
+        QString prefix = "";
+        if (preset->blacklisted)
+            prefix = "⊘ ";
+        else if (preset->favorite)
+            prefix = "★ ";
+
+        QString name =
+                prefix + ratingStr + " " + QString::fromStdString(preset->name);
         auto* item = new QListWidgetItem(name, presetList_);
         item->setData(Qt::UserRole,
                       QString::fromStdString(preset->path.string()));
         if (preset->favorite)
             item->setForeground(QColor(255, 215, 0));
+        else if (preset->blacklisted)
+            item->setForeground(QColor(128, 128, 128)); // Gray out blacklisted
 
         QString tooltip =
                 QString::fromStdString(preset->path.filename().string());
@@ -283,6 +310,7 @@ void PresetBrowser::updateCategories() {
     categoryCombo_->clear();
     categoryCombo_->addItem("All Categories", "");
     categoryCombo_->addItem("★ Favorites", "__favorites__");
+    categoryCombo_->addItem("⊘ Blacklisted", "__blacklisted__");
     for (const auto& cat : presetManager_->categories())
         categoryCombo_->addItem(QString::fromStdString(cat),
                                 QString::fromStdString(cat));

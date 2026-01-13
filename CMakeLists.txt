@@ -169,6 +169,11 @@ set(UTIL_SOURCES
 set(CORE_SOURCES
     src/core/Logger.hpp
     src/core/Logger.cpp
+    src/core/ConfigData.hpp
+    src/core/ConfigParsers.hpp
+    src/core/ConfigParsers.cpp
+    src/core/ConfigLoader.hpp
+    src/core/ConfigLoader.cpp
     src/core/Config.hpp
     src/core/Config.cpp
     src/core/Application.hpp
@@ -196,12 +201,19 @@ set(VISUALIZER_SOURCES
     src/visualizer/projectm/Playlist.cpp
     src/visualizer/projectm/Bridge.hpp
     src/visualizer/projectm/Bridge.cpp
+    src/visualizer/PresetData.hpp
+    src/visualizer/PresetScanner.hpp
+    src/visualizer/PresetScanner.cpp
+    src/visualizer/PresetPersistence.hpp
+    src/visualizer/PresetPersistence.cpp
     src/visualizer/PresetManager.hpp
     src/visualizer/PresetManager.cpp
     src/visualizer/RatingManager.hpp
     src/visualizer/RatingManager.cpp
     src/visualizer/RenderTarget.hpp
     src/visualizer/RenderTarget.cpp
+    src/visualizer/VisualizerRenderer.hpp
+    src/visualizer/VisualizerRenderer.cpp
     src/visualizer/VisualizerWindow.hpp
     src/visualizer/VisualizerWindow.cpp
 )
@@ -232,8 +244,12 @@ set(RECORDER_SOURCES
     src/recorder/EncoderSettings.cpp
     src/recorder/FrameGrabber.hpp
     src/recorder/FrameGrabber.cpp
-    src/recorder/VideoRecorder.hpp
-    src/recorder/VideoRecorder.cpp
+    src/recorder/VideoRecorderCore.hpp
+    src/recorder/VideoRecorderCore.cpp
+    src/recorder/VideoRecorderFFmpeg.hpp
+    src/recorder/VideoRecorderFFmpeg.cpp
+    src/recorder/VideoRecorderThread.hpp
+    src/recorder/VideoRecorderThread.cpp
 )
 
 set(UI_SOURCES

@@ -1,27 +1,30 @@
+/**
+ * @file VisualizerWindow.hpp
+ * @brief Qt Window for the visualizer.
+ *
+ * This file defines the VisualizerWindow class which manages the Qt window
+ * lifecycle, OpenGL context creation, input events, and timers. It delegates
+ * the actual rendering to VisualizerRenderer.
+ *
+ * @section Dependencies
+ * - Qt GUI (QWindow, QOpenGLContext)
+ * - VisualizerRenderer
+ *
+ * @section Patterns
+ * - Composition: Owns VisualizerRenderer.
+ * - Event Handler: Processes Qt events.
+ */
+
 #pragma once
-
-#include "RenderTarget.hpp"
-#include "projectm/Bridge.hpp"
-#include "util/GLIncludes.hpp"
-#include "util/Types.hpp"
-
-#include <QOpenGLBuffer>
 #include <QOpenGLContext>
-#include <QOpenGLFunctions_3_3_Core>
-#include <QOpenGLShaderProgram>
-#include <QOpenGLVertexArrayObject>
 #include <QTimer>
 #include <QWindow>
-#include <atomic>
 #include <memory>
-#include <mutex>
-#include <vector>
+#include "VisualizerRenderer.hpp"
 
 namespace vc {
 
-class OverlayEngine;
-
-class VisualizerWindow : public QWindow, protected QOpenGLFunctions_3_3_Core {
+class VisualizerWindow : public QWindow {
     Q_OBJECT
 
 signals:
@@ -37,32 +40,31 @@ public:
     explicit VisualizerWindow(QWindow* parent = nullptr);
     ~VisualizerWindow() override;
 
+    VisualizerRenderer& renderer() {
+        return *renderer_;
+    }
+
     pm::Bridge& projectM() {
-        return projectM_;
+        return renderer_->projectM();
     }
     const pm::Bridge& projectM() const {
-        return projectM_;
+        return renderer_->projectM();
+    }
+
+    RenderTarget& renderTarget() {
+        return renderer_->renderTarget();
     }
 
     void loadPresetFromManager();
     void updateSettings();
-    void setOverlayEngine(OverlayEngine* engine) {
-        overlayEngine_ = engine;
-    }
+    void setOverlayEngine(OverlayEngine* engine);
 
-    // Preset control with GL context safety
     void nextPreset(bool smooth = true);
     void previousPreset(bool smooth = true);
     void randomPreset(bool smooth = true);
     void lockPreset(bool locked);
 
-    RenderTarget& renderTarget() {
-        return renderTarget_;
-    }
     void setRecordingSize(u32 width, u32 height);
-    bool isRecording() const {
-        return recording_;
-    }
     void startRecording();
     void stopRecording();
     void setRenderRate(int fps);
@@ -83,52 +85,18 @@ private slots:
 
 private:
     void initialize();
-    void renderFrame();
-    void setupPBOs();
-    void destroyPBOs();
-    void captureAsync();
-    void cleanup();
-
-    std::unique_ptr<QOpenGLShaderProgram> blitProgram_;
-    QOpenGLVertexArrayObject blitVao_;
-    QOpenGLBuffer blitVbo_;
-    void initBlitResources();
-    void drawTexture(GLuint textureId);
 
     std::unique_ptr<QOpenGLContext> context_;
-    bool presetLoading_{false};
-    OverlayEngine* overlayEngine_{nullptr};
-
-    RenderTarget renderTarget_;
-    RenderTarget overlayTarget_;
+    std::unique_ptr<VisualizerRenderer> renderer_;
 
     QTimer renderTimer_;
     QTimer fpsTimer_;
 
-    bool recording_{false};
-    u32 recordWidth_{1920};
-    u32 recordHeight_{1080};
-    GLuint pbos_[2]{0, 0};
-    u32 pboIndex_{0};
-    bool pboAvailable_{false};
-    std::vector<u8> captureBuffer_;
-
-    u32 targetFps_{60};
     u32 frameCount_{0};
     f32 actualFps_{0.0f};
-
     bool initialized_{false};
     bool fullscreen_{false};
     QRect normalGeometry_;
-
-    std::mutex audioMutex_;
-    std::vector<f32> audioQueue_;
-    u32 audioSampleRate_{48000};
-
-    std::mutex presetLoadMutex_;
-    bool presetLoadInProgress_{false};
-
-    pm::Bridge projectM_;
 };
 
 } // namespace vc

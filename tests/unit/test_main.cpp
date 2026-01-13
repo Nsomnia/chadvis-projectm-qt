@@ -2,14 +2,27 @@
  * @file test_main.cpp
  * @brief Test suite entry point using Qt Test.
  */
-#include <QtTest>
 #include <QCoreApplication>
-// Include test classes here as they're implemented
-// #include "core/test_Logger.cpp"
-int main(int argc, char *argv[])
-{
-QCoreApplication app(argc, argv);
-qDebug() << "Test suite placeholder - add tests as features are implemented";
-qDebug() << "I use Arch, BTW - even for testing.";
-return 0;
+#include <QtTest>
+
+// Include test classes
+#include "core/test_AudioAnalyzer.cpp"
+#include "core/test_Logger.cpp"
+
+int main(int argc, char* argv[]) {
+    QCoreApplication app(argc, argv);
+
+    int status = 0;
+
+    {
+        TestLogger tc;
+        status |= QTest::qExec(&tc, argc, argv);
+    }
+
+    {
+        TestAudioAnalyzer tc;
+        status |= QTest::qExec(&tc, argc, argv);
+    }
+
+    return status;
 }

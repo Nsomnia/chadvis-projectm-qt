@@ -1,131 +1,40 @@
-#pragma once
-// Config.hpp - TOML configuration management
-// Because hardcoding values is a code smell and we're not animals
+/**
+ * @file Config.hpp
+ * @brief Configuration management singleton.
+ *
+ * This file defines the Config class which provides a thread-safe singleton
+ * for accessing and modifying application settings. It delegates parsing
+ * to ConfigParsers and file I/O to ConfigLoader.
+ *
+ * @section Dependencies
+ * - ConfigData
+ * - ConfigLoader
+ * - ConfigParsers
+ *
+ * @section Patterns
+ * - Singleton: Global access point for configuration.
+ * - Thread-Safe: Mutex-protected access to settings.
+ */
 
-#include <toml++/toml.h>
+#pragma once
+#include <memory>
 #include <mutex>
-#include <optional>
-#include <vector>
+#include "ConfigData.hpp"
 #include "util/Result.hpp"
-#include "util/Types.hpp"
 
 namespace vc {
 
-// Text overlay element configuration
-struct OverlayElementConfig {
-    std::string id;
-    std::string text;
-    Vec2 position{0.5f, 0.5f};
-    u32 fontSize{32};
-    Color color{Color::white()};
-    f32 opacity{1.0f};
-    std::string animation{"none"};
-    f32 animationSpeed{1.0f};
-    std::string anchor{"left"}; // left, center, right
-    bool visible{true};
-};
-
-// Video encoding settings
-struct VideoEncoderConfig {
-    std::string codec{"libx264"};
-    u32 crf{18};
-    std::string preset{"medium"};
-    std::string pixelFormat{"yuv420p"};
-    u32 width{1920};
-    u32 height{1080};
-    u32 fps{60};
-};
-
-// Audio encoding settings
-struct AudioEncoderConfig {
-    std::string codec{"aac"};
-    u32 bitrate{320};
-};
-
-// Recording configuration
-struct RecordingConfig {
-    bool enabled{true};
-    bool autoRecord{false};
-    bool recordEntireSong{false};
-    bool restartTrackOnRecord{false};
-    bool stopAtTrackEnd{false};
-    fs::path outputDirectory;
-    std::string defaultFilename{"chadvis-projectm-qt_{date}_{time}"};
-    std::string container{"mp4"};
-    VideoEncoderConfig video;
-    AudioEncoderConfig audio;
-};
-
-// Visualizer configuration
-struct VisualizerConfig {
-    fs::path presetPath;
-    u32 width{1920};
-    u32 height{1080};
-    u32 fps{60};
-    f32 beatSensitivity{1.0f};
-    u32 presetDuration{30};
-    u32 smoothPresetDuration{5};
-    bool shufflePresets{true};
-    std::string forcePreset{}; // Force specific preset for debugging
-    bool useDefaultPreset{false}; // Use default projectM visualizer (no preset)
-    bool lowResourceMode{false};
-    std::vector<fs::path> texturePaths;
-};
-
-// Audio configuration
-struct AudioConfig {
-    std::string device{"default"};
-    u32 bufferSize{2048};
-    u32 sampleRate{44100};
-};
-
-// UI configuration
-struct UIConfig {
-    std::string theme{"dark"};
-    bool showPlaylist{true};
-    bool showPresets{true};
-    bool showDebugPanel{false};
-    Color backgroundColor{Color::black()};
-    Color accentColor{Color::fromHex("#00FF88")};
-};
-
-// Keyboard shortcuts
-struct KeyboardConfig {
-    std::string playPause{"Space"};
-    std::string nextTrack{"N"};
-    std::string prevTrack{"P"};
-    std::string toggleRecord{"R"};
-    std::string toggleFullscreen{"F"};
-    std::string nextPreset{"Right"};
-    std::string prevPreset{"Left"};
-};
-
-struct SunoConfig {
-    std::string token;
-    std::string cookie;
-    fs::path downloadPath;
-    bool autoDownload{false};
-    bool saveLyrics{true};
-    bool embedMetadata{true};
-};
-
-// Main configuration class
 class Config {
 public:
-    // Singleton access
     static Config& instance();
 
-    // Load/save
     Result<void> load(const fs::path& path);
     Result<void> save(const fs::path& path) const;
     Result<void> loadDefault();
 
-    // Get config file path
     fs::path configPath() const {
         return configPath_;
     }
-
-    // General
     bool debug() const {
         return debug_;
     }
@@ -153,6 +62,9 @@ public:
     const SunoConfig& suno() const {
         return suno_;
     }
+    const std::vector<OverlayElementConfig>& overlayElements() const {
+        return overlayElements_;
+    }
 
     // Section accessors (mutable)
     AudioConfig& audio() {
@@ -179,11 +91,6 @@ public:
         markDirty();
         return suno_;
     }
-
-    // Overlay elements
-    const std::vector<OverlayElementConfig>& overlayElements() const {
-        return overlayElements_;
-    }
     std::vector<OverlayElementConfig>& overlayElements() {
         markDirty();
         return overlayElements_;
@@ -193,7 +100,6 @@ public:
     void removeOverlayElement(const std::string& id);
     OverlayElementConfig* findOverlayElement(const std::string& id);
 
-    // Dirty tracking for auto-save
     bool isDirty() const {
         return dirty_;
     }
@@ -206,18 +112,6 @@ private:
     void markDirty() {
         dirty_ = true;
     }
-
-    // Parse helpers
-    void parseAudio(const toml::table& tbl);
-    void parseVisualizer(const toml::table& tbl);
-    void parseRecording(const toml::table& tbl);
-    void parseOverlay(const toml::table& tbl);
-    void parseUI(const toml::table& tbl);
-    void parseKeyboard(const toml::table& tbl);
-    void parseSuno(const toml::table& tbl);
-
-    // Serialize helpers
-    toml::table serialize() const;
 
     fs::path configPath_;
     bool dirty_{false};
@@ -234,7 +128,6 @@ private:
     mutable std::mutex mutex_;
 };
 
-// Convenience macro
 #define CONFIG vc::Config::instance()
 
 } // namespace vc

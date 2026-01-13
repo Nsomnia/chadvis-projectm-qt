@@ -1,7 +1,25 @@
-#pragma once
-// Application.hpp - Main application controller
-// The conductor of this symphony of audio chaos
+/**
+ * @file Application.hpp
+ * @brief Main application controller.
+ *
+ * This file defines the Application class which acts as the central coordinator
+ * for the application. It manages the lifecycle of the main window, audio
+ * engine, visualizer, and recorder. It also handles command-line argument
+ * parsing.
+ *
+ * @section Dependencies
+ * - QApplication
+ * - AudioEngine
+ * - OverlayEngine
+ * - VideoRecorder
+ * - MainWindow
+ *
+ * @section Patterns
+ * - Singleton: Global access to core components.
+ * - Composition: Owns all major subsystems.
+ */
 
+#pragma once
 #include <QApplication>
 #include <memory>
 #include <vector>

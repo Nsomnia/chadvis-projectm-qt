@@ -31,13 +31,13 @@ Key features:
 
 ### ✨ Key Features (Because we don't do "basic")
 
-*   **Advanced ProjectM Integration:** Harness the full power of ProjectM for dynamic, psychedelic, and customizable visualizations. We didn't reinvent the wheel; we just put some sick rims on it.
-*   **Intuitive Qt6 UI:** A user interface so clean, your grandma could probably use it. But she won't, because she's too busy enjoying her vinyl collection.
-*   **Real-time Audio Analysis:** Analyzes your audio in real-time, feeding delicious data to ProjectM for visuals that actually react to your tunes, not just some pre-baked nonsense.
-*   **Overlay Engine:** Integrate text overlays. Because sometimes, you just need to drop some wisdom or memes on your visual output.
-*   **Built-in Video Recorder:** Capture your epic visual journeys directly within the app. Share your vibes with the less fortunate (i.e., non-Arch users).
-*   **Suno AI Integration:** Browse, download, and visualize your Suno AI clips directly within the app. Full support for synchronized lyrics and metadata.
-*   **Configurable to the Max:** Tweak every knob, slide every slider. Because true Chads customize everything.
+*   **Advanced ProjectM Integration:** Harness the full power of ProjectM for dynamic, psychedelic, and customizable visualizations.
+*   **Intuitive Qt6 UI:** A user interface so clean, your grandma could probably use it.
+*   **Real-time Audio Analysis:** Analyzes your audio in real-time, feeding delicious data to ProjectM.
+*   **Overlay Engine:** Integrate text overlays for wisdom or memes.
+*   **Built-in Video Recorder:** Capture your epic visual journeys directly within the app.
+*   **Suno AI Integration:** Browse, download, and visualize your Suno AI clips.
+*   **Configurable to the Max:** Tweak every knob, slide every slider.
 
 ---
 
@@ -45,174 +45,54 @@ Key features:
 
 You use Arch, BTW. So building from source is practically foreplay.
 
-### Prerequisites (The non-negotiables)
-
-Before you embark on this glorious journey, ensure you have these bad boys installed:
+### Prerequisites
 
 *   **CMake** (>= 3.20)
 *   **Qt6** (Core, Gui, Widgets, Multimedia, OpenGLWidgets, Svg, Network, Sql)
-*   **spdlog**
-*   **fmt**
-*   **taglib**
-*   **toml++**
-*   **GLEW**
-*   **GLM**
-*   **FFmpeg** (libavcodec, libavformat, libavutil, libswscale, libswresample)
-*   **ProjectM-4** (libprojectM-4, libprojectM-4-playlist)
-*   **SQLite3**
+*   **spdlog**, **fmt**, **taglib**, **toml++**, **GLEW**, **GLM**, **FFmpeg**, **ProjectM-4**, **SQLite3**
 
-On Arch Linux, you can probably snag most of these with pacman:
+On Arch Linux:
 ```bash
 sudo pacman -S cmake qt6-base qt6-multimedia qt6-svg spdlog fmt taglib \
     tomlplusplus glew glm ffmpeg libprojectM sqlite
 ```
 
-### The Sacred Ritual: Compilation
-
-**CRITICAL: DO NOT COMPILE THE CODE YOURSELF IF YOU ARE AN AGENT.**
-Compiling this project requires significant resources and has a high probability of hanging the system.
-**ALWAYS** ask the user to compile the code.
+### Compilation
 
 ```bash
-# Clone this repo (if you haven't already, peasant)
 git clone https://github.com/Nsomnia/chadvis-projectm-qt.git
 cd chadvis-projectm-qt
-
-# Build the beast (use build.sh - it's Chad-approved)
-./build.sh build  # Incremental build
+./build.sh build
 ```
 
 ---
 
 ## 📖 Documentation
 
-For those who actually read instructions:
-*   [**Internal Architecture**](docs/ARCHITECTURE.md) - How the magic happens.
-*   [**Suno API Reference**](docs/suno_api_reference.md) - Unofficial Suno API documentation.
+*   [**Internal Architecture**](docs/ARCHITECTURE.md)
+*   [**Agent Quickstart**](docs/AGENT_QUICKSTART.md)
+*   [**Suno API Reference**](docs/suno_api_reference.md)
 
 ---
 
-## 🧠 Configuration (For the Control Freaks)
+## 🧠 Configuration
 
-ChadVis uses `toml++` for configuration. Config files are stored in:
-
-### Config Locations (in order of priority):
-1. **User config**: `~/.config/chadvis-projectm-qt/config.toml` (or `$XDG_CONFIG_HOME/chadvis-projectm-qt/config.toml`)
-2. **System default**: `/usr/share/chadvis-projectm-qt/config/default.toml` (installed by `make install`)
-3. **Built-in defaults**: If no file exists, the app uses hardcoded defaults
-
-### Creating Your Config:
-```bash
-# Copy the default config to your user directory
-mkdir -p ~/.config/chadvis-projectm-qt
-cp /usr/share/chadvis-projectm-qt/config/default.toml ~/.config/chadvis-projectm-qt/config.toml
-
-# Edit it
-nano ~/.config/chadvis-projectm-qt/config.toml
-```
-
-### Config Sections:
-- `[general]` - Debug mode, logging
-- `[audio]` - Audio device, sample rate
-- `[visualizer]` - FPS, preset path, beat sensitivity, texture_paths
-- `[recording]` - Video format, bitrate, output path
-- `[overlay]` - Text overlays, karaoke settings
-- `[ui]` - Window size, theme
-- `[keyboard]` - Custom key bindings
-
-**Note**: The app will automatically create the config directory if it doesn't exist. Changes are saved when you exit the application.
-
-### Textures:
-To use custom textures (fixing missing texture errors in some Milkdrop presets), add paths to your config:
-```toml
-[visualizer]
-texture_paths = [
-    "/usr/share/projectM/textures",
-    "/home/user/.local/share/projectM/textures"
-]
-```
-
-### Presets Location:
-ProjectM presets are searched in this order:
-1. `/usr/share/projectM/presets`
-2. `/usr/local/share/projectM/presets`
-3. `/usr/share/projectm-presets`
-4. `~/.local/share/chadvis-projectm-qt/presets` (fallback)
-
-To add custom presets, place them in `~/.local/share/chadvis-projectm-qt/presets/`.
+ChadVis uses `toml++` for configuration. Config files are stored in `~/.config/chadvis-projectm-qt/config.toml`.
 
 ---
 
-## 🤝 Contributing (Show Us Your Code, Chad)
+## 🤝 Contributing
 
-Think you can make ChadVis even more Chad-tier? Prove it. We welcome contributions, but only if they're up to snuff. No junior-dev-level pull requests, please. Read our `CONTRIBUTING.md` (once I write it, give me a minute) for the lowdown.
+Think you can make ChadVis even more Chad-tier? Prove it. We welcome contributions that meet our high standards.
 
 ---
 
 ## 📜 License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
-(Yes, I will add a `LICENSE` file. Don't rush me.)
-
----
-
-## 🚀 The Future (Because we're always elevating)
-
-We've got big plans, bigger vibes. Expect more features, more optimizations, and probably more "I use Arch, BTW" jokes. Stay tuned, stay Chad.
+This project is licensed under the MIT License.
 
 ```
  ░░█░█░▀█▀░█▀▄░█▀▀░█▀▀░█░█░█▀█░█▀▄░░░░░█░█░▀█▀░█▀▄░▀▀█░░
  ░░▀▄▀░░█░░█▀▄░█▀▀░█░░░█▀█░█▀█░█░█░▄▄▄░▀▄▀░░█░░█░█░▄▀░░░
  ░░░▀░░▀▀▀░▀▀░░▀▀▀░▀▀▀░▀░▀░▀░▀░▀▀░░░░░░░▀░░▀▀▀░▀▀░░▀▀▀░░
  ```
-
-## 🔧 Technical Fix: Black Canvas Issue
-
-**Problem**: QOpenGLWidget causes black canvas with projectM v4  
-**Solution**: Use QWindow with manual OpenGL context management
-
-The `VisualizerWindow` class (in `src/visualizer/VisualizerWindow.cpp`) replaces `VisualizerWidget`:
-- Creates its own `QOpenGLContext`
-- Uses `requestUpdate()` for continuous rendering
-- Calls `makeCurrent()` before each render
-- Calls `swapBuffers()` explicitly
-
-This fixes the issue where projectM would initialize but only render 1 frame.
-
-## ✅ Current Status: v1.0-RC1
-
-**Build Status**: ✅ WORKING - Compiles successfully
-**Runtime Status**: ✅ WORKING - All core features functional
-**Audio**: ✅ WORKING - Real-time audio analysis and visualization
-**Preset Selection**: ✅ WORKING - CLI, GUI, and default preset modes
-**Video Recording**: ✅ WORKING - FFmpeg-based recording with native opacity fix
-**Critical Bugs**: ✅ FIXED - Black screen, infinite loop, and shutdown hang resolved
-
-**Test Output**:
-```
-[info] OpenGL: 4.6 (Core Profile) Mesa 25.3.2-arch1.2
-[info] Scanned 8980 presets from /usr/share/projectM/presets
-[info] ProjectM initialized: 1920x1080 @ 60 fps, 8980 presets
-[info] Visualizer window initialized
-```
-
-**v1.0-RC1 Features**:
-- ✅ Preset selection via CLI (`--preset`, `--default-preset`)
-- ✅ GUI preset browser with search and filtering
-- ✅ Native ProjectM v4 Callback integration for perfect sync
-- ✅ Real-time audio visualization with lock-free feeding
-- ✅ Video recording with FFmpeg (hardware accelerated where available)
-- ✅ Text overlays and custom graphics
-- ✅ Configurable via TOML config files
-- ✅ Multiple texture search paths support
-- ✅ Keyboard shortcuts (F11 fullscreen, R record, etc.)
-
-**Fixed Issues**:
-- Black canvas during recording (Fixed via shader-based alpha force)
-- Infinite recording loop on track change
-- Slow shutdown/hang
-- Build system transparency
-
-**Known Issues**:
-- Build takes ~2-5 minutes (C++20 heavy)
-

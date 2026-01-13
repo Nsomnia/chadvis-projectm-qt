@@ -1,25 +1,29 @@
-#pragma once
-// PresetManager.hpp - ProjectM preset management
-// Because manually browsing .milk files is for peasants
+/**
+ * @file PresetManager.hpp
+ * @brief ProjectM preset management.
+ *
+ * This file defines the PresetManager class which provides the public API
+ * for browsing, searching, and selecting presets. It delegates scanning
+ * to PresetScanner and persistence to PresetPersistence.
+ *
+ * @section Dependencies
+ * - PresetData
+ * - PresetScanner
+ * - PresetPersistence
+ *
+ * @section Patterns
+ * - Manager: Central point of control for preset logic.
+ */
 
+#pragma once
 #include <random>
 #include <set>
 #include <vector>
+#include "PresetData.hpp"
 #include "util/Result.hpp"
 #include "util/Signal.hpp"
-#include "util/Types.hpp"
 
 namespace vc {
-
-struct PresetInfo {
-    fs::path path;
-    std::string name;
-    std::string author;
-    std::string category; // Parent folder name
-    bool favorite{false};
-    bool blacklisted{false};
-    u32 playCount{0};
-};
 
 class PresetManager {
 public:
@@ -34,7 +38,7 @@ public:
     usize count() const {
         return presets_.size();
     }
-    usize activeCount() const; // Excludes blacklisted
+    usize activeCount() const;
     bool empty() const {
         return presets_.empty();
     }
@@ -44,6 +48,7 @@ public:
     }
     std::vector<const PresetInfo*> activePresets() const;
     std::vector<const PresetInfo*> favoritePresets() const;
+    std::vector<const PresetInfo*> blacklistedPresets() const;
     std::vector<std::string> categories() const;
 
     // Selection
@@ -59,7 +64,7 @@ public:
     bool selectNext();
     bool selectPrevious();
 
-    // Pending preset (for command-line args before scanning)
+    // Pending preset
     void setPendingPreset(const std::string& name) {
         pendingPresetName_ = name;
     }
@@ -90,8 +95,6 @@ public:
     Signal<> listChanged;
 
 private:
-    void parsePresetInfo(PresetInfo& info);
-
     std::vector<PresetInfo> presets_;
     usize currentIndex_{0};
     fs::path scanDirectory_;
@@ -101,7 +104,7 @@ private:
 
     std::set<std::string> favoriteNames_;
     std::set<std::string> blacklistedNames_;
-    std::string pendingPresetName_; // Preset requested before scanning
+    std::string pendingPresetName_;
 
     std::mt19937 rng_{std::random_device{}()};
 };

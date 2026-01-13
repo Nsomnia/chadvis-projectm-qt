@@ -2,6 +2,28 @@
 
 This document provides essential information for agentic coding agents operating in this repository.
 
+## 🚀 Agent Quickstart
+
+1.  **Read the Plan**: Check `.agent/IMPROVEMENT_PLAN.md` for the current roadmap.
+2.  **Check Status**: See `.agent/PROJECT_STATUS.md` for known issues and recent fixes.
+3.  **Analyze Context**: Read `.agent/CODEBASE_ANALYSIS.md` to understand the structure.
+4.  **Build**: Use `./build.sh build` to compile.
+5.  **Test**: Use `./build.sh test` (once tests are implemented).
+
+## 📂 File Structure Overview
+
+- `src/` - Source code (C++20)
+    - `audio/` - Audio engine & analysis
+    - `core/` - App singleton, config, logging
+    - `overlay/` - OpenGL text overlay engine
+    - `recorder/` - FFmpeg video recorder
+    - `suno/` - Suno AI client
+    - `ui/` - Qt widgets & controllers
+    - `visualizer/` - ProjectM bridge & window
+- `docs/` - Documentation
+- `tests/` - Unit & integration tests
+- `.agent/` - Agent context & plans
+
 ## 🛠 Build & Development
 
 The project uses CMake (3.20+) and Ninja. A `build.sh` script is provided for common tasks.
@@ -108,14 +130,3 @@ Use the `LOG_*` macros defined in `src/core/Logger.hpp`.
 ### Agent friendly file reccomendations
 - While not forced, it is generally more token usage efficient and easier for agentic model workflow processes to have smaller files rather than monoliths. Whenever appropriate make new files for new items such as classes, headers, or extended documentation. Follow best industry standards and project aware best practices. If a file becomes large, and especially if this causes edit failures for the agent, then refactor the project structure such that these monolothiic/large files are split up. 
 - Make file names very clear as to their purpose. File names do not use very many tokens, and makes expoloring the codebase easier.
-
----
-
-# DeepWiki Codebase Analysys (as of version: v1.0-RC1)
-- As of last update, see .md files or raw .html full file in: `docs/deepwiki/`
-- **Recent Changes:**
-    - Switched `VisualizerWindow` to `QWindow` + `QOpenGLContext` for manual control.
-    - Implemented `VideoRecorder` with `std::jthread` and native FFmpeg integration.
-    - Added `OverlayEngine` for high-performance text rendering.
-    - Fixed black screen issues via `initBlitResources` and shader-based alpha forcing.
-
