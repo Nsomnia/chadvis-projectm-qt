@@ -21,11 +21,11 @@ jobs:
       issues: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run opencode
-        uses: sst/opencode/github@latest
+        uses: anomalyco/opencode/github@latest
         env:
-          XIAOMI_API_KEY: ${{ secrets.XIAOMI_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         with:
-          model: xiaomi/mimo-v2-flash
+          model: opencode/big-pickle
