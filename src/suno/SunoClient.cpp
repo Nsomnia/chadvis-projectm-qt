@@ -2,6 +2,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include "core/Logger.hpp"
 
 #include <QTimer>
@@ -53,18 +54,35 @@ void SunoClient::setToken(const std::string& token) {
 void SunoClient::setCookie(const std::string& cookie) {
     cookie_ = cookie;
 
-    // Try to extract JWT from __session cookie if present
-    // Some session strings have __session=eyJ...
-    size_t pos = cookie_.find("__session=");
-    if (pos != std::string::npos) {
-        size_t start = pos + 10;
-        size_t end = cookie_.find(";", start);
-        std::string potentialToken = cookie_.substr(start, end - start);
+    QRegularExpression re("__session[^=]*=([^;]+)");
+    QRegularExpressionMatch match = re.match(QString::fromStdString(cookie_));
+    
+    if (match.hasMatch()) {
+        std::string potentialToken = match.captured(1).toStdString();
         if (potentialToken.starts_with("eyJ")) {
             token_ = potentialToken;
-            LOG_INFO("SunoClient: Extracted JWT from __session cookie");
+            LOG_INFO("SunoClient: Extracted JWT from session cookie");
+            
+            std::string sid = extractSidFromToken(token_);
+            if (!sid.empty()) {
+                clerkSid_ = sid;
+                LOG_INFO("SunoClient: Extracted Clerk SID from JWT: {}", clerkSid_);
+            }
         }
     }
+}
+
+std::string SunoClient::extractSidFromToken(const std::string& token) {
+    QString qtoken = QString::fromStdString(token);
+    QStringList parts = qtoken.split('.');
+    if (parts.size() < 2) return "";
+    
+    QByteArray payload = QByteArray::fromBase64(parts[1].toUtf8(), QByteArray::Base64UrlEncoding);
+    QJsonDocument doc = QJsonDocument::fromJson(payload);
+    if (!doc.isNull() && doc.isObject()) {
+        return doc.object()["sid"].toString().toStdString();
+    }
+    return "";
 }
 
 bool SunoClient::isAuthenticated() const {
@@ -78,7 +96,6 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
         return;
     }
 
-    // Step 1: Get Session ID if we don't have it
     if (clerkSid_.empty()) {
         QString url = QString("%1/client?_is_native=true&_clerk_js_version=%2")
                               .arg(CLERK_BASE)
@@ -99,25 +116,28 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
                     if (reply->error() == QNetworkReply::NoError) {
                         QJsonDocument doc =
                                 QJsonDocument::fromJson(reply->readAll());
-                        clerkSid_ =
-                                doc.object()["response"]
-                                        .toObject()["last_active_session_id"]
-                                        .toString()
-                                        .toStdString();
+                        
+                        QJsonObject resp = doc.object()["response"].toObject();
+                        std::string sid = resp["last_active_session_id"].toString().toStdString();
+                        
+                        if (sid.empty()) {
+                            QJsonArray sessions = resp["sessions"].toArray();
+                            if (!sessions.isEmpty()) {
+                                sid = sessions[0].toObject()["id"].toString().toStdString();
+                            }
+                        }
+
+                        clerkSid_ = sid;
                         if (!clerkSid_.empty()) {
-                            // Recurse to Step 2
                             refreshAuthToken(callback);
                         } else {
-                            LOG_ERROR(
-                                    "SunoClient: Failed to extract Clerk SID");
+                            LOG_ERROR("SunoClient: Failed to extract Clerk SID from response");
                             if (callback)
                                 callback(false);
                         }
                     } else {
-                        LOG_ERROR(
-                                "SunoClient: Clerk Session ID request failed: "
-                                "{}",
-                                reply->errorString().toStdString());
+                        LOG_ERROR("SunoClient: Clerk Session ID request failed: {}",
+                                  reply->errorString().toStdString());
                         if (callback)
                             callback(false);
                     }
@@ -125,9 +145,7 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
         return;
     }
 
-    // Step 2: Get JWT Token
-    QString url = QString("%1/client/sessions/%2/"
-                          "tokens?_is_native=true&_clerk_js_version=%3")
+    QString url = QString("%1/client/sessions/%2/tokens?_is_native=true&_clerk_js_version=%3")
                           .arg(CLERK_BASE)
                           .arg(QString::fromStdString(clerkSid_))
                           .arg(QString::fromStdString(clerkVersion_));
@@ -138,15 +156,22 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
-    // Use POST as seen in dev tools
     QNetworkReply* reply = manager_->post(req, QByteArray());
     connect(reply, &QNetworkReply::finished, this, [this, reply, callback]() {
         reply->deleteLater();
         if (reply->error() == QNetworkReply::NoError) {
             QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
             token_ = doc.object()["jwt"].toString().toStdString();
-            LOG_INFO("SunoClient: Refreshed auth token ({}...)",
-                     token_.substr(0, 10));
+            if (token_.empty()) {
+                token_ = doc.object()["response"].toObject()["jwt"].toString().toStdString();
+            }
+            
+            if (!token_.empty()) {
+                LOG_INFO("SunoClient: Refreshed auth token ({}...)", token_.substr(0, 10));
+            } else {
+                LOG_ERROR("SunoClient: JWT missing in refresh response");
+            }
+            
             if (callback)
                 callback(!token_.empty());
         } else {
