@@ -4,13 +4,47 @@
 #include <QJsonObject>
 #include "core/Logger.hpp"
 
+#include <QTimer>
+#include <deque>
+
 namespace vc::suno {
 
 SunoClient::SunoClient(QObject* parent)
-    : QObject(parent), manager_(new QNetworkAccessManager(this)) {
+    : QObject(parent),
+      manager_(new QNetworkAccessManager(this)),
+      queueTimer_(new QTimer(this)) {
+    queueTimer_->setInterval(1000);
+    connect(queueTimer_, &QTimer::timeout, this, &SunoClient::processQueue);
 }
 
 SunoClient::~SunoClient() = default;
+
+void SunoClient::processQueue() {
+    if (requestQueue_.empty()) {
+        queueTimer_->stop();
+        return;
+    }
+
+    auto pending = requestQueue_.front();
+    requestQueue_.pop_front();
+
+    QNetworkReply* reply;
+    if (pending.method == "POST") {
+        reply = manager_->post(pending.request, pending.data);
+    } else {
+        reply = manager_->get(pending.request);
+    }
+
+    if (pending.callback) {
+        connect(reply, &QNetworkReply::finished, [reply, pending]() {
+            pending.callback(reply);
+        });
+    }
+
+    if (requestQueue_.empty()) {
+        queueTimer_->stop();
+    }
+}
 
 void SunoClient::setToken(const std::string& token) {
     token_ = token;
@@ -125,7 +159,13 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
 }
 
 QNetworkRequest SunoClient::createRequest(const QString& endpoint) {
-    QNetworkRequest request(QUrl(API_BASE + endpoint));
+    QUrl url;
+    if (endpoint.startsWith("http")) {
+        url = QUrl(endpoint);
+    } else {
+        url = QUrl(API_BASE + endpoint);
+    }
+    QNetworkRequest request(url);
     if (!token_.empty()) {
         request.setRawHeader(
                 "Authorization",
@@ -142,6 +182,16 @@ QNetworkRequest SunoClient::createRequest(const QString& endpoint) {
     return request;
 }
 
+void SunoClient::enqueueRequest(const QNetworkRequest& req,
+                               const std::string& method,
+                               const QByteArray& data,
+                               std::function<void(QNetworkReply*)> callback) {
+    requestQueue_.push_back({req, method, data, callback});
+    if (!queueTimer_->isActive()) {
+        queueTimer_->start();
+    }
+}
+
 void SunoClient::fetchLibrary(int page) {
     if (!isAuthenticated()) {
         errorOccurred.emitSignal("Not authenticated");
@@ -150,9 +200,7 @@ void SunoClient::fetchLibrary(int page) {
 
     auto proceed = [this, page] {
         QString url = QString("/feed/v2?page=%1").arg(page);
-        QNetworkReply* reply = manager_->get(createRequest(url));
-
-        connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        enqueueRequest(createRequest(url), "GET", {}, [this](QNetworkReply* reply) {
             onLibraryReply(reply);
         });
     };
@@ -177,13 +225,20 @@ void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
     auto proceed = [this, clipId] {
         QString url = QString("/gen/%1/aligned_lyrics/v2/")
                               .arg(QString::fromStdString(clipId));
-        QNetworkReply* reply = manager_->get(createRequest(url));
-
-        connect(reply, &QNetworkReply::finished, this, [this, reply, clipId]() {
+        enqueueRequest(createRequest(url), "GET", {}, [this, clipId](QNetworkReply* reply) {
             reply->deleteLater();
             if (reply->error() == QNetworkReply::NoError) {
                 alignedLyricsFetched.emitSignal(clipId,
                                                 reply->readAll().toStdString());
+            } else if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 404) {
+                QString lyricsUrl = QString("/lyrics/%1")
+                                      .arg(QString::fromStdString(clipId));
+                enqueueRequest(createRequest(lyricsUrl), "GET", {}, [this, clipId](QNetworkReply* r2) {
+                    r2->deleteLater();
+                    if (r2->error() == QNetworkReply::NoError) {
+                        alignedLyricsFetched.emitSignal(clipId, r2->readAll().toStdString());
+                    }
+                });
             }
         });
     };

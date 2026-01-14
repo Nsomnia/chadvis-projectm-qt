@@ -53,23 +53,30 @@ SunoController::SunoController(AudioEngine* audioEngine,
         downloadDir_ = file::dataDir() / "suno_downloads";
     }
     file::ensureDir(downloadDir_);
+
+    if (client_->isAuthenticated()) {
+        QTimer::singleShot(2000, this, [this]() {
+            refreshLibrary(1);
+        });
+    }
 }
 
 SunoController::~SunoController() = default;
 
-void SunoController::refreshLibrary() {
+void SunoController::refreshLibrary(int page) {
     if (!client_->isAuthenticated()) {
         showCookieDialog();
         return;
     }
-    client_->fetchLibrary();
+    statusMessage.emitSignal("Syncing Suno library (Page " + std::to_string(page) + ")...");
+    client_->fetchLibrary(page);
 }
 
 void SunoController::syncDatabase(bool forceAuth) {
     if (forceAuth) {
         showCookieDialog();
     } else {
-        refreshLibrary();
+        refreshLibrary(1);
     }
 }
 
@@ -91,7 +98,14 @@ void SunoController::onLibraryFetched(const std::vector<SunoClip>& clips) {
     db_.saveClips(clips);
     libraryUpdated.emitSignal(clips);
 
-    // Queue aligned lyrics for clips that don't have them
+    if (clips.size() >= 20) {
+        currentSyncPage_++;
+        refreshLibrary(currentSyncPage_);
+    } else {
+        currentSyncPage_ = 1;
+        statusMessage.emitSignal("Suno library sync complete");
+    }
+
     for (const auto& clip : clips) {
         if (db_.getAlignedLyrics(clip.id).isErr()) {
             lyricsQueue_.push_back(clip.id);
@@ -161,7 +175,13 @@ void SunoController::downloadAndPlay(const SunoClip& clip) {
         LOG_ERROR("SunoController: No audio URL for {}", clip.title);
         return;
     }
-    downloadAudio(clip);
+
+    if (CONFIG.suno().autoDownload) {
+        downloadAudio(clip);
+    } else {
+        audioEngine_->playlist().addUrl(clip.audio_url, clip.title);
+        audioEngine_->playlist().jumpTo(audioEngine_->playlist().size() - 1);
+    }
 }
 
 void SunoController::downloadAudio(const SunoClip& clip) {

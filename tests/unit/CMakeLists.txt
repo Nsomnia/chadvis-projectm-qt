@@ -1,5 +1,7 @@
 add_executable(unit_tests
 test_main.cpp
+core/test_ConfigParsers.cpp
+visualizer/test_PresetScanner.cpp
 # Add test files as implemented
 )
 target_link_libraries(unit_tests PRIVATE

@@ -38,7 +38,7 @@ public:
 
     // Logic
     void downloadAndPlay(const SunoClip& clip);
-    void refreshLibrary();
+    void refreshLibrary(int page = 1);
     void syncDatabase(bool forceAuth = false);
     void showCookieDialog();
 
@@ -67,6 +67,7 @@ private:
     fs::path downloadDir_;
     std::deque<std::string> lyricsQueue_;
     int activeLyricsRequests_{0};
+    int currentSyncPage_{1};
 };
 
 } // namespace suno

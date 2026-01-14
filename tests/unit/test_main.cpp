@@ -7,7 +7,9 @@
 
 // Include test classes
 #include "core/test_AudioAnalyzer.cpp"
+#include "core/test_ConfigParsers.cpp"
 #include "core/test_Logger.cpp"
+#include "visualizer/test_PresetScanner.cpp"
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
@@ -21,6 +23,16 @@ int main(int argc, char* argv[]) {
 
     {
         TestAudioAnalyzer tc;
+        status |= QTest::qExec(&tc, argc, argv);
+    }
+
+    {
+        TestConfigParsers tc;
+        status |= QTest::qExec(&tc, argc, argv);
+    }
+
+    {
+        TestPresetScanner tc;
         status |= QTest::qExec(&tc, argc, argv);
     }
 

@@ -51,6 +51,23 @@ void Playlist::addFile(const fs::path& path) {
     LOG_DEBUG("Added to playlist: {}", path.filename().string());
 }
 
+void Playlist::addUrl(const std::string& url, const std::string& title) {
+    PlaylistItem item;
+    item.url = url;
+    item.isRemote = true;
+    item.metadata.title = title.empty() ? url : title;
+    
+    usize index = items_.size();
+    items_.push_back(std::move(item));
+    
+    if (shuffle_) {
+        shuffleOrder_.push_back(index);
+    }
+    
+    itemAdded.emitSignal(index);
+    changed.emitSignal();
+}
+
 void Playlist::addFiles(const std::vector<fs::path>& paths) {
     for (const auto& path : paths) {
         addFile(path);
@@ -268,7 +285,11 @@ Result<void> Playlist::saveM3U(const fs::path& path) const {
     for (const auto& item : items_) {
         file << "#EXTINF:" << item.metadata.duration.count() / 1000 
              << "," << item.metadata.displayArtist() << " - " << item.metadata.displayTitle() << "\n";
-        file << item.path.string() << "\n";
+        if (item.isRemote) {
+            file << item.url << "\n";
+        } else {
+            file << item.path.string() << "\n";
+        }
     }
     
     return Result<void>::ok();
@@ -284,12 +305,15 @@ Result<void> Playlist::loadM3U(const fs::path& path) {
     while (std::getline(file, line)) {
         if (line.empty() || line[0] == '#') continue;
         
-        fs::path filePath(line);
-        if (!filePath.is_absolute()) {
-            filePath = path.parent_path() / filePath;
+        if (line.starts_with("http")) {
+            addUrl(line);
+        } else {
+            fs::path filePath(line);
+            if (!filePath.is_absolute()) {
+                filePath = path.parent_path() / filePath;
+            }
+            addFile(filePath);
         }
-        
-        addFile(filePath);
     }
     
     return Result<void>::ok();

@@ -13,6 +13,8 @@ namespace vc {
 
 struct PlaylistItem {
     fs::path path;
+    std::string url;
+    bool isRemote{false};
     MediaMetadata metadata;
     bool valid{true};
 };
@@ -29,6 +31,7 @@ public:
     
     // Modification
     void addFile(const fs::path& path);
+    void addUrl(const std::string& url, const std::string& title = "");
     void addFiles(const std::vector<fs::path>& paths);
     void removeAt(usize index);
     void clear();

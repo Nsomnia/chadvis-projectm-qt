@@ -56,16 +56,30 @@ private slots:
 
 private:
     QNetworkRequest createRequest(const QString& endpoint);
+    void enqueueRequest(const QNetworkRequest& req,
+                        const std::string& method,
+                        const QByteArray& data,
+                        std::function<void(QNetworkReply*)> callback);
     void handleNetworkError(QNetworkReply* reply);
+    void processQueue();
+
+    struct PendingRequest {
+        QNetworkRequest request;
+        std::string method;
+        QByteArray data;
+        std::function<void(QNetworkReply*)> callback;
+    };
 
     QNetworkAccessManager* manager_;
+    std::deque<PendingRequest> requestQueue_;
+    QTimer* queueTimer_;
     std::string token_;
     std::string cookie_;
     std::string clerkSid_;
     std::string clerkVersion_{"5.117.0"};
 
-    const QString API_BASE = "https://studio-api.prod.suno.com/api";
-    const QString CLERK_BASE = "https://auth.suno.com/v1";
+    const QString API_BASE = "https://studio-api.suno.ai";
+    const QString CLERK_BASE = "https://clerk.suno.com/v1";
 };
 
 } // namespace vc::suno

@@ -19,6 +19,7 @@ public:
 
 private slots:
     void onCopySnippet();
+    void onAutoDetect();
     void onAccept();
 
 private:
@@ -27,6 +28,7 @@ private:
     QTextEdit* cookieInput_;
     QTextEdit* snippetDisplay_;
     QPushButton* copySnippetBtn_;
+    QPushButton* autoDetectBtn_;
     QPushButton* okBtn_;
     QPushButton* cancelBtn_;
 };
