@@ -65,3 +65,10 @@ private slots:
                  std::string("test_device"));
     }
 };
+
+int runTestConfigParsers(int argc, char** argv) {
+    TestConfigParsers tc;
+    return QTest::qExec(&tc, argc, argv);
+}
+
+#include "test_ConfigParsers.moc"

@@ -10,6 +10,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QObject>
+#include <QTimer>
+#include <deque>
 #include <functional>
 #include <memory>
 
