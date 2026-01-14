@@ -43,7 +43,7 @@ void SunoCookieDialog::setupUI() {
     snippetDisplay_->setPlainText(
             "(function() {\n"
             "  const c = document.cookie;\n"
-            "  if (!c.includes('__client=') && !c.includes('__session=')) {\n"
+            "  if (!c.match(/__client[^=]*=/) && !c.match(/__session[^=]*=/)) {\n"
             "    alert('Required cookies missing from script access! Please "
             "use Method 1 (Network Tab) instead.');\n"
             "  } else {\n"
@@ -99,7 +99,7 @@ void SunoCookieDialog::onAutoDetect() {
     bool found = false;
 
     // Direct cookie paste
-    if (text.contains("__client=") || text.contains("__session=")) {
+    if (text.contains("__client") || text.contains("__session")) {
         cookieInput_->setText(text);
         found = true;
     }
