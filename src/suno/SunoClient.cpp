@@ -54,20 +54,44 @@ void SunoClient::setToken(const std::string& token) {
 void SunoClient::setCookie(const std::string& cookie) {
     cookie_ = cookie;
 
-    QRegularExpression re("__session[^=]*=([^;]+)");
-    QRegularExpressionMatch match = re.match(QString::fromStdString(cookie_));
-    
-    if (match.hasMatch()) {
-        std::string potentialToken = match.captured(1).toStdString();
-        if (potentialToken.starts_with("eyJ")) {
-            token_ = potentialToken;
-            LOG_INFO("SunoClient: Extracted JWT from session cookie");
-            
-            std::string sid = extractSidFromToken(token_);
-            if (!sid.empty()) {
-                clerkSid_ = sid;
-                LOG_INFO("SunoClient: Extracted Clerk SID from JWT: {}", clerkSid_);
+    // Parse all cookies into a map (handles multiple __client* and __session* cookies)
+    QMap<QString, QString> cookieMap;
+    QStringList parts = QString::fromStdString(cookie).split(';');
+    for (const QString& part : parts) {
+        QString trimmed = part.trimmed();
+        int eqPos = trimmed.indexOf('=');
+        if (eqPos > 0) {
+            QString name = trimmed.left(eqPos);
+            QString value = trimmed.mid(eqPos + 1);
+            // Store all versions, we'll prefer newer ones later
+            cookieMap[name] = value;
+        }
+    }
+
+    // Extract __session cookie - prefer newer ones (no suffix > _Jnxw-muT > others)
+    QString sessionValue;
+    if (cookieMap.contains("__session")) {
+        sessionValue = cookieMap["__session"];  // Newest, no suffix
+    } else if (cookieMap.contains("__session_Jnxw-muT")) {
+        sessionValue = cookieMap["__session_Jnxw-muT"];
+    } else {
+        // Find any __session* cookie
+        for (auto it = cookieMap.begin(); it != cookieMap.end(); ++it) {
+            if (it.key().startsWith("__session")) {
+                sessionValue = it.value();
+                break;
             }
+        }
+    }
+    
+    if (!sessionValue.isEmpty() && sessionValue.startsWith("eyJ")) {
+        token_ = sessionValue.toStdString();
+        LOG_INFO("SunoClient: Extracted JWT from __session cookie");
+        
+        std::string sid = extractSidFromToken(token_);
+        if (!sid.empty()) {
+            clerkSid_ = sid;
+            LOG_INFO("SunoClient: Extracted Clerk SID from JWT: {}", clerkSid_);
         }
     }
 }
@@ -207,6 +231,27 @@ QNetworkRequest SunoClient::createRequest(const QString& endpoint) {
     return request;
 }
 
+QNetworkRequest SunoClient::createAuthenticatedRequest(const QString& endpoint) {
+    QUrl url;
+    if (endpoint.startsWith("http")) {
+        url = QUrl(endpoint);
+    } else {
+        url = QUrl(API_BASE + endpoint);
+    }
+    QNetworkRequest request(url);
+    
+    // Use Bearer token (matching working Sidetrack implementation)
+    if (!token_.empty()) {
+        request.setRawHeader("Authorization", QString::fromStdString("Bearer " + token_).toUtf8());
+    }
+    
+    // Simple headers like working implementation
+    request.setRawHeader("Accept", "application/json,text/plain,*/*");
+    request.setRawHeader("User-Agent", "Mozilla/5.0");
+    
+    return request;
+}
+
 void SunoClient::enqueueRequest(const QNetworkRequest& req,
                                const std::string& method,
                                const QByteArray& data,
@@ -224,8 +269,9 @@ void SunoClient::fetchLibrary(int page) {
     }
 
     auto proceed = [this, page] {
-        QString url = QString("/feed/v2?page=%1").arg(page);
-        enqueueRequest(createRequest(url), "GET", {}, [this](QNetworkReply* reply) {
+        // Use GET with Bearer token (matching working Sidetrack implementation)
+        QString url = QString("/feed/v2?hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=%1").arg(page - 1);
+        enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this](QNetworkReply* reply) {
             onLibraryReply(reply);
         });
     };
