@@ -58,6 +58,7 @@ private slots:
 
 private:
     QNetworkRequest createRequest(const QString& endpoint);
+    QNetworkRequest createAuthenticatedRequest(const QString& endpoint);
     void enqueueRequest(const QNetworkRequest& req,
                         const std::string& method,
                         const QByteArray& data,
@@ -79,9 +80,9 @@ private:
     std::string token_;
     std::string cookie_;
     std::string clerkSid_;
-    std::string clerkVersion_{"5.15.0"};
+    std::string clerkVersion_{"5.117.0"};
 
-    const QString API_BASE = "https://studio-api.suno.ai";
+    const QString API_BASE = "https://studio-api.prod.suno.com/api";
     const QString CLERK_BASE = "https://clerk.suno.com/v1";
 };
 
