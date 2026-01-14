@@ -130,3 +130,6 @@ Use the `LOG_*` macros defined in `src/core/Logger.hpp`.
 ### Agent friendly file reccomendations
 - While not forced, it is generally more token usage efficient and easier for agentic model workflow processes to have smaller files rather than monoliths. Whenever appropriate make new files for new items such as classes, headers, or extended documentation. Follow best industry standards and project aware best practices. If a file becomes large, and especially if this causes edit failures for the agent, then refactor the project structure such that these monolothiic/large files are split up. 
 - Make file names very clear as to their purpose. File names do not use very many tokens, and makes expoloring the codebase easier.
+
+### Agentic Compilation Linitations
+- Due to a bug in opencode, compiling large numbers of files agentically hangs the users system fatally. For small changes feel free to compile else stop output and inform the user to copile and report pack. The last compile log should be placed in the `.agent/` directory.

@@ -101,7 +101,6 @@ void SunoBrowser::onSearchChanged(const QString& text) {
     }
 }
 
-
 void SunoBrowser::onRefreshClicked() {
     statusLabel_->setText("Fetching...");
     controller_->refreshLibrary();
@@ -110,27 +109,6 @@ void SunoBrowser::onRefreshClicked() {
 void SunoBrowser::onSyncClicked() {
     statusLabel_->setText("Opening Auth Dialog...");
     controller_->syncDatabase(true);
-}
-
-void SunoBrowser::updateList(const std::vector<SunoClip>& clips) {
-    currentClips_ = clips;
-    clipList_->clear();
-    for (const auto& clip : clips) {
-        auto* item = new QListWidgetItem(QString::fromStdString(clip.title));
-        item->setData(Qt::UserRole, QString::fromStdString(clip.id));
-        clipList_->addItem(item);
-    }
-    statusLabel_->setText(QString("Found %1 clips").arg(clips.size()));
-}
-
-void SunoBrowser::onItemDoubleClicked(QListWidgetItem* item) {
-    std::string id = item->data(Qt::UserRole).toString().toStdString();
-    for (const auto& clip : currentClips_) {
-        if (clip.id == id) {
-            controller_->downloadAndPlay(clip);
-            break;
-        }
-    }
 }
 
 } // namespace vc::suno
