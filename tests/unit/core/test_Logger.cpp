@@ -30,3 +30,10 @@ private slots:
         vc::Logger::shutdown();
     }
 };
+
+int runTestLogger(int argc, char** argv) {
+    TestLogger tc;
+    return QTest::qExec(&tc, argc, argv);
+}
+
+#include "test_Logger.moc"

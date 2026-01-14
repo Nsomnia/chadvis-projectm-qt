@@ -1,6 +1,9 @@
 # Repos the user cloned to investigate
 zzz_repos-investigation/
 
+# an older suno http clerk reference that might still be valuable to end users
+docs/suno_api_reference.md
+
 # Agent internal notes
 .agent/
 .backup_graveyard/

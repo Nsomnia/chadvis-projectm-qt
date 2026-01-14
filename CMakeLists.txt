@@ -157,7 +157,7 @@ if(PROJECTM_FOUND AND PROJECTM_LDFLAGS)
     set(PROJECTM_LDFLAGS "${PROJECTM_LDFLAGS_FIXED}")
 endif()
 
-# Source files organized by module - HEADERS MUST BE LISTED for AUTOMOC
+# Source files organized by module
 set(UTIL_SOURCES
     src/util/Types.hpp
     src/util/Result.hpp
@@ -224,6 +224,7 @@ set(SUNO_SOURCES
     src/suno/SunoClient.cpp
     src/suno/SunoDatabase.hpp
     src/suno/SunoDatabase.cpp
+    src/suno/LyricAligner.hpp
 )
 
 set(OVERLAY_SOURCES
@@ -285,32 +286,8 @@ set(UI_SOURCES
     src/ui/MainWindow.cpp
 )
 
-set(ALL_SOURCES
-    src/main.cpp
-    ${UTIL_SOURCES}
-    ${CORE_SOURCES}
-    ${AUDIO_SOURCES}
-    ${VISUALIZER_SOURCES}
-    ${SUNO_SOURCES}
-    ${OVERLAY_SOURCES}
-    ${RECORDER_SOURCES}
-    ${UI_SOURCES}
-)
-
-# Qt resources
-set(RESOURCES resources/chadvis-projectm-qt.qrc)
-
-# Main executable
-add_executable(chadvis-projectm-qt ${ALL_SOURCES} ${RESOURCES})
-
-# Enable Qt automatic features for the main target only
-set_target_properties(chadvis-projectm-qt PROPERTIES
-    AUTOMOC ON
-    AUTORCC ON
-    AUTOUIC ON
-)
-
-target_include_directories(chadvis-projectm-qt PRIVATE
+# Common include directories
+set(COMMON_INCLUDES
     ${CMAKE_SOURCE_DIR}/src
     ${SPDLOG_INCLUDE_DIRS}
     ${FMT_INCLUDE_DIRS}
@@ -322,33 +299,8 @@ target_include_directories(chadvis-projectm-qt PRIVATE
     ${KISSFFT_INCLUDE_DIRS}
 )
 
-# Link CPM or system packages
-if(TARGET spdlog::spdlog)
-    target_link_libraries(chadvis-projectm-qt PRIVATE spdlog::spdlog)
-elseif(CPM_spdlog)
-    target_link_libraries(chadvis-projectm-qt PRIVATE CPM_spdlog)
-endif()
-
-if(TARGET fmt::fmt)
-    target_link_libraries(chadvis-projectm-qt PRIVATE fmt::fmt)
-elseif(CPM_fmt)
-    target_link_libraries(chadvis-projectm-qt PRIVATE CPM_fmt)
-endif()
-
-if(TARGET tomlplusplus::tomlplusplus)
-    target_link_libraries(chadvis-projectm-qt PRIVATE tomlplusplus::tomlplusplus)
-elseif(CPM_tomlplusplus)
-    target_link_libraries(chadvis-projectm-qt PRIVATE CPM_tomlplusplus)
-endif()
-
-if(TARGET kissfft::kissfft)
-    target_link_libraries(chadvis-projectm-qt PRIVATE kissfft::kissfft)
-elseif(CPM_kissfft)
-    target_link_libraries(chadvis-projectm-qt PRIVATE CPM_kissfft)
-endif()
-
-# System packages (TAGLIB, GLEW, FFmpeg, ProjectM) - always link if found
-target_link_libraries(chadvis-projectm-qt PRIVATE
+# Common link libraries
+set(COMMON_LIBS
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -364,6 +316,57 @@ target_link_libraries(chadvis-projectm-qt PRIVATE
     projectM-4-playlist
     OpenGL
 )
+
+# CPM libraries targets
+set(CPM_LIBS "")
+if(TARGET spdlog::spdlog)
+    list(APPEND CPM_LIBS spdlog::spdlog)
+elseif(CPM_spdlog)
+    list(APPEND CPM_LIBS CPM_spdlog)
+endif()
+
+if(TARGET fmt::fmt)
+    list(APPEND CPM_LIBS fmt::fmt)
+elseif(CPM_fmt)
+    list(APPEND CPM_LIBS CPM_fmt)
+endif()
+
+if(TARGET tomlplusplus::tomlplusplus)
+    list(APPEND CPM_LIBS tomlplusplus::tomlplusplus)
+elseif(CPM_tomlplusplus)
+    list(APPEND CPM_LIBS CPM_tomlplusplus)
+endif()
+
+if(TARGET kissfft::kissfft)
+    list(APPEND CPM_LIBS kissfft::kissfft)
+elseif(CPM_kissfft)
+    list(APPEND CPM_LIBS CPM_kissfft)
+endif()
+
+# Define libraries
+add_library(project_lib STATIC
+    ${UTIL_SOURCES}
+    ${CORE_SOURCES}
+    ${AUDIO_SOURCES}
+    ${VISUALIZER_SOURCES}
+    ${SUNO_SOURCES}
+    ${OVERLAY_SOURCES}
+    ${RECORDER_SOURCES}
+    ${UI_SOURCES}
+)
+
+set_target_properties(project_lib PROPERTIES
+    AUTOMOC ON
+    AUTORCC ON
+    AUTOUIC ON
+)
+
+target_include_directories(project_lib PUBLIC ${COMMON_INCLUDES})
+target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
+
+# Main executable
+add_executable(chadvis-projectm-qt src/main.cpp resources/chadvis-projectm-qt.qrc)
+target_link_libraries(chadvis-projectm-qt PRIVATE project_lib)
 
 if(PULSEAUDIO_FOUND)
     target_link_libraries(chadvis-projectm-qt PRIVATE ${PULSEAUDIO_LIBRARIES} pulse-simple)
@@ -381,3 +384,6 @@ set(CPACK_PACKAGE_NAME "chadvis-projectm-qt")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Qt6 projectM v4 visualizer with modern C++20")
 include(CPack)
+
+# Tests
+add_subdirectory(tests)

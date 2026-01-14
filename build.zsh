@@ -7,19 +7,21 @@ readonly SCRIPT_DIR="${0:A:h}"
 readonly BUILD_DIR="${SCRIPT_DIR}/build"
 readonly BINARY_NAME="chadvis-projectm-qt"
 readonly BINARY_PATH="${BUILD_DIR}/${BINARY_NAME}"
-readonly N4500_CORES=$(nproc) # can also use an integer
-readonly N4500_ARCH="tremont"
+readonly N4500_CORES=1 # potato cpu safe $(nproc) # can also use an integer
+readonly N4500_ARCH="native" # was tremont
 
 readonly LOG_FILE="${SCRIPT_DIR}/.agent/LAST_COMPILE_OUTPUT.md"
 mkdir -p "${SCRIPT_DIR}/.agent"
 
-readonly -a CPU_OPT_FLAGS=(
-    "-march=${N4500_ARCH}" "-mtune=${N4500_ARCH}"
-    "-msse4.2" "-mpopcnt" "-maes" "-mno-avx" "-mno-avx2"
-)
-readonly -a COMMON_OPT_FLAGS=("-pipe" "-fomit-frame-pointer" "-ffunction-sections" "-fdata-sections")
-readonly -a DEBUG_FLAGS=("-O2" "-g1" "-gsplit-dwarf")
-readonly -a RELEASE_FLAGS=("-O3" "-flto=${N4500_CORES}" "-fno-plt" "-DNDEBUG")
+readonly -a CPU_OPT_FLAGS=() # debugging compilation agentically failure
+#    "-march=${N4500_ARCH}" "-mtune=${N4500_ARCH}"
+#    "-msse4.2" "-mpopcnt" "-maes" "-mno-avx" "-mno-avx2"
+#)
+
+# debugging compilation agentically failing
+readonly -a COMMON_OPT_FLAGS=() # ("-pipe" "-fomit-frame-pointer" "-ffunction-sections" "-fdata-sections")
+readonly -a DEBUG_FLAGS=() # ("-O2" "-g1" "-gsplit-dwarf")
+readonly -a RELEASE_FLAGS=() #("-O3" "-flto=${N4500_CORES}" "-fno-plt" "-DNDEBUG")
 
 # Detect mold linker
 MOLD_BIN=$(command -v mold 2>/dev/null)
@@ -207,7 +209,7 @@ cmd_test() {
     for spec in "tests/unit/unit_tests:Unit" "tests/integration/integration_tests:Integration"; do
         local p="${BUILD_DIR}/${spec%%:*}" n="${spec##*:}"
         log info "Running ${n}..."
-        [[ -x "$p" ]] && { "$p" -v && log ok "${n} passed" || log warn "${n} failed"; } || log warn "${n} not found"
+        [[ -x "$p" ]] && { "$p" && log ok "${n} passed" || log warn "${n} failed"; } || log warn "${n} not found"
     done
 }
 
