@@ -61,6 +61,15 @@ void SunoCookieDialog::setupUI() {
             &SunoCookieDialog::onCopySnippet);
     layout->addWidget(copySnippetBtn_);
 
+    autoDetectBtn_ = new QPushButton("📋 Auto-Detect from Clipboard", this);
+    autoDetectBtn_->setToolTip(
+            "Attempts to find Suno cookies in your clipboard");
+    connect(autoDetectBtn_,
+            &QPushButton::clicked,
+            this,
+            &SunoCookieDialog::onAutoDetect);
+    layout->addWidget(autoDetectBtn_);
+
     auto* inputLabel = new QLabel("<b>Paste Cookie Here:</b>", this);
     layout->addWidget(inputLabel);
 
@@ -82,6 +91,38 @@ void SunoCookieDialog::setupUI() {
 
 void SunoCookieDialog::onCopySnippet() {
     QGuiApplication::clipboard()->setText(snippetDisplay_->toPlainText());
+}
+
+void SunoCookieDialog::onAutoDetect() {
+    QClipboard* clipboard = QGuiApplication::clipboard();
+    QString text = clipboard->text().trimmed();
+    bool found = false;
+
+    // Direct cookie paste
+    if (text.contains("__client=") || text.contains("__session=")) {
+        cookieInput_->setText(text);
+        found = true;
+    }
+    // HTTP Header block
+    else if (text.contains("Cookie:", Qt::CaseInsensitive)) {
+        QStringList lines = text.split('\n');
+        for (const auto& line : lines) {
+            if (line.trimmed().startsWith("Cookie:", Qt::CaseInsensitive)) {
+                QString cookie = line.mid(line.indexOf(':') + 1).trimmed();
+                if (cookie.contains("__client=") ||
+                    cookie.contains("__session=")) {
+                    cookieInput_->setText(cookie);
+                    found = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!found) {
+        cookieInput_->setPlaceholderText(
+                "Could not detect Suno cookies in clipboard...");
+    }
 }
 
 void SunoCookieDialog::onAccept() {

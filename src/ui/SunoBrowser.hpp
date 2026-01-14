@@ -4,7 +4,7 @@
 
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
+#include <QTableWidget>
 #include <QPushButton>
 #include <QWidget>
 #include "suno/SunoModels.hpp"
@@ -26,14 +26,15 @@ public slots:
 private slots:
     void onRefreshClicked();
     void onSyncClicked();
-    void onItemDoubleClicked(QListWidgetItem* item);
+    void onItemDoubleClicked(int row, int column);
+    void onSearchChanged(const QString& text);
 
 private:
     void setupUI();
 
     SunoController* controller_;
 
-    QListWidget* clipList_;
+    QTableWidget* clipTable_;
     QPushButton* refreshBtn_;
     QPushButton* syncBtn_;
     QLineEdit* searchEdit_;

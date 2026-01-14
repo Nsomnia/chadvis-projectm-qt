@@ -207,9 +207,14 @@ void AudioEngine::loadCurrentTrack() {
     if (!item)
         return;
 
-    LOG_INFO("Loading track: {}", item->path.filename().string());
-    player_->setSource(
-            QUrl::fromLocalFile(QString::fromStdString(item->path.string())));
+    if (item->isRemote) {
+        LOG_INFO("Loading remote track: {}", item->url);
+        player_->setSource(QUrl(QString::fromStdString(item->url)));
+    } else {
+        LOG_INFO("Loading track: {}", item->path.filename().string());
+        player_->setSource(
+                QUrl::fromLocalFile(QString::fromStdString(item->path.string())));
+    }
 }
 
 void AudioEngine::loadLastPlaylist() {
