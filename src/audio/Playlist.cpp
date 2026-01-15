@@ -300,22 +300,19 @@ Result<void> Playlist::loadM3U(const fs::path& path) {
     if (!file) {
         return Result<void>::err("Failed to open file");
     }
-    
+
     std::string line;
     while (std::getline(file, line)) {
         if (line.empty() || line[0] == '#') continue;
-        
-        if (line.starts_with("http")) {
+
+        if (line.starts_with("http") || line.starts_with("https")) {
             addUrl(line);
         } else {
             fs::path filePath(line);
-            if (!filePath.is_absolute()) {
-                filePath = path.parent_path() / filePath;
-            }
             addFile(filePath);
         }
     }
-    
+
     return Result<void>::ok();
 }
 
