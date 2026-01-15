@@ -45,8 +45,8 @@ void SunoBrowser::setupUI() {
     layout->addLayout(topLayout);
 
     clipTable_ = new QTableWidget();
-    clipTable_->setColumnCount(7);
-    clipTable_->setHorizontalHeaderLabels({"Title", "Model", "Version", "Tags", "Duration", "Created", "Status"});
+    clipTable_->setColumnCount(8);
+    clipTable_->setHorizontalHeaderLabels({"Title", "Model", "Version", "Tags", "Duration", "Created", "Status", "Lyrics"});
     clipTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     clipTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     clipTable_->horizontalHeader()->setStretchLastSection(true);
@@ -79,6 +79,9 @@ void SunoBrowser::updateList(const std::vector<SunoClip>& clips) {
         clipTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(clip.metadata.duration)));
         clipTable_->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(clip.created_at)));
         clipTable_->setItem(row, 6, new QTableWidgetItem(QString::fromStdString(clip.status)));
+
+        QString lyricsText = controller_->hasLyrics(clip.id) ? "✓ Yes" : "✗ No";
+        clipTable_->setItem(row, 7, new QTableWidgetItem(lyricsText));
     }
     statusLabel_->setText(QString("Found %1 clips").arg(clips.size()));
 }
