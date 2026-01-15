@@ -81,6 +81,12 @@ ChadVis uses `toml++` for configuration. Config files are stored in `~/.config/c
 
 ---
 
+## Known Issues
+
+- The package executable can sometimes take significant time to fully launch the Qt GUI. It is likely scanning song databases or scanning thousands of visualzier shader presets. It should launch eventually and performance will be tackled when time and token allowances permit.
+
+---
+
 ## 🤝 Contributing
 
 Think you can make ChadVis even more Chad-tier? Prove it. We welcome contributions that meet our high standards.

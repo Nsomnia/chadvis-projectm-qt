@@ -4,6 +4,7 @@
 #include <QSqlQuery>
 #include <QSqlRecord>
 #include "core/Logger.hpp"
+#include "util/FileUtils.hpp"
 
 namespace vc::suno {
 
@@ -75,6 +76,24 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
             LOG_INFO("SunoDatabase: Migrating table clips, adding column {}", col.name.toStdString());
             if (!query.exec(QString("ALTER TABLE clips ADD COLUMN %1 %2").arg(col.name, col.type))) {
                 LOG_ERROR("SunoDatabase: Failed to add column {}: {}", col.name.toStdString(), query.lastError().text().toStdString());
+            }
+        }
+    }
+
+    // Migration: Convert old x.x duration format to mm:ss
+    if (query.exec("SELECT id, duration FROM clips WHERE duration LIKE '%.%'")) {
+        while (query.next()) {
+            QString id = query.value(0).toString();
+            QString durStr = query.value(1).toString();
+            bool ok;
+            double secs = durStr.toDouble(&ok);
+            if (ok) {
+                QString formatted = QString::fromStdString(file::formatDuration(Duration(static_cast<i64>(secs * 1000))));
+                QSqlQuery updateQuery(db_);
+                updateQuery.prepare("UPDATE clips SET duration = :dur WHERE id = :id");
+                updateQuery.bindValue(":dur", formatted);
+                updateQuery.bindValue(":id", id);
+                updateQuery.exec();
             }
         }
     }
