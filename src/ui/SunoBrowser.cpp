@@ -20,6 +20,10 @@ SunoBrowser::SunoBrowser(SunoController* controller, QWidget* parent)
             statusLabel_->setText(QString::fromStdString(msg));
         });
     });
+
+    if (!controller_->clips().empty()) {
+        updateList(controller_->clips());
+    }
 }
 
 SunoBrowser::~SunoBrowser() = default;
@@ -50,6 +54,8 @@ void SunoBrowser::setupUI() {
 
     statusLabel_ = new QLabel("Arch Linux (btw)");
     layout->addWidget(statusLabel_);
+
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     connect(refreshBtn_, &QPushButton::clicked, this, &SunoBrowser::onRefreshClicked);
     connect(syncBtn_, &QPushButton::clicked, this, &SunoBrowser::onSyncClicked);

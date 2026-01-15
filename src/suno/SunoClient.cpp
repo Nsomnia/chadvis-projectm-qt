@@ -48,7 +48,10 @@ void SunoClient::processQueue() {
 }
 
 void SunoClient::setToken(const std::string& token) {
-    token_ = token;
+    if (token_ != token) {
+        token_ = token;
+        tokenChanged.emitSignal(token_);
+    }
 }
 
 void SunoClient::setCookie(const std::string& cookie) {
@@ -85,8 +88,12 @@ void SunoClient::setCookie(const std::string& cookie) {
     }
     
     if (!sessionValue.isEmpty() && sessionValue.startsWith("eyJ")) {
-        token_ = sessionValue.toStdString();
-        LOG_INFO("SunoClient: Extracted JWT from __session cookie");
+        std::string newToken = sessionValue.toStdString();
+        if (token_ != newToken) {
+            token_ = newToken;
+            tokenChanged.emitSignal(token_);
+            LOG_INFO("SunoClient: Extracted JWT from __session cookie");
+        }
         
         std::string sid = extractSidFromToken(token_);
         if (!sid.empty()) {
@@ -192,6 +199,7 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
             
             if (!token_.empty()) {
                 LOG_INFO("SunoClient: Refreshed auth token ({}...)", token_.substr(0, 10));
+                tokenChanged.emitSignal(token_);
             } else {
                 LOG_ERROR("SunoClient: JWT missing in refresh response");
             }
@@ -355,26 +363,58 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
         SunoClip clip;
         clip.id = obj["id"].toString().toStdString();
         clip.title = obj["title"].toString().toStdString();
+        
+        if (clip.title.empty()) {
+            clip.title = obj["name"].toString().toStdString();
+        }
+
+        LOG_DEBUG("SunoClient: Parsing clip {} - {}", clip.id, clip.title);
+
         clip.video_url = obj["video_url"].toString().toStdString();
         clip.audio_url = obj["audio_url"].toString().toStdString();
         clip.image_url = obj["image_url"].toString().toStdString();
+        
+        // Handle model info which can be at root or in metadata
         clip.major_model_version = obj["major_model_version"].toString().toStdString();
         clip.model_name = obj["model_name"].toString().toStdString();
+        
+        QJsonObject meta = obj["metadata"].toObject();
+        if (clip.major_model_version.empty()) 
+            clip.major_model_version = meta["major_model_version"].toString().toStdString();
+        if (clip.model_name.empty())
+            clip.model_name = meta["model_name"].toString().toStdString();
+            
         clip.display_name = obj["display_name"].toString().toStdString();
         clip.handle = obj["handle"].toString().toStdString();
-        clip.is_liked = obj["is_liked"].toBool();
-        clip.is_trashed = obj["is_trashed"].toBool();
-        clip.is_public = obj["is_public"].toBool();
+        clip.is_liked = obj["is_liked"].toBool() || obj["is_liked"].toInt() != 0;
+        clip.is_trashed = obj["is_trashed"].toBool() || obj["is_trashed"].toInt() != 0;
+        clip.is_public = obj["is_public"].toBool() || obj["is_public"].toInt() != 0;
+        
+        // created_at can be "created_at" or "created_at" in metadata
         clip.created_at = obj["created_at"].toString().toStdString();
+        if (clip.created_at.empty()) {
+             clip.created_at = meta["created_at"].toString().toStdString();
+        }
+        
         clip.status = obj["status"].toString().toStdString();
 
-        QJsonObject meta = obj["metadata"].toObject();
         clip.metadata.prompt = meta["prompt"].toString().toStdString();
         clip.metadata.tags = meta["tags"].toString().toStdString();
         clip.metadata.lyrics = meta["lyrics"].toString().toStdString();
         clip.metadata.type = meta["type"].toString().toStdString();
-        clip.metadata.duration = meta["duration"].toString().toStdString();
+        
+        if (meta.contains("duration")) {
+            if (meta["duration"].isDouble()) {
+                clip.metadata.duration = QString::number(meta["duration"].toDouble(), 'f', 1).toStdString();
+            } else {
+                clip.metadata.duration = meta["duration"].toString().toStdString();
+            }
+        }
+        
         clip.metadata.error_message = meta["error_message"].toString().toStdString();
+
+        LOG_DEBUG("  Model: {}, Version: {}, Duration: {}, Created: {}", 
+                 clip.model_name, clip.major_model_version, clip.metadata.duration, clip.created_at);
 
         clips.push_back(clip);
     }

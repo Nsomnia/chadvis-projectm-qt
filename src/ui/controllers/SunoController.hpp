@@ -42,6 +42,10 @@ public:
     void syncDatabase(bool forceAuth = false);
     void showCookieDialog();
 
+    const std::vector<SunoClip>& clips() const {
+        return accumulatedClips_;
+    }
+
     // Signal for UI
     Signal<const std::vector<SunoClip>&> libraryUpdated;
     Signal<const std::string&> statusMessage;

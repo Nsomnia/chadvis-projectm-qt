@@ -34,11 +34,25 @@ SunoController::SunoController(AudioEngine* audioEngine,
             [this](const auto& id, const auto& json) {
                 onAlignedLyricsFetched(id, json);
             });
+    client_->tokenChanged.connect([this](const auto& token) {
+        LOG_INFO("SunoController: Token updated, saving to config");
+        CONFIG.suno().token = token;
+        CONFIG.save(CONFIG.configPath());
+    });
     client_->errorOccurred.connect([this](const auto& msg) { onError(msg); });
 
     // Initialize database
-    fs::path dbPath = file::dataDir() / "suno_library.db";
+    fs::path dataDir = file::dataDir();
+    file::ensureDir(dataDir);
+    fs::path dbPath = dataDir / "suno_library.db";
     db_.init(dbPath.string());
+
+    // Load cached clips from database
+    auto cachedClips = db_.getAllClips();
+    if (cachedClips.isOk() && !cachedClips.value().empty()) {
+        LOG_INFO("SunoController: Loaded {} cached clips from database", cachedClips.value().size());
+        accumulatedClips_ = cachedClips.value();
+    }
 
     // Load token/cookie from config
     if (!CONFIG.suno().token.empty()) {
@@ -125,22 +139,14 @@ void SunoController::onLibraryFetched(const std::vector<SunoClip>& clips) {
         LOG_INFO("SunoController: Sync complete. Total clips: {}", accumulatedClips_.size());
         libraryUpdated.emitSignal(accumulatedClips_);
         statusMessage.emitSignal("Suno library sync complete (" + std::to_string(accumulatedClips_.size()) + " clips)");
-    }
 
-    if (clips.size() >= 20) {
-        currentSyncPage_++;
-        refreshLibrary(currentSyncPage_);
-    } else {
-        currentSyncPage_ = 1;
-        statusMessage.emitSignal("Suno library sync complete");
-    }
-
-    for (const auto& clip : clips) {
-        if (db_.getAlignedLyrics(clip.id).isErr()) {
-            lyricsQueue_.push_back(clip.id);
+        for (const auto& clip : accumulatedClips_) {
+            if (db_.getAlignedLyrics(clip.id).isErr()) {
+                lyricsQueue_.push_back(clip.id);
+            }
         }
+        processLyricsQueue();
     }
-    processLyricsQueue();
 }
 
 void SunoController::processLyricsQueue() {

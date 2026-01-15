@@ -32,17 +32,51 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
                     "audio_url TEXT, "
                     "video_url TEXT, "
                     "image_url TEXT, "
+                    "image_large_url TEXT, "
                     "model_name TEXT, "
+                    "major_model_version TEXT, "
+                    "display_name TEXT, "
+                    "handle TEXT, "
+                    "is_liked INTEGER, "
+                    "is_trashed INTEGER, "
+                    "is_public INTEGER, "
                     "status TEXT, "
                     "created_at TEXT, "
                     "prompt TEXT, "
                     "tags TEXT, "
                     "lyrics TEXT, "
                     "type TEXT, "
+                    "duration TEXT, "
+                    "error_message TEXT, "
                     "aligned_lyrics_json TEXT"
                     ")")) {
         return Result<void>::err("Failed to create clips table: " +
                                  query.lastError().text().toStdString());
+    }
+
+    // Migration: Add missing columns if they don't exist
+    QSqlRecord record = db_.record("clips");
+    struct Column { QString name; QString type; };
+    std::vector<Column> missingColumns = {
+        {"image_large_url", "TEXT"},
+        {"major_model_version", "TEXT"},
+        {"display_name", "TEXT"},
+        {"handle", "TEXT"},
+        {"is_liked", "INTEGER"},
+        {"is_trashed", "INTEGER"},
+        {"is_public", "INTEGER"},
+        {"duration", "TEXT"},
+        {"error_message", "TEXT"},
+        {"aligned_lyrics_json", "TEXT"}
+    };
+
+    for (const auto& col : missingColumns) {
+        if (record.indexOf(col.name) == -1) {
+            LOG_INFO("SunoDatabase: Migrating table clips, adding column {}", col.name.toStdString());
+            if (!query.exec(QString("ALTER TABLE clips ADD COLUMN %1 %2").arg(col.name, col.type))) {
+                LOG_ERROR("SunoDatabase: Failed to add column {}: {}", col.name.toStdString(), query.lastError().text().toStdString());
+            }
+        }
     }
 
     initialized_ = true;
@@ -57,24 +91,35 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
     QSqlQuery query(db_);
     query.prepare(
             "INSERT OR REPLACE INTO clips (id, title, audio_url, video_url, "
-            "image_url, "
-            "model_name, status, created_at, prompt, tags, lyrics, type) "
+            "image_url, image_large_url, model_name, major_model_version, "
+            "display_name, handle, is_liked, is_trashed, is_public, "
+            "status, created_at, prompt, tags, lyrics, type, duration, error_message) "
             "VALUES (:id, :title, :audio_url, :video_url, :image_url, "
-            ":model_name, :status, :created_at, :prompt, :tags, :lyrics, "
-            ":type)");
+            ":image_large_url, :model_name, :major_model_version, :display_name, "
+            ":handle, :is_liked, :is_trashed, :is_public, :status, :created_at, "
+            ":prompt, :tags, :lyrics, :type, :duration, :error_message)");
 
     query.bindValue(":id", QString::fromStdString(clip.id));
     query.bindValue(":title", QString::fromStdString(clip.title));
     query.bindValue(":audio_url", QString::fromStdString(clip.audio_url));
     query.bindValue(":video_url", QString::fromStdString(clip.video_url));
     query.bindValue(":image_url", QString::fromStdString(clip.image_url));
+    query.bindValue(":image_large_url", QString::fromStdString(clip.image_large_url));
     query.bindValue(":model_name", QString::fromStdString(clip.model_name));
+    query.bindValue(":major_model_version", QString::fromStdString(clip.major_model_version));
+    query.bindValue(":display_name", QString::fromStdString(clip.display_name));
+    query.bindValue(":handle", QString::fromStdString(clip.handle));
+    query.bindValue(":is_liked", clip.is_liked ? 1 : 0);
+    query.bindValue(":is_trashed", clip.is_trashed ? 1 : 0);
+    query.bindValue(":is_public", clip.is_public ? 1 : 0);
     query.bindValue(":status", QString::fromStdString(clip.status));
     query.bindValue(":created_at", QString::fromStdString(clip.created_at));
     query.bindValue(":prompt", QString::fromStdString(clip.metadata.prompt));
     query.bindValue(":tags", QString::fromStdString(clip.metadata.tags));
     query.bindValue(":lyrics", QString::fromStdString(clip.metadata.lyrics));
     query.bindValue(":type", QString::fromStdString(clip.metadata.type));
+    query.bindValue(":duration", QString::fromStdString(clip.metadata.duration));
+    query.bindValue(":error_message", QString::fromStdString(clip.metadata.error_message));
 
     if (!query.exec()) {
         return Result<void>::err("Failed to save clip: " +
@@ -111,13 +156,22 @@ Result<std::vector<SunoClip>> SunoDatabase::getAllClips() {
         clip.audio_url = query.value("audio_url").toString().toStdString();
         clip.video_url = query.value("video_url").toString().toStdString();
         clip.image_url = query.value("image_url").toString().toStdString();
+        clip.image_large_url = query.value("image_large_url").toString().toStdString();
         clip.model_name = query.value("model_name").toString().toStdString();
+        clip.major_model_version = query.value("major_model_version").toString().toStdString();
+        clip.display_name = query.value("display_name").toString().toStdString();
+        clip.handle = query.value("handle").toString().toStdString();
+        clip.is_liked = query.value("is_liked").toInt() != 0;
+        clip.is_trashed = query.value("is_trashed").toInt() != 0;
+        clip.is_public = query.value("is_public").toInt() != 0;
         clip.status = query.value("status").toString().toStdString();
         clip.created_at = query.value("created_at").toString().toStdString();
         clip.metadata.prompt = query.value("prompt").toString().toStdString();
         clip.metadata.tags = query.value("tags").toString().toStdString();
         clip.metadata.lyrics = query.value("lyrics").toString().toStdString();
         clip.metadata.type = query.value("type").toString().toStdString();
+        clip.metadata.duration = query.value("duration").toString().toStdString();
+        clip.metadata.error_message = query.value("error_message").toString().toStdString();
         clips.push_back(clip);
     }
 

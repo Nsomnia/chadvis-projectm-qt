@@ -239,6 +239,9 @@ void Application::quit() {
     if (qapp_) {
         qapp_->quit();
     }
+    
+    // Hard exit to ensure all threads (FFmpeg, etc) are terminated if they hang
+    std::exit(0);
 }
 
 void Application::setupStyle() {
