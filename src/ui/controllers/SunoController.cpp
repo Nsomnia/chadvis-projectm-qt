@@ -68,6 +68,13 @@ void SunoController::refreshLibrary(int page) {
         showCookieDialog();
         return;
     }
+    
+    // Clear accumulated clips when starting new sync from page 1
+    if (page == 1) {
+        accumulatedClips_.clear();
+        isSyncing_ = true;
+    }
+    
     statusMessage.emitSignal("Syncing Suno library (Page " + std::to_string(page) + ")...");
     client_->fetchLibrary(page);
 }
@@ -88,15 +95,37 @@ void SunoController::showCookieDialog() {
         // Save to config
         CONFIG.suno().cookie = cookie;
         CONFIG.save(CONFIG.configPath());
-        client_->fetchLibrary();
+        // Start fresh sync
+        accumulatedClips_.clear();
+        isSyncing_ = true;
+        client_->fetchLibrary(1);
     }
     dialog->deleteLater();
 }
 
 void SunoController::onLibraryFetched(const std::vector<SunoClip>& clips) {
     LOG_INFO("SunoController: Fetched {} clips", clips.size());
+    
+    // Accumulate clips for this sync session
+    for (const auto& clip : clips) {
+        accumulatedClips_.push_back(clip);
+    }
+    
+    // Save to database
     db_.saveClips(clips);
-    libraryUpdated.emitSignal(clips);
+    
+    if (clips.size() >= 20) {
+        // More pages to fetch
+        currentSyncPage_++;
+        refreshLibrary(currentSyncPage_);
+    } else {
+        // Sync complete - emit ALL accumulated clips
+        isSyncing_ = false;
+        currentSyncPage_ = 1;
+        LOG_INFO("SunoController: Sync complete. Total clips: {}", accumulatedClips_.size());
+        libraryUpdated.emitSignal(accumulatedClips_);
+        statusMessage.emitSignal("Suno library sync complete (" + std::to_string(accumulatedClips_.size()) + " clips)");
+    }
 
     if (clips.size() >= 20) {
         currentSyncPage_++;

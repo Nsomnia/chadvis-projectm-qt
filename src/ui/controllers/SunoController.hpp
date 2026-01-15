@@ -68,6 +68,8 @@ private:
     std::deque<std::string> lyricsQueue_;
     int activeLyricsRequests_{0};
     int currentSyncPage_{1};
+    bool isSyncing_{false};
+    std::vector<SunoClip> accumulatedClips_;
 };
 
 } // namespace suno

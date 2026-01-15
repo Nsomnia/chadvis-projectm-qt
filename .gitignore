@@ -3,6 +3,7 @@ zzz_repos-investigation/
 
 # an older suno http clerk reference that might still be valuable to end users
 docs/suno_api_reference.md
+docs/SUNO_API_CPP_QT6_INTEGRATION_GUIDE.md
 
 # Agent internal notes
 .agent/
