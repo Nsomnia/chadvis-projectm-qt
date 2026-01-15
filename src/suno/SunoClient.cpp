@@ -355,8 +355,17 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
         SunoClip clip;
         clip.id = obj["id"].toString().toStdString();
         clip.title = obj["title"].toString().toStdString();
+        clip.video_url = obj["video_url"].toString().toStdString();
         clip.audio_url = obj["audio_url"].toString().toStdString();
         clip.image_url = obj["image_url"].toString().toStdString();
+        clip.major_model_version = obj["major_model_version"].toString().toStdString();
+        clip.model_name = obj["model_name"].toString().toStdString();
+        clip.display_name = obj["display_name"].toString().toStdString();
+        clip.handle = obj["handle"].toString().toStdString();
+        clip.is_liked = obj["is_liked"].toBool();
+        clip.is_trashed = obj["is_trashed"].toBool();
+        clip.is_public = obj["is_public"].toBool();
+        clip.created_at = obj["created_at"].toString().toStdString();
         clip.status = obj["status"].toString().toStdString();
 
         QJsonObject meta = obj["metadata"].toObject();
@@ -364,6 +373,8 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
         clip.metadata.tags = meta["tags"].toString().toStdString();
         clip.metadata.lyrics = meta["lyrics"].toString().toStdString();
         clip.metadata.type = meta["type"].toString().toStdString();
+        clip.metadata.duration = meta["duration"].toString().toStdString();
+        clip.metadata.error_message = meta["error_message"].toString().toStdString();
 
         clips.push_back(clip);
     }
