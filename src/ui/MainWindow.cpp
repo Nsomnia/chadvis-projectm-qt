@@ -114,9 +114,19 @@ void MainWindow::setupUI() {
     toolsDock_ = new QDockWidget("Tools", this);
     toolsDock_->setObjectName("ToolsDock");
     toolsDock_->setWidget(rightTabs);
-    toolsDock_->setMinimumWidth(200);
+    toolsDock_->setMinimumWidth(300); 
+    toolsDock_->setFeatures(QDockWidget::DockWidgetMovable | 
+                           QDockWidget::DockWidgetFloatable | 
+                           QDockWidget::DockWidgetClosable);
     addDockWidget(Qt::RightDockWidgetArea, toolsDock_);
-    resizeDocks({toolsDock_}, {250}, Qt::Horizontal);
+    
+    // Allow the dock to be larger and more flexible
+    rightTabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    
+    // Set dock options to allow more flexible resizing
+    setDockOptions(DockOption::AnimatedDocks | DockOption::AllowTabbedDocks | DockOption::AllowNestedDocks);
+    
+    resizeDocks({toolsDock_}, {400}, Qt::Horizontal);
 
     audioController_->setupUI(playerControls_, playlistView_);
 

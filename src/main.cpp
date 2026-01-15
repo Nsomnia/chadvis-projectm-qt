@@ -20,22 +20,9 @@ namespace {
 
 vc::Application* g_app = nullptr;
 
-void signalHandler(int signal) {
-    if (signal == SIGINT || signal == SIGTERM) {
-        std::cout << "\nReceived signal " << signal << ", shutting down gracefully...\n";
-        if (g_app) {
-            g_app->quit();
-        }
-    }
-}
-
 } // namespace
 
 int main(int argc, char* argv[]) {
-    // Setup signal handlers
-    std::signal(SIGINT, signalHandler);
-    std::signal(SIGTERM, signalHandler);
-    
     try {
         // Create application
         vc::Application app(argc, argv);

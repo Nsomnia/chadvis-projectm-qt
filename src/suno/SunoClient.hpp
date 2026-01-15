@@ -50,6 +50,7 @@ public:
     Signal<const std::vector<SunoClip>&> libraryFetched;
     Signal<const std::vector<SunoProject>&> projectsFetched;
     Signal<std::string, std::string> alignedLyricsFetched; // clipId, json
+    Signal<std::string> tokenChanged; // New token
     Signal<std::string> errorOccurred; // Error message
 
 private slots:
