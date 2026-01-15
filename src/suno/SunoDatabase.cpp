@@ -245,6 +245,3 @@ bool SunoDatabase::hasLyrics(const std::string& clipId) const {
 
     return false;
 }
-
-} // namespace vc::suno
-// BUG FIX TEST
