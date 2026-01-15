@@ -16,6 +16,7 @@ struct PlaylistItem {
     std::string url;
     bool isRemote{false};
     MediaMetadata metadata;
+    std::string lyricsPath;  // Path to external .lrc file
     bool valid{true};
 };
 

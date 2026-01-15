@@ -34,6 +34,17 @@ void Playlist::addFile(const fs::path& path) {
         item.metadata.title = path.stem().string();
     }
     
+    // Check for matching LRC file (external lyrics with timing)
+    fs::path lrcPath = path;
+    lrcPath.replace_extension(".mp3", ".lrc");
+    lrcPath.replace_extension(".m4a", ".lrc");
+    lrcPath.replace_extension(".wav", ".lrc");
+    
+    if (fs::exists(lrcPath)) {
+        item.lyricsPath = lrcPath.string();
+        LOG_INFO("Found lyrics file: {}", lrcPath.string());
+    }
+    
     usize index = items_.size();
     items_.push_back(std::move(item));
     
