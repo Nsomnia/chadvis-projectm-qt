@@ -5,15 +5,10 @@
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <deque>
-#include <filesystem>
 #include <memory>
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
-#include "suno/SunoLyrics.hpp"
-#include "util/Result.hpp"
 #include "util/Signal.hpp"
-
-namespace fs = std::filesystem;
 
 namespace vc {
 
@@ -44,6 +39,14 @@ public:
 
     const std::vector<SunoClip>& clips() const {
         return accumulatedClips_;
+    }
+
+    SunoDatabase& db() {
+        return db_;
+    }
+
+    bool hasLyrics(const std::string& clipId) const {
+        return db_.hasLyrics(clipId);
     }
 
     // Signal for UI

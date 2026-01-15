@@ -231,4 +231,19 @@ Result<std::string> SunoDatabase::getAlignedLyrics(const std::string& clipId) {
     return Result<std::string>::err("Aligned lyrics not found");
 }
 
+bool SunoDatabase::hasLyrics(const std::string& clipId) const {
+    if (!initialized_)
+        return false;
+
+    QSqlQuery query(db_);
+    query.prepare("SELECT COUNT(*) FROM clips WHERE id = :id AND (lyrics IS NOT NULL AND lyrics != '')");
+    query.bindValue(":id", QString::fromStdString(clipId));
+
+    if (query.exec() && query.next()) {
+        return query.value(0).toInt() > 0;
+    }
+
+    return false;
+}
+
 } // namespace vc::suno

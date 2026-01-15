@@ -28,6 +28,7 @@ public:
     Result<void> saveAlignedLyrics(const std::string& clipId,
                                    const std::string& alignedLyricsJson);
     Result<std::string> getAlignedLyrics(const std::string& clipId);
+    bool hasLyrics(const std::string& clipId) const;
 
     // Search functionality
     Result<std::vector<SunoClip>> searchClips(const std::string& query);
