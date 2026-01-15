@@ -4,7 +4,9 @@ setopt ERR_EXIT PIPE_FAIL NO_UNSET EXTENDED_GLOB
 zmodload zsh/stat 2>/dev/null || true
 
 readonly SCRIPT_DIR="${0:A:h}"
-readonly BUILD_DIR="${SCRIPT_DIR}/build"
+# Go up one level from scripts/ to get the project root
+readonly PROJECT_ROOT="${SCRIPT_DIR:h}"
+readonly BUILD_DIR="${PROJECT_ROOT}/build"
 readonly BINARY_NAME="chadvis-projectm-qt"
 readonly BINARY_PATH="${BUILD_DIR}/${BINARY_NAME}"
 readonly N4500_CORES=1 # potato cpu safe $(nproc) # can also use an integer
@@ -143,13 +145,13 @@ invoke_cmake() {
         -DCMAKE_UNITY_BUILD=ON \
         ${LAUNCHER_BIN:+"-DCMAKE_CXX_COMPILER_LAUNCHER=${LAUNCHER_BIN}"} \
         ${LAUNCHER_BIN:+"-DCMAKE_C_COMPILER_LAUNCHER=${LAUNCHER_BIN}"} \
-        -S "$SCRIPT_DIR" -B "$BUILD_DIR" 2>&1 | tee -a "$LOG_FILE"
+        -S "$PROJECT_ROOT" -B "$BUILD_DIR" |& tee -a "$LOG_FILE"
 }
 
 invoke_ninja() {
     log info "Building with Ninja (${1:-$N4500_CORES} jobs)..."
     # Use a simpler status line and tee to show progress on terminal
-    NINJA_STATUS="[%f/%t] " ninja -C "$BUILD_DIR" -j "${1:-$N4500_CORES}" 2>&1 | tee -a "$LOG_FILE"
+    NINJA_STATUS="[%f/%t] " ninja -C "$BUILD_DIR" -j "${1:-$N4500_CORES}" |& tee -a "$LOG_FILE"
 }
 
 build_pipeline() {
@@ -191,7 +193,7 @@ cmd_rebuild_release() { build_pipeline "Release" true; }
 
 cmd_clean() {
     log header "Clean"
-    for t in "$BUILD_DIR" "${SCRIPT_DIR}/build-release"; do
+    for t in "$BUILD_DIR" "${PROJECT_ROOT}/build-release"; do
         [[ -d "$t" ]] && { rm -rf "${t:?}"/*; log ok "Cleaned: ${t}"; }
     done
     log ok "Clean complete"
@@ -261,7 +263,7 @@ typeset -A DISPATCH=(
 )
 
 main() {
-    cd "$SCRIPT_DIR" || exit 1
+    cd "$PROJECT_ROOT" || exit 1
     local cmd="${1:-help}"; [[ $# -gt 0 ]] && shift
     local h="${DISPATCH[$cmd]:-}"
     
