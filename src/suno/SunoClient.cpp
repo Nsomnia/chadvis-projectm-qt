@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include "core/Logger.hpp"
+#include "util/FileUtils.hpp"
 
 #include <QTimer>
 #include <deque>
@@ -405,7 +406,8 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
         
         if (meta.contains("duration")) {
             if (meta["duration"].isDouble()) {
-                clip.metadata.duration = QString::number(meta["duration"].toDouble(), 'f', 1).toStdString();
+                double secs = meta["duration"].toDouble();
+                clip.metadata.duration = file::formatDuration(Duration(static_cast<i64>(secs * 1000)));
             } else {
                 clip.metadata.duration = meta["duration"].toString().toStdString();
             }
