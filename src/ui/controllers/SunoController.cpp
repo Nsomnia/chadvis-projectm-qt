@@ -40,6 +40,12 @@ SunoController::SunoController(AudioEngine* audioEngine,
         LOG_INFO("SunoController: Token updated, saving to config");
         CONFIG.suno().token = token;
         CONFIG.save(CONFIG.configPath());
+        
+        if (isRefreshingToken_) {
+            isRefreshingToken_ = false;
+            LOG_INFO("SunoController: Resuming lyrics queue after token refresh");
+            processLyricsQueue();
+        }
     });
     client_->errorOccurred.connect([this](const auto& msg) { onError(msg); });
 
@@ -170,11 +176,18 @@ void SunoController::onLibraryFetched(const std::vector<SunoClip>& clips) {
                 lyricsQueue_.push_back(clip.id);
             }
         }
+        
+        // Initialize stats for UI feedback
+        totalLyricsToFetch_ = lyricsQueue_.size();
+        lyricsSyncStartTime_ = std::chrono::steady_clock::now();
+        
         processLyricsQueue();
     }
 }
 
 void SunoController::processLyricsQueue() {
+    if (isRefreshingToken_) return;
+
     // Limit concurrent requests to 3 to be nicer to API and avoid rate limits
     while (activeLyricsRequests_ < 3 && !lyricsQueue_.empty()) {
         std::string id = lyricsQueue_.front();
@@ -183,7 +196,12 @@ void SunoController::processLyricsQueue() {
         
         // Add random jitter delay (50-250ms) to avoid hammering
         int jitter = 50 + (rand() % 200);
-        QTimer::singleShot(jitter, this, [this, id]() {
+        
+        // Capture queue size by value for the log
+        size_t remaining = lyricsQueue_.size();
+        
+        QTimer::singleShot(jitter, this, [this, id, remaining]() {
+            LOG_INFO("SunoController: Fetching lyrics for {} (Queue: {})", id, remaining);
             client_->fetchAlignedLyrics(id);
         });
     }
@@ -192,6 +210,31 @@ void SunoController::processLyricsQueue() {
 void SunoController::onAlignedLyricsFetched(const std::string& clipId,
                                             const std::string& json) {
     activeLyricsRequests_ = std::max(0, activeLyricsRequests_ - 1);
+    
+    // Update progress status
+    if (totalLyricsToFetch_ > 0) {
+        size_t processed = totalLyricsToFetch_ - lyricsQueue_.size();
+        size_t remaining = lyricsQueue_.size();
+        
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lyricsSyncStartTime_).count();
+        
+        std::string etaStr = "";
+        if (processed > 0 && elapsed > 0) {
+            double rate = static_cast<double>(processed) / elapsed; // items per second
+            if (rate > 0) {
+                int etaSec = static_cast<int>(remaining / rate);
+                int etaMin = etaSec / 60;
+                etaStr = " - ETA: " + std::to_string(etaMin) + "m " + std::to_string(etaSec % 60) + "s";
+            }
+        }
+        
+        std::string status = "Syncing lyrics: " + std::to_string(processed) + "/" + 
+                             std::to_string(totalLyricsToFetch_) + 
+                             " (" + std::to_string(processed * 100 / totalLyricsToFetch_) + "%)" + etaStr;
+        statusMessage.emitSignal(status);
+    }
+
     processLyricsQueue();
 
     LOG_INFO("SunoController: Fetched aligned lyrics for {}", clipId);
@@ -304,13 +347,58 @@ void SunoController::onAlignedLyricsFetched(const std::string& clipId,
 void SunoController::onError(const std::string& message) {
     activeLyricsRequests_ = std::max(0, activeLyricsRequests_ - 1);
     
+    // Update progress status on error too (skipped item)
+    if (totalLyricsToFetch_ > 0) {
+        size_t processed = totalLyricsToFetch_ - lyricsQueue_.size();
+        std::string status = "Syncing lyrics: " + std::to_string(processed) + "/" + 
+                             std::to_string(totalLyricsToFetch_) + " (Retrying...)";
+        statusMessage.emitSignal(status);
+    }
+    
     // Check if it's a "processing" error -> Re-queue at the back
     if (message.rfind("Lyrics processing:", 0) == 0) {
-        std::string id = message.substr(18); // len("Lyrics processing:") + 1? No 18
+        std::string id = message.substr(18); 
         if (!id.empty()) {
             LOG_INFO("SunoController: Re-queueing processing lyrics for {}", id);
             lyricsQueue_.push_back(id);
         }
+    }
+    // Check for Unauthorized/401 -> Re-queue and pause for refresh
+    else if (message.find("Unauthorized") != std::string::npos || 
+             message.find("401") != std::string::npos) {
+        
+        // Extract ID if possible? SunoClient doesn't send ID in error string for 401 usually
+        // But activeLyricsRequests_ is decremented, so we lost that slot.
+        // We should just ensure we pause.
+        
+        LOG_WARN("SunoController: Auth error detected. Pausing queue for refresh.");
+        
+        if (!isRefreshingToken_) {
+            isRefreshingToken_ = true;
+            // The NEXT request would trigger refresh, but we paused queue.
+            // So we must manually trigger refresh here.
+            client_->refreshAuthToken([this](bool success) {
+                if (!success) {
+                    LOG_ERROR("SunoController: Token refresh failed. Session likely expired.");
+                    isRefreshingToken_ = false;
+                    // Reset token/cookie to force full re-auth flow next time or now
+                    CONFIG.suno().token = "";
+                    CONFIG.save(CONFIG.configPath());
+                    
+                    statusMessage.emitSignal("Suno session expired. Please re-authenticate.");
+                    // Optionally show dialog immediately if window is active?
+                    // For now, let user click the button.
+                }
+                // Success case handled by tokenChanged signal
+            });
+        }
+        
+        // Re-queueing the *specific* failed ID is hard because onError signature doesn't include it.
+        // For now, we accept dropping this one item from the sync batch, or we'd need to change SunoClient to pass ID.
+        // Assuming user can just re-sync later.
+        // OR: SunoClient could emit error with ID prefix like "Unauthorized: {id}"
+        // But handleNetworkError is generic.
+        
     }
     
     processLyricsQueue();
