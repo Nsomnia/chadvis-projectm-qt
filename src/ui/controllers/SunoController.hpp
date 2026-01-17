@@ -81,6 +81,9 @@ private:
     int activeLyricsRequests_{0};
     int currentSyncPage_{1};
     bool isSyncing_{false};
+    bool isRefreshingToken_{false};
+    size_t totalLyricsToFetch_{0};
+    std::chrono::steady_clock::time_point lyricsSyncStartTime_;
     std::vector<SunoClip> accumulatedClips_;
 };
 

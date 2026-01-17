@@ -351,8 +351,18 @@ void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
                     }
                 });
             } else {
+                std::string err = reply->errorString().toStdString();
+                // If 401, treat same as handleNetworkError to trigger refresh logic
+                if (status == 401) {
+                    err = "Unauthorized: Token expired or invalid";
+                    // DO NOT clear token here if it's going to be used by other concurrent requests
+                    // But we MUST clear it so next fetch triggers refresh
+                    token_.clear();
+                }
+                
                 LOG_ERROR("SunoClient: Aligned lyrics fetch failed: {} (Status: {})", 
-                          reply->errorString().toStdString(), status);
+                          err, status);
+                errorOccurred.emitSignal(err);
             }
         });
     };
