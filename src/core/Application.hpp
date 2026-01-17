@@ -58,6 +58,8 @@ public:
     Result<void> init(const AppOptions& opts);
     int exec();
 
+    void reloadTheme();
+
     // Component access
     AudioEngine* audioEngine() const {
         return audioEngine_.get();

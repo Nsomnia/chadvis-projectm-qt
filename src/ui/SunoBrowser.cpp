@@ -45,8 +45,10 @@ void SunoBrowser::setupUI() {
     layout->addLayout(topLayout);
 
     clipTable_ = new QTableWidget();
-    clipTable_->setColumnCount(8);
-    clipTable_->setHorizontalHeaderLabels({"Title", "Model", "Version", "Tags", "Duration", "Created", "Status", "Lyrics"});
+    clipTable_->setColumnCount(11);
+    clipTable_->setHorizontalHeaderLabels({
+        "Title", "Model", "Ver", "MV", "Tags", "Inst", "Controls", "Dur", "Created", "Status", "Lyr"
+    });
     clipTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     clipTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     clipTable_->horizontalHeader()->setStretchLastSection(true);
@@ -76,13 +78,23 @@ void SunoBrowser::updateList(const std::vector<SunoClip>& clips) {
         clipTable_->setItem(row, 0, titleItem);
         clipTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(clip.model_name)));
         clipTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(clip.major_model_version)));
-        clipTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(clip.metadata.tags)));
-        clipTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(clip.metadata.duration)));
-        clipTable_->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(clip.created_at)));
-        clipTable_->setItem(row, 6, new QTableWidgetItem(QString::fromStdString(clip.status)));
+        clipTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(clip.mv)));
+        clipTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(clip.metadata.tags)));
+        
+        QString inst = clip.metadata.make_instrumental ? "Yes" : "";
+        clipTable_->setItem(row, 5, new QTableWidgetItem(inst));
+        
+        QString controls = QString("W: %1 S: %2")
+            .arg(clip.metadata.weirdness, 0, 'f', 1)
+            .arg(clip.metadata.style_weight, 0, 'f', 1);
+        clipTable_->setItem(row, 6, new QTableWidgetItem(controls));
+
+        clipTable_->setItem(row, 7, new QTableWidgetItem(QString::fromStdString(clip.metadata.duration)));
+        clipTable_->setItem(row, 8, new QTableWidgetItem(QString::fromStdString(clip.created_at)));
+        clipTable_->setItem(row, 9, new QTableWidgetItem(QString::fromStdString(clip.status)));
 
         QString lyricsText = controller_->hasLyrics(clip.id) ? "✓ Yes" : "✗ No";
-        clipTable_->setItem(row, 7, new QTableWidgetItem(lyricsText));
+        clipTable_->setItem(row, 10, new QTableWidgetItem(lyricsText));
     }
     statusLabel_->setText(QString("Found %1 clips").arg(clips.size()));
 }

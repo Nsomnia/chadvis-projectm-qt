@@ -244,6 +244,10 @@ void Application::quit() {
     std::exit(0);
 }
 
+void Application::reloadTheme() {
+    setupStyle();
+}
+
 void Application::setupStyle() {
     // Use Fusion style as base (looks good on Linux)
     qapp_->setStyle(QStyleFactory::create("Fusion"));
