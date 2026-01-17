@@ -7,6 +7,7 @@
 #include "TextElement.hpp"
 #include <vector>
 #include <memory>
+#include "core/ConfigData.hpp"
 
 namespace vc {
 
@@ -55,6 +56,10 @@ public:
     
     u32 defaultFontSize() const { return defaultFontSize_; }
     void setDefaultFontSize(u32 size) { defaultFontSize_ = size; }
+    
+    // Karaoke
+    // Proxy to global config or keep local copy? 
+    // For now, let's keep it consistent with elements and just use Config wrappers
     
 private:
     std::string generateId();

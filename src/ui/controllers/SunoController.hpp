@@ -33,6 +33,9 @@ public:
 
     // Logic
     void downloadAndPlay(const SunoClip& clip);
+
+    Result<AlignedLyrics> getLyrics(const std::string& clipId);
+
     void refreshLibrary(int page = 1);
     void syncDatabase(bool forceAuth = false);
     void showCookieDialog();
@@ -51,6 +54,7 @@ public:
 
     // Signal for UI
     Signal<const std::vector<SunoClip>&> libraryUpdated;
+    Signal<const std::string&> clipUpdated; // id
     Signal<const std::string&> statusMessage;
 
 public slots:
@@ -63,6 +67,7 @@ private:
     void downloadAudio(const SunoClip& clip);
     void processDownloadedFile(const SunoClip& clip, const fs::path& path);
     void processLyricsQueue();
+    void onTrackChanged();
 
     AudioEngine* audioEngine_;
     OverlayEngine* overlayEngine_;

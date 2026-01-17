@@ -62,6 +62,9 @@ public:
     const SunoConfig& suno() const {
         return suno_;
     }
+    const KaraokeConfig& karaoke() const {
+        return karaoke_;
+    }
     const std::vector<OverlayElementConfig>& overlayElements() const {
         return overlayElements_;
     }
@@ -91,6 +94,10 @@ public:
         markDirty();
         return suno_;
     }
+    KaraokeConfig& karaoke() {
+        markDirty();
+        return karaoke_;
+    }
     std::vector<OverlayElementConfig>& overlayElements() {
         markDirty();
         return overlayElements_;
@@ -113,6 +120,8 @@ private:
         dirty_ = true;
     }
 
+    friend class ConfigLoader;
+
     fs::path configPath_;
     bool dirty_{false};
     bool debug_{false};
@@ -123,6 +132,7 @@ private:
     UIConfig ui_;
     KeyboardConfig keyboard_;
     SunoConfig suno_;
+    KaraokeConfig karaoke_;
     std::vector<OverlayElementConfig> overlayElements_;
 
     mutable std::mutex mutex_;

@@ -171,6 +171,20 @@ void ConfigParsers::parseKeyboard(const toml::table& tbl, KeyboardConfig& cfg) {
     }
 }
 
+void ConfigParsers::parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg) {
+    if (auto k = tbl["karaoke"].as_table()) {
+        cfg.enabled = get(*k, "enabled", true);
+        cfg.fontFamily = get(*k, "font_family", std::string("Arial"));
+        cfg.fontSize = get(*k, "font_size", 32u);
+        cfg.bold = get(*k, "bold", true);
+        cfg.yPosition = get(*k, "y_position", 0.85f);
+        
+        cfg.activeColor = Color::fromHex(get(*k, "active_color", std::string("#FFFF00")));
+        cfg.inactiveColor = Color::fromHex(get(*k, "inactive_color", std::string("#FFFFFF")));
+        cfg.shadowColor = Color::fromHex(get(*k, "shadow_color", std::string("#000000")));
+    }
+}
+
 void ConfigParsers::parseSuno(const toml::table& tbl, SunoConfig& cfg) {
     if (auto suno = tbl["suno"].as_table()) {
         cfg.token = get(*suno, "token", std::string());
@@ -191,6 +205,7 @@ toml::table ConfigParsers::serialize(
         const UIConfig& ui,
         const KeyboardConfig& keyboard,
         const SunoConfig& suno,
+        const KaraokeConfig& karaoke,
         const std::vector<OverlayElementConfig>& overlayElements,
         bool debug) {
     toml::table root;
@@ -284,6 +299,16 @@ toml::table ConfigParsers::serialize(
                             {"auto_download", suno.autoDownload},
                             {"save_lyrics", suno.saveLyrics},
                             {"embed_metadata", suno.embedMetadata}});
+
+    root.insert("karaoke",
+                toml::table{{"enabled", karaoke.enabled},
+                            {"font_family", karaoke.fontFamily},
+                            {"font_size", (i64)karaoke.fontSize},
+                            {"bold", karaoke.bold},
+                            {"y_position", (double)karaoke.yPosition},
+                            {"active_color", karaoke.activeColor.toHex()},
+                            {"inactive_color", karaoke.inactiveColor.toHex()},
+                            {"shadow_color", karaoke.shadowColor.toHex()}});
 
     return root;
 }

@@ -5,6 +5,7 @@
 #include <QRegularExpression>
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
+#include "SunoLyrics.hpp"
 
 #include <QTimer>
 #include <deque>
@@ -305,20 +306,53 @@ void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
     auto proceed = [this, clipId] {
         QString url = QString("/gen/%1/aligned_lyrics/v2")
                               .arg(QString::fromStdString(clipId));
-        enqueueRequest(createRequest(url), "GET", {}, [this, clipId](QNetworkReply* reply) {
+        
+        LOG_INFO("SunoClient: Fetching aligned lyrics for {}", clipId);
+        
+        // Use createAuthenticatedRequest to ensure Bearer token is used
+        enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this, clipId](QNetworkReply* reply) {
             reply->deleteLater();
+            
+            int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            
             if (reply->error() == QNetworkReply::NoError) {
-                alignedLyricsFetched.emitSignal(clipId,
-                                                reply->readAll().toStdString());
-            } else if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 404) {
+                QByteArray data = reply->readAll();
+                if (data.isEmpty()) {
+                    LOG_WARN("SunoClient: Empty lyrics response for {}", clipId);
+                } else {
+                    // Check for "Processing lyrics" message
+                    if (data.contains("Processing lyrics")) {
+                        LOG_WARN("SunoClient: Lyrics still processing for {}. Will retry later.", clipId);
+                        // Treat as error to trigger retry logic if applicable, or custom signal?
+                        // For now, logging it clearly. Controller handles queue.
+                        // Ideally we should emit a specific signal or error code.
+                        // But current flow assumes success = alignedLyricsFetched.
+                        // Let's emit error so controller can re-queue?
+                        errorOccurred.emitSignal("Lyrics processing: " + clipId);
+                    } else {
+                        // Log first 100 chars of response for debugging
+                        std::string preview = data.left(100).toStdString();
+                        LOG_INFO("SunoClient: Received lyrics data ({} bytes). Preview: {}", data.size(), preview);
+                        alignedLyricsFetched.emitSignal(clipId, data.toStdString());
+                    }
+                }
+            } else if (status == 404) {
+                LOG_WARN("SunoClient: v2 lyrics not found, trying fallback for {}", clipId);
                 QString lyricsUrl = QString("/lyrics/%1")
                                       .arg(QString::fromStdString(clipId));
-                enqueueRequest(createRequest(lyricsUrl), "GET", {}, [this, clipId](QNetworkReply* r2) {
+                enqueueRequest(createAuthenticatedRequest(lyricsUrl), "GET", {}, [this, clipId](QNetworkReply* r2) {
                     r2->deleteLater();
                     if (r2->error() == QNetworkReply::NoError) {
-                        alignedLyricsFetched.emitSignal(clipId, r2->readAll().toStdString());
+                        QByteArray data = r2->readAll();
+                        LOG_INFO("SunoClient: Received fallback lyrics data ({} bytes)", data.size());
+                        alignedLyricsFetched.emitSignal(clipId, data.toStdString());
+                    } else {
+                        LOG_ERROR("SunoClient: Fallback lyrics fetch failed: {}", r2->errorString().toStdString());
                     }
                 });
+            } else {
+                LOG_ERROR("SunoClient: Aligned lyrics fetch failed: {} (Status: {})", 
+                          reply->errorString().toStdString(), status);
             }
         });
     };

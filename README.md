@@ -37,6 +37,7 @@ Key features:
 *   **Overlay Engine:** Integrate text overlays for wisdom or memes.
 *   **Built-in Video Recorder:** Capture your epic visual journeys directly within the app.
 *   **Suno AI Integration:** Browse, download, and visualize your Suno AI clips.
+*   **Karaoke Mode:** Time-synced lyrics so you can belt it out like a Chad.
 *   **Configurable to the Max:** Tweak every knob, slide every slider.
 
 ---
@@ -44,6 +45,7 @@ Key features:
 ## 🛠️ Get That Vibe: Building from Source
 
 You use Arch, BTW. So building from source is practically foreplay.
+
 
 ### Prerequisites
 

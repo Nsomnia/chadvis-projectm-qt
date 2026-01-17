@@ -17,6 +17,18 @@ namespace vc {
 
 namespace fs = std::filesystem;
 
+// Karaoke configuration
+struct KaraokeConfig {
+    bool enabled{true};
+    std::string fontFamily{"Arial"};
+    u32 fontSize{32};
+    bool bold{true};
+    Color activeColor{Color::yellow()};
+    Color inactiveColor{Color::white()};
+    Color shadowColor{Color::black()};
+    f32 yPosition{0.85f}; // Normalized 0-1
+};
+
 // Text overlay element configuration
 struct OverlayElementConfig {
     std::string id;

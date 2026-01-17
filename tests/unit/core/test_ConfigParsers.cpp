@@ -48,6 +48,7 @@ private slots:
         UIConfig ui;
         KeyboardConfig keyboard;
         SunoConfig suno;
+        KaraokeConfig karaoke;
         std::vector<OverlayElementConfig> overlays;
 
         auto tbl = ConfigParsers::serialize(audio,
@@ -56,6 +57,7 @@ private slots:
                                             ui,
                                             keyboard,
                                             suno,
+                                            karaoke,
                                             overlays,
                                             false);
 

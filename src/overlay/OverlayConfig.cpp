@@ -25,6 +25,10 @@ void OverlayConfig::loadFromAppConfig() {
     for (const auto& elemConfig : CONFIG.overlayElements()) {
         addElement(elemConfig);
     }
+
+    // Load Karaoke Config
+    // Ideally this would be in CONFIG but for now we'll use defaults if missing
+    // or we could add a new section to Config.hpp
     
     LOG_DEBUG("Loaded {} overlay elements from config", elements_.size());
 }

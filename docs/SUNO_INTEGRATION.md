@@ -36,6 +36,17 @@ The database includes an automatic migration mechanism in `init()`. It checks fo
 - **Status**: Stream/Complete status, Liked/Trashed/Public flags.
 - **Lyrics**: Raw JSON of word-level aligned lyrics.
 
+## Karaoke & Synced Lyrics
+
+The integration includes a sophisticated karaoke system:
+
+1.  **Alignment**: `SunoClient` fetches aligned lyrics (JSON with word-level timestamps) from Suno's API.
+2.  **Fallback**: If aligned lyrics are missing, `SunoLyrics::align` attempts to align the prompt text with the audio duration heuristically.
+3.  **Rendering**: 
+    *   **OverlayEngine**: Renders the lyrics on top of the visualizer for that immersive experience.
+    *   **KaraokeWidget**: A dedicated UI widget for viewing lyrics in a scrolling list, perfect for a second monitor setup.
+4.  **Customization**: Users can configure font, size, colors (active/inactive/shadow), and vertical position in the Settings dialog.
+
 ## Synchronization and UI
 
 - **Startup**: On application launch, `SunoController` loads all cached clips from the database immediately. `SunoBrowser` displays these cached clips on construction, providing instant access even offline.

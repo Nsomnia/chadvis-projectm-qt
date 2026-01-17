@@ -310,16 +310,63 @@ Result<void> Playlist::loadM3U(const fs::path& path) {
         return Result<void>::err("Failed to open file");
     }
 
+    bool wasShuffle = shuffle_;
+    shuffle_ = false;
+
     std::string line;
+    std::vector<PlaylistItem> newItems;
+    
     while (std::getline(file, line)) {
+        line.erase(0, line.find_first_not_of(" \t\r\n"));
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+
         if (line.empty() || line[0] == '#') continue;
 
+        PlaylistItem item;
         if (line.starts_with("http") || line.starts_with("https")) {
-            addUrl(line);
+            item.url = line;
+            item.isRemote = true;
+            item.metadata.title = line;
         } else {
             fs::path filePath(line);
-            addFile(filePath);
+            if (!filePath.is_absolute()) {
+                filePath = path.parent_path() / filePath;
+            }
+            
+            if (!fs::exists(filePath)) {
+                LOG_WARN("Playlist: File not found, skipping: {}", filePath.string());
+                continue;
+            }
+            
+            LOG_DEBUG("Playlist: Loading file: {}", filePath.string());
+            item.path = filePath;
+            
+            auto metaResult = MetadataReader::read(filePath);
+            if (metaResult) {
+                item.metadata = std::move(*metaResult);
+            } else {
+                item.metadata.title = filePath.stem().string();
+            }
+            
+            fs::path lrcPath = filePath;
+            lrcPath.replace_extension(".lrc");
+            if (fs::exists(lrcPath)) item.lyricsPath = lrcPath.string();
         }
+        newItems.push_back(std::move(item));
+    }
+
+
+    if (!newItems.empty()) {
+        items_.insert(items_.end(), std::make_move_iterator(newItems.begin()), 
+                                    std::make_move_iterator(newItems.end()));
+        
+        if (wasShuffle) {
+            shuffle_ = true;
+            regenerateShuffleOrder();
+        }
+        
+        changed.emitSignal();
+        LOG_INFO("Playlist: Loaded {} items from M3U", newItems.size());
     }
 
     return Result<void>::ok();

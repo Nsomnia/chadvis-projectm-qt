@@ -2,6 +2,7 @@
 #include <QFontMetrics>
 #include <QPainterPath>
 #include "core/Logger.hpp"
+#include "core/Config.hpp"
 
 namespace vc {
 
@@ -136,7 +137,9 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
     // Render Karaoke/Synced Lyrics
     {
         std::lock_guard lock(mutex_);
-        if (!alignedLyrics_.empty()) {
+        const auto& kConfig = CONFIG.karaoke();
+        
+        if (kConfig.enabled && !alignedLyrics_.empty()) {
             if (!alignedLyrics_.lines.empty()) {
                 // Render Line-by-Line with Word Highlighting
                 int activeLineIdx = -1;
@@ -150,13 +153,17 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
 
                 if (activeLineIdx != -1) {
                     const auto& line = alignedLyrics_.lines[activeLineIdx];
-                    painter.setFont(QFont("Arial", 32, QFont::Bold));
+                    
+                    QFont font(QString::fromStdString(kConfig.fontFamily));
+                    font.setPixelSize(kConfig.fontSize);
+                    font.setBold(kConfig.bold);
+                    painter.setFont(font);
                     
                     // Center the line
                     QFontMetrics fm(painter.font());
                     int textWidth = fm.horizontalAdvance(QString::fromStdString(line.text));
                     f32 currentX = (width - textWidth) / 2.0f;
-                    f32 centerY = height * 0.85f;
+                    f32 centerY = height * kConfig.yPosition;
 
                     // Draw words with highlighting
                     for (const auto& w : line.words) {
@@ -165,12 +172,16 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
                         QString wordText = QString::fromStdString(w.word + " ");
                         int wordWidth = fm.horizontalAdvance(wordText);
 
+                        QColor activeC(kConfig.activeColor.r, kConfig.activeColor.g, kConfig.activeColor.b, kConfig.activeColor.a);
+                        QColor inactiveC(kConfig.inactiveColor.r, kConfig.inactiveColor.g, kConfig.inactiveColor.b, kConfig.inactiveColor.a);
+                        QColor shadowC(kConfig.shadowColor.r, kConfig.shadowColor.g, kConfig.shadowColor.b, kConfig.shadowColor.a);
+
                         // Shadow
-                        painter.setPen(Qt::black);
+                        painter.setPen(shadowC);
                         painter.drawText(currentX + 2, centerY + 2, wordText);
                         
                         // Main Text
-                        painter.setPen(active ? Qt::yellow : Qt::white);
+                        painter.setPen(active ? activeC : inactiveC);
                         painter.drawText(currentX, centerY, wordText);
 
                         currentX += wordWidth;
@@ -192,19 +203,27 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
                     int end = std::min((int)alignedLyrics_.words.size() - 1,
                                        activeIdx + 5);
 
-                    painter.setFont(QFont("Arial", 28, QFont::Bold));
+                    QFont font(QString::fromStdString(kConfig.fontFamily));
+                    font.setPixelSize(kConfig.fontSize);
+                    font.setBold(kConfig.bold);
+                    painter.setFont(font);
+
                     f32 currentX = width * 0.1f;
-                    f32 centerY = height * 0.85f;
+                    f32 centerY = height * kConfig.yPosition;
 
                     for (int i = start; i <= end; ++i) {
                         const auto& w = alignedLyrics_.words[i];
                         bool active = (i == activeIdx);
 
-                        painter.setPen(Qt::black);
+                        QColor activeC(kConfig.activeColor.r, kConfig.activeColor.g, kConfig.activeColor.b, kConfig.activeColor.a);
+                        QColor inactiveC(kConfig.inactiveColor.r, kConfig.inactiveColor.g, kConfig.inactiveColor.b, kConfig.inactiveColor.a);
+                        QColor shadowC(kConfig.shadowColor.r, kConfig.shadowColor.g, kConfig.shadowColor.b, kConfig.shadowColor.a);
+
+                        painter.setPen(shadowC);
                         painter.drawText(currentX + 2,
                                          centerY + 2,
                                          QString::fromStdString(w.word));
-                        painter.setPen(active ? Qt::yellow : Qt::white);
+                        painter.setPen(active ? activeC : inactiveC);
                         painter.drawText(
                                 currentX, centerY, QString::fromStdString(w.word));
 

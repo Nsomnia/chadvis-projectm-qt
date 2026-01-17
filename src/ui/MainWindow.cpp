@@ -1,7 +1,9 @@
 #include "MainWindow.hpp"
 #include <QApplication>
 #include "OverlayEditor.hpp"
+#include "KaraokeWidget.hpp"
 #include "PlayerControls.hpp"
+
 #include "PlaylistView.hpp"
 #include "PresetBrowser.hpp"
 #include "RecordingControls.hpp"
@@ -107,6 +109,9 @@ void MainWindow::setupUI() {
     overlayEditor_ = new OverlayEditor();
     overlayEditor_->setOverlayEngine(overlayEngine_);
     rightTabs->addTab(overlayEditor_, "Overlay");
+
+    karaokeWidget_ = new KaraokeWidget(sunoController_.get(), audioEngine_, this);
+    rightTabs->addTab(karaokeWidget_, "Karaoke");
 
     auto* sunoBrowser = new suno::SunoBrowser(sunoController_.get(), this);
     rightTabs->addTab(sunoBrowser, "Suno");
