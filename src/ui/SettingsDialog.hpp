@@ -34,6 +34,9 @@ private:
     // General
     QCheckBox* debugCheck_{nullptr};
     QComboBox* themeCombo_{nullptr};
+    QCheckBox* showPlaylistCheck_{nullptr};
+    QCheckBox* showPresetsCheck_{nullptr};
+    QCheckBox* showDebugPanelCheck_{nullptr};
 
     // Audio
     QComboBox* audioDeviceCombo_{nullptr};
@@ -46,13 +49,18 @@ private:
     QSpinBox* vizFpsSpin_{nullptr};
     QDoubleSpinBox* beatSensitivitySpin_{nullptr};
     QSpinBox* presetDurationSpin_{nullptr};
+    QSpinBox* smoothPresetDurationSpin_{nullptr};
     QCheckBox* autoRotateCheck_{nullptr};
     QCheckBox* shufflePresetsCheck_{nullptr};
     QCheckBox* lowResourceCheck_{nullptr};
 
     // Recording
     QLineEdit* outputDirEdit_{nullptr};
+    QLineEdit* defaultFilenameEdit_{nullptr};
     QCheckBox* autoRecordCheck_{nullptr};
+    QCheckBox* recordEntireSongCheck_{nullptr};
+    QCheckBox* restartTrackOnRecordCheck_{nullptr};
+    QCheckBox* stopAtTrackEndCheck_{nullptr};
     QComboBox* containerCombo_{nullptr};
     QComboBox* videoCodecCombo_{nullptr};
     QSpinBox* crfSpin_{nullptr};
@@ -64,6 +72,7 @@ private:
     QLineEdit* sunoDownloadPathEdit_{nullptr};
     QCheckBox* sunoAutoDownloadCheck_{nullptr};
     QCheckBox* sunoSaveLyricsCheck_{nullptr};
+    QCheckBox* sunoEmbedMetadataCheck_{nullptr};
 };
 
 } // namespace vc

@@ -385,6 +385,28 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
         if (clip.model_name.empty())
             clip.model_name = meta["model_name"].toString().toStdString();
             
+        if (meta.contains("mv"))
+            clip.mv = meta["mv"].toString().toStdString();
+        
+        if (meta.contains("control_sliders")) {
+             QJsonObject sliders = meta["control_sliders"].toObject();
+             if (sliders.contains("weirdness_constraint"))
+                 clip.metadata.weirdness = sliders["weirdness_constraint"].toDouble();
+             if (sliders.contains("style_weight"))
+                 clip.metadata.style_weight = sliders["style_weight"].toDouble();
+        } else {
+             if (meta.contains("weirdness_constraint"))
+                 clip.metadata.weirdness = meta["weirdness_constraint"].toDouble();
+             if (meta.contains("style_weight"))
+                 clip.metadata.style_weight = meta["style_weight"].toDouble();
+        }
+        
+        if (meta.contains("make_instrumental")) {
+            QJsonValue val = meta["make_instrumental"];
+            if (val.isBool()) clip.metadata.make_instrumental = val.toBool();
+            else if (val.isString()) clip.metadata.make_instrumental = (val.toString() == "true");
+        }
+
         clip.display_name = obj["display_name"].toString().toStdString();
         clip.handle = obj["handle"].toString().toStdString();
         clip.is_liked = obj["is_liked"].toBool() || obj["is_liked"].toInt() != 0;

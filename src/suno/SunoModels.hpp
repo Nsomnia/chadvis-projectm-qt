@@ -19,6 +19,9 @@ struct SunoMetadata {
     std::string duration;
     bool refund_credits{false};
     bool stream{false};
+    double weirdness{0.0};
+    double style_weight{0.0};
+    bool make_instrumental{false};
 };
 
 struct SunoClip {
@@ -30,6 +33,7 @@ struct SunoClip {
     std::string image_large_url;
     std::string major_model_version; // "v3", "v3.5"
     std::string model_name; // "chirp-v3"
+    std::string mv;
     std::string display_name; // Artist name usually
     std::string handle; // User handle
     bool is_liked{false};

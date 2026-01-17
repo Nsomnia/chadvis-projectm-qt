@@ -1,4 +1,5 @@
 #include "SettingsDialog.hpp"
+#include "core/Application.hpp"
 #include "core/Config.hpp"
 
 #include <QFileDialog>
@@ -33,6 +34,15 @@ void SettingsDialog::setupUI() {
     themeCombo_ = new QComboBox();
     themeCombo_->addItems({"dark", "gruvbox", "nord"});
     generalLayout->addRow("Theme:", themeCombo_);
+
+    showPlaylistCheck_ = new QCheckBox("Show Playlist");
+    generalLayout->addRow("", showPlaylistCheck_);
+
+    showPresetsCheck_ = new QCheckBox("Show Presets Browser");
+    generalLayout->addRow("", showPresetsCheck_);
+
+    showDebugPanelCheck_ = new QCheckBox("Show Debug Panel");
+    generalLayout->addRow("", showDebugPanelCheck_);
 
     tabWidget_->addTab(generalTab, "General");
 
@@ -94,6 +104,11 @@ void SettingsDialog::setupUI() {
     presetDurationSpin_->setSuffix(" sec");
     vizLayout->addRow("Preset Duration:", presetDurationSpin_);
 
+    smoothPresetDurationSpin_ = new QSpinBox();
+    smoothPresetDurationSpin_->setRange(0, 30);
+    smoothPresetDurationSpin_->setSuffix(" sec");
+    vizLayout->addRow("Smooth Transition:", smoothPresetDurationSpin_);
+
     autoRotateCheck_ = new QCheckBox("Auto-rotate presets");
     vizLayout->addRow("", autoRotateCheck_);
 
@@ -124,8 +139,21 @@ void SettingsDialog::setupUI() {
     outDirLayout->addWidget(browseOutBtn);
     recLayout->addRow("Output Directory:", outDirLayout);
 
+    defaultFilenameEdit_ = new QLineEdit();
+    defaultFilenameEdit_->setPlaceholderText("chadvis-projectm-qt_{date}_{time}");
+    recLayout->addRow("Default Filename:", defaultFilenameEdit_);
+
     autoRecordCheck_ = new QCheckBox("Auto-record tracks (Automagical mode)");
     recLayout->addRow("", autoRecordCheck_);
+
+    recordEntireSongCheck_ = new QCheckBox("Record entire song only");
+    recLayout->addRow("", recordEntireSongCheck_);
+
+    restartTrackOnRecordCheck_ = new QCheckBox("Restart track when recording starts");
+    recLayout->addRow("", restartTrackOnRecordCheck_);
+
+    stopAtTrackEndCheck_ = new QCheckBox("Stop recording at track end");
+    recLayout->addRow("", stopAtTrackEndCheck_);
 
     containerCombo_ = new QComboBox();
     containerCombo_->addItems({"mp4", "mkv", "webm", "mov"});
@@ -191,6 +219,9 @@ void SettingsDialog::setupUI() {
     sunoSaveLyricsCheck_ = new QCheckBox("Save lyrics to database");
     sunoLayout->addRow("", sunoSaveLyricsCheck_);
 
+    sunoEmbedMetadataCheck_ = new QCheckBox("Embed metadata in files");
+    sunoLayout->addRow("", sunoEmbedMetadataCheck_);
+
     tabWidget_->addTab(sunoTab, "Suno");
 
     layout->addWidget(tabWidget_);
@@ -221,6 +252,9 @@ void SettingsDialog::setupUI() {
 void SettingsDialog::loadSettings() {
     debugCheck_->setChecked(CONFIG.debug());
     themeCombo_->setCurrentText(QString::fromStdString(CONFIG.ui().theme));
+    showPlaylistCheck_->setChecked(CONFIG.ui().showPlaylist);
+    showPresetsCheck_->setChecked(CONFIG.ui().showPresets);
+    showDebugPanelCheck_->setChecked(CONFIG.ui().showDebugPanel);
 
     audioDeviceCombo_->setCurrentText(
             QString::fromStdString(CONFIG.audio().device));
@@ -235,13 +269,18 @@ void SettingsDialog::loadSettings() {
     presetDurationSpin_->setValue(CONFIG.visualizer().presetDuration > 0
                                           ? CONFIG.visualizer().presetDuration
                                           : 30);
+    smoothPresetDurationSpin_->setValue(CONFIG.visualizer().smoothPresetDuration);
     autoRotateCheck_->setChecked(CONFIG.visualizer().presetDuration > 0);
     shufflePresetsCheck_->setChecked(CONFIG.visualizer().shufflePresets);
     lowResourceCheck_->setChecked(CONFIG.visualizer().lowResourceMode);
 
     outputDirEdit_->setText(QString::fromStdString(
             CONFIG.recording().outputDirectory.string()));
+    defaultFilenameEdit_->setText(QString::fromStdString(CONFIG.recording().defaultFilename));
     autoRecordCheck_->setChecked(CONFIG.recording().autoRecord);
+    recordEntireSongCheck_->setChecked(CONFIG.recording().recordEntireSong);
+    restartTrackOnRecordCheck_->setChecked(CONFIG.recording().restartTrackOnRecord);
+    stopAtTrackEndCheck_->setChecked(CONFIG.recording().stopAtTrackEnd);
     containerCombo_->setCurrentText(
             QString::fromStdString(CONFIG.recording().container));
     videoCodecCombo_->setCurrentText(
@@ -256,11 +295,15 @@ void SettingsDialog::loadSettings() {
             QString::fromStdString(CONFIG.suno().downloadPath.string()));
     sunoAutoDownloadCheck_->setChecked(CONFIG.suno().autoDownload);
     sunoSaveLyricsCheck_->setChecked(CONFIG.suno().saveLyrics);
+    sunoEmbedMetadataCheck_->setChecked(CONFIG.suno().embedMetadata);
 }
 
 void SettingsDialog::saveSettings() {
     CONFIG.setDebug(debugCheck_->isChecked());
     CONFIG.ui().theme = themeCombo_->currentText().toStdString();
+    CONFIG.ui().showPlaylist = showPlaylistCheck_->isChecked();
+    CONFIG.ui().showPresets = showPresetsCheck_->isChecked();
+    CONFIG.ui().showDebugPanel = showDebugPanelCheck_->isChecked();
 
     CONFIG.audio().device = audioDeviceCombo_->currentText().toStdString();
     CONFIG.audio().bufferSize = bufferSizeSpin_->value();
@@ -272,11 +315,16 @@ void SettingsDialog::saveSettings() {
     CONFIG.visualizer().beatSensitivity = beatSensitivitySpin_->value();
     CONFIG.visualizer().presetDuration =
             autoRotateCheck_->isChecked() ? presetDurationSpin_->value() : 0;
+    CONFIG.visualizer().smoothPresetDuration = smoothPresetDurationSpin_->value();
     CONFIG.visualizer().shufflePresets = shufflePresetsCheck_->isChecked();
     CONFIG.visualizer().lowResourceMode = lowResourceCheck_->isChecked();
 
     CONFIG.recording().outputDirectory = outputDirEdit_->text().toStdString();
+    CONFIG.recording().defaultFilename = defaultFilenameEdit_->text().toStdString();
     CONFIG.recording().autoRecord = autoRecordCheck_->isChecked();
+    CONFIG.recording().recordEntireSong = recordEntireSongCheck_->isChecked();
+    CONFIG.recording().restartTrackOnRecord = restartTrackOnRecordCheck_->isChecked();
+    CONFIG.recording().stopAtTrackEnd = stopAtTrackEndCheck_->isChecked();
     CONFIG.recording().container = containerCombo_->currentText().toStdString();
     CONFIG.recording().video.codec =
             videoCodecCombo_->currentText().toStdString();
@@ -289,8 +337,10 @@ void SettingsDialog::saveSettings() {
     CONFIG.suno().downloadPath = sunoDownloadPathEdit_->text().toStdString();
     CONFIG.suno().autoDownload = sunoAutoDownloadCheck_->isChecked();
     CONFIG.suno().saveLyrics = sunoSaveLyricsCheck_->isChecked();
+    CONFIG.suno().embedMetadata = sunoEmbedMetadataCheck_->isChecked();
 
     CONFIG.save(CONFIG.configPath());
+    APP->reloadTheme();
 }
 
 void SettingsDialog::accept() {

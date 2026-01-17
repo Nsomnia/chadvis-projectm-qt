@@ -183,6 +183,12 @@ void PresetBrowser::refresh() {
         presetList_->clear();
         return;
     }
+    
+    QString currentPath;
+    if (auto* item = presetList_->currentItem()) {
+        currentPath = item->data(Qt::UserRole).toString();
+    }
+
     updateCategories();
     std::vector<const PresetInfo*> presets;
     if (currentCategory_ == "__favorites__")
@@ -196,6 +202,17 @@ void PresetBrowser::refresh() {
     else
         presets = presetManager_->activePresets();
     populateList(presets);
+
+    if (!currentPath.isEmpty()) {
+        for (int i = 0; i < presetList_->count(); ++i) {
+            auto* item = presetList_->item(i);
+            if (item->data(Qt::UserRole).toString() == currentPath) {
+                presetList_->setCurrentItem(item);
+                onCurrentRowChanged(i);
+                break;
+            }
+        }
+    }
 }
 
 void PresetBrowser::scrollToCurrent() {
