@@ -50,6 +50,7 @@ void SunoBrowser::setupUI() {
     clipTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     clipTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     clipTable_->horizontalHeader()->setStretchLastSection(true);
+    clipTable_->setSortingEnabled(true);
     layout->addWidget(clipTable_);
 
     statusLabel_ = new QLabel("Arch Linux (btw)");

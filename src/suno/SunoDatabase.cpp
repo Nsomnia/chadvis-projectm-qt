@@ -197,6 +197,49 @@ Result<std::vector<SunoClip>> SunoDatabase::getAllClips() {
     return Result<std::vector<SunoClip>>::ok(clips);
 }
 
+Result<std::optional<SunoClip>> SunoDatabase::getClip(const std::string& id) {
+    if (!initialized_)
+        return Result<std::optional<SunoClip>>::err("Database not initialized");
+
+    QSqlQuery query(db_);
+    query.prepare("SELECT * FROM clips WHERE id = :id");
+    query.bindValue(":id", QString::fromStdString(id));
+
+    if (!query.exec()) {
+        return Result<std::optional<SunoClip>>::err("Failed to get clip: " +
+                                                    query.lastError().text().toStdString());
+    }
+
+    if (query.next()) {
+        SunoClip clip;
+        clip.id = query.value("id").toString().toStdString();
+        clip.title = query.value("title").toString().toStdString();
+        clip.audio_url = query.value("audio_url").toString().toStdString();
+        clip.video_url = query.value("video_url").toString().toStdString();
+        clip.image_url = query.value("image_url").toString().toStdString();
+        clip.image_large_url = query.value("image_large_url").toString().toStdString();
+        clip.model_name = query.value("model_name").toString().toStdString();
+        clip.major_model_version = query.value("major_model_version").toString().toStdString();
+        clip.display_name = query.value("display_name").toString().toStdString();
+        clip.handle = query.value("handle").toString().toStdString();
+        clip.is_liked = query.value("is_liked").toInt() != 0;
+        clip.is_trashed = query.value("is_trashed").toInt() != 0;
+        clip.is_public = query.value("is_public").toInt() != 0;
+        clip.status = query.value("status").toString().toStdString();
+        clip.created_at = query.value("created_at").toString().toStdString();
+        clip.metadata.prompt = query.value("prompt").toString().toStdString();
+        clip.metadata.tags = query.value("tags").toString().toStdString();
+        clip.metadata.lyrics = query.value("lyrics").toString().toStdString();
+        clip.metadata.type = query.value("type").toString().toStdString();
+        clip.metadata.duration = query.value("duration").toString().toStdString();
+        clip.metadata.error_message = query.value("error_message").toString().toStdString();
+        
+        return Result<std::optional<SunoClip>>::ok(clip);
+    }
+
+    return Result<std::optional<SunoClip>>::ok(std::nullopt);
+}
+
 Result<void> SunoDatabase::saveAlignedLyrics(
         const std::string& clipId, const std::string& alignedLyricsJson) {
     if (!initialized_)
@@ -236,7 +279,10 @@ bool SunoDatabase::hasLyrics(const std::string& clipId) const {
         return false;
 
     QSqlQuery query(db_);
-    query.prepare("SELECT COUNT(*) FROM clips WHERE id = :id AND (lyrics IS NOT NULL AND lyrics != '')");
+    query.prepare("SELECT COUNT(*) FROM clips WHERE id = :id AND ("
+                  "(lyrics IS NOT NULL AND lyrics != '') OR "
+                  "(aligned_lyrics_json IS NOT NULL AND aligned_lyrics_json != '')"
+                  ")");
     query.bindValue(":id", QString::fromStdString(clipId));
 
     if (query.exec() && query.next()) {
@@ -245,3 +291,5 @@ bool SunoDatabase::hasLyrics(const std::string& clipId) const {
 
     return false;
 }
+
+} // namespace vc::suno

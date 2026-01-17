@@ -5,6 +5,9 @@ zzz_repos-investigation/
 docs/suno_api_reference.md
 docs/SUNO_API_CPP_QT6_INTEGRATION_GUIDE.md
 
+# not used so far and using as a scratchpad for repos
+third_party/
+
 # Agent internal notes
 .agent/
 .backup_graveyard/
