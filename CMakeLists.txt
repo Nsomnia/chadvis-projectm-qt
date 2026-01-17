@@ -278,6 +278,8 @@ set(UI_SOURCES
     src/ui/SunoBrowser.cpp
     src/ui/SunoCookieDialog.hpp
     src/ui/SunoCookieDialog.cpp
+    src/ui/KaraokeWidget.hpp
+    src/ui/KaraokeWidget.cpp
     src/ui/PresetBrowser.hpp
     src/ui/PresetBrowser.cpp
     src/ui/RecordingControls.hpp

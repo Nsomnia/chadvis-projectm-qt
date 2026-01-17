@@ -24,9 +24,11 @@ class VisualizerPanel;
 class PresetBrowser;
 class RecordingControls;
 class OverlayEditor;
+class KaraokeWidget;
 
 class AudioController;
 class VisualizerController;
+
 class RecordingController;
 
 namespace suno {
@@ -106,6 +108,7 @@ private:
     PresetBrowser* presetBrowser_{nullptr};
     RecordingControls* recordingControls_{nullptr};
     OverlayEditor* overlayEditor_{nullptr};
+    KaraokeWidget* karaokeWidget_{nullptr};
 
     // Dock widgets
     QDockWidget* toolsDock_{nullptr};

@@ -15,6 +15,19 @@ SunoBrowser::SunoBrowser(SunoController* controller, QWidget* parent)
         QMetaObject::invokeMethod(this, [this, clips] { updateList(clips); });
     });
 
+    controller_->clipUpdated.connect([this](const auto& id) {
+        QMetaObject::invokeMethod(this, [this, id] { 
+            // Find row and update lyrics column
+            for (int i = 0; i < clipTable_->rowCount(); ++i) {
+                if (clipTable_->item(i, 0)->data(Qt::UserRole).toString().toStdString() == id) {
+                    QString lyricsText = controller_->hasLyrics(id) ? "✓ Yes" : "✗ No";
+                    clipTable_->setItem(i, 10, new QTableWidgetItem(lyricsText));
+                    break;
+                }
+            }
+        });
+    });
+
     controller_->statusMessage.connect([this](const auto& msg) {
         QMetaObject::invokeMethod(this, [this, msg] {
             statusLabel_->setText(QString::fromStdString(msg));

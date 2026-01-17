@@ -22,6 +22,7 @@ Result<void> ConfigLoader::load(Config& config, const fs::path& path) {
         ConfigParsers::parseUI(tbl, config.ui());
         ConfigParsers::parseKeyboard(tbl, config.keyboard());
         ConfigParsers::parseSuno(tbl, config.suno());
+        ConfigParsers::parseKaraoke(tbl, config.karaoke());
 
         config.markClean();
         LOG_INFO("Config loaded from: {}", path.string());
@@ -36,8 +37,10 @@ Result<void> ConfigLoader::loadDefault(Config& config) {
     auto configDir = file::configDir();
     auto defaultPath = configDir / "config.toml";
 
-    if (fs::exists(defaultPath))
+    if (fs::exists(defaultPath)) {
+        config.configPath_ = defaultPath;
         return load(config, defaultPath);
+    }
 
     fs::path systemDefault =
             "/usr/share/chadvis-projectm-qt/config/default.toml";
@@ -45,12 +48,15 @@ Result<void> ConfigLoader::loadDefault(Config& config) {
         file::ensureDir(configDir);
         std::error_code ec;
         fs::copy_file(systemDefault, defaultPath, ec);
-        if (!ec)
+        if (!ec) {
+            config.configPath_ = defaultPath;
             return load(config, defaultPath);
+        }
     }
 
     LOG_WARN("No config file found, using built-in defaults");
     config.visualizer().presetPath = file::presetsDir();
+    config.configPath_ = defaultPath;
     save(config, defaultPath);
     return Result<void>::ok();
 }
@@ -63,6 +69,7 @@ Result<void> ConfigLoader::save(const Config& config, const fs::path& path) {
                                             config.ui(),
                                             config.keyboard(),
                                             config.suno(),
+                                            config.karaoke(),
                                             config.overlayElements(),
                                             config.debug());
         fs::path tempPath = path;
@@ -74,8 +81,10 @@ Result<void> ConfigLoader::save(const Config& config, const fs::path& path) {
             file << tbl;
         }
         fs::rename(tempPath, path);
+        LOG_DEBUG("Config saved to: {}", path.string());
         return Result<void>::ok();
     } catch (const std::exception& e) {
+        LOG_ERROR("Failed to save config: {}", e.what());
         return Result<void>::err(std::string("Failed to save config: ") +
                                  e.what());
     }

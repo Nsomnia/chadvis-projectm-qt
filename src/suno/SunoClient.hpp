@@ -3,6 +3,7 @@
 // Handles authentication and data fetching
 
 #include "SunoModels.hpp"
+#include "SunoLyrics.hpp"
 #include "util/Result.hpp"
 #include "util/Signal.hpp"
 #include "util/Types.hpp"
@@ -86,5 +87,6 @@ private:
     const QString API_BASE = "https://studio-api.prod.suno.com/api";
     const QString CLERK_BASE = "https://clerk.suno.com/v1";
 };
+
 
 } // namespace vc::suno

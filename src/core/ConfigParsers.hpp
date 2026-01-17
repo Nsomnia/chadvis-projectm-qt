@@ -26,6 +26,7 @@ public:
     static void parseUI(const toml::table& tbl, UIConfig& cfg);
     static void parseKeyboard(const toml::table& tbl, KeyboardConfig& cfg);
     static void parseSuno(const toml::table& tbl, SunoConfig& cfg);
+    static void parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg);
 
     static toml::table serialize(
             const AudioConfig& audio,
@@ -34,6 +35,7 @@ public:
             const UIConfig& ui,
             const KeyboardConfig& keyboard,
             const SunoConfig& suno,
+            const KaraokeConfig& karaoke,
             const std::vector<OverlayElementConfig>& overlayElements,
             bool debug);
 };

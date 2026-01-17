@@ -4,6 +4,9 @@
 
 #include <string>
 #include <vector>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include "util/Types.hpp"
 
 namespace vc::suno {
@@ -35,6 +38,7 @@ struct AlignedLyrics {
 class LyricsAligner {
 public:
     static AlignedLyrics align(const std::string& prompt, const std::vector<AlignedWord>& words);
+    static std::vector<AlignedWord> parseJson(const QByteArray& json);
 };
 
 } // namespace vc::suno

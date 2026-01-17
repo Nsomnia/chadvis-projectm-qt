@@ -268,7 +268,10 @@ Result<std::string> SunoDatabase::getAlignedLyrics(const std::string& clipId) {
     query.bindValue(":id", QString::fromStdString(clipId));
 
     if (query.exec() && query.next()) {
-        return Result<std::string>::ok(query.value(0).toString().toStdString());
+        QString json = query.value(0).toString();
+        if (!json.isEmpty()) {
+            return Result<std::string>::ok(json.toStdString());
+        }
     }
 
     return Result<std::string>::err("Aligned lyrics not found");

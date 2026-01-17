@@ -70,6 +70,7 @@ struct Color {
     
     static constexpr Color white() { return {255, 255, 255, 255}; }
     static constexpr Color black() { return {0, 0, 0, 255}; }
+    static constexpr Color yellow() { return {255, 255, 0, 255}; }
     static constexpr Color transparent() { return {0, 0, 0, 0}; }
     
     static Color fromHex(std::string_view hex);

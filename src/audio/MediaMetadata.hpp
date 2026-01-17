@@ -19,6 +19,7 @@ struct MediaMetadata {
     u32 bitrate{0};         // kbps
     u32 sampleRate{0};      // Hz
     u32 channels{0};
+    std::string sunoClipId; // Optional: Link to Suno Clip
     std::optional<QPixmap> albumArt;
     
     // Formatted display strings

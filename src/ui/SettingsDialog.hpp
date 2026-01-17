@@ -6,11 +6,14 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QFontComboBox>
 #include <QDialog>
 #include <QDoubleSpinBox>
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QTabWidget>
+#include <QPushButton>
+#include <QColor>
 
 namespace vc {
 
@@ -73,6 +76,21 @@ private:
     QCheckBox* sunoAutoDownloadCheck_{nullptr};
     QCheckBox* sunoSaveLyricsCheck_{nullptr};
     QCheckBox* sunoEmbedMetadataCheck_{nullptr};
+
+    // Karaoke
+    QCheckBox* kEnabledCheck_{nullptr};
+    QFontComboBox* kFontCombo_{nullptr};
+    QSpinBox* kFontSizeSpin_{nullptr};
+    QCheckBox* kBoldCheck_{nullptr};
+    QDoubleSpinBox* kYPosSpin_{nullptr};
+    // We'll use buttons that launch QColorDialog for colors
+    QPushButton* kActiveColorBtn_{nullptr};
+    QPushButton* kInactiveColorBtn_{nullptr};
+    QPushButton* kShadowColorBtn_{nullptr};
+    
+    QColor kActiveColor_;
+    QColor kInactiveColor_;
+    QColor kShadowColor_;
 };
 
 } // namespace vc

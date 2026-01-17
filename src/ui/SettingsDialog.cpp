@@ -2,6 +2,7 @@
 #include "core/Application.hpp"
 #include "core/Config.hpp"
 
+#include <QColorDialog>
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -224,6 +225,55 @@ void SettingsDialog::setupUI() {
 
     tabWidget_->addTab(sunoTab, "Suno");
 
+    // === Karaoke Tab ===
+    auto* kTab = new QWidget();
+    auto* kLayout = new QFormLayout(kTab);
+
+    kEnabledCheck_ = new QCheckBox("Enable Karaoke Lyrics");
+    kLayout->addRow("Enabled:", kEnabledCheck_);
+
+    kFontCombo_ = new QFontComboBox();
+    kFontCombo_->setEditable(false);
+    kLayout->addRow("Font:", kFontCombo_);
+
+    kFontSizeSpin_ = new QSpinBox();
+    kFontSizeSpin_->setRange(8, 128);
+    kLayout->addRow("Font Size:", kFontSizeSpin_);
+
+    kBoldCheck_ = new QCheckBox("Bold Text");
+    kLayout->addRow("", kBoldCheck_);
+
+    kYPosSpin_ = new QDoubleSpinBox();
+    kYPosSpin_->setRange(0.0, 1.0);
+    kYPosSpin_->setSingleStep(0.05);
+    kLayout->addRow("Vertical Position (0-1):", kYPosSpin_);
+
+    auto setupColorBtn = [this](const QString& label, QPushButton*& btn, QColor& color, QFormLayout* layout) {
+        btn = new QPushButton();
+        btn->setFixedWidth(60);
+        
+        auto updateStyle = [&btn, &color]() {
+            btn->setStyleSheet(QString("background-color: %1; border: 1px solid gray;").arg(color.name()));
+        };
+        updateStyle();
+
+        connect(btn, &QPushButton::clicked, this, [this, &color, updateStyle]() {
+            QColor c = QColorDialog::getColor(color, this, "Select Color", QColorDialog::ShowAlphaChannel);
+            if (c.isValid()) {
+                color = c;
+                updateStyle();
+            }
+        });
+        
+        layout->addRow(label, btn);
+    };
+
+    setupColorBtn("Active Color:", kActiveColorBtn_, kActiveColor_, kLayout);
+    setupColorBtn("Inactive Color:", kInactiveColorBtn_, kInactiveColor_, kLayout);
+    setupColorBtn("Shadow Color:", kShadowColorBtn_, kShadowColor_, kLayout);
+
+    tabWidget_->addTab(kTab, "Karaoke");
+
     layout->addWidget(tabWidget_);
 
     // Dialog buttons
@@ -296,6 +346,22 @@ void SettingsDialog::loadSettings() {
     sunoAutoDownloadCheck_->setChecked(CONFIG.suno().autoDownload);
     sunoSaveLyricsCheck_->setChecked(CONFIG.suno().saveLyrics);
     sunoEmbedMetadataCheck_->setChecked(CONFIG.suno().embedMetadata);
+
+    const auto& k = CONFIG.karaoke();
+    kEnabledCheck_->setChecked(k.enabled);
+    kFontCombo_->setCurrentText(QString::fromStdString(k.fontFamily));
+    kFontSizeSpin_->setValue(k.fontSize);
+    kBoldCheck_->setChecked(k.bold);
+    kYPosSpin_->setValue(k.yPosition);
+    
+    kActiveColor_ = QColor(k.activeColor.r, k.activeColor.g, k.activeColor.b, k.activeColor.a);
+    kInactiveColor_ = QColor(k.inactiveColor.r, k.inactiveColor.g, k.inactiveColor.b, k.inactiveColor.a);
+    kShadowColor_ = QColor(k.shadowColor.r, k.shadowColor.g, k.shadowColor.b, k.shadowColor.a);
+    
+    // Update button styles
+    kActiveColorBtn_->setStyleSheet(QString("background-color: %1; border: 1px solid gray;").arg(kActiveColor_.name()));
+    kInactiveColorBtn_->setStyleSheet(QString("background-color: %1; border: 1px solid gray;").arg(kInactiveColor_.name()));
+    kShadowColorBtn_->setStyleSheet(QString("background-color: %1; border: 1px solid gray;").arg(kShadowColor_.name()));
 }
 
 void SettingsDialog::saveSettings() {
@@ -338,6 +404,17 @@ void SettingsDialog::saveSettings() {
     CONFIG.suno().autoDownload = sunoAutoDownloadCheck_->isChecked();
     CONFIG.suno().saveLyrics = sunoSaveLyricsCheck_->isChecked();
     CONFIG.suno().embedMetadata = sunoEmbedMetadataCheck_->isChecked();
+
+    CONFIG.karaoke().enabled = kEnabledCheck_->isChecked();
+    CONFIG.karaoke().fontFamily = kFontCombo_->currentText().toStdString();
+    CONFIG.karaoke().fontSize = kFontSizeSpin_->value();
+    CONFIG.karaoke().bold = kBoldCheck_->isChecked();
+    CONFIG.karaoke().yPosition = kYPosSpin_->value();
+    
+    auto toColor = [](const QColor& c) { return Color{static_cast<u8>(c.red()), static_cast<u8>(c.green()), static_cast<u8>(c.blue()), static_cast<u8>(c.alpha())}; };
+    CONFIG.karaoke().activeColor = toColor(kActiveColor_);
+    CONFIG.karaoke().inactiveColor = toColor(kInactiveColor_);
+    CONFIG.karaoke().shadowColor = toColor(kShadowColor_);
 
     CONFIG.save(CONFIG.configPath());
     APP->reloadTheme();
