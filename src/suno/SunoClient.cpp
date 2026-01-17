@@ -303,7 +303,7 @@ void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
         return;
 
     auto proceed = [this, clipId] {
-        QString url = QString("/gen/%1/aligned_lyrics/v2/")
+        QString url = QString("/gen/%1/aligned_lyrics/v2")
                               .arg(QString::fromStdString(clipId));
         enqueueRequest(createRequest(url), "GET", {}, [this, clipId](QNetworkReply* reply) {
             reply->deleteLater();
@@ -402,6 +402,14 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
         clip.metadata.prompt = meta["prompt"].toString().toStdString();
         clip.metadata.tags = meta["tags"].toString().toStdString();
         clip.metadata.lyrics = meta["lyrics"].toString().toStdString();
+        
+        if (clip.metadata.lyrics.empty()) {
+             std::string prompt = meta["prompt"].toString().toStdString();
+             if (!prompt.empty()) {
+                 clip.metadata.lyrics = prompt;
+             }
+        }
+
         clip.metadata.type = meta["type"].toString().toStdString();
         
         if (meta.contains("duration")) {

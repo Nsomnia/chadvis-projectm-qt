@@ -3,6 +3,7 @@
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "overlay/OverlayEngine.hpp"
+#include "suno/SunoLyrics.hpp"
 #include "ui/SunoCookieDialog.hpp"
 #include "util/FileUtils.hpp"
 
@@ -78,6 +79,15 @@ SunoController::SunoController(AudioEngine* audioEngine,
 SunoController::~SunoController() = default;
 
 void SunoController::refreshLibrary(int page) {
+    if (!client_->isAuthenticated()) {
+        if (!CONFIG.suno().cookie.empty()) {
+            client_->setCookie(CONFIG.suno().cookie);
+        }
+        if (!CONFIG.suno().token.empty()) {
+            client_->setToken(CONFIG.suno().token);
+        }
+    }
+
     if (!client_->isAuthenticated()) {
         showCookieDialog();
         return;
@@ -173,13 +183,11 @@ void SunoController::onAlignedLyricsFetched(const std::string& clipId,
     // Parse JSON
     QJsonDocument doc =
             QJsonDocument::fromJson(QByteArray::fromStdString(json));
-    if (doc.isArray() || (doc.isObject() && doc.object().contains("words"))) {
-        AlignedLyrics lyrics;
-        lyrics.songId = clipId;
+    if (doc.isArray() || (doc.isObject() && doc.object().contains("words")) || (doc.isObject() && doc.object().contains("aligned_words"))) {
+        std::vector<AlignedWord> words;
 
         QJsonArray arr =
                 doc.isArray() ? doc.array() : doc.object()["words"].toArray();
-        // In some versions it's "aligned_words"
         if (arr.isEmpty() && doc.isObject()) {
             arr = doc.object()["aligned_words"].toArray();
         }
@@ -191,8 +199,28 @@ void SunoController::onAlignedLyricsFetched(const std::string& clipId,
             w.start_s = obj["start_s"].toDouble(obj["start"].toDouble());
             w.end_s = obj["end_s"].toDouble(obj["end"].toDouble());
             w.score = obj["p_align"].toDouble(obj["score"].toDouble());
-            lyrics.words.push_back(w);
+            words.push_back(w);
         }
+
+        // Find prompt for alignment
+        std::string prompt;
+        for (const auto& clip : accumulatedClips_) {
+            if (clip.id == clipId) {
+                prompt = clip.metadata.prompt;
+                break;
+            }
+        }
+
+        if (prompt.empty()) {
+            // Try database
+            auto clipOpt = db_.getClip(clipId);
+            if (clipOpt.isOk() && clipOpt.value()) {
+                prompt = clipOpt.value()->metadata.prompt;
+            }
+        }
+
+        AlignedLyrics lyrics = LyricsAligner::align(prompt, words);
+        lyrics.songId = clipId;
         overlayEngine_->setAlignedLyrics(lyrics);
     }
 }

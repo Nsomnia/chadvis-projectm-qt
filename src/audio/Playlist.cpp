@@ -36,9 +36,7 @@ void Playlist::addFile(const fs::path& path) {
     
     // Check for matching LRC file (external lyrics with timing)
     fs::path lrcPath = path;
-    lrcPath.replace_extension(".mp3", ".lrc");
-    lrcPath.replace_extension(".m4a", ".lrc");
-    lrcPath.replace_extension(".wav", ".lrc");
+    lrcPath.replace_extension(".lrc");
     
     if (fs::exists(lrcPath)) {
         item.lyricsPath = lrcPath.string();

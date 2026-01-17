@@ -137,48 +137,82 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
     {
         std::lock_guard lock(mutex_);
         if (!alignedLyrics_.empty()) {
-            // Simple strategy: Find words around current playback time
-            // and render them at the bottom
-            std::vector<suno::AlignedWord> line;
-            // Group words into lines (arbitrary for now, or use [ \n ] if
-            // present) For now, let's just find the active word and show some
-            // words around it
-            int activeIdx = -1;
-            for (int i = 0; i < (int)alignedLyrics_.words.size(); ++i) {
-                if (playbackTime_ >= alignedLyrics_.words[i].start_s &&
-                    playbackTime_ <= alignedLyrics_.words[i].end_s) {
-                    activeIdx = i;
-                    break;
+            if (!alignedLyrics_.lines.empty()) {
+                // Render Line-by-Line with Word Highlighting
+                int activeLineIdx = -1;
+                for (int i = 0; i < (int)alignedLyrics_.lines.size(); ++i) {
+                    if (playbackTime_ >= alignedLyrics_.lines[i].start_s &&
+                        playbackTime_ <= alignedLyrics_.lines[i].end_s) {
+                        activeLineIdx = i;
+                        break;
+                    }
                 }
-            }
 
-            if (activeIdx != -1) {
-                // Find start of "line" - search backwards for \n or just 10
-                // words
-                int start = std::max(0, activeIdx - 5);
-                int end = std::min((int)alignedLyrics_.words.size() - 1,
-                                   activeIdx + 5);
+                if (activeLineIdx != -1) {
+                    const auto& line = alignedLyrics_.lines[activeLineIdx];
+                    painter.setFont(QFont("Arial", 32, QFont::Bold));
+                    
+                    // Center the line
+                    QFontMetrics fm(painter.font());
+                    int textWidth = fm.horizontalAdvance(QString::fromStdString(line.text));
+                    f32 currentX = (width - textWidth) / 2.0f;
+                    f32 centerY = height * 0.85f;
 
-                painter.setFont(QFont("Arial", 28, QFont::Bold));
-                f32 currentX = width * 0.1f;
-                f32 centerY = height * 0.85f;
+                    // Draw words with highlighting
+                    for (const auto& w : line.words) {
+                        bool active = (playbackTime_ >= w.start_s && playbackTime_ <= w.end_s);
+                        
+                        QString wordText = QString::fromStdString(w.word + " ");
+                        int wordWidth = fm.horizontalAdvance(wordText);
 
-                for (int i = start; i <= end; ++i) {
-                    const auto& w = alignedLyrics_.words[i];
-                    bool active = (i == activeIdx);
+                        // Shadow
+                        painter.setPen(Qt::black);
+                        painter.drawText(currentX + 2, centerY + 2, wordText);
+                        
+                        // Main Text
+                        painter.setPen(active ? Qt::yellow : Qt::white);
+                        painter.drawText(currentX, centerY, wordText);
 
-                    painter.setPen(Qt::black);
-                    painter.drawText(currentX + 2,
-                                     centerY + 2,
-                                     QString::fromStdString(w.word));
-                    painter.setPen(active ? Qt::yellow : Qt::white);
-                    painter.drawText(
-                            currentX, centerY, QString::fromStdString(w.word));
+                        currentX += wordWidth;
+                    }
+                }
+            } else {
+                // Fallback: Simple strategy: Find words around current playback time
+                int activeIdx = -1;
+                for (int i = 0; i < (int)alignedLyrics_.words.size(); ++i) {
+                    if (playbackTime_ >= alignedLyrics_.words[i].start_s &&
+                        playbackTime_ <= alignedLyrics_.words[i].end_s) {
+                        activeIdx = i;
+                        break;
+                    }
+                }
 
-                    currentX +=
-                            QFontMetrics(painter.font())
-                                    .horizontalAdvance(QString::fromStdString(
-                                            w.word + " "));
+                if (activeIdx != -1) {
+                    int start = std::max(0, activeIdx - 5);
+                    int end = std::min((int)alignedLyrics_.words.size() - 1,
+                                       activeIdx + 5);
+
+                    painter.setFont(QFont("Arial", 28, QFont::Bold));
+                    f32 currentX = width * 0.1f;
+                    f32 centerY = height * 0.85f;
+
+                    for (int i = start; i <= end; ++i) {
+                        const auto& w = alignedLyrics_.words[i];
+                        bool active = (i == activeIdx);
+
+                        painter.setPen(Qt::black);
+                        painter.drawText(currentX + 2,
+                                         centerY + 2,
+                                         QString::fromStdString(w.word));
+                        painter.setPen(active ? Qt::yellow : Qt::white);
+                        painter.drawText(
+                                currentX, centerY, QString::fromStdString(w.word));
+
+                        currentX +=
+                                QFontMetrics(painter.font())
+                                        .horizontalAdvance(QString::fromStdString(
+                                                w.word + " "));
+                    }
                 }
             }
         }
