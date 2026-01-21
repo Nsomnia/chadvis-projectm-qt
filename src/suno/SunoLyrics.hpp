@@ -39,6 +39,7 @@ class LyricsAligner {
 public:
     static AlignedLyrics align(const std::string& prompt, const std::vector<AlignedWord>& words);
     static std::vector<AlignedWord> parseJson(const QByteArray& json, f32 duration = 0.0f);
+    static std::vector<AlignedWord> estimateTimings(const std::string& text, f32 duration);
     static AlignedLyrics parseLrc(const std::string& content);
     static AlignedLyrics parseSrt(const std::string& content);
 };

@@ -69,6 +69,18 @@ Result<MediaMetadata> MetadataReader::read(const fs::path& path) {
         meta.genre = tag->genre().to8Bit(true);
         meta.year = tag->year();
         meta.trackNumber = tag->track();
+        
+        std::string comment = tag->comment().to8Bit(true);
+        if (comment.find("made by suno") != std::string::npos) {
+            size_t idPos = comment.find("id=");
+            if (idPos != std::string::npos) {
+                meta.sunoClipId = comment.substr(idPos + 3);
+                size_t endPos = meta.sunoClipId.find_first_of("; \r\n");
+                if (endPos != std::string::npos) {
+                    meta.sunoClipId = meta.sunoClipId.substr(0, endPos);
+                }
+            }
+        }
     }
     
     if (file.audioProperties()) {

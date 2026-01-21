@@ -548,7 +548,21 @@ void SunoController::onError(const std::string& message) {
 }
 
 void SunoController::downloadAndPlay(const SunoClip& clip) {
-    if (clip.audio_url.empty()) return;
+    if (clip.id.empty()) return;
+
+    if (clip.audio_url.empty()) {
+        LOG_INFO("SunoController: Resolving clip details for ID {}", clip.id);
+        
+        SunoClip resolvedClip = clip;
+        resolvedClip.audio_url = "https://cdn1.suno.ai/" + clip.id + ".mp3";
+        resolvedClip.title = clip.id;
+        
+        LOG_INFO("SunoController: Queueing lyrics fetch for resolved ID {}", clip.id);
+        client_->fetchAlignedLyrics(clip.id);
+        
+        downloadAudio(resolvedClip);
+        return;
+    }
 
     // Sanitize filename
     std::string safeTitle = clip.title;
@@ -617,7 +631,12 @@ vc::Result<AlignedLyrics> SunoController::getLyrics(const std::string& clipId) {
     auto words = LyricsAligner::parseJson(QByteArray::fromStdString(json), duration);
     
     if (words.empty()) {
-         return vc::Result<AlignedLyrics>::err("Failed to parse words from JSON");
+         LOG_WARN("SunoController: JSON parsed empty/invalid. Falling back to estimated timings from prompt.");
+         words = LyricsAligner::estimateTimings(prompt, duration);
+    }
+
+    if (words.empty()) {
+         return vc::Result<AlignedLyrics>::err("Failed to parse words from JSON and fallback failed");
     }
 
     AlignedLyrics lyrics = LyricsAligner::align(prompt, words);
@@ -698,17 +717,35 @@ void SunoController::onTrackChanged() {
     }
 
     std::string clipId;
-    static const std::regex uuidRegex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", std::regex::icase);
-    std::smatch match;
+    
+    if (!item->metadata.sunoClipId.empty()) {
+        clipId = item->metadata.sunoClipId;
+    } 
+    else {
+        static const std::regex uuidRegex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", std::regex::icase);
+        std::smatch match;
 
-    if (item->isRemote) {
-        if (std::regex_search(item->url, match, uuidRegex)) {
-            clipId = match.str();
+        if (item->isRemote) {
+            if (std::regex_search(item->url, match, uuidRegex)) {
+                clipId = match.str();
+            }
+        } else {
+            std::string filename = item->path.filename().string();
+            if (std::regex_search(filename, match, uuidRegex)) {
+                clipId = match.str();
+            }
         }
-    } else {
-        std::string filename = item->path.filename().string();
-        if (std::regex_search(filename, match, uuidRegex)) {
-            clipId = match.str();
+    }
+    
+    if (clipId.empty()) {
+        std::string currentTitle = item->title();
+        if (!currentTitle.empty()) {
+            for (const auto& clip : accumulatedClips_) {
+                if (clip.title == currentTitle) {
+                    clipId = clip.id;
+                    break;
+                }
+            }
         }
     }
 

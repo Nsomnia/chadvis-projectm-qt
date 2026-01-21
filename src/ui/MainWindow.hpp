@@ -60,6 +60,10 @@ public:
         return overlayEngine_;
     }
 
+    suno::SunoController* sunoController() {
+        return sunoController_.get();
+    }
+
     void startRecording(const fs::path& outputPath = {});
     void stopRecording();
     void selectPreset(const std::string& name);

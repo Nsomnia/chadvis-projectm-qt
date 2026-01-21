@@ -9,6 +9,8 @@
 #include "util/FileUtils.hpp"
 #include "util/GLIncludes.hpp"
 #include "visualizer/RatingManager.hpp"
+#include "ui/controllers/SunoController.hpp"
+#include "suno/SunoModels.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -80,6 +82,12 @@ Result<AppOptions> Application::parseArgs() {
                         "--test-lyrics requires a path argument");
             }
             opts.testLyricsFile = fs::path(argv_[++i]);
+        } else if (arg == "--suno-id") {
+            if (i + 1 >= argc_) {
+                return Result<AppOptions>::err(
+                        "--suno-id requires a UUID argument");
+            }
+            opts.sunoId = argv_[++i];
         } else if (arg[0] != '-') {
             // Positional argument - input file
             opts.inputFiles.push_back(fs::path(arg));
@@ -216,6 +224,20 @@ Result<void> Application::init(const AppOptions& opts) {
             &Application::aboutToQuit);
 
     LOG_INFO("Initialization complete. Let's get this bread.");
+
+    if (opts.sunoId && !opts.headless && mainWindow_) {
+        LOG_INFO("Application: Fetching song ID {}", *opts.sunoId);
+        auto* controller = mainWindow_->sunoController();
+        if (controller) {
+            suno::SunoClip clip;
+            clip.id = *opts.sunoId;
+            clip.is_public = true;
+            controller->downloadAndPlay(clip);
+        } else {
+            LOG_ERROR("Application: Suno controller not available for --suno-id");
+        }
+    }
+
     return Result<void>::ok();
 }
 
@@ -342,6 +364,7 @@ Options:
    -p, --preset <name>     Start with specific visualizer preset
    --default-preset        Use projectM's default visualizer (no preset)
    --test-lyrics <path>    Test lyric rendering with specific SRT/LRC file
+   --suno-id <uuid>        Fetch and play a specific Suno song by ID
    -r, --record            Start recording immediately
    -o, --output <path>     Output file for recording
    --headless              Run without GUI (for batch processing)
