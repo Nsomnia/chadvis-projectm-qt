@@ -74,11 +74,6 @@ void VisualizerRenderer::renderFrame(u32 w, u32 h) {
     u32 renderW = recording_ ? recordWidth_ : w;
     u32 renderH = recording_ ? recordHeight_ : h;
 
-    if (CONFIG.visualizer().lowResourceMode && !recording_) {
-        renderW = std::max(160u, w / 2);
-        renderH = std::max(120u, h / 2);
-    }
-
     {
         std::lock_guard lock(audioMutex_);
         if (!audioQueue_.empty()) {
@@ -94,7 +89,7 @@ void VisualizerRenderer::renderFrame(u32 w, u32 h) {
         }
     }
 
-    bool useFBO = recording_ || CONFIG.visualizer().lowResourceMode;
+    bool useFBO = recording_;
 
     if (useFBO) {
         if (renderTarget_.width() != renderW ||

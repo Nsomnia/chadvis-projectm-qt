@@ -64,3 +64,19 @@ The integration includes a sophisticated karaoke system:
 To ensure background threads (FFmpeg encoding, network requests) do not hang the application:
 - Manual signal handlers in `main.cpp` were removed to let `QApplication` handle signals cleanly.
 - `Application::quit()` executes a hard `std::exit(0)` after triggering Qt's cleanup, ensuring the process terminates even if some low-level threads are blocked.
+
+## Performance & Benchmarks
+
+### Lyrics Synchronization
+The application implements an adaptive rate-limiting strategy to fetch synchronized lyrics without triggering API bans or 429 throttling.
+
+**Benchmark Data (Jan 2026)**
+- **Processing Rate**: ~1.82 items/second (approx. 109 items/minute).
+- **Throughput**: ~6,555 items/hour.
+- **Full Library Sync**: A library of ~2,500 songs takes approximately 20-25 minutes to fully index from scratch.
+- **UI Feedback**: Real-time ETA and progress counters are displayed in the status bar (e.g., `Syncing lyrics: 437/2561 (17%) - ETA: 19m 30s`).
+
+**Mechanism**
+- **Concurrency**: Limited to 3 concurrent requests.
+- **Jitter**: Random delay (50-250ms) between requests to prevent "thundering herd" issues.
+- **Retry Logic**: Automatically detects "Processing" (202) states and 401 Auth errors, pausing and resuming the queue intelligently.

@@ -30,6 +30,13 @@ public:
 
     static std::shared_ptr<spdlog::logger>& get();
 
+    // Convenience method to set log level at runtime
+    static void setLevel(bool debug) {
+        if (logger_) {
+            logger_->set_level(debug ? spdlog::level::debug : spdlog::level::info);
+        }
+    }
+
     // Convenience macros below
 private:
     static std::shared_ptr<spdlog::logger> logger_;

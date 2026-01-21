@@ -109,14 +109,23 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
 
     QSqlQuery query(db_);
     query.prepare(
-            "INSERT OR REPLACE INTO clips (id, title, audio_url, video_url, "
+            "INSERT INTO clips (id, title, audio_url, video_url, "
             "image_url, image_large_url, model_name, major_model_version, "
             "display_name, handle, is_liked, is_trashed, is_public, "
             "status, created_at, prompt, tags, lyrics, type, duration, error_message) "
             "VALUES (:id, :title, :audio_url, :video_url, :image_url, "
             ":image_large_url, :model_name, :major_model_version, :display_name, "
             ":handle, :is_liked, :is_trashed, :is_public, :status, :created_at, "
-            ":prompt, :tags, :lyrics, :type, :duration, :error_message)");
+            ":prompt, :tags, :lyrics, :type, :duration, :error_message) "
+            "ON CONFLICT(id) DO UPDATE SET "
+            "title=excluded.title, audio_url=excluded.audio_url, video_url=excluded.video_url, "
+            "image_url=excluded.image_url, image_large_url=excluded.image_large_url, "
+            "model_name=excluded.model_name, major_model_version=excluded.major_model_version, "
+            "display_name=excluded.display_name, handle=excluded.handle, "
+            "is_liked=excluded.is_liked, is_trashed=excluded.is_trashed, is_public=excluded.is_public, "
+            "status=excluded.status, created_at=excluded.created_at, "
+            "prompt=excluded.prompt, tags=excluded.tags, lyrics=excluded.lyrics, "
+            "type=excluded.type, duration=excluded.duration, error_message=excluded.error_message");
 
     query.bindValue(":id", QString::fromStdString(clip.id));
     query.bindValue(":title", QString::fromStdString(clip.title));

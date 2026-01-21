@@ -66,6 +66,37 @@ bool FFmpegAudioSource::loadFile(const std::string& path) {
         cleanup();
         return false;
     }
+
+    std::string title, artist;
+    if (AVDictionaryEntry* t = av_dict_get(d->formatCtx->metadata, "title", nullptr, 0))
+        title = t->value;
+    if (AVDictionaryEntry* a = av_dict_get(d->formatCtx->metadata, "artist", nullptr, 0))
+        artist = a->value;
+
+    if (title.empty() || title == "Unknown Title") {
+        bool isSuno = false;
+        if (AVDictionaryEntry* c = av_dict_get(d->formatCtx->metadata, "comment", nullptr, 0)) {
+            std::string comment = c->value;
+            if (comment.find("suno") != std::string::npos) isSuno = true;
+        }
+        
+        fs::path p(path);
+        std::string filename = p.stem().string();
+        
+        if (isSuno || filename.length() > 36) {
+             title = filename;
+        }
+    }
+    
+    if (artist.empty()) {
+         if (AVDictionaryEntry* c = av_dict_get(d->formatCtx->metadata, "comment", nullptr, 0)) {
+             if (std::string(c->value).find("suno") != std::string::npos) {
+                 artist = "Suno AI";
+             }
+         }
+    }
+    
+    LOG_INFO("Metadata extracted - Title: {}, Artist: {}", title, artist);
     
     // Find audio stream
     d->audioStreamIndex = -1;

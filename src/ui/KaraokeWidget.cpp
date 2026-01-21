@@ -92,7 +92,16 @@ void KaraokeWidget::paintEvent(QPaintEvent* event) {
     if (currentLyrics_.empty()) {
         painter.setPen(Qt::gray);
         painter.drawText(rect(), Qt::AlignCenter, "No synchronized lyrics");
+        // Debug: why is it empty?
+        // LOG_DEBUG("KaraokeWidget: Painting empty state. Lyrics empty? {}", currentLyrics_.empty());
         return;
+    }
+
+    // Debug logging for paint
+    static int paintDebug = 0;
+    if (paintDebug++ % 60 == 0) {
+        LOG_DEBUG("KaraokeWidget: Painting lyrics. Lines: {}, CurrentTime: {:.2f}", 
+                  currentLyrics_.lines.size(), currentTime_);
     }
 
     drawLyrics(painter);

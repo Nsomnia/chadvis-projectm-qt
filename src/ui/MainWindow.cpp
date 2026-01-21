@@ -58,6 +58,54 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     sunoController_ = std::make_unique<suno::SunoController>(
             audioEngine_, overlayEngine_, this);
 
+    // Force debug lyrics if configured
+    if (CONFIG.suno().debugLyrics && !CONFIG.suno().debugLyricsFile.empty()) {
+        fs::path p = CONFIG.suno().debugLyricsFile;
+        // Let's read the file and try to parse it.
+        auto contentRes = file::readText(p);
+        if (contentRes.isOk()) {
+             std::string content = contentRes.value();
+             std::string ext = p.extension().string();
+             // Lowercase extension
+             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+             
+             suno::AlignedLyrics lyrics;
+             
+             if (ext == ".json") {
+                 auto words = suno::LyricsAligner::parseJson(QByteArray::fromStdString(content));
+                 if (!words.empty()) {
+                     lyrics.words = words;
+                     // Fake lines for JSON if not fully structured? 
+                     // Actually LyricsAligner::align creates lines, but we need prompt.
+                     // For pure word-list JSON, we might miss line structure.
+                     // But let's assume it works or is adequate for now.
+                     // If it's full suno response, it needs alignment.
+                     // For simple debugging, let's just push words.
+                     // Better: Use a fake prompt "word word word..." to auto-align?
+                     std::string fakePrompt;
+                     for(const auto& w : words) fakePrompt += w.word + " ";
+                     lyrics = suno::LyricsAligner::align(fakePrompt, words);
+                 }
+             } else if (ext == ".srt") {
+                 lyrics = suno::LyricsAligner::parseSrt(content);
+             } else if (ext == ".lrc") {
+                 lyrics = suno::LyricsAligner::parseLrc(content);
+             } else {
+                 LOG_WARN("Unknown debug lyrics extension '{}', trying JSON", ext);
+                 auto words = suno::LyricsAligner::parseJson(QByteArray::fromStdString(content));
+                 std::string fakePrompt;
+                 for(const auto& w : words) fakePrompt += w.word + " ";
+                 lyrics = suno::LyricsAligner::align(fakePrompt, words);
+             }
+
+             if (!lyrics.empty()) {
+                 sunoController_->setDebugLyrics(lyrics);
+             } else {
+                 LOG_ERROR("Failed to parse debug lyrics from {}", p.string());
+             }
+        }
+    }
+
     setupUI();
     setupMenuBar();
 
@@ -258,6 +306,10 @@ void MainWindow::setupConnections() {
 
     audioEngine_->positionChanged.connect([this](Duration pos) {
         QMetaObject::invokeMethod(this, [this, pos] {
+            // Debug playback time updates
+            // static int logCounter = 0;
+            // if (logCounter++ % 60 == 0) LOG_DEBUG("MainWindow: updatePlaybackTime {}", static_cast<f32>(pos.count()) / 1000.0f);
+            
             overlayEngine_->updatePlaybackTime(static_cast<f32>(pos.count()) /
                                                1000.0f);
         });

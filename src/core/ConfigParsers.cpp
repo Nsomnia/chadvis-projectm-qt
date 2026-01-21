@@ -55,18 +55,22 @@ void ConfigParsers::parseVisualizer(const toml::table& tbl,
                            "preset_path",
                            std::string("/usr/share/projectM/presets"));
         cfg.presetPath = expandPath(pathStr);
-        cfg.width = std::clamp(get(*viz, "width", 1280u), 320u, 7680u);
-        cfg.height = std::clamp(get(*viz, "height", 720u), 200u, 4320u);
+        cfg.width = std::clamp(get(*viz, "width", 1280u), 160u, 7680u);
+        cfg.height = std::clamp(get(*viz, "height", 720u), 120u, 4320u);
         cfg.fps = std::clamp(get(*viz, "fps", 30u), 10u, 240u);
         cfg.beatSensitivity =
                 std::clamp(get(*viz, "beat_sensitivity", 1.0f), 0.1f, 10.0f);
         cfg.presetDuration = get(*viz, "preset_duration", 30u);
         cfg.smoothPresetDuration =
                 std::clamp(get(*viz, "smooth_preset_duration", 5u), 0u, 30u);
+        cfg.hardCutSensitivity =
+                std::clamp(get(*viz, "hard_cut_sensitivity", 1.0f), 0.1f, 10.0f);
+        cfg.aspectCorrection = get(*viz, "aspect_correction", true);
         cfg.shufflePresets = get(*viz, "shuffle_presets", true);
         cfg.forcePreset = get(*viz, "force_preset", std::string());
         cfg.useDefaultPreset = get(*viz, "use_default_preset", false);
-        cfg.lowResourceMode = get(*viz, "low_resource_mode", false);
+        cfg.meshX = std::clamp(get(*viz, "mesh_x", 32u), 8u, 512u);
+        cfg.meshY = std::clamp(get(*viz, "mesh_y", 24u), 8u, 512u);
 
         if (auto paths = (*viz)["texture_paths"].as_array()) {
             cfg.texturePaths.clear();
@@ -102,10 +106,10 @@ void ConfigParsers::parseRecording(const toml::table& tbl,
             cfg.video.pixelFormat =
                     get(*video, "pixel_format", std::string("yuv420p"));
             cfg.video.width =
-                    (std::clamp(get(*video, "width", 1280u), 320u, 7680u) + 1) &
+                    (std::clamp(get(*video, "width", 1280u), 160u, 7680u) + 1) &
                     ~1;
             cfg.video.height =
-                    (std::clamp(get(*video, "height", 720u), 200u, 4320u) + 1) &
+                    (std::clamp(get(*video, "height", 720u), 120u, 4320u) + 1) &
                     ~1;
             cfg.video.fps = std::clamp(get(*video, "fps", 30u), 10u, 120u);
         }
@@ -223,10 +227,13 @@ toml::table ConfigParsers::serialize(
             {"beat_sensitivity", (double)visualizer.beatSensitivity},
             {"preset_duration", (i64)visualizer.presetDuration},
             {"smooth_preset_duration", (i64)visualizer.smoothPresetDuration},
+            {"hard_cut_sensitivity", (double)visualizer.hardCutSensitivity},
+            {"aspect_correction", visualizer.aspectCorrection},
             {"shuffle_presets", visualizer.shufflePresets},
             {"force_preset", visualizer.forcePreset},
             {"use_default_preset", visualizer.useDefaultPreset},
-            {"low_resource_mode", visualizer.lowResourceMode}};
+            {"mesh_x", (i64)visualizer.meshX},
+            {"mesh_y", (i64)visualizer.meshY}};
     toml::array pathsArr;
     for (const auto& p : visualizer.texturePaths)
         pathsArr.push_back(p.string());

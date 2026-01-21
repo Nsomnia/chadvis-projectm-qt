@@ -21,7 +21,20 @@ SunoBrowser::SunoBrowser(SunoController* controller, QWidget* parent)
             for (int i = 0; i < clipTable_->rowCount(); ++i) {
                 if (clipTable_->item(i, 0)->data(Qt::UserRole).toString().toStdString() == id) {
                     QString lyricsText = controller_->hasLyrics(id) ? "✓ Yes" : "✗ No";
-                    clipTable_->setItem(i, 10, new QTableWidgetItem(lyricsText));
+                    
+                    if (controller_->hasLyrics(id)) {
+                        auto res = controller_->getLyrics(id);
+                        if (res.isOk() && !res.value().lines.empty()) {
+                            lyricsText = QString::fromStdString(res.value().lines[0].text);
+                            if (lyricsText.length() > 50) {
+                                lyricsText = lyricsText.left(47) + "...";
+                            }
+                        }
+                    }
+                    
+                    auto* item = new QTableWidgetItem(lyricsText);
+                    item->setToolTip(lyricsText);
+                    clipTable_->setItem(i, 10, item);
                     break;
                 }
             }
@@ -107,7 +120,21 @@ void SunoBrowser::updateList(const std::vector<SunoClip>& clips) {
         clipTable_->setItem(row, 9, new QTableWidgetItem(QString::fromStdString(clip.status)));
 
         QString lyricsText = controller_->hasLyrics(clip.id) ? "✓ Yes" : "✗ No";
-        clipTable_->setItem(row, 10, new QTableWidgetItem(lyricsText));
+        // If lyrics exist, try to show the first line as a preview
+        if (controller_->hasLyrics(clip.id)) {
+            auto res = controller_->getLyrics(clip.id);
+            if (res.isOk() && !res.value().lines.empty()) {
+                lyricsText = QString::fromStdString(res.value().lines[0].text);
+                // Trim if too long
+                if (lyricsText.length() > 50) {
+                    lyricsText = lyricsText.left(47) + "...";
+                }
+            }
+        }
+        
+        auto* lyrItem = new QTableWidgetItem(lyricsText);
+        lyrItem->setToolTip(lyricsText); // Show full text on hover
+        clipTable_->setItem(row, 10, lyrItem);
     }
     statusLabel_->setText(QString("Found %1 clips").arg(clips.size()));
 }

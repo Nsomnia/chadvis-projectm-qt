@@ -28,6 +28,8 @@ struct EngineConfig {
     u32 meshY{96};
     u32 presetDuration{30};
     u32 transitionDuration{3};
+    f32 hardCutSensitivity{1.0f};
+    bool aspectCorrection{true};
     std::vector<fs::path> texturePaths;
 };
 
@@ -108,6 +110,16 @@ public:
      * @brief Set the duration of the transition between presets.
      */
     void setSoftCutDuration(double seconds);
+
+    /**
+     * @brief Set the sensitivity for hard cuts (beat detection based switches).
+     */
+    void setHardCutSensitivity(f32 sensitivity);
+
+    /**
+     * @brief Enable or disable aspect ratio correction.
+     */
+    void setAspectCorrection(bool enable);
 
     /**
      * @brief Lock or unlock the current preset.

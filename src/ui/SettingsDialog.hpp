@@ -55,7 +55,6 @@ private:
     QSpinBox* smoothPresetDurationSpin_{nullptr};
     QCheckBox* autoRotateCheck_{nullptr};
     QCheckBox* shufflePresetsCheck_{nullptr};
-    QCheckBox* lowResourceCheck_{nullptr};
 
     // Recording
     QLineEdit* outputDirEdit_{nullptr};

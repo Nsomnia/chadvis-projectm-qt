@@ -74,6 +74,12 @@ Result<AppOptions> Application::parseArgs() {
             opts.presetName = argv_[++i];
         } else if (arg == "--default-preset") {
             opts.useDefaultPreset = true;
+        } else if (arg == "--test-lyrics") {
+            if (i + 1 >= argc_) {
+                return Result<AppOptions>::err(
+                        "--test-lyrics requires a path argument");
+            }
+            opts.testLyricsFile = fs::path(argv_[++i]);
         } else if (arg[0] != '-') {
             // Positional argument - input file
             opts.inputFiles.push_back(fs::path(arg));
@@ -123,6 +129,13 @@ Result<void> Application::init(const AppOptions& opts) {
         CONFIG.visualizer().useDefaultPreset = false;
     }
 
+    // Set debug lyrics from command line
+    if (opts.testLyricsFile) {
+        CONFIG.suno().debugLyrics = true;
+        CONFIG.suno().debugLyricsFile = *opts.testLyricsFile;
+        LOG_INFO("Debug lyrics enabled: {}", opts.testLyricsFile->string());
+    }
+
     // Create Qt application
     qapp_ = std::make_unique<QApplication>(argc_, argv_);
     qapp_->setApplicationName("ChadVis");
@@ -159,8 +172,9 @@ Result<void> Application::init(const AppOptions& opts) {
         mainWindow_ = std::make_unique<MainWindow>();
         mainWindow_->show();
 
-        // Add input files to playlist if any
         if (!opts.inputFiles.empty()) {
+            mainWindow_->audioEngine()->playlist().clear();
+            
             for (const auto& file : opts.inputFiles) {
                 if (fs::exists(file)) {
                     mainWindow_->addToPlaylist(file);
@@ -265,7 +279,11 @@ void Application::setupStyle() {
         qapp_->setStyleSheet(style);
         LOG_DEBUG("Loaded theme: {}", themeName.toStdString());
     } else {
-        LOG_WARN("Theme not found: {}, using default", themeName.toStdString());
+        if (themeName != "dark") {
+            LOG_WARN("Theme not found: {}, using default dark theme", themeName.toStdString());
+        } else {
+             LOG_DEBUG("Dark theme requested, using built-in fallback");
+        }
         // Fallback dark theme inline
         qapp_->setStyleSheet(R"(
             QMainWindow, QDialog, QWidget {
@@ -323,6 +341,7 @@ Options:
    -c, --config <path>     Use custom config file
    -p, --preset <name>     Start with specific visualizer preset
    --default-preset        Use projectM's default visualizer (no preset)
+   --test-lyrics <path>    Test lyric rendering with specific SRT/LRC file
    -r, --record            Start recording immediately
    -o, --output <path>     Output file for recording
    --headless              Run without GUI (for batch processing)

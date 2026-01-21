@@ -42,6 +42,7 @@ struct AppOptions {
     std::optional<fs::path> configFile;
     std::vector<fs::path> inputFiles;
     std::optional<std::string> presetName;
+    std::optional<fs::path> testLyricsFile;
 };
 
 class Application : public QObject {
