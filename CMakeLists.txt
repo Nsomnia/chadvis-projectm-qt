@@ -357,6 +357,7 @@ add_library(project_lib STATIC
     ${OVERLAY_SOURCES}
     ${RECORDER_SOURCES}
     ${UI_SOURCES}
+    resources/chadvis-projectm-qt.qrc
 )
 
 set_target_properties(project_lib PROPERTIES
@@ -369,7 +370,7 @@ target_include_directories(project_lib PUBLIC ${COMMON_INCLUDES})
 target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
 
 # Main executable
-add_executable(chadvis-projectm-qt src/main.cpp resources/chadvis-projectm-qt.qrc)
+add_executable(chadvis-projectm-qt src/main.cpp)
 target_link_libraries(chadvis-projectm-qt PRIVATE project_lib)
 
 if(PULSEAUDIO_FOUND)

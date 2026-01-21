@@ -38,6 +38,8 @@ Result<void> Bridge::init(const ProjectMConfig& config) {
     eCfg.meshY = config.meshY;
     eCfg.presetDuration = config.presetDuration;
     eCfg.transitionDuration = config.transitionDuration;
+    eCfg.hardCutSensitivity = config.hardCutSensitivity;
+    eCfg.aspectCorrection = config.aspectCorrection;
     eCfg.texturePaths = config.texturePaths;
 
     auto res = engine_.init(eCfg);

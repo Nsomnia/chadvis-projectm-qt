@@ -24,11 +24,13 @@ struct ProjectMConfig {
     fs::path presetPath;
     u32 presetDuration{30};
     u32 transitionDuration{3};
+    f32 hardCutSensitivity{1.0f};
+    bool aspectCorrection{true};
     bool shufflePresets{true};
     std::string forcePreset{};
     bool useDefaultPreset{false};
-    u32 meshX{128};
-    u32 meshY{96};
+    u32 meshX{32};
+    u32 meshY{24};
     std::vector<fs::path> texturePaths;
 };
 

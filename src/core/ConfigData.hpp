@@ -19,14 +19,14 @@ namespace fs = std::filesystem;
 
 // Karaoke configuration
 struct KaraokeConfig {
-    bool enabled{true};
+    bool enabled{true}; // Force enabled default
     std::string fontFamily{"Arial"};
     u32 fontSize{32};
     bool bold{true};
     Color activeColor{Color::yellow()};
     Color inactiveColor{Color::white()};
     Color shadowColor{Color::black()};
-    f32 yPosition{0.85f}; // Normalized 0-1
+    f32 yPosition{0.5f}; // Center it for visibility testing (was 0.85f)
 };
 
 // Text overlay element configuration
@@ -98,10 +98,13 @@ struct VisualizerConfig {
     f32 beatSensitivity{1.0f};
     u32 presetDuration{30};
     u32 smoothPresetDuration{5};
+    f32 hardCutSensitivity{1.0f}; // Sensitivity for hard cuts
+    bool aspectCorrection{true};
     bool shufflePresets{true};
-    std::string forcePreset{}; // Force specific preset for debugging
-    bool useDefaultPreset{false}; // Use default projectM visualizer (no preset)
-    bool lowResourceMode{false};
+    std::string forcePreset{};
+    bool useDefaultPreset{false};
+    u32 meshX{32}; // Grid size X
+    u32 meshY{24}; // Grid size Y
     std::vector<fs::path> texturePaths;
 };
 
@@ -140,6 +143,10 @@ struct SunoConfig {
     bool autoDownload{false};
     bool saveLyrics{true};
     bool embedMetadata{true};
+
+    // Debugging
+    bool debugLyrics{false};
+    fs::path debugLyricsFile;
 };
 
 } // namespace vc

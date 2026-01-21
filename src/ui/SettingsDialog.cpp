@@ -83,11 +83,11 @@ void SettingsDialog::setupUI() {
 
     auto* resLayout = new QHBoxLayout();
     vizWidthSpin_ = new QSpinBox();
-    vizWidthSpin_->setRange(640, 7680);
+    vizWidthSpin_->setRange(160, 7680);
     resLayout->addWidget(vizWidthSpin_);
     resLayout->addWidget(new QLabel("x"));
     vizHeightSpin_ = new QSpinBox();
-    vizHeightSpin_->setRange(480, 4320);
+    vizHeightSpin_->setRange(120, 4320);
     resLayout->addWidget(vizHeightSpin_);
     vizLayout->addRow("Resolution:", resLayout);
 
@@ -115,9 +115,6 @@ void SettingsDialog::setupUI() {
 
     shufflePresetsCheck_ = new QCheckBox("Shuffle presets");
     vizLayout->addRow("", shufflePresetsCheck_);
-
-    lowResourceCheck_ = new QCheckBox("Low Resource Mode (Half-res render)");
-    vizLayout->addRow("", lowResourceCheck_);
 
     tabWidget_->addTab(vizTab, "Visualizer");
 
@@ -322,7 +319,6 @@ void SettingsDialog::loadSettings() {
     smoothPresetDurationSpin_->setValue(CONFIG.visualizer().smoothPresetDuration);
     autoRotateCheck_->setChecked(CONFIG.visualizer().presetDuration > 0);
     shufflePresetsCheck_->setChecked(CONFIG.visualizer().shufflePresets);
-    lowResourceCheck_->setChecked(CONFIG.visualizer().lowResourceMode);
 
     outputDirEdit_->setText(QString::fromStdString(
             CONFIG.recording().outputDirectory.string()));
@@ -383,7 +379,6 @@ void SettingsDialog::saveSettings() {
             autoRotateCheck_->isChecked() ? presetDurationSpin_->value() : 0;
     CONFIG.visualizer().smoothPresetDuration = smoothPresetDurationSpin_->value();
     CONFIG.visualizer().shufflePresets = shufflePresetsCheck_->isChecked();
-    CONFIG.visualizer().lowResourceMode = lowResourceCheck_->isChecked();
 
     CONFIG.recording().outputDirectory = outputDirEdit_->text().toStdString();
     CONFIG.recording().defaultFilename = defaultFilenameEdit_->text().toStdString();

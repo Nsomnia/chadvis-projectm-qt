@@ -57,6 +57,9 @@ public:
     Signal<const std::string&> clipUpdated; // id
     Signal<const std::string&> statusMessage;
 
+    // Debug
+    void setDebugLyrics(const AlignedLyrics& lyrics);
+
 public slots:
     void onLibraryFetched(const std::vector<SunoClip>& clips);
     void onAlignedLyricsFetched(const std::string& clipId,

@@ -1,10 +1,15 @@
 #include "OverlayRenderer.hpp"
 #include "core/Logger.hpp"
+#include <QOpenGLContext>
 
 namespace vc {
 
 OverlayRenderer::OverlayRenderer() = default;
-OverlayRenderer::~OverlayRenderer() = default;
+OverlayRenderer::~OverlayRenderer() {
+    if (initialized_) {
+        cleanup();
+    }
+}
 
 void OverlayRenderer::init() {
     if (initialized_)
@@ -119,9 +124,25 @@ void OverlayRenderer::upload(const QImage& image) {
     if (!initialized_)
         init();
 
+    if (!QOpenGLContext::currentContext()) {
+        static bool logged = false;
+        if (!logged) {
+            LOG_ERROR("OverlayRenderer: Attempted upload without current GL context! Skipping.");
+            logged = true;
+        }
+        return;
+    }
+
+    // Ensure texture container exists
+    if (!texture_) {
+        texture_ = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target2D);
+        texture_->setMinificationFilter(QOpenGLTexture::Linear);
+        texture_->setMagnificationFilter(QOpenGLTexture::Linear);
+        texture_->setWrapMode(QOpenGLTexture::ClampToEdge);
+    }
+
     // Recreate/Upload texture
-    // For performance, we could check size match, but let's trust
-    // QOpenGLTexture for now
+    // Always destroy/create to avoid "Cannot change format" errors with QOpenGLTexture::setData
     if (texture_->isCreated()) {
         texture_->destroy();
     }

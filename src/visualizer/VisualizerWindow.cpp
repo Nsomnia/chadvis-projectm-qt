@@ -125,6 +125,10 @@ void VisualizerWindow::updateSettings() {
                 vizConfig.useDefaultPreset ? 0 : vizConfig.presetDuration);
         renderer_->projectM().engine().setSoftCutDuration(
                 vizConfig.smoothPresetDuration);
+        renderer_->projectM().engine().setHardCutSensitivity(
+                vizConfig.hardCutSensitivity);
+        renderer_->projectM().engine().setAspectCorrection(
+                vizConfig.aspectCorrection);
         context_->doneCurrent();
     }
 }

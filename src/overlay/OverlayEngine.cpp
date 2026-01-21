@@ -10,7 +10,9 @@ OverlayEngine::OverlayEngine()
     : renderer_(std::make_unique<OverlayRenderer>()) {
 }
 
-OverlayEngine::~OverlayEngine() = default;
+OverlayEngine::~OverlayEngine() {
+    cleanup();
+}
 
 void OverlayEngine::init() {
     config_.loadFromAppConfig();
@@ -91,12 +93,19 @@ void OverlayEngine::render(u32 width, u32 height) {
     }
 
     // 5. Draw Quad
+    // Ensure blending is enabled for the overlay texture
     renderer_->draw();
 }
 
 void OverlayEngine::setAlignedLyrics(const suno::AlignedLyrics& lyrics) {
     std::lock_guard lock(mutex_);
     alignedLyrics_ = lyrics;
+    // Log lyrics reception for verification
+    if (!lyrics.lines.empty()) {
+        LOG_INFO("OverlayEngine: Received {} lines of lyrics for song: {}", lyrics.lines.size(), lyrics.songId);
+    } else {
+        LOG_WARN("OverlayEngine: Received empty lyrics payload for song: {}", lyrics.songId);
+    }
     needsUpload_ = true;
 }
 
@@ -135,9 +144,18 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
     }
 
     // Render Karaoke/Synced Lyrics
-    {
+    if (enabled_) { // Check enabled_ before locking
         std::lock_guard lock(mutex_);
         const auto& kConfig = CONFIG.karaoke();
+        
+        // Debug Logging: Trace why lyrics might not render
+        static int debugCounter = 0;
+        if (debugCounter++ % 300 == 0) { // Log once every ~5 seconds at 60fps
+             if (!alignedLyrics_.empty()) {
+                 LOG_DEBUG("OverlayEngine: Has lyrics. Lines: {}, Words: {}, PlaybackTime: {:.2f}, Enabled: {}", 
+                           alignedLyrics_.lines.size(), alignedLyrics_.words.size(), playbackTime_, kConfig.enabled);
+             }
+        }
         
         if (kConfig.enabled && !alignedLyrics_.empty()) {
             if (!alignedLyrics_.lines.empty()) {

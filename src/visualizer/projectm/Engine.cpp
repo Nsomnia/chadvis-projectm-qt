@@ -27,6 +27,8 @@ Result<void> Engine::init(const EngineConfig& config) {
     projectm_set_mesh_size(handle_, config.meshX, config.meshY);
     projectm_set_preset_duration(handle_, config.presetDuration);
     projectm_set_soft_cut_duration(handle_, config.transitionDuration);
+    projectm_set_hard_cut_sensitivity(handle_, config.hardCutSensitivity);
+    projectm_set_aspect_correction(handle_, config.aspectCorrection);
     projectm_set_preset_locked(handle_, false);
 
     if (!config.texturePaths.empty()) {
@@ -112,6 +114,16 @@ void Engine::setPresetDuration(double seconds) {
 void Engine::setSoftCutDuration(double seconds) {
     if (handle_)
         projectm_set_soft_cut_duration(handle_, seconds);
+}
+
+void Engine::setHardCutSensitivity(f32 sensitivity) {
+    if (handle_)
+        projectm_set_hard_cut_sensitivity(handle_, sensitivity);
+}
+
+void Engine::setAspectCorrection(bool enable) {
+    if (handle_)
+        projectm_set_aspect_correction(handle_, enable);
 }
 
 void Engine::setPresetLocked(bool locked) {

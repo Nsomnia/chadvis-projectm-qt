@@ -20,6 +20,8 @@ void Logger::init(std::string_view appName, bool debug) {
         file::ensureDir(logDir);
 
         auto logFile = logDir / (std::string(appName) + ".log");
+        // Use rotating file sink to prevent massive log files
+        // max_size: 5MB, max_files: 3
         auto file = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
                 logFile.string(), 1024 * 1024 * 5, 3);
         file->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%s:%#] %v");
