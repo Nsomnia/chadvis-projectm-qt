@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <functional> // For std::function
 #include "core/Logger.hpp"
 
 namespace vc::suno {
@@ -23,41 +24,15 @@ std::vector<AlignedWord> LyricsAligner::parseJson(const QByteArray& json, f32 du
     std::vector<AlignedWord> result;
     QJsonDocument doc = QJsonDocument::fromJson(json);
 
-    // Case 1: Plain Text (doc is null or invalid JSON) or Empty/Whitespace
-    if (doc.isNull() || (doc.isArray() && doc.array().isEmpty()) || (doc.isObject() && doc.object().isEmpty())) {
-        std::string text = json.toStdString();
-        
-        if (text.empty()) return result;
-
-        if (duration <= 0.0f) duration = 180.0f;
-        
-        std::stringstream ss(text);
-        std::string wordStr;
-        std::vector<std::string> words;
-        while (ss >> wordStr) {
-             if (wordStr.size() >= 2 && wordStr.front() == '"' && wordStr.back() == '"') {
-                 wordStr = wordStr.substr(1, wordStr.size() - 2);
-             }
-             words.push_back(wordStr);
-        }
-
-        if (!words.empty()) {
-            f32 wordDur = duration / words.size();
-            for (size_t i = 0; i < words.size(); ++i) {
-                AlignedWord aw;
-                aw.word = words[i];
-                aw.start_s = i * wordDur;
-                aw.end_s = (i + 1) * wordDur;
-                aw.score = 0.5f;
-                result.push_back(aw);
-            }
-        }
+    if (doc.isNull()) {
+        // Invalid JSON - return empty to force re-fetch
         return result;
     }
 
     QJsonArray rawWords;
     bool foundWords = false;
 
+    // Strict Mode: Only accept valid JSON structures (Array or Object with specific keys)
     if (doc.isArray()) {
         rawWords = doc.array();
         foundWords = true;
@@ -73,30 +48,38 @@ std::vector<AlignedWord> LyricsAligner::parseJson(const QByteArray& json, f32 du
                 break;
             }
         }
+    }
 
-        if (!foundWords) {
+    // Recursive Deep Search for any array containing words
+    // This matches the userscript logic (duck typing) and handles nested objects
+    if (!foundWords && doc.isObject()) {
+        std::function<QJsonArray(const QJsonObject&)> findArray;
+        
+        findArray = [&](const QJsonObject& obj) -> QJsonArray {
             for (auto it = obj.begin(); it != obj.end(); ++it) {
                 if (it.value().isArray()) {
                     QJsonArray arr = it.value().toArray();
                     if (!arr.isEmpty() && arr[0].isObject()) {
                         QJsonObject first = arr[0].toObject();
-                        if (first.contains("word") && (first.contains("start") || first.contains("start_s"))) {
-                            rawWords = arr;
-                            foundWords = true;
-                            break;
+                        // Check for word-like structure
+                        if (first.contains("word") && 
+                           (first.contains("start") || first.contains("start_s"))) {
+                            return arr;
                         }
                     }
+                } else if (it.value().isObject()) {
+                    // Recursive call
+                    QJsonArray res = findArray(it.value().toObject());
+                    if (!res.isEmpty()) return res;
                 }
             }
-        }
+            return QJsonArray();
+        };
         
-        if (!foundWords) {
-             QStringList textKeys = {"text", "content", "prompt", "lyrics", "value"};
-             for (const auto& key : textKeys) {
-                 if (obj.contains(key) && obj[key].isString()) {
-                     return parseJson(obj[key].toString().toUtf8(), duration);
-                 }
-             }
+        QJsonArray deepResult = findArray(doc.object());
+        if (!deepResult.isEmpty()) {
+            rawWords = deepResult;
+            foundWords = true;
         }
     }
 
@@ -106,11 +89,28 @@ std::vector<AlignedWord> LyricsAligner::parseJson(const QByteArray& json, f32 du
             QJsonObject w = val.toObject();
             
             AlignedWord aw;
-            aw.word = w["word"].toString().toStdString();
+            std::string rawText = w["word"].toString().toStdString();
             
+            // Clean up Suno's "dirty" words (e.g., "[Verse]\nIn " -> "In ")
+            // Regex to remove [...] blocks
+            static const std::regex bracketRegex(R"(\[[^\]]*\])");
+            std::string cleanText = std::regex_replace(rawText, bracketRegex, "");
+            
+            // Trim whitespace
+            cleanText.erase(0, cleanText.find_first_not_of(" \t\r\n"));
+            cleanText.erase(cleanText.find_last_not_of(" \t\r\n") + 1);
+            
+            if (cleanText.empty()) {
+                // If the word was JUST a tag (e.g. "[Verse]"), we can skip it for alignment purposes
+                continue;
+            }
+            
+            aw.word = cleanText;
+            
+            // Flexible timestamp parsing (support both number and string if necessary, though API sends numbers)
             if (w.contains("start")) aw.start_s = w["start"].toDouble();
             else if (w.contains("start_s")) aw.start_s = w["start_s"].toDouble();
-            else continue;
+            else continue; 
 
             if (w.contains("end")) aw.end_s = w["end"].toDouble();
             else if (w.contains("end_s")) aw.end_s = w["end_s"].toDouble();
@@ -128,6 +128,43 @@ std::vector<AlignedWord> LyricsAligner::parseJson(const QByteArray& json, f32 du
         });
     }
 
+    if (result.empty()) {
+        QString snippet = QString::fromUtf8(json).left(200);
+        LOG_WARN("LyricsAligner: Parsed JSON but found no valid words. Snippet: {}", snippet.toStdString());
+    }
+
+    return result;
+}
+
+std::vector<AlignedWord> LyricsAligner::estimateTimings(const std::string& text, f32 duration) {
+    std::vector<AlignedWord> result;
+    if (text.empty()) return result;
+
+    if (duration <= 0.0f) duration = 180.0f;
+
+    std::stringstream ss(text);
+    std::string wordStr;
+    std::vector<std::string> words;
+    
+    while (ss >> wordStr) {
+        if (wordStr.size() >= 2 && wordStr.front() == '[' && wordStr.back() == ']') {
+            continue;
+        }
+        words.push_back(wordStr);
+    }
+
+    if (!words.empty()) {
+        f32 wordDur = duration / words.size();
+        for (size_t i = 0; i < words.size(); ++i) {
+            AlignedWord aw;
+            aw.word = words[i];
+            aw.start_s = i * wordDur;
+            aw.end_s = (i + 1) * wordDur;
+            aw.score = 0.5f;
+            result.push_back(aw);
+        }
+    }
+    
     return result;
 }
 
@@ -150,7 +187,6 @@ AlignedLyrics LyricsAligner::align(const std::string& prompt, const std::vector<
 
         // Skip metadata tags like [Verse], [Chorus]
         if (line.front() == '[' && line.back() == ']') {
-            // Optional: add as a line with no words but we'll skip for now
             continue;
         }
 
@@ -188,10 +224,7 @@ AlignedLyrics LyricsAligner::align(const std::string& prompt, const std::vector<
                          matchIndex = static_cast<int>(w); // High confidence
                          break;
                      }
-                     // If second word doesn't match, this might be a false positive "the", keep looking?
-                     // For now, we take the first match, but loop could continue if we wanted strictness.
                  } else {
-                     // Single word line or end of stream, accept it
                      break;
                  }
             }
@@ -201,10 +234,8 @@ AlignedLyrics LyricsAligner::align(const std::string& prompt, const std::vector<
         if (matchIndex == -1 && lineTokens.size() > 1) {
             for (size_t w = wordIdx; w < words.size() && w < wordIdx + searchLimit; ++w) {
                 if (normalize(words[w].word) == lineTokens[1]) {
-                     // Use timestamp of 2nd word as approximate start (or prev word if valid)
+                     // Use timestamp of 2nd word as approximate start
                      matchIndex = static_cast<int>(w); 
-                     // Ideally we'd want the index of the missing first word, but it's missing from audio
-                     // So we start from this word
                      break;
                 }
             }
@@ -214,11 +245,6 @@ AlignedLyrics LyricsAligner::align(const std::string& prompt, const std::vector<
             wordIdx = matchIndex;
             al.start_s = words[wordIdx].start_s;
             
-            // Assign words to this line
-            // We greedily consume words that match the tokens, but audio might have extra words or missing words
-            // Simple approach: consume until line ends or we hit next line's start (handled by loop)
-            
-            // For now, just set start time. End time is handled by post-process
             wordIdx++; // Advance past the match
             
             // Try to match remaining tokens to advance wordIdx
@@ -230,8 +256,7 @@ AlignedLyrics LyricsAligner::align(const std::string& prompt, const std::vector<
                  wordIdx++;
             }
         } else {
-            // Line not found in audio (spoken? hallucinated?)
-            // Inherit time from previous line end?
+            // Line not found in audio
             if (!result.lines.empty()) {
                 al.start_s = result.lines.back().end_s;
             } else {
@@ -299,9 +324,6 @@ AlignedLyrics LyricsAligner::parseLrc(const std::string& content) {
             al.end_s = al.start_s + 5.0f; // Default 5s for last line
         }
         
-        // Don't let lines persist too long if there's a large gap? 
-        // For LRC, gaps usually mean instrumental, but we'll stick to next-line-start for now.
-        // Or cap it at say 10 seconds?
         if (al.end_s - al.start_s > 10.0f) al.end_s = al.start_s + 10.0f;
 
         // Split words and interpolate
@@ -339,13 +361,7 @@ AlignedLyrics LyricsAligner::parseSrt(const std::string& content) {
     std::stringstream ss(content);
     std::string line;
     
-    // SRT format:
-    // 1
-    // 00:00:01,000 --> 00:00:04,000
-    // Text line
-    // (blank line)
-    
-    // Regex for 00:00:01,000 --> 00:00:04,000
+    // SRT format regex: 00:00:01,000 --> 00:00:04,000
     std::regex timeRegex(R"((\d+):(\d+):(\d+)[,\.](\d+)\s+-->\s+(\d+):(\d+):(\d+)[,\.](\d+))");
     
     enum State { Index, Time, Text };
@@ -363,13 +379,10 @@ AlignedLyrics LyricsAligner::parseSrt(const std::string& content) {
     };
 
     while (std::getline(ss, line)) {
-        // Trim
-        line.erase(line.find_last_not_of("\r") + 1); // Handle Windows line endings
+        line.erase(line.find_last_not_of("\r") + 1); 
         
         if (line.empty()) {
             if (hasTime && !currentLine.text.empty()) {
-                // Process completed line
-                // Interpolate words
                 std::stringstream textSs(currentLine.text);
                 std::string wordStr;
                 std::vector<std::string> tokenizedWords;
@@ -379,7 +392,6 @@ AlignedLyrics LyricsAligner::parseSrt(const std::string& content) {
 
                 if (!tokenizedWords.empty()) {
                     f32 duration = currentLine.end_s - currentLine.start_s;
-                    // Clamp duration to avoid div/0 or huge logic
                     if (duration <= 0.001f) duration = 1.0f; 
                     
                     f32 wordDur = duration / tokenizedWords.size();
@@ -418,7 +430,6 @@ AlignedLyrics LyricsAligner::parseSrt(const std::string& content) {
         }
     }
     
-    // Handle last line if no trailing newline
     if (hasTime && !currentLine.text.empty()) {
         std::stringstream textSs(currentLine.text);
         std::string wordStr;
