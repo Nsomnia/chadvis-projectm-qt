@@ -69,6 +69,8 @@ private:
     QComboBox* encoderPresetCombo_{nullptr};
 
     // Suno
+    QLineEdit* sunoEmailEdit_{nullptr};
+    QLineEdit* sunoPasswordEdit_{nullptr};
     QLineEdit* sunoTokenEdit_{nullptr};
     QLineEdit* sunoCookieEdit_{nullptr};
     QLineEdit* sunoDownloadPathEdit_{nullptr};
