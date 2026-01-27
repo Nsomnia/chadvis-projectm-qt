@@ -159,6 +159,21 @@ void SunoController::refreshLibrary(int page) {
     }
 
     if (!client_->isAuthenticated()) {
+        if (!CONFIG.suno().email.empty() && !CONFIG.suno().password.empty()) {
+            LOG_INFO("SunoController: Attempting automated login...");
+            client_->login(CONFIG.suno().email, CONFIG.suno().password, [this, page](bool success) {
+                if (success) {
+                    LOG_INFO("SunoController: Automated login successful");
+                    CONFIG.suno().cookie = client_->getCookie();
+                    CONFIG.save(CONFIG.configPath());
+                    refreshLibrary(page);
+                } else {
+                    LOG_ERROR("SunoController: Automated login failed");
+                    showCookieDialog();
+                }
+            });
+            return;
+        }
         showCookieDialog();
         return;
     }
@@ -188,15 +203,41 @@ void SunoController::syncDatabase(bool forceAuth) {
 void SunoController::showCookieDialog() {
     auto* dialog = new ui::SunoCookieDialog();
     if (dialog->exec() == QDialog::Accepted) {
-        std::string cookie = dialog->getCookie().toStdString();
-        client_->setCookie(cookie);
-        // Save to config
-        CONFIG.suno().cookie = cookie;
-        CONFIG.save(CONFIG.configPath());
-        // Start fresh sync
-        accumulatedClips_.clear();
-        isSyncing_ = true;
-        client_->fetchLibrary(1);
+        if (dialog->isLoginMode()) {
+            std::string email = dialog->getEmail().toStdString();
+            std::string password = dialog->getPassword().toStdString();
+            
+            CONFIG.suno().email = email;
+            CONFIG.suno().password = password;
+            CONFIG.save(CONFIG.configPath());
+            
+            LOG_INFO("SunoController: Attempting login from dialog...");
+            client_->login(email, password, [this](bool success) {
+                if (success) {
+                    LOG_INFO("SunoController: Login from dialog successful");
+                    CONFIG.suno().cookie = client_->getCookie();
+                    CONFIG.save(CONFIG.configPath());
+                    // Start fresh sync
+                    accumulatedClips_.clear();
+                    isSyncing_ = true;
+                    client_->fetchLibrary(1);
+                } else {
+                    LOG_ERROR("SunoController: Login from dialog failed");
+                    statusMessage.emitSignal("Login failed. Please check your credentials.");
+                    showCookieDialog(); // Show again
+                }
+            });
+        } else {
+            std::string cookie = dialog->getCookie().toStdString();
+            client_->setCookie(cookie);
+            // Save to config
+            CONFIG.suno().cookie = cookie;
+            CONFIG.save(CONFIG.configPath());
+            // Start fresh sync
+            accumulatedClips_.clear();
+            isSyncing_ = true;
+            client_->fetchLibrary(1);
+        }
     }
     dialog->deleteLater();
 }

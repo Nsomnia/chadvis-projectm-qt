@@ -3,6 +3,7 @@
 // Provides a JS snippet for the user to get their cookie
 
 #include <QDialog>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QTextEdit>
 
@@ -16,6 +17,9 @@ public:
     ~SunoCookieDialog() override;
 
     QString getCookie() const;
+    QString getEmail() const;
+    QString getPassword() const;
+    bool isLoginMode() const;
 
 private slots:
     void onCopySnippet();
@@ -25,6 +29,8 @@ private slots:
 private:
     void setupUI();
 
+    QLineEdit* emailInput_;
+    QLineEdit* passwordInput_;
     QTextEdit* cookieInput_;
     QTextEdit* snippetDisplay_;
     QPushButton* copySnippetBtn_;

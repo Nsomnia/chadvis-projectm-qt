@@ -2,6 +2,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkCookie>
 #include <QRegularExpression>
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
@@ -214,6 +215,118 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
             if (callback)
                 callback(false);
         }
+    });
+}
+
+void SunoClient::login(const std::string& email, const std::string& password, std::function<void(bool)> callback) {
+    LOG_INFO("SunoClient: Attempting automated login for {}", email);
+
+    auto updateCookies = [this](QNetworkReply* reply) {
+        QVariant cookieVar = reply->header(QNetworkRequest::SetCookieHeader);
+        if (!cookieVar.isValid()) return;
+
+        QList<QNetworkCookie> cookies = qvariant_cast<QList<QNetworkCookie>>(cookieVar);
+        if (cookies.isEmpty()) return;
+
+        // Parse existing cookies into a map to avoid duplicates and handle updates
+        QMap<QString, QString> cookieMap;
+        auto parseIntoMap = [&](const std::string& cookieStr) {
+            QStringList parts = QString::fromStdString(cookieStr).split(';');
+            for (const QString& part : parts) {
+                QString trimmed = part.trimmed();
+                int eqPos = trimmed.indexOf('=');
+                if (eqPos > 0) {
+                    cookieMap[trimmed.left(eqPos)] = trimmed.mid(eqPos + 1);
+                }
+            }
+        };
+
+        if (!cookie_.empty()) parseIntoMap(cookie_);
+
+        for (const auto& cookie : cookies) {
+            cookieMap[QString::fromUtf8(cookie.name())] = QString::fromUtf8(cookie.value());
+        }
+
+        // Rebuild cookie string
+        QStringList finalCookies;
+        for (auto it = cookieMap.begin(); it != cookieMap.end(); ++it) {
+            finalCookies << (it.key() + "=" + it.value());
+        }
+        cookie_ = finalCookies.join("; ").toStdString();
+        LOG_DEBUG("SunoClient: Updated session cookies");
+    };
+
+    // Step 1: Create sign-in
+    QString url = QString("%1/client/sign_ins?_clerk_js_version=%2")
+                          .arg(CLERK_BASE)
+                          .arg(QString::fromStdString(clerkVersion_));
+    
+    QNetworkRequest req((QUrl(url)));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    req.setRawHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    
+    QJsonObject json;
+    json["identifier"] = QString::fromStdString(email);
+    QByteArray body = QJsonDocument(json).toJson();
+
+    QNetworkReply* reply = manager_->post(req, body);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, password, callback, updateCookies]() {
+        reply->deleteLater();
+        updateCookies(reply);
+
+        if (reply->error() != QNetworkReply::NoError) {
+            LOG_ERROR("SunoClient: Login Step 1 failed: {}", reply->errorString().toStdString());
+            if (callback) callback(false);
+            return;
+        }
+
+        QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+        QString signInId = doc.object()["response"].toObject()["id"].toString();
+        if (signInId.isEmpty()) {
+            LOG_ERROR("SunoClient: Failed to get sign-in ID");
+            if (callback) callback(false);
+            return;
+        }
+
+        // Step 2: Attempt first factor (password)
+        QString step2Url = QString("%1/client/sign_ins/%2/attempt_first_factor?_clerk_js_version=%3")
+                                   .arg(CLERK_BASE)
+                                   .arg(signInId)
+                                   .arg(QString::fromStdString(clerkVersion_));
+        
+        QNetworkRequest step2Req((QUrl(step2Url)));
+        step2Req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+        step2Req.setRawHeader("Cookie", QString::fromStdString(cookie_).toUtf8());
+        step2Req.setRawHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+        QJsonObject step2Json;
+        step2Json["strategy"] = "password";
+        step2Json["password"] = QString::fromStdString(password);
+        QByteArray step2Body = QJsonDocument(step2Json).toJson();
+
+        QNetworkReply* step2Reply = manager_->post(step2Req, step2Body);
+        connect(step2Reply, &QNetworkReply::finished, this, [this, step2Reply, callback, updateCookies]() {
+            step2Reply->deleteLater();
+            updateCookies(step2Reply);
+
+            if (step2Reply->error() != QNetworkReply::NoError) {
+                LOG_ERROR("SunoClient: Login Step 2 failed: {}", step2Reply->errorString().toStdString());
+                if (callback) callback(false);
+                return;
+            }
+
+            QJsonDocument doc = QJsonDocument::fromJson(step2Reply->readAll());
+            QString status = doc.object()["response"].toObject()["status"].toString();
+            
+            if (status == "complete") {
+                LOG_INFO("SunoClient: Login successful, refreshing token...");
+                // Now we have the session cookies, we can refresh the token
+                refreshAuthToken(callback);
+            } else {
+                LOG_ERROR("SunoClient: Login incomplete, status: {}", status.toStdString());
+                if (callback) callback(false);
+            }
+        });
     });
 }
 

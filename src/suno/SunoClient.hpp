@@ -28,10 +28,14 @@ public:
     // Configuration
     void setToken(const std::string& token);
     void setCookie(const std::string& cookie);
+    std::string getCookie() const { return cookie_; }
     bool isAuthenticated() const;
 
     // Refresh Bearer token using cookie (Clerk API)
     void refreshAuthToken(std::function<void(bool)> callback = nullptr);
+
+    // Login with email and password
+    void login(const std::string& email, const std::string& password, std::function<void(bool)> callback = nullptr);
 
     // API Methods
     // Fetch songs from "My Library" (Feed)

@@ -186,6 +186,14 @@ void SettingsDialog::setupUI() {
     auto* sunoTab = new QWidget();
     auto* sunoLayout = new QFormLayout(sunoTab);
 
+    sunoEmailEdit_ = new QLineEdit();
+    sunoEmailEdit_->setPlaceholderText("email@example.com");
+    sunoLayout->addRow("Email:", sunoEmailEdit_);
+
+    sunoPasswordEdit_ = new QLineEdit();
+    sunoPasswordEdit_->setEchoMode(QLineEdit::Password);
+    sunoLayout->addRow("Password:", sunoPasswordEdit_);
+
     sunoTokenEdit_ = new QLineEdit();
     sunoTokenEdit_->setEchoMode(QLineEdit::PasswordEchoOnEdit);
     sunoLayout->addRow("API Token:", sunoTokenEdit_);
@@ -335,6 +343,8 @@ void SettingsDialog::loadSettings() {
     encoderPresetCombo_->setCurrentText(
             QString::fromStdString(CONFIG.recording().video.preset));
 
+    sunoEmailEdit_->setText(QString::fromStdString(CONFIG.suno().email));
+    sunoPasswordEdit_->setText(QString::fromStdString(CONFIG.suno().password));
     sunoTokenEdit_->setText(QString::fromStdString(CONFIG.suno().token));
     sunoCookieEdit_->setText(QString::fromStdString(CONFIG.suno().cookie));
     sunoDownloadPathEdit_->setText(
@@ -393,6 +403,8 @@ void SettingsDialog::saveSettings() {
     CONFIG.recording().video.preset =
             encoderPresetCombo_->currentText().toStdString();
 
+    CONFIG.suno().email = sunoEmailEdit_->text().toStdString();
+    CONFIG.suno().password = sunoPasswordEdit_->text().toStdString();
     CONFIG.suno().token = sunoTokenEdit_->text().toStdString();
     CONFIG.suno().cookie = sunoCookieEdit_->text().toStdString();
     CONFIG.suno().downloadPath = sunoDownloadPathEdit_->text().toStdString();

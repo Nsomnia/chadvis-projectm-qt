@@ -191,6 +191,8 @@ void ConfigParsers::parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg) {
 
 void ConfigParsers::parseSuno(const toml::table& tbl, SunoConfig& cfg) {
     if (auto suno = tbl["suno"].as_table()) {
+        cfg.email = get(*suno, "email", std::string());
+        cfg.password = get(*suno, "password", std::string());
         cfg.token = get(*suno, "token", std::string());
         cfg.cookie = get(*suno, "cookie", std::string());
         auto pathStr = get(*suno, "download_path", std::string());
@@ -300,7 +302,9 @@ toml::table ConfigParsers::serialize(
                             {"prev_preset", keyboard.prevPreset}});
 
     root.insert("suno",
-                toml::table{{"token", suno.token},
+                toml::table{{"email", suno.email},
+                            {"password", suno.password},
+                            {"token", suno.token},
                             {"cookie", suno.cookie},
                             {"download_path", suno.downloadPath.string()},
                             {"auto_download", suno.autoDownload},
