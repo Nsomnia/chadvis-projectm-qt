@@ -1,279 +1,245 @@
 #!/usr/bin/env zsh
+# ═══ ChadVis Build System v1337 ═══
+# "Arch btw" Edition - Optimized for Chads, safe for Juniors.
+# 
+# This script is so optimized it makes your CPU feel like it's on steroids.
+# If you're a junior dev reading this: yes, we use zsh. No, we don't use bash.
+# ══════════════════════════════════════════════════════════════════════════
 
 setopt ERR_EXIT PIPE_FAIL NO_UNSET EXTENDED_GLOB
-zmodload zsh/stat 2>/dev/null || true
+
+# ─── Configuration ──────────────────────────────────────────────────────────
 
 readonly SCRIPT_DIR="${0:A:h}"
-# Go up one level from scripts/ to get the project root
 readonly PROJECT_ROOT="${SCRIPT_DIR:h}"
 readonly BUILD_DIR="${PROJECT_ROOT}/build"
+readonly LOG_DIR="${PROJECT_ROOT}/logs"
+readonly LOG_FILE="${LOG_DIR}/build.log"
 readonly BINARY_NAME="chadvis-projectm-qt"
 readonly BINARY_PATH="${BUILD_DIR}/${BINARY_NAME}"
-readonly N4500_CORES=$(nproc) # potato cpu safe $(nproc) # can also use an integer
-readonly N4500_ARCH="native" # was tremont
 
-readonly LOG_FILE="${SCRIPT_DIR}/.agent/LAST_COMPILE_OUTPUT.md"
-mkdir -p "${SCRIPT_DIR}/.agent"
+# Hardware Detection (Because we care about performance)
+readonly CPU_CORES=$(nproc 2>/dev/null || echo 4)
+readonly CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^[ \t]*//' || echo "Unknown Chad CPU")
 
-readonly -a CPU_OPT_FLAGS=() # debugging compilation agentically failure
-#    "-march=${N4500_ARCH}" "-mtune=${N4500_ARCH}"
-#    "-msse4.2" "-mpopcnt" "-maes" "-mno-avx" "-mno-avx2"
-#)
+# ─── Visuals (ANSI Escape Codes) ───────────────────────────────────────────
 
-# debugging compilation agentically failing
-readonly -a COMMON_OPT_FLAGS=() # ("-pipe" "-fomit-frame-pointer" "-ffunction-sections" "-fdata-sections")
-readonly -a DEBUG_FLAGS=() # ("-O2" "-g1" "-gsplit-dwarf")
-readonly -a RELEASE_FLAGS=() #("-O3" "-flto=${N4500_CORES}" "-fno-plt" "-DNDEBUG")
+# Colors
+readonly C_RESET=$'\e[0m'
+readonly C_BOLD=$'\e[1m'
+readonly C_RED=$'\e[31m'
+readonly C_GREEN=$'\e[32m'
+readonly C_YELLOW=$'\e[33m'
+readonly C_BLUE=$'\e[34m'
+readonly C_MAGENTA=$'\e[35m'
+readonly C_CYAN=$'\e[36m'
+readonly C_GRAY=$'\e[90m'
 
-# Detect mold linker
-MOLD_BIN=$(command -v mold 2>/dev/null)
-readonly -a LINKER_FLAGS=(
-    "-Wl,--gc-sections" "-Wl,--as-needed"
-    ${MOLD_BIN:+"-fuse-ld=mold"}
-)
+# Icons
+readonly ICON_INFO="${C_BLUE}󰋽${C_RESET}"
+readonly ICON_OK="${C_GREEN}󰄬${C_RESET}"
+readonly ICON_WARN="${C_YELLOW}󱈸${C_RESET}"
+readonly ICON_ERROR="${C_RED}󰅚${C_RESET}"
+readonly ICON_CHAD="${C_CYAN}󰭹${C_RESET}"
 
-# Detect compiler launcher (sccache or ccache)
-LAUNCHER_BIN=$(command -v sccache 2>/dev/null || command -v ccache 2>/dev/null)
+# ─── Helper Functions ───────────────────────────────────────────────────────
 
-join() { local IFS="$1"; shift; print -r -- "$*"; }
-
-compose_flags() {
-    local -a all_flags=()
-    local arr_name
-    for arr_name in "$@"; do all_flags+=("${(P@)arr_name}"); done
-    join ' ' "${all_flags[@]}"
-}
-
-build_cflags() {
-    case "$1" in
-        Debug)   compose_flags CPU_OPT_FLAGS COMMON_OPT_FLAGS DEBUG_FLAGS ;;
-        Release) compose_flags CPU_OPT_FLAGS COMMON_OPT_FLAGS RELEASE_FLAGS ;;
-        *)       compose_flags CPU_OPT_FLAGS COMMON_OPT_FLAGS ;;
+log() {
+    local type=$1
+    local msg=$2
+    case $type in
+        info)  print -P "${ICON_INFO} ${msg}" ;;
+        ok)    print -P "${ICON_OK} ${msg}" ;;
+        warn)  print -P "${ICON_WARN} ${msg}" ;;
+        error) print -P "${ICON_ERROR} ${C_BOLD}${msg}${C_RESET}" >&2 ;;
+        header) print -P "\n${C_CYAN}═══ ${C_BOLD}${msg}${C_RESET}${C_CYAN} ═══${C_RESET}" ;;
+        chad)  print -P "${ICON_CHAD} ${C_CYAN}${C_BOLD}${msg}${C_RESET}" ;;
     esac
 }
 
-build_ldflags() {
-    local base="$(join ' ' "${LINKER_FLAGS[@]}")"
-    [[ "$1" == "Release" ]] && base+=" -flto=${N4500_CORES}"
-    print -r -- "$base"
+log_kv() {
+    print -P "${C_GRAY}  │${C_RESET} ${C_BOLD}${1}:${C_RESET} ${2}"
 }
 
 human_size() {
-    [[ -f "$1" ]] || { print "N/A"; return; }
+    [[ -f "$1" ]] || { echo "N/A"; return; }
     local size
-    zstat -A size +size "$1" 2>/dev/null && numfmt --to=iec "$size" 2>/dev/null || print "?"
+    zstat -A size +size "$1" 2>/dev/null && numfmt --to=iec "$size" 2>/dev/null || echo "?"
 }
 
-log() {
-    local -A s=([info]="%F{blue}▸%f" [ok]="%F{green}✓%f" [warn]="%F{yellow}⚠%f" [error]="%F{red}✗%f" [header]="%F{cyan}═══%f")
-    local -A p=([info]="▸" [ok]="✓" [warn]="⚠" [error]="✗" [header]="═══")
-    
-    local terminal_prefix=""
-    local file_prefix=""
-    
-    case "$1" in
-        header) 
-            terminal_prefix="\n${s[header]} %B${2}%b ${s[header]}"
-            file_prefix="\n${p[header]} ${2} ${p[header]}"
-            ;;
-        error)  
-            terminal_prefix="${s[$1]} ${2}"
-            file_prefix="${p[$1]} ${2}"
-            ;;
-        *)      
-            terminal_prefix="${s[$1]:-▸} ${2}"
-            file_prefix="${p[$1]:-▸} ${2}"
-            ;;
-    esac
-    
-    # Print to terminal
-    if [[ "$1" == "error" ]]; then
-        print -P "$terminal_prefix" >&2
-    else
-        print -P "$terminal_prefix"
-    fi
-    
-    # Log to file (plain text)
-    print -r -- "${file_prefix}" >> "$LOG_FILE"
+show_help() {
+    log chad "ChadVis Build System — Help"
+    print -P "${C_BOLD}Usage:${C_RESET} build.zsh [options] [command]"
+    print -P "\n${C_BOLD}Options:${C_RESET}"
+    print -P "  -h, --help       Show this message (if you're lost)"
+    print -P "  -d, --debug      Build in Debug mode (for when you break things)"
+    print -P "  -r, --release    Build in Release mode (default, for Chads)"
+    print -P "  -c, --clean      Clean build directory before building"
+    print -P "  -i, --install    Install after successful build"
+    print -P "  -j, --jobs <n>   Number of parallel jobs (default: ${CPU_CORES})"
+    print -P "\n${C_BOLD}Commands:${C_RESET}"
+    print -P "  build            Configure and compile (default)"
+    print -P "  clean            Remove build artifacts"
+    print -P "  run              Build and run the application"
+    print -P "  test             Run the test suite"
+    print -P "  check-deps       Verify system dependencies"
+    print -P "\n${C_BOLD}Example:${C_RESET}"
+    print -P "  ./build.sh -c -d build   # Clean, debug build"
 }
 
-log_kv() { 
-    print -P "%F{8}  │%f %F{white}${1}:%f ${2}"
-    print -r -- "  | ${1}: ${2}" >> "$LOG_FILE"
-}
+# ─── Logic ──────────────────────────────────────────────────────────────────
 
-remove_problematic_flags() {
-    local input="${1:-}"
-    local -a bad=("-mno-direct-extern-access" "-fcf-protection" "-fstack-clash-protection")
-    for f in "${bad[@]}"; do input="${input//${f}/}"; done
-    print -r -- "${${input//  / }## }"
-}
+mkdir -p "$LOG_DIR"
 
-sanitize_environment() {
-    local -a vars=(CXXFLAGS CFLAGS CMAKE_CXX_FLAGS CMAKE_C_FLAGS QMAKE_CXXFLAGS)
-    for v in "${vars[@]}"; do
-        [[ -n "${(P)v:-}" ]] && export "${v}=$(remove_problematic_flags "${(P)v}")"
-    done
-}
+# Parse arguments
+local -A opts
+zparseopts -D -A opts h -help d -debug r -release c -clean i -install j: -jobs:
 
-ensure_build_dir() {
-    if [[ "$1" == true && -d "$BUILD_DIR" ]]; then
-        log info "Cleaning previous build..."
-        rm -rf "${BUILD_DIR:?}"/*
-    fi
-    mkdir -p "$BUILD_DIR"
-}
+if [[ -n "${opts[(i)-h]}" || -n "${opts[(i)--help]}" ]]; then
+    show_help
+    exit 0
+fi
 
-invoke_cmake() {
-    local build_type="$1"
-    local cxxflags="$(build_cflags "$build_type")"
-    local ldflags="$(build_ldflags "$build_type")"
-    
-    log info "Configuring CMake (${build_type})..."
-    log_kv "CXX Flags" "$cxxflags"
-    log_kv "Linker Flags" "$ldflags"
-    log_kv "Launcher" "${LAUNCHER_BIN:-None}"
-    log_kv "Unity Build" "ON"
-    
-    cmake -G Ninja \
-        -DCMAKE_BUILD_TYPE="$build_type" \
-        -DCMAKE_CXX_COMPILER="g++" \
-        -DCMAKE_CXX_FLAGS="$cxxflags" \
-        -DCMAKE_EXE_LINKER_FLAGS="$ldflags" \
-        -DCMAKE_SHARED_LINKER_FLAGS="$ldflags" \
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        -DCMAKE_UNITY_BUILD=ON \
-        ${LAUNCHER_BIN:+"-DCMAKE_CXX_COMPILER_LAUNCHER=${LAUNCHER_BIN}"} \
-        ${LAUNCHER_BIN:+"-DCMAKE_C_COMPILER_LAUNCHER=${LAUNCHER_BIN}"} \
-        -S "$PROJECT_ROOT" -B "$BUILD_DIR" |& tee -a "$LOG_FILE"
-}
+BUILD_TYPE="Release"
+[[ -n "${opts[(i)-d]}" || -n "${opts[(i)--debug]}" ]] && BUILD_TYPE="Debug"
+[[ -n "${opts[(i)-r]}" || -n "${opts[(i)--release]}" ]] && BUILD_TYPE="Release"
 
-invoke_ninja() {
-    log info "Building with Ninja (${1:-$N4500_CORES} jobs)..."
-    # Use a simpler status line and tee to show progress on terminal
-    NINJA_STATUS="[%f/%t] " ninja -C "$BUILD_DIR" -j "${1:-$N4500_CORES}" |& tee -a "$LOG_FILE"
-}
+JOBS=${opts[-j]:-${opts[--jobs]:-$CPU_CORES}}
+CLEAN_FIRST=false
+[[ -n "${opts[(i)-c]}" || -n "${opts[(i)--clean]}" ]] && CLEAN_FIRST=true
 
-build_pipeline() {
-    local build_type="$1" clean_first="${2:-false}"
-    
-    # Initialize log file with timestamp and machine-readable metadata
-    {
-        print -P "## LAST COMPILE STATUS"
-        print -P -- "- **Build Started**: $(date)"
-        print -P -- "- **Type**: ${build_type}"
-        print -P -- "- **Clean**: ${clean_first}"
-        print -r -- "-----------------------------------"
-    } > "$LOG_FILE"
-    
-    log header "${build_type} Build"
-    log_kv "Architecture" "$N4500_ARCH"
-    log_kv "Parallelism" "${N4500_CORES} jobs"
-    
-    sanitize_environment
-    ensure_build_dir "$clean_first" || return 1
-    invoke_cmake "$build_type" || { log error "CMake failed"; return 1; }
-    invoke_ninja "$N4500_CORES" || { log error "Build failed"; return 1; }
-    
-    log ok "Build complete"
-    log_kv "Binary" "$BINARY_PATH"
-    log_kv "Size" "$(human_size "$BINARY_PATH")"
-    
-    print -P "\nBuild finished successfully at $(date)" >> "$LOG_FILE"
-}
+INSTALL_AFTER=false
+[[ -n "${opts[(i)-i]}" || -n "${opts[(i)--install]}" ]] && INSTALL_AFTER=true
 
-ensure_binary() {
-    [[ -x "$BINARY_PATH" ]] || { log warn "Binary not found, building..."; cmd_build || return 1; }
-}
+COMMAND=${1:-build}
 
-cmd_build()   { build_pipeline "Debug" false; }
-cmd_release() { build_pipeline "Release" false; }
-cmd_rebuild() { build_pipeline "Debug" true; }
-cmd_rebuild_release() { build_pipeline "Release" true; }
-
-cmd_clean() {
-    log header "Clean"
-    for t in "$BUILD_DIR" "${PROJECT_ROOT}/build-release"; do
-        [[ -d "$t" ]] && { rm -rf "${t:?}"/*; log ok "Cleaned: ${t}"; }
-    done
-    log ok "Clean complete"
-}
-
-cmd_run() {
-    log header "Run"
-    ensure_binary || return 1
-    exec "$BINARY_PATH" "$@"
-}
-
-cmd_test() {
-    log header "Test Suite"
-    ensure_binary || return 1
-    for spec in "tests/unit/unit_tests:Unit" "tests/integration/integration_tests:Integration"; do
-        local p="${BUILD_DIR}/${spec%%:*}" n="${spec##*:}"
-        log info "Running ${n}..."
-        [[ -x "$p" ]] && { "$p" && log ok "${n} passed" || log warn "${n} failed"; } || log warn "${n} not found"
-    done
-}
+# ─── Commands ───────────────────────────────────────────────────────────────
 
 cmd_check_deps() {
     log header "Dependency Check"
     local -a deps=(
         "cmd:cmake:cmake" "cmd:ninja:ninja" "cmd:g++:gcc"
         "pkg:Qt6Core:qt6-base" "pkg:Qt6Widgets:qt6-base" "pkg:Qt6OpenGLWidgets:qt6-base"
-        "pkg:libprojectM-4:projectm" "pkg:libavcodec:ffmpeg" "pkg:libavformat:ffmpeg" "pkg:libpulse:libpulse"
-        "cmd:mold:mold" "cmd:sccache:sccache" "cmd:ccache:ccache"
+        "pkg:libprojectM:libprojectm" "pkg:libavcodec:ffmpeg" "pkg:libavformat:ffmpeg"
     )
-    local -a missing=() found=()
+    local missing=0
     for spec in "${deps[@]}"; do
         local typ="${spec%%:*}"
         local rest="${spec#*:}"
         local chk="${rest%%:*}"
         local pkg="${rest#*:}"
-        case "$typ" in
-            cmd) command -v "$chk" &>/dev/null ;;
-            pkg) pkg-config --exists "$chk" 2>/dev/null ;;
-        esac && found+=("$pkg") || missing+=("$pkg")
+        
+        if [[ "$typ" == "cmd" ]]; then
+            if ! command -v "$chk" &>/dev/null; then
+                log error "Missing command: $chk (Install $pkg)"
+                missing=$((missing + 1))
+            else
+                log ok "Found $chk"
+            fi
+        else
+            if ! pkg-config --exists "$chk" 2>/dev/null; then
+                log error "Missing package: $chk (Install $pkg)"
+                missing=$((missing + 1))
+            else
+                log ok "Found $chk"
+            fi
+        fi
     done
-    local -aU uf=("${found[@]}") um=("${missing[@]}")
-    for p in "${uf[@]}"; do log ok "$p"; done
-    (( ${#um[@]} == 0 )) && { log ok "All dependencies satisfied"; return 0; }
-    log warn "Optional dependencies missing: ${um[*]}"
-    return 0
+    return $missing
 }
 
-cmd_help() {
-    print -P "%F{cyan}ChadVis Build Script — Intel N4500 Optimized%f"
-    print -P "%BUsage:%b build.zsh <command> [args...]"
-    print -P "%BCommands:%b"
-    print "  build           Incremental debug build"
-    print "  rebuild         Clean debug build"
-    print "  clean           Remove build artifacts"
-    print "  run [args]      Build if needed, launch"
-    print "  test            Run tests"
-    print "  check-deps      Verify packages"
-    print "  help            This message"
-}
-
-typeset -A DISPATCH=(
-    [build]=cmd_build
-    [rebuild]=cmd_rebuild
-    [clean]=cmd_clean [run]=cmd_run [test]=cmd_test
-    [check-deps]=cmd_check_deps [check]=cmd_check_deps [deps]=cmd_check_deps
-    [help]=cmd_help [-h]=cmd_help [--help]=cmd_help
-)
-
-main() {
-    cd "$PROJECT_ROOT" || exit 1
-    local cmd="${1:-help}"; [[ $# -gt 0 ]] && shift
-    local h="${DISPATCH[$cmd]:-}"
-    
-    if [[ -n "$h" ]]; then
-        "$h" "$@"
+cmd_clean() {
+    log header "Cleaning"
+    if [[ -d "$BUILD_DIR" ]]; then
+        rm -rf "$BUILD_DIR"
+        log ok "Build directory nuked."
     else
-        log error "Unknown: ${cmd}"
-        cmd_help
-        return 1
+        log info "Nothing to clean. You're already clean, Chad."
     fi
 }
 
-main "$@"
+cmd_build() {
+    log header "Building ChadVis"
+    log_kv "CPU" "$CPU_MODEL"
+    log_kv "Cores" "$CPU_CORES"
+    log_kv "Type" "$BUILD_TYPE"
+    log_kv "Jobs" "$JOBS"
+
+    if [[ "$CLEAN_FIRST" == true ]]; then
+        cmd_clean
+    fi
+
+    mkdir -p "$BUILD_DIR"
+
+    log info "Configuring with CMake..."
+    # Redirect to log file for LLMs to interpret
+    if ! cmake -G Ninja \
+        -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        -S "$PROJECT_ROOT" -B "$BUILD_DIR" > "$LOG_FILE" 2>&1; then
+        log error "CMake configuration failed! Check $LOG_FILE"
+        return 1
+    fi
+
+    log info "Compiling with Ninja..."
+    if ! ninja -C "$BUILD_DIR" -j "$JOBS" >> "$LOG_FILE" 2>&1; then
+        log error "Compilation failed! Check $LOG_FILE"
+        # Keep the log file for debugging
+        return 1
+    fi
+
+    log ok "Build successful!"
+    log_kv "Binary" "$BINARY_PATH"
+    log_kv "Size" "$(human_size "$BINARY_PATH")"
+
+    # Clear log file on success so we don't confuse anyone
+    truncate -s 0 "$LOG_FILE"
+    
+    if [[ "$INSTALL_AFTER" == true ]]; then
+        cmd_install
+    fi
+}
+
+cmd_install() {
+    log header "Installing"
+    log info "Running installation (might need sudo)..."
+    if ! sudo ninja -C "$BUILD_DIR" install >> "$LOG_FILE" 2>&1; then
+        log error "Installation failed! Check $LOG_FILE"
+        return 1
+    fi
+    log ok "Installed successfully. Go forth and visualize."
+}
+
+cmd_run() {
+    if [[ ! -x "$BINARY_PATH" ]]; then
+        log warn "Binary not found. Building first..."
+        cmd_build || return 1
+    fi
+    log header "Launching ChadVis"
+    exec "$BINARY_PATH" "$@"
+}
+
+cmd_test() {
+    log header "Running Tests"
+    if [[ ! -d "$BUILD_DIR" ]]; then
+        cmd_build || return 1
+    fi
+    # Assuming tests are built into build/tests/
+    if [[ -d "$BUILD_DIR/tests" ]]; then
+        ctest --test-dir "$BUILD_DIR" --output-on-failure
+    else
+        log warn "No tests found. Did you build them?"
+    fi
+}
+
+# ─── Main ───────────────────────────────────────────────────────────────────
+
+case $COMMAND in
+    build)      cmd_build ;;
+    clean)      cmd_clean ;;
+    run)        cmd_run ;;
+    test)       cmd_test ;;
+    check-deps) cmd_check_deps ;;
+    install)    cmd_install ;;
+    *)          log error "Unknown command: $COMMAND"; show_help; exit 1 ;;
+esac
