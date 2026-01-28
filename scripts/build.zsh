@@ -1,12 +1,16 @@
 #!/usr/bin/env zsh
-# ═══ ChadVis Build System v1337 ═══
+# ═══ ChadVis Build System v1337.1 ═══
 # "Arch btw" Edition - Optimized for Chads, safe for Juniors.
 # 
-# This script is so optimized it makes your CPU feel like it's on steroids.
-# If you're a junior dev reading this: yes, we use zsh. No, we don't use bash.
+# Refactored to use Zsh built-ins because external commands are for Juniors.
 # ══════════════════════════════════════════════════════════════════════════
 
 setopt ERR_EXIT PIPE_FAIL NO_UNSET EXTENDED_GLOB
+
+# Load Chad modules
+zmodload zsh/datetime
+zmodload zsh/stat 2>/dev/null || true
+zmodload zsh/parameter 2>/dev/null || true
 
 # ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -18,9 +22,22 @@ readonly LOG_FILE="${LOG_DIR}/build.log"
 readonly BINARY_NAME="chadvis-projectm-qt"
 readonly BINARY_PATH="${BUILD_DIR}/${BINARY_NAME}"
 
-# Hardware Detection (Because we care about performance)
-readonly CPU_CORES=$(nproc 2>/dev/null || echo 4)
-readonly CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^[ \t]*//' || echo "Unknown Chad CPU")
+# Hardware Detection (Zsh-native, no grep/sed/nproc bloat)
+local cpu_cores
+if (( ${+commands[getconf]} )); then
+    cpu_cores=$(getconf _NPROCESSORS_ONLN)
+else
+    local cpuinfo=(${(f)"$(< /proc/cpuinfo)"})
+    cpu_cores=${#${(M)cpuinfo:#processor*}}
+fi
+readonly CPU_CORES=${cpu_cores:-4}
+
+local cpu_model="Unknown Chad CPU"
+if [[ -f /proc/cpuinfo ]]; then
+    local model_line=${(M)${(f)"$(< /proc/cpuinfo)"}:#model name*}
+    cpu_model=${model_line#*: }
+fi
+readonly CPU_MODEL=${cpu_model}
 
 # ─── Visuals (ANSI Escape Codes) ───────────────────────────────────────────
 
@@ -64,7 +81,20 @@ log_kv() {
 human_size() {
     [[ -f "$1" ]] || { echo "N/A"; return; }
     local size
-    zstat -A size +size "$1" 2>/dev/null && numfmt --to=iec "$size" 2>/dev/null || echo "?"
+    if zstat -A size +size "$1" 2>/dev/null; then
+        # Zsh-native size formatting
+        if (( size > 1024 * 1024 * 1024 )); then
+            printf "%.2f GiB" $(( size / 1024.0 / 1024.0 / 1024.0 ))
+        elif (( size > 1024 * 1024 )); then
+            printf "%.2f MiB" $(( size / 1024.0 / 1024.0 ))
+        elif (( size > 1024 )); then
+            printf "%.2f KiB" $(( size / 1024.0 ))
+        else
+            echo "${size} B"
+        fi
+    else
+        echo "?"
+    fi
 }
 
 show_help() {
@@ -91,7 +121,7 @@ show_help() {
 
 mkdir -p "$LOG_DIR"
 
-# Parse arguments
+# Parse arguments using zparseopts (Zsh-native)
 local -A opts
 zparseopts -D -A opts h -help d -debug r -release c -clean i -install j: -jobs:
 
@@ -130,7 +160,7 @@ cmd_check_deps() {
         local pkg="${rest#*:}"
         
         if [[ "$typ" == "cmd" ]]; then
-            if ! command -v "$chk" &>/dev/null; then
+            if (( ! ${+commands[$chk]} )); then
                 log error "Missing command: $chk (Install $pkg)"
                 missing=$((missing + 1))
             else
@@ -159,6 +189,7 @@ cmd_clean() {
 }
 
 cmd_build() {
+    local start_time=$EPOCHSECONDS
     log header "Building ChadVis"
     log_kv "CPU" "$CPU_MODEL"
     log_kv "Cores" "$CPU_CORES"
@@ -188,12 +219,15 @@ cmd_build() {
         return 1
     fi
 
-    log ok "Build successful!"
+    local end_time=$EPOCHSECONDS
+    local duration=$(( end_time - start_time ))
+
+    log ok "Build successful! (Took ${duration}s)"
     log_kv "Binary" "$BINARY_PATH"
     log_kv "Size" "$(human_size "$BINARY_PATH")"
 
     # Clear log file on success so we don't confuse anyone
-    truncate -s 0 "$LOG_FILE"
+    : > "$LOG_FILE"
     
     if [[ "$INSTALL_AFTER" == true ]]; then
         cmd_install
