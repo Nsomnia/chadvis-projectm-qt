@@ -252,7 +252,7 @@ cmd_clean() {
     log header "Cleaning"
     if [[ -d "$BUILD_DIR" ]]; then
         rm -rf "$BUILD_DIR"
-        log ok "Build directory nuked."
+        log ok "Build directory Krush Killed and Destryoed witta big ol' nuke!"
     else
         log info "Nothing to clean. You're already clean, Chad."
     fi
