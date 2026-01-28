@@ -118,25 +118,25 @@ pkg_check_modules(GLEW REQUIRED glew)
 find_package(glm REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale libswresample)
 
-# ProjectM - try pkg-config first, fallback to manual
-# Local ProjectM v4 installation
-set(PROJECTM_LOCAL_DIR "${CMAKE_SOURCE_DIR}/external/projectm-install")
-if(EXISTS "${PROJECTM_LOCAL_DIR}/include/projectM-4/projectM.h")
-    message(STATUS "Using local ProjectM v4 from ${PROJECTM_LOCAL_DIR}")
-    set(PROJECTM_INCLUDE_DIRS "${PROJECTM_LOCAL_DIR}/include")
-    set(PROJECTM_LIBRARIES "${PROJECTM_LOCAL_DIR}/lib/libprojectM-4.so")
+# ProjectM - Intelligent detection with CPM fallback
+# 1. Try modern CMake config (installed by libprojectm on Arch)
+find_package(projectM4 CONFIG QUIET)
+if(projectM4_FOUND)
+    message(STATUS "Found ProjectM v4 via CMake config")
+    set(PROJECTM_LIBRARIES libprojectM::projectM libprojectM::playlist)
     set(PROJECTM_FOUND TRUE)
-    set(CMAKE_INSTALL_RPATH "${PROJECTM_LOCAL_DIR}/lib")
-    set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 endif()
 
-pkg_check_modules(PROJECTM projectM-4)
+# 2. Try pkg-config
 if(NOT PROJECTM_FOUND)
-    # Fallback: try libprojectM
-    pkg_check_modules(PROJECTM libprojectM)
+    pkg_check_modules(PROJECTM projectM-4 QUIET)
+    if(NOT PROJECTM_FOUND)
+        pkg_check_modules(PROJECTM libprojectM QUIET)
+    endif()
 endif()
+
+# 3. Try manual search (fallback for custom installs)
 if(NOT PROJECTM_FOUND)
-    # Try to find manually built projectM
     find_path(PROJECTM_INCLUDE_DIRS projectM-4/projectM.h
         HINTS /usr/local/include /usr/include
     )
@@ -145,14 +145,41 @@ if(NOT PROJECTM_FOUND)
     )
     if(PROJECTM_INCLUDE_DIRS AND PROJECTM_LIBRARIES)
         set(PROJECTM_FOUND TRUE)
-        message(STATUS "Found ProjectM manually: ${PROJECTM_LIBRARIES}")
-    else()
-        message(FATAL_ERROR "ProjectM not found. Install from AUR or build from source.")
+        message(STATUS "Found ProjectM v4 manually: ${PROJECTM_LIBRARIES}")
     endif()
 endif()
 
+# 4. CPM Fallback - Build from source
+if(NOT PROJECTM_FOUND)
+    message(STATUS "ProjectM v4 not found on system. Building from source via CPM...")
+    CPMAddPackage(
+        NAME projectm
+        GIT_REPOSITORY https://github.com/projectM-visualizer/projectm.git
+        GIT_TAG v4.1.6
+        OPTIONS 
+            "BUILD_PROJECTM_STATIC ON"
+            "BUILD_PROJECTM_SAMPLES OFF"
+            "BUILD_PROJECTM_TESTS OFF"
+            "BUILD_PROJECTM_JACK OFF"
+            "BUILD_PROJECTM_PULSE OFF"
+            "BUILD_PROJECTM_SDL OFF"
+            "BUILD_PROJECTM_QT OFF"
+    )
+    if(projectm_FOUND)
+        set(PROJECTM_LIBRARIES projectM projectM-playlist)
+        set(PROJECTM_FOUND TRUE)
+        # Ensure headers are found with projectM-4 prefix if built as subproject
+        # ProjectM v4 headers are usually in <src>/src/libprojectM
+        target_include_directories(projectM INTERFACE $<BUILD_INTERFACE:${projectm_SOURCE_DIR}/src/libprojectM>)
+    endif()
+endif()
+
+if(NOT PROJECTM_FOUND)
+    message(FATAL_ERROR "ProjectM v4 could not be found or built. Please install libprojectm (Arch) or build from source.")
+endif()
+
 # Fix pkg-config bug: -l:projectM-4 -> -lprojectM-4
-if(PROJECTM_FOUND AND PROJECTM_LDFLAGS)
+if(PROJECTM_LDFLAGS)
     string(REPLACE "-l:projectM-4" "-lprojectM-4" PROJECTM_LDFLAGS_FIXED "${PROJECTM_LDFLAGS}")
     set(PROJECTM_LDFLAGS "${PROJECTM_LDFLAGS_FIXED}")
 endif()
