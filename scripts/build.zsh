@@ -147,35 +147,105 @@ COMMAND=${1:-build}
 
 cmd_check_deps() {
     log header "Dependency Check"
+    
+    local is_arch=false
+    [[ -f /etc/arch-release ]] && is_arch=true
+
     local -a deps=(
         "cmd:cmake:cmake" "cmd:ninja:ninja" "cmd:g++:gcc"
         "pkg:Qt6Core:qt6-base" "pkg:Qt6Widgets:qt6-base" "pkg:Qt6OpenGLWidgets:qt6-base"
-        "pkg:libprojectM:libprojectm" "pkg:libavcodec:ffmpeg" "pkg:libavformat:ffmpeg"
+        "pkg:projectM4:libprojectm" "pkg:libavcodec:ffmpeg" "pkg:libavformat:ffmpeg"
     )
-    local missing=0
+    
+    local -a missing_pkgs=()
+    local missing_count=0
+
     for spec in "${deps[@]}"; do
         local typ="${spec%%:*}"
         local rest="${spec#*:}"
         local chk="${rest%%:*}"
         local pkg="${rest#*:}"
         
+        local found=false
         if [[ "$typ" == "cmd" ]]; then
-            if (( ! ${+commands[$chk]} )); then
-                log error "Missing command: $chk (Install $pkg)"
-                missing=$((missing + 1))
-            else
-                log ok "Found $chk"
-            fi
+            (( ${+commands[$chk]} )) && found=true
         else
-            if ! pkg-config --exists "$chk" 2>/dev/null; then
-                log error "Missing package: $chk (Install $pkg)"
-                missing=$((missing + 1))
-            else
-                log ok "Found $chk"
+            # Try pkg-config first
+            pkg-config --exists "$chk" 2>/dev/null && found=true
+            # Fallback for Arch: check pacman directly
+            if [[ "$found" == false && "$is_arch" == true ]]; then
+                pacman -Qq "$pkg" &>/dev/null && found=true
             fi
         fi
+
+        if [[ "$found" == true ]]; then
+            log ok "Found $chk"
+        else
+            log error "Missing: $chk (Package: $pkg)"
+            missing_pkgs+=("$pkg")
+            missing_count=$((missing_count + 1))
+        fi
     done
-    return $missing
+
+    if (( ${#missing_pkgs[@]} > 0 )); then
+        log warn "To install missing dependencies on Arch:"
+        print -P "${C_BOLD}sudo pacman -S ${(j: :)missing_pkgs}${C_RESET}"
+    fi
+
+    return $missing_count
+}
+
+cmd_build() {
+    local start_time=$EPOCHSECONDS
+    
+    # Auto-check deps before building, because we're Chads
+    cmd_check_deps || { log error "Dependencies missing. Fix them, Junior."; return 1; }
+
+    log header "Building ChadVis"
+    log_kv "CPU" "$CPU_MODEL"
+    log_kv "Cores" "$CPU_CORES"
+    log_kv "Type" "$BUILD_TYPE"
+    log_kv "Jobs" "$JOBS"
+
+    if [[ "$CLEAN_FIRST" == true ]]; then
+        cmd_clean
+    fi
+
+    mkdir -p "$BUILD_DIR"
+
+    log info "Configuring with CMake..."
+    # Redirect to log file for LLMs to interpret
+    if ! cmake -G Ninja \
+        -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        -S "$PROJECT_ROOT" -B "$BUILD_DIR" > "$LOG_FILE" 2>&1; then
+        log error "CMake configuration failed! Check $LOG_FILE"
+        return 1
+    fi
+
+    log info "Compiling with Ninja..."
+    if ! ninja -C "$BUILD_DIR" -j "$JOBS" >> "$LOG_FILE" 2>&1; then
+        log error "Compilation failed! Check $LOG_FILE"
+        # Keep the log file for debugging
+        return 1
+    fi
+
+    local end_time=$EPOCHSECONDS
+    local duration=$(( end_time - start_time ))
+
+    log ok "Build successful! (Took ${duration}s)"
+    log_kv "Binary" "$BINARY_PATH"
+    log_kv "Size" "$(human_size "$BINARY_PATH")"
+
+    # Reminder for the Chads
+    print -P "\n${ICON_CHAD} ${C_CYAN}${C_BOLD}REMINDER:${C_RESET} Did you update ${C_BOLD}CHANGELOG.md${C_RESET} for these major gains?"
+
+    # Clear log file on success so we don't confuse anyone
+    : > "$LOG_FILE"
+    
+    if [[ "$INSTALL_AFTER" == true ]]; then
+        cmd_install
+    fi
 }
 
 cmd_clean() {
