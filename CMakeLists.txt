@@ -203,6 +203,8 @@ set(CORE_SOURCES
     src/core/ConfigLoader.cpp
     src/core/Config.hpp
     src/core/Config.cpp
+    src/core/CliUtils.hpp
+    src/core/CliUtils.cpp
     src/core/Application.hpp
     src/core/Application.cpp
 )
