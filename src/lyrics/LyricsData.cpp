@@ -15,10 +15,6 @@
 
 namespace vc {
 
-// Forward declaration of helper
-static std::vector<LyricsLine> alignWordsToLines(const std::vector<LyricsWord>& words, 
-                                                  const std::string& prompt);
-
 // LyricsData methods
 
 int LyricsData::findLineIndex(f32 time) const {
@@ -102,6 +98,93 @@ std::pair<f32, f32> LyricsData::getTimeRange(size_t lineIndex, size_t contextLin
 // Factory implementations
 
 namespace LyricsFactory {
+
+// Helper: Align words to lines using prompt text
+static std::vector<LyricsLine> alignWordsToLines(const std::vector<LyricsWord>& words, 
+                                                  const std::string& prompt) {
+    std::vector<LyricsLine> lines;
+    
+    std::istringstream stream(prompt);
+    std::string lineText;
+    size_t wordIdx = 0;
+    
+    while (std::getline(stream, lineText)) {
+        // Trim
+        lineText.erase(0, lineText.find_first_not_of(" \t\r\n"));
+        lineText.erase(lineText.find_last_not_of(" \t\r\n") + 1);
+        
+        if (lineText.empty()) continue;
+        
+        // Skip section tags like [Verse], [Chorus]
+        if (lineText.front() == '[' && lineText.back() == ']') {
+            LyricsLine line;
+            line.text = lineText;
+            line.isInstrumental = true;
+            lines.push_back(line);
+            continue;
+        }
+        
+        LyricsLine line;
+        line.text = lineText;
+        line.isSynced = true;
+        
+        // Tokenize line to match words
+        std::istringstream lineStream(lineText);
+        std::string token;
+        std::vector<std::string> tokens;
+        while (lineStream >> token) {
+            // Normalize token
+            std::string norm;
+            for (char c : token) {
+                if (std::isalnum(static_cast<unsigned char>(c))) {
+                    norm += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                }
+            }
+            if (!norm.empty()) tokens.push_back(norm);
+        }
+        
+        if (tokens.empty()) continue;
+        
+        // Find matching words
+        bool foundMatch = false;
+        for (size_t searchStart = wordIdx; searchStart < words.size() && searchStart < wordIdx + 50; ++searchStart) {
+            // Normalize word
+            std::string wordNorm;
+            for (char c : words[searchStart].text) {
+                if (std::isalnum(static_cast<unsigned char>(c))) {
+                    wordNorm += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                }
+            }
+            
+            if (wordNorm == tokens[0]) {
+                // Found first word match
+                line.startTime = words[searchStart].startTime;
+                wordIdx = searchStart;
+                foundMatch = true;
+                
+                // Add words to line
+                for (size_t t = 0; t < tokens.size() && wordIdx < words.size(); ++t) {
+                    line.words.push_back(words[wordIdx]);
+                    line.endTime = words[wordIdx].endTime;
+                    ++wordIdx;
+                }
+                break;
+            }
+        }
+        
+        if (!foundMatch) {
+            // No match - use estimated timing
+            if (!lines.empty()) {
+                line.startTime = lines.back().endTime;
+                line.endTime = line.startTime + 3.0f; // Estimate 3 seconds
+            }
+        }
+        
+        lines.push_back(line);
+    }
+    
+    return lines;
+}
 
 LyricsData fromSunoJson(const std::string& json, const std::string& prompt) {
     LyricsData data;
@@ -191,93 +274,6 @@ LyricsData fromSunoJson(const std::string& json, const std::string& prompt) {
     }
     
     return data;
-}
-
-// Helper: Align words to lines using prompt text
-static std::vector<LyricsLine> alignWordsToLines(const std::vector<LyricsWord>& words, 
-                                                  const std::string& prompt) {
-    std::vector<LyricsLine> lines;
-    
-    std::istringstream stream(prompt);
-    std::string lineText;
-    size_t wordIdx = 0;
-    
-    while (std::getline(stream, lineText)) {
-        // Trim
-        lineText.erase(0, lineText.find_first_not_of(" \t\r\n"));
-        lineText.erase(lineText.find_last_not_of(" \t\r\n") + 1);
-        
-        if (lineText.empty()) continue;
-        
-        // Skip section tags like [Verse], [Chorus]
-        if (lineText.front() == '[' && lineText.back() == ']') {
-            LyricsLine line;
-            line.text = lineText;
-            line.isInstrumental = true;
-            lines.push_back(line);
-            continue;
-        }
-        
-        LyricsLine line;
-        line.text = lineText;
-        line.isSynced = true;
-        
-        // Tokenize line to match words
-        std::istringstream lineStream(lineText);
-        std::string token;
-        std::vector<std::string> tokens;
-        while (lineStream >> token) {
-            // Normalize token
-            std::string norm;
-            for (char c : token) {
-                if (std::isalnum(static_cast<unsigned char>(c))) {
-                    norm += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                }
-            }
-            if (!norm.empty()) tokens.push_back(norm);
-        }
-        
-        if (tokens.empty()) continue;
-        
-        // Find matching words
-        bool foundMatch = false;
-        for (size_t searchStart = wordIdx; searchStart < words.size() && searchStart < wordIdx + 50; ++searchStart) {
-            // Normalize word
-            std::string wordNorm;
-            for (char c : words[searchStart].text) {
-                if (std::isalnum(static_cast<unsigned char>(c))) {
-                    wordNorm += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                }
-            }
-            
-            if (wordNorm == tokens[0]) {
-                // Found first word match
-                line.startTime = words[searchStart].startTime;
-                wordIdx = searchStart;
-                foundMatch = true;
-                
-                // Add words to line
-                for (size_t t = 0; t < tokens.size() && wordIdx < words.size(); ++t) {
-                    line.words.push_back(words[wordIdx]);
-                    line.endTime = words[wordIdx].endTime;
-                    ++wordIdx;
-                }
-                break;
-            }
-        }
-        
-        if (!foundMatch) {
-            // No match - use estimated timing
-            if (!lines.empty()) {
-                line.startTime = lines.back().endTime;
-                line.endTime = line.startTime + 3.0f; // Estimate 3 seconds
-            }
-        }
-        
-        lines.push_back(line);
-    }
-    
-    return lines;
 }
 
 LyricsData fromSrt(const std::string& content) {

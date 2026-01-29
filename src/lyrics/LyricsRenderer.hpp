@@ -207,10 +207,10 @@ private:
  * Minimal, clean rendering suitable for overlay on video.
  * No animations, simple text rendering for encoding performance.
  */
-class OverlayRenderer : public LyricsRenderer {
+class LyricsOverlayRenderer : public LyricsRenderer {
 public:
-    OverlayRenderer();
-    ~OverlayRenderer() override = default;
+    LyricsOverlayRenderer();
+    ~LyricsOverlayRenderer() override = default;
     
     void render(QPainter& painter, const QRect& rect) override;
     QSize preferredSize() const override;
@@ -232,8 +232,8 @@ private:
     f32 posY_{0.85f};   ///< Vertical position (0.0 = top, 1.0 = bottom)
     
     // Last rendered state (for needsRepaint optimization)
-    int lastLine_{-1};
-    int lastWord_{-1};
+    mutable int lastLine_{-1};
+    mutable int lastWord_{-1};
 };
 
 /**

@@ -282,6 +282,15 @@ set(RECORDER_SOURCES
     src/recorder/VideoRecorderThread.cpp
 )
 
+set(LYRICS_SOURCES
+    src/lyrics/LyricsData.hpp
+    src/lyrics/LyricsData.cpp
+    src/lyrics/LyricsSync.hpp
+    src/lyrics/LyricsSync.cpp
+    src/lyrics/LyricsRenderer.hpp
+    src/lyrics/LyricsRenderer.cpp
+)
+
 set(UI_SOURCES
     src/ui/controllers/AudioController.hpp
     src/ui/controllers/AudioController.cpp
@@ -384,6 +393,7 @@ add_library(project_lib STATIC
     ${SUNO_SOURCES}
     ${OVERLAY_SOURCES}
     ${RECORDER_SOURCES}
+    ${LYRICS_SOURCES}
     ${UI_SOURCES}
     resources/chadvis-projectm-qt.qrc
 )
