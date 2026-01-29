@@ -43,8 +43,20 @@ void SunoCookieDialog::setupUI() {
 
     passwordInput_ = new QLineEdit(loginTab);
     passwordInput_->setEchoMode(QLineEdit::Password);
-    passwordInput_->setText(QString::fromStdString(CONFIG.suno().password));
+    passwordInput_->setText(QString::fromStdString(CONFIG.suno().email));
+    passwordInput_->setPlaceholderText("Optional if using Email Code");
     formLayout->addRow("Password:", passwordInput_);
+
+    auto* otpLayout = new QHBoxLayout();
+    otpInput_ = new QLineEdit(loginTab);
+    otpInput_->setPlaceholderText("6-digit code");
+    otpInput_->setEnabled(false);
+    otpLayout->addWidget(otpInput_);
+
+    requestCodeBtn_ = new QPushButton("Send Code", loginTab);
+    connect(requestCodeBtn_, &QPushButton::clicked, this, &SunoCookieDialog::onRequestCode);
+    otpLayout->addWidget(requestCodeBtn_);
+    formLayout->addRow("Email Code:", otpLayout);
     
     loginLayout->addLayout(formLayout);
     loginLayout->addStretch();
@@ -265,7 +277,11 @@ void SunoCookieDialog::onAutoDetect() {
 
 void SunoCookieDialog::onAccept() {
     if (isLoginMode()) {
-        if (emailInput_->text().trimmed().isEmpty() || passwordInput_->text().trimmed().isEmpty()) {
+        if (emailInput_->text().trimmed().isEmpty()) {
+            return;
+        }
+        // Either password or OTP must be present
+        if (passwordInput_->text().trimmed().isEmpty() && otpInput_->text().trimmed().isEmpty()) {
             return;
         }
     } else {
@@ -274,6 +290,27 @@ void SunoCookieDialog::onAccept() {
         }
     }
     accept();
+}
+
+void SunoCookieDialog::onRequestCode() {
+    QString email = emailInput_->text().trimmed();
+    if (email.isEmpty()) return;
+
+    requestCodeBtn_->setEnabled(false);
+    requestCodeBtn_->setText("Sending...");
+    
+    emit requestCodeRequested(email);
+}
+
+void SunoCookieDialog::onCodeSent(bool success) {
+    if (success) {
+        requestCodeBtn_->setText("Sent!");
+        otpInput_->setEnabled(true);
+        otpInput_->setFocus();
+    } else {
+        requestCodeBtn_->setEnabled(true);
+        requestCodeBtn_->setText("Retry");
+    }
 }
 
 QString SunoCookieDialog::getCookie() const {
@@ -286,6 +323,10 @@ QString SunoCookieDialog::getEmail() const {
 
 QString SunoCookieDialog::getPassword() const {
     return passwordInput_->text().trimmed();
+}
+
+QString SunoCookieDialog::getOTPCode() const {
+    return otpInput_->text().trimmed();
 }
 
 bool SunoCookieDialog::isLoginMode() const {
