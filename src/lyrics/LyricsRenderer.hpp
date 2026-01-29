@@ -58,7 +58,7 @@ public:
     /**
      * @brief Check if renderer needs repainting
      */
-    virtual bool needsRepaint() const { return true; }
+    virtual bool needsRepaint() { return true; }
     
     /**
      * @brief Set rendering configuration
@@ -133,8 +133,10 @@ private:
     void renderActiveLine(QPainter& painter, const QRect& rect);
     void renderContextLines(QPainter& painter, const QRect& rect);
     void renderInstrumental(QPainter& painter, const QRect& rect);
-    void renderWord(QPainter& painter, const LyricsWord& word, 
-                   const QPoint& pos, bool isActive, f32 progress);
+    void renderWord(QPainter& painter, const LyricsLine& line, 
+                   const QRect& rect, int centerY);
+    
+    QColor lerpColor(const QColor& a, const QColor& b, f32 t);
     
     f32 verticalPos_{0.5f};     ///< Vertical position (0.0-1.0)
     bool showInstrumental_{true};
@@ -212,7 +214,7 @@ public:
     
     void render(QPainter& painter, const QRect& rect) override;
     QSize preferredSize() const override;
-    bool needsRepaint() const override;
+    bool needsRepaint() override;
     
     /**
      * @brief Set opacity (0.0-1.0)
