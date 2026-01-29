@@ -23,8 +23,9 @@ LyricsPanel::LyricsPanel(AudioEngine* audio,
     
     // Create sync engine
     sync_ = std::make_unique<LyricsSync>(audio_, this);
-    connect(sync_.get(), &LyricsSync::positionChanged, 
-            this, &LyricsPanel::onPositionChanged);
+    sync_->positionChanged.connect([this](const LyricsSyncPosition& pos) {
+        onPositionChanged(pos);
+    });
     
     // Connect to audio track changes
     if (audio_) {

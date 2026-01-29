@@ -390,20 +390,20 @@ int PanelRenderer::handleClick(const QPoint& pos) const {
     return -1;
 }
 
-// OverlayRenderer implementation
+// LyricsOverlayRenderer implementation
 
-OverlayRenderer::OverlayRenderer() {
+LyricsOverlayRenderer::LyricsOverlayRenderer() {
     style_.font.setPointSize(20);
     style_.enableGlow = false;
     style_.enableShadow = true;
     style_.enableAnimations = false; // No animations for video
 }
 
-QSize OverlayRenderer::preferredSize() const {
+QSize LyricsOverlayRenderer::preferredSize() const {
     return QSize(640, 60);
 }
 
-bool OverlayRenderer::needsRepaint() const {
+bool LyricsOverlayRenderer::needsRepaint() {
     // Only repaint on line/word changes, not every frame
     bool needsUpdate = (position_.lineIndex != lastLine_) || 
                        (position_.wordIndex != lastWord_);
@@ -414,7 +414,7 @@ bool OverlayRenderer::needsRepaint() const {
     return needsUpdate;
 }
 
-void OverlayRenderer::render(QPainter& painter, const QRect& rect) {
+void LyricsOverlayRenderer::render(QPainter& painter, const QRect& rect) {
     if (lyrics_.empty() || position_.lineIndex < 0) return;
     
     const auto& line = lyrics_.lines[position_.lineIndex];
@@ -464,7 +464,7 @@ std::unique_ptr<LyricsRenderer> LyricsRendererFactory::createPanel() {
 }
 
 std::unique_ptr<LyricsRenderer> LyricsRendererFactory::createOverlay() {
-    return std::make_unique<OverlayRenderer>();
+    return std::make_unique<LyricsOverlayRenderer>();
 }
 
 } // namespace vc

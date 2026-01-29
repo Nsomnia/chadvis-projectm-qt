@@ -103,6 +103,7 @@ private:
     void ensureLineVisible(int lineIndex);
     void highlightSearchResults(QPainter& painter);
     
+protected:
     // Data
     LyricsData lyrics_;
     std::unique_ptr<LyricsSync> sync_;
