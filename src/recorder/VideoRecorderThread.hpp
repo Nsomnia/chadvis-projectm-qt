@@ -11,6 +11,7 @@
  * - Producer-Consumer: Consumes frames/samples produced by the main/audio
  * threads.
  * - RAII: Manages the lifecycle of the encoding thread using std::jthread.
+ * - Thread-Safe Stats: Uses mutex-protected stats for safe cross-thread access.
  */
 
 #pragma once
@@ -38,10 +39,18 @@ public:
                           usize size,
                           u32 channels,
                           u32 sampleRate);
+    
+    // Thread-safe stats access
+    RecordingStats getStats() const;
 
 private:
+    using TimePoint = std::chrono::steady_clock::time_point;
+    
     void threadLoop(std::stop_token stopToken);
-    void updateStats(TimePoint startTime);
+    void updateStats(TimePoint startTime,
+                     u64& lastFramesWritten,
+                     TimePoint& lastUpdate,
+                     bool isFinal = false);
 
     VideoRecorder& parent_;
     EncoderSettings settings_;
@@ -57,6 +66,10 @@ private:
     std::mutex audioMutex_;
     u32 audioSampleRate_{48000};
     u32 audioChannels_{2};
+    
+    // Thread-safe stats
+    mutable std::mutex statsMutex_;
+    RecordingStats stats_;
 };
 
 } // namespace vc

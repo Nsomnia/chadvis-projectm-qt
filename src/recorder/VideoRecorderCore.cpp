@@ -103,13 +103,20 @@ void VideoRecorder::submitVideoFrame(const u8* data,
 }
 
 void VideoRecorder::submitAudioSamples(const f32* data,
-                                       u32 samples,
-                                       u32 channels,
-                                       u32 sampleRate) {
+                                        u32 samples,
+                                        u32 channels,
+                                        u32 sampleRate) {
     if (state_ != RecordingState::Recording || !worker_)
         return;
 
     worker_->pushAudioSamples(data, samples * channels, channels, sampleRate);
+}
+
+RecordingStats VideoRecorder::getCurrentStats() const {
+    if (worker_ && state_ == RecordingState::Recording) {
+        return worker_->getStats();
+    }
+    return stats_;
 }
 
 } // namespace vc

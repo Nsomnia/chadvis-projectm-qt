@@ -14,6 +14,7 @@
 
 #include "RecordingControls.hpp"
 #include "core/Config.hpp"
+#include "core/Logger.hpp"
 #include "ui/MainWindow.hpp"
 #include "ui/VisualizerPanel.hpp"
 #include "util/FileUtils.hpp"
@@ -36,6 +37,15 @@ void RecordingControls::setVideoRecorder(VideoRecorder* recorder) {
         recorder->statsUpdated.connect([this](const RecordingStats& stats) {
             QMetaObject::invokeMethod(this,
                                       [this, stats] { updateStats(stats); });
+        });
+        
+        // Also connect error signal
+        recorder->error.connect([this](const std::string& error) {
+            QMetaObject::invokeMethod(this, [this, error] {
+                LOG_WARN("Recording error: {}", error);
+                statusLabel_->setText(QString("Error: %1").arg(QString::fromStdString(error)));
+                statusLabel_->setStyleSheet("color: #ff0000;");
+            });
         });
     }
 }
@@ -232,15 +242,33 @@ void RecordingControls::updateStats(const RecordingStats& stats) {
                                 .arg(mins, 2, 10, QChar('0'))
                                 .arg(secs, 2, 10, QChar('0')));
 
-    framesLabel_->setText(QString("%1 (%2 dropped)")
-                                  .arg(stats.framesWritten)
-                                  .arg(stats.framesDropped));
+    // Show frames with dropped count and encoding FPS
+    QString framesText = QString("%1 (%2 dropped)").arg(stats.framesWritten).arg(stats.framesDropped);
+    if (stats.encodingFps > 0) {
+        framesText += QString(" @ %1 FPS").arg(stats.encodingFps, 0, 'f', 1);
+    }
+    framesLabel_->setText(framesText);
 
     sizeLabel_->setText(
             QString::fromStdString(file::humanSize(stats.bytesWritten)));
 
-    int bufferLevel = std::min(100, static_cast<int>(stats.avgFps * 1.5));
-    bufferBar_->setValue(bufferLevel);
+    // Buffer bar shows encoding health (target FPS vs actual)
+    // Green = good (>90%), Yellow = warning (50-90%), Red = bad (<50%)
+    int targetFps = CONFIG.recording().video.fps;
+    int healthPercent = 0;
+    if (targetFps > 0) {
+        healthPercent = std::min(100, static_cast<int>((stats.avgFps / targetFps) * 100));
+    }
+    bufferBar_->setValue(healthPercent);
+    
+    // Color-code the buffer bar based on health
+    if (healthPercent >= 90) {
+        bufferBar_->setStyleSheet("QProgressBar { background-color: #2a2a2a; border: none; } QProgressBar::chunk { background-color: #00ff88; }");
+    } else if (healthPercent >= 50) {
+        bufferBar_->setStyleSheet("QProgressBar { background-color: #2a2a2a; border: none; } QProgressBar::chunk { background-color: #ffaa00; }");
+    } else {
+        bufferBar_->setStyleSheet("QProgressBar { background-color: #2a2a2a; border: none; } QProgressBar::chunk { background-color: #ff4444; }");
+    }
 }
 
 void RecordingControls::onRecordButtonClicked() {
