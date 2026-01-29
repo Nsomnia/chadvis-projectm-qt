@@ -19,18 +19,30 @@ public:
     QString getCookie() const;
     QString getEmail() const;
     QString getPassword() const;
+    QString getOTPCode() const;
     bool isLoginMode() const;
+
+    void setSignInId(const std::string& id) { signInId_ = id; }
+    std::string getSignInId() const { return signInId_; }
+    void onCodeSent(bool success);
+
+signals:
+    void requestCodeRequested(const QString& email);
 
 private slots:
     void onCopySnippet();
     void onAutoDetect();
     void onAccept();
+    void onRequestCode();
 
 private:
     void setupUI();
 
+    std::string signInId_;
     QLineEdit* emailInput_;
     QLineEdit* passwordInput_;
+    QLineEdit* otpInput_;
+    QPushButton* requestCodeBtn_;
     QTextEdit* cookieInput_;
     QTextEdit* snippetDisplay_;
     QPushButton* copySnippetBtn_;
