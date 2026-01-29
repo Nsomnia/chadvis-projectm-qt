@@ -15,7 +15,11 @@ enum class VideoCodec {
     VP9,        // libvpx-vp9 - good for web
     AV1,        // libaom-av1 - best compression, slowest
     ProRes,     // prores_ks - for editing
-    FFV1        // lossless
+    FFV1,       // lossless
+    H264_NVENC, // NVIDIA hardware encoding
+    H265_NVENC, // NVIDIA HEVC hardware encoding
+    H264_VAAPI, // Intel/AMD hardware encoding via VAAPI
+    H265_VAAPI  // Intel/AMD HEVC hardware encoding via VAAPI
 };
 
 // Audio codec options
@@ -55,7 +59,18 @@ enum class PixelFormat {
     YUV420P,    // Most compatible
     YUV422P,    // Better color, larger
     YUV444P,    // Best color, largest
-    RGB24       // For lossless
+    RGB24,      // For lossless
+    NV12,       // Hardware acceleration format
+    P010LE      // 10-bit hardware format for HEVC
+};
+
+// Hardware acceleration device
+enum class HWAccelDevice {
+    None,       // Software encoding
+    NVENC,      // NVIDIA GPU encoding
+    VAAPI,      // Intel/AMD via VAAPI
+    AMF,        // AMD Advanced Media Framework
+    QuickSync   // Intel QuickSync
 };
 
 struct VideoSettings {
@@ -63,13 +78,17 @@ struct VideoSettings {
     u32 width{1920};
     u32 height{1080};
     u32 fps{60};
-    u32 crf{18};                // Quality: 0-51, lower is better
-    u32 bitrate{0};             // 0 = use CRF
+    u32 crf{18};                // Quality: 0-51, lower is better (software only)
+    u32 bitrate{0};             // 0 = use CRF for software, auto for hardware
     EncoderPreset preset{EncoderPreset::Medium};
     PixelFormat pixelFormat{PixelFormat::YUV420P};
     u32 gopSize{0};             // 0 = auto (fps * 2)
     u32 bFrames{3};
     bool twoPass{false};
+    
+    // Hardware acceleration
+    HWAccelDevice hwAccel{HWAccelDevice::None};
+    u32 hwDevice{0};            // GPU device index (for multi-GPU systems)
     
     // Codec-specific options
     std::string extraOptions;
@@ -78,6 +97,7 @@ struct VideoSettings {
     std::string codecName() const;
     std::string presetName() const;
     std::string pixelFormatName() const;
+    bool isHardwareAccelerated() const;
 };
 
 struct AudioSettings {
@@ -117,6 +137,8 @@ struct EncoderSettings {
     static EncoderSettings discord8mb();
     static EncoderSettings lossless();
     static EncoderSettings editing();
+    static EncoderSettings hardware1080p60();  // NVENC/VAAPI
+    static EncoderSettings hardware4k60();     // NVENC HEVC
 };
 
 // Quality presets
