@@ -1,11 +1,14 @@
 #pragma once
-// SunoCookieDialog.hpp - Dialog for inputting Suno cookies
-// Provides a JS snippet for the user to get their cookie
+// SunoCookieDialog.hpp - Dialog for Suno authentication via embedded browser
 
 #include <QDialog>
-#include <QLineEdit>
 #include <QPushButton>
+#include <QLabel>
+#include <QTabWidget>
 #include <QTextEdit>
+
+class QWebEngineView;
+class QNetworkCookie;
 
 namespace vc::ui {
 
@@ -17,38 +20,24 @@ public:
     ~SunoCookieDialog() override;
 
     QString getCookie() const;
-    QString getEmail() const;
-    QString getPassword() const;
-    QString getOTPCode() const;
-    bool isLoginMode() const;
-
-    void setSignInId(const std::string& id) { signInId_ = id; }
-    std::string getSignInId() const { return signInId_; }
-    void onCodeSent(bool success);
-
-signals:
-    void requestCodeRequested(const QString& email);
 
 private slots:
-    void onCopySnippet();
-    void onAutoDetect();
     void onAccept();
-    void onRequestCode();
+    void onCookieAdded(const QNetworkCookie& cookie);
+    void onManualTextChanged();
 
 private:
     void setupUI();
 
-    std::string signInId_;
-    QLineEdit* emailInput_;
-    QLineEdit* passwordInput_;
-    QLineEdit* otpInput_;
-    QPushButton* requestCodeBtn_;
-    QTextEdit* cookieInput_;
-    QTextEdit* snippetDisplay_;
-    QPushButton* copySnippetBtn_;
-    QPushButton* autoDetectBtn_;
+    QTabWidget* tabWidget_;
+    QWebEngineView* webView_;
+    QTextEdit* manualCookieEdit_;
+    QLabel* statusLabel_;
     QPushButton* okBtn_;
     QPushButton* cancelBtn_;
+    
+    QString sessionCookie_;
+    QString clientCookie_;
 };
 
 } // namespace vc::ui

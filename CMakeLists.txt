@@ -61,7 +61,7 @@ add_compile_options(
 )
 
 # Find packages
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network Sql)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network Sql WebEngineWidgets)
 find_package(PkgConfig REQUIRED)
 
 # Header-only libraries: try system first, fallback to CPM
@@ -340,6 +340,7 @@ set(COMMON_LIBS
     Qt6::Svg
     Qt6::Network
     Qt6::Sql
+    Qt6::WebEngineWidgets
     ${TAGLIB_LIBRARIES}
     ${GLEW_LIBRARIES}
     ${FFMPEG_LIBRARIES}

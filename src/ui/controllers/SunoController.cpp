@@ -159,21 +159,6 @@ void SunoController::refreshLibrary(int page) {
     }
 
     if (!client_->isAuthenticated()) {
-        if (!CONFIG.suno().email.empty() && !CONFIG.suno().password.empty()) {
-            LOG_INFO("SunoController: Attempting automated login...");
-            client_->login(CONFIG.suno().email, CONFIG.suno().password, [this, page](bool success) {
-                if (success) {
-                    LOG_INFO("SunoController: Automated login successful");
-                    CONFIG.suno().cookie = client_->getCookie();
-                    CONFIG.save(CONFIG.configPath());
-                    refreshLibrary(page);
-                } else {
-                    LOG_ERROR("SunoController: Automated login failed");
-                    showCookieDialog();
-                }
-            });
-            return;
-        }
         showCookieDialog();
         return;
     }
@@ -203,61 +188,9 @@ void SunoController::syncDatabase(bool forceAuth) {
 void SunoController::showCookieDialog() {
     auto* dialog = new ui::SunoCookieDialog();
     
-    connect(dialog, &ui::SunoCookieDialog::requestCodeRequested, this, [this, dialog](const QString& email) {
-        client_->requestLoginCode(email.toStdString(), [dialog](bool success, const std::string& signInId) {
-            if (success) {
-                dialog->setSignInId(signInId);
-            }
-            dialog->onCodeSent(success);
-        });
-    });
-
     if (dialog->exec() == QDialog::Accepted) {
-        if (dialog->isLoginMode()) {
-            std::string email = dialog->getEmail().toStdString();
-            std::string password = dialog->getPassword().toStdString();
-            std::string otp = dialog->getOTPCode().toStdString();
-            std::string signInId = dialog->getSignInId();
-            
-            CONFIG.suno().email = email;
-            if (!password.empty()) {
-                CONFIG.suno().password = password;
-            }
-            CONFIG.save(CONFIG.configPath());
-            
-            if (!otp.empty() && !signInId.empty()) {
-                LOG_INFO("SunoController: Attempting OTP login...");
-                client_->submitLoginCode(signInId, otp, [this](bool success) {
-                    if (success) {
-                        LOG_INFO("SunoController: OTP Login successful");
-                        CONFIG.suno().cookie = client_->getCookie();
-                        CONFIG.save(CONFIG.configPath());
-                        accumulatedClips_.clear();
-                        isSyncing_ = true;
-                        client_->fetchLibrary(1);
-                    } else {
-                        LOG_ERROR("SunoController: OTP Login failed");
-                        showCookieDialog();
-                    }
-                });
-            } else {
-                LOG_INFO("SunoController: Attempting password login...");
-                client_->login(email, password, [this](bool success) {
-                    if (success) {
-                        LOG_INFO("SunoController: Login successful");
-                        CONFIG.suno().cookie = client_->getCookie();
-                        CONFIG.save(CONFIG.configPath());
-                        accumulatedClips_.clear();
-                        isSyncing_ = true;
-                        client_->fetchLibrary(1);
-                    } else {
-                        LOG_ERROR("SunoController: Login failed");
-                        showCookieDialog();
-                    }
-                });
-            }
-        } else {
-            std::string cookie = dialog->getCookie().toStdString();
+        std::string cookie = dialog->getCookie().toStdString();
+        if (!cookie.empty()) {
             client_->setCookie(cookie);
             CONFIG.suno().cookie = cookie;
             CONFIG.save(CONFIG.configPath());
