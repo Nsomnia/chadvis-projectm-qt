@@ -34,16 +34,46 @@ class OverlayEngine;
 class VideoRecorder;
 
 struct AppOptions {
+    // General
     bool debug{false};
     bool headless{false};
-    bool startRecording{false};
-    bool useDefaultPreset{false};
-    std::optional<fs::path> outputFile;
     std::optional<fs::path> configFile;
     std::vector<fs::path> inputFiles;
+    
+    // Visualizer
     std::optional<std::string> presetName;
-    std::optional<fs::path> testLyricsFile;
+    bool useDefaultPreset{false};
+    std::optional<int> visualizerFps;
+    std::optional<int> visualizerWidth;
+    std::optional<int> visualizerHeight;
+    std::optional<bool> visualizerShuffle;
+    
+    // Recording
+    bool startRecording{false};
+    std::optional<fs::path> outputFile;
+    std::optional<std::string> recordingCodec;
+    std::optional<int> recordingCrf;
+    std::optional<std::string> recordingPreset;
+    
+    // Audio
+    std::optional<std::string> audioDevice;
+    std::optional<int> audioBufferSize;
+    std::optional<int> audioSampleRate;
+    
+    // Suno
     std::optional<std::string> sunoId;
+    std::optional<fs::path> sunoDownloadPath;
+    std::optional<bool> sunoAutoDownload;
+    
+    // Karaoke/Lyrics
+    std::optional<fs::path> testLyricsFile;
+    std::optional<bool> karaokeEnabled;
+    std::optional<std::string> karaokeFont;
+    std::optional<int> karaokeFontSize;
+    std::optional<float> karaokeYPosition;
+    
+    // UI
+    std::optional<std::string> theme;
 };
 
 class Application : public QObject {

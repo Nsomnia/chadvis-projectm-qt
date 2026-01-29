@@ -1,93 +1,122 @@
 ---
 active: true
-iteration: 5
+iteration: 6
 max_iterations: 0
 completion_promise: null
 started_at: "2026-01-29T00:00:00Z"
 ---
 
-## Ralph Loop Status: ITERATION 2 - INVESTIGATION COMPLETE ✅
+## Ralph Loop Status: ITERATION 4 - P3 TASKS IN PROGRESS
 
-### Summary of Investigation
+### Previous Iterations Complete ✅
 
-**Suno Authentication System:**
-- ✅ **Status: WORKING** - No changes needed
-- `SunoCookieDialog` properly uses `QWebEngineView` for browser login
-- Cookie capture (`__session`, `__client`) works correctly  
-- Token refresh via Clerk API is functional
-- Auth state persists in config and database
-- All authentication logic is production-ready
-
-**Karaoke/Lyrics System:**
-- ⚠️ **Status: NEEDS REWRITE** - Major improvements needed
-- `KaraokeWidget` has basic functionality but needs smoother rendering
-- `LyricsAligner` works but alignment logic is complex
-- Missing: Search in Suno library, Lyrics panel tab, subtitle export toggle
-- Suno lyrics fetch works but "processing" state handling is messy
-
-### Key Findings
-
-1. **Suno auth is DONE** - The previous agent completed it well
-2. **Karaoke needs work** - But the foundation exists
-3. **Database is solid** - SQLite schema with migrations works
-4. **Lyrics parsing works** - JSON, SRT, LRC all supported
-
-### Created Branches
-
-1. `suno-auth-refactor` - Contains working Suno auth (completed)
-2. `feat/video-recording-rewrite` - Contains recording improvements (completed)  
-3. `beta/integration` - Integration branch for testing all features
-4. `feat/suno-karaoke-rewrite` - Ready for karaoke implementation
-
-### Next Steps (Ralph Loop Iteration 3)
-
-**Option A: Implement Karaoke Rewrite**
-- Create `src/lyrics/` directory with new architecture
-- Implement LyricsLoader, LyricsSync, LyricsRenderer
-- Create LyricsPanel canvas tab
-- Rewrite KaraokeWidget with smoother rendering
-- Add subtitle file export (.srt, .lrc)
-- Add search to Suno library
-
-**Option B: Create Beta Release**
-- Test beta/integration branch
-- Fix any merge issues
-- Create documentation for beta testers
-- Prepare for master merge
-
-**Option C: User Decision Needed**
-- Which feature is higher priority?
-- Should we merge current work to master first?
-- Any specific karaoke features wanted?
-
-### Files Ready for Implementation
-
-Based on TODO.md analysis:
-- `src/suno/SunoDatabase.cpp` - Add searchClips() implementation
-- `src/ui/KaraokeWidget.cpp` - Gut and rewrite
-- `src/ui/LyricsPanel.cpp` - Create new (NEW FILE)
-- `src/lyrics/LyricsLoader.cpp` - Create new (NEW FILE)
-- `src/lyrics/LyricsSync.cpp` - Create new (NEW FILE)
-- `src/lyrics/LyricsRenderer.cpp` - Create new (NEW FILE)
-
-### Notes for Future Agents
-
-The Suno authentication system that was described as potentially incomplete is actually **well-implemented and working**. The previous agent (or the current codebase) has:
-
-1. Working QWebEngineView login dialog
-2. Proper cookie extraction and storage
-3. Clerk API token refresh
-4. Database persistence
-5. Error handling and retry logic
-
-**DO NOT REWRITE THE AUTH SYSTEM** - Focus on karaoke/lyrics improvements only.
-
-The main work items are:
-1. Suno library search functionality
-2. Lyrics panel/tool tab
-3. Karaoke display improvements
-4. Subtitle file export toggle
+**Iteration 1:** Video Recording Rewrite ✅
+**Iteration 2:** Investigation ✅  
+**Iteration 3:** Karaoke Rewrite ✅
 
 ---
 
-*"The auth system works, the karaoke doesn't. Focus on the lyrics, not the login."* - Ancient Agent Wisdom
+### Current Focus: P3 - Settings System Unification & CLI UX
+
+**Status:** 🚧 IN PROGRESS
+**Branch:** `feat/settings-cli-unification`
+**Scope:** CLI parity, config file sync, GUI coverage, AGENTS.md docs
+
+---
+
+### Task List
+
+#### 1. Settings System Unification [IN PROGRESS]
+
+**Goal:** Every configurable option accessible via ALL interfaces (CLI, Config File, GUI)
+
+**Current Gap Analysis:**
+
+| Setting | Config File | GUI | CLI | Status |
+|---------|-------------|-----|-----|--------|
+| `general.debug` | ✅ | ✅ | ✅ `--debug` | Complete |
+| `audio.device` | ✅ | ✅ | ❌ | Missing |
+| `audio.buffer_size` | ✅ | ✅ | ❌ | Missing |
+| `visualizer.preset_path` | ✅ | ✅ | ❌ | Missing |
+| `visualizer.width/height` | ✅ | ✅ | ❌ | Missing |
+| `visualizer.fps` | ✅ | ✅ | ❌ | Missing |
+| `visualizer.beat_sensitivity` | ✅ | ✅ | ❌ | Missing |
+| `visualizer.shuffle_presets` | ✅ | ✅ | ❌ | Missing |
+| `recording.output_directory` | ✅ | ✅ | ❌ `--output` (partial) | Partial |
+| `recording.video.codec` | ✅ | ✅ | ❌ | Missing |
+| `recording.video.crf` | ✅ | ✅ | ❌ | Missing |
+| `recording.auto_record` | ✅ | ✅ | ❌ | Missing |
+| `suno.download_path` | ✅ | ✅ | ❌ | Missing |
+| `suno.auto_download` | ✅ | ✅ | ❌ | Missing |
+| `karaoke.enabled` | ✅ | ✅ | ❌ | Missing |
+| `karaoke.font_family` | ✅ | ✅ | ❌ | Missing |
+| `karaoke.y_position` | ✅ | ✅ | ❌ | Missing |
+| `ui.theme` | ✅ | ✅ | ❌ | Missing |
+
+**Action Items:**
+- [ ] Add CLI flags for all config options
+- [ ] Create settings matrix document
+- [ ] Ensure bidirectional sync between interfaces
+- [ ] Add validation for CLI inputs
+
+#### 2. CLI UX Enhancement ("rizz mode") [PENDING]
+
+**Features:**
+- [ ] Color output with TTY detection (respect NO_COLOR)
+- [ ] Multi-stage help system (`--help`, `--help <topic>`)
+- [ ] Smart error messages with suggestions
+- [ ] Shell completion scripts (bash, zsh, fish)
+- [ ] JSON output mode for scripting
+
+#### 3. AGENTS.md Documentation [PENDING]
+
+**Content:**
+- [ ] Sensitive data backup protocol
+- [ ] Git branch/commit discipline
+- [ ] Code quality guidelines
+- [ ] Testing procedures
+- [ ] Build/development workflow
+
+---
+
+### Implementation Plan
+
+**Phase 1: Settings Audit & CLI Expansion**
+1. Create comprehensive settings matrix
+2. Add missing CLI flags to Application::parseArgs()
+3. Add config override logic in Application::init()
+
+**Phase 2: CLI Colors & UX**
+1. Create CliUtils helper class
+2. Add color support with TTY detection
+3. Implement smart error handling
+4. Add completion script generation
+
+**Phase 3: AGENTS.md**
+1. Document agent workflow
+2. Add code standards
+3. Include troubleshooting guide
+
+---
+
+### Branch Strategy
+
+```bash
+git checkout -b feat/settings-cli-unification
+git commit -m "feat(cli): comprehensive settings unification and UX enhancement"
+```
+
+---
+
+### Quality Targets
+
+- 🎯 1337-tier CLI experience
+- 🎯 Full config parity across all interfaces  
+- 🎯 Shell completion for power users
+- 🎯 Comprehensive agent documentation
+- 🎯 Arch Linux certified
+
+---
+
+*"CLI so clean, it makes Arch users proud."* 🔧
+
