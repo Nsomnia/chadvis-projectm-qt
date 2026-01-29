@@ -137,8 +137,6 @@ struct KeyboardConfig {
 };
 
 struct SunoConfig {
-    std::string email;
-    std::string password;
     std::string token;
     std::string cookie;
     fs::path downloadPath;

@@ -34,16 +34,6 @@ public:
     // Refresh Bearer token using cookie (Clerk API)
     void refreshAuthToken(std::function<void(bool)> callback = nullptr);
 
-    // Login with email and password
-    void login(const std::string& email, const std::string& password, std::function<void(bool)> callback = nullptr);
-
-    // OTP Login Flow
-    void requestLoginCode(const std::string& email, std::function<void(bool, std::string)> callback);
-    void submitLoginCode(const std::string& signInId, const std::string& code, std::function<void(bool)> callback);
-
-    // OAuth Loopback Flow
-    void startOAuthFlow(const std::string& provider = "google");
-
     // API Methods
     // Fetch songs from "My Library" (Feed)
     // page: 1-based index
@@ -64,7 +54,6 @@ public:
     Signal<std::string, std::string> alignedLyricsFetched; // clipId, json
     Signal<std::string> tokenChanged; // New token
     Signal<std::string> errorOccurred; // Error message
-    Signal<QUrl> oauthRedirectReceived; // Redirect URL
 
 private slots:
     void onLibraryReply(QNetworkReply* reply);
