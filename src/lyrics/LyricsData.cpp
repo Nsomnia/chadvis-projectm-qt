@@ -15,6 +15,10 @@
 
 namespace vc {
 
+// Forward declaration of helper
+static std::vector<LyricsLine> alignWordsToLines(const std::vector<LyricsWord>& words, 
+                                                  const std::string& prompt);
+
 // LyricsData methods
 
 int LyricsData::findLineIndex(f32 time) const {
