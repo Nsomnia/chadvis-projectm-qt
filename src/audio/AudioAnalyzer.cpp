@@ -10,7 +10,7 @@ namespace vc {
 
 AudioAnalyzer::AudioAnalyzer() {
     energyHistory_.resize(60, 0.0f); // ~1 second at 60fps
-    pcmBuffer_.reserve(FFT_SIZE);
+    // pcmBuffer_ is default-constructed (circular buffer)
 }
 
 void AudioAnalyzer::reset() {
@@ -18,6 +18,7 @@ void AudioAnalyzer::reset() {
     std::fill(energyHistory_.begin(), energyHistory_.end(), 0.0f);
     energyHistoryPos_ = 0;
     avgEnergy_ = 0.0f;
+    runningEnergySum_ = 0.0f;
     std::fill(smoothedMagnitudes_.begin(), smoothedMagnitudes_.end(), 0.0f);
 }
 
@@ -49,7 +50,7 @@ AudioSpectrum AudioAnalyzer::analyze(std::span<const vc::f32> samples,
     spectrum.leftLevel = std::sqrt(leftSum / totalFrames);
     spectrum.rightLevel = std::sqrt(rightSum / totalFrames);
 
-    // 2. Prepare mono data for FFT
+    // 2. Prepare mono data for FFT (using circular buffer for O(1) push)
     for (usize i = 0; i < totalFrames; ++i) {
         f32 mono;
         if (channels >= 2) {
@@ -58,10 +59,7 @@ AudioSpectrum AudioAnalyzer::analyze(std::span<const vc::f32> samples,
             mono = samples[i];
         }
 
-        pcmBuffer_.push_back(mono);
-        if (pcmBuffer_.size() > FFT_SIZE) {
-            pcmBuffer_.erase(pcmBuffer_.begin());
-        }
+        pcmBuffer_.push_back(mono);  // O(1) - no erase needed!
     }
 
     if (pcmBuffer_.size() < FFT_SIZE)
@@ -90,7 +88,7 @@ AudioSpectrum AudioAnalyzer::analyze(std::span<const vc::f32> samples,
     return spectrum;
 }
 
-void AudioAnalyzer::performKissFFT(std::span<const vc::f32> input,
+void AudioAnalyzer::performKissFFT(const CircularBuffer<vc::f32, FFT_SIZE>& input,
                                    std::span<vc::f32> magnitudes) {
     // Initialize config once
     static kiss_fftr_cfg cfg =
@@ -99,8 +97,14 @@ void AudioAnalyzer::performKissFFT(std::span<const vc::f32> input,
     if (!cfg)
         return;
 
+    // Copy circular buffer to contiguous array for FFT
+    std::array<vc::f32, FFT_SIZE> contiguous;
+    for (usize i = 0; i < FFT_SIZE; ++i) {
+        contiguous[i] = input[i];
+    }
+
     std::array<kiss_fft_cpx, FFT_SIZE / 2 + 1> out;
-    kiss_fftr(cfg, input.data(), out.data());
+    kiss_fftr(cfg, contiguous.data(), out.data());
 
     for (usize i = 0; i < SPECTRUM_SIZE; ++i) {
         // Compute magnitude: sqrt(re^2 + im^2)
@@ -111,13 +115,15 @@ void AudioAnalyzer::performKissFFT(std::span<const vc::f32> input,
 }
 
 vc::f32 AudioAnalyzer::detectBeat(vc::f32 currentEnergy) {
-    // Basic beat detection: current energy vs average energy in history
-    avgEnergy_ = std::accumulate(
-                         energyHistory_.begin(), energyHistory_.end(), 0.0f) /
-                 energyHistory_.size();
-
+    // Optimized beat detection using running sum (O(1) instead of O(N))
+    // Subtract old value, add new value
+    runningEnergySum_ -= energyHistory_[energyHistoryPos_];
+    runningEnergySum_ += currentEnergy;
+    
     energyHistory_[energyHistoryPos_] = currentEnergy;
     energyHistoryPos_ = (energyHistoryPos_ + 1) % energyHistory_.size();
+    
+    avgEnergy_ = runningEnergySum_ / energyHistory_.size();
 
     if (avgEnergy_ > 0.0001f) {
         f32 ratio = currentEnergy / avgEnergy_;
