@@ -81,10 +81,10 @@ void VisualizerRenderer::renderFrame(u32 w, u32 h) {
             u32 availableFrames = audioQueue_.size() / 2;
             u32 feedFrames = std::min(framesToFeed, availableFrames);
             if (feedFrames > 0) {
-                projectM_.engine().addPCMDataInterleaved(
-                        audioQueue_.data(), feedFrames, 2);
-                audioQueue_.erase(audioQueue_.begin(),
-                                  audioQueue_.begin() + (feedFrames * 2));
+                // O(1) circular buffer - no erase needed!
+                auto [data, count] = audioQueue_.getContiguous(feedFrames);
+                projectM_.engine().addPCMDataInterleaved(data, feedFrames, 2);
+                audioQueue_.pop(feedFrames * 2);
             }
         }
     }
@@ -259,16 +259,24 @@ void VisualizerRenderer::feedAudio(const f32* data,
     std::lock_guard lock(audioMutex_);
     if (sampleRate != audioSampleRate_)
         audioSampleRate_ = sampleRate;
-    usize offset = audioQueue_.size();
-    audioQueue_.resize(offset + frames * 2);
-    f32* dest = audioQueue_.data() + offset;
-    if (channels == 2)
-        std::memcpy(dest, data, frames * 2 * sizeof(f32));
-    else {
-        for (u32 i = 0; i < frames; ++i) {
-            dest[i * 2] = data[i * channels];
-            dest[i * 2 + 1] = (channels > 1) ? data[i * channels + 1]
-                                             : data[i * channels];
+    
+    // Convert to stereo and push to circular buffer (O(1) per sample)
+    if (channels == 2) {
+        audioQueue_.push(data, static_cast<usize>(frames) * 2);
+    } else {
+        // Convert mono/multi-channel to stereo
+        std::array<f32, 512> stereoBuffer; // Stack buffer for conversion
+        usize processed = 0;
+        while (processed < frames) {
+            usize batch = std::min(static_cast<usize>(frames) - processed, static_cast<usize>(256));
+            for (u32 i = 0; i < static_cast<u32>(batch); ++i) {
+                stereoBuffer[i * 2] = data[(processed + i) * channels];
+                stereoBuffer[i * 2 + 1] = (channels > 1) 
+                    ? data[(processed + i) * channels + 1]
+                    : data[(processed + i) * channels];
+            }
+            audioQueue_.push(stereoBuffer.data(), batch * 2);
+            processed += batch;
         }
     }
 }
