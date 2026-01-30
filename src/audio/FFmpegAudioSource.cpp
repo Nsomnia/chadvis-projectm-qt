@@ -1,6 +1,8 @@
 #include "FFmpegAudioSource.hpp"
 #include "core/Logger.hpp"
 
+#include <atomic>
+
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -25,8 +27,9 @@ struct FFmpegAudioSource::Private {
     int sampleRate = 48000;
     int channels = 2;
     
-    bool isPlaying = false;
-    bool isPaused = false;
+    // Thread-safe playback state (fixes race condition)
+    std::atomic<bool> isPlaying{false};
+    std::atomic<bool> isPaused{false};
 };
 
 FFmpegAudioSource::FFmpegAudioSource() 
