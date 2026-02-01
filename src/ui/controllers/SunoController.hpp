@@ -3,11 +3,15 @@
 // Coordinates fetching, downloading, and metadata processing
 
 #include <QNetworkAccessManager>
+#include <QJsonDocument>
 #include <QObject>
 #include <deque>
 #include <memory>
+#include <optional>
+#include <unordered_map>
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
+#include "suno/SunoLyrics.hpp"
 #include "util/Signal.hpp"
 
 namespace vc {
@@ -71,6 +75,23 @@ private:
     void processDownloadedFile(const SunoClip& clip, const fs::path& path);
     void processLyricsQueue();
     void onTrackChanged();
+    
+    // Helper: Check if clipId matches currently playing track
+    bool isCurrentlyPlaying(const std::string& clipId) const;
+    
+    // Helper: Parse lyrics and immediately display to overlay
+    std::optional<AlignedLyrics> parseAndDisplayLyrics(
+        const std::string& clipId,
+        const std::string& json,
+        const QJsonDocument& doc);
+    
+    // Helper: Save lyrics sidecar files (.json and .srt)
+    void saveLyricsSidecar(const std::string& clipId,
+                           const std::string& json,
+                           const QJsonDocument& doc);
+    
+    // Helper: Extract clip ID from track with aggressive UUID detection
+    std::string extractClipIdFromTrack() const;
 
     AudioEngine* audioEngine_;
     OverlayEngine* overlayEngine_;
@@ -88,6 +109,12 @@ private:
     size_t totalLyricsToFetch_{0};
     std::chrono::steady_clock::time_point lyricsSyncStartTime_;
     std::vector<SunoClip> accumulatedClips_;
+    
+    // Direct mapping cache for recently fetched lyrics (survives track restarts)
+    std::unordered_map<std::string, AlignedLyrics> directLyricsCache_;
+    
+    // Track the last requested ID for fallback mapping during transitions
+    mutable std::string lastRequestedClipId_;
 };
 
 } // namespace suno

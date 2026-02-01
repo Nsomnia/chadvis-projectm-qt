@@ -11,10 +11,16 @@ Welcome, agent. This document contains essential information for working effecti
 ## 🚀 Quick Start
 
 ### Build Commands
+Very slow on the users potato system. You can wait until your done your loop/work and then the user will compile and report bugs if desired. For small changes or if neeed to finish tasks you are free to run cmake, optionally with a build system/accelerator.
+```bash
+bash build.sh --help
+bash build.sh build
+```
+OR manually
 ```bash
 # Standard build
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
+cmake --build build -j1
 
 # Debug build (for development)
 cmake -B build-debug -S . -DCMAKE_BUILD_TYPE=Debug

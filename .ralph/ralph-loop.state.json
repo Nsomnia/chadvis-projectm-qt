@@ -1,0 +1,13 @@
+{
+  "active": true,
+  "iteration": 1,
+  "minIterations": 1,
+  "maxIterations": 0,
+  "completionPromise": "COMPLETE",
+  "tasksMode": false,
+  "taskPromise": "READY_FOR_NEXT_TASK",
+  "prompt": "Select one item from TODO item from within .agent/ agent working directory and finish it to completeion. If user interaction is not needed and you are confident of the work an what you discover while repeated examinations of the codebase happen during edits, then feel free to continue indefinitly with no concern about token usage. The users host system has ddgr, google, debugging tools, and more, installed on arch linux. Document everyting neeed for your own work whether in a scratch, existing, or new files, to yourself or for the users later viewing. Follow the git reccomended best practices for branche, safe-merging, etc, as granuarly as possible to allow for safety and history. Keep the CHANGELOG.md updated as well as versioning every file where appropraite, and the codebase is largely only for agentic viewing quality only, while markdown documents may be browsed or edited by the user or the projects end-user.",
+  "startedAt": "2026-02-01T00:42:53.176Z",
+  "model": "",
+  "agent": "opencode"
+}
