@@ -326,6 +326,10 @@ set(UI_SOURCES
     src/ui/SettingsDialog.cpp
     src/ui/MainWindow.hpp
     src/ui/MainWindow.cpp
+    src/ui/SunoBrowserWidget.hpp
+    src/ui/SunoBrowserWidget.cpp
+    src/ui/SidebarWidget.hpp
+    src/ui/SidebarWidget.cpp
 )
 
 # Common include directories
