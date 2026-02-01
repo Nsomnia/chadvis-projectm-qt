@@ -13,6 +13,7 @@
 #include <QWidget>
 #include <QScrollArea>
 #include <QLineEdit>
+#include <QPushButton>
 #include <memory>
 #include "lyrics/LyricsData.hpp"
 #include "lyrics/LyricsSync.hpp"
@@ -83,6 +84,7 @@ public:
 signals:
     void lineClicked(int lineIndex, const QString& text);
     void searchResultsFound(int count);
+    void lyricsExported(const QString& format, const QString& filePath);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -94,6 +96,9 @@ private slots:
     void onPositionChanged(const LyricsSyncPosition& pos);
     void onSearchTextChanged(const QString& text);
     void onAudioTrackChanged();
+    void onExportSrt();
+    void onExportLrc();
+    void onExportJson();
 
 private:
     void setupUI();
@@ -114,6 +119,9 @@ protected:
     QScrollArea* scrollArea_;
     QWidget* contentWidget_;
     QLineEdit* searchEdit_;
+    QPushButton* exportSrtBtn_;
+    QPushButton* exportLrcBtn_;
+    QPushButton* exportJsonBtn_;
     
     // Layout
     struct LineInfo {

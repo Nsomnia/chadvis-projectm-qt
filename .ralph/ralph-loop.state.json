@@ -1,13 +1,13 @@
 {
   "active": true,
   "iteration": 1,
-  "minIterations": 1,
+  "minIterations": 5,
   "maxIterations": 0,
   "completionPromise": "COMPLETE",
   "tasksMode": false,
   "taskPromise": "READY_FOR_NEXT_TASK",
-  "prompt": "Select one item from TODO item from within .agent/ agent working directory and finish it to completeion. If user interaction is not needed and you are confident of the work an what you discover while repeated examinations of the codebase happen during edits, then feel free to continue indefinitly with no concern about token usage. The users host system has ddgr, google, debugging tools, and more, installed on arch linux. Document everyting neeed for your own work whether in a scratch, existing, or new files, to yourself or for the users later viewing. Follow the git reccomended best practices for branche, safe-merging, etc, as granuarly as possible to allow for safety and history. Keep the CHANGELOG.md updated as well as versioning every file where appropraite, and the codebase is largely only for agentic viewing quality only, while markdown documents may be browsed or edited by the user or the projects end-user. create tests for anything reasonable epecially to allow agentic checks. Feel free to work with complete atonomty and freedoms. Some elements of the GUI will need redesigning with some of the according side bar and more modern elemenets seen in the mocks up within .agent/assets and the themeing system is non-operational. The qt browser wrapper will need to be fleshed out too somewhere that wont permanently block the rest of the ui, as with most elements as the projectm visualiser is the center of the show. ",
-  "startedAt": "2026-02-01T00:51:20.305Z",
-  "model": "",
+  "prompt": "Continue all TODO elements found in .agent/ following all docs there and in docs/ along with any other *.md files as relevent. Top quality model showcase. Appropraite programming paradigms. Use visual model abiltiies to examin mockup GUI enhancement ideas in: .agent/assets/00_BEST_CLOSEST_MOCKUP_5496d8ac-726c-469e-a714-5a8677a9e758.png .agent/assets/d8a5b8d0-78e1-4c64-b30e-d6c66891cea8.png .agent/assets/Google_AI_Studio_2026-01-31T10_12_05.140Z.png take any notes to or from the user inside of `.agent/`. You have full freedom and rights to adjust, add, and enhance anything from the user or discovered during operations to produce a product that turns up to 11, and slaps hard with 'arch btw' and 'chad senior dev vs noob junior prompt beginners waiting on their cusrsor instance'",
+  "startedAt": "2026-02-01T03:22:06.271Z",
+  "model": "opencode/kimi-k2.5-free",
   "agent": "opencode"
 }

@@ -394,4 +394,14 @@ TEST_CASE("Feature description") {
 
 ---
 
+## File deleteion
+
+- Do not delete any files but rather mv --no-clobber into `.backup_graveyard/`
+
+---
+
+## Ralph-loops and freedoms
+- You may continue working on any and all TODO items either directly listed or inferred from documents in any file in .agent/ or AGENTS.md
+- Keep the CHANGELOG.md updated. If its gets unmanagable in length then create a history directory to contain changelogs in the docs/ directory.
+
 *"Maximum effort. No compromises. Ship it like it's Arch Linux."* 🚀

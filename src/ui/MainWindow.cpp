@@ -2,6 +2,7 @@
 #include <QApplication>
 #include "OverlayEditor.hpp"
 #include "KaraokeWidget.hpp"
+#include "LyricsPanel.hpp"
 #include "PlayerControls.hpp"
 #include "SidebarWidget.hpp"
 
@@ -153,6 +154,7 @@ void MainWindow::setupUI() {
     overlayEditor_ = new OverlayEditor();
     overlayEditor_->setOverlayEngine(overlayEngine_);
     karaokeWidget_ = new KaraokeWidget(sunoController_.get(), audioEngine_, this);
+    lyricsPanel_ = new LyricsPanel(audioEngine_, sunoController_.get(), this);
     auto* sunoBrowser = new suno::SunoBrowser(sunoController_.get(), this);
 
     // Create modern sidebar
@@ -162,6 +164,7 @@ void MainWindow::setupUI() {
     sidebarWidget_->addPanel("recording", "Recording", "media-record", recordingControls_);
     sidebarWidget_->addPanel("overlay", "Overlays", "text-field", overlayEditor_);
     sidebarWidget_->addPanel("karaoke", "Karaoke", "audio-input-microphone", karaokeWidget_);
+    sidebarWidget_->addPanel("lyrics", "Lyrics", "text-x-generic", lyricsPanel_);
     sidebarWidget_->addPanel("suno", "Suno", "internet-web-browser", sunoBrowser);
     
     // Apply current theme
