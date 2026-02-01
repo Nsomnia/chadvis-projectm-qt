@@ -328,8 +328,16 @@ set(UI_SOURCES
     src/ui/MainWindow.cpp
     src/ui/SunoBrowserWidget.hpp
     src/ui/SunoBrowserWidget.cpp
+    src/ui/LyricsPanel.hpp
+    src/ui/LyricsPanel.cpp
     src/ui/SidebarWidget.hpp
     src/ui/SidebarWidget.cpp
+    src/ui/widgets/CyanSlider.hpp
+    src/ui/widgets/CyanSlider.cpp
+    src/ui/widgets/GlowButton.hpp
+    src/ui/widgets/GlowButton.cpp
+    src/ui/widgets/ToggleSwitch.hpp
+    src/ui/widgets/ToggleSwitch.cpp
 )
 
 # Common include directories
