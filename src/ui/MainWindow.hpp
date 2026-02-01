@@ -16,6 +16,10 @@
 #include <functional>
 #include <memory>
 
+namespace chadvis {
+class SidebarWidget;
+}
+
 namespace vc {
 
 class PlayerControls;
@@ -116,6 +120,10 @@ private:
 
     // Dock widgets
     QDockWidget* toolsDock_{nullptr};
+    
+    // Modern sidebar (alternative to dock)
+    chadvis::SidebarWidget* sidebarWidget_{nullptr};
+    bool useSidebarLayout_{false};
 
     QTimer updateTimer_;
     bool isFullscreen_{false};

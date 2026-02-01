@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-01-31
 
 ### Added
+- **Non-Modal Suno Browser Widget**: Created `SunoBrowserWidget` as an embedded alternative to the modal `SunoCookieDialog`. Provides non-blocking authentication flow that can be docked or used as a floating panel.
+- **Modern Sidebar Navigation**: Implemented `SidebarWidget` replacing the tab-based dock widget. Features icon-based navigation with collapsible sections, organized into Library, Visualizer, Recording, Overlays, Karaoke, Suno, and Settings panels.
+- **Theme System Verification**: Verified theming system is fully operational with dark, gruvbox, and nord themes properly loading via QSS resource files.
 - **Direct Lyrics Display Injection**: Refactored `onAlignedLyricsFetched` to immediately parse and display lyrics without waiting for database save. Lyrics now appear instantly when API response returns.
 - **Direct Mapping Cache**: Added `directLyricsCache_` to store recently fetched lyrics, enabling instant display on track restarts during the same session.
 - **Aggressive UUID Extraction**: Implemented `extractClipIdFromTrack()` helper with multi-source detection - checks filename, full path, parent directory, and title-based fuzzy matching.
@@ -17,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Instrumental Tag Handling**: Enhanced `LyricsAligner::parseJson` to preserve instrumental sections with 🎵 placeholder while skipping other tags like [Verse] and [Chorus].
 
 ### Changed
+- **MainWindow Layout Options**: Added View menu option "Use Sidebar Layout" to toggle between traditional dock-based tab interface and modern sidebar navigation.
 - **SunoController Architecture**: Refactored `onAlignedLyricsFetched` into helper methods: `isCurrentlyPlaying()`, `parseAndDisplayLyrics()`, and `saveLyricsSidecar()` for cleaner separation of concerns.
 - **Track-to-ID Mapping**: `onTrackChanged` now uses 4-priority lookup: 1) Direct cache, 2) Database, 3) Sidecar files, 4) API fetch.
 - **Persistence Strategy**: Sidecar files (.json/.srt) are now saved immediately alongside local MP3s when available.
