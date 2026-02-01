@@ -22,6 +22,7 @@ class SidebarWidget;
 
 namespace vc {
 
+class LyricsPanel;
 class PlayerControls;
 class PlaylistView;
 class VisualizerPanel;
@@ -117,6 +118,7 @@ private:
     RecordingControls* recordingControls_{nullptr};
     OverlayEditor* overlayEditor_{nullptr};
     KaraokeWidget* karaokeWidget_{nullptr};
+    LyricsPanel* lyricsPanel_{nullptr};
 
     // Dock widgets
     QDockWidget* toolsDock_{nullptr};

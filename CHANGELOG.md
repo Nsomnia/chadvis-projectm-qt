@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-01-31
+## [Unreleased] - 2026-02-01
 
 ### Added
 - **Non-Modal Suno Browser Widget**: Created `SunoBrowserWidget` as an embedded alternative to the modal `SunoCookieDialog`. Provides non-blocking authentication flow that can be docked or used as a floating panel.
@@ -24,6 +24,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SunoController Architecture**: Refactored `onAlignedLyricsFetched` into helper methods: `isCurrentlyPlaying()`, `parseAndDisplayLyrics()`, and `saveLyricsSidecar()` for cleaner separation of concerns.
 - **Track-to-ID Mapping**: `onTrackChanged` now uses 4-priority lookup: 1) Direct cache, 2) Database, 3) Sidecar files, 4) API fetch.
 - **Persistence Strategy**: Sidecar files (.json/.srt) are now saved immediately alongside local MP3s when available.
+
+## [Unreleased - 1337 Chad GUI Update] - 2026-02-01
+
+### Added
+- **Modern 1337 Chad GUI Custom Controls** (P3.005): Created custom styled widgets for modern UI redesign
+  - `CyanSlider`: Horizontal slider with cyan accent (#00bcd4), glow effects, and smooth animations
+  - `GlowButton`: Glassmorphism button with animated glow border, press feedback, and modern aesthetics  
+  - `ToggleSwitch`: Animated toggle switch with smooth sliding thumb, cyan/grey states, and optional labels
+  - All controls follow the design system from MOCKUPS.md: dark background (#1a1a1a), cyan accent (#00bcd4), 8px border radius
+- **Lyrics Tool Tab** (P1.003): Full integration of `LyricsPanel` into the sidebar
+  - Added "Lyrics" panel to modern sidebar navigation (icon: text-x-generic)
+  - Export functionality for subtitle files: SRT, LRC, and JSON formats
+  - Export buttons integrated into LyricsPanel toolbar with cyan styling
+  - `lyricsExported()` signal emitted on successful export with format and file path
+  - Exports use existing `LyricsExport::toSrt()`, `toLrc()`, `toJson()` functions
+
+### Technical Details
+- Custom widgets located in `src/ui/widgets/` following project naming conventions
+- All widgets use `namespace chadvis` for consistency with SidebarWidget
+- LyricsPanel export functions check for empty lyrics before attempting export
+- MainWindow now creates LyricsPanel instance and adds to sidebar alongside other panels
 
 ## [1.1.0] - 2026-01-28
 

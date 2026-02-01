@@ -65,6 +65,47 @@ void LyricsPanel::setupUI() {
     
     layout->addWidget(scrollArea_);
     
+    // Export buttons toolbar
+    auto* exportLayout = new QHBoxLayout();
+    exportLayout->setContentsMargins(8, 4, 8, 4);
+    exportLayout->setSpacing(8);
+    
+    // SRT export button
+    exportSrtBtn_ = new QPushButton("SRT", this);
+    exportSrtBtn_->setToolTip("Export as SubRip (.srt)");
+    exportSrtBtn_->setStyleSheet(
+        "QPushButton { background-color: #404040; color: #00bcd4; "
+        "border: 1px solid #00bcd4; padding: 4px 12px; border-radius: 4px; "
+        "font-size: 11px; font-weight: bold; }"
+        "QPushButton:hover { background-color: #00bcd4; color: #1e1e1e; }");
+    connect(exportSrtBtn_, &QPushButton::clicked, this, &LyricsPanel::onExportSrt);
+    exportLayout->addWidget(exportSrtBtn_);
+    
+    // LRC export button
+    exportLrcBtn_ = new QPushButton("LRC", this);
+    exportLrcBtn_->setToolTip("Export as LRC lyrics (.lrc)");
+    exportLrcBtn_->setStyleSheet(
+        "QPushButton { background-color: #404040; color: #00bcd4; "
+        "border: 1px solid #00bcd4; padding: 4px 12px; border-radius: 4px; "
+        "font-size: 11px; font-weight: bold; }"
+        "QPushButton:hover { background-color: #00bcd4; color: #1e1e1e; }");
+    connect(exportLrcBtn_, &QPushButton::clicked, this, &LyricsPanel::onExportLrc);
+    exportLayout->addWidget(exportLrcBtn_);
+    
+    // JSON export button
+    exportJsonBtn_ = new QPushButton("JSON", this);
+    exportJsonBtn_->setToolTip("Export as JSON (.json)");
+    exportJsonBtn_->setStyleSheet(
+        "QPushButton { background-color: #404040; color: #00bcd4; "
+        "border: 1px solid #00bcd4; padding: 4px 12px; border-radius: 4px; "
+        "font-size: 11px; font-weight: bold; }"
+        "QPushButton:hover { background-color: #00bcd4; color: #1e1e1e; }");
+    connect(exportJsonBtn_, &QPushButton::clicked, this, &LyricsPanel::onExportJson);
+    exportLayout->addWidget(exportJsonBtn_);
+    
+    exportLayout->addStretch();
+    layout->addLayout(exportLayout);
+    
     setStyleSheet("background-color: #1e1e1e;");
 }
 
@@ -287,6 +328,56 @@ void LyricsPanel::wheelEvent(QWheelEvent* event) {
 void LyricsPanel::updateLayout() {
     // Recalculate layout
     update();
+}
+
+// Export implementations
+
+void LyricsPanel::onExportSrt() {
+    if (lyrics_.empty()) {
+        LOG_WARN("Cannot export: no lyrics loaded");
+        return;
+    }
+    
+    auto result = vc::LyricsExport::toSrt(lyrics_);
+    if (result) {
+        QString filePath = QString::fromStdString(result.value());
+        emit lyricsExported("SRT", filePath);
+        LOG_INFO("Lyrics exported to SRT: {}", filePath.toStdString());
+    } else {
+        LOG_ERROR("Failed to export lyrics to SRT: {}", result.error());
+    }
+}
+
+void LyricsPanel::onExportLrc() {
+    if (lyrics_.empty()) {
+        LOG_WARN("Cannot export: no lyrics loaded");
+        return;
+    }
+    
+    auto result = vc::LyricsExport::toLrc(lyrics_);
+    if (result) {
+        QString filePath = QString::fromStdString(result.value());
+        emit lyricsExported("LRC", filePath);
+        LOG_INFO("Lyrics exported to LRC: {}", filePath.toStdString());
+    } else {
+        LOG_ERROR("Failed to export lyrics to LRC: {}", result.error());
+    }
+}
+
+void LyricsPanel::onExportJson() {
+    if (lyrics_.empty()) {
+        LOG_WARN("Cannot export: no lyrics loaded");
+        return;
+    }
+    
+    auto result = vc::LyricsExport::toJson(lyrics_);
+    if (result) {
+        QString filePath = QString::fromStdString(result.value());
+        emit lyricsExported("JSON", filePath);
+        LOG_INFO("Lyrics exported to JSON: {}", filePath.toStdString());
+    } else {
+        LOG_ERROR("Failed to export lyrics to JSON: {}", result.error());
+    }
 }
 
 // CompactLyricsPanel implementation

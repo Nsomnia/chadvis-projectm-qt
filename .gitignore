@@ -1,3 +1,8 @@
+# agent and scratch or git cloned
+third_party/
+.agent/
+scratch/
+
 # Repos the user cloned to investigate
 zzz_repos-investigation/
 
