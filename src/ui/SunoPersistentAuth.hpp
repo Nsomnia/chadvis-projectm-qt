@@ -70,35 +70,32 @@ public:
     QWebEngineProfile* profile() const { return profile_; }
 
     /**
-     * @brief Create a new WebEngine view using the persistent profile
+     * @brief Create a new web view using the managed persistent profile
      */
     QWebEngineView* createWebView(QWidget* parent = nullptr);
 
     /**
-     * @brief Navigate to Suno login page
+     * @brief Clear all cookies and session data
      */
-    void navigateToLogin(QWebEngineView* view);
+    void clearSession();
 
     /**
-     * @brief Navigate to Suno main page
-     */
-    void navigateToSuno(QWebEngineView* view);
-
-    /**
-     * @brief Clear all authentication data and cookies
-     */
-    void logout();
-
-    /**
-     * @brief Extract and sync cookies from the profile
-     * 
-     * This scans the cookie store for __session and __client cookies
-     * and updates the auth state.
+     * @brief Sync cookies from persistent storage
      */
     void syncCookies();
 
     /**
-     * @brief Set the bearer token directly
+     * @brief Navigate the view to the login page
+     */
+    void navigateToLogin(QWebEngineView* view);
+
+    /**
+     * @brief Navigate the view to Suno.com
+     */
+    void navigateToSuno(QWebEngineView* view);
+
+    /**
+     * @brief Set a bearer token directly
      */
     void setBearerToken(const QString& token);
 

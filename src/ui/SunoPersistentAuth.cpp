@@ -12,6 +12,7 @@
 #include <QWebEnginePage>
 #include <QWebEngineScript>
 #include <QWebEngineScriptCollection>
+#include "core/Logger.hpp"
 
 namespace chadvis {
 
@@ -59,7 +60,6 @@ void SunoPersistentAuth::setupPersistentStorage() {
     profile_->setCachePath(cachePath);
     
     // Set a modern, real-looking User Agent that matches the underlying Chromium major version (134)
-    // Using a macOS UA is often more successful with Google OAuth than a Linux one in embedded views.
     profile_->setHttpUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36");
     
     // Inject Stealth Script to mock navigator properties
@@ -71,10 +71,6 @@ void SunoPersistentAuth::setupPersistentStorage() {
     
     QString stealthJs = R"(
         (function() {
-            // Stealth Script to mock standard browser properties and hide automation signals
-            // Injected at DocumentCreation time
-            
-            // Mock Navigator Plugins
             Object.defineProperty(navigator, 'plugins', {
                 get: () => {
                     return [
@@ -84,14 +80,8 @@ void SunoPersistentAuth::setupPersistentStorage() {
                     ];
                 }
             });
-
-            // Hide WebDriver
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            
-            // Mock Languages
             Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-            
-            // Mock window.chrome
             if (!window.chrome) {
                 window.chrome = {
                     runtime: {},
@@ -105,23 +95,16 @@ void SunoPersistentAuth::setupPersistentStorage() {
     script.setSourceCode(stealthJs);
     profile_->scripts()->insert(script);
 
-    // CRITICAL: Enable persistent cookies
     profile_->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
     
-    // Monitor cookies for session extraction
     QWebEngineCookieStore* cookieStore = profile_->cookieStore();
+    connect(cookieStore, &QWebEngineCookieStore::cookieAdded, this, &SunoPersistentAuth::onCookieAdded);
+    connect(cookieStore, &QWebEngineCookieStore::cookieRemoved, this, &SunoPersistentAuth::onCookieRemoved);
     
-    connect(cookieStore, &QWebEngineCookieStore::cookieAdded,
-            this, &SunoPersistentAuth::onCookieAdded);
-    connect(cookieStore, &QWebEngineCookieStore::cookieRemoved,
-            this, &SunoPersistentAuth::onCookieRemoved);
-    
-    // Load all existing cookies from persistent storage
     cookieStore->loadAllCookies();
 }
 
 QString SunoPersistentAuth::getStoragePath() const {
-    // Use config directory for persistent storage
     QString configDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
     if (configDir.isEmpty()) {
         configDir = QDir::homePath() + "/.config";
@@ -165,15 +148,11 @@ void SunoPersistentAuth::navigateToSuno(QWebEngineView* view) {
     }
 }
 
-void SunoPersistentAuth::logout() {
-    // Clear auth state
+void SunoPersistentAuth::clearSession() {
     authState_ = SunoAuthState{};
-    
-    // Clear all cookies from persistent storage
     if (profile_) {
         profile_->cookieStore()->deleteAllCookies();
     }
-    
     emit loggedOut();
     emit statusMessage("Logged out - authentication cleared");
 }
@@ -182,11 +161,7 @@ void SunoPersistentAuth::syncCookies() {
     if (!profile_) {
         return;
     }
-    
-    // Force reload of cookies from storage
     profile_->cookieStore()->loadAllCookies();
-    
-    // Check auth status after a short delay to allow cookies to be processed
     QTimer::singleShot(100, this, &SunoPersistentAuth::checkAuthStatus);
 }
 
@@ -194,22 +169,17 @@ void SunoPersistentAuth::onCookieAdded(const QNetworkCookie& cookie) {
     const QString name = QString::fromUtf8(cookie.name());
     const QString value = QString::fromUtf8(cookie.value());
     
-    if (name == "__session") {
+    if (name.startsWith("__session")) {
         authState_.sessionCookie = value;
-        
-        // Extract JWT if it starts with eyJ (base64 encoded JWT header)
         if (value.startsWith("eyJ")) {
             authState_.bearerToken = value;
             extractJwtFromCookie(value);
         }
-        
-        // Start checking for auth completion
         if (!authCheckTimer_->isActive()) {
             authCheckTimer_->start();
         }
-    } else if (name == "__client") {
+    } else if (name.startsWith("__client")) {
         authState_.clientCookie = value;
-        
         if (!authCheckTimer_->isActive()) {
             authCheckTimer_->start();
         }
@@ -218,15 +188,12 @@ void SunoPersistentAuth::onCookieAdded(const QNetworkCookie& cookie) {
 
 void SunoPersistentAuth::onCookieRemoved(const QNetworkCookie& cookie) {
     const QString name = QString::fromUtf8(cookie.name());
-    
-    if (name == "__session") {
+    if (name.startsWith("__session")) {
         authState_.sessionCookie.clear();
         authState_.bearerToken.clear();
-    } else if (name == "__client") {
+    } else if (name.startsWith("__client")) {
         authState_.clientCookie.clear();
     }
-    
-    // Emit state change if we're no longer authenticated
     if (!authState_.isValid() && authCheckTimer_->isActive()) {
         authCheckTimer_->stop();
         emit authStateChanged(authState_);
@@ -234,26 +201,16 @@ void SunoPersistentAuth::onCookieRemoved(const QNetworkCookie& cookie) {
 }
 
 void SunoPersistentAuth::extractJwtFromCookie(const QString& cookieValue) {
-    // JWT structure: header.payload.signature
     QStringList parts = cookieValue.split('.');
     if (parts.size() != 3) {
         return;
     }
-    
-    // Decode payload (middle part)
-    QByteArray payload = QByteArray::fromBase64(
-        parts[1].toUtf8(), 
-        QByteArray::Base64UrlEncoding
-    );
-    
+    QByteArray payload = QByteArray::fromBase64(parts[1].toUtf8(), QByteArray::Base64UrlEncoding);
     QJsonDocument doc = QJsonDocument::fromJson(payload);
     if (doc.isNull() || !doc.isObject()) {
         return;
     }
-    
     QJsonObject obj = doc.object();
-    
-    // Extract user ID from 'sub' claim
     QString userId = obj["sub"].toString();
     if (!userId.isEmpty()) {
         authState_.userId = userId;
@@ -271,12 +228,9 @@ void SunoPersistentAuth::checkAuthStatus() {
 
 void SunoPersistentAuth::setBearerToken(const QString& token) {
     authState_.bearerToken = token;
-    
-    // Extract user ID from token
     if (token.startsWith("eyJ")) {
         extractJwtFromCookie(token);
     }
-    
     emit authStateChanged(authState_);
 }
 

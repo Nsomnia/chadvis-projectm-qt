@@ -40,6 +40,17 @@ void SunoCookieDialog::setupUI() {
     statusLabel_ = new QLabel("Please log in to Suno.com below...\n(Note: Site may take a moment to load fully on some systems)", this);
     statusLabel_->setStyleSheet("font-weight: bold; font-size: 14px;");
     headerLayout->addWidget(statusLabel_);
+    auto* clearBtn = new QPushButton("Logout / Reset Session", this);
+    clearBtn->setStyleSheet("background-color: #ff4444; color: white; padding: 4px; font-size: 11px;");
+    connect(clearBtn, &QPushButton::clicked, this, [this]() {
+        if (auth_) {
+            auth_->clearSession();
+            webView_->reload();
+            statusLabel_->setText("Session cleared. Please log in again.");
+        }
+    });
+    headerLayout->addWidget(clearBtn);
+
     browserLayout->addLayout(headerLayout);
 
     // System Auth Button
