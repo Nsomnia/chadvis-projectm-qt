@@ -39,6 +39,10 @@ SunoController::SunoController(AudioEngine* audioEngine,
             [this](const auto& id, const auto& json) {
                 onAlignedLyricsFetched(id, json);
             });
+    client_->wavConversionReady.connect(
+            [this](const auto& id, const auto& url) {
+                onWavConversionReady(id, url);
+            });
     client_->tokenChanged.connect([this](const auto& token) {
         LOG_INFO("SunoController: Token updated, saving to config");
         CONFIG.suno().token = token;
@@ -546,6 +550,13 @@ void SunoController::onError(const std::string& message) {
 void SunoController::downloadAndPlay(const SunoClip& clip) {
     if (clip.id.empty()) return;
 
+    // Determine file extension based on download format
+    std::string extension = ".mp3";
+    bool useWav = (CONFIG.suno().downloadFormat == vc::SunoDownloadFormat::WAV);
+    if (useWav) {
+        extension = ".wav";
+    }
+
     if (clip.audio_url.empty()) {
         LOG_INFO("SunoController: Resolving clip details for ID {}", clip.id);
         
@@ -556,7 +567,12 @@ void SunoController::downloadAndPlay(const SunoClip& clip) {
         LOG_INFO("SunoController: Queueing lyrics fetch for resolved ID {}", clip.id);
         client_->fetchAlignedLyrics(clip.id);
         
-        downloadAudio(resolvedClip);
+        if (useWav) {
+            LOG_INFO("SunoController: Initiating WAV conversion for {}", clip.id);
+            client_->initiateWavConversion(clip.id);
+        } else {
+            downloadAudio(resolvedClip);
+        }
         return;
     }
 
@@ -574,7 +590,7 @@ void SunoController::downloadAndPlay(const SunoClip& clip) {
     }
     file::ensureDir(downloadDir);
 
-    fs::path targetPath = downloadDir / (safeTitle + ".mp3");
+    fs::path targetPath = downloadDir / (safeTitle + extension);
 
     // If exists, play local
     if (fs::exists(targetPath)) {
@@ -584,7 +600,12 @@ void SunoController::downloadAndPlay(const SunoClip& clip) {
         return;
     }
 
-    downloadAudio(clip);
+    if (useWav) {
+        LOG_INFO("SunoController: Initiating WAV conversion for {}", clip.id);
+        client_->initiateWavConversion(clip.id);
+    } else {
+        downloadAudio(clip);
+    }
 }
 
 vc::Result<AlignedLyrics> SunoController::getLyrics(const std::string& clipId) {
@@ -891,6 +912,133 @@ std::string SunoController::extractClipIdFromTrack() const {
 void SunoController::setDebugLyrics(const AlignedLyrics& lyrics) {
     LOG_INFO("SunoController: Forcing debug lyrics ({} lines)", lyrics.lines.size());
     overlayEngine_->setAlignedLyrics(lyrics);
+}
+
+void SunoController::onWavConversionReady(const std::string& clipId,
+                                           const std::string& wavUrl) {
+    LOG_INFO("SunoController: WAV conversion ready for {} at {}", clipId, wavUrl);
+    
+    // Find the clip in accumulated clips
+    for (const auto& clip : accumulatedClips_) {
+        if (clip.id == clipId) {
+            downloadAudioFromUrl(clipId, wavUrl, ".wav");
+            return;
+        }
+    }
+    
+    // If not found in accumulated clips, try to get from database
+    auto clipOpt = db_.getClip(clipId);
+    if (clipOpt.isOk() && clipOpt.value()) {
+        downloadAudioFromUrl(clipId, wavUrl, ".wav");
+    } else {
+        LOG_ERROR("SunoController: Cannot download WAV - clip {} not found", clipId);
+    }
+}
+
+void SunoController::downloadAudioFromUrl(const std::string& clipId,
+                                          const std::string& url,
+                                          const std::string& extension) {
+    LOG_INFO("SunoController: Downloading audio from {} with extension {}", url, extension);
+    
+    QUrl qurl(QString::fromStdString(url));
+    QNetworkRequest request(qurl);
+    
+    QNetworkReply* reply = networkManager_->get(request);
+    
+    connect(reply, &QNetworkReply::finished, this, [this, reply, clipId, extension]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            LOG_ERROR("SunoController: Audio download failed: {}",
+                      reply->errorString().toStdString());
+            return;
+        }
+        
+        fs::path downloadDir = CONFIG.suno().downloadPath;
+        if (downloadDir.empty()) {
+            QString musicLoc = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+            if (musicLoc.isEmpty()) musicLoc = QDir::homePath() + "/Music";
+            downloadDir = fs::path(musicLoc.toStdString());
+        }
+        vc::file::ensureDir(downloadDir);
+        
+        // Get clip info for filename
+        std::string safeTitle = clipId;
+        for (const auto& clip : accumulatedClips_) {
+            if (clip.id == clipId) {
+                safeTitle = clip.title;
+                break;
+            }
+        }
+        
+        std::replace(safeTitle.begin(), safeTitle.end(), '/', '_');
+        std::replace(safeTitle.begin(), safeTitle.end(), '\\', '_');
+        if (safeTitle.empty()) safeTitle = clipId;
+        
+        QString fileName = QString::fromStdString(safeTitle) + QString::fromStdString(extension);
+        fs::path filePath = downloadDir / fileName.toStdString();
+        
+        QFile file(QString::fromStdString(filePath.string()));
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(reply->readAll());
+            file.close();
+            LOG_INFO("SunoController: Saved audio to {}", filePath.string());
+            
+            // Find the clip and process it
+            for (const auto& clip : accumulatedClips_) {
+                if (clip.id == clipId) {
+                    processDownloadedFile(clip, filePath);
+                    saveMetadataSidecar(clip);
+                    break;
+                }
+            }
+        } else {
+            LOG_ERROR("SunoController: Failed to open file for writing: {}",
+                      filePath.string());
+        }
+    });
+}
+
+void SunoController::saveMetadataSidecar(const SunoClip& clip) {
+    fs::path downloadDir = CONFIG.suno().downloadPath;
+    if (downloadDir.empty()) {
+        QString musicLoc = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+        if (musicLoc.isEmpty()) musicLoc = QDir::homePath() + "/Music";
+        downloadDir = fs::path(musicLoc.toStdString());
+    }
+    
+    std::string safeTitle = clip.title;
+    std::replace(safeTitle.begin(), safeTitle.end(), '/', '_');
+    std::replace(safeTitle.begin(), safeTitle.end(), '\\', '_');
+    if (safeTitle.empty()) safeTitle = clip.id;
+    
+    fs::path txtPath = downloadDir / (safeTitle + ".txt");
+    
+    std::ofstream file(txtPath);
+    if (!file) {
+        LOG_ERROR("SunoController: Failed to create metadata sidecar: {}", txtPath.string());
+        return;
+    }
+    
+    file << "Title: " << clip.title << "\n";
+    file << "Artist: " << clip.display_name << "\n";
+    file << "Track ID: " << clip.id << "\n";
+    file << "Duration: " << clip.metadata.duration << "\n";
+    file << "BPM: " << clip.metadata.bpm << "\n";
+    file << "Key: " << clip.metadata.key << "\n";
+    file << "Model: " << clip.model_name << " " << clip.major_model_version << "\n";
+    file << "Created: " << clip.created_at << "\n";
+    file << "\n";
+    file << "Tags/Styles: " << clip.metadata.tags << "\n";
+    file << "\n";
+    file << "Prompt:\n" << clip.metadata.prompt << "\n";
+    file << "\n";
+    file << "Lyrics:\n" << clip.metadata.lyrics << "\n";
+    file << "\n";
+    file << "Cover Art URL: " << clip.image_url << "\n";
+    file << "Audio URL: " << clip.audio_url << "\n";
+    
+    file.close();
+    LOG_INFO("SunoController: Saved metadata sidecar to {}", txtPath.string());
 }
 
 } // namespace vc::suno

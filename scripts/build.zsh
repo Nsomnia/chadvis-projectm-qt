@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
-# ═══ ChadVis Build System v1337.1 ═══
-# "Arch btw" Edition - Optimized for Chads, safe for Juniors.
+# ═══ ChadVis Build System v1337.2 ═══
+# "Arch btw" Edition - Now with dual output and auto-install!
 # 
 # Refactored to use Zsh built-ins because external commands are for Juniors.
 # ══════════════════════════════════════════════════════════════════════════
@@ -97,6 +97,16 @@ human_size() {
     fi
 }
 
+# Dual output: show on console AND write to log
+# Usage: dual_tee <log_file>
+dual_tee() {
+    local log_file="$1"
+    # Clear log file at start of each command
+    > "$log_file"
+    # Tee output to both console and log file
+    tee -a "$log_file"
+}
+
 show_help() {
     log chad "ChadVis Build System — Help"
     print -P "${C_BOLD}Usage:${C_RESET} build.zsh [options] [command]"
@@ -107,6 +117,7 @@ show_help() {
     print -P "  -c, --clean      Clean build directory before building"
     print -P "  -i, --install    Install after successful build"
     print -P "  -j, --jobs <n>   Number of parallel jobs (default: ${CPU_CORES})"
+    print -P "  -y, --yes        Auto-install missing dependencies without prompting"
     print -P "\n${C_BOLD}Commands:${C_RESET}"
     print -P "  build            Configure and compile (default)"
     print -P "  clean            Remove build artifacts"
@@ -115,6 +126,7 @@ show_help() {
     print -P "  check-deps       Verify system dependencies"
     print -P "\n${C_BOLD}Example:${C_RESET}"
     print -P "  ./build.sh -c -d build   # Clean, debug build"
+    print -P "  ./build.sh -y build      # Auto-install deps if missing"
 }
 
 # ─── Logic ──────────────────────────────────────────────────────────────────
@@ -123,7 +135,7 @@ mkdir -p "$LOG_DIR"
 
 # Parse arguments using zparseopts (Zsh-native)
 local -A opts
-zparseopts -D -A opts h -help d -debug r -release c -clean i -install j: -jobs:
+zparseopts -D -A opts h -help d -debug r -release c -clean i -install j: -jobs: y -yes
 
 if [[ -n "${opts[(i)-h]}" || -n "${opts[(i)--help]}" ]]; then
     show_help
@@ -141,6 +153,9 @@ CLEAN_FIRST=false
 INSTALL_AFTER=false
 [[ -n "${opts[(i)-i]}" || -n "${opts[(i)--install]}" ]] && INSTALL_AFTER=true
 
+AUTO_INSTALL=false
+[[ -n "${opts[(i)-y]}" || -n "${opts[(i)--yes]}" ]] && AUTO_INSTALL=true
+
 COMMAND=${1:-build}
 
 # ─── Commands ───────────────────────────────────────────────────────────────
@@ -151,10 +166,23 @@ cmd_check_deps() {
     local is_arch=false
     [[ -f /etc/arch-release ]] && is_arch=true
 
+    # Expanded dependency list - organized by category
     local -a deps=(
+        # Build tools
         "cmd:cmake:cmake" "cmd:ninja:ninja" "cmd:g++:gcc"
+        # Qt6 base packages
         "pkg:Qt6Core:qt6-base" "pkg:Qt6Widgets:qt6-base" "pkg:Qt6OpenGLWidgets:qt6-base"
+        "pkg:Qt6Network:qt6-base" "pkg:Qt6Sql:qt6-base"
+        # Qt6 multimedia (separate package)
+        "pkg:Qt6Multimedia:qt6-multimedia"
+        # Qt6 extras
+        "pkg:Qt6Svg:qt6-svg"
+        # Core libraries
         "pkg:projectM4:libprojectm" "pkg:libavcodec:ffmpeg" "pkg:libavformat:ffmpeg"
+        "pkg:libavutil:ffmpeg" "pkg:libswresample:ffmpeg"
+        # Other dependencies
+        "pkg:spdlog:spdlog" "pkg:fmt:format" "pkg:taglib:taglib"
+        "pkg:sqlite3:sqlite"
     )
     
     local -a missing_pkgs=()
@@ -188,8 +216,34 @@ cmd_check_deps() {
     done
 
     if (( ${#missing_pkgs[@]} > 0 )); then
-        log warn "To install missing dependencies on Arch:"
-        print -P "${C_BOLD}sudo pacman -S ${(j: :)missing_pkgs}${C_RESET}"
+        log warn "Missing dependencies detected!"
+        
+        if [[ "$is_arch" == true ]]; then
+            # Remove duplicates from missing packages
+            local -a unique_missing=(${(u)missing_pkgs})
+            
+            print -P "\n${C_BOLD}Packages to install:${C_RESET} ${(j: :)unique_missing}"
+            print -P "${C_GRAY}Install command: sudo pacman -S --needed ${(j: :)unique_missing}${C_RESET}"
+            
+            if [[ "$AUTO_INSTALL" == true ]]; then
+                log info "Auto-install enabled. Installing missing packages..."
+                if sudo pacman -S --needed "${unique_missing[@]}"; then
+                    log ok "Dependencies installed successfully!"
+                    # Re-check to confirm
+                    cmd_check_deps
+                    return $?
+                else
+                    log error "Failed to install dependencies"
+                    return 1
+                fi
+            else
+                print -P "\n${C_YELLOW}Run with -y flag to auto-install:${C_RESET} ./build.sh -y $COMMAND"
+                print -P "${C_YELLOW}Or install manually:${C_RESET} sudo pacman -S --needed ${(j: :)unique_missing}"
+            fi
+        else
+            log warn "Auto-install only supported on Arch Linux."
+            log info "Please install the missing packages manually."
+        fi
     fi
 
     return $missing_count
@@ -199,13 +253,18 @@ cmd_build() {
     local start_time=$EPOCHSECONDS
     
     # Auto-check deps before building, because we're Chads
-    cmd_check_deps || { log error "Dependencies missing. Fix them, Junior."; return 1; }
+    cmd_check_deps || { 
+        log error "Dependencies missing. Fix them, Junior."
+        log info "Hint: Run './build.sh -y build' to auto-install on Arch."
+        return 1 
+    }
 
     log header "Building ChadVis"
     log_kv "CPU" "$CPU_MODEL"
     log_kv "Cores" "$CPU_CORES"
     log_kv "Type" "$BUILD_TYPE"
     log_kv "Jobs" "$JOBS"
+    log_kv "Log" "$LOG_FILE"
 
     if [[ "$CLEAN_FIRST" == true ]]; then
         cmd_clean
@@ -214,19 +273,37 @@ cmd_build() {
     mkdir -p "$BUILD_DIR"
 
     log info "Configuring with CMake..."
-    # Redirect to log file for LLMs to interpret
+    log info "Output: Console + $LOG_FILE"
+    
+    # Dual output: tee shows on console AND writes to log
+    # Only the last pipeline command's exit status matters
     if ! cmake -G Ninja \
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        -S "$PROJECT_ROOT" -B "$BUILD_DIR" > "$LOG_FILE" 2>&1; then
-        log error "CMake configuration failed! Check $LOG_FILE"
+        -S "$PROJECT_ROOT" -B "$BUILD_DIR" 2>&1 | dual_tee "$LOG_FILE"; then
+        
+        log error "CMake configuration failed!"
+        log info "Check $LOG_FILE for full details."
+        log info "Last 10 lines of error:"
+        tail -n 10 "$LOG_FILE" | while read line; do
+            print -P "${C_RED}  │${C_RESET} $line"
+        done
         return 1
     fi
 
-    log info "Compiling with Ninja..."
-    if ! ninja -C "$BUILD_DIR" -j "$JOBS" >> "$LOG_FILE" 2>&1; then
-        log error "Compilation failed! Check $LOG_FILE"
-        # Keep the log file for debugging
+    log info "Compiling with Ninja ($JOBS jobs)..."
+    log info "Output: Console + $LOG_FILE"
+    
+    # Reset log file for compile output
+    > "$LOG_FILE"
+    
+    if ! ninja -C "$BUILD_DIR" -j "$JOBS" 2>&1 | dual_tee "$LOG_FILE"; then
+        log error "Compilation failed!"
+        log info "Check $LOG_FILE for full details."
+        log info "Last 20 lines of error:"
+        tail -n 20 "$LOG_FILE" | while read line; do
+            print -P "${C_RED}  │${C_RESET} $line"
+        done
         return 1
     fi
 
@@ -258,57 +335,12 @@ cmd_clean() {
     fi
 }
 
-cmd_build() {
-    local start_time=$EPOCHSECONDS
-    log header "Building ChadVis"
-    log_kv "CPU" "$CPU_MODEL"
-    log_kv "Cores" "$CPU_CORES"
-    log_kv "Type" "$BUILD_TYPE"
-    log_kv "Jobs" "$JOBS"
-
-    if [[ "$CLEAN_FIRST" == true ]]; then
-        cmd_clean
-    fi
-
-    mkdir -p "$BUILD_DIR"
-
-    log info "Configuring with CMake..."
-    # Redirect to log file for LLMs to interpret
-    if ! cmake -G Ninja \
-        -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        -S "$PROJECT_ROOT" -B "$BUILD_DIR" > "$LOG_FILE" 2>&1; then
-        log error "CMake configuration failed! Check $LOG_FILE"
-        return 1
-    fi
-
-    log info "Compiling with Ninja..."
-    if ! ninja -C "$BUILD_DIR" -j "$JOBS" >> "$LOG_FILE" 2>&1; then
-        log error "Compilation failed! Check $LOG_FILE"
-        # Keep the log file for debugging
-        return 1
-    fi
-
-    local end_time=$EPOCHSECONDS
-    local duration=$(( end_time - start_time ))
-
-    log ok "Build successful! (Took ${duration}s)"
-    log_kv "Binary" "$BINARY_PATH"
-    log_kv "Size" "$(human_size "$BINARY_PATH")"
-
-    # Clear log file on success so we don't confuse anyone
-    : > "$LOG_FILE"
-    
-    if [[ "$INSTALL_AFTER" == true ]]; then
-        cmd_install
-    fi
-}
-
 cmd_install() {
     log header "Installing"
     log info "Running installation (might need sudo)..."
-    if ! sudo ninja -C "$BUILD_DIR" install >> "$LOG_FILE" 2>&1; then
-        log error "Installation failed! Check $LOG_FILE"
+    if ! sudo ninja -C "$BUILD_DIR" install 2>&1 | dual_tee "$LOG_FILE"; then
+        log error "Installation failed!"
+        log info "Check $LOG_FILE for full details."
         return 1
     fi
     log ok "Installed successfully. Go forth and visualize."
@@ -330,7 +362,7 @@ cmd_test() {
     fi
     # Assuming tests are built into build/tests/
     if [[ -d "$BUILD_DIR/tests" ]]; then
-        ctest --test-dir "$BUILD_DIR" --output-on-failure
+        ctest --test-dir "$BUILD_DIR" --output-on-failure 2>&1 | dual_tee "$LOG_FILE"
     else
         log warn "No tests found. Did you build them?"
     fi

@@ -123,9 +123,9 @@ private:
     // Dock widgets
     QDockWidget* toolsDock_{nullptr};
     
-    // Modern sidebar (alternative to dock)
+    // Modern sidebar (default layout)
     chadvis::SidebarWidget* sidebarWidget_{nullptr};
-    bool useSidebarLayout_{false};
+    bool useSidebarLayout_{true};
 
     QTimer updateTimer_;
     bool isFullscreen_{false};

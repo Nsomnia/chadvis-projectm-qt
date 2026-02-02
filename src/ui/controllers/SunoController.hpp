@@ -64,10 +64,12 @@ public:
     // Debug
     void setDebugLyrics(const AlignedLyrics& lyrics);
 
-public slots:
+ public slots:
     void onLibraryFetched(const std::vector<SunoClip>& clips);
     void onAlignedLyricsFetched(const std::string& clipId,
                                 const std::string& json);
+    void onWavConversionReady(const std::string& clipId,
+                              const std::string& wavUrl);
     void onError(const std::string& message);
 
 private:
@@ -90,8 +92,14 @@ private:
                            const std::string& json,
                            const QJsonDocument& doc);
     
+    // Helper: Save metadata sidecar file (.txt)
+    void saveMetadataSidecar(const SunoClip& clip);
+    
     // Helper: Extract clip ID from track with aggressive UUID detection
     std::string extractClipIdFromTrack() const;
+    
+    // Helper: Download audio from URL
+    void downloadAudioFromUrl(const std::string& clipId, const std::string& url, const std::string& extension);
 
     AudioEngine* audioEngine_;
     OverlayEngine* overlayEngine_;

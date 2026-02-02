@@ -3,8 +3,11 @@ third_party/
 .agent/
 scratch/
 
-# Repos the user cloned to investigate
-zzz_repos-investigation/
+# User note and working directories
+zzz*/
+zzzz*
+.ralph/*
+
 
 # an older suno http clerk reference that might still be valuable to end users
 docs/suno_api_reference.md

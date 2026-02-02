@@ -136,6 +136,11 @@ struct KeyboardConfig {
     std::string prevPreset{"Left"};
 };
 
+enum class SunoDownloadFormat {
+    MP3,
+    WAV
+};
+
 struct SunoConfig {
     std::string token;
     std::string cookie;
@@ -143,6 +148,7 @@ struct SunoConfig {
     bool autoDownload{false};
     bool saveLyrics{true};
     bool embedMetadata{true};
+    SunoDownloadFormat downloadFormat{SunoDownloadFormat::MP3};
 
     // Debugging
     bool debugLyrics{false};

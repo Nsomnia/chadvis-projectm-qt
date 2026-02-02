@@ -245,16 +245,18 @@ void SettingsDialog::setupUI() {
     kYPosSpin_->setSingleStep(0.05);
     kLayout->addRow("Vertical Position (0-1):", kYPosSpin_);
 
-    auto setupColorBtn = [this](const QString& label, QPushButton*& btn, QColor& color, QFormLayout* layout) {
-        btn = new QPushButton();
+    auto setupColorBtn = [this](const QString& label, chadvis::GlowButton*& btn, QColor& color, QFormLayout* layout) {
+        btn = new chadvis::GlowButton();
         btn->setFixedWidth(60);
+        btn->setCornerRadius(4);
         
         auto updateStyle = [&btn, &color]() {
-            btn->setStyleSheet(QString("background-color: %1; border: 1px solid gray;").arg(color.name()));
+            btn->setGlowColor(color);
+            btn->setStyleSheet(QString("background-color: %1; border: none;").arg(color.name()));
         };
         updateStyle();
 
-        connect(btn, &QPushButton::clicked, this, [this, &color, updateStyle]() {
+        connect(btn, &chadvis::GlowButton::clicked, this, [this, &color, updateStyle]() {
             QColor c = QColorDialog::getColor(color, this, "Select Color", QColorDialog::ShowAlphaChannel);
             if (c.isValid()) {
                 color = c;
@@ -273,22 +275,25 @@ void SettingsDialog::setupUI() {
 
     layout->addWidget(tabWidget_);
 
-    // Dialog buttons
+    // Dialog buttons (modern glow style)
     auto* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
 
-    auto* okButton = new QPushButton("OK");
+    auto* okButton = new chadvis::GlowButton("OK");
+    okButton->setGlowColor(QColor("#00ff88"));
     okButton->setDefault(true);
-    connect(okButton, &QPushButton::clicked, this, &SettingsDialog::accept);
+    connect(okButton, &chadvis::GlowButton::clicked, this, &SettingsDialog::accept);
     buttonLayout->addWidget(okButton);
 
-    auto* cancelButton = new QPushButton("Cancel");
-    connect(cancelButton, &QPushButton::clicked, this, &SettingsDialog::reject);
+    auto* cancelButton = new chadvis::GlowButton("Cancel");
+    cancelButton->setGlowColor(QColor("#00bcd4"));
+    connect(cancelButton, &chadvis::GlowButton::clicked, this, &SettingsDialog::reject);
     buttonLayout->addWidget(cancelButton);
 
-    auto* applyButton = new QPushButton("Apply");
+    auto* applyButton = new chadvis::GlowButton("Apply");
+    applyButton->setGlowColor(QColor("#00bcd4"));
     connect(applyButton,
-            &QPushButton::clicked,
+            &chadvis::GlowButton::clicked,
             this,
             &SettingsDialog::saveSettings);
     buttonLayout->addWidget(applyButton);
