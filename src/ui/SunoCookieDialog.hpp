@@ -10,16 +10,23 @@
 class QWebEngineView;
 class QNetworkCookie;
 
+namespace chadvis {
+    class SunoPersistentAuth;
+}
+
 namespace vc::ui {
 
 class SunoCookieDialog : public QDialog {
     Q_OBJECT
 
 public:
-    explicit SunoCookieDialog(QWidget* parent = nullptr);
+    explicit SunoCookieDialog(QWidget* parent = nullptr, chadvis::SunoPersistentAuth* auth = nullptr);
     ~SunoCookieDialog() override;
 
     QString getCookie() const;
+
+signals:
+    void startSystemAuthRequested();
 
 private slots:
     void onAccept();
@@ -29,12 +36,14 @@ private slots:
 private:
     void setupUI();
 
+    chadvis::SunoPersistentAuth* auth_;
     QTabWidget* tabWidget_;
     QWebEngineView* webView_;
     QTextEdit* manualCookieEdit_;
     QLabel* statusLabel_;
     QPushButton* okBtn_;
     QPushButton* cancelBtn_;
+    QPushButton* systemAuthBtn_;
     
     QString sessionCookie_;
     QString clientCookie_;

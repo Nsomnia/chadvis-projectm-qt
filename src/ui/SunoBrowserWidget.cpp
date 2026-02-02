@@ -1,6 +1,8 @@
 #include "SunoBrowserWidget.hpp"
 #include <QWebEnginePage>
 #include <QWebEngineSettings>
+#include <QWebEngineScript>
+#include <QWebEngineScriptCollection>
 #include <QMessageBox>
 #include <QApplication>
 #include <QScreen>
@@ -79,6 +81,56 @@ void SunoBrowserWidget::setupUI() {
 
 void SunoBrowserWidget::setupWebEngine() {
     profile_ = new QWebEngineProfile("suno_auth_persistent", this);
+    
+    // Set a modern, real-looking User Agent that matches the underlying Chromium major version (134)
+    // Using a macOS UA is often more successful with Google OAuth than a Linux one in embedded views.
+    profile_->setHttpUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36");
+
+    // Enable features that can help with login security checks
+    // ... (existing settings) ...
+    
+    // Inject Stealth Script to mock navigator properties
+    QWebEngineScript script;
+    script.setName("stealth_injection");
+    script.setInjectionPoint(QWebEngineScript::DocumentCreation);
+    script.setWorldId(QWebEngineScript::MainWorld);
+    script.setRunsOnSubFrames(true);
+    
+    QString stealthJs = R"(
+        (function() {
+            // Stealth Script to mock standard browser properties and hide automation signals
+            // Injected at DocumentCreation time
+            
+            // Mock Navigator Plugins
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => {
+                    return [
+                        { name: "Chrome PDF Plugin", filename: "internal-pdf-viewer", description: "Portable Document Format" },
+                        { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai", description: "Portable Document Format" },
+                        { name: "Native Client", filename: "internal-nacl-plugin", description: "" }
+                    ];
+                }
+            });
+
+            // Hide WebDriver
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            
+            // Mock Languages
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            
+            // Mock window.chrome
+            if (!window.chrome) {
+                window.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: { isInstalled: false }
+                };
+            }
+        })();
+    )";
+    script.setSourceCode(stealthJs);
+    profile_->scripts()->insert(script);
 
     // Enable persistent cookies for session persistence across restarts
     profile_->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
@@ -123,7 +175,7 @@ void SunoBrowserWidget::setupWebEngine() {
 }
 
 void SunoBrowserWidget::navigateToSuno() {
-    navigateToUrl(QUrl("https://suno.com"));
+    navigateToUrl(QUrl("https://suno.com/sign-in"));
 }
 
 void SunoBrowserWidget::navigateToUrl(const QUrl& url) {

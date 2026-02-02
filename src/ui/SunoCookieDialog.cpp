@@ -1,18 +1,24 @@
 #include "SunoCookieDialog.hpp"
+#include "ui/SunoPersistentAuth.hpp"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QWebEngineView>
 #include <QWebEngineProfile>
 #include <QWebEngineCookieStore>
+#include <QWebEngineSettings>
 #include <QWebEnginePage>
+#include <QWebEngineScript>
+#include <QWebEngineScriptCollection>
 #include <QNetworkCookie>
 #include <QStandardPaths>
 #include <QDir>
+#include <QFile>
 #include "core/Logger.hpp"
 
 namespace vc::ui {
 
-SunoCookieDialog::SunoCookieDialog(QWidget* parent) : QDialog(parent) {
+SunoCookieDialog::SunoCookieDialog(QWidget* parent, chadvis::SunoPersistentAuth* auth) 
+    : QDialog(parent), auth_(auth) {
     setupUI();
     setWindowTitle("Suno AI Login");
     resize(1024, 768);
@@ -31,42 +37,102 @@ void SunoCookieDialog::setupUI() {
 
     // Status Header
     auto* headerLayout = new QHBoxLayout();
-    statusLabel_ = new QLabel("Please log in to Suno.com below...", this);
+    statusLabel_ = new QLabel("Please log in to Suno.com below...\n(Note: Site may take a moment to load fully on some systems)", this);
     statusLabel_->setStyleSheet("font-weight: bold; font-size: 14px;");
     headerLayout->addWidget(statusLabel_);
     browserLayout->addLayout(headerLayout);
 
+    // System Auth Button
+    systemAuthBtn_ = new QPushButton("Login with System Browser (Google)", this);
+    systemAuthBtn_->setStyleSheet("background-color: #4285f4; color: white; padding: 8px; font-weight: bold;");
+    connect(systemAuthBtn_, &QPushButton::clicked, this, &SunoCookieDialog::startSystemAuthRequested);
+    browserLayout->addWidget(systemAuthBtn_);
+
     // Web View
-    webView_ = new QWebEngineView(this);
+    if (auth_) {
+        // Use the managed view from persistent auth
+        webView_ = auth_->createWebView(this);
+        // Connect cookie monitoring is handled by auth manager, but we also listen for immediate feedback in dialog
+        connect(auth_->profile()->cookieStore(), &QWebEngineCookieStore::cookieAdded,
+                this, &SunoCookieDialog::onCookieAdded);
+    } else {
+        // Fallback to local view creation (legacy behavior)
+        webView_ = new QWebEngineView(this);
+        
+        // Configure profile with persistent storage for session persistence
+        QWebEngineProfile* profile = webView_->page()->profile();
+        
+        // Set a modern, real-looking User Agent that matches the underlying Chromium major version (134)
+        profile->setHttpUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36");
 
-    // Configure profile with persistent storage for session persistence
-    QWebEngineProfile* profile = webView_->page()->profile();
-    profile->setHttpUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        // Enable features that can help with login security checks
+        webView_->settings()->setAttribute(QWebEngineSettings::JavascriptCanAccessClipboard, true);
+        webView_->settings()->setAttribute(QWebEngineSettings::WebRTCPublicInterfacesOnly, true);
+        webView_->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
+        webView_->settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
+        webView_->settings()->setAttribute(QWebEngineSettings::LocalContentCanAccessRemoteUrls, true);
+        webView_->settings()->setAttribute(QWebEngineSettings::AllowRunningInsecureContent, false);
+        webView_->settings()->setAttribute(QWebEngineSettings::AutoLoadImages, true);
+        
+        // Inject Stealth Script to mock navigator properties
+        QWebEngineScript script;
+        script.setName("stealth_injection");
+        script.setInjectionPoint(QWebEngineScript::DocumentCreation);
+        script.setWorldId(QWebEngineScript::MainWorld);
+        script.setRunsOnSubFrames(true);
+        
+        QString stealthJs = R"(
+            (function() {
+                // Stealth Script to mock standard browser properties and hide automation signals
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => {
+                        return [
+                            { name: "Chrome PDF Plugin", filename: "internal-pdf-viewer", description: "Portable Document Format" },
+                            { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai", description: "Portable Document Format" },
+                            { name: "Native Client", filename: "internal-nacl-plugin", description: "" }
+                        ];
+                    }
+                });
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                if (!window.chrome) {
+                    window.chrome = {
+                        runtime: {},
+                        loadTimes: function() {},
+                        csi: function() {},
+                        app: { isInstalled: false }
+                    };
+                }
+            })();
+        )";
+        script.setSourceCode(stealthJs);
+        profile->scripts()->insert(script);
 
-    // Enable persistent cookies
-    profile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+        // Enable persistent cookies
+        profile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
 
-    // Set storage paths in user's config directory
-    QString configDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
-    if (configDir.isEmpty()) {
-        configDir = QDir::homePath() + "/.config";
+        // Set storage paths in user's config directory
+        QString configDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+        if (configDir.isEmpty()) {
+            configDir = QDir::homePath() + "/.config";
+        }
+        QString storagePath = configDir + "/chadvis-projectm-qt/webengine/suno/storage";
+        QString cachePath = configDir + "/chadvis-projectm-qt/webengine/suno/cache";
+
+        QDir().mkpath(storagePath);
+        QDir().mkpath(cachePath);
+
+        profile->setPersistentStoragePath(storagePath);
+        profile->setCachePath(cachePath);
+
+        connect(profile->cookieStore(), &QWebEngineCookieStore::cookieAdded,
+                this, &SunoCookieDialog::onCookieAdded);
+
+        // Load existing cookies from persistent storage
+        profile->cookieStore()->loadAllCookies();
     }
-    QString storagePath = configDir + "/chadvis-projectm-qt/webengine/suno/storage";
-    QString cachePath = configDir + "/chadvis-projectm-qt/webengine/suno/cache";
 
-    QDir().mkpath(storagePath);
-    QDir().mkpath(cachePath);
-
-    profile->setPersistentStoragePath(storagePath);
-    profile->setCachePath(cachePath);
-
-    connect(profile->cookieStore(), &QWebEngineCookieStore::cookieAdded,
-            this, &SunoCookieDialog::onCookieAdded);
-
-    // Load existing cookies from persistent storage
-    profile->cookieStore()->loadAllCookies();
-
-    webView_->load(QUrl("https://suno.com/login"));
+    webView_->load(QUrl("https://suno.com/sign-in"));
     browserLayout->addWidget(webView_);
 
     tabWidget_->addTab(browserTab, "Browser Login");
