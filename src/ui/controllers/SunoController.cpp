@@ -5,6 +5,7 @@
 #include "overlay/OverlayEngine.hpp"
 #include "suno/SunoLyrics.hpp"
 #include "ui/SunoCookieDialog.hpp"
+#include "ui/MainWindow.hpp"
 #include "util/FileUtils.hpp"
 
 #include <QStandardPaths>
@@ -28,9 +29,60 @@ SunoController::SunoController(AudioEngine* audioEngine,
       overlayEngine_(overlayEngine),
       window_(window),
       client_(std::make_unique<SunoClient>(nullptr)),
-      networkManager_(new QNetworkAccessManager(this)) {
+      networkManager_(new QNetworkAccessManager(this)),
+      persistentAuth_(std::make_unique<chadvis::SunoPersistentAuth>(nullptr)),
+      systemAuth_(std::make_unique<chadvis::SystemBrowserAuth>(nullptr)) {
     // client_ is a unique_ptr, do NOT set parent to avoid double-free
     // but we can connect signals safely because client_ is a QObject
+
+    // Initialize Auth Managers
+    connect(persistentAuth_.get(), &chadvis::SunoPersistentAuth::authenticated, this, [this](const auto& authState) {
+        LOG_INFO("SunoController: Persistent auth session restored");
+        if (!authState.bearerToken.isEmpty()) {
+            client_->setToken(authState.bearerToken.toStdString());
+            CONFIG.suno().token = authState.bearerToken.toStdString();
+        }
+        
+        QString cookieStr;
+        if (!authState.clientCookie.isEmpty()) cookieStr += "__client=" + authState.clientCookie + "; ";
+        if (!authState.sessionCookie.isEmpty()) cookieStr += "__session=" + authState.sessionCookie;
+        
+        if (!cookieStr.isEmpty()) {
+             client_->setCookie(cookieStr.toStdString());
+             CONFIG.suno().cookie = cookieStr.toStdString();
+        }
+        CONFIG.save(CONFIG.configPath());
+        
+        statusMessage.emitSignal("Authentication restored from persistent session");
+        
+        // Refresh library if not already doing so
+        if (!isSyncing_) {
+            refreshLibrary(1);
+        }
+    });
+
+    connect(systemAuth_.get(), &chadvis::SystemBrowserAuth::authSuccess, this, [this](const QString& token) {
+        LOG_INFO("SunoController: System auth success");
+        // If it's a bearer token (JWT)
+        if (token.startsWith("eyJ")) {
+             client_->setToken(token.toStdString());
+             CONFIG.suno().token = token.toStdString();
+             CONFIG.save(CONFIG.configPath());
+             statusMessage.emitSignal("System authentication successful");
+             refreshLibrary(1);
+        } else {
+             // Might be a raw session cookie value or code - handling depends on exact Clerk response
+             LOG_INFO("SunoController: Received token from system auth: {}", token.left(10).toStdString());
+        }
+    });
+    
+    connect(systemAuth_.get(), &chadvis::SystemBrowserAuth::authFailed, this, [this](const QString& reason) {
+        LOG_ERROR("SunoController: System auth failed: {}", reason.toStdString());
+        statusMessage.emitSignal("System Login Failed: " + reason.toStdString());
+    });
+
+    // Initialize persistent storage (loads cookies)
+    persistentAuth_->initialize();
 
     // Connect client signals
     client_->libraryFetched.connect(
@@ -190,7 +242,13 @@ void SunoController::syncDatabase(bool forceAuth) {
 }
 
 void SunoController::showCookieDialog() {
-    auto* dialog = new ui::SunoCookieDialog();
+    auto* dialog = new ui::SunoCookieDialog(window_, persistentAuth_.get());
+    
+    connect(dialog, &ui::SunoCookieDialog::startSystemAuthRequested, this, [this, dialog]() {
+        LOG_INFO("SunoController: Switching to System Browser Auth");
+        dialog->close();
+        systemAuth_->startAuth();
+    });
     
     if (dialog->exec() == QDialog::Accepted) {
         std::string cookie = dialog->getCookie().toStdString();

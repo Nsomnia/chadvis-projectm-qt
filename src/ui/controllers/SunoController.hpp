@@ -12,9 +12,14 @@
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
 #include "suno/SunoLyrics.hpp"
+#include "ui/SunoPersistentAuth.hpp"
+#include "ui/SystemBrowserAuth.hpp"
 #include "util/Signal.hpp"
 
 namespace vc {
+namespace ui {
+    class SunoCookieDialog; // Forward decl
+}
 
 class AudioEngine;
 class OverlayEngine;
@@ -107,6 +112,10 @@ private:
     std::unique_ptr<SunoClient> client_;
     SunoDatabase db_;
     QNetworkAccessManager* networkManager_;
+    
+    // Auth Managers
+    std::unique_ptr<chadvis::SunoPersistentAuth> persistentAuth_;
+    std::unique_ptr<chadvis::SystemBrowserAuth> systemAuth_;
 
     fs::path downloadDir_;
     std::deque<std::string> lyricsQueue_;

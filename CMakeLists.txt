@@ -330,6 +330,8 @@ set(UI_SOURCES
     src/ui/SunoBrowserWidget.cpp
     src/ui/SunoPersistentAuth.hpp
     src/ui/SunoPersistentAuth.cpp
+    src/ui/SystemBrowserAuth.hpp
+    src/ui/SystemBrowserAuth.cpp
     src/ui/LyricsPanel.hpp
     src/ui/LyricsPanel.cpp
     src/ui/SidebarWidget.hpp
