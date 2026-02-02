@@ -4,6 +4,8 @@
 #include <QMessageBox>
 #include <QApplication>
 #include <QScreen>
+#include <QStandardPaths>
+#include <QDir>
 
 namespace chadvis {
 
@@ -76,20 +78,48 @@ void SunoBrowserWidget::setupUI() {
 }
 
 void SunoBrowserWidget::setupWebEngine() {
-    profile_ = new QWebEngineProfile("suno_auth", this);
-    profile_->setPersistentCookiesPolicy(QWebEngineProfile::NoPersistentCookies);
-    
+    profile_ = new QWebEngineProfile("suno_auth_persistent", this);
+
+    // Enable persistent cookies for session persistence across restarts
+    profile_->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+
+    // Set storage paths in user's config directory
+    QString configDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+    if (configDir.isEmpty()) {
+        configDir = QDir::homePath() + "/.config";
+    }
+    QString storagePath = configDir + "/chadvis-projectm-qt/webengine/suno/storage";
+    QString cachePath = configDir + "/chadvis-projectm-qt/webengine/suno/cache";
+
+    // Ensure directories exist
+    QDir().mkpath(storagePath);
+    QDir().mkpath(cachePath);
+
+    profile_->setPersistentStoragePath(storagePath);
+    profile_->setCachePath(cachePath);
+
     auto* page = new QWebEnginePage(profile_, this);
     webView_->setPage(page);
-    
+
     connect(webView_, &QWebEngineView::loadStarted, this, &SunoBrowserWidget::onLoadStarted);
     connect(webView_, &QWebEngineView::loadProgress, this, &SunoBrowserWidget::onLoadProgress);
     connect(webView_, &QWebEngineView::loadFinished, this, &SunoBrowserWidget::onLoadFinished);
     connect(webView_, &QWebEngineView::urlChanged, this, &SunoBrowserWidget::onUrlChanged);
-    
+
     auto* cookieStore = profile_->cookieStore();
     connect(cookieStore, &QWebEngineCookieStore::cookieAdded, this, &SunoBrowserWidget::onCookieAdded);
+
+    // Load all cookies from persistent storage
     cookieStore->loadAllCookies();
+
+    // Check for existing session after a short delay
+    QTimer::singleShot(500, this, [this]() {
+        // Check if we already have valid cookies from persistent storage
+        if (cookieData_.isValid()) {
+            updateStatus("Existing session restored from storage");
+            emit authenticated(cookieData_);
+        }
+    });
 }
 
 void SunoBrowserWidget::navigateToSuno() {

@@ -83,22 +83,24 @@ void RecordingControls::setupUI() {
     outputEdit_->setPlaceholderText("Auto-generated filename");
     outputLayout->addWidget(outputEdit_, 1);
 
-    browseButton_ = new QPushButton("...");
-    browseButton_->setFixedWidth(30);
+    browseButton_ = new chadvis::GlowButton("...");
+    browseButton_->setFixedWidth(40);
+    browseButton_->setGlowColor(QColor("#00bcd4"));
     connect(browseButton_,
-            &QPushButton::clicked,
+            &chadvis::GlowButton::clicked,
             this,
             &RecordingControls::onBrowseOutputClicked);
     outputLayout->addWidget(browseButton_);
     recordLayout->addLayout(outputLayout);
 
-    // Record button
-    recordButton_ = new QPushButton("⏺ Start Recording");
+    // Record button (modern glow style)
+    recordButton_ = new chadvis::GlowButton("⏺ Start Recording");
     recordButton_->setObjectName("recordButton");
     recordButton_->setCheckable(true);
     recordButton_->setMinimumHeight(40);
+    recordButton_->setGlowColor(QColor("#ff4444"));
     connect(recordButton_,
-            &QPushButton::clicked,
+            &chadvis::GlowButton::clicked,
             this,
             &RecordingControls::onRecordButtonClicked);
     recordLayout->addWidget(recordButton_);

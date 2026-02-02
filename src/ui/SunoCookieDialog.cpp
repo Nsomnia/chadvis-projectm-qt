@@ -6,6 +6,8 @@
 #include <QWebEngineCookieStore>
 #include <QWebEnginePage>
 #include <QNetworkCookie>
+#include <QStandardPaths>
+#include <QDir>
 #include "core/Logger.hpp"
 
 namespace vc::ui {
@@ -36,17 +38,37 @@ void SunoCookieDialog::setupUI() {
 
     // Web View
     webView_ = new QWebEngineView(this);
-    
-    // Configure profile and cookie monitoring
+
+    // Configure profile with persistent storage for session persistence
     QWebEngineProfile* profile = webView_->page()->profile();
     profile->setHttpUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-    
+
+    // Enable persistent cookies
+    profile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+
+    // Set storage paths in user's config directory
+    QString configDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+    if (configDir.isEmpty()) {
+        configDir = QDir::homePath() + "/.config";
+    }
+    QString storagePath = configDir + "/chadvis-projectm-qt/webengine/suno/storage";
+    QString cachePath = configDir + "/chadvis-projectm-qt/webengine/suno/cache";
+
+    QDir().mkpath(storagePath);
+    QDir().mkpath(cachePath);
+
+    profile->setPersistentStoragePath(storagePath);
+    profile->setCachePath(cachePath);
+
     connect(profile->cookieStore(), &QWebEngineCookieStore::cookieAdded,
             this, &SunoCookieDialog::onCookieAdded);
-            
+
+    // Load existing cookies from persistent storage
+    profile->cookieStore()->loadAllCookies();
+
     webView_->load(QUrl("https://suno.com/login"));
     browserLayout->addWidget(webView_);
-    
+
     tabWidget_->addTab(browserTab, "Browser Login");
 
     // --- Tab 2: Manual Entry ---

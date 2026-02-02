@@ -394,9 +394,40 @@ TEST_CASE("Feature description") {
 
 ---
 
-## File deleteion
+## File Deletion / Destructive Operations Protocol
 
-- Do not delete any files but rather mv --no-clobber into `.backup_graveyard/`
+### NEVER use `rm`, `rm -rf`, or any destructive deletion commands
+
+**Instead, always move files to `.backup_graveyard/` with a datetime stamp:**
+
+```bash
+# Create backup graveyard if it doesn't exist
+mkdir -p .backup_graveyard
+
+# For files: Append timestamp to filename
+mv --no-clobber "/path/to/file.txt" ".backup_graveyard/file.txt.$(date +%Y%m%d_%H%M%S)"
+
+# For directories: Append timestamp to directory name
+mv --no-clobber "/path/to/directory" ".backup_graveyard/directory.$(date +%Y%m%d_%H%M%S)"
+
+# Example with variable paths
+mv --no-clobber "${SOURCE_PATH}" ".backup_graveyard/$(basename "${SOURCE_PATH}").$(date +%Y%m%d_%H%M%S)"
+```
+
+### Why This Matters
+- **Data Safety**: Prevents accidental permanent data loss
+- **Recoverability**: Files can be restored if needed
+- **Audit Trail**: Timestamped backups show when operations occurred
+- **Collaboration**: Other agents can see what was moved and when
+
+### Applies To
+- File deletion (`rm`, `unlink`)
+- Directory removal (`rm -rf`, `rmdir`)
+- Overwriting files without backup
+- Any destructive filesystem operations
+
+### The ONLY Exception
+Temporary build artifacts in `build/`, `dist/`, or similar temporary directories may be cleaned with standard commands, but ONLY within those designated temporary directories.
 
 ---
 
