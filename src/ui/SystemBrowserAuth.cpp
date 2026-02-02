@@ -57,13 +57,18 @@ void SystemBrowserAuth::startAuth() {
     
     LOG_INFO("SystemBrowserAuth: Listening on port {}", port_);
     
-    // Construct the login URL
-    // We attempt to use the redirect_url parameter which Clerk often supports
+    // Construct the login URL with multiple Clerk redirect parameters to ensure capture
+    // Clerk supports redirect_url, after_sign_in_url, and after_sign_up_url.
+    // We use /sign-in which typically handles existing sessions by redirecting immediately.
     QString callbackUrl = QString("http://localhost:%1/callback").arg(port_);
-    QString loginUrl = QString("https://suno.com/login?redirect_url=%1").arg(QUrl::toPercentEncoding(callbackUrl));
+    QString encodedCallback = QUrl::toPercentEncoding(callbackUrl);
     
-    // Alternative: if Suno uses a different param name like return_to or next
-    // loginUrl += "&return_to=" + QUrl::toPercentEncoding(callbackUrl);
+    // We provide multiple variants to cover different Clerk/Suno routing logic
+    QString loginUrl = QString("https://suno.com/sign-in?redirect_url=%1&after_sign_in_url=%2&after_sign_up_url=%3")
+                       .arg(encodedCallback, encodedCallback, encodedCallback);
+    
+    // Some implementations use 'next' or 'return_to'
+    loginUrl += "&next=" + encodedCallback;
     
     LOG_INFO("SystemBrowserAuth: Opening URL {}", loginUrl.toStdString());
     
