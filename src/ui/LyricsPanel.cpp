@@ -11,6 +11,11 @@
 #include <QVBoxLayout>
 #include <QScrollBar>
 #include <QMouseEvent>
+#include <QFileDialog>
+#include <QFile>
+#include <QTextStream>
+#include <QStandardPaths>
+#include <QTimer>
 
 namespace vc {
 
@@ -338,13 +343,22 @@ void LyricsPanel::onExportSrt() {
         return;
     }
     
-    auto result = vc::LyricsExport::toSrt(lyrics_);
-    if (result) {
-        QString filePath = QString::fromStdString(result.value());
-        emit lyricsExported("SRT", filePath);
-        LOG_INFO("Lyrics exported to SRT: {}", filePath.toStdString());
+    QString fileName = QFileDialog::getSaveFileName(this, "Export SRT", 
+        QStandardPaths::writableLocation(QStandardPaths::MusicLocation),
+        "SubRip Subtitles (*.srt)");
+        
+    if (fileName.isEmpty()) return;
+    
+    std::string content = vc::LyricsExport::toSrt(lyrics_);
+    QFile file(fileName);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << QString::fromStdString(content);
+        file.close();
+        emit lyricsExported("SRT", fileName);
+        LOG_INFO("Lyrics exported to SRT: {}", fileName.toStdString());
     } else {
-        LOG_ERROR("Failed to export lyrics to SRT: {}", result.error());
+        LOG_ERROR("Failed to open file for writing: {}", fileName.toStdString());
     }
 }
 
@@ -354,13 +368,22 @@ void LyricsPanel::onExportLrc() {
         return;
     }
     
-    auto result = vc::LyricsExport::toLrc(lyrics_);
-    if (result) {
-        QString filePath = QString::fromStdString(result.value());
-        emit lyricsExported("LRC", filePath);
-        LOG_INFO("Lyrics exported to LRC: {}", filePath.toStdString());
+    QString fileName = QFileDialog::getSaveFileName(this, "Export LRC", 
+        QStandardPaths::writableLocation(QStandardPaths::MusicLocation),
+        "LRC Lyrics (*.lrc)");
+        
+    if (fileName.isEmpty()) return;
+    
+    std::string content = vc::LyricsExport::toLrc(lyrics_);
+    QFile file(fileName);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << QString::fromStdString(content);
+        file.close();
+        emit lyricsExported("LRC", fileName);
+        LOG_INFO("Lyrics exported to LRC: {}", fileName.toStdString());
     } else {
-        LOG_ERROR("Failed to export lyrics to LRC: {}", result.error());
+        LOG_ERROR("Failed to open file for writing: {}", fileName.toStdString());
     }
 }
 
@@ -370,13 +393,22 @@ void LyricsPanel::onExportJson() {
         return;
     }
     
-    auto result = vc::LyricsExport::toJson(lyrics_);
-    if (result) {
-        QString filePath = QString::fromStdString(result.value());
-        emit lyricsExported("JSON", filePath);
-        LOG_INFO("Lyrics exported to JSON: {}", filePath.toStdString());
+    QString fileName = QFileDialog::getSaveFileName(this, "Export JSON", 
+        QStandardPaths::writableLocation(QStandardPaths::MusicLocation),
+        "JSON Lyrics (*.json)");
+        
+    if (fileName.isEmpty()) return;
+    
+    std::string content = vc::LyricsExport::toJson(lyrics_);
+    QFile file(fileName);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << QString::fromStdString(content);
+        file.close();
+        emit lyricsExported("JSON", fileName);
+        LOG_INFO("Lyrics exported to JSON: {}", fileName.toStdString());
     } else {
-        LOG_ERROR("Failed to export lyrics to JSON: {}", result.error());
+        LOG_ERROR("Failed to open file for writing: {}", fileName.toStdString());
     }
 }
 

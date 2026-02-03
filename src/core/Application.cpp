@@ -293,8 +293,9 @@ Result<AppOptions> Application::parseArgs() {
 }
 
 Result<void> Application::init(const AppOptions& opts) {
-    // Initialize logging first
-    Logger::init("chadvis-projectm-qt", opts.debug);
+    // Initialize logging with final debug state
+    bool debug = opts.debug || CONFIG.debug();
+    Logger::init("chadvis-projectm-qt", debug);
     LOG_INFO("chadvis-projectm-qt starting up. I use Arch btw.");
 
     // Load configuration
@@ -311,14 +312,8 @@ Result<void> Application::init(const AppOptions& opts) {
         }
     }
 
-    // Override debug from command line
-    if (opts.debug) {
-        CONFIG.setDebug(true);
-        // Re-init logger with debug enabled
-        Logger::init("chadvis-projectm-qt", true);
-    } else if (CONFIG.debug()) {
-        // Ensure logger respects config file debug setting if not overridden by
-        // CLI
+    // Ensure logger respects final debug state if it changed after loading config
+    if (!opts.debug && CONFIG.debug()) {
         Logger::init("chadvis-projectm-qt", true);
     }
 

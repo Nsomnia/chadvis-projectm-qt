@@ -548,6 +548,19 @@ void MainWindow::keyPressEvent(QKeyEvent* event) {
     }
 }
 
+void MainWindow::changeEvent(QEvent* event) {
+    if (event->type() == QEvent::ActivationChange) {
+        if (visualizerPanel_ && visualizerPanel_->visualizer()) {
+            // Drop FPS to 10 when unfocused to save CPU on weak hardware
+            bool active = isActiveWindow();
+            int fps = active ? CONFIG.visualizer().fps : 10;
+            visualizerPanel_->visualizer()->setRenderRate(fps);
+            LOG_DEBUG("MainWindow: Focus changed, setting render rate to {} FPS", fps);
+        }
+    }
+    QMainWindow::changeEvent(event);
+}
+
 void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
     if (event->mimeData()->hasUrls())
         event->acceptProposedAction();

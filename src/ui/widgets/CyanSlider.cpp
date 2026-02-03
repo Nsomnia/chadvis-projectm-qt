@@ -62,10 +62,10 @@ void CyanSlider::drawHandle(QPainter& painter, const QRect& handleRect) {
     path.addEllipse(handleRect);
     
     // Glow effect when hovered or pressed
-    if ((isHovered_ || isPressed_) && glowEnabled_) {
+    if (glowEnabled_ && glowOpacity_ > 0.01) {
         qreal glowSize = isPressed_ ? 12.0 : 8.0;
         QColor glowColor = accentColor_;
-        glowColor.setAlphaF(isPressed_ ? 0.5 : 0.3);
+        glowColor.setAlphaF(qBound(0.0, glowOpacity_, 1.0));
         
         QRadialGradient gradient(handleRect.center(), handleRect.width() / 2 + glowSize);
         gradient.setColorAt(0, glowColor);
@@ -121,17 +121,26 @@ void CyanSlider::mouseReleaseEvent(QMouseEvent* event) {
 void CyanSlider::enterEvent(QEnterEvent* /*event*/) {
     isHovered_ = true;
     emit hoverStateChanged(true);
-    if (glowEnabled_) {
-        update();
-    }
+    animateGlow(0.6);
 }
 
 void CyanSlider::leaveEvent(QEvent* /*event*/) {
     isHovered_ = false;
     emit hoverStateChanged(false);
-    if (glowEnabled_) {
-        update();
-    }
+    animateGlow(0.0);
+}
+
+void CyanSlider::setGlowOpacity(qreal opacity) {
+    glowOpacity_ = opacity;
+    update();
+}
+
+void CyanSlider::animateGlow(qreal targetOpacity) {
+    if (!glowEnabled_) return;
+    glowAnimation_->stop();
+    glowAnimation_->setStartValue(glowOpacity_);
+    glowAnimation_->setEndValue(targetOpacity);
+    glowAnimation_->start();
 }
 
 } // namespace chadvis

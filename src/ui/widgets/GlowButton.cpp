@@ -75,7 +75,7 @@ void GlowButton::paintEvent(QPaintEvent* /*event*/) {
     if (isPressed_) {
         intensity *= 1.5;
     }
-    glow.setAlphaF(intensity);
+    glow.setAlphaF(qBound(0.0, intensity, 1.0));
     
     QPen pen(glow, 2);
     painter.setPen(pen);
@@ -85,11 +85,11 @@ void GlowButton::paintEvent(QPaintEvent* /*event*/) {
     if (isHovered_ || isPressed_) {
         qreal glowSpread = isPressed_ ? 6.0 : 4.0;
         QColor outerGlow = glowColor_;
-        outerGlow.setAlphaF(isPressed_ ? 0.4 : 0.2);
+        outerGlow.setAlphaF(qBound(0.0, isPressed_ ? 0.4 : 0.2, 1.0));
         
-        for (int i = 1; i <= glowSpread; ++i) {
+        for (int i = 1; i <= (int)glowSpread; ++i) {
             QColor fade = outerGlow;
-            fade.setAlphaF(outerGlow.alphaF() * (1.0 - i / glowSpread));
+            fade.setAlphaF(qBound(0.0, outerGlow.alphaF() * (1.0 - i / glowSpread), 1.0));
             QPen glowPen(fade, i);
             painter.setPen(glowPen);
             QPainterPath glowPath;

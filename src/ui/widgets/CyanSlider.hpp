@@ -36,6 +36,7 @@ class CyanSlider : public QSlider {
     Q_OBJECT
     Q_PROPERTY(int handleSize READ handleSize WRITE setHandleSize)
     Q_PROPERTY(QColor accentColor READ accentColor WRITE setAccentColor)
+    Q_PROPERTY(qreal glowOpacity READ glowOpacity WRITE setGlowOpacity)
 
 public:
     explicit CyanSlider(QWidget* parent = nullptr);
@@ -78,6 +79,10 @@ private:
     QRect handleRect() const;
     int pixelPosToValue(int pos) const;
     int valueToPixelPos(int value) const;
+    
+    qreal glowOpacity() const { return glowOpacity_; }
+    void setGlowOpacity(qreal opacity);
+    void animateGlow(qreal targetOpacity);
 
     // Configuration
     int handleSize_ = 16;
