@@ -59,8 +59,8 @@ void SunoClient::setToken(const std::string& token) {
 
 void SunoClient::setCookie(const std::string& cookie) {
     cookie_ = cookie;
+    clerkSid_.clear();
 
-    // Parse all cookies into a map (handles multiple __client* and __session* cookies)
     QMap<QString, QString> cookieMap;
     QStringList parts = QString::fromStdString(cookie).split(';');
     for (const QString& part : parts) {
@@ -69,19 +69,16 @@ void SunoClient::setCookie(const std::string& cookie) {
         if (eqPos > 0) {
             QString name = trimmed.left(eqPos);
             QString value = trimmed.mid(eqPos + 1);
-            // Store all versions, we'll prefer newer ones later
             cookieMap[name] = value;
         }
     }
 
-    // Extract __session cookie - prefer newer ones (no suffix > _Jnxw-muT > others)
     QString sessionValue;
     if (cookieMap.contains("__session")) {
-        sessionValue = cookieMap["__session"];  // Newest, no suffix
+        sessionValue = cookieMap["__session"];
     } else if (cookieMap.contains("__session_Jnxw-muT")) {
         sessionValue = cookieMap["__session_Jnxw-muT"];
     } else {
-        // Find any __session* cookie
         for (auto it = cookieMap.begin(); it != cookieMap.end(); ++it) {
             if (it.key().startsWith("__session")) {
                 sessionValue = it.value();

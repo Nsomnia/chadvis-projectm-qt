@@ -97,14 +97,26 @@ human_size() {
     fi
 }
 
-# Dual output: show on console AND write to log
-# Usage: dual_tee <log_file>
-dual_tee() {
+# Run command with output to both console and log file
+# Usage: run_logged <log_file> <command> [args...]
+run_logged() {
     local log_file="$1"
-    # Clear log file at start of each command
-    > "$log_file"
-    # Tee output to both console and log file
-    tee -a "$log_file"
+    shift
+    
+    # Clear log file BEFORE running command
+    : > "$log_file"
+    
+    # Run command with unbuffered output to both console and log
+    # stdbuf -oL -eL makes stdout and stderr line-buffered for immediate display
+    # Use && sync to ensure log is written if process exits quickly
+    if (( ${+commands[stdbuf]} )); then
+        stdbuf -oL -eL "$@" 2>&1 | tee -a "$log_file" && sync
+    else
+        "$@" 2>&1 | tee -a "$log_file" && sync
+    fi
+    
+    # Return the exit status of the command (not tee)
+    return $pipestatus[1]
 }
 
 show_help() {
@@ -275,12 +287,11 @@ cmd_build() {
     log info "Configuring with CMake..."
     log info "Output: Console + $LOG_FILE"
     
-    # Dual output: tee shows on console AND writes to log
-    # Only the last pipeline command's exit status matters
-    if ! cmake -G Ninja \
+    # Run cmake with output to console and log file
+    if ! run_logged "$LOG_FILE" cmake -G Ninja \
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        -S "$PROJECT_ROOT" -B "$BUILD_DIR" 2>&1 | dual_tee "$LOG_FILE"; then
+        -S "$PROJECT_ROOT" -B "$BUILD_DIR"; then
         
         log error "CMake configuration failed!"
         log info "Check $LOG_FILE for full details."
@@ -294,10 +305,8 @@ cmd_build() {
     log info "Compiling with Ninja ($JOBS jobs)..."
     log info "Output: Console + $LOG_FILE"
     
-    # Reset log file for compile output
-    > "$LOG_FILE"
-    
-    if ! ninja -C "$BUILD_DIR" -j "$JOBS" 2>&1 | dual_tee "$LOG_FILE"; then
+    # Run ninja with output to console and log file
+    if ! run_logged "$LOG_FILE" ninja -C "$BUILD_DIR" -j "$JOBS"; then
         log error "Compilation failed!"
         log info "Check $LOG_FILE for full details."
         log info "Last 20 lines of error:"
@@ -317,8 +326,8 @@ cmd_build() {
     # Reminder for the Chads
     print -P "\n${ICON_CHAD} ${C_CYAN}${C_BOLD}REMINDER:${C_RESET} Did you update ${C_BOLD}CHANGELOG.md${C_RESET} for these major gains?"
 
-    # Clear log file on success so we don't confuse anyone
-    : > "$LOG_FILE"
+    # Do not clear log file on success, user wants to see output if needed
+    # : > "$LOG_FILE"
     
     if [[ "$INSTALL_AFTER" == true ]]; then
         cmd_install
@@ -338,7 +347,7 @@ cmd_clean() {
 cmd_install() {
     log header "Installing"
     log info "Running installation (might need sudo)..."
-    if ! sudo ninja -C "$BUILD_DIR" install 2>&1 | dual_tee "$LOG_FILE"; then
+    if ! run_logged "$LOG_FILE" sudo ninja -C "$BUILD_DIR" install; then
         log error "Installation failed!"
         log info "Check $LOG_FILE for full details."
         return 1
@@ -362,7 +371,7 @@ cmd_test() {
     fi
     # Assuming tests are built into build/tests/
     if [[ -d "$BUILD_DIR/tests" ]]; then
-        ctest --test-dir "$BUILD_DIR" --output-on-failure 2>&1 | dual_tee "$LOG_FILE"
+        run_logged "$LOG_FILE" ctest --test-dir "$BUILD_DIR" --output-on-failure
     else
         log warn "No tests found. Did you build them?"
     fi

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-02-02
 
 ### Added
+- **Build System Enhancement (v1337.2)**: Upgraded the Zsh build system for better transparency and automation
+  - Implemented dual-output logging: Build steps now show live in console AND are saved to `logs/build.log`
+  - Integrated automated dependency checking and installation for Arch Linux
+  - Added `-y` / `--yes` flag to auto-install missing packages via `pacman`
+  - Fixed pipe status handling to correctly detect failures in `tee` pipelines
+  - Added unbuffered output for real-time visibility of CMake and Ninja progress
+  - Added `sync` calls to ensure build logs are flushed to disk on failure.
 - **Persistent Suno Authentication**: Implemented persistent cookie storage for Suno authentication to prevent session loss during library updates (~2500 songs)
   - Created `SunoPersistentAuth` class to manage persistent WebEngine profile with cookie storage
   - Updated `SunoBrowserWidget` and `SunoCookieDialog` to use `ForcePersistentCookies` policy
@@ -15,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cookies persist across application restarts, eliminating need to re-login each session
   - JWT token extraction and user ID parsing from session cookies
   - Logout functionality to clear persistent session data
+  - Added modern Chrome User Agent to bypass Google OAuth "browser not supported" errors.
 - **Non-Modal Suno Browser Widget**: Created `SunoBrowserWidget` as an embedded alternative to the modal `SunoCookieDialog`. Provides non-blocking authentication flow that can be docked or used as a floating panel.
 - **Modern Sidebar Navigation**: Implemented `SidebarWidget` replacing the tab-based dock widget. Features icon-based navigation with collapsible sections, organized into Library, Visualizer, Recording, Overlays, Karaoke, Suno, and Settings panels.
 - **Theme System Verification**: Verified theming system is fully operational with dark, gruvbox, and nord themes properly loading via QSS resource files.
@@ -31,6 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SunoController Architecture**: Refactored `onAlignedLyricsFetched` into helper methods: `isCurrentlyPlaying()`, `parseAndDisplayLyrics()`, and `saveLyricsSidecar()` for cleaner separation of concerns.
 - **Track-to-ID Mapping**: `onTrackChanged` now uses 4-priority lookup: 1) Direct cache, 2) Database, 3) Sidecar files, 4) API fetch.
 - **Persistence Strategy**: Sidecar files (.json/.srt) are now saved immediately alongside local MP3s when available.
+- **UI Widget Polish**: Clamped glow alpha values in `GlowButton` and `CyanSlider` to valid range [0, 1].
+
+### Fixed
+- **Qt6 WebEngine Compatibility**: Fixed compilation error in `SunoPersistentAuth.cpp` by removing invalid `setOffTheRecord()` call (handled via named profile in Qt6).
+- **Lyrics Export Refactor**: Fixed export logic in `LyricsPanel.cpp` to correctly handle `std::string` return values from `LyricsExport` and implement proper file saving using `QFileDialog`.
+- **Missing Build Includes**: Added missing `<QFileDialog>`, `<QFile>`, `<QTextStream>`, `<QStandardPaths>`, and `<QTimer>` includes to `LyricsPanel.cpp`.
+- **UI Animation Errors**: Resolved `QPropertyAnimation` errors by properly declaring `glowOpacity` as a `Q_PROPERTY` in `CyanSlider`.
 
 ## [Unreleased - 1337 Chad GUI Update - Iteration 5] - 2026-02-01
 
