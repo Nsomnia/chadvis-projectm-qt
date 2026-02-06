@@ -22,6 +22,10 @@ readonly LOG_FILE="${LOG_DIR}/build.log"
 readonly BINARY_NAME="chadvis-projectm-qt"
 readonly BINARY_PATH="${BUILD_DIR}/${BINARY_NAME}"
 
+# Minimum libprojectm version required
+readonly PROJECTM_MIN_VERSION="4.1.0"
+readonly PROJECTM_GIT_TAG="v4.1.6"  # CPM version to use
+
 # Hardware Detection (Zsh-native, no grep/sed/nproc bloat)
 local cpu_cores
 if (( ${+commands[getconf]} )); then
@@ -74,6 +78,79 @@ log() {
     esac
 }
 
+# Compare two version strings (returns 0 if v1 >= v2, 1 otherwise)
+version_compare() {
+    local v1="$1"
+    local v2="$2"
+    
+    # Normalize versions (remove 'v' prefix if present)
+    v1="${v1#v}"
+    v2="${v2#v}"
+    
+    local -a v1_parts=(${(s/./)v1})
+    local -a v2_parts=(${(s/./)v2})
+    
+    local max_len=$(( ${#v1_parts[@]} > ${#v2_parts[@]} ? ${#v1_parts[@]} : ${#v2_parts[@]} ))
+    
+    for (( i = 1; i <= max_len; i++ )); do
+        local p1=${v1_parts[i]:-0}
+        local p2=${v2_parts[i]:-0}
+        
+        if (( p1 > p2 )); then
+            return 0  # v1 >= v2
+        elif (( p1 < p2 )); then
+            return 1  # v1 < v2
+        fi
+    done
+    
+    return 0  # versions are equal
+}
+
+# Get installed libprojectm version from pacman
+get_system_projectm_version() {
+    local version=""
+    
+    # Try pkg-config first
+    if (( ${+commands[pkg-config]} )); then
+        version=$(pkg-config --modversion projectM-4 2>/dev/null)
+        [[ -n "$version" ]] && { echo "$version"; return 0 }
+        
+        version=$(pkg-config --modversion libprojectM 2>/dev/null)
+        [[ -n "$version" ]] && { echo "$version"; return 0 }
+    fi
+    
+    # Try pacman
+    if (( ${+commands[pacman]} )); then
+        local pacman_info=$(pacman -Q libprojectm 2>/dev/null)
+        if [[ -n "$pacman_info" ]]; then
+            # Extract version from "libprojectm 4.x.x-x"
+            version="${pacman_info#libprojectm }"
+            version="${version%%-*}"
+            [[ -n "$version" ]] && { echo "$version"; return 0 }
+        fi
+    fi
+    
+    return 1
+}
+
+# Check if libprojectm is installed and meets version requirements
+check_projectm_status() {
+    local current_version=$(get_system_projectm_version)
+    
+    if [[ -z "$current_version" ]]; then
+        echo "missing"
+        return 0
+    fi
+    
+    if version_compare "$current_version" "$PROJECTM_MIN_VERSION"; then
+        echo "ok:$current_version"
+        return 0
+    else
+        echo "outdated:$current_version"
+        return 0
+    fi
+}
+
 log_kv() {
     print -P "${C_GRAY}  │${C_RESET} ${C_BOLD}${1}:${C_RESET} ${2}"
 }
@@ -123,22 +200,25 @@ show_help() {
     log chad "ChadVis Build System — Help"
     print -P "${C_BOLD}Usage:${C_RESET} build.zsh [options] [command]"
     print -P "\n${C_BOLD}Options:${C_RESET}"
-    print -P "  -h, --help       Show this message (if you're lost)"
-    print -P "  -d, --debug      Build in Debug mode (for when you break things)"
-    print -P "  -r, --release    Build in Release mode (default, for Chads)"
-    print -P "  -c, --clean      Clean build directory before building"
-    print -P "  -i, --install    Install after successful build"
-    print -P "  -j, --jobs <n>   Number of parallel jobs (default: ${CPU_CORES})"
-    print -P "  -y, --yes        Auto-install missing dependencies without prompting"
+    print -P "  -h, --help              Show this message (if you're lost)"
+    print -P "  -d, --debug             Build in Debug mode (for when you break things)"
+    print -P "  -r, --release           Build in Release mode (default, for Chads)"
+    print -P "  -c, --clean             Clean build directory before building"
+    print -P "  -i, --install           Install after successful build"
+    print -P "  -j, --jobs <n>          Number of parallel jobs (default: ${CPU_CORES})"
+    print -P "  -y, --yes               Auto-install missing dependencies without prompting"
+    print -P "      --system-projectm   Force use of system libprojectm via pacman"
+    print -P "      --cpm-projectm      Force build libprojectm from source via CPM"
     print -P "\n${C_BOLD}Commands:${C_RESET}"
     print -P "  build            Configure and compile (default)"
     print -P "  clean            Remove build artifacts"
     print -P "  run              Build and run the application"
     print -P "  test             Run the test suite"
     print -P "  check-deps       Verify system dependencies"
-    print -P "\n${C_BOLD}Example:${C_RESET}"
+    print -P "\n${C_BOLD}Examples:${C_RESET}"
     print -P "  ./build.sh -c -d build   # Clean, debug build"
     print -P "  ./build.sh -y build      # Auto-install deps if missing"
+    print -P "  ./build.sh --cpm-projectm build  # Use CPM libprojectm"
 }
 
 # ─── Logic ──────────────────────────────────────────────────────────────────
@@ -147,7 +227,8 @@ mkdir -p "$LOG_DIR"
 
 # Parse arguments using zparseopts (Zsh-native)
 local -A opts
-zparseopts -D -A opts h -help d -debug r -release c -clean i -install j: -jobs: y -yes
+zparseopts -D -A opts h -help d -debug r -release c -clean i -install j: -jobs: y -yes \
+    -system-projectm -cpm-projectm
 
 if [[ -n "${opts[(i)-h]}" || -n "${opts[(i)--help]}" ]]; then
     show_help
@@ -168,6 +249,11 @@ INSTALL_AFTER=false
 AUTO_INSTALL=false
 [[ -n "${opts[(i)-y]}" || -n "${opts[(i)--yes]}" ]] && AUTO_INSTALL=true
 
+# libprojectm source preference
+PROJECTM_SOURCE="auto"  # auto, system, cpm
+[[ -n "${opts[(i)--system-projectm]}" ]] && PROJECTM_SOURCE="system"
+[[ -n "${opts[(i)--cpm-projectm]}" ]] && PROJECTM_SOURCE="cpm"
+
 COMMAND=${1:-build}
 
 # ─── Commands ───────────────────────────────────────────────────────────────
@@ -177,6 +263,90 @@ cmd_check_deps() {
     
     local is_arch=false
     [[ -f /etc/arch-release ]] && is_arch=true
+
+    # Check libprojectm status first (special handling)
+    local projectm_status=$(check_projectm_status)
+    local projectm_handled=false
+    local use_cpm_projectm=false
+    
+    log info "libprojectm source preference: ${C_BOLD}${PROJECTM_SOURCE}${C_RESET}"
+    
+    case "$PROJECTM_SOURCE" in
+        cpm)
+            log info "Using CPM libprojectm (${PROJECTM_GIT_TAG}) as requested"
+            use_cpm_projectm=true
+            projectm_handled=true
+            ;;
+        system)
+            if [[ "$projectm_status" == "missing" ]]; then
+                log error "System libprojectm not found, but --system-projectm requested"
+                if [[ "$is_arch" == true && "$AUTO_INSTALL" == true ]]; then
+                    log info "Auto-installing libprojectm from pacman..."
+                    if sudo pacman -S --needed libprojectm; then
+                        log ok "libprojectm installed successfully"
+                        use_cpm_projectm=false
+                        projectm_handled=true
+                    else
+                        log error "Failed to install libprojectm"
+                        return 1
+                    fi
+                else
+                    log info "Install with: sudo pacman -S --needed libprojectm"
+                    return 1
+                fi
+            elif [[ "$projectm_status" == outdated:* ]]; then
+                local current_version="${projectm_status#outdated:}"
+                log warn "System libprojectm (${current_version}) is older than minimum (${PROJECTM_MIN_VERSION})"
+                log info "Consider using --cpm-projectm for latest version"
+                use_cpm_projectm=false
+                projectm_handled=true
+            else
+                local current_version="${projectm_status#ok:}"
+                log ok "Using system libprojectm ${current_version}"
+                use_cpm_projectm=false
+                projectm_handled=true
+            fi
+            ;;
+        auto)
+            if [[ "$projectm_status" == "missing" ]]; then
+                log warn "libprojectm not found on system"
+                if [[ "$is_arch" == true ]]; then
+                    if [[ "$AUTO_INSTALL" == true ]]; then
+                        log info "Auto-installing libprojectm from pacman..."
+                        if sudo pacman -S --needed libprojectm; then
+                            log ok "libprojectm installed from pacman"
+                            use_cpm_projectm=false
+                            projectm_handled=true
+                        else
+                            log warn "Pacman install failed, CMake will use CPM fallback"
+                            use_cpm_projectm=true
+                            projectm_handled=true
+                        fi
+                    else
+                        log info "Will let CMake handle libprojectm (CPM fallback available)"
+                        log info "Or run with -y to auto-install from pacman"
+                        use_cpm_projectm=true
+                        projectm_handled=true
+                    fi
+                else
+                    log info "Non-Arch system, CMake will use CPM fallback"
+                    use_cpm_projectm=true
+                    projectm_handled=true
+                fi
+            elif [[ "$projectm_status" == outdated:* ]]; then
+                local current_version="${projectm_status#outdated:}"
+                log warn "System libprojectm (${current_version}) is outdated (min: ${PROJECTM_MIN_VERSION})"
+                log info "CMake will use CPM to build newer version from source"
+                use_cpm_projectm=true
+                projectm_handled=true
+            else
+                local current_version="${projectm_status#ok:}"
+                log ok "System libprojectm ${current_version} meets requirements"
+                use_cpm_projectm=false
+                projectm_handled=true
+            fi
+            ;;
+    esac
 
     # Expanded dependency list - organized by category
     local -a deps=(
@@ -189,13 +359,19 @@ cmd_check_deps() {
         "pkg:Qt6Multimedia:qt6-multimedia"
         # Qt6 extras
         "pkg:Qt6Svg:qt6-svg"
-        # Core libraries
-        "pkg:projectM4:libprojectm" "pkg:libavcodec:ffmpeg" "pkg:libavformat:ffmpeg"
+        "pkg:Qt6WebEngine:qt6-webengine"
+        # Core libraries (excluding libprojectm if handled via CPM)
+        "pkg:libavcodec:ffmpeg" "pkg:libavformat:ffmpeg"
         "pkg:libavutil:ffmpeg" "pkg:libswresample:ffmpeg"
         # Other dependencies
-        "pkg:spdlog:spdlog" "pkg:fmt:format" "pkg:taglib:taglib"
-        "pkg:sqlite3:sqlite"
+        "pkg:spdlog:spdlog" "pkg:fmt:fmt" "pkg:taglib:taglib"
+        "pkg:sqlite3:sqlite" "pkg:glew:glew" "pkg:glm:glm"
     )
+    
+    # Add libprojectm to deps only if not using CPM
+    if [[ "$use_cpm_projectm" == false ]]; then
+        deps+=("pkg:projectM-4:libprojectm")
+    fi
     
     local -a missing_pkgs=()
     local missing_count=0
@@ -257,6 +433,13 @@ cmd_check_deps() {
             log info "Please install the missing packages manually."
         fi
     fi
+    
+    # Export CPM preference for CMake
+    if [[ "$use_cpm_projectm" == true ]]; then
+        export CHADVIS_CPM_PROJECTM=1
+    else
+        unset CHADVIS_CPM_PROJECTM
+    fi
 
     return $missing_count
 }
@@ -287,11 +470,23 @@ cmd_build() {
     log info "Configuring with CMake..."
     log info "Output: Console + $LOG_FILE"
     
+    # Build CMake arguments
+    local cmake_args=(
+        -G Ninja
+        -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        -S "$PROJECT_ROOT"
+        -B "$BUILD_DIR"
+    )
+    
+    # Pass CPM preference to CMake if set (check environment variable set by cmd_check_deps)
+    if [[ -n "${CHADVIS_CPM_PROJECTM:-}" ]]; then
+        log info "Passing CPM libprojectm preference to CMake"
+        cmake_args+=(-DCHADVIS_FORCE_CPM_PROJECTM=ON)
+    fi
+    
     # Run cmake with output to console and log file
-    if ! run_logged "$LOG_FILE" cmake -G Ninja \
-        -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        -S "$PROJECT_ROOT" -B "$BUILD_DIR"; then
+    if ! run_logged "$LOG_FILE" cmake "${cmake_args[@]}"; then
         
         log error "CMake configuration failed!"
         log info "Check $LOG_FILE for full details."
