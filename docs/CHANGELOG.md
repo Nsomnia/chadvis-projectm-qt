@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Build System Enhancement (v1337.3)**: Enhanced dependency management with intelligent libprojectm handling
+  - Automatic dependency installation for Arch Linux via `pacman` with `-y` flag
+  - Version-aware libprojectm detection (minimum version: 4.1.0)
+  - `--system-projectm` flag to force use of system/pacman libprojectm
+  - `--cpm-projectm` flag to force building libprojectm from source via CPM
+  - Smart auto-detection: uses system libprojectm if recent enough, otherwise falls back to CPM
+  - `CHADVIS_FORCE_CPM_PROJECTM` CMake option to bypass system detection
+
 ## [1.1.0] - 2026-01-29
 
 ### Added

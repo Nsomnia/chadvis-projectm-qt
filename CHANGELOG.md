@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-02-02
 
 ### Added
+- **Build System Enhancement (v1337.3)**: Enhanced dependency management with intelligent libprojectm handling
+  - Added automatic dependency installation for Arch Linux via `pacman`
+  - Implemented version-aware libprojectm detection with minimum version check (4.1.0)
+  - Added `--system-projectm` flag to force use of system/pacman libprojectm
+  - Added `--cpm-projectm` flag to force building libprojectm from source via CPM
+  - Smart auto-detection: uses system libprojectm if recent enough, otherwise falls back to CPM
+  - Version comparison logic ensures compatibility with system requirements
+  - Added `CHADVIS_FORCE_CPM_PROJECTM` CMake option to bypass system detection
 - **Build System Enhancement (v1337.2)**: Upgraded the Zsh build system for better transparency and automation
   - Implemented dual-output logging: Build steps now show live in console AND are saved to `logs/build.log`
   - Integrated automated dependency checking and installation for Arch Linux
