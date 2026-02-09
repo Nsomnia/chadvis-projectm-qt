@@ -16,8 +16,13 @@
 #include <functional>
 #include <memory>
 
+namespace chadvis {
+class SidebarWidget;
+}
+
 namespace vc {
 
+class LyricsPanel;
 class PlayerControls;
 class PlaylistView;
 class VisualizerPanel;
@@ -75,6 +80,7 @@ public slots:
 protected:
     void closeEvent(QCloseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void changeEvent(QEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
 
@@ -113,9 +119,14 @@ private:
     RecordingControls* recordingControls_{nullptr};
     OverlayEditor* overlayEditor_{nullptr};
     KaraokeWidget* karaokeWidget_{nullptr};
+    LyricsPanel* lyricsPanel_{nullptr};
 
     // Dock widgets
     QDockWidget* toolsDock_{nullptr};
+    
+    // Modern sidebar (default layout)
+    chadvis::SidebarWidget* sidebarWidget_{nullptr};
+    bool useSidebarLayout_{true};
 
     QTimer updateTimer_;
     bool isFullscreen_{false};

@@ -3,6 +3,7 @@
 // Making those sweet YouTube videos
 
 #include "recorder/VideoRecorder.hpp"
+#include "ui/widgets/GlowButton.hpp"
 #include "util/Types.hpp"
 
 #include <QCheckBox>
@@ -10,7 +11,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QProgressBar>
-#include <QPushButton>
 #include <QWidget>
 
 namespace vc {
@@ -43,7 +43,7 @@ private:
 
     VideoRecorder* recorder_{nullptr};
 
-    QPushButton* recordButton_{nullptr};
+    chadvis::GlowButton* recordButton_{nullptr};
     QLabel* statusLabel_{nullptr};
     QLabel* timeLabel_{nullptr};
     QLabel* framesLabel_{nullptr};
@@ -51,7 +51,7 @@ private:
 
     QComboBox* presetCombo_{nullptr};
     QLineEdit* outputEdit_{nullptr};
-    QPushButton* browseButton_{nullptr};
+    chadvis::GlowButton* browseButton_{nullptr};
 
     QCheckBox* restartTrackCheck_{nullptr};
     QCheckBox* stopAtEndCheck_{nullptr};

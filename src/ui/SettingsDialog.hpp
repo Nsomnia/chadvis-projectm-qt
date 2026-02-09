@@ -2,6 +2,8 @@
 // SettingsDialog.hpp - Application settings
 // All the knobs in one place
 
+#include "ui/widgets/GlowButton.hpp"
+#include "ui/widgets/ToggleSwitch.hpp"
 #include "util/Types.hpp"
 
 #include <QCheckBox>
@@ -12,7 +14,6 @@
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QTabWidget>
-#include <QPushButton>
 #include <QColor>
 
 namespace vc {
@@ -82,10 +83,10 @@ private:
     QSpinBox* kFontSizeSpin_{nullptr};
     QCheckBox* kBoldCheck_{nullptr};
     QDoubleSpinBox* kYPosSpin_{nullptr};
-    // We'll use buttons that launch QColorDialog for colors
-    QPushButton* kActiveColorBtn_{nullptr};
-    QPushButton* kInactiveColorBtn_{nullptr};
-    QPushButton* kShadowColorBtn_{nullptr};
+    // Karaoke color buttons (modern glow style)
+    chadvis::GlowButton* kActiveColorBtn_{nullptr};
+    chadvis::GlowButton* kInactiveColorBtn_{nullptr};
+    chadvis::GlowButton* kShadowColorBtn_{nullptr};
     
     QColor kActiveColor_;
     QColor kInactiveColor_;

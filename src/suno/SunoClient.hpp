@@ -28,6 +28,7 @@ public:
     // Configuration
     void setToken(const std::string& token);
     void setCookie(const std::string& cookie);
+    std::string getCookie() const { return cookie_; }
     bool isAuthenticated() const;
 
     // Refresh Bearer token using cookie (Clerk API)
@@ -41,6 +42,10 @@ public:
     // Fetch aligned lyrics for a clip
     void fetchAlignedLyrics(const std::string& clipId);
 
+    // WAV conversion (server-side conversion)
+    void initiateWavConversion(const std::string& clipId);
+    void pollWavFile(const std::string& clipId, int maxAttempts = 60);
+
     // Fetch projects/workspaces
     void fetchProjects(int page = 1);
 
@@ -51,6 +56,7 @@ public:
     Signal<const std::vector<SunoClip>&> libraryFetched;
     Signal<const std::vector<SunoProject>&> projectsFetched;
     Signal<std::string, std::string> alignedLyricsFetched; // clipId, json
+    Signal<std::string, std::string> wavConversionReady; // clipId, wavUrl
     Signal<std::string> tokenChanged; // New token
     Signal<std::string> errorOccurred; // Error message
 

@@ -1,12 +1,20 @@
-# Repos the user cloned to investigate
-zzz_repos-investigation/
+# agent and scratch or git cloned
+third_party/
+.agent/
+scratch/
+
+# User note and working directories
+zzz*/
+zzzz*
+.ralph/*
+
 
 # an older suno http clerk reference that might still be valuable to end users
 docs/suno_api_reference.md
 docs/SUNO_API_CPP_QT6_INTEGRATION_GUIDE.md
 
 # not used so far and using as a scratchpad for repos
-third_party/
+third_party/*
 
 # Agent internal notes
 .agent/

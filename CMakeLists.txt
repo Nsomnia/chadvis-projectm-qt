@@ -61,7 +61,7 @@ add_compile_options(
 )
 
 # Find packages
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network Sql)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network Sql WebEngineWidgets)
 find_package(PkgConfig REQUIRED)
 
 # Header-only libraries: try system first, fallback to CPM
@@ -118,41 +118,79 @@ pkg_check_modules(GLEW REQUIRED glew)
 find_package(glm REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale libswresample)
 
-# ProjectM - try pkg-config first, fallback to manual
-# Local ProjectM v4 installation
-set(PROJECTM_LOCAL_DIR "${CMAKE_SOURCE_DIR}/external/projectm-install")
-if(EXISTS "${PROJECTM_LOCAL_DIR}/include/projectM-4/projectM.h")
-    message(STATUS "Using local ProjectM v4 from ${PROJECTM_LOCAL_DIR}")
-    set(PROJECTM_INCLUDE_DIRS "${PROJECTM_LOCAL_DIR}/include")
-    set(PROJECTM_LIBRARIES "${PROJECTM_LOCAL_DIR}/lib/libprojectM-4.so")
-    set(PROJECTM_FOUND TRUE)
-    set(CMAKE_INSTALL_RPATH "${PROJECTM_LOCAL_DIR}/lib")
-    set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-endif()
+# ProjectM - Intelligent detection with CPM fallback
+# Option to force CPM build (useful when system version is outdated)
+option(CHADVIS_FORCE_CPM_PROJECTM "Force building libprojectm from source via CPM" OFF)
 
-pkg_check_modules(PROJECTM projectM-4)
-if(NOT PROJECTM_FOUND)
-    # Fallback: try libprojectM
-    pkg_check_modules(PROJECTM libprojectM)
-endif()
-if(NOT PROJECTM_FOUND)
-    # Try to find manually built projectM
-    find_path(PROJECTM_INCLUDE_DIRS projectM-4/projectM.h
-        HINTS /usr/local/include /usr/include
-    )
-    find_library(PROJECTM_LIBRARIES projectM-4
-        HINTS /usr/local/lib /usr/lib
-    )
-    if(PROJECTM_INCLUDE_DIRS AND PROJECTM_LIBRARIES)
+if(CHADVIS_FORCE_CPM_PROJECTM)
+    message(STATUS "CHADVIS_FORCE_CPM_PROJECTM is set, skipping system libprojectm detection")
+else()
+    # 1. Try modern CMake config (installed by libprojectm on Arch)
+    find_package(projectM4 CONFIG QUIET)
+    if(projectM4_FOUND)
+        message(STATUS "Found ProjectM v4 via CMake config")
+        set(PROJECTM_LIBRARIES libprojectM::projectM libprojectM::playlist)
         set(PROJECTM_FOUND TRUE)
-        message(STATUS "Found ProjectM manually: ${PROJECTM_LIBRARIES}")
-    else()
-        message(FATAL_ERROR "ProjectM not found. Install from AUR or build from source.")
+    endif()
+
+    # 2. Try pkg-config
+    if(NOT PROJECTM_FOUND)
+        pkg_check_modules(PROJECTM projectM-4 QUIET)
+        if(NOT PROJECTM_FOUND)
+            pkg_check_modules(PROJECTM libprojectM QUIET)
+        endif()
+    endif()
+
+    # 3. Try manual search (fallback for custom installs)
+    if(NOT PROJECTM_FOUND)
+        find_path(PROJECTM_INCLUDE_DIRS projectM-4/projectM.h
+            HINTS /usr/local/include /usr/include
+        )
+        find_library(PROJECTM_LIBRARIES projectM-4
+            HINTS /usr/local/lib /usr/lib
+        )
+        if(PROJECTM_INCLUDE_DIRS AND PROJECTM_LIBRARIES)
+            set(PROJECTM_FOUND TRUE)
+            message(STATUS "Found ProjectM v4 manually: ${PROJECTM_LIBRARIES}")
+        endif()
     endif()
 endif()
 
+# 4. CPM Fallback - Build from source
+if(NOT PROJECTM_FOUND)
+    if(CHADVIS_FORCE_CPM_PROJECTM)
+        message(STATUS "Building libprojectm from source via CPM (forced)...")
+    else()
+        message(STATUS "ProjectM v4 not found on system. Building from source via CPM...")
+    endif()
+    CPMAddPackage(
+        NAME projectm
+        GIT_REPOSITORY https://github.com/projectM-visualizer/projectm.git
+        GIT_TAG v4.1.6
+        OPTIONS 
+            "BUILD_PROJECTM_STATIC ON"
+            "BUILD_PROJECTM_SAMPLES OFF"
+            "BUILD_PROJECTM_TESTS OFF"
+            "BUILD_PROJECTM_JACK OFF"
+            "BUILD_PROJECTM_PULSE OFF"
+            "BUILD_PROJECTM_SDL OFF"
+            "BUILD_PROJECTM_QT OFF"
+    )
+    if(projectm_FOUND)
+        set(PROJECTM_LIBRARIES projectM projectM-playlist)
+        set(PROJECTM_FOUND TRUE)
+        # Ensure headers are found with projectM-4 prefix if built as subproject
+        # ProjectM v4 headers are usually in <src>/src/libprojectM
+        target_include_directories(projectM INTERFACE $<BUILD_INTERFACE:${projectm_SOURCE_DIR}/src/libprojectM>)
+    endif()
+endif()
+
+if(NOT PROJECTM_FOUND)
+    message(FATAL_ERROR "ProjectM v4 could not be found or built. Please install libprojectm (Arch) or build from source.")
+endif()
+
 # Fix pkg-config bug: -l:projectM-4 -> -lprojectM-4
-if(PROJECTM_FOUND AND PROJECTM_LDFLAGS)
+if(PROJECTM_LDFLAGS)
     string(REPLACE "-l:projectM-4" "-lprojectM-4" PROJECTM_LDFLAGS_FIXED "${PROJECTM_LDFLAGS}")
     set(PROJECTM_LDFLAGS "${PROJECTM_LDFLAGS_FIXED}")
 endif()
@@ -176,6 +214,8 @@ set(CORE_SOURCES
     src/core/ConfigLoader.cpp
     src/core/Config.hpp
     src/core/Config.cpp
+    src/core/CliUtils.hpp
+    src/core/CliUtils.cpp
     src/core/Application.hpp
     src/core/Application.cpp
 )
@@ -255,6 +295,15 @@ set(RECORDER_SOURCES
     src/recorder/VideoRecorderThread.cpp
 )
 
+set(LYRICS_SOURCES
+    src/lyrics/LyricsData.hpp
+    src/lyrics/LyricsData.cpp
+    src/lyrics/LyricsSync.hpp
+    src/lyrics/LyricsSync.cpp
+    src/lyrics/LyricsRenderer.hpp
+    src/lyrics/LyricsRenderer.cpp
+)
+
 set(UI_SOURCES
     src/ui/controllers/AudioController.hpp
     src/ui/controllers/AudioController.cpp
@@ -288,6 +337,22 @@ set(UI_SOURCES
     src/ui/SettingsDialog.cpp
     src/ui/MainWindow.hpp
     src/ui/MainWindow.cpp
+    src/ui/SunoBrowserWidget.hpp
+    src/ui/SunoBrowserWidget.cpp
+    src/ui/SunoPersistentAuth.hpp
+    src/ui/SunoPersistentAuth.cpp
+    src/ui/SystemBrowserAuth.hpp
+    src/ui/SystemBrowserAuth.cpp
+    src/ui/LyricsPanel.hpp
+    src/ui/LyricsPanel.cpp
+    src/ui/SidebarWidget.hpp
+    src/ui/SidebarWidget.cpp
+    src/ui/widgets/CyanSlider.hpp
+    src/ui/widgets/CyanSlider.cpp
+    src/ui/widgets/GlowButton.hpp
+    src/ui/widgets/GlowButton.cpp
+    src/ui/widgets/ToggleSwitch.hpp
+    src/ui/widgets/ToggleSwitch.cpp
 )
 
 # Common include directories
@@ -313,6 +378,7 @@ set(COMMON_LIBS
     Qt6::Svg
     Qt6::Network
     Qt6::Sql
+    Qt6::WebEngineWidgets
     ${TAGLIB_LIBRARIES}
     ${GLEW_LIBRARIES}
     ${FFMPEG_LIBRARIES}
@@ -356,6 +422,7 @@ add_library(project_lib STATIC
     ${SUNO_SOURCES}
     ${OVERLAY_SOURCES}
     ${RECORDER_SOURCES}
+    ${LYRICS_SOURCES}
     ${UI_SOURCES}
     resources/chadvis-projectm-qt.qrc
 )

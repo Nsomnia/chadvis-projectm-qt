@@ -1,239 +1,233 @@
 #include "SunoCookieDialog.hpp"
-#include <QApplication>
-#include <QClipboard>
-#include <QHBoxLayout>
-#include <QLabel>
+#include "ui/SunoPersistentAuth.hpp"
 #include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QWebEngineView>
+#include <QWebEngineProfile>
+#include <QWebEngineCookieStore>
+#include <QWebEngineSettings>
+#include <QWebEnginePage>
+#include <QWebEngineScript>
+#include <QWebEngineScriptCollection>
+#include <QNetworkCookie>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFile>
+#include "core/Logger.hpp"
 
 namespace vc::ui {
 
-SunoCookieDialog::SunoCookieDialog(QWidget* parent) : QDialog(parent) {
+SunoCookieDialog::SunoCookieDialog(QWidget* parent, chadvis::SunoPersistentAuth* auth) 
+    : QDialog(parent), auth_(auth) {
     setupUI();
-    setWindowTitle("Suno AI Authentication");
-    resize(600, 500);
+    setWindowTitle("Suno AI Login");
+    resize(1024, 768);
 }
 
 SunoCookieDialog::~SunoCookieDialog() = default;
 
 void SunoCookieDialog::setupUI() {
-    auto* layout = new QVBoxLayout(this);
+    auto* mainLayout = new QVBoxLayout(this);
 
-    auto* introLabel = new QLabel(
-            "<h3>Suno Authentication Required</h3>"
-            "To sync your library, you need to provide valid session "
-            "cookies.<br><br>"
-            "<b>Step 1: Get Fresh Cookies</b><br>"
-            "1. Go to <b>suno.com</b> and make sure you're logged in.<br>"
-            "2. Press <b>F12</b> to open Developer Tools.<br>"
-            "3. Go to the <b>Console</b> tab.<br>"
-            "4. Copy and paste the JavaScript code below, then press <b>Enter</b>.<br>"
-            "5. The script will show which cookies are valid/expired.<br>"
-            "6. <b>Ctrl+A</b> to select all, <b>Ctrl+C</b> to copy.<br>"
-            "7. Click Cancel on the prompt.<br><br>"
-            "<b>Step 2: Connect in ChadVis</b><br>"
-            "1. Click <b>Auto-Detect from Clipboard</b> below.<br>"
-            "2. Click <b>Connect</b>.<br><br>"
-            "<b>Note:</b> The script automatically skips expired cookies and "
-            "prefers the newest valid ones.",
-            this);
-    introLabel->setWordWrap(true);
-    layout->addWidget(introLabel);
+    tabWidget_ = new QTabWidget(this);
 
-    snippetDisplay_ = new QTextEdit(this);
-    snippetDisplay_->setReadOnly(true);
-    snippetDisplay_->setPlainText(
-            "(async () => {\n"
-            "  try {\n"
-            "    const now = Date.now();\n"
-            "    let validCookies = [];\n"
-            "    let expiredCookies = [];\n"
-            "    \n"
-            "    // Method 1: Chrome DevTools cookieStore API (access HttpOnly cookies)\n"
-            "    if (window.cookieStore) {\n"
-            "      const all = await cookieStore.getAll();\n"
-            "      \n"
-            "      // Filter for __client and __session cookies\n"
-            "      for (const c of all) {\n"
-            "        if (c.name.startsWith('__client') || c.name.startsWith('__session')) {\n"
-            "          // cookieStore uses 'expires' as milliseconds since epoch (number), not Date\n"
-            "          const expMs = c.expires;  // This is a number, not Date\n"
-            "          const expDate = expMs ? new Date(expMs) : null;\n"
-            "          const isExpired = expMs && expMs < now;\n"
-            "          const info = {\n"
-            "            name: c.name,\n"
-            "            value: c.value,\n"
-            "            expires: expDate ? expDate.toISOString() : 'session',\n"
-            "            isExpired: isExpired\n"
-            "          };\n"
-            "          if (isExpired) expiredCookies.push(info);\n"
-            "          else validCookies.push(info);\n"
-            "        }\n"
-            "      }\n"
-            "    }\n"
-            "    \n"
-            "    // Method 2: Fallback to document.cookie (non-HttpOnly only)\n"
-            "    if (validCookies.length < 2) {\n"
-            "      const dc = document.cookie;\n"
-            "      const dcCookies = dc.split(';').map(c => c.trim()).filter(c => \n"
-            "        c.startsWith('__client') || c.startsWith('__session')\n"
-            "      );\n"
-            "      for (const c of dcCookies) {\n"
-            "        const name = c.split('=')[0];\n"
-            "        // Check if we already have this cookie (prefer cookieStore)\n"
-            "        if (!validCookies.find(existing => existing.name === name) &&\n"
-            "            !expiredCookies.find(existing => existing.name === name)) {\n"
-            "          // Assume session cookie (may or may not be expired)\n"
-            "          validCookies.push({name, value: c.split('=').slice(1).join('='), expires: 'unknown', isExpired: false});\n"
-            "        }\n"
-            "      }\n"
-            "    }\n"
-            "    \n"
-            "    // Show debug info\n"
-            "    console.log('=== Suno Cookie Debug ===');\n"
-            "    console.log('Valid cookies:', validCookies);\n"
-            "    if (expiredCookies.length > 0) {\n"
-            "      console.log('Expired cookies (will be skipped):', expiredCookies);\n"
-            "    }\n"
-            "    \n"
-            "    // Filter for required cookies (valid only)\n"
-            "    const clientCookies = validCookies.filter(c => c.name.startsWith('__client'));\n"
-            "    const sessionCookies = validCookies.filter(c => c.name.startsWith('__session'));\n"
-            "    \n"
-            "    // Prefer newest: no suffix > _Jnxw-muT > others\n"
-            "    const pickNewest = (cookies) => {\n"
-            "      if (cookies.length === 0) return null;\n"
-            "      // Sort: no suffix first, then _Jnxw-muT, then others\n"
-            "      return cookies.sort((a, b) => {\n"
-            "        const getPriority = (c) => {\n"
-            "          if (!c.name.includes('_')) return 0;  // no suffix - newest\n"
-            "          if (c.name.includes('_Jnxw-muT')) return 1;\n"
-            "          return 2;\n"
-            "        };\n"
-            "        return getPriority(a) - getPriority(b);\n"
-            "      })[0];\n"
-            "    };\n"
-            "    \n"
-            "    const client = pickNewest(clientCookies);\n"
-            "    const session = pickNewest(sessionCookies);\n"
-            "    \n"
-            "    if (client && session) {\n"
-            "      const cookieStr = client.name + '=' + client.value + '; ' + session.name + '=' + session.value;\n"
-            "      console.log('✅ Using valid cookies:');\n"
-            "      console.log('  __client: ' + client.name + ' (expires: ' + client.expires + ')');\n"
-            "      console.log('  __session: ' + session.name + ' (expires: ' + session.expires + ')');\n"
-            "      console.log('Combined cookie:', cookieStr);\n"
-            "      \n"
-            "      // Show in prompt for easy copying\n"
-            "      const result = prompt(\n"
-            "        '✅ Valid cookies found!\\n\\n' +\n"
-            "        '1. SELECT ALL text in the box below (Ctrl+A)\\n' +\n"
-            "        '2. COPY (Ctrl+C)\\n' +\n"
-            "        '3. Click CANCEL\\n\\n' +\n"
-            "        'Then paste in ChadVis app:',\n"
-            "        cookieStr\n"
-            "      );\n"
-            "      \n"
-            "      alert('✅ Done! Paste in ChadVis and click Connect.');\n"
-            "    } else {\n"
-            "      let msg = '';\n"
-            "      if (!client) msg += 'Missing __client cookie.\\n';\n"
-            "      if (!session) msg += 'Missing __session cookie.\\n';\n"
-            "      if (expiredCookies.length > 0) {\n"
-            "        msg += '\\n⚠️ ' + expiredCookies.length + ' expired cookie(s) were skipped:\\n';\n"
-            "        expiredCookies.forEach(c => msg += '  - ' + c.name + ' (expired: ' + c.expires + ')\\n');\n"
-            "      }\n"
-            "      msg += '\\nPlease refresh suno.com and try again.';\n"
-            "      console.log(msg);\n"
-            "      prompt(msg + '\\n\\nManual extraction required:', '');\n"
-            "    }\n"
-            "  } catch (e) {\n"
-            "    console.error('Error:', e);\n"
-            "    alert('Error: ' + e.message + '\\n\\nUse F12 → Application → Cookies manually.');\n"
-            "  }\n"
-            "})();");
-    snippetDisplay_->setMaximumHeight(250);
-    layout->addWidget(snippetDisplay_);
+    // --- Tab 1: Browser Login ---
+    auto* browserTab = new QWidget();
+    auto* browserLayout = new QVBoxLayout(browserTab);
 
-    copySnippetBtn_ = new QPushButton("Copy Snippet", this);
-    connect(copySnippetBtn_,
-            &QPushButton::clicked,
-            this,
-            &SunoCookieDialog::onCopySnippet);
-    layout->addWidget(copySnippetBtn_);
+    // Status Header
+    auto* headerLayout = new QHBoxLayout();
+    statusLabel_ = new QLabel("Please log in to Suno.com below...\n(Note: Site may take a moment to load fully on some systems)", this);
+    statusLabel_->setStyleSheet("font-weight: bold; font-size: 14px;");
+    headerLayout->addWidget(statusLabel_);
+    auto* clearBtn = new QPushButton("Logout / Reset Session", this);
+    clearBtn->setStyleSheet("background-color: #ff4444; color: white; padding: 4px; font-size: 11px;");
+    connect(clearBtn, &QPushButton::clicked, this, [this]() {
+        if (auth_) {
+            auth_->clearSession();
+            webView_->reload();
+            statusLabel_->setText("Session cleared. Please log in again.");
+        }
+    });
+    headerLayout->addWidget(clearBtn);
 
-    autoDetectBtn_ = new QPushButton("📋 Auto-Detect from Clipboard", this);
-    autoDetectBtn_->setToolTip(
-            "Attempts to find Suno cookies in your clipboard");
-    connect(autoDetectBtn_,
-            &QPushButton::clicked,
-            this,
-            &SunoCookieDialog::onAutoDetect);
-    layout->addWidget(autoDetectBtn_);
+    browserLayout->addLayout(headerLayout);
 
-    auto* inputLabel = new QLabel("<b>Paste Cookie Here:</b>", this);
-    layout->addWidget(inputLabel);
+    // System Auth Button
+    systemAuthBtn_ = new QPushButton("Login with System Browser (Google)", this);
+    systemAuthBtn_->setStyleSheet("background-color: #4285f4; color: white; padding: 8px; font-weight: bold;");
+    connect(systemAuthBtn_, &QPushButton::clicked, this, &SunoCookieDialog::startSystemAuthRequested);
+    browserLayout->addWidget(systemAuthBtn_);
 
-    cookieInput_ = new QTextEdit(this);
-    cookieInput_->setPlaceholderText("__client=eyJ...; _ga=...");
-    layout->addWidget(cookieInput_);
+    // Web View
+    if (auth_) {
+        // Use the managed view from persistent auth
+        webView_ = auth_->createWebView(this);
+        // Connect cookie monitoring is handled by auth manager, but we also listen for immediate feedback in dialog
+        connect(auth_->profile()->cookieStore(), &QWebEngineCookieStore::cookieAdded,
+                this, &SunoCookieDialog::onCookieAdded);
+    } else {
+        // Fallback to local view creation (legacy behavior)
+        webView_ = new QWebEngineView(this);
+        
+        // Configure profile with persistent storage for session persistence
+        QWebEngineProfile* profile = webView_->page()->profile();
+        
+        // Set a modern, real-looking User Agent that matches the underlying Chromium major version (134)
+        profile->setHttpUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36");
 
+        // Enable features that can help with login security checks
+        webView_->settings()->setAttribute(QWebEngineSettings::JavascriptCanAccessClipboard, true);
+        webView_->settings()->setAttribute(QWebEngineSettings::WebRTCPublicInterfacesOnly, true);
+        webView_->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
+        webView_->settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
+        webView_->settings()->setAttribute(QWebEngineSettings::LocalContentCanAccessRemoteUrls, true);
+        webView_->settings()->setAttribute(QWebEngineSettings::AllowRunningInsecureContent, false);
+        webView_->settings()->setAttribute(QWebEngineSettings::AutoLoadImages, true);
+        
+        // Inject Stealth Script to mock navigator properties
+        QWebEngineScript script;
+        script.setName("stealth_injection");
+        script.setInjectionPoint(QWebEngineScript::DocumentCreation);
+        script.setWorldId(QWebEngineScript::MainWorld);
+        script.setRunsOnSubFrames(true);
+        
+        QString stealthJs = R"(
+            (function() {
+                // Stealth Script to mock standard browser properties and hide automation signals
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => {
+                        return [
+                            { name: "Chrome PDF Plugin", filename: "internal-pdf-viewer", description: "Portable Document Format" },
+                            { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai", description: "Portable Document Format" },
+                            { name: "Native Client", filename: "internal-nacl-plugin", description: "" }
+                        ];
+                    }
+                });
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                if (!window.chrome) {
+                    window.chrome = {
+                        runtime: {},
+                        loadTimes: function() {},
+                        csi: function() {},
+                        app: { isInstalled: false }
+                    };
+                }
+            })();
+        )";
+        script.setSourceCode(stealthJs);
+        profile->scripts()->insert(script);
+
+        // Enable persistent cookies
+        profile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+
+        // Set storage paths in user's config directory
+        QString configDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+        if (configDir.isEmpty()) {
+            configDir = QDir::homePath() + "/.config";
+        }
+        QString storagePath = configDir + "/chadvis-projectm-qt/webengine/suno/storage";
+        QString cachePath = configDir + "/chadvis-projectm-qt/webengine/suno/cache";
+
+        QDir().mkpath(storagePath);
+        QDir().mkpath(cachePath);
+
+        profile->setPersistentStoragePath(storagePath);
+        profile->setCachePath(cachePath);
+
+        connect(profile->cookieStore(), &QWebEngineCookieStore::cookieAdded,
+                this, &SunoCookieDialog::onCookieAdded);
+
+        // Load existing cookies from persistent storage
+        profile->cookieStore()->loadAllCookies();
+    }
+
+    webView_->load(QUrl("https://suno.com/sign-in"));
+    browserLayout->addWidget(webView_);
+
+    tabWidget_->addTab(browserTab, "Browser Login");
+
+    // --- Tab 2: Manual Entry ---
+    auto* manualTab = new QWidget();
+    auto* manualLayout = new QVBoxLayout(manualTab);
+    
+    auto* manualLabel = new QLabel("Paste your cookie string here (e.g. __client=...; __session=...):", this);
+    manualLayout->addWidget(manualLabel);
+    
+    manualCookieEdit_ = new QTextEdit(this);
+    manualCookieEdit_->setPlaceholderText("__client=...; __session=...");
+    connect(manualCookieEdit_, &QTextEdit::textChanged, this, &SunoCookieDialog::onManualTextChanged);
+    manualLayout->addWidget(manualCookieEdit_);
+    
+    tabWidget_->addTab(manualTab, "Manual Entry");
+
+    mainLayout->addWidget(tabWidget_);
+
+    // Buttons
     auto* btnLayout = new QHBoxLayout();
     okBtn_ = new QPushButton("Connect", this);
+    okBtn_->setEnabled(false); // Disabled until cookie found
     cancelBtn_ = new QPushButton("Cancel", this);
+    
     btnLayout->addStretch();
     btnLayout->addWidget(okBtn_);
     btnLayout->addWidget(cancelBtn_);
-    layout->addLayout(btnLayout);
+    mainLayout->addLayout(btnLayout);
 
     connect(okBtn_, &QPushButton::clicked, this, &SunoCookieDialog::onAccept);
     connect(cancelBtn_, &QPushButton::clicked, this, &QDialog::reject);
-}
-
-void SunoCookieDialog::onCopySnippet() {
-    QGuiApplication::clipboard()->setText(snippetDisplay_->toPlainText());
-}
-
-void SunoCookieDialog::onAutoDetect() {
-    QClipboard* clipboard = QGuiApplication::clipboard();
-    QString text = clipboard->text().trimmed();
-    bool found = false;
-
-    // Direct cookie paste
-    if (text.contains("__client") || text.contains("__session")) {
-        cookieInput_->setText(text);
-        found = true;
-    }
-    // HTTP Header block
-    else if (text.contains("Cookie:", Qt::CaseInsensitive)) {
-        QStringList lines = text.split('\n');
-        for (const auto& line : lines) {
-            if (line.trimmed().startsWith("Cookie:", Qt::CaseInsensitive)) {
-                QString cookie = line.mid(line.indexOf(':') + 1).trimmed();
-                if (cookie.contains("__client=") ||
-                    cookie.contains("__session=")) {
-                    cookieInput_->setText(cookie);
-                    found = true;
-                    break;
-                }
-            }
+    
+    // Enable OK button if switching to manual tab with text
+    connect(tabWidget_, &QTabWidget::currentChanged, this, [this](int index) {
+        if (index == 1) { // Manual
+            okBtn_->setEnabled(!manualCookieEdit_->toPlainText().trimmed().isEmpty());
+        } else { // Browser
+            okBtn_->setEnabled(!sessionCookie_.isEmpty());
         }
+    });
+}
+
+void SunoCookieDialog::onManualTextChanged() {
+    if (tabWidget_->currentIndex() == 1) {
+        okBtn_->setEnabled(!manualCookieEdit_->toPlainText().trimmed().isEmpty());
+    }
+}
+
+void SunoCookieDialog::onCookieAdded(const QNetworkCookie& cookie) {
+    QString name = QString::fromUtf8(cookie.name());
+    QString value = QString::fromUtf8(cookie.value());
+
+    if (name == "__session") {
+        sessionCookie_ = value;
+        LOG_INFO("SunoCookieDialog: Found __session cookie");
+    } else if (name == "__client") {
+        clientCookie_ = value;
+        LOG_INFO("SunoCookieDialog: Found __client cookie");
     }
 
-    if (!found) {
-        cookieInput_->setPlaceholderText(
-                "Could not detect Suno cookies in clipboard...");
+    if (!sessionCookie_.isEmpty()) {
+        statusLabel_->setText("✅ Session found! Click Connect to proceed.");
+        statusLabel_->setStyleSheet("color: green; font-weight: bold; font-size: 14px;");
+        if (tabWidget_->currentIndex() == 0) {
+            okBtn_->setEnabled(true);
+        }
     }
 }
 
 void SunoCookieDialog::onAccept() {
-    if (cookieInput_->toPlainText().trimmed().isEmpty()) {
-        return;
-    }
     accept();
 }
 
 QString SunoCookieDialog::getCookie() const {
-    return cookieInput_->toPlainText().trimmed();
+    if (tabWidget_->currentIndex() == 1) {
+        return manualCookieEdit_->toPlainText().trimmed();
+    }
+    
+    QStringList parts;
+    if (!clientCookie_.isEmpty()) parts << "__client=" + clientCookie_;
+    if (!sessionCookie_.isEmpty()) parts << "__session=" + sessionCookie_;
+    return parts.join("; ");
 }
 
 } // namespace vc::ui

@@ -69,6 +69,7 @@ public:
     const RecordingStats& stats() const {
         return stats_;
     }
+    RecordingStats getCurrentStats() const;  // Thread-safe stats from worker
     const EncoderSettings& settings() const {
         return settings_;
     }

@@ -144,28 +144,56 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
     }
 
     // Render Karaoke/Synced Lyrics
-    if (enabled_) { // Check enabled_ before locking
+    if (enabled_) {
         std::lock_guard lock(mutex_);
         const auto& kConfig = CONFIG.karaoke();
         
-        // Debug Logging: Trace why lyrics might not render
-        static int debugCounter = 0;
-        if (debugCounter++ % 300 == 0) { // Log once every ~5 seconds at 60fps
-             if (!alignedLyrics_.empty()) {
-                 LOG_DEBUG("OverlayEngine: Has lyrics. Lines: {}, Words: {}, PlaybackTime: {:.2f}, Enabled: {}", 
-                           alignedLyrics_.lines.size(), alignedLyrics_.words.size(), playbackTime_, kConfig.enabled);
-             }
+        // Trace logging: detailed diagnostics for lyrics rendering
+        static int traceCounter = 0;
+        bool shouldLogTrace = (traceCounter++ % 300 == 0); // Once per ~5 seconds at 60fps
+        
+        if (shouldLogTrace && !alignedLyrics_.empty()) {
+            LOG_TRACE("OverlayEngine: Lyrics state - Lines: {}, Words: {}, PlaybackTime: {:.2f}s, KaraokeEnabled: {}", 
+                      alignedLyrics_.lines.size(), alignedLyrics_.words.size(), 
+                      playbackTime_, kConfig.enabled);
+        }
+        
+        // Detailed tracing for why lyrics might not render
+        if (shouldLogTrace && !alignedLyrics_.empty() && !kConfig.enabled) {
+            LOG_DEBUG("OverlayEngine: Lyrics available but karaoke display is disabled in config");
         }
         
         if (kConfig.enabled && !alignedLyrics_.empty()) {
             if (!alignedLyrics_.lines.empty()) {
-                // Render Line-by-Line with Word Highlighting
+                // Find active line with detailed tracing
                 int activeLineIdx = -1;
                 for (int i = 0; i < (int)alignedLyrics_.lines.size(); ++i) {
                     if (playbackTime_ >= alignedLyrics_.lines[i].start_s &&
                         playbackTime_ <= alignedLyrics_.lines[i].end_s) {
                         activeLineIdx = i;
                         break;
+                    }
+                }
+
+                // Trace why no active line found
+                if (activeLineIdx == -1 && shouldLogTrace) {
+                    if (playbackTime_ < alignedLyrics_.lines.front().start_s) {
+                        LOG_TRACE("OverlayEngine: Playback time {:.2f}s is before first line at {:.2f}s",
+                                  playbackTime_, alignedLyrics_.lines.front().start_s);
+                    } else if (playbackTime_ > alignedLyrics_.lines.back().end_s) {
+                        LOG_TRACE("OverlayEngine: Playback time {:.2f}s is after last line at {:.2f}s",
+                                  playbackTime_, alignedLyrics_.lines.back().end_s);
+                    } else {
+                        // Search for gap between lines
+                        for (size_t i = 0; i < alignedLyrics_.lines.size() - 1; ++i) {
+                            if (playbackTime_ > alignedLyrics_.lines[i].end_s && 
+                                playbackTime_ < alignedLyrics_.lines[i+1].start_s) {
+                                LOG_TRACE("OverlayEngine: Playback time {:.2f}s is in gap between lines {} and {} (gap: {:.2f}s)",
+                                          playbackTime_, i, i+1,
+                                          alignedLyrics_.lines[i+1].start_s - alignedLyrics_.lines[i].end_s);
+                                break;
+                            }
+                        }
                     }
                 }
 
@@ -184,6 +212,7 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
                     f32 centerY = height * kConfig.yPosition;
 
                     // Draw words with highlighting
+                    int wordsRendered = 0;
                     for (const auto& w : line.words) {
                         bool active = (playbackTime_ >= w.start_s && playbackTime_ <= w.end_s);
                         
@@ -203,6 +232,12 @@ void OverlayEngine::drawToCanvas(u32 width, u32 height) {
                         painter.drawText(currentX, centerY, wordText);
 
                         currentX += wordWidth;
+                        wordsRendered++;
+                    }
+                    
+                    if (shouldLogTrace) {
+                        LOG_TRACE("OverlayEngine: Rendered line {} with {} words at time {:.2f}s",
+                                  activeLineIdx, wordsRendered, playbackTime_);
                     }
                 }
             } else {

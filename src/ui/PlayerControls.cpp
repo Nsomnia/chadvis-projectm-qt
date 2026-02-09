@@ -9,6 +9,7 @@ namespace vc {
 
 PlayerControls::PlayerControls(QWidget* parent) : QWidget(parent) {
     setupUI();
+    applyModernStyling();
 }
 
 void PlayerControls::setAudioEngine(AudioEngine* engine) {
@@ -71,26 +72,26 @@ void PlayerControls::setupUI() {
 
     mainLayout->addLayout(infoLayout);
 
-    // Seek bar row
+    // Seek bar row with modern cyan slider
     auto* seekLayout = new QHBoxLayout();
 
     currentTimeLabel_ = new QLabel("00:00");
     currentTimeLabel_->setFixedWidth(50);
     seekLayout->addWidget(currentTimeLabel_);
 
-    seekSlider_ = new QSlider(Qt::Horizontal);
+    seekSlider_ = new chadvis::CyanSlider();
     seekSlider_->setRange(0, 1000);
     seekSlider_->setValue(0);
     connect(seekSlider_,
-            &QSlider::sliderPressed,
+            &chadvis::CyanSlider::sliderPressed,
             this,
             &PlayerControls::onSeekSliderPressed);
     connect(seekSlider_,
-            &QSlider::sliderReleased,
+            &chadvis::CyanSlider::sliderReleased,
             this,
             &PlayerControls::onSeekSliderReleased);
     connect(seekSlider_,
-            &QSlider::sliderMoved,
+            &chadvis::CyanSlider::sliderMoved,
             this,
             &PlayerControls::onSeekSliderMoved);
     seekLayout->addWidget(seekSlider_, 1);
@@ -102,76 +103,76 @@ void PlayerControls::setupUI() {
 
     mainLayout->addLayout(seekLayout);
 
-    // Controls row
+    // Controls row with modern glow buttons
     auto* controlsLayout = new QHBoxLayout();
-    controlsLayout->setSpacing(4);
+    controlsLayout->setSpacing(6);
 
-    shuffleButton_ = new QPushButton("🔀");
+    shuffleButton_ = new chadvis::GlowButton("🔀");
     shuffleButton_->setFixedSize(36, 36);
     shuffleButton_->setCheckable(true);
     shuffleButton_->setToolTip("Shuffle");
     connect(shuffleButton_,
-            &QPushButton::clicked,
+            &chadvis::GlowButton::clicked,
             this,
             &PlayerControls::onShuffleClicked);
     controlsLayout->addWidget(shuffleButton_);
 
-    prevButton_ = new QPushButton("⏮");
+    prevButton_ = new chadvis::GlowButton("⏮");
     prevButton_->setFixedSize(36, 36);
     prevButton_->setToolTip("Previous");
     connect(prevButton_,
-            &QPushButton::clicked,
+            &chadvis::GlowButton::clicked,
             this,
             &PlayerControls::previousClicked);
     controlsLayout->addWidget(prevButton_);
 
-    playPauseButton_ = new QPushButton("▶");
+    playPauseButton_ = new chadvis::GlowButton("▶");
     playPauseButton_->setObjectName("playButton");
     playPauseButton_->setFixedSize(48, 48);
     playPauseButton_->setCheckable(true);
     playPauseButton_->setToolTip("Play/Pause");
     connect(playPauseButton_,
-            &QPushButton::clicked,
+            &chadvis::GlowButton::clicked,
             this,
             &PlayerControls::onPlayPauseClicked);
     controlsLayout->addWidget(playPauseButton_);
 
-    stopButton_ = new QPushButton("⏹");
+    stopButton_ = new chadvis::GlowButton("⏹");
     stopButton_->setFixedSize(36, 36);
     stopButton_->setToolTip("Stop");
     connect(stopButton_,
-            &QPushButton::clicked,
+            &chadvis::GlowButton::clicked,
             this,
             &PlayerControls::stopClicked);
     controlsLayout->addWidget(stopButton_);
 
-    nextButton_ = new QPushButton("⏭");
+    nextButton_ = new chadvis::GlowButton("⏭");
     nextButton_->setFixedSize(36, 36);
     nextButton_->setToolTip("Next");
     connect(nextButton_,
-            &QPushButton::clicked,
+            &chadvis::GlowButton::clicked,
             this,
             &PlayerControls::nextClicked);
     controlsLayout->addWidget(nextButton_);
 
-    repeatButton_ = new QPushButton("🔁");
+    repeatButton_ = new chadvis::GlowButton("🔁");
     repeatButton_->setFixedSize(36, 36);
     repeatButton_->setCheckable(true);
     repeatButton_->setToolTip("Repeat");
     connect(repeatButton_,
-            &QPushButton::clicked,
+            &chadvis::GlowButton::clicked,
             this,
             &PlayerControls::onRepeatClicked);
     controlsLayout->addWidget(repeatButton_);
 
     controlsLayout->addStretch();
 
-    // Volume
-    muteButton_ = new QPushButton("🔊");
+    // Volume with modern glow button and cyan slider
+    muteButton_ = new chadvis::GlowButton("🔊");
     muteButton_->setFixedSize(36, 36);
     muteButton_->setCheckable(true);
     muteButton_->setToolTip("Mute");
-    connect(muteButton_, &QPushButton::clicked, this, [this](bool checked) {
+    connect(muteButton_, &chadvis::GlowButton::clicked, this, [this](bool checked) {
         if (checked) {
             lastVolume_ = volumeSlider_->value() / 100.0f;
             volumeSlider_->setValue(0);
@@ -183,18 +184,42 @@ void PlayerControls::setupUI() {
     });
     controlsLayout->addWidget(muteButton_);
 
-    volumeSlider_ = new QSlider(Qt::Horizontal);
+    volumeSlider_ = new chadvis::CyanSlider();
     volumeSlider_->setRange(0, 100);
     volumeSlider_->setValue(100);
     volumeSlider_->setFixedWidth(100);
     volumeSlider_->setToolTip("Volume");
     connect(volumeSlider_,
-            &QSlider::valueChanged,
+            &chadvis::CyanSlider::valueChanged,
             this,
             &PlayerControls::onVolumeSliderChanged);
     controlsLayout->addWidget(volumeSlider_);
 
     mainLayout->addLayout(controlsLayout);
+}
+
+void PlayerControls::applyModernStyling() {
+    // Set accent color for sliders
+    seekSlider_->setAccentColor(QColor("#00bcd4"));
+    volumeSlider_->setAccentColor(QColor("#00bcd4"));
+    
+    // Configure glow buttons with cyan accent
+    auto configureGlowButton = [](chadvis::GlowButton* btn, const QColor& glow) {
+        btn->setGlowColor(glow);
+        btn->setCornerRadius(8);
+        btn->setBackgroundOpacity(0.8);
+    };
+    
+    QColor cyanAccent("#00bcd4");
+    QColor greenAccent("#00ff88");
+    
+    configureGlowButton(shuffleButton_, cyanAccent);
+    configureGlowButton(prevButton_, cyanAccent);
+    configureGlowButton(playPauseButton_, greenAccent);
+    configureGlowButton(stopButton_, cyanAccent);
+    configureGlowButton(nextButton_, cyanAccent);
+    configureGlowButton(repeatButton_, cyanAccent);
+    configureGlowButton(muteButton_, cyanAccent);
 }
 
 void PlayerControls::updatePlaybackState(PlaybackState state) {

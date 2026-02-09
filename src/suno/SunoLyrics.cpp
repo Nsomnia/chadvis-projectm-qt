@@ -92,7 +92,7 @@ std::vector<AlignedWord> LyricsAligner::parseJson(const QByteArray& json, f32 du
             std::string rawText = w["word"].toString().toStdString();
             
             // Clean up Suno's "dirty" words (e.g., "[Verse]\nIn " -> "In ")
-            // Regex to remove [...] blocks
+            // Regex to remove [...] blocks (handles tags like [Verse], [Chorus], [Instrumental])
             static const std::regex bracketRegex(R"(\[[^\]]*\])");
             std::string cleanText = std::regex_replace(rawText, bracketRegex, "");
             
@@ -101,11 +101,20 @@ std::vector<AlignedWord> LyricsAligner::parseJson(const QByteArray& json, f32 du
             cleanText.erase(cleanText.find_last_not_of(" \t\r\n") + 1);
             
             if (cleanText.empty()) {
-                // If the word was JUST a tag (e.g. "[Verse]"), we can skip it for alignment purposes
-                continue;
+                // If the word was JUST a tag (e.g. "[Verse]", "[Instrumental]"), skip it
+                // but preserve instrumental sections by adding a placeholder word
+                std::string lowerRaw = rawText;
+                std::transform(lowerRaw.begin(), lowerRaw.end(), lowerRaw.begin(), ::tolower);
+                if (lowerRaw.find("instrumental") != std::string::npos) {
+                    // Add a placeholder for instrumental sections so they appear in timeline
+                    aw.word = "🎵";
+                } else {
+                    // Skip other tags like [Verse], [Chorus], etc.
+                    continue;
+                }
+            } else {
+                aw.word = cleanText;
             }
-            
-            aw.word = cleanText;
             
             // Flexible timestamp parsing (support both number and string if necessary, though API sends numbers)
             if (w.contains("start")) aw.start_s = w["start"].toDouble();
