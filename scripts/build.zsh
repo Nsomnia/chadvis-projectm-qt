@@ -1,279 +1,585 @@
 #!/usr/bin/env zsh
+# ═══ ChadVis Build System v1337.2 ═══
+# "Arch btw" Edition - Now with dual output and auto-install!
+# 
+# Refactored to use Zsh built-ins because external commands are for Juniors.
+# ══════════════════════════════════════════════════════════════════════════
 
 setopt ERR_EXIT PIPE_FAIL NO_UNSET EXTENDED_GLOB
+
+# Load Chad modules
+zmodload zsh/datetime
 zmodload zsh/stat 2>/dev/null || true
+zmodload zsh/parameter 2>/dev/null || true
+
+# ─── Configuration ──────────────────────────────────────────────────────────
 
 readonly SCRIPT_DIR="${0:A:h}"
-# Go up one level from scripts/ to get the project root
 readonly PROJECT_ROOT="${SCRIPT_DIR:h}"
 readonly BUILD_DIR="${PROJECT_ROOT}/build"
+readonly LOG_DIR="${PROJECT_ROOT}/logs"
+readonly LOG_FILE="${LOG_DIR}/build.log"
 readonly BINARY_NAME="chadvis-projectm-qt"
 readonly BINARY_PATH="${BUILD_DIR}/${BINARY_NAME}"
-readonly N4500_CORES=$(nproc) # potato cpu safe $(nproc) # can also use an integer
-readonly N4500_ARCH="native" # was tremont
 
-readonly LOG_FILE="${SCRIPT_DIR}/.agent/LAST_COMPILE_OUTPUT.md"
-mkdir -p "${SCRIPT_DIR}/.agent"
+# Minimum libprojectm version required
+readonly PROJECTM_MIN_VERSION="4.1.0"
+readonly PROJECTM_GIT_TAG="v4.1.6"  # CPM version to use
 
-readonly -a CPU_OPT_FLAGS=() # debugging compilation agentically failure
-#    "-march=${N4500_ARCH}" "-mtune=${N4500_ARCH}"
-#    "-msse4.2" "-mpopcnt" "-maes" "-mno-avx" "-mno-avx2"
-#)
+# Hardware Detection (Zsh-native, no grep/sed/nproc bloat)
+local cpu_cores
+if (( ${+commands[getconf]} )); then
+    cpu_cores=$(getconf _NPROCESSORS_ONLN)
+else
+    local cpuinfo=(${(f)"$(< /proc/cpuinfo)"})
+    cpu_cores=${#${(M)cpuinfo:#processor*}}
+fi
+readonly CPU_CORES=${cpu_cores:-4}
 
-# debugging compilation agentically failing
-readonly -a COMMON_OPT_FLAGS=() # ("-pipe" "-fomit-frame-pointer" "-ffunction-sections" "-fdata-sections")
-readonly -a DEBUG_FLAGS=() # ("-O2" "-g1" "-gsplit-dwarf")
-readonly -a RELEASE_FLAGS=() #("-O3" "-flto=${N4500_CORES}" "-fno-plt" "-DNDEBUG")
+local cpu_model="Unknown Chad CPU"
+if [[ -f /proc/cpuinfo ]]; then
+    local model_line=${(M)${(f)"$(< /proc/cpuinfo)"}:#model name*}
+    cpu_model=${model_line#*: }
+fi
+readonly CPU_MODEL=${cpu_model}
 
-# Detect mold linker
-MOLD_BIN=$(command -v mold 2>/dev/null)
-readonly -a LINKER_FLAGS=(
-    "-Wl,--gc-sections" "-Wl,--as-needed"
-    ${MOLD_BIN:+"-fuse-ld=mold"}
-)
+# ─── Visuals (ANSI Escape Codes) ───────────────────────────────────────────
 
-# Detect compiler launcher (sccache or ccache)
-LAUNCHER_BIN=$(command -v sccache 2>/dev/null || command -v ccache 2>/dev/null)
+# Colors
+readonly C_RESET=$'\e[0m'
+readonly C_BOLD=$'\e[1m'
+readonly C_RED=$'\e[31m'
+readonly C_GREEN=$'\e[32m'
+readonly C_YELLOW=$'\e[33m'
+readonly C_BLUE=$'\e[34m'
+readonly C_MAGENTA=$'\e[35m'
+readonly C_CYAN=$'\e[36m'
+readonly C_GRAY=$'\e[90m'
 
-join() { local IFS="$1"; shift; print -r -- "$*"; }
+# Icons
+readonly ICON_INFO="${C_BLUE}󰋽${C_RESET}"
+readonly ICON_OK="${C_GREEN}󰄬${C_RESET}"
+readonly ICON_WARN="${C_YELLOW}󱈸${C_RESET}"
+readonly ICON_ERROR="${C_RED}󰅚${C_RESET}"
+readonly ICON_CHAD="${C_CYAN}󰭹${C_RESET}"
 
-compose_flags() {
-    local -a all_flags=()
-    local arr_name
-    for arr_name in "$@"; do all_flags+=("${(P@)arr_name}"); done
-    join ' ' "${all_flags[@]}"
-}
+# ─── Helper Functions ───────────────────────────────────────────────────────
 
-build_cflags() {
-    case "$1" in
-        Debug)   compose_flags CPU_OPT_FLAGS COMMON_OPT_FLAGS DEBUG_FLAGS ;;
-        Release) compose_flags CPU_OPT_FLAGS COMMON_OPT_FLAGS RELEASE_FLAGS ;;
-        *)       compose_flags CPU_OPT_FLAGS COMMON_OPT_FLAGS ;;
+log() {
+    local type=$1
+    local msg=$2
+    case $type in
+        info)  print -P "${ICON_INFO} ${msg}" ;;
+        ok)    print -P "${ICON_OK} ${msg}" ;;
+        warn)  print -P "${ICON_WARN} ${msg}" ;;
+        error) print -P "${ICON_ERROR} ${C_BOLD}${msg}${C_RESET}" >&2 ;;
+        header) print -P "\n${C_CYAN}═══ ${C_BOLD}${msg}${C_RESET}${C_CYAN} ═══${C_RESET}" ;;
+        chad)  print -P "${ICON_CHAD} ${C_CYAN}${C_BOLD}${msg}${C_RESET}" ;;
     esac
 }
 
-build_ldflags() {
-    local base="$(join ' ' "${LINKER_FLAGS[@]}")"
-    [[ "$1" == "Release" ]] && base+=" -flto=${N4500_CORES}"
-    print -r -- "$base"
+# Compare two version strings (returns 0 if v1 >= v2, 1 otherwise)
+version_compare() {
+    local v1="$1"
+    local v2="$2"
+    
+    # Normalize versions (remove 'v' prefix if present)
+    v1="${v1#v}"
+    v2="${v2#v}"
+    
+    local -a v1_parts=(${(s/./)v1})
+    local -a v2_parts=(${(s/./)v2})
+    
+    local max_len=$(( ${#v1_parts[@]} > ${#v2_parts[@]} ? ${#v1_parts[@]} : ${#v2_parts[@]} ))
+    
+    for (( i = 1; i <= max_len; i++ )); do
+        local p1=${v1_parts[i]:-0}
+        local p2=${v2_parts[i]:-0}
+        
+        if (( p1 > p2 )); then
+            return 0  # v1 >= v2
+        elif (( p1 < p2 )); then
+            return 1  # v1 < v2
+        fi
+    done
+    
+    return 0  # versions are equal
+}
+
+# Get installed libprojectm version from pacman
+get_system_projectm_version() {
+    local version=""
+    
+    # Try pkg-config first
+    if (( ${+commands[pkg-config]} )); then
+        version=$(pkg-config --modversion projectM-4 2>/dev/null)
+        [[ -n "$version" ]] && { echo "$version"; return 0 }
+        
+        version=$(pkg-config --modversion libprojectM 2>/dev/null)
+        [[ -n "$version" ]] && { echo "$version"; return 0 }
+    fi
+    
+    # Try pacman
+    if (( ${+commands[pacman]} )); then
+        local pacman_info=$(pacman -Q libprojectm 2>/dev/null)
+        if [[ -n "$pacman_info" ]]; then
+            # Extract version from "libprojectm 4.x.x-x"
+            version="${pacman_info#libprojectm }"
+            version="${version%%-*}"
+            [[ -n "$version" ]] && { echo "$version"; return 0 }
+        fi
+    fi
+    
+    return 1
+}
+
+# Check if libprojectm is installed and meets version requirements
+check_projectm_status() {
+    local current_version=$(get_system_projectm_version)
+    
+    if [[ -z "$current_version" ]]; then
+        echo "missing"
+        return 0
+    fi
+    
+    if version_compare "$current_version" "$PROJECTM_MIN_VERSION"; then
+        echo "ok:$current_version"
+        return 0
+    else
+        echo "outdated:$current_version"
+        return 0
+    fi
+}
+
+log_kv() {
+    print -P "${C_GRAY}  │${C_RESET} ${C_BOLD}${1}:${C_RESET} ${2}"
 }
 
 human_size() {
-    [[ -f "$1" ]] || { print "N/A"; return; }
+    [[ -f "$1" ]] || { echo "N/A"; return; }
     local size
-    zstat -A size +size "$1" 2>/dev/null && numfmt --to=iec "$size" 2>/dev/null || print "?"
-}
-
-log() {
-    local -A s=([info]="%F{blue}▸%f" [ok]="%F{green}✓%f" [warn]="%F{yellow}⚠%f" [error]="%F{red}✗%f" [header]="%F{cyan}═══%f")
-    local -A p=([info]="▸" [ok]="✓" [warn]="⚠" [error]="✗" [header]="═══")
-    
-    local terminal_prefix=""
-    local file_prefix=""
-    
-    case "$1" in
-        header) 
-            terminal_prefix="\n${s[header]} %B${2}%b ${s[header]}"
-            file_prefix="\n${p[header]} ${2} ${p[header]}"
-            ;;
-        error)  
-            terminal_prefix="${s[$1]} ${2}"
-            file_prefix="${p[$1]} ${2}"
-            ;;
-        *)      
-            terminal_prefix="${s[$1]:-▸} ${2}"
-            file_prefix="${p[$1]:-▸} ${2}"
-            ;;
-    esac
-    
-    # Print to terminal
-    if [[ "$1" == "error" ]]; then
-        print -P "$terminal_prefix" >&2
+    if zstat -A size +size "$1" 2>/dev/null; then
+        # Zsh-native size formatting
+        if (( size > 1024 * 1024 * 1024 )); then
+            printf "%.2f GiB" $(( size / 1024.0 / 1024.0 / 1024.0 ))
+        elif (( size > 1024 * 1024 )); then
+            printf "%.2f MiB" $(( size / 1024.0 / 1024.0 ))
+        elif (( size > 1024 )); then
+            printf "%.2f KiB" $(( size / 1024.0 ))
+        else
+            echo "${size} B"
+        fi
     else
-        print -P "$terminal_prefix"
+        echo "?"
+    fi
+}
+
+# Run command with output to both console and log file
+# Usage: run_logged <log_file> <command> [args...]
+run_logged() {
+    local log_file="$1"
+    shift
+    
+    # Clear log file BEFORE running command
+    : > "$log_file"
+    
+    # Run command with unbuffered output to both console and log
+    # stdbuf -oL -eL makes stdout and stderr line-buffered for immediate display
+    # Use && sync to ensure log is written if process exits quickly
+    if (( ${+commands[stdbuf]} )); then
+        stdbuf -oL -eL "$@" 2>&1 | tee -a "$log_file" && sync
+    else
+        "$@" 2>&1 | tee -a "$log_file" && sync
     fi
     
-    # Log to file (plain text)
-    print -r -- "${file_prefix}" >> "$LOG_FILE"
+    # Return the exit status of the command (not tee)
+    return $pipestatus[1]
 }
 
-log_kv() { 
-    print -P "%F{8}  │%f %F{white}${1}:%f ${2}"
-    print -r -- "  | ${1}: ${2}" >> "$LOG_FILE"
+show_help() {
+    log chad "ChadVis Build System — Help"
+    print -P "${C_BOLD}Usage:${C_RESET} build.zsh [options] [command]"
+    print -P "\n${C_BOLD}Options:${C_RESET}"
+    print -P "  -h, --help              Show this message (if you're lost)"
+    print -P "  -d, --debug             Build in Debug mode (for when you break things)"
+    print -P "  -r, --release           Build in Release mode (default, for Chads)"
+    print -P "  -c, --clean             Clean build directory before building"
+    print -P "  -i, --install           Install after successful build"
+    print -P "  -j, --jobs <n>          Number of parallel jobs (default: ${CPU_CORES})"
+    print -P "  -y, --yes               Auto-install missing dependencies without prompting"
+    print -P "      --system-projectm   Force use of system libprojectm via pacman"
+    print -P "      --cpm-projectm      Force build libprojectm from source via CPM"
+    print -P "\n${C_BOLD}Commands:${C_RESET}"
+    print -P "  build            Configure and compile (default)"
+    print -P "  clean            Remove build artifacts"
+    print -P "  run              Build and run the application"
+    print -P "  test             Run the test suite"
+    print -P "  check-deps       Verify system dependencies"
+    print -P "\n${C_BOLD}Examples:${C_RESET}"
+    print -P "  ./build.sh -c -d build   # Clean, debug build"
+    print -P "  ./build.sh -y build      # Auto-install deps if missing"
+    print -P "  ./build.sh --cpm-projectm build  # Use CPM libprojectm"
 }
 
-remove_problematic_flags() {
-    local input="${1:-}"
-    local -a bad=("-mno-direct-extern-access" "-fcf-protection" "-fstack-clash-protection")
-    for f in "${bad[@]}"; do input="${input//${f}/}"; done
-    print -r -- "${${input//  / }## }"
-}
+# ─── Logic ──────────────────────────────────────────────────────────────────
 
-sanitize_environment() {
-    local -a vars=(CXXFLAGS CFLAGS CMAKE_CXX_FLAGS CMAKE_C_FLAGS QMAKE_CXXFLAGS)
-    for v in "${vars[@]}"; do
-        [[ -n "${(P)v:-}" ]] && export "${v}=$(remove_problematic_flags "${(P)v}")"
-    done
-}
+mkdir -p "$LOG_DIR"
 
-ensure_build_dir() {
-    if [[ "$1" == true && -d "$BUILD_DIR" ]]; then
-        log info "Cleaning previous build..."
-        rm -rf "${BUILD_DIR:?}"/*
-    fi
-    mkdir -p "$BUILD_DIR"
-}
+# Parse arguments using zparseopts (Zsh-native)
+local -A opts
+zparseopts -D -A opts h -help d -debug r -release c -clean i -install j: -jobs: y -yes \
+    -system-projectm -cpm-projectm
 
-invoke_cmake() {
-    local build_type="$1"
-    local cxxflags="$(build_cflags "$build_type")"
-    local ldflags="$(build_ldflags "$build_type")"
-    
-    log info "Configuring CMake (${build_type})..."
-    log_kv "CXX Flags" "$cxxflags"
-    log_kv "Linker Flags" "$ldflags"
-    log_kv "Launcher" "${LAUNCHER_BIN:-None}"
-    log_kv "Unity Build" "ON"
-    
-    cmake -G Ninja \
-        -DCMAKE_BUILD_TYPE="$build_type" \
-        -DCMAKE_CXX_COMPILER="g++" \
-        -DCMAKE_CXX_FLAGS="$cxxflags" \
-        -DCMAKE_EXE_LINKER_FLAGS="$ldflags" \
-        -DCMAKE_SHARED_LINKER_FLAGS="$ldflags" \
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        -DCMAKE_UNITY_BUILD=ON \
-        ${LAUNCHER_BIN:+"-DCMAKE_CXX_COMPILER_LAUNCHER=${LAUNCHER_BIN}"} \
-        ${LAUNCHER_BIN:+"-DCMAKE_C_COMPILER_LAUNCHER=${LAUNCHER_BIN}"} \
-        -S "$PROJECT_ROOT" -B "$BUILD_DIR" |& tee -a "$LOG_FILE"
-}
+if [[ -n "${opts[(i)-h]}" || -n "${opts[(i)--help]}" ]]; then
+    show_help
+    exit 0
+fi
 
-invoke_ninja() {
-    log info "Building with Ninja (${1:-$N4500_CORES} jobs)..."
-    # Use a simpler status line and tee to show progress on terminal
-    NINJA_STATUS="[%f/%t] " ninja -C "$BUILD_DIR" -j "${1:-$N4500_CORES}" |& tee -a "$LOG_FILE"
-}
+BUILD_TYPE="Release"
+[[ -n "${opts[(i)-d]}" || -n "${opts[(i)--debug]}" ]] && BUILD_TYPE="Debug"
+[[ -n "${opts[(i)-r]}" || -n "${opts[(i)--release]}" ]] && BUILD_TYPE="Release"
 
-build_pipeline() {
-    local build_type="$1" clean_first="${2:-false}"
-    
-    # Initialize log file with timestamp and machine-readable metadata
-    {
-        print -P "## LAST COMPILE STATUS"
-        print -P -- "- **Build Started**: $(date)"
-        print -P -- "- **Type**: ${build_type}"
-        print -P -- "- **Clean**: ${clean_first}"
-        print -r -- "-----------------------------------"
-    } > "$LOG_FILE"
-    
-    log header "${build_type} Build"
-    log_kv "Architecture" "$N4500_ARCH"
-    log_kv "Parallelism" "${N4500_CORES} jobs"
-    
-    sanitize_environment
-    ensure_build_dir "$clean_first" || return 1
-    invoke_cmake "$build_type" || { log error "CMake failed"; return 1; }
-    invoke_ninja "$N4500_CORES" || { log error "Build failed"; return 1; }
-    
-    log ok "Build complete"
-    log_kv "Binary" "$BINARY_PATH"
-    log_kv "Size" "$(human_size "$BINARY_PATH")"
-    
-    print -P "\nBuild finished successfully at $(date)" >> "$LOG_FILE"
-}
+JOBS=${opts[-j]:-${opts[--jobs]:-$CPU_CORES}}
+CLEAN_FIRST=false
+[[ -n "${opts[(i)-c]}" || -n "${opts[(i)--clean]}" ]] && CLEAN_FIRST=true
 
-ensure_binary() {
-    [[ -x "$BINARY_PATH" ]] || { log warn "Binary not found, building..."; cmd_build || return 1; }
-}
+INSTALL_AFTER=false
+[[ -n "${opts[(i)-i]}" || -n "${opts[(i)--install]}" ]] && INSTALL_AFTER=true
 
-cmd_build()   { build_pipeline "Debug" false; }
-cmd_release() { build_pipeline "Release" false; }
-cmd_rebuild() { build_pipeline "Debug" true; }
-cmd_rebuild_release() { build_pipeline "Release" true; }
+AUTO_INSTALL=false
+[[ -n "${opts[(i)-y]}" || -n "${opts[(i)--yes]}" ]] && AUTO_INSTALL=true
 
-cmd_clean() {
-    log header "Clean"
-    for t in "$BUILD_DIR" "${PROJECT_ROOT}/build-release"; do
-        [[ -d "$t" ]] && { rm -rf "${t:?}"/*; log ok "Cleaned: ${t}"; }
-    done
-    log ok "Clean complete"
-}
+# libprojectm source preference
+PROJECTM_SOURCE="auto"  # auto, system, cpm
+[[ -n "${opts[(i)--system-projectm]}" ]] && PROJECTM_SOURCE="system"
+[[ -n "${opts[(i)--cpm-projectm]}" ]] && PROJECTM_SOURCE="cpm"
 
-cmd_run() {
-    log header "Run"
-    ensure_binary || return 1
-    exec "$BINARY_PATH" "$@"
-}
+COMMAND=${1:-build}
 
-cmd_test() {
-    log header "Test Suite"
-    ensure_binary || return 1
-    for spec in "tests/unit/unit_tests:Unit" "tests/integration/integration_tests:Integration"; do
-        local p="${BUILD_DIR}/${spec%%:*}" n="${spec##*:}"
-        log info "Running ${n}..."
-        [[ -x "$p" ]] && { "$p" && log ok "${n} passed" || log warn "${n} failed"; } || log warn "${n} not found"
-    done
-}
+# ─── Commands ───────────────────────────────────────────────────────────────
 
 cmd_check_deps() {
     log header "Dependency Check"
+    
+    local is_arch=false
+    [[ -f /etc/arch-release ]] && is_arch=true
+
+    # Check libprojectm status first (special handling)
+    local projectm_status=$(check_projectm_status)
+    local projectm_handled=false
+    local use_cpm_projectm=false
+    
+    log info "libprojectm source preference: ${C_BOLD}${PROJECTM_SOURCE}${C_RESET}"
+    
+    case "$PROJECTM_SOURCE" in
+        cpm)
+            log info "Using CPM libprojectm (${PROJECTM_GIT_TAG}) as requested"
+            use_cpm_projectm=true
+            projectm_handled=true
+            ;;
+        system)
+            if [[ "$projectm_status" == "missing" ]]; then
+                log error "System libprojectm not found, but --system-projectm requested"
+                if [[ "$is_arch" == true && "$AUTO_INSTALL" == true ]]; then
+                    log info "Auto-installing libprojectm from pacman..."
+                    if sudo pacman -S --needed libprojectm; then
+                        log ok "libprojectm installed successfully"
+                        use_cpm_projectm=false
+                        projectm_handled=true
+                    else
+                        log error "Failed to install libprojectm"
+                        return 1
+                    fi
+                else
+                    log info "Install with: sudo pacman -S --needed libprojectm"
+                    return 1
+                fi
+            elif [[ "$projectm_status" == outdated:* ]]; then
+                local current_version="${projectm_status#outdated:}"
+                log warn "System libprojectm (${current_version}) is older than minimum (${PROJECTM_MIN_VERSION})"
+                log info "Consider using --cpm-projectm for latest version"
+                use_cpm_projectm=false
+                projectm_handled=true
+            else
+                local current_version="${projectm_status#ok:}"
+                log ok "Using system libprojectm ${current_version}"
+                use_cpm_projectm=false
+                projectm_handled=true
+            fi
+            ;;
+        auto)
+            if [[ "$projectm_status" == "missing" ]]; then
+                log warn "libprojectm not found on system"
+                if [[ "$is_arch" == true ]]; then
+                    if [[ "$AUTO_INSTALL" == true ]]; then
+                        log info "Auto-installing libprojectm from pacman..."
+                        if sudo pacman -S --needed libprojectm; then
+                            log ok "libprojectm installed from pacman"
+                            use_cpm_projectm=false
+                            projectm_handled=true
+                        else
+                            log warn "Pacman install failed, CMake will use CPM fallback"
+                            use_cpm_projectm=true
+                            projectm_handled=true
+                        fi
+                    else
+                        log info "Will let CMake handle libprojectm (CPM fallback available)"
+                        log info "Or run with -y to auto-install from pacman"
+                        use_cpm_projectm=true
+                        projectm_handled=true
+                    fi
+                else
+                    log info "Non-Arch system, CMake will use CPM fallback"
+                    use_cpm_projectm=true
+                    projectm_handled=true
+                fi
+            elif [[ "$projectm_status" == outdated:* ]]; then
+                local current_version="${projectm_status#outdated:}"
+                log warn "System libprojectm (${current_version}) is outdated (min: ${PROJECTM_MIN_VERSION})"
+                log info "CMake will use CPM to build newer version from source"
+                use_cpm_projectm=true
+                projectm_handled=true
+            else
+                local current_version="${projectm_status#ok:}"
+                log ok "System libprojectm ${current_version} meets requirements"
+                use_cpm_projectm=false
+                projectm_handled=true
+            fi
+            ;;
+    esac
+
+    # Expanded dependency list - organized by category
     local -a deps=(
+        # Build tools
         "cmd:cmake:cmake" "cmd:ninja:ninja" "cmd:g++:gcc"
+        # Qt6 base packages
         "pkg:Qt6Core:qt6-base" "pkg:Qt6Widgets:qt6-base" "pkg:Qt6OpenGLWidgets:qt6-base"
-        "pkg:libprojectM-4:projectm" "pkg:libavcodec:ffmpeg" "pkg:libavformat:ffmpeg" "pkg:libpulse:libpulse"
-        "cmd:mold:mold" "cmd:sccache:sccache" "cmd:ccache:ccache"
+        "pkg:Qt6Network:qt6-base" "pkg:Qt6Sql:qt6-base"
+        # Qt6 multimedia (separate package)
+        "pkg:Qt6Multimedia:qt6-multimedia"
+        # Qt6 extras
+        "pkg:Qt6Svg:qt6-svg"
+        "pkg:Qt6WebEngine:qt6-webengine"
+        # Core libraries (excluding libprojectm if handled via CPM)
+        "pkg:libavcodec:ffmpeg" "pkg:libavformat:ffmpeg"
+        "pkg:libavutil:ffmpeg" "pkg:libswresample:ffmpeg"
+        # Other dependencies
+        "pkg:spdlog:spdlog" "pkg:fmt:fmt" "pkg:taglib:taglib"
+        "pkg:sqlite3:sqlite" "pkg:glew:glew" "pkg:glm:glm"
     )
-    local -a missing=() found=()
+    
+    # Add libprojectm to deps only if not using CPM
+    if [[ "$use_cpm_projectm" == false ]]; then
+        deps+=("pkg:projectM-4:libprojectm")
+    fi
+    
+    local -a missing_pkgs=()
+    local missing_count=0
+
     for spec in "${deps[@]}"; do
         local typ="${spec%%:*}"
         local rest="${spec#*:}"
         local chk="${rest%%:*}"
         local pkg="${rest#*:}"
-        case "$typ" in
-            cmd) command -v "$chk" &>/dev/null ;;
-            pkg) pkg-config --exists "$chk" 2>/dev/null ;;
-        esac && found+=("$pkg") || missing+=("$pkg")
+        
+        local found=false
+        if [[ "$typ" == "cmd" ]]; then
+            (( ${+commands[$chk]} )) && found=true
+        else
+            # Try pkg-config first
+            pkg-config --exists "$chk" 2>/dev/null && found=true
+            # Fallback for Arch: check pacman directly
+            if [[ "$found" == false && "$is_arch" == true ]]; then
+                pacman -Qq "$pkg" &>/dev/null && found=true
+            fi
+        fi
+
+        if [[ "$found" == true ]]; then
+            log ok "Found $chk"
+        else
+            log error "Missing: $chk (Package: $pkg)"
+            missing_pkgs+=("$pkg")
+            missing_count=$((missing_count + 1))
+        fi
     done
-    local -aU uf=("${found[@]}") um=("${missing[@]}")
-    for p in "${uf[@]}"; do log ok "$p"; done
-    (( ${#um[@]} == 0 )) && { log ok "All dependencies satisfied"; return 0; }
-    log warn "Optional dependencies missing: ${um[*]}"
-    return 0
-}
 
-cmd_help() {
-    print -P "%F{cyan}ChadVis Build Script — Intel N4500 Optimized%f"
-    print -P "%BUsage:%b build.zsh <command> [args...]"
-    print -P "%BCommands:%b"
-    print "  build           Incremental debug build"
-    print "  rebuild         Clean debug build"
-    print "  clean           Remove build artifacts"
-    print "  run [args]      Build if needed, launch"
-    print "  test            Run tests"
-    print "  check-deps      Verify packages"
-    print "  help            This message"
-}
-
-typeset -A DISPATCH=(
-    [build]=cmd_build
-    [rebuild]=cmd_rebuild
-    [clean]=cmd_clean [run]=cmd_run [test]=cmd_test
-    [check-deps]=cmd_check_deps [check]=cmd_check_deps [deps]=cmd_check_deps
-    [help]=cmd_help [-h]=cmd_help [--help]=cmd_help
-)
-
-main() {
-    cd "$PROJECT_ROOT" || exit 1
-    local cmd="${1:-help}"; [[ $# -gt 0 ]] && shift
-    local h="${DISPATCH[$cmd]:-}"
+    if (( ${#missing_pkgs[@]} > 0 )); then
+        log warn "Missing dependencies detected!"
+        
+        if [[ "$is_arch" == true ]]; then
+            # Remove duplicates from missing packages
+            local -a unique_missing=(${(u)missing_pkgs})
+            
+            print -P "\n${C_BOLD}Packages to install:${C_RESET} ${(j: :)unique_missing}"
+            print -P "${C_GRAY}Install command: sudo pacman -S --needed ${(j: :)unique_missing}${C_RESET}"
+            
+            if [[ "$AUTO_INSTALL" == true ]]; then
+                log info "Auto-install enabled. Installing missing packages..."
+                if sudo pacman -S --needed "${unique_missing[@]}"; then
+                    log ok "Dependencies installed successfully!"
+                    # Re-check to confirm
+                    cmd_check_deps
+                    return $?
+                else
+                    log error "Failed to install dependencies"
+                    return 1
+                fi
+            else
+                print -P "\n${C_YELLOW}Run with -y flag to auto-install:${C_RESET} ./build.sh -y $COMMAND"
+                print -P "${C_YELLOW}Or install manually:${C_RESET} sudo pacman -S --needed ${(j: :)unique_missing}"
+            fi
+        else
+            log warn "Auto-install only supported on Arch Linux."
+            log info "Please install the missing packages manually."
+        fi
+    fi
     
-    if [[ -n "$h" ]]; then
-        "$h" "$@"
+    # Export CPM preference for CMake
+    if [[ "$use_cpm_projectm" == true ]]; then
+        export CHADVIS_CPM_PROJECTM=1
     else
-        log error "Unknown: ${cmd}"
-        cmd_help
+        unset CHADVIS_CPM_PROJECTM
+    fi
+
+    return $missing_count
+}
+
+cmd_build() {
+    local start_time=$EPOCHSECONDS
+    
+    # Auto-check deps before building, because we're Chads
+    cmd_check_deps || { 
+        log error "Dependencies missing. Fix them, Junior."
+        log info "Hint: Run './build.sh -y build' to auto-install on Arch."
+        return 1 
+    }
+
+    log header "Building ChadVis"
+    log_kv "CPU" "$CPU_MODEL"
+    log_kv "Cores" "$CPU_CORES"
+    log_kv "Type" "$BUILD_TYPE"
+    log_kv "Jobs" "$JOBS"
+    log_kv "Log" "$LOG_FILE"
+
+    if [[ "$CLEAN_FIRST" == true ]]; then
+        cmd_clean
+    fi
+
+    mkdir -p "$BUILD_DIR"
+
+    log info "Configuring with CMake..."
+    log info "Output: Console + $LOG_FILE"
+    
+    # Build CMake arguments
+    local cmake_args=(
+        -G Ninja
+        -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        -S "$PROJECT_ROOT"
+        -B "$BUILD_DIR"
+    )
+    
+    # Pass CPM preference to CMake if set (check environment variable set by cmd_check_deps)
+    if [[ -n "${CHADVIS_CPM_PROJECTM:-}" ]]; then
+        log info "Passing CPM libprojectm preference to CMake"
+        cmake_args+=(-DCHADVIS_FORCE_CPM_PROJECTM=ON)
+    fi
+    
+    # Run cmake with output to console and log file
+    if ! run_logged "$LOG_FILE" cmake "${cmake_args[@]}"; then
+        
+        log error "CMake configuration failed!"
+        log info "Check $LOG_FILE for full details."
+        log info "Last 10 lines of error:"
+        tail -n 10 "$LOG_FILE" | while read line; do
+            print -P "${C_RED}  │${C_RESET} $line"
+        done
         return 1
+    fi
+
+    log info "Compiling with Ninja ($JOBS jobs)..."
+    log info "Output: Console + $LOG_FILE"
+    
+    # Run ninja with output to console and log file
+    if ! run_logged "$LOG_FILE" ninja -C "$BUILD_DIR" -j "$JOBS"; then
+        log error "Compilation failed!"
+        log info "Check $LOG_FILE for full details."
+        log info "Last 20 lines of error:"
+        tail -n 20 "$LOG_FILE" | while read line; do
+            print -P "${C_RED}  │${C_RESET} $line"
+        done
+        return 1
+    fi
+
+    local end_time=$EPOCHSECONDS
+    local duration=$(( end_time - start_time ))
+
+    log ok "Build successful! (Took ${duration}s)"
+    log_kv "Binary" "$BINARY_PATH"
+    log_kv "Size" "$(human_size "$BINARY_PATH")"
+
+    # Reminder for the Chads
+    print -P "\n${ICON_CHAD} ${C_CYAN}${C_BOLD}REMINDER:${C_RESET} Did you update ${C_BOLD}CHANGELOG.md${C_RESET} for these major gains?"
+
+    # Do not clear log file on success, user wants to see output if needed
+    # : > "$LOG_FILE"
+    
+    if [[ "$INSTALL_AFTER" == true ]]; then
+        cmd_install
     fi
 }
 
-main "$@"
+cmd_clean() {
+    log header "Cleaning"
+    if [[ -d "$BUILD_DIR" ]]; then
+        rm -rf "$BUILD_DIR"
+        log ok "Build directory Krush Killed and Destryoed witta big ol' nuke!"
+    else
+        log info "Nothing to clean. You're already clean, Chad."
+    fi
+}
+
+cmd_install() {
+    log header "Installing"
+    log info "Running installation (might need sudo)..."
+    if ! run_logged "$LOG_FILE" sudo ninja -C "$BUILD_DIR" install; then
+        log error "Installation failed!"
+        log info "Check $LOG_FILE for full details."
+        return 1
+    fi
+    log ok "Installed successfully. Go forth and visualize."
+}
+
+cmd_run() {
+    if [[ ! -x "$BINARY_PATH" ]]; then
+        log warn "Binary not found. Building first..."
+        cmd_build || return 1
+    fi
+    log header "Launching ChadVis"
+    exec "$BINARY_PATH" "$@"
+}
+
+cmd_test() {
+    log header "Running Tests"
+    if [[ ! -d "$BUILD_DIR" ]]; then
+        cmd_build || return 1
+    fi
+    # Assuming tests are built into build/tests/
+    if [[ -d "$BUILD_DIR/tests" ]]; then
+        run_logged "$LOG_FILE" ctest --test-dir "$BUILD_DIR" --output-on-failure
+    else
+        log warn "No tests found. Did you build them?"
+    fi
+}
+
+# ─── Main ───────────────────────────────────────────────────────────────────
+
+case $COMMAND in
+    build)      cmd_build ;;
+    clean)      cmd_clean ;;
+    run)        cmd_run ;;
+    test)       cmd_test ;;
+    check-deps) cmd_check_deps ;;
+    install)    cmd_install ;;
+    *)          log error "Unknown command: $COMMAND"; show_help; exit 1 ;;
+esac

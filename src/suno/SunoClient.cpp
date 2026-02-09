@@ -2,6 +2,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkCookie>
 #include <QRegularExpression>
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
@@ -58,8 +59,8 @@ void SunoClient::setToken(const std::string& token) {
 
 void SunoClient::setCookie(const std::string& cookie) {
     cookie_ = cookie;
+    clerkSid_.clear();
 
-    // Parse all cookies into a map (handles multiple __client* and __session* cookies)
     QMap<QString, QString> cookieMap;
     QStringList parts = QString::fromStdString(cookie).split(';');
     for (const QString& part : parts) {
@@ -68,19 +69,16 @@ void SunoClient::setCookie(const std::string& cookie) {
         if (eqPos > 0) {
             QString name = trimmed.left(eqPos);
             QString value = trimmed.mid(eqPos + 1);
-            // Store all versions, we'll prefer newer ones later
             cookieMap[name] = value;
         }
     }
 
-    // Extract __session cookie - prefer newer ones (no suffix > _Jnxw-muT > others)
     QString sessionValue;
     if (cookieMap.contains("__session")) {
-        sessionValue = cookieMap["__session"];  // Newest, no suffix
+        sessionValue = cookieMap["__session"];
     } else if (cookieMap.contains("__session_Jnxw-muT")) {
         sessionValue = cookieMap["__session_Jnxw-muT"];
     } else {
-        // Find any __session* cookie
         for (auto it = cookieMap.begin(); it != cookieMap.end(); ++it) {
             if (it.key().startsWith("__session")) {
                 sessionValue = it.value();
@@ -376,6 +374,88 @@ void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
     } else {
         proceed();
     }
+}
+
+void SunoClient::initiateWavConversion(const std::string& clipId) {
+    if (!isAuthenticated()) {
+        errorOccurred.emitSignal("Not authenticated for WAV conversion");
+        return;
+    }
+
+    QString url = QString("/gen/%1/convert_wav/").arg(QString::fromStdString(clipId));
+    LOG_INFO("SunoClient: Initiating WAV conversion for {}", clipId);
+
+    enqueueRequest(createAuthenticatedRequest(url), "POST", {}, [this, clipId](QNetworkReply* reply) {
+        reply->deleteLater();
+        int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+        if (reply->error() == QNetworkReply::NoError || status == 202) {
+            LOG_INFO("SunoClient: WAV conversion initiated for {}. Polling for result...", clipId);
+            // Start polling after a short delay
+            QTimer::singleShot(2000, this, [this, clipId]() {
+                pollWavFile(clipId, 60);
+            });
+        } else {
+            std::string err = reply->errorString().toStdString();
+            LOG_ERROR("SunoClient: WAV conversion initiation failed: {} (Status: {})", err, status);
+            errorOccurred.emitSignal("WAV conversion failed: " + err);
+        }
+    });
+}
+
+void SunoClient::pollWavFile(const std::string& clipId, int maxAttempts) {
+    if (!isAuthenticated()) {
+        errorOccurred.emitSignal("Not authenticated for WAV polling");
+        return;
+    }
+
+    if (maxAttempts <= 0) {
+        LOG_ERROR("SunoClient: WAV conversion timed out for {}", clipId);
+        errorOccurred.emitSignal("WAV conversion timeout for: " + clipId);
+        return;
+    }
+
+    QString url = QString("/gen/%1/wav_file/").arg(QString::fromStdString(clipId));
+    
+    enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this, clipId, maxAttempts](QNetworkReply* reply) {
+        reply->deleteLater();
+        QByteArray data = reply->readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        
+        if (reply->error() == QNetworkReply::NoError) {
+            QJsonObject obj = doc.object();
+            
+            if (obj.contains("wav_file_url")) {
+                QString wavUrl = obj["wav_file_url"].toString();
+                if (!wavUrl.isEmpty()) {
+                    LOG_INFO("SunoClient: WAV file ready for {} at {}", clipId, wavUrl.toStdString());
+                    wavConversionReady.emitSignal(clipId, wavUrl.toStdString());
+                    return;
+                }
+            }
+            
+            // Check if still processing
+            if (data.contains("processing") || data.contains("pending")) {
+                LOG_DEBUG("SunoClient: WAV still processing for {}, {} attempts remaining", clipId, maxAttempts - 1);
+                QTimer::singleShot(2000, this, [this, clipId, maxAttempts]() {
+                    pollWavFile(clipId, maxAttempts - 1);
+                });
+            } else {
+                LOG_ERROR("SunoClient: Unexpected WAV response for {}: {}", clipId, data.toStdString());
+                errorOccurred.emitSignal("WAV conversion failed for: " + clipId);
+            }
+        } else if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 202) {
+            // Still processing
+            LOG_DEBUG("SunoClient: WAV still processing for {} (HTTP 202), {} attempts remaining", clipId, maxAttempts - 1);
+            QTimer::singleShot(2000, this, [this, clipId, maxAttempts]() {
+                pollWavFile(clipId, maxAttempts - 1);
+            });
+        } else {
+            std::string err = reply->errorString().toStdString();
+            LOG_ERROR("SunoClient: WAV poll failed: {} (Status: {})", err, reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt());
+            errorOccurred.emitSignal("WAV poll failed: " + err);
+        }
+    });
 }
 
 void SunoClient::onLibraryReply(QNetworkReply* reply) {

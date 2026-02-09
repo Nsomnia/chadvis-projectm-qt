@@ -2,7 +2,9 @@
 #include <QApplication>
 #include "OverlayEditor.hpp"
 #include "KaraokeWidget.hpp"
+#include "LyricsPanel.hpp"
 #include "PlayerControls.hpp"
+#include "SidebarWidget.hpp"
 
 #include "PlaylistView.hpp"
 #include "PresetBrowser.hpp"
@@ -147,21 +149,34 @@ void MainWindow::setupUI() {
     addDockWidget(Qt::BottomDockWidgetArea, controlsDock);
 
     playlistView_ = new PlaylistView(this);
-
-    auto* rightTabs = new QTabWidget();
-    rightTabs->addTab(playlistView_, "Playlist");
     presetBrowser_ = new PresetBrowser();
-    rightTabs->addTab(presetBrowser_, "Presets");
     recordingControls_ = new RecordingControls();
-    rightTabs->addTab(recordingControls_, "Recording");
     overlayEditor_ = new OverlayEditor();
     overlayEditor_->setOverlayEngine(overlayEngine_);
-    rightTabs->addTab(overlayEditor_, "Overlay");
-
     karaokeWidget_ = new KaraokeWidget(sunoController_.get(), audioEngine_, this);
-    rightTabs->addTab(karaokeWidget_, "Karaoke");
-
+    lyricsPanel_ = new LyricsPanel(audioEngine_, sunoController_.get(), this);
     auto* sunoBrowser = new suno::SunoBrowser(sunoController_.get(), this);
+
+    // Create modern sidebar
+    sidebarWidget_ = new chadvis::SidebarWidget(this);
+    sidebarWidget_->addPanel("playlist", "Library", "media-playlist", playlistView_);
+    sidebarWidget_->addPanel("presets", "Visualizer", "preferences-desktop-display", presetBrowser_);
+    sidebarWidget_->addPanel("recording", "Recording", "media-record", recordingControls_);
+    sidebarWidget_->addPanel("overlay", "Overlays", "text-field", overlayEditor_);
+    sidebarWidget_->addPanel("karaoke", "Karaoke", "audio-input-microphone", karaokeWidget_);
+    sidebarWidget_->addPanel("lyrics", "Lyrics", "text-x-generic", lyricsPanel_);
+    sidebarWidget_->addPanel("suno", "Suno", "internet-web-browser", sunoBrowser);
+    
+    // Apply current theme
+    sidebarWidget_->applyTheme(QString::fromStdString(CONFIG.ui().theme));
+    
+    // Legacy tab-based dock widget (as alternative)
+    auto* rightTabs = new QTabWidget();
+    rightTabs->addTab(playlistView_, "Playlist");
+    rightTabs->addTab(presetBrowser_, "Presets");
+    rightTabs->addTab(recordingControls_, "Recording");
+    rightTabs->addTab(overlayEditor_, "Overlay");
+    rightTabs->addTab(karaokeWidget_, "Karaoke");
     rightTabs->addTab(sunoBrowser, "Suno");
 
     toolsDock_ = new QDockWidget("Tools", this);
@@ -184,6 +199,7 @@ void MainWindow::setupUI() {
     audioController_->setupUI(playerControls_, playlistView_);
 
     toolsDock_->setVisible(CONFIG.ui().showPresets || CONFIG.ui().showPlaylist);
+    
 }
 
 void MainWindow::setupMenuBar() {
@@ -234,6 +250,36 @@ void MainWindow::setupMenuBar() {
             &QDockWidget::visibilityChanged,
             showToolsAction,
             &QAction::setChecked);
+    
+    viewMenu->addSeparator();
+    auto* useSidebarAction = viewMenu->addAction("Use &Sidebar Layout");
+    useSidebarAction->setCheckable(true);
+    useSidebarAction->setChecked(useSidebarLayout_);
+    connect(useSidebarAction, &QAction::toggled, this, [this](bool useSidebar) {
+        useSidebarLayout_ = useSidebar;
+        if (useSidebar) {
+            toolsDock_->hide();
+            if (sidebarWidget_->parent() != this) {
+                sidebarWidget_->setParent(this);
+            }
+            addDockWidget(Qt::LeftDockWidgetArea, toolsDock_);
+            removeDockWidget(toolsDock_);
+            setCentralWidget(nullptr);
+            auto* central = new QWidget(this);
+            auto* layout = new QHBoxLayout(central);
+            layout->setContentsMargins(0, 0, 0, 0);
+            layout->setSpacing(0);
+            layout->addWidget(sidebarWidget_);
+            layout->addWidget(visualizerPanel_, 1);
+            setCentralWidget(central);
+            sidebarWidget_->show();
+        } else {
+            sidebarWidget_->hide();
+            setCentralWidget(visualizerPanel_);
+            addDockWidget(Qt::RightDockWidgetArea, toolsDock_);
+            toolsDock_->show();
+        }
+    });
 
     auto* vizMenu = menuBar()->addMenu("&Visualizer");
     vizMenu->addAction(
@@ -500,6 +546,19 @@ void MainWindow::keyPressEvent(QKeyEvent* event) {
     default:
         QMainWindow::keyPressEvent(event);
     }
+}
+
+void MainWindow::changeEvent(QEvent* event) {
+    if (event->type() == QEvent::ActivationChange) {
+        if (visualizerPanel_ && visualizerPanel_->visualizer()) {
+            // Drop FPS to 10 when unfocused to save CPU on weak hardware
+            bool active = isActiveWindow();
+            int fps = active ? CONFIG.visualizer().fps : 10;
+            visualizerPanel_->visualizer()->setRenderRate(fps);
+            LOG_DEBUG("MainWindow: Focus changed, setting render rate to {} FPS", fps);
+        }
+    }
+    QMainWindow::changeEvent(event);
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event) {

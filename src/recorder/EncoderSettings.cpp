@@ -18,8 +18,23 @@ std::string VideoSettings::codecName() const {
         return "prores_ks";
     case VideoCodec::FFV1:
         return "ffv1";
+    case VideoCodec::H264_NVENC:
+        return "h264_nvenc";
+    case VideoCodec::H265_NVENC:
+        return "hevc_nvenc";
+    case VideoCodec::H264_VAAPI:
+        return "h264_vaapi";
+    case VideoCodec::H265_VAAPI:
+        return "hevc_vaapi";
     }
     return "libx264";
+}
+
+bool VideoSettings::isHardwareAccelerated() const {
+    return codec == VideoCodec::H264_NVENC ||
+           codec == VideoCodec::H265_NVENC ||
+           codec == VideoCodec::H264_VAAPI ||
+           codec == VideoCodec::H265_VAAPI;
 }
 
 std::string VideoSettings::presetName() const {
@@ -58,6 +73,10 @@ std::string VideoSettings::pixelFormatName() const {
         return "yuv444p";
     case PixelFormat::RGB24:
         return "rgb24";
+    case PixelFormat::NV12:
+        return "nv12";
+    case PixelFormat::P010LE:
+        return "p010le";
     }
     return "yuv420p";
 }
@@ -269,6 +288,38 @@ EncoderSettings EncoderSettings::editing() {
     return s;
 }
 
+EncoderSettings EncoderSettings::hardware1080p60() {
+    // NVIDIA NVENC 1080p60 preset
+    EncoderSettings s;
+    s.video.codec = VideoCodec::H264_NVENC;
+    s.video.width = 1920;
+    s.video.height = 1080;
+    s.video.fps = 60;
+    s.video.bitrate = 12000; // 12 Mbps for NVENC
+    s.video.hwAccel = HWAccelDevice::NVENC;
+    s.audio.codec = AudioCodec::AAC;
+    s.audio.bitrate = 320;
+    s.container = Container::MP4;
+    s.comment = "Recorded with ChadVis using NVENC - I use Arch btw";
+    return s;
+}
+
+EncoderSettings EncoderSettings::hardware4k60() {
+    // NVIDIA NVENC 4K60 preset
+    EncoderSettings s;
+    s.video.codec = VideoCodec::H265_NVENC;
+    s.video.width = 3840;
+    s.video.height = 2160;
+    s.video.fps = 60;
+    s.video.bitrate = 40000; // 40 Mbps for 4K NVENC
+    s.video.hwAccel = HWAccelDevice::NVENC;
+    s.audio.codec = AudioCodec::AAC;
+    s.audio.bitrate = 384;
+    s.container = Container::MP4;
+    s.comment = "Recorded with ChadVis using NVENC 4K - I use Arch btw";
+    return s;
+}
+
 std::vector<QualityPreset> getQualityPresets() {
     return {
             {"YouTube 1080p60",
@@ -289,6 +340,12 @@ std::vector<QualityPreset> getQualityPresets() {
             {"Editing (ProRes)",
              "For video editing software",
              EncoderSettings::editing()},
+            {"Hardware 1080p60 (NVENC)",
+             "GPU-accelerated H.264 for minimal CPU usage",
+             EncoderSettings::hardware1080p60()},
+            {"Hardware 4K60 (NVENC HEVC)",
+             "GPU-accelerated H.265 for 4K recording",
+             EncoderSettings::hardware4k60()},
     };
 }
 

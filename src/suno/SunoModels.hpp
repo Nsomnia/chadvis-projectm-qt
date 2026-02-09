@@ -14,9 +14,12 @@ struct SunoMetadata {
     std::string tags;
     std::string type; // "gen", "upload"
     std::string lyrics;
+    std::string infillLyrics; // Raw lyrics with \u000b line breaks
     std::string history;
     std::string error_message;
     std::string duration;
+    std::string bpm;
+    std::string key;
     bool refund_credits{false};
     bool stream{false};
     double weirdness{0.0};

@@ -74,10 +74,12 @@ public:
 
 private:
     void flipImage(std::vector<u8>& data, u32 width, u32 height);
+    void flipImageGPU(std::vector<u8>& data, u32 width, u32 height);
 
     u32 width_{1920};
     u32 height_{1080};
     bool flipVertical_{true}; // OpenGL is bottom-up
+    bool useGPUFlip_{true};   // Use GPU acceleration for flipping
 
     std::queue<GrabbedFrame> frameQueue_;
     mutable std::mutex queueMutex_;

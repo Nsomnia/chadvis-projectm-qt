@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Build System Enhancement (v1337.3)**: Enhanced dependency management with intelligent libprojectm handling
+  - Automatic dependency installation for Arch Linux via `pacman` with `-y` flag
+  - Version-aware libprojectm detection (minimum version: 4.1.0)
+  - `--system-projectm` flag to force use of system/pacman libprojectm
+  - `--cpm-projectm` flag to force building libprojectm from source via CPM
+  - Smart auto-detection: uses system libprojectm if recent enough, otherwise falls back to CPM
+  - `CHADVIS_FORCE_CPM_PROJECTM` CMake option to bypass system detection
+
+## [1.1.0] - 2026-01-29
+
+### Added
+- **Karaoke/Lyrics System**: Complete rewrite with 60fps word-level highlighting
+  - New `LyricsData` with binary search for O(log n) line lookup
+  - `LyricsSync` engine for smooth time synchronization
+  - `KaraokeRenderer` with glow effects and instrumental break display
+  - `LyricsPanel` canvas tab with search and click-to-seek
+  - SRT/LRC subtitle export support
+- **CLI Enhancements** ("Rizz Mode"):
+  - Colorized output with TTY detection (respects `NO_COLOR`)
+  - 20+ new CLI flags for complete settings coverage
+  - Multi-stage help system (`--help <topic>`, `--help-topics`)
+  - Smart error messages with typo suggestions
+  - Shell completion script generation (bash, zsh, fish)
+- **Documentation**:
+  - Comprehensive `AGENTS.md` guide for AI developers
+  - Settings system unification documentation
+
+### Changed
+- **Settings System**: Full parity across CLI, config file, and GUI
+  - All configurable options accessible via all interfaces
+  - CLI flags override config file, which overrides defaults
+  - Automatic override logging for debugging
+
 ## [1.0.2-RC1] - 2026-01-11
 
 ### Fixed

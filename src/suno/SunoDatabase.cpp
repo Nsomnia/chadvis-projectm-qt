@@ -304,4 +304,62 @@ bool SunoDatabase::hasLyrics(const std::string& clipId) const {
     return false;
 }
 
+Result<std::vector<SunoClip>> SunoDatabase::searchClips(const std::string& query) {
+    if (!initialized_)
+        return Result<std::vector<SunoClip>>::err("Database not initialized");
+
+    if (query.empty())
+        return getAllClips();
+
+    std::vector<SunoClip> clips;
+    
+    // Build search query - search in title, display_name, tags, prompt, lyrics
+    QString searchPattern = QString("%%%1%%").arg(QString::fromStdString(query));
+    
+    QSqlQuery q(db_);
+    q.prepare("SELECT * FROM clips WHERE "
+              "title LIKE :pattern OR "
+              "display_name LIKE :pattern OR "
+              "tags LIKE :pattern OR "
+              "prompt LIKE :pattern OR "
+              "lyrics LIKE :pattern "
+              "ORDER BY created_at DESC");
+    q.bindValue(":pattern", searchPattern);
+    
+    if (!q.exec()) {
+        return Result<std::vector<SunoClip>>::err("Search failed: " + 
+                                                  q.lastError().text().toStdString());
+    }
+    
+    while (q.next()) {
+        SunoClip clip;
+        clip.id = q.value("id").toString().toStdString();
+        clip.title = q.value("title").toString().toStdString();
+        clip.audio_url = q.value("audio_url").toString().toStdString();
+        clip.video_url = q.value("video_url").toString().toStdString();
+        clip.image_url = q.value("image_url").toString().toStdString();
+        clip.image_large_url = q.value("image_large_url").toString().toStdString();
+        clip.model_name = q.value("model_name").toString().toStdString();
+        clip.major_model_version = q.value("major_model_version").toString().toStdString();
+        clip.display_name = q.value("display_name").toString().toStdString();
+        clip.handle = q.value("handle").toString().toStdString();
+        clip.is_liked = q.value("is_liked").toInt() != 0;
+        clip.is_trashed = q.value("is_trashed").toInt() != 0;
+        clip.is_public = q.value("is_public").toInt() != 0;
+        clip.status = q.value("status").toString().toStdString();
+        clip.created_at = q.value("created_at").toString().toStdString();
+        clip.metadata.prompt = q.value("prompt").toString().toStdString();
+        clip.metadata.tags = q.value("tags").toString().toStdString();
+        clip.metadata.lyrics = q.value("lyrics").toString().toStdString();
+        clip.metadata.type = q.value("type").toString().toStdString();
+        clip.metadata.duration = q.value("duration").toString().toStdString();
+        clip.metadata.error_message = q.value("error_message").toString().toStdString();
+        
+        clips.push_back(clip);
+    }
+    
+    LOG_INFO("SunoDatabase: Search for '{}' found {} clips", query, clips.size());
+    return Result<std::vector<SunoClip>>::ok(clips);
+}
+
 } // namespace vc::suno
