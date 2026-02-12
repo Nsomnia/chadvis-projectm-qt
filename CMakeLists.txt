@@ -24,7 +24,7 @@ set(CMAKE_COLOR_NONE ON)
 # Also set them explicitly to ensure they stay clean
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "" FORCE)
-project(chadvis-projectm-qt VERSION 1.0.0 LANGUAGES CXX)
+project(chadvis-projectm-qt VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

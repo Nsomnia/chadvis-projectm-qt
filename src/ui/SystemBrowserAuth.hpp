@@ -54,6 +54,7 @@ private:
     void handleAuthCallback(QTcpSocket* socket, const QByteArray& request);
     void sendSuccessPage(QTcpSocket* socket);
     void sendErrorPage(QTcpSocket* socket, const QString& error);
+    QString extractSessionFromHandshake(const QString& handshakeJwt);
 
     QTcpServer* server_{nullptr};
     QTimer* timeoutTimer_{nullptr};
