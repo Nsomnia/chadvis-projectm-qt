@@ -1,8 +1,8 @@
 # AGENTS.md - Guide for AI Agents
 
 > **For:** AI agents working on the chadvis-projectm-qt project  
-> **Version:** 1337.0 (Arch Linux Certified)  
-> **Last Updated:** 2026-01-29
+> **Version:** 1.1.0-alpha (1337 Chad GUI Edition)  
+> **Last Updated:** 2026-02-12
 
 Welcome, agent. This document contains essential information for working effectively with this codebase.
 
@@ -355,7 +355,7 @@ TEST_CASE("Feature description") {
 - `docs/VIDEO_RECORDING.md` - Recording subsystem
 - `docs/SUNO_INTEGRATION.md` - Suno API details
 - `docs/CPM_INTEGRATION.md` - Dependency management
-- `docs/CHANGELOG.md` - Version history
+- `docs/changelogs/` - Version history archive (see root `CHANGELOG.md` for current)
 
 ### External Links
 - [projectM v4 docs](https://github.com/projectM-visualizer/projectm)

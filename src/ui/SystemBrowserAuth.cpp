@@ -5,8 +5,11 @@
 #include <QNetworkReply>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QRegularExpression>
 #include <QRandomGenerator>
+
+#include <QByteArray>
 
 namespace chadvis {
 
@@ -138,11 +141,19 @@ void SystemBrowserAuth::handleAuthCallback(QTcpSocket* socket, const QByteArray&
     // Or sometimes it sets a cookie on the redirect domain (which won't help us here unless we are the domain)
     // However, if we get a "token" or "session" param, we can use it.
     
-    // Check for "token", "code", or "session"
+    // Check for "token", "code", "session", or "__clerk_handshake"
     QString token;
-    if (query.hasQueryItem("token")) token = query.queryItemValue("token");
-    else if (query.hasQueryItem("code")) token = query.queryItemValue("code");
-    else if (query.hasQueryItem("__session")) token = query.queryItemValue("__session");
+    if (query.hasQueryItem("token")) {
+        token = query.queryItemValue("token");
+    } else if (query.hasQueryItem("code")) {
+        token = query.queryItemValue("code");
+    } else if (query.hasQueryItem("__session")) {
+        token = query.queryItemValue("__session");
+    } else if (query.hasQueryItem("__clerk_handshake")) {
+        // Clerk handshake contains session cookie in JWT payload
+        QString handshake = query.queryItemValue("__clerk_handshake");
+        token = extractSessionFromHandshake(handshake);
+    }
     
     if (token.isEmpty()) {
         // If no token in URL, we might need to instruct the user to copy-paste
@@ -224,6 +235,63 @@ void SystemBrowserAuth::onTimeout() {
         cancel();
         emit authFailed("Authentication timed out");
     }
+}
+
+QString SystemBrowserAuth::extractSessionFromHandshake(const QString& handshakeJwt) {
+    // JWT format: header.payload.signature
+    // We only need the payload (middle part)
+    QStringList parts = handshakeJwt.split('.');
+    if (parts.size() < 2) {
+        LOG_ERROR("SystemBrowserAuth: Invalid handshake JWT format");
+        return QString();
+    }
+    
+    QString payloadBase64 = parts[1];
+    
+    // Add padding if needed
+    int padding = 4 - (payloadBase64.length() % 4);
+    if (padding != 4) {
+        payloadBase64.append(QString(padding, '='));
+    }
+    
+    // Replace URL-safe characters
+    payloadBase64.replace('-', '+');
+    payloadBase64.replace('_', '/');
+    
+    QByteArray payloadJson = QByteArray::fromBase64(payloadBase64.toLatin1());
+    if (payloadJson.isEmpty()) {
+        LOG_ERROR("SystemBrowserAuth: Failed to decode handshake payload");
+        return QString();
+    }
+    
+    QJsonDocument doc = QJsonDocument::fromJson(payloadJson);
+    if (doc.isNull() || !doc.isObject()) {
+        LOG_ERROR("SystemBrowserAuth: Failed to parse handshake JSON");
+        return QString();
+    }
+    
+    QJsonObject obj = doc.object();
+    QJsonArray handshake = obj.value("handshake").toArray();
+    
+    // Find __session cookie in handshake array
+    for (const QJsonValue& val : handshake) {
+        QString cookie = val.toString();
+        if (cookie.startsWith("__session=")) {
+            // Extract the JWT value after "__session="
+            QString sessionToken = cookie.mid(10); // Skip "__session="
+            // The session token is a JWT - return it as-is
+            // It may have "; Domain=..." suffix, so extract just the token
+            int semicolonPos = sessionToken.indexOf(';');
+            if (semicolonPos > 0) {
+                sessionToken = sessionToken.left(semicolonPos);
+            }
+            LOG_INFO("SystemBrowserAuth: Successfully extracted session token from handshake");
+            return sessionToken;
+        }
+    }
+    
+    LOG_ERROR("SystemBrowserAuth: No __session cookie found in handshake");
+    return QString();
 }
 
 } // namespace chadvis
