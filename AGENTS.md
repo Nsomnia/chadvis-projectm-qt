@@ -1,438 +1,130 @@
-# AGENTS.md - Guide for AI Agents
+# AGENTS.md - chadvis-projectm-qt
 
-> **For:** AI agents working on the chadvis-projectm-qt project  
-> **Version:** 1.1.0-alpha (1337 Chad GUI Edition)  
-> **Last Updated:** 2026-02-12
+This file provides essential information for agentic coding agents working on chadvis-projectm-qt, a Qt6-based projectM v4 visualizer written in C++20.
 
-Welcome, agent. This document contains essential information for working effectively with this codebase.
+## Build, Test, and Lint Commands
 
----
+### Building
+- **Full build**: `./build.sh build` (uses Ninja, Release mode by default)
+- **Debug build**: `./build.sh -d build`
+- **Clean build**: `./build.sh -c build`
+- **Run after build**: `./build.sh run`
+- **Direct executable**: `./build/chadvis-projectm-qt`
 
-## 🚀 Quick Start
+### Testing
+- **Run all tests**: `./build.sh test` or `ctest --test-dir build --output-on-failure`
+- **Run unit tests only**: `./build/tests/unit/unit_tests`
+- **Build specific test target**: `ninja -C build unit_tests`
 
-### Build Commands
-Very slow on the users potato system. You can wait until your done your loop/work and then the user will compile and report bugs if desired. For small changes or if neeed to finish tasks you are free to run cmake, optionally with a build system/accelerator.
-```bash
-bash build.sh --help
-bash build.sh build
-```
-OR manually
-```bash
-# Standard build
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j1
+### Dependency Check
+- **Check system dependencies**: `./build.sh check-deps`
+- **Auto-install deps (Arch)**: `./build.sh -y build`
 
-# Debug build (for development)
-cmake -B build-debug -S . -DCMAKE_BUILD_TYPE=Debug
-cmake --build build-debug -j$(nproc)
+### No Linting/Formatting Tools Configured
+- This project has no `.clang-format` file. Follow the code style guidelines below manually.
+- Build warnings are enforced via CMake: `-Wall -Wextra -Wpedantic`
 
-# Run tests
-./build/tests/unit/unit_tests
-./build/tests/integration/integration_tests
-```
+## Code Style Guidelines
 
-### Project Structure
-```
-src/
-├── core/           # Config, logging, CLI, Application
-├── audio/          # AudioEngine, FFmpeg decoder, playlist
-├── visualizer/     # ProjectM bridge, preset management
-├── ui/             # Qt widgets, controllers, dialogs
-├── suno/           # Suno API integration, database
-├── lyrics/         # Karaoke/Lyrics system (NEW)
-├── recorder/       # Video recording (FFmpeg)
-└── overlay/        # Text overlays
-```
+### Language & Standards
+- **C++20** with modern features (concepts, designated initializers, etc.)
+- **No exceptions**: Use `vc::Result<T>` for error handling (see `util/Result.hpp`)
+- **No raw `new`/`delete`**: Use `std::unique_ptr` or `std::shared_ptr`
 
----
+### Naming Conventions
+- **Classes/Structs**: `PascalCase` (e.g., `AudioEngine`, `ConfigData`)
+- **Functions/Methods**: `camelCase` (e.g., `init()`, `loadConfig()`)
+- **Private members**: trailing underscore (e.g., `audioEngine_`, `config_`)
+- **Types**: Use aliases from `Types.hpp`: `i32`, `u32`, `f32`, `usize`, `Vec2`, `Color`
+- **Namespaces**: `vc` (short for "Visualizer Core")
+- **Macros**: `SCREAMING_SNAKE_CASE` (e.g., `LOG_INFO`, `TRY`, `APP`)
+- **Files**: `PascalCase.hpp` / `PascalCase.cpp`
 
-## 📝 Development Guidelines
-
-### Code Style
-
-**C++20 Features:**
-- Use `std::optional`, `std::expected` (or our `Result<>` type)
-- Use structured bindings: `auto [x, y] = getPoint();`
-- Use designated initializers where appropriate
-- Prefer `std::string_view` over `const std::string&` for parameters
-
-**Naming Conventions:**
-```cpp
-// Classes: PascalCase
-class AudioEngine { };
-
-// Functions: camelCase
-void processAudioBuffer();
-
-// Member variables: trailing underscore
-class Foo {
-    int privateMember_;
-};
-
-// Constants/Enums: UPPER_SNAKE or kCamelCase
-constexpr int MAX_BUFFER_SIZE = 4096;
-enum class Color { Red, Green, Blue };
-
-// Private impl: trailing underscore with Impl
-class MyClass {
-    class Impl;
-    std::unique_ptr<Impl> impl_;
-};
-```
+### File Organization
+- **Headers**: Use `#pragma once` (not include guards)
+- **Includes**: System headers first, then third-party, then project headers
+- **Forward declarations**: Use in headers to minimize includes
+- **File size**: Keep files under 500 lines; split if larger
 
 ### Error Handling
-
-**Use the Result<T> type for fallible operations:**
 ```cpp
-// Good
-Result<Data> loadData(const fs::path& path) {
-    if (!fs::exists(path)) {
-        return Result<Data>::err("File not found: " + path.string());
-    }
-    // ... load data
-    return Result<Data>::ok(data);
-}
+// Use Result<T> for all error-prone operations
+Result<AudioConfig> parseAudio(const toml::table& tbl);
 
-// Usage
-auto result = loadData("file.txt");
-if (!result) {
-    LOG_ERROR("Failed to load: {}", result.error().message);
-    return;
-}
-auto data = std::move(*result);
-```
+// Use TRY macro for early returns
+#define TRY(expr) do { auto _result = (expr); if (!_result) return ...; } while (0)
 
-**Never use raw exceptions for expected failures.** Only use exceptions for truly exceptional conditions (programmer errors, OOM, etc).
-
-### Documentation
-
-**File headers:**
-```cpp
-/**
- * @file FileName.hpp
- * @brief One-line description
- *
- * Detailed description if needed. Mention patterns used.
- *
- * @author Name (optional)
- * @version X.X.X
- */
-```
-
-**Function documentation:**
-```cpp
-/**
- * @brief Brief description
- * @param param1 Description
- * @param param2 Description
- * @return Description of return value
- * @throws Never (if applicable)
- */
-```
-
----
-
-## 🔄 Git Workflow
-
-### Branch Naming
-```
-feat/short-description        # New features
-fix/short-description         # Bug fixes  
-refactor/short-description    # Code restructuring
-docs/short-description        # Documentation
-chore/short-description       # Maintenance
-test/short-description        # Test changes
-```
-
-### Commit Messages
-```
-type(scope): concise description
-
-- Additional context if needed
-- Can span multiple lines
-- Reference issues: fixes #123
-
-Types: feat, fix, docs, style, refactor, test, chore
-```
-
-**Examples:**
-```
-feat(recorder): add hardware acceleration support
-
-Adds NVENC and VAAPI codec options with automatic
-detection. Falls back to software encoding if HW
-unavailable.
-
-Closes #42
-```
-
-```
-fix(ui): resolve race condition in KaraokeWidget
-
-The sync timer wasn't stopped before destruction,
-causing crashes on exit. Added proper cleanup.
-```
-
----
-
-## 🛡️ Security Protocols
-
-### Sensitive Data Protection
-
-**ALWAYS create backups before editing sensitive files:**
-```bash
-# Required before editing any of these:
-# - Config files with credentials
-# - API keys, tokens, secrets
-# - OAuth files
-# - .env files
-
-cp "/path/to/sensitive-file" "/path/to/sensitive-file.backup.$(date +%Y%m%d_%H%M%S)"
-```
-
-**Sensitive locations:**
-- `~/.local/share/opencode/` (API/OAuth keys)
-- `~/.config/chadvis-projectm-qt/config.toml` (Suno tokens)
-- Any files containing `token`, `secret`, `password`, `api_key`
-
-### Never Commit Secrets
-- Use `.gitignore` for local config
-- Use environment variables for runtime secrets
-- Never log sensitive data (even in debug mode)
-
----
-
-## 🎯 Key Subsystems
-
-### Configuration System
-
-**Three-tier configuration:**
-1. **Defaults** - Hardcoded in `ConfigData.hpp`
-2. **Config file** - TOML at `~/.config/chadvis-projectm-qt/config.toml`
-3. **CLI overrides** - Command-line arguments
-
-**CLI → Config precedence:**
-- CLI flags override config file
-- Config file overrides defaults
-- All changes are logged: `LOG_INFO("CLI override: key = value")`
-
-**Adding new config options:**
-1. Add field to appropriate struct in `ConfigData.hpp`
-2. Add CLI option in `Application.cpp` (`AppOptions` + `parseArgs()`)
-3. Add GUI control in `SettingsDialog.cpp`
-4. Add TOML parser in `ConfigParsers.cpp`
-
-### Lyrics/Karaoke System
-
-**Architecture:**
-```
-LyricsData → LyricsSync → LyricsRenderer → QWidget
-    ↑            ↑            ↑
-Suno API    AudioEngine   KaraokeWidget
-Database    Position      LyricsPanel
-```
-
-**Key classes:**
-- `LyricsData` - Immutable data structures with binary search
-- `LyricsSync` - 60fps time synchronization
-- `LyricsRenderer` - Base class for different renderers
-- `KaraokeWidget` - Visual overlay with word highlighting
-- `LyricsPanel` - Scrollable lyrics panel with search
-
-### Video Recording
-
-**Thread model:**
-- Main thread: Frame capture from OpenGL PBO
-- Recorder thread: FFmpeg encoding (async)
-
-**Adding new codecs:**
-1. Add codec name to `EncoderSettings.hpp`
-2. Update codec validation in `EncoderSettings.cpp`
-3. Add to SettingsDialog combo box
-
-### Suno Integration
-
-**Auth flow:**
-1. User logs in via `QWebEngineView` (`SunoCookieDialog`)
-2. Captures `__session` and `__client` cookies
-3. Clerk API provides JWT tokens
-4. API calls use Bearer token auth
-
-**API rate limits:**
-- Library fetch: max 1 req/5sec
-- Lyrics fetch: max 1 req/2sec
-- Queue system handles this automatically
-
----
-
-## 🐛 Debugging
-
-### Debug Logging
-```cpp
-LOG_TRACE("Very detailed");  // Function entry/exit
-LOG_DEBUG("Debug info");     // State changes
-LOG_INFO("Normal events");   // User actions
-LOG_WARN("Recoverable issues");
-LOG_ERROR("Critical errors");
-```
-
-### Common Issues
-
-**OpenGL/Visualizer not rendering:**
-- Check `QT_QPA_PLATFORM=xcb` (Wayland issues)
-- Verify projectM preset path exists
-- Check `glxinfo | grep "OpenGL version"`
-
-**Audio not playing:**
-- Check `pactl list | grep -A5 "Name:"` for device names
-- Verify buffer size isn't too large (causes latency)
-- Try different sample rates (44100 vs 48000)
-
-**Recording fails:**
-- Check FFmpeg codec availability: `ffmpeg -encoders | grep <codec>`
-- Verify output directory is writable
-- For NVENC: ensure NVIDIA drivers loaded
-- For VAAPI: check `vainfo` output
-
-**Suno auth issues:**
-- Cookies expire after ~24 hours
-- Use Settings dialog to re-authenticate
-- Check `__session` cookie format (should start with "eyJ")
-
----
-
-## 🧪 Testing
-
-### Unit Tests
-```cpp
-// tests/unit/test_something.cpp
-TEST_CASE("Feature description") {
-    REQUIRE(condition);
-    REQUIRE_EQ(expected, actual);
+// Check with if (result) or result.isOk()
+if (auto result = doSomething(); result) {
+    auto value = result.value();
 }
 ```
 
-### Manual Testing Checklist
-
-**Basic playback:**
-- [ ] Load audio file (MP3, FLAC, WAV, OGG)
-- [ ] Play/pause/stop
-- [ ] Playlist navigation (next/prev)
-- [ ] Volume control
-- [ ] Seek bar
-
-**Visualizer:**
-- [ ] Presets load and render
-- [ ] Hard cut detection works
-- [ ] Preset switching (manual and auto)
-- [ ] Fullscreen toggle
-
-**Recording:**
-- [ ] Start/stop recording
-- [ ] Output file is valid
-- [ ] Audio sync correct
-- [ ] Hardware codecs (if available)
-
-**Karaoke:**
-- [ ] Lyrics display with Suno songs
-- [ ] Word-level highlighting
-- [ ] Click-to-seek
-- [ ] Search within lyrics
-- [ ] SRT/LRC export
-
-**Suno:**
-- [ ] Authentication flow
-- [ ] Library sync
-- [ ] Song download
-- [ ] Lyrics fetch
-
----
-
-## 📚 Resources
-
-### Documentation Files
-- `docs/ARCHITECTURE.md` - System design
-- `docs/VIDEO_RECORDING.md` - Recording subsystem
-- `docs/SUNO_INTEGRATION.md` - Suno API details
-- `docs/CPM_INTEGRATION.md` - Dependency management
-- `docs/changelogs/` - Version history archive (see root `CHANGELOG.md` for current)
-
-### External Links
-- [projectM v4 docs](https://github.com/projectM-visualizer/projectm)
-- [Qt6 docs](https://doc.qt.io/qt-6/)
-- [FFmpeg encoding](https://trac.ffmpeg.org/wiki/Encode/H.264)
-- [TOML spec](https://toml.io/en/)
-
----
-
-## 💡 Tips for Agents
-
-1. **Read before writing** - Check existing patterns in similar files
-2. **Build frequently** - C++ compile errors are easier to fix immediately
-3. **Test edge cases** - Empty files, invalid paths, network failures
-4. **Document as you go** - Update this file when adding new patterns
-5. **Respect NO_COLOR** - CLI output should respect the environment
-6. **Keep functions small** - Single responsibility principle
-7. **Use the Result<T> type** - Don't ignore error cases
-8. **Check for existing utilities** - Look in `util/` before writing new code
-
----
-
-## 🆘 Emergency Contacts
-
-**When stuck:**
-1. Check `docs/` for subsystem documentation
-2. Search codebase for similar implementations
-3. Review recent commits for patterns
-4. Check `.agent/TODO.md` for current priorities
-
-**Never:**
-- Commit to `main` or `master` directly
-- Push secrets (even if "just for testing")
-- Delete `.agent/TODO.md` entries (mark complete instead)
-- Ignore LSP errors (fix or suppress with reason)
-
----
-
-## File Deletion / Destructive Operations Protocol
-
-### NEVER use `rm`, `rm -rf`, or any destructive deletion commands
-
-**Instead, always move files to `.backup_graveyard/` with a datetime stamp:**
-
-```bash
-# Create backup graveyard if it doesn't exist
-mkdir -p .backup_graveyard
-
-# For files: Append timestamp to filename
-mv --no-clobber "/path/to/file.txt" ".backup_graveyard/file.txt.$(date +%Y%m%d_%H%M%S)"
-
-# For directories: Append timestamp to directory name
-mv --no-clobber "/path/to/directory" ".backup_graveyard/directory.$(date +%Y%m%d_%H%M%S)"
-
-# Example with variable paths
-mv --no-clobber "${SOURCE_PATH}" ".backup_graveyard/$(basename "${SOURCE_PATH}").$(date +%Y%m%d_%H%M%S)"
+### Logging
+```cpp
+// Use macros (not Logger::get() directly)
+LOG_INFO("Starting audio engine");
+LOG_ERROR("Failed to initialize: {}", errorMsg);
+LOG_DEBUG("Buffer size: {}", bufferSize);  // Debug builds only
 ```
 
-### Why This Matters
-- **Data Safety**: Prevents accidental permanent data loss
-- **Recoverability**: Files can be restored if needed
-- **Audit Trail**: Timestamped backups show when operations occurred
-- **Collaboration**: Other agents can see what was moved and when
+### Qt Conventions
+- **Qt classes**: Use `Q_OBJECT` macro, inherit from `QWidget`/`QObject`
+- **Signals/Slots**: Use modern Qt5+ syntax: `connect(obj, &Class::signal, this, &Class::slot)`
+- **MOC**: CMake handles `AUTOMOC ON` automatically
+- **Smart pointers**: Use `std::unique_ptr<QApplication>` over `QScopedPointer`
 
-### Applies To
-- File deletion (`rm`, `unlink`)
-- Directory removal (`rm -rf`, `rmdir`)
-- Overwriting files without backup
-- Any destructive filesystem operations
+### Import Order Example
+```cpp
+#pragma once
 
-### The ONLY Exception
-Temporary build artifacts in `build/`, `dist/`, or similar temporary directories may be cleaned with standard commands, but ONLY within those designated temporary directories.
+// 1. System headers
+#include <memory>
+#include <string>
 
----
+// 2. Third-party headers
+#include <QtCore/QObject>
+#include <spdlog/spdlog.h>
 
-## Ralph-loops and freedoms
-- You may continue working on any and all TODO items either directly listed or inferred from documents in any file in .agent/ or AGENTS.md
-- Keep the CHANGELOG.md updated. If its gets unmanagable in length then create a history directory to contain changelogs in the docs/ directory.
+// 3. Project headers
+#include "util/Result.hpp"
+#include "util/Types.hpp"
+```
 
-*"Maximum effort. No compromises. Ship it like it's Arch Linux."* 🚀
+## Architecture Rules
+
+1. **Singleton Pattern**: `vc::Application` owns all engines; access via `APP` macro
+2. **Engine Ownership**: All engines owned by Application; use raw pointers for non-owning access
+3. **OpenGL Safety**: Always ensure context is current before `gl*` calls
+4. **Threading**: Main thread = UI, separate threads for audio/recording/network
+5. **Modularity**: Keep files focused; controllers bridge UI and engines
+
+## Key Patterns
+
+- **Result Type**: `vc::Result<T>` for error handling without exceptions
+- **Type Aliases**: Use `i32`, `u32`, `f32`, `Vec2` from `util/Types.hpp`
+- **Namespace Alias**: `namespace fs = std::filesystem;`
+- **Configuration**: All config in `ConfigData.hpp`, parsing in `ConfigParsers.cpp`
+
+## Testing
+
+- **Framework**: Qt Test (`Qt6::Test`)
+- **Test structure**: `tests/unit/<module>/test_<Component>.cpp`
+- **Test classes**: Inherit from `QObject`, use `Q_OBJECT` macro, private slots for tests
+- **Run single test**: Not directly supported; use `QTest::qExec()` with filter args
+
+## Dependencies
+
+- **Build**: CMake >= 3.20, Ninja, GCC/Clang with C++20 support
+- **Qt6**: Core, Gui, Widgets, Multimedia, OpenGLWidgets, Svg, Network, Sql
+- **Libraries**: spdlog, fmt, taglib, toml++, GLEW, GLM, FFmpeg, ProjectM-4
+- **Arch install**: `sudo pacman -S cmake qt6-base qt6-multimedia qt6-svg spdlog fmt taglib tomlplusplus glew glm ffmpeg libprojectM sqlite`
+
+## Important Notes
+
+- **Never commit secrets**: No API keys, cookies, or credentials in source
+- **CHANGELOG.md**: Update for significant changes
+- **Arch BTW**: This is an Arch Linux-optimized project
+- **No force push**: Never force push to main
+- **Ask before compiling**: Build system is heavy; always ask user to run builds
+- **Commit and push frequently**: using git or gh command.
