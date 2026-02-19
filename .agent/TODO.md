@@ -45,3 +45,5 @@ If your legacy "dials and canvases" require high-performance technical plotting 
 
 - [ ] Suno with notes
 Something regarding the big gh projects particularly that sickkkkk browser extensions that does everything within js had with auth handling done perfectly. 
+- [ ] Icons and UI elements in general:
+Use Gemini 3.1 pro and others to develop large, sleek, theme appropriate, icons and other theme elements. 
