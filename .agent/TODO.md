@@ -1,5 +1,5 @@
 # Main TODO.md (User and model controlled. Note: Only the user can remove items when verified as finished  to an appropriate level. 
-- *[ ] QT Refactor*:
+- [ ] QT Refactor
 The qt implantation is either poorly designed, and thus not sleek, modern, not stunning, or is complex while not having much "vibe", and even non-functional such as in the case of the themes (gruvbox, dark, Tokyo Midnight, catppachino, etc) implementation.
 
 
@@ -42,3 +42,6 @@ If your legacy "dials and canvases" require high-performance technical plotting 
 1.  **The "Clean Break" Approach:** Migrate the UI entirely to **QML / Qt Quick**. Expose your massive C++ codebase as backend services via headers and `Q_INVOKABLE` macros. This is the cleanest, most modern approach for standard UI elements (sliders, checkboxes, dials).
 2.  **The "Pure C++" Modern Approach:** Use **QSkinny** to get modern, hardware-accelerated graphics without ever leaving C++.
 3.  **The "Ship it Fast" Approach:** Keep your current `QWidget` architecture. Swap your standard widgets for **QFluentWidgets** to make it stunning. Swap your messy custom panels for **KDDockWidgets**. Swap your custom canvas/drawing code for **QCustomPlot**.
+
+- [ ] Suno with notes
+Something regarding the big gh projects particularly that sickkkkk browser extensions that does everything within js had with auth handling done perfectly. 
