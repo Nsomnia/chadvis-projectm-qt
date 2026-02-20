@@ -36,7 +36,7 @@ This file provides essential information for agentic coding agents working on ch
 - **Functions/Methods**: `camelCase` (e.g., `init()`, `loadConfig()`)
 - **Private members**: trailing underscore (e.g., `audioEngine_`, `config_`)
 - **Types**: Use aliases from `Types.hpp`: `i32`, `u32`, `f32`, `usize`, `Vec2`, `Color`
-- **Namespaces**: `vc` (short for "Visualizer Core")
+- **Namespaces**: `vc` (short for "Visualizer Core"), `chadvis` (for UI components)
 - **Macros**: `SCREAMING_SNAKE_CASE` (e.g., `LOG_INFO`, `TRY`, `APP`)
 - **Files**: `PascalCase.hpp` / `PascalCase.cpp`
 
@@ -45,6 +45,12 @@ This file provides essential information for agentic coding agents working on ch
 - **Includes**: System headers first, then third-party, then project headers
 - **Forward declarations**: Use in headers to minimize includes
 - **File size**: Keep files under 500 lines; split if larger
+- **Module organization**: Group related files in subdirectories (e.g., `ui/sidebar/`, `ui/widgets/`)
+
+### Documentation
+- Use Doxygen-style comments for public APIs
+- Include `@file`, `@brief`, `@section` for file-level docs
+- Document signals, slots, and properties with `/** */` style
 
 ### Error Handling
 ```cpp
@@ -128,3 +134,23 @@ LOG_DEBUG("Buffer size: {}", bufferSize);  // Debug builds only
 - **No force push**: Never force push to main
 - **Ask before compiling**: Build system is heavy; always ask user to run builds
 - **Commit and push frequently**: using git or gh command.
+
+## Module Organization
+
+### UI Module (`src/ui/`)
+- `controllers/` - Logic controllers bridging UI and engines
+- `sidebar/` - Modern accordion-style sidebar components
+  - `AccordionSection` - Collapsible section with animation
+  - `MobileSidebar` - Full mobile-app style navigation
+- `widgets/` - Reusable UI widgets
+
+### Suno Module (`src/suno/`)
+- `SunoClient` - API client with automatic token refresh
+- `SunoDatabase` - Local SQLite caching
+- `SunoLyrics` - Lyrics parsing and alignment
+- See `.agent/SUNO_AUTH_RESEARCH.md` for auth flow documentation
+
+### Agent Working Directory (`.agent/`)
+- `TODO` - Task tracking
+- `SUNO_AUTH_RESEARCH.md` - Suno authentication documentation
+- `QML_SIDEBAR_RESEARCH.md` - UI research notes
