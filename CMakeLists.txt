@@ -262,6 +262,8 @@ set(SUNO_SOURCES
     src/suno/SunoModels.hpp
     src/suno/SunoClient.hpp
     src/suno/SunoClient.cpp
+    src/suno/SunoAuth.hpp
+    src/suno/SunoAuth.cpp
     src/suno/SunoDatabase.hpp
     src/suno/SunoDatabase.cpp
     src/suno/LyricAligner.hpp
@@ -313,6 +315,12 @@ set(UI_SOURCES
     src/ui/controllers/RecordingController.cpp
     src/ui/controllers/SunoController.hpp
     src/ui/controllers/SunoController.cpp
+    src/ui/controllers/SunoLibrarySync.hpp
+    src/ui/controllers/SunoLibrarySync.cpp
+    src/ui/controllers/SunoLyricsManager.hpp
+    src/ui/controllers/SunoLyricsManager.cpp
+    src/ui/controllers/SunoPlaybackManager.hpp
+    src/ui/controllers/SunoPlaybackManager.cpp
     src/ui/MarqueeLabel.hpp
     src/ui/MarqueeLabel.cpp
     src/ui/PlayerControls.hpp
@@ -337,6 +345,8 @@ set(UI_SOURCES
     src/ui/SettingsDialog.cpp
     src/ui/MainWindow.hpp
     src/ui/MainWindow.cpp
+    src/ui/MainWindowMenus.hpp
+    src/ui/MainWindowMenus.cpp
     src/ui/SunoBrowserWidget.hpp
     src/ui/SunoBrowserWidget.cpp
     src/ui/SunoPersistentAuth.hpp
@@ -347,6 +357,10 @@ set(UI_SOURCES
     src/ui/LyricsPanel.cpp
     src/ui/SidebarWidget.hpp
     src/ui/SidebarWidget.cpp
+    src/ui/sidebar/AccordionSection.hpp
+    src/ui/sidebar/AccordionSection.cpp
+    src/ui/sidebar/MobileSidebar.hpp
+    src/ui/sidebar/MobileSidebar.cpp
     src/ui/widgets/CyanSlider.hpp
     src/ui/widgets/CyanSlider.cpp
     src/ui/widgets/GlowButton.hpp

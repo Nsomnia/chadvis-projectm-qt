@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "MainWindowMenus.hpp"
 #include <QApplication>
 #include "OverlayEditor.hpp"
 #include "KaraokeWidget.hpp"
@@ -30,7 +31,6 @@
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QKeyEvent>
-#include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QStatusBar>
@@ -49,67 +49,52 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     videoRecorder_ = APP->videoRecorder();
 
     if (!audioEngine_ || !overlayEngine_ || !videoRecorder_) {
-        LOG_ERROR(
-                "MainWindow: One or more engines are null! APP is likely not "
-                "initialized.");
+        LOG_ERROR("MainWindow: One or more engines are null! APP is likely not initialized.");
     }
 
     audioController_ = std::make_unique<AudioController>(audioEngine_, this);
-    recordingController_ =
-            std::make_unique<RecordingController>(videoRecorder_, this);
-    sunoController_ = std::make_unique<suno::SunoController>(
-            audioEngine_, overlayEngine_, this);
+    recordingController_ = std::make_unique<RecordingController>(videoRecorder_, this);
+    sunoController_ = std::make_unique<suno::SunoController>(audioEngine_, overlayEngine_, this);
 
-    // Force debug lyrics if configured
     if (CONFIG.suno().debugLyrics && !CONFIG.suno().debugLyricsFile.empty()) {
         fs::path p = CONFIG.suno().debugLyricsFile;
-        // Let's read the file and try to parse it.
         auto contentRes = file::readText(p);
         if (contentRes.isOk()) {
-             std::string content = contentRes.value();
-             std::string ext = p.extension().string();
-             // Lowercase extension
-             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-             
-             suno::AlignedLyrics lyrics;
-             
-             if (ext == ".json") {
-                 auto words = suno::LyricsAligner::parseJson(QByteArray::fromStdString(content));
-                 if (!words.empty()) {
-                     lyrics.words = words;
-                     // Fake lines for JSON if not fully structured? 
-                     // Actually LyricsAligner::align creates lines, but we need prompt.
-                     // For pure word-list JSON, we might miss line structure.
-                     // But let's assume it works or is adequate for now.
-                     // If it's full suno response, it needs alignment.
-                     // For simple debugging, let's just push words.
-                     // Better: Use a fake prompt "word word word..." to auto-align?
-                     std::string fakePrompt;
-                     for(const auto& w : words) fakePrompt += w.word + " ";
-                     lyrics = suno::LyricsAligner::align(fakePrompt, words);
-                 }
-             } else if (ext == ".srt") {
-                 lyrics = suno::LyricsAligner::parseSrt(content);
-             } else if (ext == ".lrc") {
-                 lyrics = suno::LyricsAligner::parseLrc(content);
-             } else {
-                 LOG_WARN("Unknown debug lyrics extension '{}', trying JSON", ext);
-                 auto words = suno::LyricsAligner::parseJson(QByteArray::fromStdString(content));
-                 std::string fakePrompt;
-                 for(const auto& w : words) fakePrompt += w.word + " ";
-                 lyrics = suno::LyricsAligner::align(fakePrompt, words);
-             }
+            std::string content = contentRes.value();
+            std::string ext = p.extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            
+            suno::AlignedLyrics lyrics;
+            
+            if (ext == ".json") {
+                auto words = suno::LyricsAligner::parseJson(QByteArray::fromStdString(content));
+                if (!words.empty()) {
+                    std::string fakePrompt;
+                    for(const auto& w : words) fakePrompt += w.word + " ";
+                    lyrics = suno::LyricsAligner::align(fakePrompt, words);
+                }
+            } else if (ext == ".srt") {
+                lyrics = suno::LyricsAligner::parseSrt(content);
+            } else if (ext == ".lrc") {
+                lyrics = suno::LyricsAligner::parseLrc(content);
+            } else {
+                LOG_WARN("Unknown debug lyrics extension '{}', trying JSON", ext);
+                auto words = suno::LyricsAligner::parseJson(QByteArray::fromStdString(content));
+                std::string fakePrompt;
+                for(const auto& w : words) fakePrompt += w.word + " ";
+                lyrics = suno::LyricsAligner::align(fakePrompt, words);
+            }
 
-             if (!lyrics.empty()) {
-                 sunoController_->setDebugLyrics(lyrics);
-             } else {
-                 LOG_ERROR("Failed to parse debug lyrics from {}", p.string());
-             }
+            if (!lyrics.empty()) {
+                sunoController_->setDebugLyrics(lyrics);
+            } else {
+                LOG_ERROR("Failed to parse debug lyrics from {}", p.string());
+            }
         }
     }
 
     setupUI();
-    setupMenuBar();
+    MainWindowMenus::setupAll(this, this, audioEngine_, visualizerPanel_, toolsDock_, useSidebarLayout_);
 
     visualizerController_ = std::make_unique<VisualizerController>(
             &visualizerPanel_->visualizer()->projectM(), this);
@@ -157,7 +142,6 @@ void MainWindow::setupUI() {
     lyricsPanel_ = new LyricsPanel(audioEngine_, sunoController_.get(), this);
     auto* sunoBrowser = new suno::SunoBrowser(sunoController_.get(), this);
 
-    // Create modern sidebar
     sidebarWidget_ = new chadvis::SidebarWidget(this);
     sidebarWidget_->addPanel("playlist", "Library", "media-playlist", playlistView_);
     sidebarWidget_->addPanel("presets", "Visualizer", "preferences-desktop-display", presetBrowser_);
@@ -167,10 +151,8 @@ void MainWindow::setupUI() {
     sidebarWidget_->addPanel("lyrics", "Lyrics", "text-x-generic", lyricsPanel_);
     sidebarWidget_->addPanel("suno", "Suno", "internet-web-browser", sunoBrowser);
     
-    // Apply current theme
     sidebarWidget_->applyTheme(QString::fromStdString(CONFIG.ui().theme));
     
-    // Legacy tab-based dock widget (as alternative)
     auto* rightTabs = new QTabWidget();
     rightTabs->addTab(playlistView_, "Playlist");
     rightTabs->addTab(presetBrowser_, "Presets");
@@ -188,10 +170,8 @@ void MainWindow::setupUI() {
                            QDockWidget::DockWidgetClosable);
     addDockWidget(Qt::RightDockWidgetArea, toolsDock_);
     
-    // Allow the dock to be larger and more flexible
     rightTabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     
-    // Set dock options to allow more flexible resizing
     setDockOptions(DockOption::AnimatedDocks | DockOption::AllowTabbedDocks | DockOption::AllowNestedDocks);
     
     resizeDocks({toolsDock_}, {400}, Qt::Horizontal);
@@ -199,139 +179,6 @@ void MainWindow::setupUI() {
     audioController_->setupUI(playerControls_, playlistView_);
 
     toolsDock_->setVisible(CONFIG.ui().showPresets || CONFIG.ui().showPlaylist);
-    
-}
-
-void MainWindow::setupMenuBar() {
-    auto* fileMenu = menuBar()->addMenu("&File");
-    fileMenu->addAction("&Open Files...",
-                        QKeySequence::Open,
-                        this,
-                        &MainWindow::onOpenFiles);
-    fileMenu->addAction("Open &Folder...",
-                        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O),
-                        this,
-                        &MainWindow::onOpenFolder);
-    fileMenu->addSeparator();
-    fileMenu->addAction("&Save Playlist...", this, &MainWindow::onSavePlaylist);
-    fileMenu->addAction("&Load Playlist...", this, &MainWindow::onLoadPlaylist);
-    fileMenu->addSeparator();
-    fileMenu->addAction("E&xit", QKeySequence::Quit, this, &QMainWindow::close);
-
-    auto* playbackMenu = menuBar()->addMenu("&Playback");
-    playbackMenu->addAction(
-            "&Play/Pause", QKeySequence(Qt::Key_Space), this, [this] {
-                audioEngine_->togglePlayPause();
-            });
-    playbackMenu->addAction("&Stop", QKeySequence(Qt::Key_S), this, [this] {
-        audioEngine_->stop();
-    });
-    playbackMenu->addAction("&Next", QKeySequence(Qt::Key_N), this, [this] {
-        audioEngine_->playlist().next();
-    });
-    playbackMenu->addAction("&Previous", QKeySequence(Qt::Key_P), this, [this] {
-        audioEngine_->playlist().previous();
-    });
-
-    auto* viewMenu = menuBar()->addMenu("&View");
-    viewMenu->addAction("&Fullscreen", QKeySequence::FullScreen, this, [this] {
-        visualizerPanel_->visualizer()->toggleFullscreen();
-    });
-    viewMenu->addSeparator();
-
-    auto* showToolsAction = viewMenu->addAction("Show &Tools");
-    showToolsAction->setCheckable(true);
-    showToolsAction->setChecked(toolsDock_->isVisible());
-    connect(showToolsAction,
-            &QAction::toggled,
-            toolsDock_,
-            &QDockWidget::setVisible);
-    connect(toolsDock_,
-            &QDockWidget::visibilityChanged,
-            showToolsAction,
-            &QAction::setChecked);
-    
-    viewMenu->addSeparator();
-    auto* useSidebarAction = viewMenu->addAction("Use &Sidebar Layout");
-    useSidebarAction->setCheckable(true);
-    useSidebarAction->setChecked(useSidebarLayout_);
-    connect(useSidebarAction, &QAction::toggled, this, [this](bool useSidebar) {
-        useSidebarLayout_ = useSidebar;
-        if (useSidebar) {
-            toolsDock_->hide();
-            if (sidebarWidget_->parent() != this) {
-                sidebarWidget_->setParent(this);
-            }
-            addDockWidget(Qt::LeftDockWidgetArea, toolsDock_);
-            removeDockWidget(toolsDock_);
-            setCentralWidget(nullptr);
-            auto* central = new QWidget(this);
-            auto* layout = new QHBoxLayout(central);
-            layout->setContentsMargins(0, 0, 0, 0);
-            layout->setSpacing(0);
-            layout->addWidget(sidebarWidget_);
-            layout->addWidget(visualizerPanel_, 1);
-            setCentralWidget(central);
-            sidebarWidget_->show();
-        } else {
-            sidebarWidget_->hide();
-            setCentralWidget(visualizerPanel_);
-            addDockWidget(Qt::RightDockWidgetArea, toolsDock_);
-            toolsDock_->show();
-        }
-    });
-
-    auto* vizMenu = menuBar()->addMenu("&Visualizer");
-    vizMenu->addAction(
-            "&Next Preset", QKeySequence(Qt::Key_Right), this, [this] {
-                visualizerPanel_->visualizer()->nextPreset();
-            });
-    vizMenu->addAction(
-            "&Previous Preset", QKeySequence(Qt::Key_Left), this, [this] {
-                visualizerPanel_->visualizer()->previousPreset();
-            });
-    vizMenu->addAction("&Random Preset", QKeySequence(Qt::Key_R), this, [this] {
-        visualizerPanel_->visualizer()->randomPreset();
-    });
-
-    auto* lockAction = vizMenu->addAction("&Lock Preset");
-    lockAction->setCheckable(true);
-    connect(lockAction, &QAction::toggled, this, [this](bool locked) {
-        visualizerPanel_->visualizer()->lockPreset(locked);
-    });
-
-    auto* shuffleAction = vizMenu->addAction("&Shuffle Presets");
-    shuffleAction->setCheckable(true);
-    shuffleAction->setChecked(CONFIG.visualizer().shufflePresets);
-    connect(shuffleAction, &QAction::toggled, this, [this](bool enabled) {
-        CONFIG.visualizer().shufflePresets = enabled;
-        visualizerPanel_->visualizer()->updateSettings();
-    });
-
-    auto* autoRotateAction = vizMenu->addAction("&Auto-Rotate Presets");
-    autoRotateAction->setCheckable(true);
-    autoRotateAction->setChecked(CONFIG.visualizer().presetDuration > 0);
-    connect(autoRotateAction, &QAction::toggled, this, [this](bool enabled) {
-        CONFIG.visualizer().presetDuration = enabled ? 30 : 0;
-        visualizerPanel_->visualizer()->updateSettings();
-    });
-
-    auto* recordMenu = menuBar()->addMenu("&Recording");
-    recordMenu->addAction("&Start Recording",
-                          QKeySequence(Qt::CTRL | Qt::Key_R),
-                          this,
-                          [this] { onStartRecording(""); });
-    recordMenu->addAction(
-            "S&top Recording", this, &MainWindow::onStopRecording);
-
-    auto* toolsMenu = menuBar()->addMenu("&Tools");
-    toolsMenu->addAction("&Settings...",
-                         QKeySequence::Preferences,
-                         this,
-                         &MainWindow::onShowSettings);
-
-    auto* helpMenu = menuBar()->addMenu("&Help");
-    helpMenu->addAction("&About ChadVis", this, &MainWindow::onShowAbout);
 }
 
 void MainWindow::setupConnections() {
@@ -352,12 +199,7 @@ void MainWindow::setupConnections() {
 
     audioEngine_->positionChanged.connect([this](Duration pos) {
         QMetaObject::invokeMethod(this, [this, pos] {
-            // Debug playback time updates
-            // static int logCounter = 0;
-            // if (logCounter++ % 60 == 0) LOG_DEBUG("MainWindow: updatePlaybackTime {}", static_cast<f32>(pos.count()) / 1000.0f);
-            
-            overlayEngine_->updatePlaybackTime(static_cast<f32>(pos.count()) /
-                                               1000.0f);
+            overlayEngine_->updatePlaybackTime(static_cast<f32>(pos.count()) / 1000.0f);
         });
     });
 
@@ -382,8 +224,7 @@ void MainWindow::updateWindowTitle() {
     QString title = "ChadVis";
     if (const auto* item = audioEngine_->playlist().currentItem()) {
         title = QString::fromStdString(item->metadata.displayArtist()) + " - " +
-                QString::fromStdString(item->metadata.displayTitle()) + " | " +
-                title;
+                QString::fromStdString(item->metadata.displayTitle()) + " | " + title;
     }
     if (videoRecorder_->isRecording())
         title = "⏺ " + title;
@@ -410,28 +251,22 @@ void MainWindow::startRecording(const fs::path& outputPath) {
         auto time = std::chrono::system_clock::to_time_t(now);
         std::tm tm = *std::localtime(&time);
         char buf[64];
-        std::strftime(
-                buf, sizeof(buf), "chadvis-projectm-qt_%Y%m%d_%H%M%S", &tm);
+        std::strftime(buf, sizeof(buf), "chadvis-projectm-qt_%Y%m%d_%H%M%S", &tm);
         path = CONFIG.recording().outputDirectory /
-               (std::string(buf) +
-                EncoderSettings::fromConfig().containerExtension());
+               (std::string(buf) + EncoderSettings::fromConfig().containerExtension());
     }
 
     auto settings = EncoderSettings::fromConfig();
     settings.outputPath = path;
-    visualizerPanel_->visualizer()->setRecordingSize(settings.video.width,
-                                                     settings.video.height);
+    visualizerPanel_->visualizer()->setRecordingSize(settings.video.width, settings.video.height);
     visualizerPanel_->visualizer()->startRecording();
 
     if (auto result = videoRecorder_->start(settings); !result) {
-        QMessageBox::critical(this,
-                              "Recording Error",
-                              QString::fromStdString(result.error().message));
+        QMessageBox::critical(this, "Recording Error", QString::fromStdString(result.error().message));
         visualizerPanel_->visualizer()->stopRecording();
     } else {
         updateWindowTitle();
-        statusBar()->showMessage("Recording started: " +
-                                 QString::fromStdString(path.string()));
+        statusBar()->showMessage("Recording started: " + QString::fromStdString(path.string()));
     }
 }
 
@@ -446,24 +281,22 @@ void MainWindow::stopRecording() {
 
 void MainWindow::selectPreset(const std::string& name) {
     if (visualizerPanel_ && visualizerPanel_->visualizer()) {
-        // We don't have a direct "selectByName" on VisualizerWindow yet, 
-        // but loadPresetFromManager uses the current selection.
         visualizerPanel_->visualizer()->projectM().presets().selectByName(name);
         visualizerPanel_->visualizer()->loadPresetFromManager();
     }
 }
+
 void MainWindow::onStartRecording(const QString& path) {
     startRecording(path.toStdString());
 }
+
 void MainWindow::onStopRecording() {
     stopRecording();
 }
 
 void MainWindow::onOpenFiles() {
     QFileDialog dialog(this, "Open Audio Files", QDir::homePath());
-    dialog.setNameFilters(
-            {"Audio Files (*.mp3 *.flac *.ogg *.opus *.wav *.m4a *.aac)",
-             "All Files (*)"});
+    dialog.setNameFilters({"Audio Files (*.mp3 *.flac *.ogg *.opus *.wav *.m4a *.aac)", "All Files (*)"});
     dialog.setFileMode(QFileDialog::ExistingFiles);
     dialog.setOption(QFileDialog::DontUseNativeDialog, true);
     if (dialog.exec()) {
@@ -481,25 +314,15 @@ void MainWindow::onOpenFolder() {
 }
 
 void MainWindow::onSavePlaylist() {
-    QString path =
-            QFileDialog::getSaveFileName(this,
-                                         "Save Playlist",
-                                         QDir::homePath(),
-                                         "M3U Playlist (*.m3u)",
-                                         nullptr,
-                                         QFileDialog::DontUseNativeDialog);
+    QString path = QFileDialog::getSaveFileName(this, "Save Playlist", QDir::homePath(),
+                                                 "M3U Playlist (*.m3u)", nullptr, QFileDialog::DontUseNativeDialog);
     if (!path.isEmpty())
         audioEngine_->playlist().saveM3U(path.toStdString());
 }
 
 void MainWindow::onLoadPlaylist() {
-    QString path =
-            QFileDialog::getOpenFileName(this,
-                                         "Load Playlist",
-                                         QDir::homePath(),
-                                         "M3U Playlist (*.m3u *.m3u8)",
-                                         nullptr,
-                                         QFileDialog::DontUseNativeDialog);
+    QString path = QFileDialog::getOpenFileName(this, "Load Playlist", QDir::homePath(),
+                                                 "M3U Playlist (*.m3u *.m3u8)", nullptr, QFileDialog::DontUseNativeDialog);
     if (!path.isEmpty())
         audioEngine_->playlist().loadM3U(path.toStdString());
 }
@@ -513,21 +336,17 @@ void MainWindow::onShowSettings() {
 }
 
 void MainWindow::onShowAbout() {
-    QMessageBox::about(
-            this,
-            "About ChadVis",
-            "<h2>ChadVis Audio Player</h2><p>Version 1.1.0</p>"
-            "<p>Built with Qt6, projectM v4, and Arch Linux pride.</p><hr>"
-            "<p><b>\"I use Arch btw\"</b></p>");
+    QMessageBox::about(this, "About ChadVis",
+        "<h2>ChadVis Audio Player</h2><p>Version 1.1.0</p>"
+        "<p>Built with Qt6, projectM v4, and Arch Linux pride.</p><hr>"
+        "<p><b>\"I use Arch btw\"</b></p>");
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
     if (videoRecorder_->isRecording()) {
-        auto reply =
-                QMessageBox::question(this,
-                                      "Recording Active",
-                                      "Recording in progress. Stop and exit?",
-                                      QMessageBox::Yes | QMessageBox::No);
+        auto reply = QMessageBox::question(this, "Recording Active",
+                                           "Recording in progress. Stop and exit?",
+                                           QMessageBox::Yes | QMessageBox::No);
         if (reply == QMessageBox::No) {
             event->ignore();
             return;
@@ -551,7 +370,6 @@ void MainWindow::keyPressEvent(QKeyEvent* event) {
 void MainWindow::changeEvent(QEvent* event) {
     if (event->type() == QEvent::ActivationChange) {
         if (visualizerPanel_ && visualizerPanel_->visualizer()) {
-            // Drop FPS to 10 when unfocused to save CPU on weak hardware
             bool active = isActiveWindow();
             int fps = active ? CONFIG.visualizer().fps : 10;
             visualizerPanel_->visualizer()->setRenderRate(fps);
@@ -565,6 +383,7 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
     if (event->mimeData()->hasUrls())
         event->acceptProposedAction();
 }
+
 void MainWindow::dropEvent(QDropEvent* event) {
     QStringList paths;
     for (const auto& url : event->mimeData()->urls())
@@ -573,8 +392,7 @@ void MainWindow::dropEvent(QDropEvent* event) {
     if (!paths.isEmpty()) {
         for (const auto& p : paths)
             addToPlaylist(fs::path(p.toStdString()));
-        statusBar()->showMessage(
-                QString("Added %1 files to playlist").arg(paths.size()));
+        statusBar()->showMessage(QString("Added %1 files to playlist").arg(paths.size()));
     }
 }
 

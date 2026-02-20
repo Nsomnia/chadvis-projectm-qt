@@ -16,12 +16,59 @@ namespace vc::suno {
 SunoClient::SunoClient(QObject* parent)
     : QObject(parent),
       manager_(new QNetworkAccessManager(this)),
-      queueTimer_(new QTimer(this)) {
+      queueTimer_(new QTimer(this)),
+      autoRefreshTimer_(new QTimer(this)) {
     queueTimer_->setInterval(1000);
     connect(queueTimer_, &QTimer::timeout, this, &SunoClient::processQueue);
+    
+    autoRefreshTimer_->setInterval(TOKEN_REFRESH_INTERVAL_MS);
+    connect(autoRefreshTimer_, &QTimer::timeout, this, &SunoClient::onAutoRefreshTimer);
 }
 
-SunoClient::~SunoClient() = default;
+SunoClient::~SunoClient() {
+    stopAutoRefresh();
+}
+
+void SunoClient::startAutoRefresh() {
+    if (autoRefreshActive_) return;
+    
+    if (!isAuthenticated()) {
+        LOG_WARN("SunoClient: Cannot start auto-refresh without authentication");
+        return;
+    }
+    
+    autoRefreshActive_ = true;
+    lastRefreshTime_ = std::chrono::steady_clock::now();
+    autoRefreshTimer_->start();
+    LOG_INFO("SunoClient: Auto-refresh started (interval: {}s)", TOKEN_REFRESH_INTERVAL_MS / 1000);
+}
+
+void SunoClient::stopAutoRefresh() {
+    autoRefreshActive_ = false;
+    if (autoRefreshTimer_) {
+        autoRefreshTimer_->stop();
+    }
+    LOG_INFO("SunoClient: Auto-refresh stopped");
+}
+
+void SunoClient::onAutoRefreshTimer() {
+    if (!isAuthenticated()) {
+        LOG_WARN("SunoClient: Session expired, stopping auto-refresh");
+        stopAutoRefresh();
+        sessionExpired.emitSignal();
+        return;
+    }
+    
+    LOG_DEBUG("SunoClient: Performing scheduled token refresh");
+    refreshAuthToken([this](bool success) {
+        if (success) {
+            lastRefreshTime_ = std::chrono::steady_clock::now();
+            LOG_DEBUG("SunoClient: Scheduled token refresh successful");
+        } else {
+            LOG_ERROR("SunoClient: Scheduled token refresh failed");
+        }
+    });
+}
 
 void SunoClient::processQueue() {
     if (requestQueue_.empty()) {
