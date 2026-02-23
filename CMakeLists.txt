@@ -61,7 +61,7 @@ add_compile_options(
 )
 
 # Find packages
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network Sql WebEngineWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network Sql WebEngineWidgets Qml Quick QuickControls2 QuickWidgets)
 find_package(PkgConfig REQUIRED)
 
 # Header-only libraries: try system first, fallback to CPM
@@ -367,6 +367,20 @@ set(UI_SOURCES
     src/ui/widgets/GlowButton.cpp
     src/ui/widgets/ToggleSwitch.hpp
     src/ui/widgets/ToggleSwitch.cpp
+    src/ui/qml/PlaylistTrackModel.hpp
+    src/ui/qml/PlaylistTrackModel.cpp
+    src/ui/qml/PlaybackViewModel.hpp
+    src/ui/qml/PlaybackViewModel.cpp
+    src/ui/qml/SunoClipListModel.hpp
+    src/ui/qml/SunoClipListModel.cpp
+    src/ui/qml/SunoRemoteLibraryViewModel.hpp
+    src/ui/qml/SunoRemoteLibraryViewModel.cpp
+    src/ui/qml/RecordingViewModel.hpp
+    src/ui/qml/RecordingViewModel.cpp
+    src/ui/qml/VisualizerViewModel.hpp
+    src/ui/qml/VisualizerViewModel.cpp
+    src/ui/qml/QmlWorkspaceHost.hpp
+    src/ui/qml/QmlWorkspaceHost.cpp
 )
 
 # Common include directories
@@ -393,6 +407,10 @@ set(COMMON_LIBS
     Qt6::Network
     Qt6::Sql
     Qt6::WebEngineWidgets
+    Qt6::Qml
+    Qt6::Quick
+    Qt6::QuickControls2
+    Qt6::QuickWidgets
     ${TAGLIB_LIBRARIES}
     ${GLEW_LIBRARIES}
     ${FFMPEG_LIBRARIES}

@@ -14,4 +14,8 @@
         <file>icons/shuffle.svg</file>
         <file>icons/repeat.svg</file>
     </qresource>
+    <qresource prefix="/qml">
+        <file>qml/MainWorkspace.qml</file>
+        <file>qml/components/AccordionSection.qml</file>
+    </qresource>
 </RCC>

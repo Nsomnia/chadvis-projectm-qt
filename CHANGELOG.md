@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Older versions archived in [`docs/changelogs/`](docs/changelogs/).
 
+## [Unreleased] - 2026-02-23
+
+### Added
+- **QML Workspace Dock**: Added a modern Qt Quick workspace focused on remote Suno playback in `resources/qml/MainWorkspace.qml`.
+- **Accordion Navigation Component**: Added `resources/qml/components/AccordionSection.qml` for large, mobile-style vertical navigation.
+- **Single-Purpose QML Bridge Layer** (`src/ui/qml/`):
+  - `PlaybackViewModel`
+  - `PlaylistTrackModel`
+  - `SunoClipListModel`
+  - `SunoRemoteLibraryViewModel`
+  - `RecordingViewModel`
+  - `VisualizerViewModel`
+  - `QmlWorkspaceHost`
+
+### Changed
+- **Main Window Layout**: Replaced the previous right-side tab canvas with a QML accordion workspace dock while keeping the visualizer as the central canvas.
+- **Signal Wiring Ownership**: Main window now directly handles recorder frame/audio wiring and visualizer audio feed for clearer responsibility boundaries.
+- **Build Configuration**: Added Qt Quick dependencies (`Qml`, `Quick`, `QuickControls2`, `QuickWidgets`) and registered new QML/UI source files.
+- **Resource Packaging**: Added QML resources to `resources/chadvis-projectm-qt.qrc`.
+
 ## [1.1.0-alpha] - 2026-02-12
 
 ### Added

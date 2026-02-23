@@ -69,13 +69,12 @@ void MainWindowMenus::setupViewMenu(QMainWindow* window, MainWindow* mainWindow,
     auto* useSidebarAction = viewMenu->addAction("Use &Sidebar Layout");
     useSidebarAction->setCheckable(true);
     useSidebarAction->setChecked(useSidebarLayout);
-    window->connect(useSidebarAction, &QAction::toggled, window, [mainWindow, toolsDock, &useSidebarLayout](bool useSidebar) {
+    window->connect(useSidebarAction, &QAction::toggled, window, [toolsDock, &useSidebarLayout](bool useSidebar) {
         useSidebarLayout = useSidebar;
         if (useSidebar) {
-            toolsDock->hide();
-            mainWindow->visualizerPanel()->visualizer()->toggleFullscreen();
-        } else {
             toolsDock->show();
+        } else {
+            toolsDock->hide();
         }
     });
 }
