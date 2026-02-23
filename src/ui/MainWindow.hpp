@@ -16,29 +16,24 @@
 #include <functional>
 #include <memory>
 
-namespace chadvis {
-class SidebarWidget;
-}
+class QDockWidget;
 
 namespace vc {
 
-class LyricsPanel;
-class PlayerControls;
-class PlaylistView;
 class VisualizerPanel;
-class PresetBrowser;
-class RecordingControls;
-class OverlayEditor;
-class KaraokeWidget;
-
-class AudioController;
-class VisualizerController;
-
-class RecordingController;
 
 namespace suno {
 class SunoController;
 }
+
+namespace ui::qml {
+class QmlWorkspaceHost;
+class PlaybackViewModel;
+class PlaylistTrackModel;
+class SunoRemoteLibraryViewModel;
+class RecordingViewModel;
+class VisualizerViewModel;
+} // namespace ui::qml
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -95,7 +90,6 @@ private slots:
 
 private:
     void setupUI();
-    void setupMenuBar();
     void setupConnections();
     void setupUpdateTimer();
     void updateWindowTitle();
@@ -105,31 +99,25 @@ private:
     OverlayEngine* overlayEngine_{nullptr};
     VideoRecorder* videoRecorder_{nullptr};
 
-    // Controllers
-    std::unique_ptr<AudioController> audioController_;
-    std::unique_ptr<VisualizerController> visualizerController_;
-    std::unique_ptr<RecordingController> recordingController_;
+    // Domain controllers
     std::unique_ptr<suno::SunoController> sunoController_;
 
-    // UI Widgets
-    PlayerControls* playerControls_{nullptr};
-    PlaylistView* playlistView_{nullptr};
+    // Core UI widgets
     VisualizerPanel* visualizerPanel_{nullptr};
-    PresetBrowser* presetBrowser_{nullptr};
-    RecordingControls* recordingControls_{nullptr};
-    OverlayEditor* overlayEditor_{nullptr};
-    KaraokeWidget* karaokeWidget_{nullptr};
-    LyricsPanel* lyricsPanel_{nullptr};
+    ui::qml::QmlWorkspaceHost* workspaceHost_{nullptr};
 
-    // Dock widgets
+    // Dock widgets and layout mode
     QDockWidget* toolsDock_{nullptr};
-    
-    // Modern sidebar (default layout)
-    chadvis::SidebarWidget* sidebarWidget_{nullptr};
     bool useSidebarLayout_{true};
 
+    // QML view-model layer
+    std::unique_ptr<ui::qml::PlaybackViewModel> playbackViewModel_;
+    std::unique_ptr<ui::qml::PlaylistTrackModel> playlistTrackModel_;
+    std::unique_ptr<ui::qml::SunoRemoteLibraryViewModel> sunoLibraryViewModel_;
+    std::unique_ptr<ui::qml::RecordingViewModel> recordingViewModel_;
+    std::unique_ptr<ui::qml::VisualizerViewModel> visualizerViewModel_;
+
     QTimer updateTimer_;
-    bool isFullscreen_{false};
 };
 
 } // namespace vc
