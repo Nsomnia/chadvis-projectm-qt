@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased - JUCE Audio Refactor] - 2026-02-25
+
+### Added
+- **JUCE Audio Framework Integration**: Major refactor to replace Qt Multimedia with JUCE for professional audio processing
+  - `JuceAudioEngine`: Core audio engine with AudioIODeviceCallback for real-time audio processing
+  - `URLAudioSource`: HTTP audio streaming with background buffering for Suno integration
+  - `AnalyserSource`: FFT-based audio analysis with PCM data extraction for projectM visualizer feed
+  - `EffectsChain`: DAW-like effects processing with Gain, Reverb, and Compressor effects
+  - `JucePluginHost`: VST3/AU plugin hosting capability for audio processing
+  - `ProjectMBridge`: Bridge component connecting JUCE audio analysis to projectM visualizer
+  
+- **CMake Build System Updates**: Added JUCE as optional dependency with CPM fallback
+  - `CHADVIS_USE_JUCE` option to enable/disable JUCE integration (default: ON)
+  - `CHADVIS_JUCE_FROM_SOURCE` option to build JUCE from source
+  - Automatic detection of system JUCE on Arch Linux
+  - Platform-specific JUCE module configuration (Linux/X11, macOS, Windows)
+  
+- **Architecture Documentation**: Created comprehensive JUCE refactor documentation
+  - `.agent/JUCE_REFACTOR_DESIGN.md`: Full architecture design and migration strategy
+  - Module organization with new `src/audio/juce/` directory structure
+  
+- **Modern Qt/QML GUI Research**: Identified modern UI templates and patterns
+  - QmlAppTemplate: Full-featured Qt6/QML application template
+  - MusicDashboard: Modern music player QML/C++ reference implementation
+  - Dark theme design system with material-style controls
+
+### Changed
+- **Audio Architecture**: Transitioning from Qt Multimedia to JUCE audio framework
+  - Qt Multimedia remains as fallback when JUCE is unavailable
+  - JUCE provides cross-platform audio consistency and professional DSP capabilities
+  
+### Technical Details
+- JUCE modules included: juce_core, juce_audio_basics, juce_audio_devices, juce_audio_formats,
+  juce_audio_processors, juce_audio_utils, juce_dsp, juce_gui_basics, juce_network, juce_opengl
+- Real-time audio safety: No allocations in audio callback, lock-free communication
+- URL streaming: Background buffering with progress signaling for network audio
+- FFT analysis: Configurable FFT size (default 512), Hann windowing, magnitude/phase extraction
+
 ## [Unreleased] - 2026-02-02
 
 ### Added
