@@ -361,6 +361,8 @@ set(UI_SOURCES
     src/ui/widgets/LoadingSpinner.cpp
     src/ui/widgets/WaveformSeekBar.hpp
     src/ui/widgets/WaveformSeekBar.cpp
+    src/ui/widgets/VolumeMeter.hpp
+    src/ui/widgets/VolumeMeter.cpp
     
     # Modern Accordion UI
     src/ui/accordion/AccordionContainer.hpp
