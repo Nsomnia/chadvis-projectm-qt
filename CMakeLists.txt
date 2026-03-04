@@ -357,6 +357,8 @@ set(UI_SOURCES
     src/ui/widgets/GlowButton.cpp
     src/ui/widgets/ToggleSwitch.hpp
     src/ui/widgets/ToggleSwitch.cpp
+    src/ui/widgets/LoadingSpinner.hpp
+    src/ui/widgets/LoadingSpinner.cpp
     
     # Modern Accordion UI
     src/ui/accordion/AccordionContainer.hpp
