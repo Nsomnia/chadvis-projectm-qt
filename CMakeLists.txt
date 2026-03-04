@@ -363,6 +363,8 @@ set(UI_SOURCES
     src/ui/widgets/WaveformSeekBar.cpp
     src/ui/widgets/VolumeMeter.hpp
     src/ui/widgets/VolumeMeter.cpp
+    src/ui/widgets/SpectrumAnalyzer.hpp
+    src/ui/widgets/SpectrumAnalyzer.cpp
     
     # Modern Accordion UI
     src/ui/accordion/AccordionContainer.hpp
