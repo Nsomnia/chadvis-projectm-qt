@@ -5,7 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased - JUCE Audio Refactor] - 2026-02-25
+## [Unreleased - JUCE Integration] - 2026-03-04
+
+### Added
+- **JUCE Audio Engine**: Full implementation replacing stub code
+  - AudioIODeviceCallback for real-time audio processing
+  - AudioFormatManager for file/URL loading
+  - AudioTransportSource for playback control
+  - AnalyserSource integration for FFT visualization
+  - Proper device initialization and shutdown
+
+- **Agent Documentation**: Created `.agent/` directory with:
+  - TODO.md - Master task tracking
+  - SCRATCHPAD.md - Working notes for sessions
+
+### Changed
+- **JuceAudioEngine**: Replaced empty `Impl` struct with full JUCE implementation
+- **AnalyserSource**: Added working FFT analysis with magnitude/phase output
+
+## [Unreleased - Modern UI & JUCE Integration] - 2026-02-25
 
 ### Added
 - **JUCE Audio Framework Integration**: Major refactor to replace Qt Multimedia with JUCE for professional audio processing
