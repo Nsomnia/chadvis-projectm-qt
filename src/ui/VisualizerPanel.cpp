@@ -1,5 +1,6 @@
 #include "VisualizerPanel.hpp"
 #include "MarqueeLabel.hpp"
+#include "audio/AudioBridge.hpp"
 #include "core/Logger.hpp"
 #include "overlay/OverlayEngine.hpp"
 #include "visualizer/VisualizerWindow.hpp"
@@ -17,6 +18,35 @@ VisualizerPanel::VisualizerPanel(QWidget* parent) : QWidget(parent) {
 void VisualizerPanel::setOverlayEngine(OverlayEngine* engine) {
     if (visualizerWindow_) {
         visualizerWindow_->setOverlayEngine(engine);
+    }
+}
+
+void VisualizerPanel::setAudioBridge(AudioBridge* bridge) {
+    if (audioBridge_) {
+        // Disconnect old bridge
+        disconnect(audioBridge_, nullptr, this, nullptr);
+    }
+    audioBridge_ = bridge;
+    if (audioBridge_) {
+        // Connect PCM data signal
+        connect(this, &VisualizerPanel::onAudioBridgePCM, 
+                this, [this]() {
+            if (!audioBridge_ || !visualizerWindow_) return;
+            
+            // Get PCM data from bridge
+            auto& engine = visualizerWindow_->projectM().engine();
+            float left[512], right[512];
+            audioBridge_->copyPCMData(left, right, 512);
+            
+            // Feed to projectM (interleaved)
+            float interleaved[1024];
+            for (int i = 0; i < 512; ++i) {
+                interleaved[i * 2] = left[i];
+                interleaved[i * 2 + 1] = right[i];
+            }
+            engine.addPCMDataInterleaved(interleaved, 512, 2);
+        });
+        LOG_DEBUG("AudioBridge connected to VisualizerPanel");
     }
 }
 

@@ -12,6 +12,7 @@
 namespace vc {
 
 class OverlayEngine;
+class AudioBridge;
 class MarqueeLabel;
 
 class VisualizerPanel : public QWidget {
@@ -24,6 +25,7 @@ public:
         return visualizerWindow_;
     }
     void setOverlayEngine(OverlayEngine* engine);
+    void setAudioBridge(AudioBridge* bridge);
 
 signals:
     void fullscreenRequested();
@@ -33,6 +35,7 @@ signals:
 public slots:
     void updatePresetName(const QString& name);
     void updateFPS(f32 fps);
+    void onAudioBridgePCM();  // New: Handle PCM from AudioBridge
 
 private:
     void setupUI();
@@ -44,6 +47,7 @@ private:
     QPushButton* lockButton_{nullptr};
     QPushButton* nextPresetButton_{nullptr};
     QPushButton* prevPresetButton_{nullptr};
+    AudioBridge* audioBridge_{nullptr};
 };
 
 } // namespace vc
