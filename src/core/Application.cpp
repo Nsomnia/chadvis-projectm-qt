@@ -4,6 +4,7 @@
 #include "Config.hpp"
 #include "Logger.hpp"
 #include "audio/AudioEngine.hpp"
+#include "audio/AudioBridge.hpp"
 #include "overlay/OverlayEngine.hpp"
 #include "recorder/VideoRecorder.hpp"
 #include "ui/MainWindow.hpp"
