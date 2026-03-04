@@ -359,6 +359,8 @@ set(UI_SOURCES
     src/ui/widgets/ToggleSwitch.cpp
     src/ui/widgets/LoadingSpinner.hpp
     src/ui/widgets/LoadingSpinner.cpp
+    src/ui/widgets/WaveformSeekBar.hpp
+    src/ui/widgets/WaveformSeekBar.cpp
     
     # Modern Accordion UI
     src/ui/accordion/AccordionContainer.hpp
