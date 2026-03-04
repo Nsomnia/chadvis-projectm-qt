@@ -359,6 +359,10 @@ set(UI_SOURCES
     src/ui/accordion/AccordionContainer.cpp
     src/ui/accordion/AccordionPanel.hpp
     src/ui/accordion/AccordionPanel.cpp
+    
+    # Icon System
+    src/ui/IconManager.hpp
+    src/ui/IconManager.cpp
 )
 
 # Common include directories
