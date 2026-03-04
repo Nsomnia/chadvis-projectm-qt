@@ -363,6 +363,10 @@ set(UI_SOURCES
     # Icon System
     src/ui/IconManager.hpp
     src/ui/IconManager.cpp
+    
+    # Bottom Tools Panel
+    src/ui/BottomToolsPanel.hpp
+    src/ui/BottomToolsPanel.cpp
 )
 
 # Common include directories
