@@ -7,21 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased - JUCE Integration] - 2026-03-04
 
-### Added
-- **JUCE Audio Engine**: Full implementation replacing stub code
-  - AudioIODeviceCallback for real-time audio processing
-  - AudioFormatManager for file/URL loading
-  - AudioTransportSource for playback control
-  - AnalyserSource integration for FFT visualization
-  - Proper device initialization and shutdown
+### Added - JUCE Audio Engine
+- **JuceAudioEngine**: Full JUCE audio backend implementation
+  - AudioDeviceManager with automatic device selection
+  - AudioSourcePlayer chain with transport controls
+  - Real-time FFT analyzer (AnalyserSource) for visualization
+  - Support for local files, URLs, and memory buffers
+  - Thread-safe audio processing with lock-free atomics
+- **URLAudioSource**: HTTP streaming with progress reporting
+  - Background download thread with cancellation
+  - Memory buffering for seamless playback
+  - Progress signals for UI feedback
+- **AudioBridge**: JUCE → ProjectM PCM data pipeline
+  - Thread-safe ring buffer for audio transfer
+  - Configurable buffer sizes (512 samples for ProjectM)
+  - Gain control and visualization modes
+- **JucePluginHost**: VST/AU plugin support (existing, verified)
 
-- **Agent Documentation**: Created `.agent/` directory with:
-  - TODO.md - Master task tracking
-  - SCRATCHPAD.md - Working notes for sessions
+### Added - Modern UI System
+- **AccordionContainer/Panel**: Collapsible panel system
+  - Smooth 200ms OutCubic animations
+  - Single/multi-expansion modes
+  - Glassmorphism styling with dark theme
+- **IconManager**: SVG icon loading and caching
+  - Color customization with QColor
+  - Pixmap caching for performance
+  - 26 essential icons (play, pause, music, mic, video, etc.)
+- **BottomToolsPanel**: Accordion wrapper for tool widgets
+- **LoadingSpinner**: Animated circular spinner widget
+  - 60fps smooth rotation
+  - Configurable color, thickness, size
+- **WaveformSeekBar**: Audio waveform visualization
+  - Click/drag to seek
+  - Hover preview with time tooltip
+  - Loaded region indicator
+
+### Added - Video Export
+- **KaraokeVideoExporter**: Music video generation
+  - ProjectM frame capture at configurable resolution
+  - Lyrics overlay rendering
+  - FFmpeg encoding with configurable codec
+- **Video Menu**: Export actions in MainWindow
+  - "Export Karaoke Video..." with file dialog
+  - Quick 1080p and 4K export presets
+
+### Changed - MainWindow
+- **Video Menu**: Added after Recording menu
+  - Quick Export 1080p (Ctrl+Shift+R)
+  - Quick Export 4K
+  - Custom export with file dialog
 
 ### Changed
-- **JuceAudioEngine**: Replaced empty `Impl` struct with full JUCE implementation
-- **AnalyserSource**: Added working FFT analysis with magnitude/phase output
+- **MainWindow Layout**: Added View menu option "Use Sidebar Layout" (toggle between legacy tab-based and modern sidebar layouts).
+- **Lyrics Alignment**: Heuristic alignment now skips `[` and `]` tags but retains parentheses for sections like "(Verse)", handling varied bracket styles from Suno. Preserves word-level timing for sections like `[Verse]` while skipping other tags like `[Verse]` and `[Chorus]`.
 
 ## [Unreleased - Modern UI & JUCE Integration] - 2026-02-25
 
