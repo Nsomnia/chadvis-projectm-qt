@@ -225,6 +225,8 @@ set(AUDIO_SOURCES
     src/audio/AudioEngine.cpp
     src/audio/AudioAnalyzer.hpp
     src/audio/AudioAnalyzer.cpp
+    src/audio/AudioBridge.hpp
+    src/audio/AudioBridge.cpp
     src/audio/Playlist.hpp
     src/audio/Playlist.cpp
     src/audio/MediaMetadata.hpp
