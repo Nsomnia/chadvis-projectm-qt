@@ -289,6 +289,8 @@ set(RECORDER_SOURCES
     src/recorder/EncoderSettings.cpp
     src/recorder/FrameGrabber.hpp
     src/recorder/FrameGrabber.cpp
+    src/recorder/KaraokeVideoExporter.hpp
+    src/recorder/KaraokeVideoExporter.cpp
     src/recorder/VideoRecorderCore.hpp
     src/recorder/VideoRecorderCore.cpp
     src/recorder/VideoRecorderFFmpeg.hpp
