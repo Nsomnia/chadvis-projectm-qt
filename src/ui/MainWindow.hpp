@@ -92,6 +92,7 @@ private slots:
     void onShowSettings();
     void onShowAbout();
     void onUpdateLoop();
+    void onExportKaraokeVideo(int width = 1920, int height = 1080, int fps = 30);
 
 private:
     void setupUI();

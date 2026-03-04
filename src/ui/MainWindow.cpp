@@ -5,6 +5,7 @@
 #include "LyricsPanel.hpp"
 #include "PlayerControls.hpp"
 #include "SidebarWidget.hpp"
+#include "recorder/KaraokeVideoExporter.hpp"
 
 #include "PlaylistView.hpp"
 #include "PresetBrowser.hpp"
@@ -324,6 +325,19 @@ void MainWindow::setupMenuBar() {
     recordMenu->addAction(
             "S&top Recording", this, &MainWindow::onStopRecording);
 
+    auto* videoMenu = menuBar()->addMenu("&Video");
+    videoMenu->addAction("&Export Karaoke Video...",
+                          QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E),
+                          this,
+                          &MainWindow::onExportKaraokeVideo);
+    videoMenu->addSeparator();
+    videoMenu->addAction("Quick Export (1080p)", this, [this] {
+        onExportKaraokeVideo(1920, 1080, 30);
+    });
+    videoMenu->addAction("Quick Export (4K)", this, [this] {
+        onExportKaraokeVideo(3840, 2160, 30);
+    });
+
     auto* toolsMenu = menuBar()->addMenu("&Tools");
     toolsMenu->addAction("&Settings...",
                          QKeySequence::Preferences,
@@ -575,6 +589,69 @@ void MainWindow::dropEvent(QDropEvent* event) {
             addToPlaylist(fs::path(p.toStdString()));
         statusBar()->showMessage(
                 QString("Added %1 files to playlist").arg(paths.size()));
+    }
+}
+
+void MainWindow::onExportKaraokeVideo(int width, int height, int fps) {
+    // Check if we have something to export
+    if (!audioEngine_->playlist().currentItem()) {
+        QMessageBox::warning(this, "No Track", 
+            "Please load and play a track before exporting.");
+        return;
+    }
+    
+    // Get output path
+    QString outputPath = QFileDialog::getSaveFileName(
+        this,
+        "Export Karaoke Video",
+        QDir::homePath() + "/karaoke_video.mp4",
+        "MP4 Video (*.mp4);;WebM Video (*.webm)",
+        nullptr,
+        QFileDialog::DontUseNativeDialog);
+    
+    if (outputPath.isEmpty()) return;
+    
+    // Configure export
+    KaraokeVideoExportSettings settings;
+    settings.outputPath = outputPath;
+    settings.width = width;
+    settings.height = height;
+    settings.fps = fps;
+    settings.codec = outputPath.endsWith(".webm") ? "libvpx-vp9" : "libx264";
+    settings.bitrate = width >= 3840 ? "20M" : "8M";
+    
+    // Create exporter
+    auto* exporter = new KaraokeVideoExporter(this);
+    exporter->setVisualizerPanel(visualizerPanel_);
+    exporter->setOverlayEngine(overlayEngine_);
+    exporter->setAudioEngine(audioEngine_);
+    
+    // Connect progress
+    connect(exporter, &KaraokeVideoExporter::progress, this, 
+        [this](int current, int total) {
+            statusBar()->showMessage(
+                QString("Exporting frame %1/%2").arg(current).arg(total));
+        });
+    
+    connect(exporter, &KaraokeVideoExporter::finished, this, 
+        [this, exporter, outputPath](bool success) {
+            if (success) {
+                statusBar()->showMessage("Export complete: " + outputPath);
+                QMessageBox::information(this, "Export Complete",
+                    QString("Video saved to:\n%1").arg(outputPath));
+            } else {
+                statusBar()->showMessage("Export failed");
+            }
+            exporter->deleteLater();
+        });
+    
+    // Start export
+    if (!exporter->start(settings)) {
+        QMessageBox::critical(this, "Export Error", 
+            "Failed to start video export.");
+        exporter->deleteLater();
+    } else {
+        statusBar()->showMessage("Starting video export...");
     }
 }
 
