@@ -353,6 +353,12 @@ set(UI_SOURCES
     src/ui/widgets/GlowButton.cpp
     src/ui/widgets/ToggleSwitch.hpp
     src/ui/widgets/ToggleSwitch.cpp
+    
+    # Modern Accordion UI
+    src/ui/accordion/AccordionContainer.hpp
+    src/ui/accordion/AccordionContainer.cpp
+    src/ui/accordion/AccordionPanel.hpp
+    src/ui/accordion/AccordionPanel.cpp
 )
 
 # Common include directories
