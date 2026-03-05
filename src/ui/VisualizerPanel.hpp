@@ -1,9 +1,8 @@
 #pragma once
-// VisualizerPanel.hpp - Container for visualizer with controls
-// The frame around the pretty colors
 
 #include "util/Types.hpp"
 #include "visualizer/VisualizerWindow.hpp"
+#include "audio/AudioBridge.hpp"
 
 #include <QLabel>
 #include <QPushButton>
@@ -12,8 +11,9 @@
 namespace vc {
 
 class OverlayEngine;
-class AudioBridge;
 class MarqueeLabel;
+
+using audio::AudioBridge;
 
 class VisualizerPanel : public QWidget {
     Q_OBJECT

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      width: 300px;
+      font-family: 'Segoe UI', -apple-system, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      padding: 16px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #2a2a4a;
+    }
+
+    .header img {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+    }
+
+    .header h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .header .version {
+      font-size: 11px;
+      color: #888;
+      margin-left: auto;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: #16213e;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .status-row .label {
+      font-size: 12px;
+      color: #aaa;
+    }
+
+    .status-row .value {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot.green { background: #10b981; box-shadow: 0 0 6px #10b98155; }
+    .dot.red { background: #ef4444; box-shadow: 0 0 6px #ef444455; }
+    .dot.gray { background: #6b7280; }
+    .dot.yellow { background: #f59e0b; box-shadow: 0 0 6px #f59e0b55; }
+
+    .error-box {
+      background: #2d1b1b;
+      border: 1px solid #4a2020;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 11px;
+      color: #f87171;
+      margin-bottom: 8px;
+      display: none;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-top: 8px;
+    }
+
+    .btn-primary {
+      background: #7c3aed;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #6d28d9;
+    }
+
+    .btn-secondary {
+      background: #2a2a4a;
+      color: #ccc;
+    }
+
+    .btn-secondary:hover {
+      background: #3a3a5a;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 12px;
+      font-size: 10px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon48.png" alt="ChadVis">
+    <h1>ChadVis Token Helper</h1>
+    <span class="version">v1.0</span>
+</div>
+
+<div class="status-row">
+    <span class="label">ChadVis App</span>
+    <span class="value" id="app-status">
+      <span class="dot gray" id="app-dot"></span>
+      <span id="app-text">Checking...</span>
+    </span>
+  </div>
+
+  <div class="status-row">
+    <span class="label">Suno Login</span>
+    <span class="value" id="suno-status">
+      <span class="dot gray" id="suno-dot"></span>
+      <span id="suno-text">Unknown</span>
+    </span>
+  </div>
+
+  <div class="status-row">
+    <span class="label">Last Refresh</span>
+    <span class="value" id="last-refresh">—</span>
+  </div>
+
+  <div class="error-box" id="error-box"></div>
+
+  <button class="btn btn-primary" id="refresh-btn">Refresh Token Now</button>
+  <button class="btn btn-secondary" id="check-btn">Check Connection</button>
+
+  <div class="footer">Token auto-refreshes every 50 seconds</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

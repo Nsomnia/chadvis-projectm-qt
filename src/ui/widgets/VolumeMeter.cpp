@@ -62,12 +62,11 @@ void VolumeMeter::paintEvent(QPaintEvent*) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    auto rect = this->rect();
-    int meterWidth = stereo_ ? (width() - 6) / 2 : width() - 4;
-    int meterHeight = height() - 4;
+	auto rect = this->rect();
+	int meterWidth = stereo_ ? (width() - 6) / 2 : width() - 4;
 
-    // Background
-    painter.fillRect(rect, colorBg_);
+	// Background
+	painter.fillRect(rect, colorBg_);
 
     if (stereo_) {
         // Left channel
@@ -82,12 +81,11 @@ void VolumeMeter::paintEvent(QPaintEvent*) {
 void VolumeMeter::drawChannel(QPainter& painter, int x, int width, float level, float peak) {
     int height = this->height() - 4;
 
-    // Background gradient segments
-    int greenZone = static_cast<int>(height * 0.6);
-    int yellowZone = static_cast<int>(height * 0.25);
-    int redZone = height - greenZone - yellowZone;
+	// Background gradient segments
+	int greenZone = static_cast<int>(height * 0.6);
+	int yellowZone = static_cast<int>(height * 0.25);
 
-    // Draw level bar from bottom up
+	// Draw level bar from bottom up
     int levelHeight = static_cast<int>(level * height);
 
     // Green zone (bottom 60%)

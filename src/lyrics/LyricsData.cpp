@@ -457,13 +457,13 @@ std::string toSrt(const LyricsData& lyrics) {
 std::string toLrc(const LyricsData& lyrics) {
     std::ostringstream out;
     
-    auto fmtTime = [](f32 time) -> std::string {
+auto fmtTime = [](f32 time) -> std::string {
         int totalSec = static_cast<int>(time);
         int min = totalSec / 60;
         int sec = totalSec % 60;
         int cs = static_cast<int>((time - totalSec) * 100);
-        
-        char buf[16];
+
+        char buf[32];
         snprintf(buf, sizeof(buf), "%02d:%02d.%02d", min, sec, cs);
         return std::string(buf);
     };

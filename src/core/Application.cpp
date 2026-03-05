@@ -432,7 +432,7 @@ Result<void> Application::init(const AppOptions& opts) {
     }
 
     LOG_DEBUG("Initializing audio bridge...");
-    audioBridge_ = std::make_unique<AudioBridge>();
+    audioBridge_ = std::make_unique<audio::AudioBridge>();
 
     LOG_DEBUG("Initializing overlay engine...");
     overlayEngine_ = std::make_unique<OverlayEngine>();

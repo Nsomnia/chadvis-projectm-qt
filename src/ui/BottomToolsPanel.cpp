@@ -93,7 +93,7 @@ void BottomToolsPanel::setupStyling() {
     )");
 }
 
-void BottomToolsPanel::setPlaylistView(PlaylistView* view) {
+	void BottomToolsPanel::setPlaylistView(vc::PlaylistView* view) {
     if (playlistView_ && playlistWrapper_->layout()) {
         playlistWrapper_->layout()->removeWidget(playlistView_);
     }
@@ -110,52 +110,52 @@ void BottomToolsPanel::setPlaylistView(PlaylistView* view) {
     }
 }
 
-void BottomToolsPanel::setPresetBrowser(PresetBrowser* browser) {
-    if (presetBrowser_ && presetWrapper_->layout()) {
-        presetWrapper_->layout()->removeWidget(presetBrowser_);
-    }
-    presetBrowser_ = browser;
-    if (browser && presetWrapper_->layout()) {
-        QLayoutItem* item;
-        while ((item = presetWrapper_->layout()->takeAt(0)) != nullptr) {
-            if (item->widget()) item->widget()->deleteLater();
-            delete item;
-        }
-        browser->setParent(presetWrapper_);
-        presetWrapper_->layout()->addWidget(browser);
-    }
+void BottomToolsPanel::setPresetBrowser(vc::PresetBrowser* browser) {
+	if (presetBrowser_ && presetWrapper_->layout()) {
+		presetWrapper_->layout()->removeWidget(presetBrowser_);
+	}
+	presetBrowser_ = browser;
+	if (browser && presetWrapper_->layout()) {
+		QLayoutItem* item;
+		while ((item = presetWrapper_->layout()->takeAt(0)) != nullptr) {
+			if (item->widget()) item->widget()->deleteLater();
+			delete item;
+		}
+		browser->setParent(presetWrapper_);
+		presetWrapper_->layout()->addWidget(browser);
+	}
 }
 
-void BottomToolsPanel::setRecordingControls(RecordingControls* controls) {
-    if (recordingControls_ && recordingWrapper_->layout()) {
-        recordingWrapper_->layout()->removeWidget(recordingControls_);
-    }
-    recordingControls_ = controls;
-    if (controls && recordingWrapper_->layout()) {
-        QLayoutItem* item;
-        while ((item = recordingWrapper_->layout()->takeAt(0)) != nullptr) {
-            if (item->widget()) item->widget()->deleteLater();
-            delete item;
-        }
-        controls->setParent(recordingWrapper_);
-        recordingWrapper_->layout()->addWidget(controls);
-    }
+void BottomToolsPanel::setRecordingControls(vc::RecordingControls* controls) {
+	if (recordingControls_ && recordingWrapper_->layout()) {
+		recordingWrapper_->layout()->removeWidget(recordingControls_);
+	}
+	recordingControls_ = controls;
+	if (controls && recordingWrapper_->layout()) {
+		QLayoutItem* item;
+		while ((item = recordingWrapper_->layout()->takeAt(0)) != nullptr) {
+			if (item->widget()) item->widget()->deleteLater();
+			delete item;
+		}
+		controls->setParent(recordingWrapper_);
+		recordingWrapper_->layout()->addWidget(controls);
+	}
 }
 
-void BottomToolsPanel::setOverlayEditor(OverlayEditor* editor) {
-    overlayEditor_ = editor;
+void BottomToolsPanel::setOverlayEditor(vc::OverlayEditor* editor) {
+	overlayEditor_ = editor;
 }
 
-void BottomToolsPanel::setKaraokeWidget(KaraokeWidget* widget) {
-    karaokeWidget_ = widget;
+void BottomToolsPanel::setKaraokeWidget(vc::KaraokeWidget* widget) {
+	karaokeWidget_ = widget;
 }
 
-void BottomToolsPanel::setSunoBrowser(SunoBrowser* browser) {
-    sunoBrowser_ = browser;
+void BottomToolsPanel::setSunoBrowser(vc::suno::SunoBrowser* browser) {
+	sunoBrowser_ = browser;
 }
 
-void BottomToolsPanel::setLyricsPanel(LyricsPanel* panel) {
-    lyricsPanel_ = panel;
+void BottomToolsPanel::setLyricsPanel(vc::LyricsPanel* panel) {
+	lyricsPanel_ = panel;
 }
 
 void BottomToolsPanel::expandPanel(const QString& id) {

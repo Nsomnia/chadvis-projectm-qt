@@ -4,10 +4,9 @@
  */
 
 #include "KaraokeVideoExporter.hpp"
-#include "VideoRecorderCore.hpp"
-#include "ui/VisualizerPanel.hpp"
-#include "overlay/OverlayEngine.hpp"
 #include "audio/AudioEngine.hpp"
+#include "overlay/OverlayEngine.hpp"
+#include "visualizer/VisualizerWindow.hpp"
 #include "core/Logger.hpp"
 
 #include <QImage>
@@ -25,8 +24,8 @@ KaraokeVideoExporter::~KaraokeVideoExporter() {
     cancelExport();
 }
 
-void KaraokeVideoExporter::setVisualizerPanel(VisualizerPanel* panel) {
-    visualizerPanel_ = panel;
+void KaraokeVideoExporter::setVisualizerWindow(VisualizerWindow* window) {
+    visualizerWindow_ = window;
 }
 
 void KaraokeVideoExporter::setOverlayEngine(OverlayEngine* engine) {
@@ -37,7 +36,7 @@ void KaraokeVideoExporter::setAudioEngine(AudioEngine* engine) {
     audioEngine_ = engine;
 }
 
-void KaraokeVideoExporter::setLyrics(const lyrics::LyricsData& lyrics) {
+void KaraokeVideoExporter::setLyrics(const LyricsData& lyrics) {
     lyrics_ = lyrics;
 }
 
@@ -55,8 +54,8 @@ bool KaraokeVideoExporter::startExport(const Settings& settings) {
         return false;
     }
 
-    if (!visualizerPanel_) {
-        LOG_ERROR("No visualizer panel set");
+    if (!visualizerWindow_) {
+        LOG_ERROR("No visualizer window set");
         return false;
     }
 
@@ -76,18 +75,17 @@ bool KaraokeVideoExporter::startExport(const Settings& settings) {
              settings.resolution.height(),
              settings.fps);
 
-    // Get audio duration
     if (audioEngine_) {
-        duration_ = audioEngine_->duration();
+        durationMs_ = static_cast<double>(audioEngine_->duration().count());
     }
 
-    if (duration_ <= 0) {
+    if (durationMs_ <= 0) {
         LOG_ERROR("Invalid audio duration");
         exporting_.store(false);
         return false;
     }
 
-    totalFrames_ = static_cast<int>(duration_ * settings.fps);
+    totalFrames_ = static_cast<int>((durationMs_ / 1000.0) * settings.fps);
     LOG_INFO("Total frames: {}", totalFrames_);
 
     setupRecording();
@@ -110,61 +108,60 @@ void KaraokeVideoExporter::cancelExport() {
 }
 
 void KaraokeVideoExporter::setupRecording() {
-    // Create recorder
-    recorder_ = std::make_unique<recorder::VideoRecorderCore>();
+    recorder_ = std::make_unique<VideoRecorder>();
 
-    // Configure encoder
-    recorder::EncoderConfig config;
-    config.width = currentSettings_.resolution.width();
-    config.height = currentSettings_.resolution.height();
-    config.fps = currentSettings_.fps;
-    config.bitrate = currentSettings_.bitrate;
-    config.codec = currentSettings_.codec.toStdString();
-    config.preset = currentSettings_.preset.toStdString();
-    config.outputPath = currentSettings_.outputPath.toStdString();
+    EncoderSettings encoderSettings;
+    encoderSettings.video.width = static_cast<u32>(currentSettings_.resolution.width());
+    encoderSettings.video.height = static_cast<u32>(currentSettings_.resolution.height());
+    encoderSettings.video.fps = static_cast<u32>(currentSettings_.fps);
+    encoderSettings.video.bitrate = static_cast<u32>(currentSettings_.bitrate);
+    encoderSettings.video.crf = 18;
+    encoderSettings.outputPath = currentSettings_.outputPath.toStdString();
 
-    if (!recorder_->initialize(config)) {
-        LOG_ERROR("Failed to initialize recorder");
+    auto result = recorder_->start(encoderSettings);
+    if (!result) {
+        LOG_ERROR("Failed to initialize recorder: {}", result.error().message);
         exporting_.store(false);
         emit encodingFailed("Failed to initialize recorder");
         return;
     }
 
-    // Connect progress signal
-    connect(recorder_.get(), &recorder::VideoRecorderCore::progress,
-            this, &KaraokeVideoExporter::onEncodingProgress);
+    recorder_->stateChanged.connect([this](RecordingState state) {
+        onRecordingStateChanged(state);
+    });
 
-    // Start recording
-    if (!recorder_->start()) {
-        LOG_ERROR("Failed to start recorder");
-        exporting_.store(false);
-        emit encodingFailed("Failed to start recorder");
-        return;
+    if (visualizerWindow_) {
+        connect(visualizerWindow_, &VisualizerWindow::frameCaptured,
+                this, &KaraokeVideoExporter::onFrameCaptured);
+        visualizerWindow_->startRecording();
     }
 
-    // Start frame rendering
-    LOG_INFO("Recording started, rendering frames...");
-    
-    // Use a timer to render frames
-    auto* renderTimer = new QTimer(this);
-    connect(renderTimer, &QTimer::timeout, this, &KaraokeVideoExporter::onFrameReady);
-    renderTimer->start(1); // As fast as possible
+    LOG_INFO("Recording started, capturing frames...");
 }
 
-void KaraokeVideoExporter::onFrameReady() {
-    if (cancelled_.load() || currentFrame_ >= totalFrames_) {
+void KaraokeVideoExporter::onFrameCaptured(std::vector<u8> data, u32 width, u32 height, i64 timestamp) {
+    if (cancelled_.load() || !recorder_) return;
+
+    if (currentFrame_ >= totalFrames_) {
         finalize();
         return;
     }
 
-    // Calculate time for this frame
-    const double timeSeconds = static_cast<double>(currentFrame_) / currentSettings_.fps;
+    double timeSeconds = static_cast<double>(currentFrame_) / currentSettings_.fps;
 
-    // Render frame
-    renderFrame(timeSeconds);
+    QImage frame(reinterpret_cast<const uchar*>(data.data()),
+                 static_cast<int>(width),
+                 static_cast<int>(height),
+                 static_cast<int>(width * 4),
+                 QImage::Format_RGBA8888);
 
-    // Update progress
-    const float prog = static_cast<float>(currentFrame_) / totalFrames_;
+    if (!frame.isNull() && !lyrics_.empty()) {
+        renderLyrics(frame, timeSeconds);
+    }
+
+    recorder_->submitVideoFrame(std::move(data), width, height, timestamp);
+
+    float prog = static_cast<float>(currentFrame_) / totalFrames_;
     progress_.store(prog);
     emit progressChanged(prog);
     emit frameRendered(currentFrame_);
@@ -172,91 +169,73 @@ void KaraokeVideoExporter::onFrameReady() {
     currentFrame_++;
 }
 
-void KaraokeVideoExporter::renderFrame(double timeSeconds) {
-    if (!visualizerPanel_ || !recorder_) return;
+void KaraokeVideoExporter::renderLyrics(QImage& frame, double timeSeconds) {
+    QPainter painter(&frame);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::TextAntialiasing);
 
-    // Get frame from visualizer
-    QImage frame = visualizerPanel_->grabFramebuffer();
-    
-    if (frame.isNull()) {
-        frame = QImage(currentSettings_.resolution, QImage::Format_RGB32);
-        frame.fill(Qt::black);
-    }
+    const auto& lines = lyrics_.lines;
+    int activeLineIndex = -1;
 
-    // Scale to target resolution
-    if (frame.size() != currentSettings_.resolution) {
-        frame = frame.scaled(currentSettings_.resolution, 
-                             Qt::IgnoreAspectRatio, 
-                             Qt::SmoothTransformation);
-    }
+    for (size_t i = 0; i < lines.size(); ++i) {
+        double lineStart = static_cast<double>(lines[i].startTime);
+        double lineEnd = static_cast<double>(lines[i].endTime);
 
-    // Render lyrics overlay
-    if (overlayEngine_ && !lyrics_.empty()) {
-        QPainter painter(&frame);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setRenderHint(QPainter::TextAntialiasing);
-
-        // Find current lyric line
-        const auto& lines = lyrics_.lines;
-        int activeLineIndex = -1;
-        
-        for (size_t i = 0; i < lines.size(); ++i) {
-            if (timeSeconds >= lines[i].startTime && timeSeconds < lines[i].endTime) {
-                activeLineIndex = static_cast<int>(i);
-                break;
-            }
+        if (timeSeconds >= lineStart && timeSeconds < lineEnd) {
+            activeLineIndex = static_cast<int>(i);
+            break;
         }
+    }
 
-        // Configure font
-        QFont font(currentSettings_.fontFamily, currentSettings_.fontSize);
-        font.setBold(true);
-        painter.setFont(font);
+    QFont font(currentSettings_.fontFamily, currentSettings_.fontSize);
+    font.setBold(true);
+    painter.setFont(font);
 
-        const int y = currentSettings_.resolution.height() * currentSettings_.verticalPosition / 100;
+    const int y = currentSettings_.resolution.height() * currentSettings_.verticalPosition / 100;
 
-        // Draw shadow
+    if (activeLineIndex >= 0 && activeLineIndex < static_cast<int>(lines.size())) {
         if (currentSettings_.shadowColor.alpha() > 0) {
             painter.setPen(currentSettings_.shadowColor);
-            painter.drawText(0, y - currentSettings_.fontSize, 
-                            currentSettings_.resolution.width(), 
-                            currentSettings_.fontSize * 2,
-                            Qt::AlignHCenter | Qt::AlignVCenter,
-                            lines[activeLineIndex].text.c_str());
+            painter.drawText(2, y + 2,
+                           currentSettings_.resolution.width(),
+                           currentSettings_.fontSize * 2,
+                           Qt::AlignHCenter | Qt::AlignVCenter,
+                           QString::fromStdString(lines[activeLineIndex].text));
         }
 
-        // Draw active line
-        if (activeLineIndex >= 0 && activeLineIndex < static_cast<int>(lines.size())) {
-            painter.setPen(currentSettings_.activeColor);
-            painter.drawText(0, y, 
-                            currentSettings_.resolution.width(), 
-                            currentSettings_.fontSize * 2,
-                            Qt::AlignHCenter | Qt::AlignVCenter,
-                            lines[activeLineIndex].text.c_str());
-        }
+        painter.setPen(currentSettings_.activeColor);
+        painter.drawText(0, y,
+                        currentSettings_.resolution.width(),
+                        currentSettings_.fontSize * 2,
+                        Qt::AlignHCenter | Qt::AlignVCenter,
+                        QString::fromStdString(lines[activeLineIndex].text));
 
-        // Draw next line (preview)
-        if (activeLineIndex >= 0 && activeLineIndex + 1 < static_cast<int>(lines.size())) {
+        if (activeLineIndex + 1 < static_cast<int>(lines.size())) {
             painter.setPen(currentSettings_.inactiveColor);
             painter.setFont(QFont(currentSettings_.fontFamily, currentSettings_.fontSize * 0.7));
-            painter.drawText(0, y + currentSettings_.fontSize * 1.5,
+            painter.drawText(0, y + currentSettings_.fontSize * 2,
                             currentSettings_.resolution.width(),
                             currentSettings_.fontSize * 2,
                             Qt::AlignHCenter | Qt::AlignVCenter,
-                            lines[activeLineIndex + 1].text.c_str());
+                            QString::fromStdString(lines[activeLineIndex + 1].text));
         }
     }
-
-    // Encode frame
-    recorder_->addFrame(frame);
 }
 
-void KaraokeVideoExporter::onEncodingProgress(float progress) {
-    progress_.store(progress);
-    emit progressChanged(progress);
+void KaraokeVideoExporter::onRecordingStateChanged(RecordingState state) {
+    if (state == RecordingState::Stopped) {
+        finalize();
+    } else if (state == RecordingState::Error) {
+        emit encodingFailed("Recording error");
+    }
 }
 
 void KaraokeVideoExporter::finalize() {
     LOG_INFO("Finalizing video export...");
+
+    if (visualizerWindow_) {
+        visualizerWindow_->stopRecording();
+    }
 
     if (recorder_) {
         recorder_->stop();

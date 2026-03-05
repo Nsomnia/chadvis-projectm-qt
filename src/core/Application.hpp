@@ -30,9 +30,10 @@ namespace vc {
 
 class MainWindow;
 class AudioEngine;
-class AudioBridge;
 class OverlayEngine;
 class VideoRecorder;
+
+namespace audio { class AudioBridge; }
 
 struct AppOptions {
     // General
@@ -97,7 +98,7 @@ public:
     AudioEngine* audioEngine() const {
         return audioEngine_.get();
     }
-    AudioBridge* audioBridge() const {
+    audio::AudioBridge* audioBridge() const {
         return audioBridge_.get();
     }
     OverlayEngine* overlayEngine() const {
@@ -132,7 +133,7 @@ private:
     // Components - Declaration order matters for destruction (reverse order)
     // We want engines to stay alive until the UI is gone
     std::unique_ptr<AudioEngine> audioEngine_;
-    std::unique_ptr<AudioBridge> audioBridge_;
+    std::unique_ptr<audio::AudioBridge> audioBridge_;
     std::unique_ptr<OverlayEngine> overlayEngine_;
     std::unique_ptr<VideoRecorder> videoRecorder_;
     std::unique_ptr<MainWindow> mainWindow_;

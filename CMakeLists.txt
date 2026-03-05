@@ -269,6 +269,8 @@ set(SUNO_SOURCES
     src/suno/LyricAligner.hpp
     src/suno/SunoLyrics.hpp
     src/suno/SunoLyrics.cpp
+    src/suno/TokenServer.hpp
+    src/suno/TokenServer.cpp
 )
 
 set(OVERLAY_SOURCES
