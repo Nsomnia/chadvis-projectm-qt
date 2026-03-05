@@ -6,31 +6,29 @@
 #pragma once
 
 #include "lyrics/LyricsData.hpp"
+#include "recorder/VideoRecorderCore.hpp"
 #include <QObject>
 #include <QString>
 #include <QSize>
+#include <QColor>
 #include <memory>
-#include <functional>
 #include <atomic>
 
 namespace vc {
 
-class VisualizerPanel;
+class VisualizerWindow;
 class OverlayEngine;
 class AudioEngine;
-
-namespace recorder {
-class VideoRecorderCore;
-}
+class VideoRecorder;
 
 /**
  * @brief Karaoke video exporter combining visualizer, lyrics, and audio
- * 
+ *
  * Creates professional karaoke/music videos by:
  * - Recording ProjectM visualizer frames
  * - Rendering synchronized lyrics overlays
  * - Encoding with FFmpeg (H.264 + AAC)
- * 
+ *
  * Supports:
  * - Multiple resolutions (720p, 1080p, 4K)
  * - Hardware acceleration (NVENC, VAAPI)
@@ -44,21 +42,19 @@ public:
     struct Settings {
         QString outputPath;
         QSize resolution{1920, 1080};
-        int bitrate{8000000};        // 8 Mbps
+        int bitrate{8000000};
         int fps{30};
         QString codec{"libx264"};
         QString preset{"medium"};
         bool hardwareAccel{false};
-        
-        // Lyrics styling
+
         QString fontFamily{"Arial"};
         int fontSize{48};
-        QColor activeColor{0, 188, 212};    // Cyan
-        QColor inactiveColor{128, 128, 128}; // Grey
+        QColor activeColor{0, 188, 212};
+        QColor inactiveColor{128, 128, 128};
         QColor shadowColor{0, 0, 0};
-        int verticalPosition{80};            // % from top
-        
-        // Overlay settings
+        int verticalPosition{80};
+
         bool showTitle{true};
         bool showArtist{true};
         bool animateTitle{true};
@@ -67,43 +63,17 @@ public:
     explicit KaraokeVideoExporter(QObject* parent = nullptr);
     ~KaraokeVideoExporter() override;
 
-    void setVisualizerPanel(VisualizerPanel* panel);
+    void setVisualizerWindow(VisualizerWindow* window);
     void setOverlayEngine(OverlayEngine* engine);
     void setAudioEngine(AudioEngine* engine);
-
-    /**
-     * @brief Set the lyrics data for the video
-     */
-    void setLyrics(const lyrics::LyricsData& lyrics);
-
-    /**
-     * @brief Set the audio source (file path or URL)
-     */
+    void setLyrics(const LyricsData& lyrics);
     void setAudioSource(const QString& path);
-
-    /**
-     * @brief Set the ProjectM preset to use
-     */
     void setPreset(const QString& presetName);
 
-    /**
-     * @brief Start the export process
-     */
     bool startExport(const Settings& settings);
-
-    /**
-     * @brief Cancel the ongoing export
-     */
     void cancelExport();
 
-    /**
-     * @brief Check if export is in progress
-     */
     bool isExporting() const { return exporting_.load(); }
-
-    /**
-     * @brief Get current progress (0.0 to 1.0)
-     */
     float progress() const { return progress_.load(); }
 
 signals:
@@ -113,20 +83,20 @@ signals:
     void encodingFailed(const QString& error);
 
 private slots:
-    void onFrameReady();
-    void onEncodingProgress(float progress);
+    void onFrameCaptured(std::vector<u8> data, u32 width, u32 height, i64 timestamp);
+    void onRecordingStateChanged(RecordingState state);
 
 private:
     void setupRecording();
-    void renderFrame(double timeSeconds);
+    void renderLyrics(QImage& frame, double timeSeconds);
     void finalize();
 
-    VisualizerPanel* visualizerPanel_{nullptr};
+    VisualizerWindow* visualizerWindow_{nullptr};
     OverlayEngine* overlayEngine_{nullptr};
     AudioEngine* audioEngine_{nullptr};
-    std::unique_ptr<recorder::VideoRecorderCore> recorder_;
+    std::unique_ptr<VideoRecorder> recorder_;
 
-    lyrics::LyricsData lyrics_;
+    LyricsData lyrics_;
     QString audioPath_;
     QString presetName_;
     Settings currentSettings_;
@@ -135,7 +105,7 @@ private:
     std::atomic<bool> cancelled_{false};
     std::atomic<float> progress_{0.0f};
 
-    double duration_{0.0};
+    double durationMs_{0.0};
     int totalFrames_{0};
     int currentFrame_{0};
 };

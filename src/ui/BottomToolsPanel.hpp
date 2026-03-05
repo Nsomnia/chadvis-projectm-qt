@@ -9,14 +9,17 @@
 #include <QFrame>
 #include <memory>
 
-// Forward declarations
+namespace vc {
 class PlaylistView;
 class PresetBrowser;
 class RecordingControls;
 class OverlayEditor;
 class KaraokeWidget;
-class SunoBrowser;
 class LyricsPanel;
+namespace suno {
+class SunoBrowser;
+}
+}
 
 namespace vc::ui {
 
@@ -38,17 +41,17 @@ public:
     explicit BottomToolsPanel(QWidget* parent = nullptr);
     ~BottomToolsPanel() override;
 
-    void setPlaylistView(PlaylistView* view);
-    void setPresetBrowser(PresetBrowser* browser);
-    void setRecordingControls(RecordingControls* controls);
-    void setOverlayEditor(OverlayEditor* editor);
-    void setKaraokeWidget(KaraokeWidget* widget);
-    void setSunoBrowser(SunoBrowser* browser);
-    void setLyricsPanel(LyricsPanel* panel);
+	void setPlaylistView(vc::PlaylistView* view);
+	void setPresetBrowser(vc::PresetBrowser* browser);
+	void setRecordingControls(vc::RecordingControls* controls);
+	void setOverlayEditor(vc::OverlayEditor* editor);
+	void setKaraokeWidget(vc::KaraokeWidget* widget);
+	void setSunoBrowser(vc::suno::SunoBrowser* browser);
+	void setLyricsPanel(vc::LyricsPanel* panel);
 
-    PlaylistView* playlistView() const { return playlistView_; }
-    PresetBrowser* presetBrowser() const { return presetBrowser_; }
-    RecordingControls* recordingControls() const { return recordingControls_; }
+	vc::PlaylistView* playlistView() const { return playlistView_; }
+	vc::PresetBrowser* presetBrowser() const { return presetBrowser_; }
+	vc::RecordingControls* recordingControls() const { return recordingControls_; }
 
     void expandPanel(const QString& id);
     void collapseAll();
@@ -66,14 +69,14 @@ private:
 
     AccordionContainer* container_{nullptr};
     
-    // External widgets (not owned)
-    PlaylistView* playlistView_{nullptr};
-    PresetBrowser* presetBrowser_{nullptr};
-    RecordingControls* recordingControls_{nullptr};
-    OverlayEditor* overlayEditor_{nullptr};
-    KaraokeWidget* karaokeWidget_{nullptr};
-    SunoBrowser* sunoBrowser_{nullptr};
-    LyricsPanel* lyricsPanel_{nullptr};
+	// External widgets (not owned)
+	vc::PlaylistView* playlistView_{nullptr};
+	vc::PresetBrowser* presetBrowser_{nullptr};
+	vc::RecordingControls* recordingControls_{nullptr};
+	vc::OverlayEditor* overlayEditor_{nullptr};
+	vc::KaraokeWidget* karaokeWidget_{nullptr};
+	vc::suno::SunoBrowser* sunoBrowser_{nullptr};
+	vc::LyricsPanel* lyricsPanel_{nullptr};
 
     // Internal wrapper widgets
     QWidget* playlistWrapper_{nullptr};

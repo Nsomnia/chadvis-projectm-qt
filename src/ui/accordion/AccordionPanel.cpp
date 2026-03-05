@@ -5,6 +5,7 @@
 #include "AccordionPanel.hpp"
 
 #include <QHBoxLayout>
+#include <QEvent>
 #include <QPainter>
 #include <QStyleOption>
 
@@ -30,9 +31,9 @@ void AccordionPanel::setupUI() {
     headerWidget_->setCursor(Qt::PointingHandCursor);
     headerWidget_->installEventFilter(this);
     
-    auto* headerLayout = new QHBoxLayout(headerWidget_);
-    headerLayout_->setContentsMargins(12, 0, 12, 0);
-    headerLayout_->setSpacing(8);
+	auto* headerLayout = new QHBoxLayout(headerWidget_);
+	headerLayout->setContentsMargins(12, 0, 12, 0);
+	headerLayout->setSpacing(8);
     
     // Arrow
     arrowButton_ = new QToolButton(this);
@@ -57,9 +58,9 @@ void AccordionPanel::setupUI() {
         }
     )");
     
-    headerLayout_->addWidget(arrowButton_);
-    headerLayout_->addWidget(titleLabel_);
-    headerLayout_->addStretch();
+	headerLayout->addWidget(arrowButton_);
+	headerLayout->addWidget(titleLabel_);
+	headerLayout->addStretch();
     
     // Content container (collapsible)
     contentContainer_ = new QWidget(this);

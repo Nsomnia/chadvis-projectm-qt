@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "ChadVis Suno Token Helper",
+  "version": "1.0.0",
+  "description": "Automatically grabs and refreshes your Suno authentication token for ChadVis.",
+  "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+    "permissions": [
+        "alarms",
+        "storage"
+    ],
+    "host_permissions": [
+        "https://suno.com/*",
+        "https://*.suno.com/*",
+        "http://127.0.0.1:38945/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://suno.com/*",
+                "https://*.suno.com/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "injected.js"
+            ],
+            "matches": [
+                "https://suno.com/*",
+                "https://*.suno.com/*"
+            ]
+        }
+    ],
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png"
+        }
+    }
+}

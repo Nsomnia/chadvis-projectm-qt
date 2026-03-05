@@ -326,10 +326,10 @@ void MainWindow::setupMenuBar() {
             "S&top Recording", this, &MainWindow::onStopRecording);
 
     auto* videoMenu = menuBar()->addMenu("&Video");
-    videoMenu->addAction("&Export Karaoke Video...",
-                          QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E),
-                          this,
-                          &MainWindow::onExportKaraokeVideo);
+	videoMenu->addAction("&Export Karaoke Video...",
+		QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E),
+		this,
+		[this] { onExportKaraokeVideo(); });
     videoMenu->addSeparator();
     videoMenu->addAction("Quick Export (1080p)", this, [this] {
         onExportKaraokeVideo(1920, 1080, 30);
@@ -612,41 +612,45 @@ void MainWindow::onExportKaraokeVideo(int width, int height, int fps) {
     if (outputPath.isEmpty()) return;
     
     // Configure export
-    KaraokeVideoExportSettings settings;
+    KaraokeVideoExporter::Settings settings;
     settings.outputPath = outputPath;
-    settings.width = width;
-    settings.height = height;
+    settings.resolution = QSize(width, height);
     settings.fps = fps;
     settings.codec = outputPath.endsWith(".webm") ? "libvpx-vp9" : "libx264";
-    settings.bitrate = width >= 3840 ? "20M" : "8M";
-    
+    settings.bitrate = width >= 3840 ? 20000000 : 8000000;
+
     // Create exporter
     auto* exporter = new KaraokeVideoExporter(this);
-    exporter->setVisualizerPanel(visualizerPanel_);
+    if (visualizerPanel_ && visualizerPanel_->visualizer()) {
+        exporter->setVisualizerWindow(visualizerPanel_->visualizer());
+    }
     exporter->setOverlayEngine(overlayEngine_);
     exporter->setAudioEngine(audioEngine_);
-    
+
     // Connect progress
-    connect(exporter, &KaraokeVideoExporter::progress, this, 
-        [this](int current, int total) {
+    connect(exporter, &KaraokeVideoExporter::progressChanged, this,
+        [this](float progress) {
             statusBar()->showMessage(
-                QString("Exporting frame %1/%2").arg(current).arg(total));
+                QString("Exporting: %1%").arg(static_cast<int>(progress * 100)));
         });
-    
-    connect(exporter, &KaraokeVideoExporter::finished, this, 
-        [this, exporter, outputPath](bool success) {
-            if (success) {
-                statusBar()->showMessage("Export complete: " + outputPath);
-                QMessageBox::information(this, "Export Complete",
-                    QString("Video saved to:\n%1").arg(outputPath));
-            } else {
-                statusBar()->showMessage("Export failed");
-            }
+
+    connect(exporter, &KaraokeVideoExporter::encodingComplete, this,
+        [this, exporter, outputPath](const QString&) {
+            statusBar()->showMessage("Export complete: " + outputPath);
+            QMessageBox::information(this, "Export Complete",
+                QString("Video saved to:\n%1").arg(outputPath));
+            exporter->deleteLater();
+        });
+
+    connect(exporter, &KaraokeVideoExporter::encodingFailed, this,
+        [this, exporter](const QString& error) {
+            statusBar()->showMessage("Export failed: " + error);
+            QMessageBox::critical(this, "Export Error", error);
             exporter->deleteLater();
         });
     
     // Start export
-    if (!exporter->start(settings)) {
+    if (!exporter->startExport(settings)) {
         QMessageBox::critical(this, "Export Error", 
             "Failed to start video export.");
         exporter->deleteLater();

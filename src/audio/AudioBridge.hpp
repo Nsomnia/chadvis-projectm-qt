@@ -12,8 +12,8 @@
 #include <functional>
 
 // Forward declarations
-namespace vc::visualizer::projectm {
-    class Engine;
+namespace vc::pm {
+class Engine;
 }
 
 namespace vc::audio {
@@ -40,7 +40,7 @@ public:
     /**
      * @brief Set the ProjectM engine to feed
      */
-    void setProjectMEngine(visualizer::projectm::Engine* engine);
+    void setProjectMEngine(pm::Engine* engine);
 
     /**
      * @brief Process audio samples from JUCE
@@ -91,7 +91,7 @@ private:
     void updateProjectM();
     void performFFT(const float* data, int size);
 
-    visualizer::projectm::Engine* projectMEngine_{nullptr};
+    pm::Engine* projectMEngine_{nullptr};
 
     int sampleRate_{44100};
     int bufferSize_{512};

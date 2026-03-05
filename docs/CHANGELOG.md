@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Browser Extension Authentication**: Added TokenServer for seamless Suno auth via Chrome extension
+  - Local HTTP server on 127.0.0.1:38945 receives tokens from browser extension
+  - Chrome extension automatically extracts Clerk JWT tokens from suno.com
+  - Auto-refresh based on token expiry (JWT-aware scheduling)
+  - No need for manual cookie extraction - just install extension and login to Suno
+  - Extension located in `resources/browser_extension/`
 - **Build System Enhancement (v1337.3)**: Enhanced dependency management with intelligent libprojectm handling
   - Automatic dependency installation for Arch Linux via `pacman` with `-y` flag
   - Version-aware libprojectm detection (minimum version: 4.1.0)
@@ -15,6 +21,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--cpm-projectm` flag to force building libprojectm from source via CPM
   - Smart auto-detection: uses system libprojectm if recent enough, otherwise falls back to CPM
   - `CHADVIS_FORCE_CPM_PROJECTM` CMake option to bypass system detection
+
+### Fixed
+- **KaraokeVideoExporter**: Fixed compilation errors
+  - Corrected namespace references (`LyricsData` in `vc` namespace)
+  - Fixed `AudioEngine::duration()` return type handling (Duration → milliseconds)
+  - Updated to use `VideoRecorder` and `EncoderSettings` APIs correctly
+  - Added proper `VideoRecorderCore.hpp` include
+- **AudioBridge**: Fixed namespace issues
+  - Changed `vc::visualizer::projectm::Engine` to `vc::pm::Engine`
+  - Updated `setPCM()` to `addPCMDataInterleaved()` for correct ProjectM API
+- **Application**: Fixed `AudioBridge` namespace
+  - Forward declaration now uses `vc::audio::AudioBridge`
+  - Member and getter updated to use correct namespace
+- **KaraokeVideoExporter**: Added missing `#include <QColor>`
 
 ## [1.1.0] - 2026-01-29
 

@@ -33,7 +33,7 @@ bool AudioBridge::initialize(int sampleRate, int bufferSize, int channels) {
     return true;
 }
 
-void AudioBridge::setProjectMEngine(visualizer::projectm::Engine* engine) {
+void AudioBridge::setProjectMEngine(pm::Engine* engine) {
     projectMEngine_ = engine;
 }
 
@@ -169,8 +169,15 @@ void AudioBridge::updateProjectM() {
     if (!projectMEngine_) return;
 
     // Feed PCM data to ProjectM
-    // ProjectM expects PCM data in the range [-1.0, 1.0]
-    projectMEngine_->setPCM(pcmLeft_.data(), pcmRight_.data(), pcmLeft_.size());
+    // ProjectM expects interleaved or separate channel data
+    // Combine left and right for interleaved
+    std::vector<float> interleaved;
+    interleaved.reserve(pcmLeft_.size() * 2);
+    for (size_t i = 0; i < pcmLeft_.size(); ++i) {
+        interleaved.push_back(pcmLeft_[i]);
+        interleaved.push_back(pcmRight_[i]);
+    }
+    projectMEngine_->addPCMDataInterleaved(interleaved.data(), static_cast<u32>(pcmLeft_.size()), 2);
 }
 
 void AudioBridge::performFFT(const float* data, int size) {

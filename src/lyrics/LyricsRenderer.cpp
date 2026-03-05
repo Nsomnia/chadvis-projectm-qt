@@ -152,12 +152,10 @@ void KaraokeRenderer::renderWord(QPainter& painter, const LyricsLine& line,
     for (size_t i = 0; i < line.words.size(); ++i) {
         const auto& word = line.words[i];
         QString wordText = QString::fromStdString(word.text + " ");
-        int wordWidth = fm.horizontalAdvance(wordText);
-        
-        // Determine word state
-        bool isPast = word.endTime < position_.time;
-        bool isCurrent = word.containsTime(position_.time);
-        bool isFuture = word.startTime > position_.time;
+int wordWidth = fm.horizontalAdvance(wordText);
+
+    bool isPast = word.endTime < position_.time;
+    bool isCurrent = word.containsTime(position_.time);
         
         QColor color;
         f32 glowIntensity = 0.0f;
