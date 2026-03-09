@@ -1,48 +1,34 @@
 # AGENTS.md - Guide for AI Agents
 
-> **For:** AI agents working on the chadvis-projectm-qt project  
-> **Version:** 1337.0 (Arch Linux Certified)  
-> **Last Updated:** 2026-01-29
+> **For:** AI agents working on chadvis-projectm-qt  
+> **Last Updated:** 2026-03-09
 
-Welcome, agent. This document contains essential information for working effectively with this codebase.
+Welcome, agent. This document contains essential info for working effectively with this codebase.
 
 ---
 
 ## 🚀 Quick Start
 
 ### Build Commands
-Very slow on the users potato system. You can wait until your done your loop/work and then the user will compile and report bugs if desired. For small changes or if neeed to finish tasks you are free to run cmake, optionally with a build system/accelerator.
+Very slow on the users system. You can wait until your done your loop/work and then the user will compile and report bugs. For lesser changes, or if needed to finish tasks, you are free to run the build.sh script or the commands it does piecemeal (optionally with a build system/accelerator).
 ```bash
 bash build.sh --help
 bash build.sh build
 ```
 OR manually
 ```bash
-# Standard build
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j1
-
 # Debug build (for development)
 cmake -B build-debug -S . -DCMAKE_BUILD_TYPE=Debug
 cmake --build build-debug -j$(nproc)
 
 # Run tests
-./build/tests/unit/unit_tests
-./build/tests/integration/integration_tests
+./build/tests/*
 ```
 
 ### Project Structure
-```
-src/
-├── core/           # Config, logging, CLI, Application
-├── audio/          # AudioEngine, FFmpeg decoder, playlist
-├── visualizer/     # ProjectM bridge, preset management
-├── ui/             # Qt widgets, controllers, dialogs
-├── suno/           # Suno API integration, database
-├── lyrics/         # Karaoke/Lyrics system (NEW)
-├── recorder/       # Video recording (FFmpeg)
-└── overlay/        # Text overlays
-```
+
+**Modifying;**
+- You are free to reorganize, add, remove, or otherwise change, the layout for optimal agentic workflows.
 
 ---
 
@@ -50,11 +36,12 @@ src/
 
 ### Code Style
 
-**C++20 Features:**
+**C++20 or 23 Features:**
 - Use `std::optional`, `std::expected` (or our `Result<>` type)
 - Use structured bindings: `auto [x, y] = getPoint();`
 - Use designated initializers where appropriate
 - Prefer `std::string_view` over `const std::string&` for parameters
+- File and class names should be self explaining by name alone to aide in agentic codebase navigation.
 
 **Naming Conventions:**
 ```cpp
@@ -114,8 +101,8 @@ auto data = std::move(*result);
  *
  * Detailed description if needed. Mention patterns used.
  *
- * @author Name (optional)
- * @version X.X.X
+ * @author Agent + Model (Optional)
+ * @version X.X.X (Optional Date) INCREMENT ON EVRRY EDIT OF HEADER!
  */
 ```
 
@@ -144,6 +131,8 @@ chore/short-description       # Maintenance
 test/short-description        # Test changes
 ```
 
+- When done your work for the session, merge any working branches you've created back with the branch you started on.
+
 ### Commit Messages
 ```
 type(scope): concise description
@@ -152,25 +141,9 @@ type(scope): concise description
 - Can span multiple lines
 - Reference issues: fixes #123
 
-Types: feat, fix, docs, style, refactor, test, chore
-```
+Types: feat, fix, docs, style, refactor, test, chore.
 
-**Examples:**
-```
-feat(recorder): add hardware acceleration support
-
-Adds NVENC and VAAPI codec options with automatic
-detection. Falls back to software encoding if HW
-unavailable.
-
-Closes #42
-```
-
-```
-fix(ui): resolve race condition in KaraokeWidget
-
-The sync timer wasn't stopped before destruction,
-causing crashes on exit. Added proper cleanup.
+Be as verbose as needed such that this in itself becomes the most detailed changelog held in the git server cloud and as a form of documentation.
 ```
 
 ---
@@ -187,81 +160,16 @@ causing crashes on exit. Added proper cleanup.
 # - OAuth files
 # - .env files
 
-cp "/path/to/sensitive-file" "/path/to/sensitive-file.backup.$(date +%Y%m%d_%H%M%S)"
+cp --no-clobber "/path/to/sensitive-file" "/path/to/sensitive-file.backup.$(date +%Y%m%d_%H%M%S)"
 ```
 
 **Sensitive locations:**
-- `~/.local/share/opencode/` (API/OAuth keys)
-- `~/.config/chadvis-projectm-qt/config.toml` (Suno tokens)
-- Any files containing `token`, `secret`, `password`, `api_key`
+- Any files containing `token`, `secret`, `password`, `api_key`, or similar forms of this data types.
 
 ### Never Commit Secrets
 - Use `.gitignore` for local config
 - Use environment variables for runtime secrets
-- Never log sensitive data (even in debug mode)
-
----
-
-## 🎯 Key Subsystems
-
-### Configuration System
-
-**Three-tier configuration:**
-1. **Defaults** - Hardcoded in `ConfigData.hpp`
-2. **Config file** - TOML at `~/.config/chadvis-projectm-qt/config.toml`
-3. **CLI overrides** - Command-line arguments
-
-**CLI → Config precedence:**
-- CLI flags override config file
-- Config file overrides defaults
-- All changes are logged: `LOG_INFO("CLI override: key = value")`
-
-**Adding new config options:**
-1. Add field to appropriate struct in `ConfigData.hpp`
-2. Add CLI option in `Application.cpp` (`AppOptions` + `parseArgs()`)
-3. Add GUI control in `SettingsDialog.cpp`
-4. Add TOML parser in `ConfigParsers.cpp`
-
-### Lyrics/Karaoke System
-
-**Architecture:**
-```
-LyricsData → LyricsSync → LyricsRenderer → QWidget
-    ↑            ↑            ↑
-Suno API    AudioEngine   KaraokeWidget
-Database    Position      LyricsPanel
-```
-
-**Key classes:**
-- `LyricsData` - Immutable data structures with binary search
-- `LyricsSync` - 60fps time synchronization
-- `LyricsRenderer` - Base class for different renderers
-- `KaraokeWidget` - Visual overlay with word highlighting
-- `LyricsPanel` - Scrollable lyrics panel with search
-
-### Video Recording
-
-**Thread model:**
-- Main thread: Frame capture from OpenGL PBO
-- Recorder thread: FFmpeg encoding (async)
-
-**Adding new codecs:**
-1. Add codec name to `EncoderSettings.hpp`
-2. Update codec validation in `EncoderSettings.cpp`
-3. Add to SettingsDialog combo box
-
-### Suno Integration
-
-**Auth flow:**
-1. User logs in via `QWebEngineView` (`SunoCookieDialog`)
-2. Captures `__session` and `__client` cookies
-3. Clerk API provides JWT tokens
-4. API calls use Bearer token auth
-
-**API rate limits:**
-- Library fetch: max 1 req/5sec
-- Lyrics fetch: max 1 req/2sec
-- Queue system handles this automatically
+- Never log sensitive data to files that are git controlled.
 
 ---
 
@@ -276,29 +184,6 @@ LOG_WARN("Recoverable issues");
 LOG_ERROR("Critical errors");
 ```
 
-### Common Issues
-
-**OpenGL/Visualizer not rendering:**
-- Check `QT_QPA_PLATFORM=xcb` (Wayland issues)
-- Verify projectM preset path exists
-- Check `glxinfo | grep "OpenGL version"`
-
-**Audio not playing:**
-- Check `pactl list | grep -A5 "Name:"` for device names
-- Verify buffer size isn't too large (causes latency)
-- Try different sample rates (44100 vs 48000)
-
-**Recording fails:**
-- Check FFmpeg codec availability: `ffmpeg -encoders | grep <codec>`
-- Verify output directory is writable
-- For NVENC: ensure NVIDIA drivers loaded
-- For VAAPI: check `vainfo` output
-
-**Suno auth issues:**
-- Cookies expire after ~24 hours
-- Use Settings dialog to re-authenticate
-- Check `__session` cookie format (should start with "eyJ")
-
 ---
 
 ## 🧪 Testing
@@ -312,40 +197,6 @@ TEST_CASE("Feature description") {
 }
 ```
 
-### Manual Testing Checklist
-
-**Basic playback:**
-- [ ] Load audio file (MP3, FLAC, WAV, OGG)
-- [ ] Play/pause/stop
-- [ ] Playlist navigation (next/prev)
-- [ ] Volume control
-- [ ] Seek bar
-
-**Visualizer:**
-- [ ] Presets load and render
-- [ ] Hard cut detection works
-- [ ] Preset switching (manual and auto)
-- [ ] Fullscreen toggle
-
-**Recording:**
-- [ ] Start/stop recording
-- [ ] Output file is valid
-- [ ] Audio sync correct
-- [ ] Hardware codecs (if available)
-
-**Karaoke:**
-- [ ] Lyrics display with Suno songs
-- [ ] Word-level highlighting
-- [ ] Click-to-seek
-- [ ] Search within lyrics
-- [ ] SRT/LRC export
-
-**Suno:**
-- [ ] Authentication flow
-- [ ] Library sync
-- [ ] Song download
-- [ ] Lyrics fetch
-
 ---
 
 ## 📚 Resources
@@ -357,40 +208,29 @@ TEST_CASE("Feature description") {
 - `docs/CPM_INTEGRATION.md` - Dependency management
 - `docs/CHANGELOG.md` - Version history
 
-### External Links
-- [projectM v4 docs](https://github.com/projectM-visualizer/projectm)
-- [Qt6 docs](https://doc.qt.io/qt-6/)
-- [FFmpeg encoding](https://trac.ffmpeg.org/wiki/Encode/H.264)
-- [TOML spec](https://toml.io/en/)
-
 ---
 
 ## 💡 Tips for Agents
 
-1. **Read before writing** - Check existing patterns in similar files
-2. **Build frequently** - C++ compile errors are easier to fix immediately
+1. **Read before writing** - Check existing patterns in similar files (opencode forces this)
+2. **Build frequently** - C++ compile errors are easier to fix immediately and this allows agents to compile in reasonable timeframes.
 3. **Test edge cases** - Empty files, invalid paths, network failures
-4. **Document as you go** - Update this file when adding new patterns
-5. **Respect NO_COLOR** - CLI output should respect the environment
+4. **Document as you go** - Write nestsd file and directory structure for all I lortwnr logic specific to agentic work in the future or the end user.
+5. **Keep classes specific** - No monoliths. Single responsibility principles. Nested heavily directory structure with many files is free. Wrangling monoliths is not for agents.
 6. **Keep functions small** - Single responsibility principle
 7. **Use the Result<T> type** - Don't ignore error cases
-8. **Check for existing utilities** - Look in `util/` before writing new code
+8. **Check for existing utilities** - Look in `util/` before writing new code. You are also free to search the web for existing solutions or libraries as well as `gh search repos --sort stars SIMPLE SEARCH TERM`.
+9. **keep a TODO.md file updated** - .agent/TODO.md should only be cleared by the user and be a full Todo list of current and future needs of your own findings or the users additions. Refactor freely so long as no actual steps are removed.
 
 ---
 
 ## 🆘 Emergency Contacts
 
-**When stuck:**
-1. Check `docs/` for subsystem documentation
-2. Search codebase for similar implementations
-3. Review recent commits for patterns
-4. Check `.agent/TODO.md` for current priorities
 
 **Never:**
 - Commit to `main` or `master` directly
 - Push secrets (even if "just for testing")
 - Delete `.agent/TODO.md` entries (mark complete instead)
-- Ignore LSP errors (fix or suppress with reason)
 
 ---
 
@@ -412,13 +252,10 @@ mv --no-clobber "/path/to/directory" ".backup_graveyard/directory.$(date +%Y%m%d
 
 # Example with variable paths
 mv --no-clobber "${SOURCE_PATH}" ".backup_graveyard/$(basename "${SOURCE_PATH}").$(date +%Y%m%d_%H%M%S)"
-```
 
-### Why This Matters
-- **Data Safety**: Prevents accidental permanent data loss
-- **Recoverability**: Files can be restored if needed
-- **Audit Trail**: Timestamped backups show when operations occurred
-- **Collaboration**: Other agents can see what was moved and when
+# Commit as backup 
+git add .graveyard_backup/
+```
 
 ### Applies To
 - File deletion (`rm`, `unlink`)
@@ -433,6 +270,6 @@ Temporary build artifacts in `build/`, `dist/`, or similar temporary directories
 
 ## Ralph-loops and freedoms
 - You may continue working on any and all TODO items either directly listed or inferred from documents in any file in .agent/ or AGENTS.md
-- Keep the CHANGELOG.md updated. If its gets unmanagable in length then create a history directory to contain changelogs in the docs/ directory.
+- Keep the CHANGELOG.md updated. When too long move to a versioned history file within docs/ and start a new one.
 
 *"Maximum effort. No compromises. Ship it like it's Arch Linux."* 🚀
