@@ -375,11 +375,14 @@ set(UI_SOURCES
 # QML FILES - Declarative UI components
 # ═══════════════════════════════════════════════════════════════════════════
 set(QML_SOURCES
+    src/qml/main.qml
     src/qml/styles/Theme.qml
     src/qml/components/AccordionPanel.qml
     src/qml/components/AccordionContainer.qml
     src/qml/components/AppButton.qml
     src/qml/components/AppSlider.qml
+    src/qml/panels/PlaybackPanel.qml
+    src/qml/panels/PlaylistPanel.qml
 )
 
 # Common include directories
