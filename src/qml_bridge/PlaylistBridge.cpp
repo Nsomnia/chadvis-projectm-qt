@@ -61,7 +61,8 @@ QVariant PlaylistBridge::data(const QModelIndex& index, int role) const
 
     const auto& item = items[row];
     const auto& meta = item.metadata;
-    size_t currentIdx = engine_->playlist().currentIndex();
+    auto currentIdxOpt = engine_->playlist().currentIndex();
+    size_t currentIdx = currentIdxOpt.value_or(SIZE_MAX);
 
     switch (role) {
         case TitleRole:
@@ -103,7 +104,8 @@ QHash<int, QByteArray> PlaylistBridge::roleNames() const
 int PlaylistBridge::currentIndex() const
 {
     if (!engine_) return -1;
-    return static_cast<int>(engine_->playlist().currentIndex());
+    auto opt = engine_->playlist().currentIndex();
+    return opt.has_value() ? static_cast<int>(*opt) : -1;
 }
 
 QStringList PlaylistBridge::supportedFormats() const
@@ -167,14 +169,14 @@ void PlaylistBridge::playAt(int index)
 {
     if (!engine_) return;
 
-    engine_->playlist().playAt(static_cast<size_t>(index));
+    engine_->playlist().jumpTo(static_cast<size_t>(index));
 }
 
 void PlaylistBridge::shuffle()
 {
     if (!engine_) return;
 
-    engine_->playlist().shuffle();
+    engine_->playlist().setShuffle(!engine_->playlist().shuffle());
     emit countChanged();
 }
 

@@ -21,6 +21,8 @@
 
 #pragma once
 #include <QApplication>
+#include <QQmlEngine>
+#include <QQuickWindow>
 #include <memory>
 #include <vector>
 #include "util/Result.hpp"
@@ -37,6 +39,7 @@ struct AppOptions {
     // General
     bool debug{false};
     bool headless{false};
+    bool useQml{false};
     std::optional<fs::path> configFile;
     std::vector<fs::path> inputFiles;
     
@@ -119,12 +122,15 @@ public slots:
 
 private:
     void setupStyle();
+    void setupQmlStyle();
     void printVersion();
     void printHelp();
 
     static Application* instance_;
 
     std::unique_ptr<QApplication> qapp_;
+    std::unique_ptr<QQmlEngine> qmlEngine_;
+    std::unique_ptr<QQuickWindow> qmlWindow_;
     // Components - Declaration order matters for destruction (reverse order)
     // We want engines to stay alive until the UI is gone
     std::unique_ptr<AudioEngine> audioEngine_;
@@ -132,6 +138,7 @@ private:
     std::unique_ptr<VideoRecorder> videoRecorder_;
     std::unique_ptr<MainWindow> mainWindow_;
 
+    bool useQml_{false};
     int argc_;
     char** argv_;
 };

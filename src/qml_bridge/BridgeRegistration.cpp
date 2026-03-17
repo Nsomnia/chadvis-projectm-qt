@@ -30,16 +30,16 @@ void registerBridges(QQmlEngine* engine,
     s_recordingBridge = RecordingBridge::create(engine, nullptr);
 
     if (audioEngine) {
-        AudioBridge::setAudioEngine(audioEngine);
-        PlaylistBridge::setAudioEngine(audioEngine);
+        s_audioBridge->setAudioEngine(audioEngine);
+        s_playlistBridge->setAudioEngine(audioEngine);
     }
 
     if (visualizer) {
-        VisualizerBridge::setVisualizerWindow(visualizer);
+        s_visualizerBridge->setVisualizerWindow(visualizer);
     }
 
     if (recorder) {
-        RecordingBridge::setVideoRecorder(recorder);
+        s_recordingBridge->setVideoRecorder(recorder);
     }
 
     qmlRegisterSingletonInstance("ChadVis", 1, 0, "AudioBridge", s_audioBridge);

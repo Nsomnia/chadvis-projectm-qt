@@ -165,8 +165,6 @@ void VisualizerBridge::nextPreset()
 {
     if (window_) {
         window_->nextPreset();
-        currentPresetIndex_ = window_->currentPresetIndex();
-        presetModel_->setCurrentIndex(currentPresetIndex_);
         emit currentPresetChanged();
     }
 }
@@ -175,8 +173,6 @@ void VisualizerBridge::previousPreset()
 {
     if (window_) {
         window_->previousPreset();
-        currentPresetIndex_ = window_->currentPresetIndex();
-        presetModel_->setCurrentIndex(currentPresetIndex_);
         emit currentPresetChanged();
     }
 }
@@ -185,16 +181,19 @@ void VisualizerBridge::randomPreset()
 {
     if (window_) {
         window_->randomPreset();
-        currentPresetIndex_ = window_->currentPresetIndex();
-        presetModel_->setCurrentIndex(currentPresetIndex_);
         emit currentPresetChanged();
     }
 }
 
 void VisualizerBridge::selectPreset(int index)
 {
-    if (window_ && index >= 0 && index < presetModel_->rowCount()) {
-        window_->selectPreset(index);
+    if (!window_) return;
+    
+    auto& presets = window_->projectM().presets();
+    auto& allPresets = presets.allPresets();
+    if (index >= 0 && index < static_cast<int>(allPresets.size())) {
+        const auto& preset = allPresets[index];
+        window_->projectM().engine().loadPreset(preset.path.string(), false);
         currentPresetIndex_ = index;
         presetModel_->setCurrentIndex(index);
         emit currentPresetChanged();
@@ -203,8 +202,13 @@ void VisualizerBridge::selectPreset(int index)
 
 void VisualizerBridge::selectPresetByName(const QString& name)
 {
-    if (window_) {
-        window_->selectPresetByName(name.toStdString());
+    if (!window_) return;
+    
+    auto& presets = window_->projectM().presets();
+    auto results = presets.search(name.toStdString());
+    if (!results.empty()) {
+        window_->projectM().engine().loadPreset(results[0]->path.string(), false);
+        emit currentPresetChanged();
     }
 }
 
