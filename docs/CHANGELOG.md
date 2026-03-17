@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **QML Modern GUI Refactor**: Complete Qt Widgets → QML/Qt Quick transition
+  - New QML bridge architecture with singleton pattern (AudioBridge, PlaylistBridge, VisualizerBridge, RecordingBridge)
+  - VisualizerItem QQuickItem for ProjectM OpenGL rendering in QML
+  - Theme.qml singleton with glassmorphism styling and cyan accent (#00bcd4)
+  - AccordionPanel/AccordionContainer components for collapsible sidebar UI
+  - PlaybackPanel.qml and PlaylistPanel.qml with model bindings
+  - `--qml` CLI flag to launch QML interface instead of Qt Widgets
+  - CMake integration with `qt_add_qml_module` and QML cache compilation
 - **Build System Enhancement (v1337.3)**: Enhanced dependency management with intelligent libprojectm handling
   - Automatic dependency installation for Arch Linux via `pacman` with `-y` flag
   - Version-aware libprojectm detection (minimum version: 4.1.0)
