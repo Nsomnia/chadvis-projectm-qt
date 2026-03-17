@@ -318,6 +318,8 @@ set(QML_BRIDGE_SOURCES
     src/qml_bridge/RecordingBridge.cpp
     src/qml_bridge/BridgeRegistration.hpp
     src/qml_bridge/BridgeRegistration.cpp
+    src/qml_bridge/VisualizerItem.hpp
+    src/qml_bridge/VisualizerItem.cpp
 )
 
 set(UI_SOURCES
@@ -480,6 +482,7 @@ qt_add_qml_module(project_lib
     VERSION 1.0
     QML_FILES ${QML_SOURCES}
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ChadVis
+    NO_PLUGIN
 )
 
 # Main executable

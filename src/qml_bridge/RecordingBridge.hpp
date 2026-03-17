@@ -31,8 +31,6 @@ namespace qml_bridge {
  */
 class RecordingBridge : public QObject {
     Q_OBJECT
-    QML_ELEMENT
-    QML_SINGLETON
 
     Q_PROPERTY(bool isRecording READ isRecording NOTIFY recordingChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)

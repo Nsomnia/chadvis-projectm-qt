@@ -27,7 +27,7 @@ Rectangle {
     property string icon: ""
     property bool highlighted: false
     property bool flat: false
-    property int radius: Theme.radiusMedium
+    property int buttonRadius: Theme.radiusMedium
 
     property alias pressed: mouseArea.pressed
     property alias hovered: mouseArea.containsMouse
@@ -39,7 +39,7 @@ Rectangle {
     implicitWidth: Math.max(buttonLayout.implicitWidth + Theme.spacingMedium * 2, Theme.buttonHeight)
     implicitHeight: Theme.buttonHeight
 
-    radius: root.radius
+    radius: buttonRadius
 
     // ═══════════════════════════════════════════════════════════
     // STYLING
@@ -57,7 +57,7 @@ Rectangle {
     // Glassmorphism effect
     Rectangle {
         anchors.fill: parent
-        radius: root.radius
+        radius: buttonRadius
         color: Theme.glassBackground
         opacity: root.flat ? 0 : (root.highlighted ? 0.3 : 0.85)
     }
@@ -66,7 +66,7 @@ Rectangle {
     Rectangle {
         anchors.fill: parent
         anchors.margins: -2
-        radius: root.radius + 2
+        radius: buttonRadius + 2
         color: "transparent"
         border.color: Theme.accent
         border.width: 2

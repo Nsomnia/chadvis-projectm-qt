@@ -12,11 +12,15 @@
 #include "visualizer/RatingManager.hpp"
 #include "ui/controllers/SunoController.hpp"
 #include "suno/SunoModels.hpp"
+#include "qml_bridge/BridgeRegistration.hpp"
 
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
 #include <QStyleFactory>
+#include <QQmlEngine>
+#include <QQmlComponent>
+#include <QQuickWindow>
 #include <iostream>
 #include <cstdlib>
 
@@ -74,12 +78,14 @@ Result<AppOptions> Application::parseArgs() {
             }
             Cli::generateCompletionScript(argv_[++i]);
             std::exit(0);
-        } else if (arg == "-d" || arg == "--debug") {
-            opts.debug = true;
-        } else if (arg == "--headless") {
-            opts.headless = true;
-        }
-        // Recording options
+} else if (arg == "-d" || arg == "--debug") {
+        opts.debug = true;
+    } else if (arg == "--headless") {
+        opts.headless = true;
+    } else if (arg == "--qml") {
+        opts.useQml = true;
+    }
+    // Recording options
         else if (arg == "-r" || arg == "--record") {
             opts.startRecording = true;
         } else if (arg == "-o" || arg == "--output") {
@@ -443,10 +449,41 @@ Result<void> Application::init(const AppOptions& opts) {
     }
 
     // Create main window (unless headless)
+    useQml_ = opts.useQml;
+    
     if (!opts.headless) {
-        LOG_DEBUG("Creating main window...");
-        mainWindow_ = std::make_unique<MainWindow>();
-        mainWindow_->show();
+        if (useQml_) {
+            LOG_DEBUG("Creating QML window...");
+            qmlEngine_ = std::make_unique<QQmlEngine>();
+            
+            // Register QML bridges
+            qml_bridge::registerBridges(qmlEngine_.get(), 
+                audioEngine_.get(), nullptr, videoRecorder_.get());
+            
+            // Load main QML file
+            QQmlComponent component(qmlEngine_.get(), 
+                QUrl::fromLocalFile("src/qml/main.qml"));
+            
+            if (component.status() == QQmlComponent::Error) {
+                LOG_ERROR("QML component error: {}", 
+                    component.errorString().toStdString());
+                return Result<void>::err("Failed to load QML");
+            }
+            
+            auto* root = qobject_cast<QQuickWindow*>(component.create());
+            if (!root) {
+                LOG_ERROR("Failed to create QML window");
+                return Result<void>::err("Failed to create QML window");
+            }
+            
+            qmlWindow_.reset(root);
+            qmlWindow_->show();
+            
+            LOG_INFO("QML window created successfully");
+        } else {
+            LOG_DEBUG("Creating main window...");
+            mainWindow_ = std::make_unique<MainWindow>();
+            mainWindow_->show();
 
         if (!opts.inputFiles.empty()) {
             mainWindow_->audioEngine()->playlist().clear();
@@ -483,6 +520,7 @@ Result<void> Application::init(const AppOptions& opts) {
             // Don't select any preset - use projectM default
             LOG_INFO("Using default projectM visualizer (no preset selected)");
         }
+        }
     }
 
     // Connect quit signal
@@ -493,7 +531,7 @@ Result<void> Application::init(const AppOptions& opts) {
 
     LOG_INFO("Initialization complete. Let's get this bread.");
 
-    if (opts.sunoId && !opts.headless && mainWindow_) {
+    if (opts.sunoId && !opts.headless && mainWindow_ && !useQml_) {
         LOG_INFO("Application: Fetching song ID {}", *opts.sunoId);
         auto* controller = mainWindow_->sunoController();
         if (controller) {
@@ -643,6 +681,7 @@ void Application::printHelp() {
     Cli::printOption("-d, --debug", "Enable debug logging", "no");
     Cli::printOption("-c, --config <path>", "Use custom config file");
     Cli::printOption("--headless", "Run without GUI (batch mode)");
+    Cli::printOption("--qml", "Use QML-based UI (experimental)");
     Cli::printOption("--generate-completion <shell>", "Generate shell completion script");
     
     Cli::printSection("Audio Options");
