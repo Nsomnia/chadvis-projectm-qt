@@ -61,7 +61,7 @@ add_compile_options(
 )
 
 # Find packages
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network Sql WebEngineWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network Sql WebEngineWidgets Quick Qml QuickControls2)
 find_package(PkgConfig REQUIRED)
 
 # Header-only libraries: try system first, fallback to CPM
@@ -304,6 +304,22 @@ set(LYRICS_SOURCES
     src/lyrics/LyricsRenderer.cpp
 )
 
+# ═══════════════════════════════════════════════════════════════════════════
+# QML BRIDGE SOURCES - C++ types exposed to QML
+# ═══════════════════════════════════════════════════════════════════════════
+set(QML_BRIDGE_SOURCES
+    src/qml_bridge/AudioBridge.hpp
+    src/qml_bridge/AudioBridge.cpp
+    src/qml_bridge/PlaylistBridge.hpp
+    src/qml_bridge/PlaylistBridge.cpp
+    src/qml_bridge/VisualizerBridge.hpp
+    src/qml_bridge/VisualizerBridge.cpp
+    src/qml_bridge/RecordingBridge.hpp
+    src/qml_bridge/RecordingBridge.cpp
+    src/qml_bridge/BridgeRegistration.hpp
+    src/qml_bridge/BridgeRegistration.cpp
+)
+
 set(UI_SOURCES
     src/ui/controllers/AudioController.hpp
     src/ui/controllers/AudioController.cpp
@@ -355,6 +371,17 @@ set(UI_SOURCES
     src/ui/widgets/ToggleSwitch.cpp
 )
 
+# ═══════════════════════════════════════════════════════════════════════════
+# QML FILES - Declarative UI components
+# ═══════════════════════════════════════════════════════════════════════════
+set(QML_SOURCES
+    src/qml/styles/Theme.qml
+    src/qml/components/AccordionPanel.qml
+    src/qml/components/AccordionContainer.qml
+    src/qml/components/AppButton.qml
+    src/qml/components/AppSlider.qml
+)
+
 # Common include directories
 set(COMMON_INCLUDES
     ${CMAKE_SOURCE_DIR}/src
@@ -379,6 +406,9 @@ set(COMMON_LIBS
     Qt6::Network
     Qt6::Sql
     Qt6::WebEngineWidgets
+    Qt6::Quick
+    Qt6::Qml
+    Qt6::QuickControls2
     ${TAGLIB_LIBRARIES}
     ${GLEW_LIBRARIES}
     ${FFMPEG_LIBRARIES}
@@ -424,6 +454,7 @@ add_library(project_lib STATIC
     ${RECORDER_SOURCES}
     ${LYRICS_SOURCES}
     ${UI_SOURCES}
+    ${QML_BRIDGE_SOURCES}
     resources/chadvis-projectm-qt.qrc
 )
 
@@ -435,6 +466,18 @@ set_target_properties(project_lib PROPERTIES
 
 target_include_directories(project_lib PUBLIC ${COMMON_INCLUDES})
 target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
+
+# ═══════════════════════════════════════════════════════════════════════════
+# QML MODULE - Modern UI components
+# ═══════════════════════════════════════════════════════════════════════════
+qt_policy(SET QTP0001 NEW)
+
+qt_add_qml_module(project_lib
+    URI ChadVis
+    VERSION 1.0
+    QML_FILES ${QML_SOURCES}
+    OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ChadVis
+)
 
 # Main executable
 add_executable(chadvis-projectm-qt src/main.cpp)
