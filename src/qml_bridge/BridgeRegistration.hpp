@@ -23,30 +23,16 @@ namespace qml_bridge {
 class AudioBridge;
 class PlaylistBridge;
 class VisualizerBridge;
+class RecordingBridge;
 
-/**
- * @brief Registers all QML bridge singletons with the QML engine
- *
- * Must be called after AudioEngine and other core components are initialized.
- * Each bridge is registered as a QML singleton accessible by its class name.
- */
 void registerBridges(QQmlEngine* engine,
                      vc::AudioEngine* audioEngine,
-                     vc::VisualizerWindow* visualizer);
+                     vc::VisualizerWindow* visualizer,
+                     vc::VideoRecorder* recorder);
 
-/**
- * @brief Gets the AudioBridge singleton instance
- */
 AudioBridge* getAudioBridge();
-
-/**
- * @brief Gets the PlaylistBridge singleton instance
- */
 PlaylistBridge* getPlaylistBridge();
-
-/**
- * @brief Gets the VisualizerBridge singleton instance
- */
 VisualizerBridge* getVisualizerBridge();
+RecordingBridge* getRecordingBridge();
 
 } // namespace qml_bridge
