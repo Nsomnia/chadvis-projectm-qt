@@ -470,10 +470,12 @@ cmd_build() {
     log info "Configuring with CMake..."
     log info "Output: Console + $LOG_FILE"
     
-    # Build CMake arguments
+    # Build CMake arguments 
     local cmake_args=(
         -G Ninja
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+	-DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+	-DCMAKE_CXX_FLAGS="-O0 -g"
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
         -S "$PROJECT_ROOT"
         -B "$BUILD_DIR"
@@ -583,3 +585,4 @@ case $COMMAND in
     install)    cmd_install ;;
     *)          log error "Unknown command: $COMMAND"; show_help; exit 1 ;;
 esac
+
