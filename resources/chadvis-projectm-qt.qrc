@@ -1,17 +1,24 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
-    <qresource prefix="/">
-        <file>styles/dark.qss</file>
-        <file>styles/gruvbox.qss</file>
-        <file>styles/nord.qss</file>
-        <file>icons/chadvis-projectm-qt.svg</file>
-        <file>icons/play.svg</file>
-        <file>icons/pause.svg</file>
-        <file>icons/stop.svg</file>
-        <file>icons/next.svg</file>
-        <file>icons/prev.svg</file>
-        <file>icons/record.svg</file>
-        <file>icons/shuffle.svg</file>
-        <file>icons/repeat.svg</file>
-    </qresource>
+<qresource prefix="/">
+<file>styles/dark.qss</file>
+<file>styles/gruvbox.qss</file>
+<file>styles/nord.qss</file>
+<file>icons/chadvis-projectm-qt.svg</file>
+<file>icons/play.svg</file>
+<file>icons/pause.svg</file>
+<file>icons/stop.svg</file>
+<file>icons/next.svg</file>
+<file>icons/prev.svg</file>
+<file>icons/record.svg</file>
+<file>icons/shuffle.svg</file>
+<file>icons/repeat.svg</file>
+<file>icons/qml/playback.svg</file>
+<file>icons/qml/playlist.svg</file>
+<file>icons/qml/presets.svg</file>
+<file>icons/qml/lyrics.svg</file>
+<file>icons/qml/suno.svg</file>
+<file>icons/qml/overlay.svg</file>
+<file>icons/qml/recording.svg</file>
+</qresource>
 </RCC>
