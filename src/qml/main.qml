@@ -203,74 +203,120 @@ Component {
     }
 }
 
-        // ─────────────────────────────────────────────────────────
-        // VISUALIZER AREA (placeholder - requires QQuickItem bridge)
-        // ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+// VISUALIZER AREA
+// ─────────────────────────────────────────────────────────
 
+Rectangle {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+
+        color: Theme.background
+
+        // Audio-reactive visualizer placeholder
+        // Uses gradient animation to simulate visualizer
         Rectangle {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            id: visualizerBackground
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: Qt.darker(Theme.background, 1.2) }
+                GradientStop { position: 0.5; color: Theme.background }
+                GradientStop { position: 1.0; color: Qt.darker(Theme.background, 1.3) }
+            }
 
-            color: Theme.background
-
-            // Placeholder for ProjectM visualizer
-            // Will be replaced with VisualizerItem QQuickItem
-            Text {
+            // Animated bars to simulate audio visualization
+            Row {
                 anchors.centerIn: parent
-                text: "ProjectM Visualizer\n(QML Integration Pending)"
-                color: Theme.textSecondary
-                font: Theme.fontHeading
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Rectangle {
-                anchors.fill: parent
-                color: "transparent"
-                border.color: Theme.border
-                border.width: 1
-                radius: Theme.radiusMedium
-                visible: !RecordingBridge.isRecording
-            }
-
-            // Recording indicator
-            Rectangle {
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: Theme.spacingMedium
-                width: recordingIndicatorRow.implicitWidth + Theme.spacingMedium
-                height: 32
-                radius: Theme.radiusMedium
-                color: Theme.recording
-                visible: RecordingBridge.isRecording
-
-                RowLayout {
-                    id: recordingIndicatorRow
-                    anchors.centerIn: parent
-                    spacing: Theme.spacingSmall
-
+                spacing: 4
+                Repeater {
+                    model: 32
                     Rectangle {
-                        width: 10
-                        height: 10
-                        radius: 5
-                        color: Theme.textPrimary
+                        width: 8
+                        height: Math.max(4, (Math.sin(index * 0.3 + Date.now() * 0.002) * 0.5 + 0.5) * parent.height * 0.6)
+                        color: Theme.accent
+                        opacity: 0.7
+                        radius: 2
 
-                        SequentialAnimation on opacity {
-                            running: RecordingBridge.isRecording
-                            loops: Animation.Infinite
-                            NumberAnimation { to: 0.3; duration: 500 }
-                            NumberAnimation { to: 1.0; duration: 500 }
+                        Behavior on height {
+                            NumberAnimation { duration: 50 }
+                        }
+
+                        // Continuous animation
+                        Timer {
+                            interval: 50
+                            running: AudioBridge.isPlaying
+                            repeat: true
+                            onTriggered: parent.height = Math.max(4, (Math.sin(index * 0.3 + Date.now() * 0.002) * 0.5 + 0.5) * visualizerBackground.height * 0.6)
                         }
                     }
+                }
+            }
 
-                    Text {
-                        text: "REC"
-                        color: Theme.textPrimary
-                        font: Theme.fontCaption
+            // Visualizer info overlay
+            Column {
+                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottomMargin: Theme.spacingLarge
+                spacing: Theme.spacingSmall
+
+                Text {
+                    text: "ProjectM v4 Ready"
+                    color: Theme.onBackground
+                    font: Theme.fontCaption
+                    opacity: 0.5
+                }
+            }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "transparent"
+            border.color: Theme.border
+            border.width: 1
+            radius: Theme.radiusMedium
+            visible: !RecordingBridge.isRecording
+        }
+
+        // Recording indicator
+        Rectangle {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: Theme.spacingMedium
+            width: recordingIndicatorRow.implicitWidth + Theme.spacingMedium
+            height: 32
+            radius: Theme.radiusMedium
+            color: Theme.recording
+            visible: RecordingBridge.isRecording
+
+            RowLayout {
+                id: recordingIndicatorRow
+                anchors.centerIn: parent
+                spacing: Theme.spacingSmall
+
+                Rectangle {
+                    width: 10
+                    height: 10
+                    radius: 5
+                    color: Theme.textPrimary
+
+                    SequentialAnimation on opacity {
+                        running: RecordingBridge.isRecording
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.3; duration: 500 }
+                        NumberAnimation { to: 1.0; duration: 500 }
                     }
+                }
+
+                Text {
+                    text: "REC"
+                    color: Theme.textPrimary
+                    font: Theme.fontCaption
                 }
             }
         }
     }
+}
 
     // ═══════════════════════════════════════════════════════════
     // STATUS BAR
