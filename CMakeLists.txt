@@ -316,6 +316,12 @@ set(QML_BRIDGE_SOURCES
     src/qml_bridge/VisualizerBridge.cpp
     src/qml_bridge/RecordingBridge.hpp
     src/qml_bridge/RecordingBridge.cpp
+    src/qml_bridge/PresetBridge.hpp
+    src/qml_bridge/PresetBridge.cpp
+    src/qml_bridge/LyricsBridge.hpp
+    src/qml_bridge/LyricsBridge.cpp
+    src/qml_bridge/SunoBridge.hpp
+    src/qml_bridge/SunoBridge.cpp
     src/qml_bridge/BridgeRegistration.hpp
     src/qml_bridge/BridgeRegistration.cpp
     src/qml_bridge/VisualizerItem.hpp
@@ -385,6 +391,11 @@ set(QML_SOURCES
     src/qml/components/AppSlider.qml
     src/qml/panels/PlaybackPanel.qml
     src/qml/panels/PlaylistPanel.qml
+    src/qml/panels/PresetsPanel.qml
+    src/qml/panels/LyricsPanel.qml
+    src/qml/panels/SunoPanel.qml
+    src/qml/panels/OverlayPanel.qml
+    src/qml/panels/RecordingPanel.qml
 )
 
 # Common include directories

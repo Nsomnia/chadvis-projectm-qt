@@ -34,6 +34,12 @@ class MainWindow;
 class AudioEngine;
 class OverlayEngine;
 class VideoRecorder;
+class PresetManager;
+class LyricsSync;
+
+namespace suno {
+class SunoController;
+}
 
 struct AppOptions {
     // General
@@ -131,12 +137,17 @@ private:
     std::unique_ptr<QApplication> qapp_;
     std::unique_ptr<QQmlEngine> qmlEngine_;
     std::unique_ptr<QQuickWindow> qmlWindow_;
-    // Components - Declaration order matters for destruction (reverse order)
-    // We want engines to stay alive until the UI is gone
-    std::unique_ptr<AudioEngine> audioEngine_;
-    std::unique_ptr<OverlayEngine> overlayEngine_;
-    std::unique_ptr<VideoRecorder> videoRecorder_;
-    std::unique_ptr<MainWindow> mainWindow_;
+// Components - Declaration order matters for destruction (reverse order)
+// We want engines to stay alive until the UI is gone
+std::unique_ptr<AudioEngine> audioEngine_;
+std::unique_ptr<OverlayEngine> overlayEngine_;
+std::unique_ptr<VideoRecorder> videoRecorder_;
+std::unique_ptr<MainWindow> mainWindow_;
+
+// QML-specific managers
+std::unique_ptr<PresetManager> presetManager_;
+std::unique_ptr<LyricsSync> lyricsSync_;
+std::unique_ptr<suno::SunoController> sunoController_;
 
     bool useQml_{false};
     int argc_;

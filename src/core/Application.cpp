@@ -10,6 +10,8 @@
 #include "util/FileUtils.hpp"
 #include "util/GLIncludes.hpp"
 #include "visualizer/RatingManager.hpp"
+#include "visualizer/PresetManager.hpp"
+#include "lyrics/LyricsSync.hpp"
 #include "ui/controllers/SunoController.hpp"
 #include "suno/SunoModels.hpp"
 #include "qml_bridge/BridgeRegistration.hpp"
@@ -452,17 +454,34 @@ Result<void> Application::init(const AppOptions& opts) {
     useQml_ = opts.useQml;
     
     if (!opts.headless) {
-        if (useQml_) {
+if (useQml_) {
             LOG_DEBUG("Creating QML window...");
+
+            // Create QML-specific managers
+            LOG_DEBUG("Initializing preset manager for QML...");
+            presetManager_ = std::make_unique<PresetManager>();
+            if (auto presetDir = CONFIG.visualizer().presetPath; !presetDir.empty()) {
+                presetManager_->scan(presetDir, true);
+            }
+
+            LOG_DEBUG("Initializing lyrics sync for QML...");
+            lyricsSync_ = std::make_unique<LyricsSync>(audioEngine_.get());
+
+            LOG_DEBUG("Initializing Suno controller for QML...");
+            sunoController_ = std::make_unique<suno::SunoController>(
+                audioEngine_.get(), overlayEngine_.get(), nullptr);
+
             qmlEngine_ = std::make_unique<QQmlEngine>();
+
+            // Register QML bridges with all managers
+            qml_bridge::registerBridges(qmlEngine_.get(),
+                audioEngine_.get(), nullptr, videoRecorder_.get(),
+                presetManager_.get(), lyricsSync_.get(), sunoController_.get());
             
-            // Register QML bridges
-            qml_bridge::registerBridges(qmlEngine_.get(), 
-                audioEngine_.get(), nullptr, videoRecorder_.get());
-            
-            // Load main QML file
-            QQmlComponent component(qmlEngine_.get(), 
-                QUrl::fromLocalFile("src/qml/main.qml"));
+// Load main QML file from Qt resource system
+        // The qt_add_qml_module creates resources under :/qt/qml/ChadVis/
+        QQmlComponent component(qmlEngine_.get(),
+            QUrl("qrc:/qt/qml/ChadVis/src/qml/main.qml"));
             
             if (component.status() == QQmlComponent::Error) {
                 LOG_ERROR("QML component error: {}", 
