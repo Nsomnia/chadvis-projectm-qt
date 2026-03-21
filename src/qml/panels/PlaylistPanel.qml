@@ -7,9 +7,10 @@
  * @version 1.0.0
  */
 
-import QtQuick 2.15
-import QtQuick.Layouts 1.15
-import QtQuick.Controls 2.15
+import QtQuick
+import Qt5Compat.GraphicalEffects
+import QtQuick.Layouts
+import QtQuick.Controls
 import "../styles"
 import "../components"
 
@@ -137,12 +138,14 @@ ColumnLayout {
                 onDoubleClicked: PlaylistBridge.playAt(index)
             }
 
-            Border {
-                visible: isCurrent
-                color: Theme.accent
-                width: 2
-                radius: Theme.radiusSmall
-            }
+RectangularGlow {
+            visible: isCurrent
+            glowRadius: 2
+            spread: 0.1
+            color: Theme.accent
+            cornerRadius: Theme.radiusSmall
+            anchors.fill: parent
+        }
         }
     }
 

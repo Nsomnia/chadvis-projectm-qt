@@ -11,10 +11,10 @@
  * @version 1.0.0
  */
 
-import QtQuick 2.15
-import QtQuick.Layouts 1.15
-import QtQuick.Controls 2.15
-import QtQuick.Window 2.15
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import QtQuick.Window
 import "styles"
 import "components"
 import "panels"
@@ -112,36 +112,57 @@ Window {
 
                     expandedPanel: "playback"
 
-                    panels: [
-                        {
-                            id: "playback",
-                            title: "Playback",
-                            icon: "qrc:/icons/play.svg",
-                            expandedHeight: 280,
-                            component: playbackPanelComponent
-                        },
-                        {
-                            id: "playlist",
-                            title: "Library",
-                            icon: "qrc:/icons/playlist.svg",
-                            expandedHeight: 300,
-                            component: playlistPanelComponent
-                        },
-                        {
-                            id: "presets",
-                            title: "Presets",
-                            icon: "qrc:/icons/preset.svg",
-                            expandedHeight: 200,
-                            component: presetsPanelComponent
-                        },
-                        {
-                            id: "recording",
-                            title: "Recording",
-                            icon: "qrc:/icons/record.svg",
-                            expandedHeight: 180,
-                            component: recordingPanelComponent
-                        }
-                    ]
+panels: [
+            {
+                id: "playback",
+                title: "Playback",
+                icon: "qrc:/icons/play.svg",
+                expandedHeight: 280,
+                component: playbackPanelComponent
+            },
+            {
+                id: "playlist",
+                title: "Library",
+                icon: "qrc:/icons/playlist.svg",
+                expandedHeight: 300,
+                component: playlistPanelComponent
+            },
+            {
+                id: "presets",
+                title: "Presets",
+                icon: "qrc:/icons/preset.svg",
+                expandedHeight: 350,
+                component: presetsPanelComponent
+            },
+            {
+                id: "lyrics",
+                title: "Lyrics",
+                icon: "qrc:/icons/lyrics.svg",
+                expandedHeight: 300,
+                component: lyricsPanelComponent
+            },
+            {
+                id: "suno",
+                title: "Suno",
+                icon: "qrc:/icons/suno.svg",
+                expandedHeight: 400,
+                component: sunoPanelComponent
+            },
+            {
+                id: "overlay",
+                title: "Overlay",
+                icon: "qrc:/icons/overlay.svg",
+                expandedHeight: 300,
+                component: overlayPanelComponent
+            },
+            {
+                id: "recording",
+                title: "Recording",
+                icon: "qrc:/icons/record.svg",
+                expandedHeight: 350,
+                component: recordingPanelComponent
+            }
+        ]
                 }
             }
 
@@ -156,46 +177,31 @@ Window {
                 PlaylistPanel {}
             }
 
-            Component {
-                id: presetsPanelComponent
-                ColumnLayout {
-                    Text { text: "Presets Panel (TODO)"; color: Theme.textSecondary }
-                    Item { Layout.fillHeight: true }
-                }
-            }
+Component {
+        id: presetsPanelComponent
+        PresetsPanel {}
+    }
 
-            Component {
-                id: recordingPanelComponent
-                ColumnLayout {
-                    spacing: Theme.spacingSmall
+    Component {
+        id: lyricsPanelComponent
+        LyricsPanel {}
+    }
 
-                    Text {
-                        text: RecordingBridge.isRecording ? "● Recording" : "Ready"
-                        color: RecordingBridge.isRecording ? Theme.recording : Theme.textSecondary
-                        font: Theme.fontBodyStrong
-                    }
+    Component {
+        id: sunoPanelComponent
+        SunoPanel {}
+    }
 
-                    Text {
-                        text: "Duration: " + Theme.formatTime(RecordingBridge.duration * 1000)
-                        color: Theme.textSecondary
-                        font: Theme.fontCaption
-                    }
+    Component {
+        id: overlayPanelComponent
+        OverlayPanel {}
+    }
 
-                    AppButton {
-                        text: RecordingBridge.isRecording ? "Stop" : "Start"
-                        highlighted: RecordingBridge.isRecording
-                        Layout.fillWidth: true
-                        onClicked: {
-                            if (RecordingBridge.isRecording) {
-                                RecordingBridge.stopRecording()
-                            } else {
-                                RecordingBridge.startRecording()
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    Component {
+        id: recordingPanelComponent
+        RecordingPanel {}
+    }
+}
 
         // ─────────────────────────────────────────────────────────
         // VISUALIZER AREA (placeholder - requires QQuickItem bridge)
