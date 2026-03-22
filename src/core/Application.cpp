@@ -22,6 +22,7 @@
 #include <QQmlEngine>
 #include <QQmlComponent>
 #include <QQuickWindow>
+#include <QSurfaceFormat>
 #include <iostream>
 #include <cstdlib>
 
@@ -416,12 +417,22 @@ Result<void> Application::init(const AppOptions& opts) {
         LOG_INFO("CLI override: ui.theme = {}", *opts.theme);
     }
 
-    // Create Qt application
-    qapp_ = std::make_unique<QApplication>(argc_, argv_);
-    qapp_->setApplicationName("ChadVis");
-    qapp_->setApplicationVersion("1.0.0");
-    qapp_->setOrganizationName("ChadVis");
-    qapp_->setOrganizationDomain("github.com/chadvis-projectm-qt");
+	// Set OpenGL format BEFORE creating QApplication (required for projectM)
+	QSurfaceFormat format;
+	format.setVersion(3, 3);
+	format.setProfile(QSurfaceFormat::CoreProfile);
+	format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
+	format.setSwapInterval(1);
+	format.setDepthBufferSize(24);
+	format.setSamples(0);
+	QSurfaceFormat::setDefaultFormat(format);
+
+	// Create Qt application
+	qapp_ = std::make_unique<QApplication>(argc_, argv_);
+	qapp_->setApplicationName("ChadVis");
+	qapp_->setApplicationVersion("1.0.0");
+	qapp_->setOrganizationName("ChadVis");
+	qapp_->setOrganizationDomain("github.com/chadvis-projectm-qt");
 
     // Setup styling
     setupStyle();
