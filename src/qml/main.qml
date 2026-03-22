@@ -15,11 +15,11 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Window
-import "styles"
+import ChadVis
 import "components"
 import "panels"
 
-Window {
+ApplicationWindow {
     id: mainWindow
 
     visible: true
@@ -39,7 +39,7 @@ Window {
         return title
     }
 
-    color: Theme.background
+    background: Rectangle { color: Theme.background }
 
     // ═══════════════════════════════════════════════════════════
     // MAIN LAYOUT
@@ -116,49 +116,49 @@ panels: [
             {
                 id: "playback",
                 title: "Playback",
-                icon: "qrc:/icons/play.svg",
+                icon: "qrc:/icons/qml/playback.svg",
                 expandedHeight: 280,
                 component: playbackPanelComponent
             },
             {
                 id: "playlist",
                 title: "Library",
-                icon: "qrc:/icons/playlist.svg",
+                icon: "qrc:/icons/qml/playlist.svg",
                 expandedHeight: 300,
                 component: playlistPanelComponent
             },
             {
                 id: "presets",
                 title: "Presets",
-                icon: "qrc:/icons/preset.svg",
+                icon: "qrc:/icons/qml/presets.svg",
                 expandedHeight: 350,
                 component: presetsPanelComponent
             },
             {
                 id: "lyrics",
                 title: "Lyrics",
-                icon: "qrc:/icons/lyrics.svg",
+                icon: "qrc:/icons/qml/lyrics.svg",
                 expandedHeight: 300,
                 component: lyricsPanelComponent
             },
             {
                 id: "suno",
                 title: "Suno",
-                icon: "qrc:/icons/suno.svg",
+                icon: "qrc:/icons/qml/suno.svg",
                 expandedHeight: 400,
                 component: sunoPanelComponent
             },
             {
                 id: "overlay",
                 title: "Overlay",
-                icon: "qrc:/icons/overlay.svg",
+                icon: "qrc:/icons/qml/overlay.svg",
                 expandedHeight: 300,
                 component: overlayPanelComponent
             },
             {
                 id: "recording",
                 title: "Recording",
-                icon: "qrc:/icons/record.svg",
+                icon: "qrc:/icons/qml/recording.svg",
                 expandedHeight: 350,
                 component: recordingPanelComponent
             }

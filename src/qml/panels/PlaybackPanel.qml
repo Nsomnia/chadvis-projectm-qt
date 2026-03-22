@@ -7,10 +7,10 @@
  * @version 1.0.0
  */
 
-import QtQuick 2.15
-import QtQuick.Layouts 1.15
-import QtQuick.Controls 2.15
-import "../styles"
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import ChadVis
 import "../components"
 
 ColumnLayout {

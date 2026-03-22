@@ -11,8 +11,8 @@
  * @version 1.0.0
  */
 
-import QtQuick 2.15
-import "../styles"
+import QtQuick
+import ChadVis
 
 Item {
     id: root

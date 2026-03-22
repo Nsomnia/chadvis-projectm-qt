@@ -322,6 +322,8 @@ set(QML_BRIDGE_SOURCES
     src/qml_bridge/LyricsBridge.cpp
     src/qml_bridge/SunoBridge.hpp
     src/qml_bridge/SunoBridge.cpp
+    src/qml_bridge/ThemeBridge.hpp
+    src/qml_bridge/ThemeBridge.cpp
     src/qml_bridge/BridgeRegistration.hpp
     src/qml_bridge/BridgeRegistration.cpp
     src/qml_bridge/VisualizerItem.hpp
@@ -384,7 +386,6 @@ set(UI_SOURCES
 # ═══════════════════════════════════════════════════════════════════════════
 set(QML_SOURCES
     src/qml/main.qml
-    src/qml/styles/Theme.qml
     src/qml/components/AccordionPanel.qml
     src/qml/components/AccordionContainer.qml
     src/qml/components/AppButton.qml

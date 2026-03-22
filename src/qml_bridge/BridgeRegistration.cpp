@@ -11,21 +11,23 @@
 #include "PresetBridge.hpp"
 #include "LyricsBridge.hpp"
 #include "SunoBridge.hpp"
-#include <QQmlEngine>
+#include "ThemeBridge.hpp"
+#include <QQmlApplicationEngine>
 
 namespace qml_bridge {
 
 namespace {
-    AudioBridge* s_audioBridge = nullptr;
-    PlaylistBridge* s_playlistBridge = nullptr;
-    VisualizerBridge* s_visualizerBridge = nullptr;
-    RecordingBridge* s_recordingBridge = nullptr;
+AudioBridge* s_audioBridge = nullptr;
+PlaylistBridge* s_playlistBridge = nullptr;
+VisualizerBridge* s_visualizerBridge = nullptr;
+RecordingBridge* s_recordingBridge = nullptr;
 PresetBridge* s_presetBridge = nullptr;
 LyricsBridge* s_lyricsBridge = nullptr;
 SunoBridge* s_sunoBridge = nullptr;
+ThemeBridge* s_themeBridge = nullptr;
 }
 
-void registerBridges(QQmlEngine* engine,
+void registerBridges(QQmlApplicationEngine* engine,
     vc::AudioEngine* audioEngine,
     vc::VisualizerWindow* visualizer,
     vc::VideoRecorder* recorder,
@@ -40,6 +42,7 @@ void registerBridges(QQmlEngine* engine,
     s_presetBridge = PresetBridge::create(engine, nullptr);
     s_lyricsBridge = LyricsBridge::create(engine, nullptr);
     s_sunoBridge = SunoBridge::create(engine, nullptr);
+    s_themeBridge = ThemeBridge::create(engine, nullptr);
 
     if (audioEngine) {
         s_audioBridge->setAudioEngine(audioEngine);
@@ -77,6 +80,7 @@ void registerBridges(QQmlEngine* engine,
     qmlRegisterSingletonInstance("ChadVis", 1, 0, "PresetBridge", s_presetBridge);
     qmlRegisterSingletonInstance("ChadVis", 1, 0, "LyricsBridge", s_lyricsBridge);
     qmlRegisterSingletonInstance("ChadVis", 1, 0, "SunoBridge", s_sunoBridge);
+    qmlRegisterSingletonInstance("ChadVis", 1, 0, "Theme", s_themeBridge);
 }
 
 AudioBridge* getAudioBridge() { return s_audioBridge; }
@@ -86,5 +90,6 @@ RecordingBridge* getRecordingBridge() { return s_recordingBridge; }
 PresetBridge* getPresetBridge() { return s_presetBridge; }
 LyricsBridge* getLyricsBridge() { return s_lyricsBridge; }
 SunoBridge* getSunoBridge() { return s_sunoBridge; }
+ThemeBridge* getThemeBridge() { return s_themeBridge; }
 
 }

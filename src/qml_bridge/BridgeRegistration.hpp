@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include <QQmlEngine>
+#include <QQmlApplicationEngine>
 
 namespace vc {
 class AudioEngine;
@@ -32,8 +32,9 @@ class RecordingBridge;
 class PresetBridge;
 class LyricsBridge;
 class SunoBridge;
+class ThemeBridge;
 
-void registerBridges(QQmlEngine* engine,
+void registerBridges(QQmlApplicationEngine* engine,
     vc::AudioEngine* audioEngine,
     vc::VisualizerWindow* visualizer,
     vc::VideoRecorder* recorder,
@@ -48,5 +49,6 @@ RecordingBridge* getRecordingBridge();
 PresetBridge* getPresetBridge();
 LyricsBridge* getLyricsBridge();
 SunoBridge* getSunoBridge();
+ThemeBridge* getThemeBridge();
 
 } // namespace qml_bridge
