@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import Qt5Compat.GraphicalEffects
 import ChadVis
 import "../components"
 
@@ -80,12 +81,12 @@ ColumnLayout {
                 }
             }
 
-            AppButton {
-                icon: "\u2680"
-                implicitWidth: 44
-                implicitHeight: 44
-                onClicked: PresetBridge.selectRandom()
-            }
+	AppButton {
+		icon: "qrc:/qt/qml/ChadVis/resources/icons/random.svg"
+		implicitWidth: 44
+		implicitHeight: 44
+		onClicked: PresetBridge.selectRandom()
+	}
         }
     }
 
@@ -142,13 +143,19 @@ ColumnLayout {
             anchors.margins: Theme.spacingSmall
             spacing: Theme.spacingSmall
 
-            Text {
-                text: delegate.isFavorite ? "\u2605" : (delegate.isBlacklisted ? "\u2298" : "")
-                color: delegate.isFavorite ? Theme.accent : Theme.onSurfaceVariant
-                font.pixelSize: Theme.fontSizeLarge
-                visible: text !== ""
-                Layout.preferredWidth: visible ? implicitWidth : 0
-            }
+	Image {
+		source: delegate.isFavorite ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : (delegate.isBlacklisted ? "qrc:/qt/qml/ChadVis/resources/icons/blacklist.svg" : "")
+		Layout.preferredWidth: visible ? 24 : 0
+		Layout.preferredHeight: visible ? 24 : 0
+		fillMode: Image.PreserveAspectFit
+		visible: delegate.isFavorite || delegate.isBlacklisted
+
+		ColorOverlay {
+			anchors.fill: parent
+			source: parent
+			color: delegate.isFavorite ? Theme.accent : Theme.onSurfaceVariant
+		}
+	}
 
             ColumnLayout {
                 Layout.fillWidth: true
@@ -171,38 +178,44 @@ ColumnLayout {
                 }
             }
 
-            Row {
-                spacing: 2
-                Layout.alignment: Qt.AlignVCenter
+	Row {
+		spacing: 2
+		Layout.alignment: Qt.AlignVCenter
 
-                Repeater {
-                    model: 5
-                    delegate: Text {
-                        text: index < delegate.rating ? "\u2605" : "\u2606"
-                        color: index < delegate.rating ? Theme.accent : Theme.onSurfaceVariant
-                        font.pixelSize: Theme.fontSizeSmall
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: PresetBridge.setRating(modelData.index, index + 1)
-                        }
-                    }
-                }
-            }
+		Repeater {
+			model: 5
+			Image {
+				source: index < delegate.rating ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : "qrc:/qt/qml/ChadVis/resources/icons/star-outline.svg"
+				Layout.preferredWidth: 16
+				Layout.preferredHeight: 16
+				fillMode: Image.PreserveAspectFit
+				ColorOverlay {
+					anchors.fill: parent
+					source: parent
+					color: index < delegate.rating ? Theme.accent : Theme.onSurfaceVariant
+				}
+				MouseArea {
+					anchors.fill: parent
+					onClicked: PresetBridge.setRating(modelData.index, index + 1)
+				}
+			}
+		}
+	}
 
-            AppButton {
-                icon: delegate.isFavorite ? "\u2605" : "\u2606"
-                implicitWidth: 36
-                implicitHeight: 36
-                highlighted: delegate.isFavorite
-                onClicked: delegate.favoriteToggled()
-            }
+	AppButton {
+		icon: delegate.isFavorite ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : "qrc:/qt/qml/ChadVis/resources/icons/star-outline.svg"
+		implicitWidth: 36
+		implicitHeight: 36
+		highlighted: delegate.isFavorite
+		onClicked: delegate.favoriteToggled()
+	}
 
-            AppButton {
-                icon: delegate.isBlacklisted ? "\u2298" : "\u2297"
-                implicitWidth: 36
-                implicitHeight: 36
-                onClicked: delegate.blacklistToggled()
-            }
+	AppButton {
+		icon: delegate.isBlacklisted ? "qrc:/qt/qml/ChadVis/resources/icons/blacklist.svg" : "qrc:/qt/qml/ChadVis/resources/icons/random.svg"
+		implicitWidth: 36
+		implicitHeight: 36
+		onClicked: delegate.blacklistToggled()
+	}
         }
 
         MouseArea {

@@ -295,12 +295,12 @@ ColumnLayout {
                 Layout.fillWidth: true
             }
 
-            AppButton {
-                icon: "\u{1F5D1}"
-                implicitWidth: 36
-                implicitHeight: 36
-                onClicked: delegate.deleteClicked()
-            }
+	AppButton {
+		icon: "qrc:/qt/qml/ChadVis/resources/icons/delete.svg"
+		implicitWidth: 36
+		implicitHeight: 36
+		onClicked: delegate.deleteClicked()
+	}
         }
 
         MouseArea {

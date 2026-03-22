@@ -61,7 +61,7 @@ add_compile_options(
 )
 
 # Find packages
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Multimedia OpenGLWidgets Svg Network Sql WebEngineWidgets Quick Qml QuickControls2)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Multimedia Network Quick Qml QuickControls2 WebEngineWidgets Sql)
 find_package(PkgConfig REQUIRED)
 
 # Header-only libraries: try system first, fallback to CPM
@@ -308,77 +308,38 @@ set(LYRICS_SOURCES
 # QML BRIDGE SOURCES - C++ types exposed to QML
 # ═══════════════════════════════════════════════════════════════════════════
 set(QML_BRIDGE_SOURCES
-    src/qml_bridge/AudioBridge.hpp
-    src/qml_bridge/AudioBridge.cpp
-    src/qml_bridge/PlaylistBridge.hpp
-    src/qml_bridge/PlaylistBridge.cpp
-    src/qml_bridge/VisualizerBridge.hpp
-    src/qml_bridge/VisualizerBridge.cpp
-    src/qml_bridge/RecordingBridge.hpp
-    src/qml_bridge/RecordingBridge.cpp
-    src/qml_bridge/PresetBridge.hpp
-    src/qml_bridge/PresetBridge.cpp
-    src/qml_bridge/LyricsBridge.hpp
-    src/qml_bridge/LyricsBridge.cpp
-    src/qml_bridge/SunoBridge.hpp
-    src/qml_bridge/SunoBridge.cpp
-    src/qml_bridge/ThemeBridge.hpp
-    src/qml_bridge/ThemeBridge.cpp
-    src/qml_bridge/BridgeRegistration.hpp
-    src/qml_bridge/BridgeRegistration.cpp
-    src/qml_bridge/VisualizerItem.hpp
-    src/qml_bridge/VisualizerItem.cpp
+src/qml_bridge/AudioBridge.hpp
+src/qml_bridge/AudioBridge.cpp
+src/qml_bridge/PlaylistBridge.hpp
+src/qml_bridge/PlaylistBridge.cpp
+src/qml_bridge/VisualizerBridge.hpp
+src/qml_bridge/VisualizerBridge.cpp
+src/qml_bridge/RecordingBridge.hpp
+src/qml_bridge/RecordingBridge.cpp
+src/qml_bridge/PresetBridge.hpp
+src/qml_bridge/PresetBridge.cpp
+src/qml_bridge/LyricsBridge.hpp
+src/qml_bridge/LyricsBridge.cpp
+src/qml_bridge/SunoBridge.hpp
+src/qml_bridge/SunoBridge.cpp
+src/qml_bridge/ThemeBridge.hpp
+src/qml_bridge/ThemeBridge.cpp
+src/qml_bridge/BridgeRegistration.hpp
+src/qml_bridge/BridgeRegistration.cpp
+src/qml_bridge/VisualizerItem.hpp
+src/qml_bridge/VisualizerItem.cpp
 )
 
+# ═══════════════════════════════════════════════════════════════════════════
+# UI SOURCES - Minimal auth/controller classes for QML
+# ═══════════════════════════════════════════════════════════════════════════
 set(UI_SOURCES
-    src/ui/controllers/AudioController.hpp
-    src/ui/controllers/AudioController.cpp
-    src/ui/controllers/VisualizerController.hpp
-    src/ui/controllers/VisualizerController.cpp
-    src/ui/controllers/RecordingController.hpp
-    src/ui/controllers/RecordingController.cpp
-    src/ui/controllers/SunoController.hpp
-    src/ui/controllers/SunoController.cpp
-    src/ui/MarqueeLabel.hpp
-    src/ui/MarqueeLabel.cpp
-    src/ui/PlayerControls.hpp
-    src/ui/PlayerControls.cpp
-    src/ui/PlaylistView.hpp
-    src/ui/PlaylistView.cpp
-    src/ui/VisualizerPanel.hpp
-    src/ui/VisualizerPanel.cpp
-    src/ui/OverlayEditor.hpp
-    src/ui/OverlayEditor.cpp
-    src/ui/SunoBrowser.hpp
-    src/ui/SunoBrowser.cpp
-    src/ui/SunoCookieDialog.hpp
-    src/ui/SunoCookieDialog.cpp
-    src/ui/KaraokeWidget.hpp
-    src/ui/KaraokeWidget.cpp
-    src/ui/PresetBrowser.hpp
-    src/ui/PresetBrowser.cpp
-    src/ui/RecordingControls.hpp
-    src/ui/RecordingControls.cpp
-    src/ui/SettingsDialog.hpp
-    src/ui/SettingsDialog.cpp
-    src/ui/MainWindow.hpp
-    src/ui/MainWindow.cpp
-    src/ui/SunoBrowserWidget.hpp
-    src/ui/SunoBrowserWidget.cpp
-    src/ui/SunoPersistentAuth.hpp
-    src/ui/SunoPersistentAuth.cpp
-    src/ui/SystemBrowserAuth.hpp
-    src/ui/SystemBrowserAuth.cpp
-    src/ui/LyricsPanel.hpp
-    src/ui/LyricsPanel.cpp
-    src/ui/SidebarWidget.hpp
-    src/ui/SidebarWidget.cpp
-    src/ui/widgets/CyanSlider.hpp
-    src/ui/widgets/CyanSlider.cpp
-    src/ui/widgets/GlowButton.hpp
-    src/ui/widgets/GlowButton.cpp
-    src/ui/widgets/ToggleSwitch.hpp
-    src/ui/widgets/ToggleSwitch.cpp
+src/ui/controllers/SunoController.hpp
+src/ui/controllers/SunoController.cpp
+src/ui/SunoPersistentAuth.hpp
+src/ui/SunoPersistentAuth.cpp
+src/ui/SystemBrowserAuth.hpp
+src/ui/SystemBrowserAuth.cpp
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -414,23 +375,20 @@ set(COMMON_INCLUDES
 
 # Common link libraries
 set(COMMON_LIBS
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    Qt6::Multimedia
-    Qt6::OpenGLWidgets
-    Qt6::Svg
-    Qt6::Network
-    Qt6::Sql
-    Qt6::WebEngineWidgets
-    Qt6::Quick
-    Qt6::Qml
-    Qt6::QuickControls2
-    ${TAGLIB_LIBRARIES}
-    ${GLEW_LIBRARIES}
-    ${FFMPEG_LIBRARIES}
-    projectM-4
-    projectM-4-playlist
+Qt6::Core
+Qt6::Gui
+Qt6::Multimedia
+Qt6::Network
+Qt6::Quick
+Qt6::Qml
+Qt6::QuickControls2
+Qt6::WebEngineWidgets
+Qt6::Sql
+${TAGLIB_LIBRARIES}
+${GLEW_LIBRARIES}
+${FFMPEG_LIBRARIES}
+projectM-4
+projectM-4-playlist
     OpenGL
 )
 
@@ -462,17 +420,17 @@ endif()
 
 # Define libraries
 add_library(project_lib STATIC
-    ${UTIL_SOURCES}
-    ${CORE_SOURCES}
-    ${AUDIO_SOURCES}
-    ${VISUALIZER_SOURCES}
-    ${SUNO_SOURCES}
-    ${OVERLAY_SOURCES}
-    ${RECORDER_SOURCES}
-    ${LYRICS_SOURCES}
-    ${UI_SOURCES}
-    ${QML_BRIDGE_SOURCES}
-    resources/chadvis-projectm-qt.qrc
+${UTIL_SOURCES}
+${CORE_SOURCES}
+${AUDIO_SOURCES}
+${VISUALIZER_SOURCES}
+${SUNO_SOURCES}
+${OVERLAY_SOURCES}
+${RECORDER_SOURCES}
+${LYRICS_SOURCES}
+${UI_SOURCES}
+${QML_BRIDGE_SOURCES}
+resources/chadvis-projectm-qt.qrc
 )
 
 set_target_properties(project_lib PROPERTIES
@@ -493,6 +451,38 @@ qt_add_qml_module(project_lib
     URI ChadVis
     VERSION 1.0
     QML_FILES ${QML_SOURCES}
+    RESOURCES
+        resources/icons/play.svg
+        resources/icons/pause.svg
+        resources/icons/stop.svg
+        resources/icons/next.svg
+        resources/icons/prev.svg
+        resources/icons/record.svg
+        resources/icons/shuffle.svg
+        resources/icons/repeat.svg
+        resources/icons/collapse.svg
+        resources/icons/expand.svg
+        resources/icons/volume-high.svg
+        resources/icons/volume-mute.svg
+        resources/icons/plus.svg
+        resources/icons/clear.svg
+        resources/icons/search.svg
+        resources/icons/refresh.svg
+        resources/icons/save.svg
+        resources/icons/video.svg
+        resources/icons/star-filled.svg
+        resources/icons/star-outline.svg
+        resources/icons/delete.svg
+        resources/icons/random.svg
+        resources/icons/music-note.svg
+        resources/icons/blacklist.svg
+        resources/icons/qml/playback.svg
+        resources/icons/qml/playlist.svg
+        resources/icons/qml/presets.svg
+        resources/icons/qml/lyrics.svg
+        resources/icons/qml/suno.svg
+        resources/icons/qml/overlay.svg
+        resources/icons/qml/recording.svg
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ChadVis
     NO_PLUGIN
 )

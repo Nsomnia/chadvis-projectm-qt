@@ -4,6 +4,8 @@
 #include "core/Logger.hpp"
 #include "overlay/OverlayEngine.hpp"
 #include "suno/SunoLyrics.hpp"
+#include "ui/SunoCookieDialog.hpp"
+#include "ui/MainWindow.hpp"
 #include "util/FileUtils.hpp"
 
 #include <QStandardPaths>
@@ -20,15 +22,16 @@
 namespace vc::suno {
 
 SunoController::SunoController(AudioEngine* audioEngine,
-	OverlayEngine* overlayEngine,
-	QObject* parent)
-: QObject(parent),
-	audioEngine_(audioEngine),
-	overlayEngine_(overlayEngine),
-	client_(std::make_unique<SunoClient>(nullptr)),
-	networkManager_(new QNetworkAccessManager(this)),
-	persistentAuth_(std::make_unique<chadvis::SunoPersistentAuth>(nullptr)),
-	systemAuth_(std::make_unique<chadvis::SystemBrowserAuth>(nullptr)) {
+                               OverlayEngine* overlayEngine,
+                               MainWindow* window)
+    : QObject(nullptr),
+      audioEngine_(audioEngine),
+      overlayEngine_(overlayEngine),
+      window_(window),
+      client_(std::make_unique<SunoClient>(nullptr)),
+      networkManager_(new QNetworkAccessManager(this)),
+      persistentAuth_(std::make_unique<chadvis::SunoPersistentAuth>(nullptr)),
+      systemAuth_(std::make_unique<chadvis::SystemBrowserAuth>(nullptr)) {
     // client_ is a unique_ptr, do NOT set parent to avoid double-free
     // but we can connect signals safely because client_ is a QObject
 
@@ -211,10 +214,10 @@ void SunoController::refreshLibrary(int page) {
         }
     }
 
-	if (!client_->isAuthenticated()) {
-		emit authenticationRequired();
-		return;
-	}
+    if (!client_->isAuthenticated()) {
+        showCookieDialog();
+        return;
+    }
     
     // Clear accumulated clips when starting new sync from page 1
     if (page == 1) {
@@ -231,20 +234,34 @@ void SunoController::refreshLibrary(int page) {
 }
 
 void SunoController::syncDatabase(bool forceAuth) {
-	if (forceAuth) {
-		emit authenticationRequired();
-	} else {
-		refreshLibrary(1);
-	}
+    if (forceAuth) {
+        showCookieDialog();
+    } else {
+        refreshLibrary(1);
+    }
 }
 
-void SunoController::requestAuthentication() {
-	emit authenticationRequired();
-}
-
-void SunoController::startSystemBrowserAuth() {
-	LOG_INFO("SunoController: Starting system browser auth");
-	systemAuth_->startAuth();
+void SunoController::showCookieDialog() {
+    auto* dialog = new ui::SunoCookieDialog(window_, persistentAuth_.get());
+    
+    connect(dialog, &ui::SunoCookieDialog::startSystemAuthRequested, this, [this, dialog]() {
+        LOG_INFO("SunoController: Switching to System Browser Auth");
+        dialog->close();
+        systemAuth_->startAuth();
+    });
+    
+    if (dialog->exec() == QDialog::Accepted) {
+        std::string cookie = dialog->getCookie().toStdString();
+        if (!cookie.empty()) {
+            client_->setCookie(cookie);
+            CONFIG.suno().cookie = cookie;
+            CONFIG.save(CONFIG.configPath());
+            accumulatedClips_.clear();
+            isSyncing_ = true;
+            client_->fetchLibrary(1);
+        }
+    }
+    dialog->deleteLater();
 }
 
 void SunoController::onLibraryFetched(const std::vector<SunoClip>& clips) {

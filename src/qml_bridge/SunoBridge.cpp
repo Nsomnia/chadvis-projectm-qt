@@ -95,9 +95,9 @@ void SunoBridge::setSearchQuery(const QString& query)
 
 void SunoBridge::authenticate()
 {
-    if (s_controller) {
-        s_controller->showCookieDialog();
-    }
+	if (s_controller) {
+		s_controller->requestAuthentication();
+	}
 }
 
 void SunoBridge::signOut()

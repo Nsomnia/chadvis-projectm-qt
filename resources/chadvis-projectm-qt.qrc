@@ -19,6 +19,16 @@
 <file>icons/volume-mute.svg</file>
 <file>icons/plus.svg</file>
 <file>icons/clear.svg</file>
+<file>icons/search.svg</file>
+<file>icons/refresh.svg</file>
+<file>icons/save.svg</file>
+<file>icons/video.svg</file>
+<file>icons/star-filled.svg</file>
+<file>icons/star-outline.svg</file>
+<file>icons/delete.svg</file>
+<file>icons/random.svg</file>
+<file>icons/music-note.svg</file>
+<file>icons/blacklist.svg</file>
 <file>icons/qml/playback.svg</file>
 <file>icons/qml/playlist.svg</file>
 <file>icons/qml/presets.svg</file>

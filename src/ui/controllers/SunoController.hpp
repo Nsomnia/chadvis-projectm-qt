@@ -17,121 +17,132 @@
 #include "util/Signal.hpp"
 
 namespace vc {
-namespace ui {
-    class SunoCookieDialog; // Forward decl
-}
 
 class AudioEngine;
 class OverlayEngine;
-class MainWindow;
 
 namespace suno {
 
 class SunoController : public QObject {
-    Q_OBJECT
+	Q_OBJECT
 
 public:
-    explicit SunoController(AudioEngine* audioEngine,
-                            OverlayEngine* overlayEngine,
-                            MainWindow* window);
-    ~SunoController() override;
+	explicit SunoController(AudioEngine* audioEngine,
+		OverlayEngine* overlayEngine,
+		QObject* parent = nullptr);
+	~SunoController() override;
 
-    SunoClient* client() {
-        return client_.get();
-    }
+	SunoClient* client() {
+		return client_.get();
+	}
 
-    // Logic
-    void downloadAndPlay(const SunoClip& clip);
+	// Logic
+	void downloadAndPlay(const SunoClip& clip);
 
-    Result<AlignedLyrics> getLyrics(const std::string& clipId);
+	Result<AlignedLyrics> getLyrics(const std::string& clipId);
 
-    void refreshLibrary(int page = 1);
-    void syncDatabase(bool forceAuth = false);
-    void showCookieDialog();
+	void refreshLibrary(int page = 1);
+	void syncDatabase(bool forceAuth = false);
 
-    const std::vector<SunoClip>& clips() const {
-        return accumulatedClips_;
-    }
+	// Auth - triggers signal for QML to handle
+	Q_INVOKABLE void requestAuthentication();
 
-    SunoDatabase& db() {
-        return db_;
-    }
+	// System browser auth (alternative method)
+	Q_INVOKABLE void startSystemBrowserAuth();
 
-    bool hasLyrics(const std::string& clipId) const {
-        return db_.hasLyrics(clipId);
-    }
+	const std::vector<SunoClip>& clips() const {
+		return accumulatedClips_;
+	}
 
-    // Signal for UI
-    Signal<const std::vector<SunoClip>&> libraryUpdated;
-    Signal<const std::string&> clipUpdated; // id
-    Signal<const std::string&> statusMessage;
+	SunoDatabase& db() {
+		return db_;
+	}
 
-    // Debug
-    void setDebugLyrics(const AlignedLyrics& lyrics);
+	bool hasLyrics(const std::string& clipId) const {
+		return db_.hasLyrics(clipId);
+	}
 
- public slots:
-    void onLibraryFetched(const std::vector<SunoClip>& clips);
-    void onAlignedLyricsFetched(const std::string& clipId,
-                                const std::string& json);
-    void onWavConversionReady(const std::string& clipId,
-                              const std::string& wavUrl);
-    void onError(const std::string& message);
+	// Check if authenticated
+	Q_INVOKABLE bool isAuthenticated() const {
+		return client_ && client_->isAuthenticated();
+	}
+
+	// Debug
+	void setDebugLyrics(const AlignedLyrics& lyrics);
+
+	// Signal for UI
+	Signal<const std::vector<SunoClip>&> libraryUpdated;
+	Signal<const std::string&> clipUpdated; // id
+	Signal<const std::string&> statusMessage;
+
+signals:
+	// Emitted when auth is needed - QML should show auth UI
+	void authenticationRequired();
+	void authenticationSuccess();
+	void authenticationFailed(const QString& reason);
+
+public slots:
+	void onLibraryFetched(const std::vector<SunoClip>& clips);
+	void onAlignedLyricsFetched(const std::string& clipId,
+		const std::string& json);
+	void onWavConversionReady(const std::string& clipId,
+		const std::string& wavUrl);
+	void onError(const std::string& message);
 
 private:
-    void downloadAudio(const SunoClip& clip);
-    void processDownloadedFile(const SunoClip& clip, const fs::path& path);
-    void processLyricsQueue();
-    void onTrackChanged();
-    
-    // Helper: Check if clipId matches currently playing track
-    bool isCurrentlyPlaying(const std::string& clipId) const;
-    
-    // Helper: Parse lyrics and immediately display to overlay
-    std::optional<AlignedLyrics> parseAndDisplayLyrics(
-        const std::string& clipId,
-        const std::string& json,
-        const QJsonDocument& doc);
-    
-    // Helper: Save lyrics sidecar files (.json and .srt)
-    void saveLyricsSidecar(const std::string& clipId,
-                           const std::string& json,
-                           const QJsonDocument& doc);
-    
-    // Helper: Save metadata sidecar file (.txt)
-    void saveMetadataSidecar(const SunoClip& clip);
-    
-    // Helper: Extract clip ID from track with aggressive UUID detection
-    std::string extractClipIdFromTrack() const;
-    
-    // Helper: Download audio from URL
-    void downloadAudioFromUrl(const std::string& clipId, const std::string& url, const std::string& extension);
+	void downloadAudio(const SunoClip& clip);
+	void processDownloadedFile(const SunoClip& clip, const fs::path& path);
+	void processLyricsQueue();
+	void onTrackChanged();
 
-    AudioEngine* audioEngine_;
-    OverlayEngine* overlayEngine_;
-    MainWindow* window_;
-    std::unique_ptr<SunoClient> client_;
-    SunoDatabase db_;
-    QNetworkAccessManager* networkManager_;
-    
-    // Auth Managers
-    std::unique_ptr<chadvis::SunoPersistentAuth> persistentAuth_;
-    std::unique_ptr<chadvis::SystemBrowserAuth> systemAuth_;
+	// Helper: Check if clipId matches currently playing track
+	bool isCurrentlyPlaying(const std::string& clipId) const;
 
-    fs::path downloadDir_;
-    std::deque<std::string> lyricsQueue_;
-    int activeLyricsRequests_{0};
-    int currentSyncPage_{1};
-    bool isSyncing_{false};
-    bool isRefreshingToken_{false};
-    size_t totalLyricsToFetch_{0};
-    std::chrono::steady_clock::time_point lyricsSyncStartTime_;
-    std::vector<SunoClip> accumulatedClips_;
-    
-    // Direct mapping cache for recently fetched lyrics (survives track restarts)
-    std::unordered_map<std::string, AlignedLyrics> directLyricsCache_;
-    
-    // Track the last requested ID for fallback mapping during transitions
-    mutable std::string lastRequestedClipId_;
+	// Helper: Parse lyrics and immediately display to overlay
+	std::optional<AlignedLyrics> parseAndDisplayLyrics(
+		const std::string& clipId,
+		const std::string& json,
+		const QJsonDocument& doc);
+
+	// Helper: Save lyrics sidecar files (.json and .srt)
+	void saveLyricsSidecar(const std::string& clipId,
+		const std::string& json,
+		const QJsonDocument& doc);
+
+	// Helper: Save metadata sidecar file (.txt)
+	void saveMetadataSidecar(const SunoClip& clip);
+
+	// Helper: Extract clip ID from track with aggressive UUID detection
+	std::string extractClipIdFromTrack() const;
+
+	// Helper: Download audio from URL
+	void downloadAudioFromUrl(const std::string& clipId, const std::string& url, const std::string& extension);
+
+	AudioEngine* audioEngine_;
+	OverlayEngine* overlayEngine_;
+	std::unique_ptr<SunoClient> client_;
+	SunoDatabase db_;
+	QNetworkAccessManager* networkManager_;
+
+	// Auth Managers
+	std::unique_ptr<chadvis::SunoPersistentAuth> persistentAuth_;
+	std::unique_ptr<chadvis::SystemBrowserAuth> systemAuth_;
+
+	fs::path downloadDir_;
+	std::deque<std::string> lyricsQueue_;
+	int activeLyricsRequests_{0};
+	int currentSyncPage_{1};
+	bool isSyncing_{false};
+	bool isRefreshingToken_{false};
+	size_t totalLyricsToFetch_{0};
+	std::chrono::steady_clock::time_point lyricsSyncStartTime_;
+	std::vector<SunoClip> accumulatedClips_;
+
+	// Direct mapping cache for recently fetched lyrics (survives track restarts)
+	std::unordered_map<std::string, AlignedLyrics> directLyricsCache_;
+
+	// Track the last requested ID for fallback mapping during transitions
+	mutable std::string lastRequestedClipId_;
 };
 
 } // namespace suno

@@ -30,6 +30,7 @@ class ThemeBridge : public QObject {
     Q_PROPERTY(QColor surfaceRaised READ surfaceRaised CONSTANT)
     Q_PROPERTY(QColor surfaceOverlay READ surfaceOverlay CONSTANT)
     Q_PROPERTY(QColor surfaceVariant READ surfaceVariant CONSTANT)
+    Q_PROPERTY(QColor glassBackground READ glassBackground CONSTANT)
 
     // Text colors
     Q_PROPERTY(QColor textPrimary READ textPrimary CONSTANT)
@@ -38,10 +39,12 @@ class ThemeBridge : public QObject {
     Q_PROPERTY(QColor textOnAccent READ textOnAccent CONSTANT)
     Q_PROPERTY(QColor onSurface READ onSurface CONSTANT)
     Q_PROPERTY(QColor onBackground READ onBackground CONSTANT)
+    Q_PROPERTY(QColor onSurfaceVariant READ onSurfaceVariant CONSTANT)
     Q_PROPERTY(QColor outline READ outline CONSTANT)
     Q_PROPERTY(QColor border READ border CONSTANT)
 
     // Semantic colors
+    Q_PROPERTY(QColor primary READ primary CONSTANT)
     Q_PROPERTY(QColor success READ success CONSTANT)
     Q_PROPERTY(QColor warning READ warning CONSTANT)
     Q_PROPERTY(QColor error READ error CONSTANT)
@@ -69,6 +72,12 @@ class ThemeBridge : public QObject {
     Q_PROPERTY(int sidebarExpandedWidth READ sidebarExpandedWidth CONSTANT)
     Q_PROPERTY(int topBarHeight READ topBarHeight CONSTANT)
     Q_PROPERTY(int statusBarHeight READ statusBarHeight CONSTANT)
+    Q_PROPERTY(int panelHeaderHeight READ panelHeaderHeight CONSTANT)
+
+    // Font sizes
+    Q_PROPERTY(int fontSizeSmall READ fontSizeSmall CONSTANT)
+    Q_PROPERTY(int fontSizeMedium READ fontSizeMedium CONSTANT)
+    Q_PROPERTY(int fontSizeLarge READ fontSizeLarge CONSTANT)
 
     // Animation durations
     Q_PROPERTY(int durationInstant READ durationInstant CONSTANT)
@@ -79,6 +88,7 @@ class ThemeBridge : public QObject {
     // Typography
     Q_PROPERTY(QFont fontCaption READ fontCaption CONSTANT)
     Q_PROPERTY(QFont fontBody READ fontBody CONSTANT)
+    Q_PROPERTY(QFont fontBodyStrong READ fontBodyStrong CONSTANT)
     Q_PROPERTY(QFont fontSubtitle READ fontSubtitle CONSTANT)
     Q_PROPERTY(QFont fontTitle READ fontTitle CONSTANT)
 
@@ -98,6 +108,7 @@ public:
     QColor surfaceRaised() const { return "#2d2d2d"; }
     QColor surfaceOverlay() const { return "#353535"; }
     QColor surfaceVariant() const { return "#3a3a3a"; }
+    QColor glassBackground() const { return "#1a1a1a"; }
 
     QColor textPrimary() const { return "#e0e0e0"; }
     QColor textSecondary() const { return "#888888"; }
@@ -105,9 +116,11 @@ public:
     QColor textOnAccent() const { return "#1a1a1a"; }
     QColor onSurface() const { return "#e0e0e0"; }
     QColor onBackground() const { return "#e0e0e0"; }
+    QColor onSurfaceVariant() const { return "#aaaaaa"; }
     QColor outline() const { return "#4a4a4a"; }
     QColor border() const { return "#3a3a3a"; }
 
+    QColor primary() const { return "#00bcd4"; }
     QColor success() const { return "#00ff88"; }
     QColor warning() const { return "#ffb300"; }
     QColor error() const { return "#ff4444"; }
@@ -135,6 +148,12 @@ public:
     int sidebarExpandedWidth() const { return 280; }
     int topBarHeight() const { return 40; }
     int statusBarHeight() const { return 28; }
+    int panelHeaderHeight() const { return 44; }
+
+    // Font sizes
+    int fontSizeSmall() const { return 12; }
+    int fontSizeMedium() const { return 14; }
+    int fontSizeLarge() const { return 16; }
 
     // Durations
     int durationInstant() const { return 50; }
@@ -151,6 +170,12 @@ public:
     QFont fontBody() const {
         QFont font("Inter");
         font.setPixelSize(14);
+        return font;
+    }
+    QFont fontBodyStrong() const {
+        QFont font("Inter");
+        font.setPixelSize(14);
+        font.setWeight(QFont::DemiBold);
         return font;
     }
     QFont fontSubtitle() const {

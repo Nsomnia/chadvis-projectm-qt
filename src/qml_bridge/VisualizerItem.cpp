@@ -1,14 +1,8 @@
-/**
- * @file VisualizerItem.cpp
- * @brief QQuickItem implementation for ProjectM OpenGL rendering
- *
- * @version 1.0.0
- */
-
 #include "VisualizerItem.hpp"
 #include "audio/AudioEngine.hpp"
-#include "visualizer/VisualizerWindow.hpp"
-#include "util/Types.hpp"
+#include "visualizer/VisualizerRenderer.hpp"
+#include "visualizer/PresetManager.hpp"
+#include "core/Logger.hpp"
 
 #include <QQuickWindow>
 #include <QOpenGLContext>
@@ -17,97 +11,132 @@ namespace qml_bridge {
 
 using namespace vc;
 
-namespace {
-VisualizerItem* s_instance = nullptr;
-}
+vc::AudioEngine* VisualizerItem::s_audioEngine = nullptr;
+vc::PresetManager* VisualizerItem::s_presetManager = nullptr;
 
 VisualizerItem::VisualizerItem(QQuickItem* parent)
-    : QQuickItem(parent)
-    , renderTimer_(std::make_unique<QTimer>())
+: QQuickItem(parent)
+, renderTimer_(std::make_unique<QTimer>())
 {
-    setFlag(ItemHasContents);
-    connect(this, &QQuickItem::windowChanged, this, &VisualizerItem::handleWindowChanged);
+setFlag(ItemHasContents);
+connect(this, &QQuickItem::windowChanged, this, &VisualizerItem::handleWindowChanged);
 }
 
 VisualizerItem::~VisualizerItem() {
-    if (s_instance == this) {
-        s_instance = nullptr;
-    }
-    cleanup();
+cleanup();
 }
 
-VisualizerItem* VisualizerItem::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine) {
-    if (!s_instance) {
-        s_instance = new VisualizerItem();
-    }
-    Q_UNUSED(qmlEngine)
-    Q_UNUSED(jsEngine)
-    return s_instance;
+void VisualizerItem::setGlobalAudioEngine(vc::AudioEngine* engine) {
+s_audioEngine = engine;
 }
 
-void VisualizerItem::setVisualizerWindow(vc::VisualizerWindow* window) {
-    vizWindow_ = window;
+void VisualizerItem::setGlobalPresetManager(vc::PresetManager* manager) {
+s_presetManager = manager;
 }
 
-void VisualizerItem::setAudioEngine(vc::AudioEngine* engine) {
-    audioEngine_ = engine;
+vc::AudioEngine* VisualizerItem::globalAudioEngine() {
+return s_audioEngine;
+}
+
+vc::PresetManager* VisualizerItem::globalPresetManager() {
+return s_presetManager;
 }
 
 void VisualizerItem::setFps(int fps) {
-    if (fps_ != fps && fps > 0 && fps <= 120) {
-        fps_ = fps;
-        if (renderTimer_) {
-            renderTimer_->setInterval(1000 / fps_);
-        }
-        emit fpsChanged();
-    }
+if (fps_ != fps && fps > 0 && fps <= 120) {
+fps_ = fps;
+if (renderTimer_) {
+renderTimer_->setInterval(1000 / fps_);
+}
+emit fpsChanged();
+}
 }
 
 void VisualizerItem::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) {
-    QQuickItem::geometryChange(newGeometry, oldGeometry);
+QQuickItem::geometryChange(newGeometry, oldGeometry);
 
-    if (newGeometry.size() != oldGeometry.size()) {
-        if (vizWindow_) {
-            u32 w = static_cast<u32>(newGeometry.width());
-            u32 h = static_cast<u32>(newGeometry.height());
-            vizWindow_->resize(QSize(w, h));
-        }
-    }
+if (newGeometry.size() != oldGeometry.size()) {
+width_ = static_cast<vc::u32>(newGeometry.width());
+height_ = static_cast<vc::u32>(newGeometry.height());
+}
 }
 
 void VisualizerItem::handleWindowChanged(QQuickWindow* window) {
-    if (!window) return;
+if (!window) return;
 
-    connect(window, &QQuickWindow::beforeRendering, this, &VisualizerItem::renderFrame, Qt::DirectConnection);
+connect(window, &QQuickWindow::beforeSynchronizing, this, &VisualizerItem::sync, Qt::DirectConnection);
+connect(window, &QQuickWindow::sceneGraphInvalidated, this, &VisualizerItem::cleanup, Qt::DirectConnection);
+window->setColor(Qt::black);
 
-    if (renderTimer_) {
-        renderTimer_->setInterval(1000 / fps_);
-        connect(renderTimer_.get(), &QTimer::timeout, window, &QQuickWindow::update, Qt::DirectConnection);
-        renderTimer_->start();
-    }
+if (renderTimer_) {
+renderTimer_->setInterval(1000 / fps_);
+connect(renderTimer_.get(), &QTimer::timeout, window, &QQuickWindow::update, Qt::DirectConnection);
+renderTimer_->start();
+}
 }
 
-void VisualizerItem::renderFrame() {
-    if (!vizWindow_ || !initialized_) {
-        initialize();
-    }
-
-    if (audioEngine_) {
-        auto pcm = audioEngine_->currentPCM();
-        if (!pcm.empty()) {
-            vizWindow_->feedAudio(pcm.data(), static_cast<u32>(pcm.size() / 2), 2, 48000);
-        }
-    }
+void VisualizerItem::sync() {
+if (!renderer_) {
+renderer_ = new VisualizerRenderer();
+connect(window(), &QQuickWindow::beforeRendering, this, &VisualizerItem::onBeforeRendering, Qt::DirectConnection);
+connect(window(), &QQuickWindow::beforeRenderPassRecording, this, &VisualizerItem::onBeforeRenderPassRecording, Qt::DirectConnection);
 }
 
-void VisualizerItem::initialize() {
-    if (!vizWindow_) return;
+if (window()) {
+auto sz = window()->size() * window()->devicePixelRatio();
+width_ = static_cast<vc::u32>(sz.width());
+height_ = static_cast<vc::u32>(sz.height());
+}
+}
 
-    initialized_ = true;
+void VisualizerItem::onBeforeRendering() {
+if (!initialized_) {
+initializeRenderer();
+}
+
+if (renderer_ && s_audioEngine && initialized_) {
+auto pcm = s_audioEngine->currentPCM();
+if (!pcm.empty()) {
+renderer_->feedAudio(pcm.data(), static_cast<vc::u32>(pcm.size() / 2), 2, 48000);
+}
+}
+}
+
+void VisualizerItem::onBeforeRenderPassRecording() {
+if (renderer_ && initialized_ && window()) {
+renderer_->render(width_, height_, window()->isExposed());
+}
+}
+
+void VisualizerItem::initializeRenderer() {
+if (initialized_ || !window()) return;
+
+initializeOpenGLFunctions();
+
+if (!renderer_) {
+renderer_ = new VisualizerRenderer();
+}
+
+renderer_->initialize(width_, height_);
+
+if (s_presetManager) {
+const auto& presets = s_presetManager->allPresets();
+if (!presets.empty()) {
+renderer_->projectM().engine().loadPreset(presets[0].path.string());
+LOG_INFO("VisualizerItem: Loaded preset: {}", presets[0].name);
+}
+}
+
+initialized_ = true;
+LOG_INFO("VisualizerItem: Initialized {}x{}", width_, height_);
 }
 
 void VisualizerItem::cleanup() {
-    initialized_ = false;
+if (renderer_) {
+delete renderer_;
+renderer_ = nullptr;
+}
+initialized_ = false;
 }
 
-} // namespace qml_bridge
+}

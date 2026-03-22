@@ -7,6 +7,7 @@
 #include "AudioBridge.hpp"
 #include "PlaylistBridge.hpp"
 #include "VisualizerBridge.hpp"
+#include "VisualizerItem.hpp"
 #include "RecordingBridge.hpp"
 #include "PresetBridge.hpp"
 #include "LyricsBridge.hpp"
@@ -73,14 +74,23 @@ void registerBridges(QQmlApplicationEngine* engine,
         s_sunoBridge->connectSignals();
     }
 
-    qmlRegisterSingletonInstance("ChadVis", 1, 0, "AudioBridge", s_audioBridge);
-    qmlRegisterSingletonInstance("ChadVis", 1, 0, "PlaylistBridge", s_playlistBridge);
-    qmlRegisterSingletonInstance("ChadVis", 1, 0, "VisualizerBridge", s_visualizerBridge);
-    qmlRegisterSingletonInstance("ChadVis", 1, 0, "RecordingBridge", s_recordingBridge);
-    qmlRegisterSingletonInstance("ChadVis", 1, 0, "PresetBridge", s_presetBridge);
-    qmlRegisterSingletonInstance("ChadVis", 1, 0, "LyricsBridge", s_lyricsBridge);
-    qmlRegisterSingletonInstance("ChadVis", 1, 0, "SunoBridge", s_sunoBridge);
-    qmlRegisterSingletonInstance("ChadVis", 1, 0, "Theme", s_themeBridge);
+	qmlRegisterSingletonInstance("ChadVis", 1, 0, "AudioBridge", s_audioBridge);
+	qmlRegisterSingletonInstance("ChadVis", 1, 0, "PlaylistBridge", s_playlistBridge);
+	qmlRegisterSingletonInstance("ChadVis", 1, 0, "VisualizerBridge", s_visualizerBridge);
+	qmlRegisterSingletonInstance("ChadVis", 1, 0, "RecordingBridge", s_recordingBridge);
+	qmlRegisterSingletonInstance("ChadVis", 1, 0, "PresetBridge", s_presetBridge);
+	qmlRegisterSingletonInstance("ChadVis", 1, 0, "LyricsBridge", s_lyricsBridge);
+	qmlRegisterSingletonInstance("ChadVis", 1, 0, "SunoBridge", s_sunoBridge);
+	qmlRegisterSingletonInstance("ChadVis", 1, 0, "Theme", s_themeBridge);
+
+	qmlRegisterType<VisualizerItem>("ChadVis", 1, 0, "VisualizerItem");
+
+	if (audioEngine) {
+		VisualizerItem::setGlobalAudioEngine(audioEngine);
+	}
+	if (presetManager) {
+		VisualizerItem::setGlobalPresetManager(presetManager);
+	}
 }
 
 AudioBridge* getAudioBridge() { return s_audioBridge; }
