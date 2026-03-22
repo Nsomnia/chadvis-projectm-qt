@@ -95,19 +95,19 @@ compile_commands.json
 *~
 
 # Backup files and scratch
-*.backup
-*.bak
+#*.backup
+#*.bak
 *.tmp
 scratch/
 temp/
 # Backup graveyard
-.backup_graveyard/
+#.backup_graveyard/
 # Logs
 logs/
 logs/*.log
 # Debug/development files
-*_debug.cpp
-*_debug.hpp
+#*_debug.cpp
+#*_debug.hpp
 CMakeLists_new.txt
 
 # OS
