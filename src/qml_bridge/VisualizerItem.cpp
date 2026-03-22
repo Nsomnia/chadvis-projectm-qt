@@ -81,12 +81,6 @@ renderer_ = new VisualizerRenderer();
 connect(window(), &QQuickWindow::beforeRendering, this, &VisualizerItem::onBeforeRendering, Qt::DirectConnection);
 connect(window(), &QQuickWindow::beforeRenderPassRecording, this, &VisualizerItem::onBeforeRenderPassRecording, Qt::DirectConnection);
 }
-
-if (window()) {
-auto sz = window()->size() * window()->devicePixelRatio();
-width_ = static_cast<vc::u32>(sz.width());
-height_ = static_cast<vc::u32>(sz.height());
-}
 }
 
 void VisualizerItem::onBeforeRendering() {
@@ -104,8 +98,21 @@ renderer_->feedAudio(pcm.data(), static_cast<vc::u32>(pcm.size() / 2), 2, 48000)
 
 void VisualizerItem::onBeforeRenderPassRecording() {
 if (renderer_ && initialized_ && window()) {
-renderer_->render(width_, height_, window()->isExposed());
+updateDimensions();
+renderer_->render(x_, y_, width_, height_, window()->isExposed());
 }
+}
+
+void VisualizerItem::updateDimensions() {
+if (!window()) return;
+
+auto dpr = window()->devicePixelRatio();
+width_ = static_cast<vc::u32>(width() * dpr);
+height_ = static_cast<vc::u32>(height() * dpr);
+
+auto posInWindow = mapToScene(QPointF(0, 0));
+x_ = static_cast<vc::u32>(posInWindow.x() * dpr);
+y_ = static_cast<vc::u32>(posInWindow.y() * dpr);
 }
 
 void VisualizerItem::initializeRenderer() {

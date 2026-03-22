@@ -77,6 +77,7 @@ void onBeforeRenderPassRecording();
 
 private:
 void initializeRenderer();
+void updateDimensions();
 
 static vc::AudioEngine* s_audioEngine;
 static vc::PresetManager* s_presetManager;
@@ -88,6 +89,8 @@ int fps_{60};
 std::unique_ptr<QTimer> renderTimer_;
 vc::u32 width_{0};
 vc::u32 height_{0};
+vc::u32 x_{0};
+vc::u32 y_{0};
 };
 
 } // namespace qml_bridge
