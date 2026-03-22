@@ -9,20 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **QML Modern GUI Refactor**: Complete Qt Widgets → QML/Qt Quick transition
-  - New QML bridge architecture with singleton pattern (AudioBridge, PlaylistBridge, VisualizerBridge, RecordingBridge)
-  - VisualizerItem QQuickItem for ProjectM OpenGL rendering in QML
-  - Theme.qml singleton with glassmorphism styling and cyan accent (#00bcd4)
-  - AccordionPanel/AccordionContainer components for collapsible sidebar UI
-  - PlaybackPanel.qml and PlaylistPanel.qml with model bindings
-  - `--qml` CLI flag to launch QML interface instead of Qt Widgets
-  - CMake integration with `qt_add_qml_module` and QML cache compilation
+- New QML bridge architecture with singleton pattern (AudioBridge, PlaylistBridge, VisualizerBridge, RecordingBridge)
+- VisualizerItem QQuickItem for ProjectM OpenGL rendering in QML
+- Theme.qml singleton with glassmorphism styling and cyan accent (#00bcd4)
+- AccordionPanel/AccordionContainer components for collapsible sidebar UI
+- PlaybackPanel.qml and PlaylistPanel.qml with model bindings
+- `--qml` CLI flag to launch QML interface instead of Qt Widgets
+- CMake integration with `qt_add_qml_module` and QML cache compilation
 - **Build System Enhancement (v1337.3)**: Enhanced dependency management with intelligent libprojectm handling
-  - Automatic dependency installation for Arch Linux via `pacman` with `-y` flag
-  - Version-aware libprojectm detection (minimum version: 4.1.0)
-  - `--system-projectm` flag to force use of system/pacman libprojectm
-  - `--cpm-projectm` flag to force building libprojectm from source via CPM
-  - Smart auto-detection: uses system libprojectm if recent enough, otherwise falls back to CPM
-  - `CHADVIS_FORCE_CPM_PROJECTM` CMake option to bypass system detection
+- Automatic dependency installation for Arch Linux via `pacman` with `-y` flag
+- Version-aware libprojectm detection (minimum version: 4.1.0)
+- `--system-projectm` flag to force use of system/pacman libprojectm
+- `--cpm-projectm` flag to force building libprojectm from source via CPM
+- Smart auto-detection: uses system libprojectm if recent enough, otherwise falls back to CPM
+- `CHADVIS_FORCE_CPM_PROJECTM` CMake option to bypass system detection
+
+### Changed
+- **Visualizer**: ProjectM now renders continuously with silent PCM data when idle,
+  ensuring visualizations remain active even with no audio playing
+- **Idle State**: Enhanced "Open a file to start" message with pulsing music
+  note icon animation for better visual feedback
 
 ## [1.1.0] - 2026-01-29
 

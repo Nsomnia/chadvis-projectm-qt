@@ -224,22 +224,31 @@ fps: 60
 			spacing: Theme.spacingMedium
 			visible: !AudioBridge.isPlaying
 
+			// Music note icon with glow effect
 			Text {
 				text: "♪"
 				color: Theme.accent
-				font.pixelSize: 64
-				opacity: 0.3
+				font.pixelSize: 72
+				opacity: 0.4
 				anchors.horizontalCenter: parent.horizontalCenter
+
+				// Subtle pulsing animation
+				SequentialAnimation on opacity {
+					running: !AudioBridge.isPlaying
+					loops: Animation.Infinite
+					NumberAnimation { to: 0.6; duration: 2000; easing.type: Easing.InOutSine }
+					NumberAnimation { to: 0.4; duration: 2000; easing.type: Easing.InOutSine }
+				}
 			}
 
 			Text {
 				text: "Open a file to start"
-                color: Theme.textSecondary
-                font: Theme.fontBody
-                opacity: 0.5
-                anchors.horizontalCenter: parent.horizontalCenter
-            }
-        }
+				color: Theme.textSecondary
+				font: Theme.fontBody
+				opacity: 0.6
+				anchors.horizontalCenter: parent.horizontalCenter
+			}
+		}
 
 	// Visualizer info overlay
 	Column {
