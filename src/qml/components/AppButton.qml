@@ -24,18 +24,18 @@ Rectangle {
     // PROPERTIES
     // ═══════════════════════════════════════════════════════════
 
-    property string text: ""
-    property string icon: ""
-    property bool highlighted: false
-    property bool flat: false
-    property int buttonRadius: Theme.radiusMedium
+	property string text: ""
+	property string icon: ""
+	property bool highlighted: false
+	property bool flat: false
+	property int buttonRadius: Theme.radiusMedium
 
-    property alias pressed: mouseArea.pressed
-    property alias hovered: mouseArea.containsMouse
+	property alias pressed: mouseArea.pressed
+	property alias hovered: mouseArea.containsMouse
 
-    signal clicked()
-    signal pressed()
-    signal released()
+	signal clicked()
+	signal pressAndHold()
+	signal released()
 
     implicitWidth: Math.max(buttonLayout.implicitWidth + Theme.spacingMedium * 2, Theme.buttonHeight)
     implicitHeight: Theme.buttonHeight
@@ -78,15 +78,15 @@ Rectangle {
             NumberAnimation { duration: Theme.durationFast }
         }
 
-        PropertyAnimation on opacity {
-            id: glowAnimation
-            running: root.highlighted && !root.flat
-            loops: Animation.Infinite
-            from: 0.3
-            to: 0.6
-            duration: 1500
-            easing.type: Easing.SinusoidalInOut
-        }
+	PropertyAnimation on opacity {
+		id: glowAnimation
+		running: root.highlighted && !root.flat
+		loops: Animation.Infinite
+		from: 0.3
+		to: 0.6
+		duration: 1500
+		easing.type: Easing.InOutSine
+	}
     }
 
     // Press scale effect
@@ -141,16 +141,16 @@ Rectangle {
         hoverEnabled: true
         cursorShape: root.enabled ? Qt.PointingHandCursor : Qt.ForbiddenCursor
 
-        onClicked: {
-            if (root.enabled) root.clicked()
-        }
+	onClicked: {
+		if (root.enabled) root.clicked()
+	}
 
-        onPressed: {
-            if (root.enabled) root.pressed()
-        }
+	onPressAndHold: {
+		if (root.enabled) root.pressAndHold()
+	}
 
-        onReleased: {
-            if (root.enabled) root.released()
-        }
+	onReleased: {
+		if (root.enabled) root.released()
+	}
     }
 }
