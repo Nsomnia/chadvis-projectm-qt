@@ -15,7 +15,7 @@
 import QtQuick
 import Qt5Compat.GraphicalEffects
 import QtQuick.Layouts
-import "../styles"
+import ChadVis
 
 Rectangle {
     id: root

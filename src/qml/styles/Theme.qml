@@ -1,15 +1,15 @@
 /**
- * @file Theme.qml
- * @brief Theme singleton providing consistent styling across QML components
- *
- * Defines color palette, metrics, and typography for the modern UI.
- * Supports runtime theme switching via ThemeManager.
- *
- * @version 1.0.0
- */
+* @file Theme.qml
+* @brief Theme singleton providing consistent styling across QML components
+*
+* Defines color palette, metrics, and typography for the modern UI.
+* Supports runtime theme switching via ThemeManager.
+*
+* @version 1.0.0
+*/
 
 pragma Singleton
-import QtQuick 2.15
+import QtQuick
 
 QtObject {
     id: theme

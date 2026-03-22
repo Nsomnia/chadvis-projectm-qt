@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Dialogs
-import "../styles"
+import ChadVis
 import "../components"
 
 ColumnLayout {

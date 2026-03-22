@@ -10,9 +10,9 @@
  * @version 1.0.0
  */
 
-import QtQuick 2.15
-import QtQuick.Layouts 1.15
-import "../styles"
+import QtQuick
+import QtQuick.Layouts
+import ChadVis
 
 ColumnLayout {
     id: root

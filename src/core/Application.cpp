@@ -471,34 +471,26 @@ if (useQml_) {
             sunoController_ = std::make_unique<suno::SunoController>(
                 audioEngine_.get(), overlayEngine_.get(), nullptr);
 
-            qmlEngine_ = std::make_unique<QQmlEngine>();
+qmlEngine_ = std::make_unique<QQmlApplicationEngine>();
 
             // Register QML bridges with all managers
             qml_bridge::registerBridges(qmlEngine_.get(),
                 audioEngine_.get(), nullptr, videoRecorder_.get(),
                 presetManager_.get(), lyricsSync_.get(), sunoController_.get());
-            
-// Load main QML file from Qt resource system
-        // The qt_add_qml_module creates resources under :/qt/qml/ChadVis/
-        QQmlComponent component(qmlEngine_.get(),
-            QUrl("qrc:/qt/qml/ChadVis/src/qml/main.qml"));
-            
-            if (component.status() == QQmlComponent::Error) {
-                LOG_ERROR("QML component error: {}", 
-                    component.errorString().toStdString());
-                return Result<void>::err("Failed to load QML");
-            }
-            
-            auto* root = qobject_cast<QQuickWindow*>(component.create());
-            if (!root) {
-                LOG_ERROR("Failed to create QML window");
-                return Result<void>::err("Failed to create QML window");
-            }
-            
-            qmlWindow_.reset(root);
-            qmlWindow_->show();
-            
-            LOG_INFO("QML window created successfully");
+
+            // Load main QML file from Qt resource system
+            const QUrl url(QStringLiteral("qrc:/qt/qml/ChadVis/src/qml/main.qml"));
+
+            QObject::connect(qmlEngine_.get(), &QQmlApplicationEngine::objectCreated,
+                this, [url](QObject* obj, const QUrl& objUrl) {
+                    if (!obj && objUrl == url) {
+                        LOG_ERROR("Failed to create QML window");
+                    } else if (obj) {
+                        LOG_INFO("QML window created successfully");
+                    }
+                });
+
+            qmlEngine_->load(url);
         } else {
             LOG_DEBUG("Creating main window...");
             mainWindow_ = std::make_unique<MainWindow>();

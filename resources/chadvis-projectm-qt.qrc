@@ -13,6 +13,12 @@
 <file>icons/record.svg</file>
 <file>icons/shuffle.svg</file>
 <file>icons/repeat.svg</file>
+<file>icons/collapse.svg</file>
+<file>icons/expand.svg</file>
+<file>icons/volume-high.svg</file>
+<file>icons/volume-mute.svg</file>
+<file>icons/plus.svg</file>
+<file>icons/clear.svg</file>
 <file>icons/qml/playback.svg</file>
 <file>icons/qml/playlist.svg</file>
 <file>icons/qml/presets.svg</file>

@@ -21,7 +21,7 @@
 
 #pragma once
 #include <QApplication>
-#include <QQmlEngine>
+#include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <memory>
 #include <vector>
@@ -134,10 +134,9 @@ private:
 
     static Application* instance_;
 
-    std::unique_ptr<QApplication> qapp_;
-    std::unique_ptr<QQmlEngine> qmlEngine_;
-    std::unique_ptr<QQuickWindow> qmlWindow_;
-// Components - Declaration order matters for destruction (reverse order)
+std::unique_ptr<QApplication> qapp_;
+    std::unique_ptr<QQmlApplicationEngine> qmlEngine_;
+    // Components - Declaration order matters for destruction (reverse order)
 // We want engines to stay alive until the UI is gone
 std::unique_ptr<AudioEngine> audioEngine_;
 std::unique_ptr<OverlayEngine> overlayEngine_;

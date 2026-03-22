@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
-import "../styles"
+import ChadVis
 import "../components"
 
 ColumnLayout {
