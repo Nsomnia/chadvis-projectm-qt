@@ -10,6 +10,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Dialogs
 import ChadVis
 import "../components"
 
@@ -17,6 +18,39 @@ ColumnLayout {
     id: root
 
     spacing: Theme.spacingMedium
+
+    // File open button
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Theme.spacingSmall
+
+        AppButton {
+            text: "Open File"
+            icon: "qrc:/icons/plus.svg"
+            implicitWidth: 120
+            implicitHeight: 36
+            radius: Theme.radiusMedium
+            onClicked: fileDialog.open()
+        }
+
+        Item { Layout.fillWidth: true }
+
+        Text {
+            text: AudioBridge.playlistCount > 0 ? AudioBridge.playlistCount + " tracks" : "No tracks"
+            color: Theme.textSecondary
+            font: Theme.fontCaption
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
+    FileDialog {
+        id: fileDialog
+        title: "Open Audio File"
+        nameFilters: ["Audio Files (*.mp3 *.flac *.wav *.ogg *.m4a *.aac)"]
+        onAccepted: {
+            AudioBridge.loadFile(selectedFile.toString().replace("file://", ""))
+        }
+    }
 
     // ═══════════════════════════════════════════════════════════
     // NOW PLAYING

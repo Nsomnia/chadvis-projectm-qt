@@ -208,70 +208,126 @@ Component {
 // ─────────────────────────────────────────────────────────
 
 Rectangle {
-        Layout.fillWidth: true
-        Layout.fillHeight: true
+    Layout.fillWidth: true
+    Layout.fillHeight: true
 
-        color: Theme.background
+    color: Theme.background
 
-        // Audio-reactive visualizer placeholder
-        // Uses gradient animation to simulate visualizer
-        Rectangle {
-            id: visualizerBackground
-            anchors.fill: parent
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop { position: 0.0; color: Qt.darker(Theme.background, 1.2) }
-                GradientStop { position: 0.5; color: Theme.background }
-                GradientStop { position: 1.0; color: Qt.darker(Theme.background, 1.3) }
-            }
+    // Audio-reactive visualizer placeholder
+    Rectangle {
+        id: visualizerBackground
+        anchors.fill: parent
+        gradient: Gradient {
+            orientation: Gradient.Vertical
+            GradientStop { position: 0.0; color: Qt.darker(Theme.background, 1.2) }
+            GradientStop { position: 0.5; color: Theme.background }
+            GradientStop { position: 1.0; color: Qt.darker(Theme.background, 1.3) }
+        }
 
-            // Animated bars to simulate audio visualization
-            Row {
-                anchors.centerIn: parent
-                spacing: 4
-                Repeater {
-                    model: 32
-                    Rectangle {
-                        width: 8
-                        height: Math.max(4, (Math.sin(index * 0.3 + Date.now() * 0.002) * 0.5 + 0.5) * parent.height * 0.6)
-                        color: Theme.accent
-                        opacity: 0.7
-                        radius: 2
+        // Animated bars to simulate audio visualization
+        Row {
+            id: barContainer
+            anchors.centerIn: parent
+            spacing: 4
 
-                        Behavior on height {
-                            NumberAnimation { duration: 50 }
+            Repeater {
+                model: 32
+                Rectangle {
+                    id: bar
+                    width: 8
+                    height: 4
+                    color: Theme.accent
+                    opacity: AudioBridge.isPlaying ? 0.8 : 0.3
+                    radius: 2
+
+                    states: [
+                        State {
+                            name: "playing"
+                            when: AudioBridge.isPlaying
+                            PropertyChanges {
+                                target: bar
+                                height: Math.max(4, (Math.sin(index * 0.3 + Date.now() * 0.003) * 0.5 + 0.5) * visualizerBackground.height * 0.5)
+                            }
+                        },
+                        State {
+                            name: "stopped"
+                            when: !AudioBridge.isPlaying
+                            PropertyChanges {
+                                target: bar
+                                height: 4
+                            }
                         }
+                    ]
 
-                        // Continuous animation
-                        Timer {
-                            interval: 50
-                            running: AudioBridge.isPlaying
-                            repeat: true
-                            onTriggered: parent.height = Math.max(4, (Math.sin(index * 0.3 + Date.now() * 0.002) * 0.5 + 0.5) * visualizerBackground.height * 0.6)
+                    transitions: Transition {
+                        NumberAnimation { property: "height"; duration: 50; easing.type: Easing.OutQuad }
+                    }
+
+                    Timer {
+                        interval: 50
+                        running: AudioBridge.isPlaying
+                        repeat: true
+                        onTriggered: {
+                            var baseHeight = visualizerBackground.height * 0.5
+                            var wave = Math.sin(index * 0.3 + Date.now() * 0.003)
+                            var randomFactor = 0.3 + Math.random() * 0.7
+                            bar.height = Math.max(4, (wave * 0.5 + 0.5) * baseHeight * randomFactor)
                         }
                     }
                 }
             }
+        }
 
-            // Visualizer info overlay
-            Column {
-                anchors.bottom: parent.bottom
+        // Center info when not playing
+        Column {
+            anchors.centerIn: parent
+            spacing: Theme.spacingMedium
+            visible: !AudioBridge.isPlaying
+
+            Text {
+                text: "♫"
+                color: Theme.accent
+                font.pixelSize: 64
+                opacity: 0.3
                 anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottomMargin: Theme.spacingLarge
-                spacing: Theme.spacingSmall
+            }
 
-                Text {
-                    text: "ProjectM v4 Ready"
-                    color: Theme.onBackground
-                    font: Theme.fontCaption
-                    opacity: 0.5
-                }
+            Text {
+                text: "Open a file to start"
+                color: Theme.textSecondary
+                font: Theme.fontBody
+                opacity: 0.5
+                anchors.horizontalCenter: parent.horizontalCenter
             }
         }
 
-        Rectangle {
-            anchors.fill: parent
-            color: "transparent"
+        // Visualizer info overlay
+        Column {
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottomMargin: Theme.spacingLarge
+            spacing: Theme.spacingSmall
+
+            Text {
+                text: PresetBridge.currentPreset.name || "No Preset Selected"
+                color: Theme.onBackground
+                font: Theme.fontCaption
+                opacity: 0.7
+                visible: AudioBridge.isPlaying
+            }
+
+            Text {
+                text: "ProjectM v4 • " + (AudioBridge.isPlaying ? "Playing" : "Ready")
+                color: Theme.onBackground
+                font: Theme.fontCaption
+                opacity: 0.5
+            }
+}
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        color: "transparent"
             border.color: Theme.border
             border.width: 1
             radius: Theme.radiusMedium
