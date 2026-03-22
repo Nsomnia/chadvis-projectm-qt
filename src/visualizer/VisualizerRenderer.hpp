@@ -86,11 +86,12 @@ public:
     VisualizerRenderer();
     ~VisualizerRenderer();
 
-    void initialize(u32 width, u32 height);
-    void cleanup();
+void initialize(u32 width, u32 height);
+void cleanup();
 
-    void render(u32 width, u32 height, bool isExposed);
-    void feedAudio(const f32* data, u32 frames, u32 channels, u32 sampleRate);
+void render(u32 width, u32 height, bool isExposed);
+void render(u32 x, u32 y, u32 width, u32 height, bool isExposed);
+void feedAudio(const f32* data, u32 frames, u32 channels, u32 sampleRate);
 
     // Recording
     void setRecordingSize(u32 width, u32 height);
@@ -121,8 +122,8 @@ public:
     Signal<std::vector<u8>, u32, u32, i64> frameCaptured;
 
 private:
-    void renderFrame(u32 w, u32 h);
-    void initBlitResources();
+void renderFrame(u32 x, u32 y, u32 w, u32 h);
+void initBlitResources();
     void drawTexture(GLuint textureId, u32 w, u32 h);
     void setupPBOs();
     void destroyPBOs();

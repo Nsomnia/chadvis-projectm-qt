@@ -58,86 +58,93 @@ void VisualizerRenderer::cleanup() {
 }
 
 void VisualizerRenderer::render(u32 width, u32 height, bool isExposed) {
-    if (!initialized_ || !isExposed)
-        return;
-    renderFrame(width, height);
+render(0, 0, width, height, isExposed);
 }
 
-void VisualizerRenderer::renderFrame(u32 w, u32 h) {
-    if (w == 0 || h == 0 || !projectM_.isInitialized())
-        return;
-    if (!renderTarget_.isValid())
-        return;
+void VisualizerRenderer::render(u32 x, u32 y, u32 width, u32 height, bool isExposed) {
+if (!initialized_ || !isExposed)
+return;
+renderFrame(x, y, width, height);
+}
 
-    projectM_.syncState();
+void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
+if (w == 0 || h == 0 || !projectM_.isInitialized())
+return;
+if (!renderTarget_.isValid() && !recording_)
+return;
 
-    u32 renderW = recording_ ? recordWidth_ : w;
-    u32 renderH = recording_ ? recordHeight_ : h;
+projectM_.syncState();
 
-    {
-        std::lock_guard lock(audioMutex_);
-        if (!audioQueue_.empty()) {
-            u32 framesToFeed = (audioSampleRate_ + targetFps_ - 1) / targetFps_;
-            u32 availableFrames = audioQueue_.size() / 2;
-            u32 feedFrames = std::min(framesToFeed, availableFrames);
-            if (feedFrames > 0) {
-                // O(1) circular buffer - no erase needed!
-                auto [data, count] = audioQueue_.getContiguous(feedFrames);
-                projectM_.engine().addPCMDataInterleaved(data, feedFrames, 2);
-                audioQueue_.pop(feedFrames * 2);
-            }
-        }
-    }
+u32 renderW = recording_ ? recordWidth_ : w;
+u32 renderH = recording_ ? recordHeight_ : h;
 
-    bool useFBO = recording_;
+{
+std::lock_guard lock(audioMutex_);
+if (!audioQueue_.empty()) {
+u32 framesToFeed = (audioSampleRate_ + targetFps_ - 1) / targetFps_;
+u32 availableFrames = audioQueue_.size() / 2;
+u32 feedFrames = std::min(framesToFeed, availableFrames);
+if (feedFrames > 0) {
+auto [data, count] = audioQueue_.getContiguous(feedFrames);
+projectM_.engine().addPCMDataInterleaved(data, feedFrames, 2);
+audioQueue_.pop(feedFrames * 2);
+}
+}
+}
 
-    if (useFBO) {
-        if (renderTarget_.width() != renderW ||
-            renderTarget_.height() != renderH) {
-            renderTarget_.resize(renderW, renderH);
-            projectM_.engine().resize(renderW, renderH);
-        }
+bool useFBO = recording_;
 
-        if (presetLoading_) {
-            renderTarget_.bind();
-            glClearColor(0, 0, 0, 1);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            renderTarget_.unbind();
-        } else {
-            projectM_.engine().renderToTarget(renderTarget_);
-        }
+if (useFBO) {
+if (renderTarget_.width() != renderW || renderTarget_.height() != renderH) {
+renderTarget_.resize(renderW, renderH);
+projectM_.engine().resize(renderW, renderH);
+}
 
-        if (recording_) {
-            renderTarget_.bind();
-            if (overlayEngine_)
-                overlayEngine_->render(renderW, renderH);
-            captureAsync();
-            renderTarget_.unbind();
-        }
+if (presetLoading_) {
+renderTarget_.bind();
+glClearColor(0, 0, 0, 1);
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+renderTarget_.unbind();
+} else {
+projectM_.engine().renderToTarget(renderTarget_);
+}
 
-        glViewport(0, 0, w, h);
-        GLuint tex = renderTarget_.texture();
-        if (tex)
-            drawTexture(tex, w, h);
+if (recording_) {
+renderTarget_.bind();
+if (overlayEngine_)
+overlayEngine_->render(renderW, renderH);
+captureAsync();
+renderTarget_.unbind();
+}
 
-        if (!recording_ && overlayEngine_)
-            overlayEngine_->render(w, h);
-    } else {
-        glViewport(0, 0, w, h);
-        if (presetLoading_) {
-            glClearColor(0, 0, 0, 1);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        } else {
-            projectM_.engine().resize(w, h);
-            projectM_.engine().render();
-            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
-            glClearColor(0, 0, 0, 1);
-            glClear(GL_COLOR_BUFFER_BIT);
-            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        }
-        if (overlayEngine_)
-            overlayEngine_->render(w, h);
-    }
+glViewport(x, y, w, h);
+GLuint tex = renderTarget_.texture();
+if (tex)
+drawTexture(tex, w, h);
+
+if (!recording_ && overlayEngine_)
+overlayEngine_->render(w, h);
+} else {
+glViewport(x, y, w, h);
+glScissor(x, y, w, h);
+glEnable(GL_SCISSOR_TEST);
+
+if (presetLoading_) {
+glClearColor(0, 0, 0, 1);
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+} else {
+projectM_.engine().resize(w, h);
+projectM_.engine().render();
+glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+glClearColor(0, 0, 0, 1);
+glClear(GL_COLOR_BUFFER_BIT);
+glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+glDisable(GL_SCISSOR_TEST);
+
+if (overlayEngine_)
+overlayEngine_->render(w, h);
+}
 }
 
 void VisualizerRenderer::initBlitResources() {

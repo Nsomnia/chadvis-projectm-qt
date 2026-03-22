@@ -207,18 +207,16 @@ Component {
 	// VISUALIZER AREA
 	// ─────────────────────────────────────────────────────────
 
-	Rectangle {
-		Layout.fillWidth: true
-		Layout.fillHeight: true
+Item {
+Layout.fillWidth: true
+Layout.fillHeight: true
 
-		color: Theme.background
-
-		// Real ProjectM visualizer
-		VisualizerItem {
-			id: visualizerItem
-			anchors.fill: parent
-			fps: 60
-		}
+// Real ProjectM visualizer (OpenGL underlay renders beneath)
+VisualizerItem {
+id: visualizerItem
+anchors.fill: parent
+fps: 60
+}
 
 		// Center info when not playing
 		Column {
