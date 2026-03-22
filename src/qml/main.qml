@@ -309,7 +309,7 @@ Rectangle {
             spacing: Theme.spacingSmall
 
             Text {
-                text: PresetBridge.currentPreset.name || "No Preset Selected"
+                text: (PresetBridge.currentPreset && PresetBridge.currentPreset.name) ? PresetBridge.currentPreset.name : "No Preset Selected"
                 color: Theme.onBackground
                 font: Theme.fontCaption
                 opacity: 0.7
