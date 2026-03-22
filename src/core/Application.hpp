@@ -3,7 +3,7 @@
  * @brief Main application controller.
  *
  * This file defines the Application class which acts as the central coordinator
- * for the application. It manages the lifecycle of the main window, audio
+ * for the application. It manages the lifecycle of the QML window, audio
  * engine, visualizer, and recorder. It also handles command-line argument
  * parsing.
  *
@@ -12,7 +12,6 @@
  * - AudioEngine
  * - OverlayEngine
  * - VideoRecorder
- * - MainWindow
  *
  * @section Patterns
  * - Singleton: Global access to core components.
@@ -30,7 +29,6 @@
 
 namespace vc {
 
-class MainWindow;
 class AudioEngine;
 class OverlayEngine;
 class VideoRecorder;
@@ -42,12 +40,11 @@ class SunoController;
 }
 
 struct AppOptions {
-    // General
-    bool debug{false};
-    bool headless{false};
-    bool useQml{false};
-    std::optional<fs::path> configFile;
-    std::vector<fs::path> inputFiles;
+  // General
+  bool debug{false};
+  bool headless{false};
+  std::optional<fs::path> configFile;
+  std::vector<fs::path> inputFiles;
     
     // Visualizer
     std::optional<std::string> presetName;
@@ -101,24 +98,21 @@ public:
 
     void reloadTheme();
 
-    // Component access
-    AudioEngine* audioEngine() const {
-        return audioEngine_.get();
-    }
-    OverlayEngine* overlayEngine() const {
-        return overlayEngine_.get();
-    }
-    VideoRecorder* videoRecorder() const {
-        return videoRecorder_.get();
-    }
-    MainWindow* mainWindow() const {
-        return mainWindow_.get();
-    }
+	// Component access
+	AudioEngine* audioEngine() const {
+		return audioEngine_.get();
+	}
+	OverlayEngine* overlayEngine() const {
+		return overlayEngine_.get();
+	}
+	VideoRecorder* videoRecorder() const {
+		return videoRecorder_.get();
+	}
 
-    // Global instance
-    static Application* instance() {
-        return instance_;
-    }
+	// Global instance
+	static Application* instance() {
+		return instance_;
+	}
 
 signals:
     void aboutToQuit();
@@ -134,23 +128,21 @@ private:
 
     static Application* instance_;
 
-std::unique_ptr<QApplication> qapp_;
-    std::unique_ptr<QQmlApplicationEngine> qmlEngine_;
-    // Components - Declaration order matters for destruction (reverse order)
-// We want engines to stay alive until the UI is gone
-std::unique_ptr<AudioEngine> audioEngine_;
-std::unique_ptr<OverlayEngine> overlayEngine_;
-std::unique_ptr<VideoRecorder> videoRecorder_;
-std::unique_ptr<MainWindow> mainWindow_;
+	std::unique_ptr<QApplication> qapp_;
+	std::unique_ptr<QQmlApplicationEngine> qmlEngine_;
+	// Components - Declaration order matters for destruction (reverse order)
+	// We want engines to stay alive until the UI is gone
+	std::unique_ptr<AudioEngine> audioEngine_;
+	std::unique_ptr<OverlayEngine> overlayEngine_;
+	std::unique_ptr<VideoRecorder> videoRecorder_;
 
-// QML-specific managers
-std::unique_ptr<PresetManager> presetManager_;
-std::unique_ptr<LyricsSync> lyricsSync_;
-std::unique_ptr<suno::SunoController> sunoController_;
+	// QML-specific managers
+	std::unique_ptr<PresetManager> presetManager_;
+	std::unique_ptr<LyricsSync> lyricsSync_;
+	std::unique_ptr<suno::SunoController> sunoController_;
 
-    bool useQml_{false};
-    int argc_;
-    char** argv_;
+	int argc_;
+	char** argv_;
 };
 
 // Global shortcut

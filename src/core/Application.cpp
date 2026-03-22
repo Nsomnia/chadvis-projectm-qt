@@ -6,7 +6,6 @@
 #include "audio/AudioEngine.hpp"
 #include "overlay/OverlayEngine.hpp"
 #include "recorder/VideoRecorder.hpp"
-#include "ui/MainWindow.hpp"
 #include "util/FileUtils.hpp"
 #include "util/GLIncludes.hpp"
 #include "visualizer/RatingManager.hpp"
@@ -35,15 +34,14 @@ Application::Application(int& argc, char** argv) : argc_(argc), argv_(argv) {
 }
 
 Application::~Application() {
-    // Cleanup order matters
-    mainWindow_.reset();
-    videoRecorder_.reset();
-    overlayEngine_.reset();
-    audioEngine_.reset();
-    qapp_.reset();
+	// Cleanup order matters
+	videoRecorder_.reset();
+	overlayEngine_.reset();
+	audioEngine_.reset();
+	qapp_.reset();
 
-    Logger::shutdown();
-    instance_ = nullptr;
+	Logger::shutdown();
+	instance_ = nullptr;
 }
 
 Result<AppOptions> Application::parseArgs() {
@@ -82,11 +80,9 @@ Result<AppOptions> Application::parseArgs() {
             std::exit(0);
 } else if (arg == "-d" || arg == "--debug") {
         opts.debug = true;
-    } else if (arg == "--headless") {
-        opts.headless = true;
-    } else if (arg == "--qml") {
-        opts.useQml = true;
-    }
+		} else if (arg == "--headless") {
+			opts.headless = true;
+		}
     // Recording options
         else if (arg == "-r" || arg == "--record") {
             opts.startRecording = true;
@@ -450,112 +446,62 @@ Result<void> Application::init(const AppOptions& opts) {
         LOG_WARN("Failed to load preset ratings: {}", result.error().message);
     }
 
-    // Create main window (unless headless)
-    useQml_ = opts.useQml;
-    
-    if (!opts.headless) {
-if (useQml_) {
-            LOG_DEBUG("Creating QML window...");
+	// Create QML window (unless headless)
+	if (!opts.headless) {
+		LOG_DEBUG("Creating QML window...");
 
-            // Create QML-specific managers
-            LOG_DEBUG("Initializing preset manager for QML...");
-            presetManager_ = std::make_unique<PresetManager>();
-            if (auto presetDir = CONFIG.visualizer().presetPath; !presetDir.empty()) {
-                presetManager_->scan(presetDir, true);
-            }
+		// Create QML-specific managers
+		LOG_DEBUG("Initializing preset manager for QML...");
+		presetManager_ = std::make_unique<PresetManager>();
+		if (auto presetDir = CONFIG.visualizer().presetPath; !presetDir.empty()) {
+			presetManager_->scan(presetDir, true);
+		}
 
-            LOG_DEBUG("Initializing lyrics sync for QML...");
-            lyricsSync_ = std::make_unique<LyricsSync>(audioEngine_.get());
+		LOG_DEBUG("Initializing lyrics sync for QML...");
+		lyricsSync_ = std::make_unique<LyricsSync>(audioEngine_.get());
 
-            LOG_DEBUG("Initializing Suno controller for QML...");
-            sunoController_ = std::make_unique<suno::SunoController>(
-                audioEngine_.get(), overlayEngine_.get(), nullptr);
+		LOG_DEBUG("Initializing Suno controller for QML...");
+		sunoController_ = std::make_unique<suno::SunoController>(
+			audioEngine_.get(), overlayEngine_.get(), nullptr);
 
-qmlEngine_ = std::make_unique<QQmlApplicationEngine>();
+	qmlEngine_ = std::make_unique<QQmlApplicationEngine>();
 
-            // Register QML bridges with all managers
-            qml_bridge::registerBridges(qmlEngine_.get(),
-                audioEngine_.get(), nullptr, videoRecorder_.get(),
-                presetManager_.get(), lyricsSync_.get(), sunoController_.get());
+	// Connect to QML warnings for debugging
+	QObject::connect(qmlEngine_.get(), &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+		for (const auto& warning : warnings) {
+			LOG_ERROR("QML Warning: {} (line {})", warning.description().toStdString(), warning.line());
+		}
+	});
 
-            // Load main QML file from Qt resource system
-            const QUrl url(QStringLiteral("qrc:/qt/qml/ChadVis/src/qml/main.qml"));
+	// Register QML bridges with all managers
+	qml_bridge::registerBridges(qmlEngine_.get(),
+		audioEngine_.get(), nullptr, videoRecorder_.get(),
+		presetManager_.get(), lyricsSync_.get(), sunoController_.get());
 
-            QObject::connect(qmlEngine_.get(), &QQmlApplicationEngine::objectCreated,
-                this, [url](QObject* obj, const QUrl& objUrl) {
-                    if (!obj && objUrl == url) {
-                        LOG_ERROR("Failed to create QML window");
-                    } else if (obj) {
-                        LOG_INFO("QML window created successfully");
-                    }
-                });
+	// Load main QML file from Qt resource system
+	const QUrl url(QStringLiteral("qrc:/qt/qml/ChadVis/src/qml/main.qml"));
 
-            qmlEngine_->load(url);
-        } else {
-            LOG_DEBUG("Creating main window...");
-            mainWindow_ = std::make_unique<MainWindow>();
-            mainWindow_->show();
+	QObject::connect(qmlEngine_.get(), &QQmlApplicationEngine::objectCreated,
+		this, [url](QObject* obj, const QUrl& objUrl) {
+			if (!obj && objUrl == url) {
+				LOG_ERROR("Failed to create QML window");
+			} else if (obj) {
+				LOG_INFO("QML window created successfully");
+			}
+		});
 
-        if (!opts.inputFiles.empty()) {
-            mainWindow_->audioEngine()->playlist().clear();
-            
-            for (const auto& file : opts.inputFiles) {
-                if (fs::exists(file)) {
-                    mainWindow_->addToPlaylist(file);
-                } else {
-                    LOG_WARN("File not found: {}", file.string());
-                }
-            }
-        }
+	qmlEngine_->load(url);
+	}
 
-        // Auto-play if files were added
-        if (!opts.inputFiles.empty()) {
-            LOG_INFO("Auto-playing first track");
-            mainWindow_->audioEngine()->play();
-        }
+	// Connect quit signal
+	connect(qapp_.get(),
+		&QApplication::aboutToQuit,
+		this,
+		&Application::aboutToQuit);
 
-        // Auto-start recording if requested
-        if (opts.startRecording) {
-            if (opts.outputFile) {
-                mainWindow_->startRecording(*opts.outputFile);
-            } else {
-                mainWindow_->startRecording();
-            }
-        }
+	LOG_INFO("Initialization complete. Let's get this bread.");
 
-        // Set preset if specified
-        if (opts.presetName) {
-            LOG_INFO("Application: Requesting preset '{}'", *opts.presetName);
-            mainWindow_->selectPreset(*opts.presetName);
-        } else if (opts.useDefaultPreset) {
-            // Don't select any preset - use projectM default
-            LOG_INFO("Using default projectM visualizer (no preset selected)");
-        }
-        }
-    }
-
-    // Connect quit signal
-    connect(qapp_.get(),
-            &QApplication::aboutToQuit,
-            this,
-            &Application::aboutToQuit);
-
-    LOG_INFO("Initialization complete. Let's get this bread.");
-
-    if (opts.sunoId && !opts.headless && mainWindow_ && !useQml_) {
-        LOG_INFO("Application: Fetching song ID {}", *opts.sunoId);
-        auto* controller = mainWindow_->sunoController();
-        if (controller) {
-            suno::SunoClip clip;
-            clip.id = *opts.sunoId;
-            clip.is_public = true;
-            controller->downloadAndPlay(clip);
-        } else {
-            LOG_ERROR("Application: Suno controller not available for --suno-id");
-        }
-    }
-
-    return Result<void>::ok();
+	return Result<void>::ok();
 }
 
 int Application::exec() {
@@ -602,63 +548,12 @@ void Application::reloadTheme() {
 }
 
 void Application::setupStyle() {
-    // Use Fusion style as base (looks good on Linux)
-    qapp_->setStyle(QStyleFactory::create("Fusion"));
+	// QML handles its own styling via Theme.qml
+	// This function is kept for API compatibility but does nothing
+}
 
-    // Load fonts
-    QFontDatabase::addApplicationFont(":/fonts/liberation-sans.ttf");
-
-    // Load stylesheet based on theme
-    QString themeName = QString::fromStdString(CONFIG.ui().theme);
-    QString stylePath = QString(":/styles/%1.qss").arg(themeName);
-
-    QFile styleFile(stylePath);
-    if (styleFile.open(QFile::ReadOnly | QFile::Text)) {
-        QString style = styleFile.readAll();
-        qapp_->setStyleSheet(style);
-        LOG_DEBUG("Loaded theme: {}", themeName.toStdString());
-    } else {
-        if (themeName != "dark") {
-            LOG_WARN("Theme not found: {}, using default dark theme", themeName.toStdString());
-        } else {
-             LOG_DEBUG("Dark theme requested, using built-in fallback");
-        }
-        // Fallback dark theme inline
-        qapp_->setStyleSheet(R"(
-            QMainWindow, QDialog, QWidget {
-                background-color: #1e1e1e;
-                color: #ffffff;
-            }
-            QPushButton {
-                background-color: #3c3c3c;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                padding: 6px 12px;
-                color: #ffffff;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-            QListWidget, QTreeWidget, QTableWidget {
-                background-color: #252525;
-                border: 1px solid #3c3c3c;
-                color: #ffffff;
-            }
-            QSlider::groove:horizontal {
-                height: 4px;
-                background: #3c3c3c;
-            }
-            QSlider::handle:horizontal {
-                background: #00ff88;
-                width: 12px;
-                margin: -4px 0;
-                border-radius: 6px;
-            }
-        )");
-    }
+void Application::setupQmlStyle() {
+	// QML handles its own styling via Theme.qml
 }
 
 void Application::printVersion() {
@@ -685,15 +580,14 @@ void Application::printHelp() {
               << "  " << dim() << "chadvis-projectm-qt --help <topic>    # Detailed topic help" << reset() << "\n"
               << "  " << dim() << "chadvis-projectm-qt --help-topics     # List help topics" << reset() << "\n\n";
     
-    Cli::printSection("General Options");
-    Cli::printOption("-h, --help [topic]", "Show this help or detailed topic help");
-    Cli::printOption("--help-topics", "List available help topics");
-    Cli::printOption("-v, --version", "Show version information");
-    Cli::printOption("-d, --debug", "Enable debug logging", "no");
-    Cli::printOption("-c, --config <path>", "Use custom config file");
-    Cli::printOption("--headless", "Run without GUI (batch mode)");
-    Cli::printOption("--qml", "Use QML-based UI (experimental)");
-    Cli::printOption("--generate-completion <shell>", "Generate shell completion script");
+	Cli::printSection("General Options");
+	Cli::printOption("-h, --help [topic]", "Show this help or detailed topic help");
+	Cli::printOption("--help-topics", "List available help topics");
+	Cli::printOption("-v, --version", "Show version information");
+	Cli::printOption("-d, --debug", "Enable debug logging", "no");
+	Cli::printOption("-c, --config <path>", "Use custom config file");
+	Cli::printOption("--headless", "Run without GUI (batch mode)");
+	Cli::printOption("--generate-completion <shell>", "Generate shell completion script");
     
     Cli::printSection("Audio Options");
     Cli::printOption("--audio-device <name>", "Audio output device", "default");

@@ -195,12 +195,12 @@ ColumnLayout {
                 }
             }
 
-            Text {
-                text: delegate.isInstrumental ? "\u266B" : ""
-                color: Theme.onSurfaceVariant
-                font.pixelSize: Theme.fontSizeMedium
-                visible: text !== ""
-            }
+	Text {
+		text: delegate.isInstrumental ? "♪" : ""
+		color: Theme.onSurfaceVariant
+		font.pixelSize: Theme.fontSizeMedium
+		visible: text !== ""
+	}
         }
 
         MouseArea {

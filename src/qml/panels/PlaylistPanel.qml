@@ -29,7 +29,7 @@ ColumnLayout {
 
         AppButton {
             text: "Add"
-            icon: "qrc:/icons/plus.svg"
+            icon: "qrc:/qt/qml/ChadVis/resources/icons/plus.svg"
             flat: true
             implicitHeight: 28
             radius: Theme.radiusSmall
@@ -37,7 +37,7 @@ ColumnLayout {
         }
 
         AppButton {
-            icon: "qrc:/icons/shuffle.svg"
+            icon: "qrc:/qt/qml/ChadVis/resources/icons/shuffle.svg"
             flat: true
             implicitWidth: 28
             implicitHeight: 28
@@ -46,7 +46,7 @@ ColumnLayout {
         }
 
         AppButton {
-            icon: "qrc:/icons/clear.svg"
+            icon: "qrc:/qt/qml/ChadVis/resources/icons/clear.svg"
             flat: true
             implicitWidth: 28
             implicitHeight: 28

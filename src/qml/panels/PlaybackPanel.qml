@@ -26,7 +26,7 @@ ColumnLayout {
 
         AppButton {
             text: "Open File"
-            icon: "qrc:/icons/plus.svg"
+            icon: "qrc:/qt/qml/ChadVis/resources/icons/plus.svg"
             implicitWidth: 120
             implicitHeight: 36
             radius: Theme.radiusMedium
@@ -109,7 +109,7 @@ ColumnLayout {
         spacing: Theme.spacingSmall
 
         AppButton {
-            icon: "qrc:/icons/prev.svg"
+            icon: "qrc:/qt/qml/ChadVis/resources/icons/prev.svg"
             implicitWidth: 40
             implicitHeight: 40
             radius: Theme.radiusMedium
@@ -117,7 +117,7 @@ ColumnLayout {
         }
 
         AppButton {
-            icon: AudioBridge.isPlaying ? "qrc:/icons/pause.svg" : "qrc:/icons/play.svg"
+            icon: AudioBridge.isPlaying ? "qrc:/qt/qml/ChadVis/resources/icons/pause.svg" : "qrc:/qt/qml/ChadVis/resources/icons/play.svg"
             highlighted: AudioBridge.isPlaying
             implicitWidth: 48
             implicitHeight: 48
@@ -126,7 +126,7 @@ ColumnLayout {
         }
 
         AppButton {
-            icon: "qrc:/icons/stop.svg"
+            icon: "qrc:/qt/qml/ChadVis/resources/icons/stop.svg"
             implicitWidth: 40
             implicitHeight: 40
             radius: Theme.radiusMedium
@@ -134,7 +134,7 @@ ColumnLayout {
         }
 
         AppButton {
-            icon: "qrc:/icons/next.svg"
+            icon: "qrc:/qt/qml/ChadVis/resources/icons/next.svg"
             implicitWidth: 40
             implicitHeight: 40
             radius: Theme.radiusMedium
@@ -186,7 +186,7 @@ ColumnLayout {
         spacing: Theme.spacingSmall
 
         AppButton {
-            icon: AudioBridge.volume > 0 ? "qrc:/icons/volume-high.svg" : "qrc:/icons/volume-mute.svg"
+            icon: AudioBridge.volume > 0 ? "qrc:/qt/qml/ChadVis/resources/icons/volume-high.svg" : "qrc:/qt/qml/ChadVis/resources/icons/volume-mute.svg"
             flat: true
             implicitWidth: 32
             implicitHeight: 32

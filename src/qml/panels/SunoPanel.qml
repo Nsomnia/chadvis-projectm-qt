@@ -29,22 +29,22 @@ ColumnLayout {
 
             Item { Layout.fillWidth: true }
 
-            ToolButton {
-                text: "\u{1F50D}"
-                onClicked: root.showSearch = !root.showSearch
-            }
+	ToolButton {
+		icon.source: "qrc:/qt/qml/ChadVis/resources/icons/search.svg"
+		onClicked: root.showSearch = !root.showSearch
+	}
 
-            ToolButton {
-                text: "\u{1F504}"
-                enabled: !SunoBridge.isSyncing
-                onClicked: SunoBridge.refreshLibrary()
-            }
+	ToolButton {
+		icon.source: "qrc:/qt/qml/ChadVis/resources/icons/refresh.svg"
+		enabled: !SunoBridge.isSyncing
+		onClicked: SunoBridge.refreshLibrary()
+	}
 
-            ToolButton {
-                text: "\u{1F4BE}"
-                enabled: !SunoBridge.isSyncing && SunoBridge.isAuthenticated
-                onClicked: SunoBridge.syncDatabase()
-            }
+	ToolButton {
+		icon.source: "qrc:/qt/qml/ChadVis/resources/icons/save.svg"
+		enabled: !SunoBridge.isSyncing && SunoBridge.isAuthenticated
+		onClicked: SunoBridge.syncDatabase()
+	}
         }
     }
 
@@ -167,12 +167,12 @@ ColumnLayout {
                     color: Theme.surface
                     visible: parent.status !== Image.Ready
 
-                    Label {
-                        anchors.centerIn: parent
-                        text: "\u266B"
-                        font.pixelSize: 24
-                        color: Theme.onSurfaceVariant
-                    }
+			Label {
+				anchors.centerIn: parent
+				text: "♪"
+				font.pixelSize: 24
+				color: Theme.onSurfaceVariant
+			}
                 }
             }
 
@@ -223,21 +223,21 @@ ColumnLayout {
                 }
             }
 
-            AppButton {
-                icon: "\u{1F3A5}"
-                implicitWidth: 44
-                implicitHeight: 44
-                onClicked: delegate.lyricsClicked()
-                visible: !delegate.hasLyrics
-            }
+	AppButton {
+		icon: "qrc:/qt/qml/ChadVis/resources/icons/video.svg"
+		implicitWidth: 44
+		implicitHeight: 44
+		onClicked: delegate.lyricsClicked()
+		visible: !delegate.hasLyrics
+	}
 
-            AppButton {
-                icon: "\u25B6"
-                implicitWidth: 44
-                implicitHeight: 44
-                highlighted: true
-                onClicked: delegate.playClicked()
-            }
+	AppButton {
+		icon: "qrc:/qt/qml/ChadVis/resources/icons/play.svg"
+		implicitWidth: 44
+		implicitHeight: 44
+		highlighted: true
+		onClicked: delegate.playClicked()
+	}
         }
 
         MouseArea {

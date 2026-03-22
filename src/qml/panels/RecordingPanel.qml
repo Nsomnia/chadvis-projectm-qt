@@ -60,18 +60,19 @@ ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.spacingMedium
 
-AppButton {
-            id: recordButton
-            text: root.isRecording ? "\u25A0 Stop" : "\u25B6 Record"
-            highlighted: !root.isRecording
-            onClicked: {
-                        if (root.isRecording) {
-                            RecordingBridge.stopRecording()
-                        } else {
-                            RecordingBridge.startRecording(root.outputPath)
-                        }
-                    }
-                }
+	AppButton {
+		id: recordButton
+		text: root.isRecording ? "Stop" : "Record"
+		icon: root.isRecording ? "qrc:/qt/qml/ChadVis/resources/icons/stop.svg" : "qrc:/qt/qml/ChadVis/resources/icons/record.svg"
+		highlighted: !root.isRecording
+		onClicked: {
+			if (root.isRecording) {
+				RecordingBridge.stopRecording()
+			} else {
+				RecordingBridge.startRecording(root.outputPath)
+			}
+		}
+	}
 
                 Label {
                     visible: root.isRecording
