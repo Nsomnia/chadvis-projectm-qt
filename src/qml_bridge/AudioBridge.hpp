@@ -70,6 +70,11 @@ public slots:
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
     Q_INVOKABLE void setVolume(qreal volume);
+    Q_INVOKABLE bool loadFile(const QString& filePath);
+    Q_INVOKABLE void addToPlaylist(const QString& filePath);
+    Q_INVOKABLE void clearPlaylist();
+    Q_INVOKABLE int playlistCount() const;
+    Q_INVOKABLE QVariantMap playlistItem(int index) const;
 
 signals:
     void playbackStateChanged();

@@ -131,6 +131,58 @@ void AudioBridge::setVolume(qreal volume)
     emit volumeChanged();
 }
 
+bool AudioBridge::loadFile(const QString& filePath)
+{
+    if (!s_engine) return false;
+
+    auto path = vc::fs::path(filePath.toStdString());
+    if (!vc::fs::exists(path)) return false;
+
+    s_engine->playlist().clear();
+    s_engine->playlist().addFile(path);
+    s_engine->play();
+    return true;
+}
+
+void AudioBridge::addToPlaylist(const QString& filePath)
+{
+    if (!s_engine) return;
+
+    auto path = vc::fs::path(filePath.toStdString());
+    if (vc::fs::exists(path)) {
+        s_engine->playlist().addFile(path);
+    }
+}
+
+void AudioBridge::clearPlaylist()
+{
+    if (s_engine) {
+        s_engine->playlist().clear();
+    }
+}
+
+int AudioBridge::playlistCount() const
+{
+    return s_engine ? static_cast<int>(s_engine->playlist().items().size()) : 0;
+}
+
+QVariantMap AudioBridge::playlistItem(int index) const
+{
+    QVariantMap result;
+    if (!s_engine || index < 0) return result;
+
+    const auto& items = s_engine->playlist().items();
+    if (static_cast<size_t>(index) < items.size()) {
+        const auto& item = items[index];
+        result["title"] = QString::fromStdString(item.metadata.displayTitle());
+        result["artist"] = QString::fromStdString(item.metadata.displayArtist());
+        result["album"] = QString::fromStdString(item.metadata.album);
+        result["duration"] = static_cast<qint64>(item.metadata.duration.count());
+        result["path"] = QString::fromStdString(item.path.string());
+    }
+    return result;
+}
+
 void AudioBridge::onEngineStateChanged(vc::PlaybackState state)
 {
     int newState = Stopped;
