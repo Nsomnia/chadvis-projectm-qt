@@ -18,7 +18,7 @@ third_party/*
 
 # Agent internal notes
 .agent/
-.backup_graveyard/
+#.backup_graveyard/
 logs/
 scratch/
 *.tmp
