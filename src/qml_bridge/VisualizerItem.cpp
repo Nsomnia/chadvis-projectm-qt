@@ -84,16 +84,22 @@ connect(window(), &QQuickWindow::beforeRenderPassRecording, this, &VisualizerIte
 }
 
 void VisualizerItem::onBeforeRendering() {
-if (!initialized_) {
-initializeRenderer();
-}
+	if (!initialized_) {
+		initializeRenderer();
+	}
 
-if (renderer_ && s_audioEngine && initialized_) {
-auto pcm = s_audioEngine->currentPCM();
-if (!pcm.empty()) {
-renderer_->feedAudio(pcm.data(), static_cast<vc::u32>(pcm.size() / 2), 2, 48000);
-}
-}
+	if (renderer_ && s_audioEngine && initialized_) {
+		auto pcm = s_audioEngine->currentPCM();
+		if (!pcm.empty()) {
+			renderer_->feedAudio(pcm.data(), static_cast<vc::u32>(pcm.size() / 2), 2, 48000);
+		} else {
+			// Feed silent PCM data when idle to keep projectM rendering
+			// This ensures visualizations remain active even with no audio playing
+			static constexpr vc::u32 SILENT_FRAMES = 1024;
+			static std::vector<float> silentBuffer(SILENT_FRAMES * 2, 0.0f);
+			renderer_->feedAudio(silentBuffer.data(), SILENT_FRAMES, 2, 48000);
+		}
+	}
 }
 
 void VisualizerItem::onBeforeRenderPassRecording() {
