@@ -1,0 +1,106 @@
+/**
+ * @file VisualizerQuickItem.cpp
+ * @brief Implementation of VisualizerQuickItem
+ */
+
+#include "VisualizerQuickItem.hpp"
+#include "visualizer/VisualizerWindow.hpp"
+#include "audio/AudioEngine.hpp"
+#include "visualizer/PresetManager.hpp"
+#include "core/Logger.hpp"
+
+#include <QQuickWindow>
+#include <QWidget>
+
+namespace qml_bridge {
+
+using namespace vc;
+
+vc::AudioEngine* VisualizerQuickItem::s_audioEngine = nullptr;
+vc::PresetManager* VisualizerQuickItem::s_presetManager = nullptr;
+
+VisualizerQuickItem::VisualizerQuickItem(QQuickItem* parent)
+    : QQuickItem(parent)
+{
+    // Note: We can't create the VisualizerWindow here because we need a valid
+    // window() to get the QQuickWindow. We'll create it in geometryChange.
+}
+
+VisualizerQuickItem::~VisualizerQuickItem() {
+    if (visualizerWindow_) {
+        delete visualizerWindow_;
+        visualizerWindow_ = nullptr;
+    }
+}
+
+void VisualizerQuickItem::setGlobalAudioEngine(vc::AudioEngine* engine) {
+    s_audioEngine = engine;
+}
+
+void VisualizerQuickItem::setGlobalPresetManager(vc::PresetManager* manager) {
+    s_presetManager = manager;
+}
+
+void VisualizerQuickItem::setFps(int fps) {
+    if (fps_ != fps && fps > 0 && fps <= 120) {
+        fps_ = fps;
+        if (visualizerWindow_) {
+            visualizerWindow_->setRenderRate(fps_);
+        }
+        emit fpsChanged();
+    }
+}
+
+void VisualizerQuickItem::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) {
+    QQuickItem::geometryChange(newGeometry, oldGeometry);
+
+    if (!visualizerWindow_ && window()) {
+        setupVisualizer();
+    }
+
+    if (visualizerWindow_) {
+        visualizerWindow_->resize(static_cast<int>(newGeometry.width()),
+                                   static_cast<int>(newGeometry.height()));
+    }
+}
+
+void VisualizerQuickItem::setupVisualizer() {
+    if (visualizerWindow_) return;
+
+    visualizerWindow_ = new vc::VisualizerWindow();
+    visualizerWindow_->resize(static_cast<int>(width()), static_cast<int>(height()));
+    visualizerWindow_->show();
+
+    // Load preset if available
+    if (s_presetManager) {
+        const auto& presets = s_presetManager->allPresets();
+        if (!presets.empty()) {
+            visualizerWindow_->projectM().engine().loadPreset(presets[0].path.string());
+            LOG_INFO("VisualizerQuickItem: Loaded preset: {}", presets[0].name);
+        }
+    }
+
+    // Set render rate
+    visualizerWindow_->setRenderRate(fps_);
+
+    // Connect audio signal
+    connectAudioSignal();
+
+    LOG_INFO("VisualizerQuickItem: Initialized {}x{}", 
+             static_cast<int>(width()), static_cast<int>(height()));
+}
+
+void VisualizerQuickItem::connectAudioSignal() {
+    if (audioConnected_ || !s_audioEngine || !visualizerWindow_) return;
+
+    s_audioEngine->pcmReceived.connect([this](const std::vector<float>& data, u32 frames, u32 channels, u32 sampleRate) {
+        if (visualizerWindow_) {
+            visualizerWindow_->feedAudio(data.data(), frames, channels, sampleRate);
+        }
+    });
+
+    audioConnected_ = true;
+    LOG_INFO("VisualizerQuickItem: Connected to audio engine PCM signal");
+}
+
+} // namespace qml_bridge

@@ -1,0 +1,67 @@
+/**
+ * @file VisualizerQuickItem.hpp
+ * @brief QQuickItem that embeds VisualizerWindow for proper OpenGL rendering
+ *
+ * This class uses the proven VisualizerWindow approach (standalone QWindow with
+ * dedicated OpenGL context) and embeds it in QML using the widget bridge pattern.
+ *
+ * The VisualizerItem approach (direct OpenGL in scene graph) doesn't work properly
+ * with projectM's OpenGL 3.3 requirements due to Qt Quick's RHI abstraction.
+ *
+ * @version 1.0.0
+ */
+
+#pragma once
+
+#include <QQuickItem>
+#include <memory>
+
+namespace vc {
+class VisualizerWindow;
+class AudioEngine;
+class PresetManager;
+}
+
+namespace qml_bridge {
+
+/**
+ * @brief QQuickItem wrapper for VisualizerWindow
+ *
+ * This creates a proper OpenGL context for projectM by using VisualizerWindow
+ * (standalone QWindow) and embedding it in the QML scene.
+ */
+class VisualizerQuickItem : public QQuickItem {
+    Q_OBJECT
+    Q_PROPERTY(int fps READ fps WRITE setFps NOTIFY fpsChanged)
+
+public:
+    explicit VisualizerQuickItem(QQuickItem* parent = nullptr);
+    ~VisualizerQuickItem() override;
+
+    static void setGlobalAudioEngine(vc::AudioEngine* engine);
+    static void setGlobalPresetManager(vc::PresetManager* manager);
+
+    int fps() const { return fps_; }
+    void setFps(int fps);
+
+    vc::VisualizerWindow* visualizerWindow() const { return visualizerWindow_; }
+
+signals:
+    void fpsChanged();
+
+protected:
+    void geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) override;
+
+private:
+    void setupVisualizer();
+    void connectAudioSignal();
+
+    static vc::AudioEngine* s_audioEngine;
+    static vc::PresetManager* s_presetManager;
+
+    vc::VisualizerWindow* visualizerWindow_{nullptr};
+    bool audioConnected_{false};
+    int fps_{60};
+};
+
+} // namespace qml_bridge
