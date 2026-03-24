@@ -30,6 +30,11 @@ ensuring visualizations remain active even with no audio playing
 - **Idle State**: Removed placeholder overlay (music note icon) that was covering
 the visualizer canvas. The visualizer is now always visible, rendering idle
 patterns when no audio is playing via `VisualizerItem::feedSilentAudio()`
+- **OpenGL Integration**: Fixed `VisualizerItem` to inherit from `QOpenGLFunctions_3_3_Core`
+(matching `VisualizerRenderer`) for proper projectM v4 OpenGL 3.3 compatibility
+- **Render Target**: Fixed early return bug in `VisualizerRenderer::renderFrame()` that
+prevented rendering when render target wasn't valid (only needed for recording mode)
+- **Initialization**: Added proper error logging for render target creation failures
 
 ## [1.1.0] - 2026-01-29
 

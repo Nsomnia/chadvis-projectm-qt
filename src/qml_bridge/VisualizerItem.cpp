@@ -129,10 +129,12 @@ void VisualizerItem::onBeforeRendering() {
 }
 
 void VisualizerItem::onBeforeRenderPassRecording() {
-	if (renderer_ && initialized_ && window()) {
-		updateDimensions();
-		renderer_->render(x_, y_, width_, height_, window()->isExposed());
-	}
+    if (renderer_ && initialized_ && window()) {
+        updateDimensions();
+        if (width_ > 0 && height_ > 0) {
+            renderer_->render(x_, y_, width_, height_, window()->isExposed());
+        }
+    }
 }
 
 void VisualizerItem::updateDimensions() {
@@ -148,15 +150,13 @@ void VisualizerItem::updateDimensions() {
 }
 
 void VisualizerItem::initializeRenderer() {
-	if (initialized_ || !window()) return;
+    if (initialized_ || !window()) return;
 
-	initializeOpenGLFunctions();
+    if (!renderer_) {
+        renderer_ = new VisualizerRenderer();
+    }
 
-	if (!renderer_) {
-		renderer_ = new VisualizerRenderer();
-	}
-
-	renderer_->initialize(width_, height_);
+    renderer_->initialize(width_, height_);
 
 	if (s_presetManager) {
 		const auto& presets = s_presetManager->allPresets();
