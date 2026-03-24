@@ -132,7 +132,9 @@ void VisualizerItem::onBeforeRenderPassRecording() {
     if (renderer_ && initialized_ && window()) {
         updateDimensions();
         if (width_ > 0 && height_ > 0) {
+            window()->beginExternalCommands();
             renderer_->render(x_, y_, width_, height_, window()->isExposed());
+            window()->endExternalCommands();
         }
     }
 }

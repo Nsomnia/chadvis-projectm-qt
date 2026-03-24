@@ -20,8 +20,8 @@
 #include <QFontDatabase>
 #include <QStyleFactory>
 #include <QQmlEngine>
-#include <QQmlComponent>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QSurfaceFormat>
 #include <iostream>
 #include <cstdlib>
@@ -417,7 +417,6 @@ Result<void> Application::init(const AppOptions& opts) {
         LOG_INFO("CLI override: ui.theme = {}", *opts.theme);
     }
 
-	// Set OpenGL format BEFORE creating QApplication (required for projectM)
 	QSurfaceFormat format;
 	format.setVersion(3, 3);
 	format.setProfile(QSurfaceFormat::CoreProfile);
@@ -426,6 +425,8 @@ Result<void> Application::init(const AppOptions& opts) {
 	format.setDepthBufferSize(24);
 	format.setSamples(0);
 	QSurfaceFormat::setDefaultFormat(format);
+
+	QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
 	// Create Qt application
 	qapp_ = std::make_unique<QApplication>(argc_, argv_);

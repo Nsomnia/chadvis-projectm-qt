@@ -47,6 +47,7 @@ void registerBridges(QQmlApplicationEngine* engine,
 
     if (audioEngine) {
         s_audioBridge->setAudioEngine(audioEngine);
+        s_audioBridge->connectSignals();
         s_playlistBridge->setAudioEngine(audioEngine);
     }
 
