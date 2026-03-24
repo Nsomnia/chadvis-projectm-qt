@@ -26,9 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Visualizer**: ProjectM now renders continuously with silent PCM data when idle,
-  ensuring visualizations remain active even with no audio playing
-- **Idle State**: Enhanced "Open a file to start" message with pulsing music
-  note icon animation for better visual feedback
+ensuring visualizations remain active even with no audio playing
+- **Idle State**: Removed placeholder overlay (music note icon) that was covering
+the visualizer canvas. The visualizer is now always visible, rendering idle
+patterns when no audio is playing via `VisualizerItem::feedSilentAudio()`
 
 ## [1.1.0] - 2026-01-29
 

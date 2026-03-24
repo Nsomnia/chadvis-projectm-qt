@@ -218,37 +218,8 @@ anchors.fill: parent
 fps: 60
 }
 
-		// Center info when not playing
-		Column {
-			anchors.centerIn: parent
-			spacing: Theme.spacingMedium
-			visible: !AudioBridge.isPlaying
-
-			// Music note icon with glow effect
-			Text {
-				text: "♪"
-				color: Theme.accent
-				font.pixelSize: 72
-				opacity: 0.4
-				anchors.horizontalCenter: parent.horizontalCenter
-
-				// Subtle pulsing animation
-				SequentialAnimation on opacity {
-					running: !AudioBridge.isPlaying
-					loops: Animation.Infinite
-					NumberAnimation { to: 0.6; duration: 2000; easing.type: Easing.InOutSine }
-					NumberAnimation { to: 0.4; duration: 2000; easing.type: Easing.InOutSine }
-				}
-			}
-
-			Text {
-				text: "Open a file to start"
-				color: Theme.textSecondary
-				font: Theme.fontBody
-				opacity: 0.6
-				anchors.horizontalCenter: parent.horizontalCenter
-			}
-		}
+        // NOTE: Placeholder removed - visualizer is always visible
+        // Silent PCM data is fed when no audio is playing (see VisualizerItem::feedSilentAudio)
 
 	// Visualizer info overlay
 	Column {
