@@ -38,13 +38,23 @@ void VisualizerRenderer::initialize(u32 width, u32 height) {
 
     if (auto result = projectM_.init(pmConfig); !result) {
         LOG_ERROR("VisualizerRenderer: projectM init failed: {}",
-                  result.error().message);
+            result.error().message);
         return;
     }
 
-    renderTarget_.create(width, height, true);
-    overlayTarget_.create(width, height, false);
+    if (auto result = renderTarget_.create(width, height, true); !result) {
+        LOG_ERROR("VisualizerRenderer: Failed to create render target: {}",
+            result.error().message);
+        return;
+    }
 
+    if (auto result = overlayTarget_.create(width, height, false); !result) {
+        LOG_ERROR("VisualizerRenderer: Failed to create overlay target: {}",
+            result.error().message);
+        return;
+    }
+
+    LOG_INFO("VisualizerRenderer: Initialized successfully ({}x{})", width, height);
     initialized_ = true;
 }
 
@@ -68,10 +78,11 @@ renderFrame(x, y, width, height);
 }
 
 void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
-if (w == 0 || h == 0 || !projectM_.isInitialized())
-return;
-if (!renderTarget_.isValid() && !recording_)
-return;
+    if (w == 0 || h == 0 || !projectM_.isInitialized())
+        return;
+
+    if (recording_ && !renderTarget_.isValid())
+        return;
 
 projectM_.syncState();
 

@@ -16,7 +16,7 @@
 
 #include <QQuickItem>
 #include <QTimer>
-#include <QOpenGLFunctions>
+#include <QOpenGLFunctions_3_3_Core>
 #include "util/Types.hpp"
 #include <memory>
 
@@ -28,7 +28,7 @@ class PresetManager;
 
 namespace qml_bridge {
 
-class VisualizerItem : public QQuickItem, protected QOpenGLFunctions {
+class VisualizerItem : public QQuickItem, protected QOpenGLFunctions_3_3_Core {
 	Q_OBJECT
 
 	Q_PROPERTY(int fps READ fps WRITE setFps NOTIFY fpsChanged)
