@@ -267,6 +267,14 @@ set(SUNO_SOURCES
     src/suno/LyricAligner.hpp
     src/suno/SunoLyrics.hpp
     src/suno/SunoLyrics.cpp
+    src/suno/SunoAuthManager.hpp
+    src/suno/SunoAuthManager.cpp
+    src/suno/SunoLibraryManager.hpp
+    src/suno/SunoLibraryManager.cpp
+    src/suno/SunoDownloader.hpp
+    src/suno/SunoDownloader.cpp
+    src/suno/SunoLyricsManager.hpp
+    src/suno/SunoLyricsManager.cpp
 )
 
 set(OVERLAY_SOURCES
@@ -401,7 +409,7 @@ elseif(CPM_spdlog)
 endif()
 
 if(TARGET fmt::fmt)
-    list(APPEND CPM_LIBS fmt::fmt)
+    list(APPEND CPM_LIBS CPM_fmt)
 elseif(CPM_fmt)
     list(APPEND CPM_LIBS CPM_fmt)
 endif()
