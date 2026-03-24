@@ -35,6 +35,12 @@ patterns when no audio is playing via `VisualizerItem::feedSilentAudio()`
 - **Render Target**: Fixed early return bug in `VisualizerRenderer::renderFrame()` that
 prevented rendering when render target wasn't valid (only needed for recording mode)
 - **Initialization**: Added proper error logging for render target creation failures
+- **Qt 6 RHI Compatibility**: Added `QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL)`
+to force OpenGL backend for projectM compatibility with Qt 6's RHI abstraction
+- **External Commands**: Wrapped OpenGL rendering with `beginExternalCommands()`/`endExternalCommands()`
+as required by Qt 6 for proper scene graph integration
+- **AudioBridge Signals**: Fixed missing `connectSignals()` call in BridgeRegistration that
+prevented playback state from syncing to QML UI
 
 ## [1.1.0] - 2026-01-29
 
