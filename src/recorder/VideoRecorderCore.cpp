@@ -102,14 +102,10 @@ void VideoRecorder::submitVideoFrame(const u8* data,
     worker_->pushVideoFrame(std::move(frame));
 }
 
-void VideoRecorder::submitAudioSamples(const f32* data,
-                                        u32 samples,
-                                        u32 channels,
-                                        u32 sampleRate) {
-    if (state_ != RecordingState::Recording || !worker_)
-        return;
-
-    worker_->pushAudioSamples(data, samples * channels, channels, sampleRate);
+void VideoRecorder::submitAudioSamples(const f32*,
+                                        u32,
+                                        u32,
+                                        u32) {
 }
 
 RecordingStats VideoRecorder::getCurrentStats() const {

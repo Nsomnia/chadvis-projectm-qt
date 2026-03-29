@@ -89,29 +89,19 @@ void VisualizerItem::handleWindowChanged(QQuickWindow* window) {
 void VisualizerItem::connectAudioSignal() {
 	if (audioConnected_ || !s_audioEngine) return;
 
-	s_audioEngine->pcmReceived.connect([this](const std::vector<float>& data, u32 frames, u32 channels, u32 sampleRate) {
-		onPcmReceived(data, frames, channels, sampleRate);
-	});
+	connect(s_audioEngine, &vc::AudioEngine::pcmReceived,
+		this, [this](const std::vector<float>& data, u32 frames, u32 channels, u32 sampleRate) {
+			onPcmReceived(data, frames, channels, sampleRate);
+		}, Qt::QueuedConnection);
 
 	audioConnected_ = true;
 	LOG_INFO("VisualizerItem: Connected to audio engine PCM signal");
 }
 
-void VisualizerItem::onPcmReceived(const std::vector<float>& data, vc::u32 frames, vc::u32 channels, vc::u32 sampleRate) {
-	if (renderer_ && initialized_) {
-		renderer_->feedAudio(data.data(), frames, channels, sampleRate);
-	}
+void VisualizerItem::onPcmReceived(const std::vector<float>&, vc::u32, vc::u32, vc::u32) {
 }
 
 void VisualizerItem::feedSilentAudio() {
-	if (!renderer_ || !initialized_) return;
-
-	// Only feed silent audio when not playing
-	if (s_audioEngine && !s_audioEngine->isPlaying()) {
-		static constexpr vc::u32 SILENT_FRAMES = 1024;
-		static std::vector<float> silentBuffer(SILENT_FRAMES * 2, 0.0f);
-		renderer_->feedAudio(silentBuffer.data(), SILENT_FRAMES, 2, 48000);
-	}
 }
 
 void VisualizerItem::sync() {
@@ -160,16 +150,20 @@ void VisualizerItem::initializeRenderer() {
 
     renderer_->initialize(width_, height_);
 
-	if (s_presetManager) {
-		const auto& presets = s_presetManager->allPresets();
-		if (!presets.empty()) {
-			renderer_->projectM().engine().loadPreset(presets[0].path.string());
-			LOG_INFO("VisualizerItem: Loaded preset: {}", presets[0].name);
-		}
-	}
+    if (s_audioEngine) {
+        renderer_->setAudioQueue(&s_audioEngine->audioQueue());
+    }
 
-	initialized_ = true;
-	LOG_INFO("VisualizerItem: Initialized {}x{}", width_, height_);
+    if (s_presetManager) {
+        const auto& presets = s_presetManager->allPresets();
+        if (!presets.empty()) {
+            renderer_->projectM().engine().loadPreset(presets[0].path.string());
+            LOG_INFO("VisualizerItem: Loaded preset: {}", presets[0].name);
+        }
+    }
+
+    initialized_ = true;
+    LOG_INFO("VisualizerItem: Initialized {}x{}", width_, height_);
 }
 
 void VisualizerItem::cleanup() {

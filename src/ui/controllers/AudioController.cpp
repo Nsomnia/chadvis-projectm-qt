@@ -67,7 +67,6 @@ void AudioController::connectSignals() {
 	connect(engine_, &AudioEngine::trackChanged,
 		this, [this] {
 			QMetaObject::invokeMethod(window_, [this] {
-				// Updated via MainWindow's updateWindowTitle and overlay sync
 			});
 		}, Qt::QueuedConnection);
 
@@ -78,19 +77,7 @@ void AudioController::connectSignals() {
 			});
 		}, Qt::QueuedConnection);
 
-	// Initial state
 	controls_->setControlsEnabled(!engine_->playlist().empty());
-
-	connect(engine_, &AudioEngine::pcmReceived,
-		this, [this](const std::vector<f32>& pcm,
-			u32 frames,
-			u32 channels,
-			u32 sampleRate) {
-			if (!pcm.empty() && frames > 0) {
-				window_->visualizerPanel()->visualizer()->feedAudio(
-					pcm.data(), frames, channels, sampleRate);
-			}
-		}, Qt::DirectConnection);
 }
 
 } // namespace vc
