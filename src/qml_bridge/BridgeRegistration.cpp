@@ -8,6 +8,7 @@
 #include "PlaylistBridge.hpp"
 #include "VisualizerBridge.hpp"
 #include "VisualizerItem.hpp"
+#include "VisualizerQFBO.hpp"
 #include "RecordingBridge.hpp"
 #include "PresetBridge.hpp"
 #include "LyricsBridge.hpp"
@@ -84,14 +85,17 @@ void registerBridges(QQmlApplicationEngine* engine,
 	qmlRegisterSingletonInstance("ChadVis", 1, 0, "SunoBridge", s_sunoBridge);
 	qmlRegisterSingletonInstance("ChadVis", 1, 0, "Theme", s_themeBridge);
 
-	qmlRegisterType<VisualizerItem>("ChadVis", 1, 0, "VisualizerItem");
+    qmlRegisterType<VisualizerItem>("ChadVis", 1, 0, "VisualizerItem");
+    qmlRegisterType<VisualizerQFBO>("ChadVis", 1, 0, "VisualizerQFBO");
 
-	if (audioEngine) {
-		VisualizerItem::setGlobalAudioEngine(audioEngine);
-	}
-	if (presetManager) {
-		VisualizerItem::setGlobalPresetManager(presetManager);
-	}
+    if (audioEngine) {
+        VisualizerItem::setGlobalAudioEngine(audioEngine);
+        VisualizerQFBO::setGlobalAudioEngine(audioEngine);
+    }
+    if (presetManager) {
+        VisualizerItem::setGlobalPresetManager(presetManager);
+        VisualizerQFBO::setGlobalPresetManager(presetManager);
+    }
 }
 
 AudioBridge* getAudioBridge() { return s_audioBridge; }

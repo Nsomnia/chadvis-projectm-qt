@@ -34,7 +34,43 @@ void RecordingBridge::setVideoRecorder(vc::VideoRecorder* recorder)
 
 void RecordingBridge::connectSignals()
 {
-    // Signals will be connected when VideoRecorder supports them
+    if (!s_recorder || !s_instance) return;
+
+    // Bridge vc::Signal → Qt signal for thread-safe QML updates
+    s_recorder->stateChanged.connect([instance = s_instance](vc::RecordingState state) {
+        QMetaObject::invokeMethod(instance, [instance, state] {
+            switch (state) {
+                case vc::RecordingState::Recording:
+                    instance->isRecording_ = true;
+                    instance->status_ = "Recording";
+                    break;
+                case vc::RecordingState::Stopped:
+                    instance->isRecording_ = false;
+                    instance->status_ = "Idle";
+                    break;
+                case vc::RecordingState::Error:
+                    instance->status_ = "Error";
+                    break;
+                default:
+                    break;
+            }
+            emit instance->recordingChanged();
+            emit instance->statusChanged();
+        });
+    });
+
+    s_recorder->statsUpdated.connect([instance = s_instance](const vc::RecordingStats& stats) {
+        QMetaObject::invokeMethod(instance, [instance, stats] {
+            instance->duration_ = std::chrono::duration<double>(stats.elapsed).count();
+            emit instance->durationChanged();
+        });
+    });
+
+    s_recorder->error.connect([instance = s_instance](std::string msg) {
+        QMetaObject::invokeMethod(instance, [instance, msg = QString::fromStdString(msg)] {
+            emit instance->errorOccurred(msg);
+        });
+    });
 }
 
 bool RecordingBridge::isRecording() const

@@ -1,12 +1,13 @@
 #pragma once
-// AudioEngine.hpp - Audio playback engine
-// Qt Multimedia doing the heavy lifting
+// Version: 1.1.0
+// Last Edited: 2026-03-29 12:00:00
+// Description: Audio playback engine with lock-free queue integration
 
 #include <projectM-4/projectM.h>
 #include "AudioAnalyzer.hpp"
+#include "AudioQueue.hpp"
 #include "Playlist.hpp"
 #include "util/Result.hpp"
-#include "util/Signal.hpp"
 #include "util/Types.hpp"
 
 #include <QAudioBuffer>
@@ -15,7 +16,6 @@
 #include <QMediaPlayer>
 #include <QTimer>
 #include <memory>
-#include <mutex>
 
 namespace vc {
 
@@ -62,25 +62,26 @@ public:
         return playlist_;
     }
 
-    // Audio analysis for visualizer
+    // Audio analysis for visualizer (lock-free access)
     AudioSpectrum currentSpectrum() const {
-        std::lock_guard lock(audioMutex_);
         return currentSpectrum_;
     }
     std::vector<f32> currentPCM() const {
-        std::lock_guard lock(audioMutex_);
         return analyzer_.pcmData();
     }
 
-    // Signals
-    Signal<PlaybackState> stateChanged;
-    Signal<Duration> positionChanged;
-    Signal<Duration> durationChanged;
-    Signal<const AudioSpectrum&> spectrumUpdated;
-    Signal<> trackChanged;
-    Signal<std::string> errorSignal;
-    Signal<const std::vector<f32>&, u32, u32, u32>
-            pcmReceived; // data, frames, channels, sampleRate
+    // Lock-free audio queue access
+    AudioQueue& audioQueue() { return audioQueue_; }
+    const AudioQueue& audioQueue() const { return audioQueue_; }
+
+signals:
+	void stateChanged(PlaybackState state);
+	void positionChanged(Duration position);
+	void durationChanged(Duration duration);
+	void spectrumUpdated(const AudioSpectrum& spectrum);
+	void trackChanged();
+	void errorSignal(const std::string& error);
+	void pcmReceived(const std::vector<f32>& data, u32 frames, u32 channels, u32 sampleRate);
 
 private slots:
     void onPlayerStateChanged(QMediaPlayer::PlaybackState state);
@@ -109,6 +110,7 @@ private:
     Playlist playlist_;
     AudioAnalyzer analyzer_;
     AudioSpectrum currentSpectrum_;
+    AudioQueue audioQueue_;
 
     PlaybackState state_{PlaybackState::Stopped};
     f32 volume_{1.0f};
@@ -120,7 +122,6 @@ private:
     // Diagnostic
     QTimer bufferCheckTimer_;
     bool bufferReceivedSinceLastCheck_{false};
-    mutable std::mutex audioMutex_;
 };
 
 } // namespace vc
