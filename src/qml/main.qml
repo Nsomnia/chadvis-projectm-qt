@@ -203,23 +203,19 @@ Component {
     }
 }
 
-	// ─────────────────────────────────────────────────────────
-	// VISUALIZER AREA
-	// ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+        // VISUALIZER AREA
+        // ─────────────────────────────────────────────────────────
 
-Item {
-Layout.fillWidth: true
-Layout.fillHeight: true
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
 
-// Real ProjectM visualizer (OpenGL underlay renders beneath)
-VisualizerItem {
-id: visualizerItem
-anchors.fill: parent
-fps: 60
-}
-
-        // NOTE: Placeholder removed - visualizer is always visible
-        // Silent PCM data is fed when no audio is playing (see VisualizerItem::feedSilentAudio)
+            VisualizerQFBO {
+                id: visualizerItem
+                anchors.fill: parent
+                fps: 60
+            }
 
 	// Visualizer info overlay
 	Column {
