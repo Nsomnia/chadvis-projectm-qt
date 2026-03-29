@@ -15,6 +15,8 @@ namespace qml_bridge {
 
 class LyricsBridge : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
 
     Q_PROPERTY(bool hasLyrics READ hasLyrics NOTIFY lyricsChanged)
     Q_PROPERTY(QVariantList lines READ lines NOTIFY lyricsChanged)

@@ -31,24 +31,23 @@
 
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
-#include "util/Signal.hpp"
 
 namespace vc::suno {
 
 class SunoLyricsManager : public QObject {
-    Q_OBJECT
+Q_OBJECT
 
 public:
-    explicit SunoLyricsManager(SunoClient* client, SunoDatabase& db, QObject* parent = nullptr);
-    ~SunoLyricsManager() override;
+	explicit SunoLyricsManager(SunoClient* client, SunoDatabase& db, QObject* parent = nullptr);
+	~SunoLyricsManager() override;
 
-    void queueLyricsFetch(const std::string& clipId);
-    void processQueue();
-    
-    // Signals
-    vc::Signal<std::string> statusMessage;
-    vc::Signal<std::string, std::string> lyricsFetched; // id, json
-    vc::Signal<std::string> errorOccurred;
+	void queueLyricsFetch(const std::string& clipId);
+	void processQueue();
+
+signals:
+	void statusMessage(const std::string& message);
+	void lyricsFetched(const std::string& clipId, const std::string& json);
+	void errorOccurred(const std::string& message);
 
 private:
     SunoClient* client_;

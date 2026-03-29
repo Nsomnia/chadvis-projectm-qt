@@ -26,19 +26,22 @@ LyricsSync::LyricsSync(AudioEngine* audio, QObject* parent)
         }
     });
     
-    if (audio_) {
-        audio_->positionChanged.connect([this](Duration pos) {
-            updatePosition(static_cast<f32>(pos.count()) / 1000.0f);
-        });
-        
-        audio_->stateChanged.connect([this](PlaybackState state) {
-            onAudioStateChanged(state);
-        });
-        
-        audio_->trackChanged.connect([this]() {
-            onAudioTrackChanged();
-        });
-    }
+	if (audio_) {
+		connect(audio_, &AudioEngine::positionChanged,
+			this, [this](Duration pos) {
+				updatePosition(static_cast<f32>(pos.count()) / 1000.0f);
+			}, Qt::DirectConnection);
+
+		connect(audio_, &AudioEngine::stateChanged,
+			this, [this](PlaybackState state) {
+				onAudioStateChanged(state);
+			}, Qt::QueuedConnection);
+
+		connect(audio_, &AudioEngine::trackChanged,
+			this, [this]() {
+				onAudioTrackChanged();
+			}, Qt::QueuedConnection);
+	}
 }
 
 LyricsSync::~LyricsSync() = default;

@@ -29,17 +29,20 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller)
 
 void SunoBridge::connectSignals()
 {
-    if (s_controller && s_instance) {
-        s_controller->libraryUpdated.connect([s = s_instance](const std::vector<vc::suno::SunoClip>& clips) {
-            s->onLibraryUpdated(clips);
-        });
-        s_controller->clipUpdated.connect([s = s_instance](const std::string& clipId) {
-            s->onClipUpdated(clipId);
-        });
-        s_controller->statusMessage.connect([s = s_instance](const std::string& msg) {
-            s->onStatusMessage(msg);
-        });
-    }
+	if (s_controller && s_instance) {
+		connect(s_controller, &vc::suno::SunoController::libraryUpdated,
+			s_instance, [s = s_instance](const std::vector<vc::suno::SunoClip>& clips) {
+				s->onLibraryUpdated(clips);
+			}, Qt::QueuedConnection);
+		connect(s_controller, &vc::suno::SunoController::clipUpdated,
+			s_instance, [s = s_instance](const std::string& clipId) {
+				s->onClipUpdated(clipId);
+			}, Qt::QueuedConnection);
+		connect(s_controller, &vc::suno::SunoController::statusMessage,
+			s_instance, [s = s_instance](const std::string& msg) {
+				s->onStatusMessage(msg);
+			}, Qt::QueuedConnection);
+	}
 }
 
 bool SunoBridge::isAuthenticated() const

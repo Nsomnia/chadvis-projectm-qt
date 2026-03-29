@@ -51,46 +51,48 @@ void RecordingController::connectSignals() {
             },
             Qt::DirectConnection);
 
-    // Connect audio samples to recorder
-    window_->audioEngine()->pcmReceived.connect(
-            [this](const std::vector<f32>& pcm,
-                   u32 frames,
-                   u32 channels,
-                   u32 sampleRate) {
-                if (recorder_->isRecording()) {
-                    recorder_->submitAudioSamples(
-                            pcm.data(), frames, channels, sampleRate);
-                }
-            });
+	// Connect audio samples to recorder
+	connect(window_->audioEngine(), &AudioEngine::pcmReceived,
+		this, [this](const std::vector<f32>& pcm,
+			u32 frames,
+			u32 channels,
+			u32 sampleRate) {
+			if (recorder_->isRecording()) {
+				recorder_->submitAudioSamples(
+					pcm.data(), frames, channels, sampleRate);
+			}
+		}, Qt::DirectConnection);
 
-    // Auto-stop recording on track change
-    window_->audioEngine()->trackChanged.connect([this] {
-        if (recorder_->isRecording()) {
-            if (CONFIG.recording().recordEntireSong ||
-                CONFIG.recording().stopAtTrackEnd ||
-                CONFIG.recording().autoRecord) {
-                LOG_INFO("Track changed, stopping recording.");
-                window_->onStopRecording();
-            }
-        }
+	// Auto-stop recording on track change
+	connect(window_->audioEngine(), &AudioEngine::trackChanged,
+		this, [this] {
+			if (recorder_->isRecording()) {
+				if (CONFIG.recording().recordEntireSong ||
+					CONFIG.recording().stopAtTrackEnd ||
+					CONFIG.recording().autoRecord) {
+					LOG_INFO("Track changed, stopping recording.");
+					window_->onStopRecording();
+				}
+			}
 
-        if (CONFIG.recording().autoRecord) {
-            LOG_INFO("Auto-record enabled, starting recording for new track.");
-            QTimer::singleShot(500, this, [this] {
-                if (window_->audioEngine()->isPlaying()) {
-                    window_->onStartRecording("");
-                }
-            });
-        }
-    });
+			if (CONFIG.recording().autoRecord) {
+				LOG_INFO("Auto-record enabled, starting recording for new track.");
+				QTimer::singleShot(500, this, [this] {
+					if (window_->audioEngine()->isPlaying()) {
+						window_->onStartRecording("");
+					}
+				});
+			}
+		}, Qt::QueuedConnection);
 
-    // Auto-stop when audio stops completely
-    window_->audioEngine()->stateChanged.connect([this](PlaybackState state) {
-        if (state == PlaybackState::Stopped && recorder_->isRecording()) {
-            LOG_INFO("Audio stopped, stopping recording.");
-            window_->onStopRecording();
-        }
-    });
+	// Auto-stop when audio stops completely
+	connect(window_->audioEngine(), &AudioEngine::stateChanged,
+		this, [this](PlaybackState state) {
+			if (state == PlaybackState::Stopped && recorder_->isRecording()) {
+				LOG_INFO("Audio stopped, stopping recording.");
+				window_->onStopRecording();
+			}
+		}, Qt::QueuedConnection);
 }
 
 } // namespace vc

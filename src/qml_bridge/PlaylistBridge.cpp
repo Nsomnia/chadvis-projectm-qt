@@ -35,13 +35,14 @@ void PlaylistBridge::setAudioEngine(vc::AudioEngine* engine)
     engine_ = engine;
     endResetModel();
 
-    if (engine_) {
-        engine_->trackChanged.connect([this] {
-            QMetaObject::invokeMethod(this, &PlaylistBridge::onPlaylistChanged);
-        });
+	if (engine_) {
+		connect(engine_, &vc::AudioEngine::trackChanged,
+			this, [this] {
+				QMetaObject::invokeMethod(this, &PlaylistBridge::onPlaylistChanged);
+			}, Qt::QueuedConnection);
 
-        connect(this, &PlaylistBridge::countChanged, this, &PlaylistBridge::onPlaylistChanged);
-    }
+		connect(this, &PlaylistBridge::countChanged, this, &PlaylistBridge::onPlaylistChanged);
+	}
 }
 
 int PlaylistBridge::rowCount(const QModelIndex& parent) const

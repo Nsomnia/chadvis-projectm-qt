@@ -33,24 +33,23 @@
 #include "ui/SunoPersistentAuth.hpp"
 #include "ui/SystemBrowserAuth.hpp"
 #include "util/Result.hpp"
-#include "util/Signal.hpp"
 
 namespace vc::suno {
 
 class SunoAuthManager : public QObject {
-    Q_OBJECT
+Q_OBJECT
 
 public:
-    explicit SunoAuthManager(SunoClient* client, QObject* parent = nullptr);
-    ~SunoAuthManager() override;
+	explicit SunoAuthManager(SunoClient* client, QObject* parent = nullptr);
+	~SunoAuthManager() override;
 
-    void initialize();
-    void requestAuthentication();
-    void startSystemBrowserAuth();
-    
-    // Signals
-    vc::Signal<std::string> statusMessage;
-    vc::Signal<> authenticationRequired;
+	void initialize();
+	void requestAuthentication();
+	void startSystemBrowserAuth();
+
+signals:
+	void statusMessage(const std::string& message);
+	void authenticationRequired();
 
 private:
     SunoClient* client_;

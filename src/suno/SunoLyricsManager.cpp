@@ -82,14 +82,14 @@ void SunoLyricsManager::onAlignedLyricsFetched(const std::string& clipId, const 
             }
         }
         
-        std::string status = "Syncing lyrics: " + std::to_string(processed) + "/" + 
-                             std::to_string(totalLyricsToFetch_) + 
-                             " (" + std::to_string(processed * 100 / totalLyricsToFetch_) + "%)" + etaStr;
-        statusMessage.emitSignal(status);
-    }
+		std::string status = "Syncing lyrics: " + std::to_string(processed) + "/" +
+			std::to_string(totalLyricsToFetch_) +
+			" (" + std::to_string(processed * 100 / totalLyricsToFetch_) + "%)" + etaStr;
+		emit statusMessage(status);
+	}
 
-    processQueue();
-    lyricsFetched.emitSignal(clipId, json);
+	processQueue();
+	emit lyricsFetched(clipId, json);
 }
 
 void SunoLyricsManager::onError(const std::string& message) {
@@ -120,10 +120,10 @@ void SunoLyricsManager::onError(const std::string& message) {
                 }
             });
         }
-    }
-    
-    processQueue();
-    errorOccurred.emitSignal(message);
+	}
+
+	processQueue();
+	emit errorOccurred(message);
 }
 
 } // namespace vc::suno

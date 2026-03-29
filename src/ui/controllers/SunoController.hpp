@@ -12,24 +12,23 @@
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
 #include "suno/SunoLyrics.hpp"
-#include "util/Signal.hpp"
 
 // Forward declarations
 namespace vc {
-    class AudioEngine;
-    class OverlayEngine;
-    namespace suno {
-        class SunoAuthManager;
-        class SunoLibraryManager;
-        class SunoDownloader;
-        class SunoLyricsManager;
-    }
+class AudioEngine;
+class OverlayEngine;
+namespace suno {
+class SunoAuthManager;
+class SunoLibraryManager;
+class SunoDownloader;
+class SunoLyricsManager;
+}
 }
 
 namespace vc::suno {
 
 class SunoController : public QObject {
-	Q_OBJECT
+Q_OBJECT
 
 public:
 	explicit SunoController(AudioEngine* audioEngine,
@@ -62,12 +61,10 @@ public:
 
 	void setDebugLyrics(const AlignedLyrics& lyrics);
 
-	// Signals for UI (Aggregated from Managers)
-	vc::Signal<const std::vector<SunoClip>&> libraryUpdated;
-	vc::Signal<const std::string&> clipUpdated;
-	vc::Signal<const std::string&> statusMessage;
-
 signals:
+	void libraryUpdated(const std::vector<SunoClip>& clips);
+	void clipUpdated(const std::string& clipId);
+	void statusMessage(const std::string& message);
 	void authenticationRequired();
 	void authenticationSuccess();
 	void authenticationFailed(const QString& reason);

@@ -39,6 +39,8 @@ namespace qml_bridge {
  */
 class PlaylistBridge : public QAbstractListModel {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
 
     Q_PROPERTY(int currentIndex READ currentIndex NOTIFY currentIndexChanged)
     Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
