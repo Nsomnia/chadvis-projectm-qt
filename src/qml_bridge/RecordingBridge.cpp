@@ -37,27 +37,34 @@ void RecordingBridge::connectSignals()
     if (!s_recorder || !s_instance) return;
 
     // Bridge vc::Signal → Qt signal for thread-safe QML updates
-    s_recorder->stateChanged.connect([instance = s_instance](vc::RecordingState state) {
-        QMetaObject::invokeMethod(instance, [instance, state] {
-            switch (state) {
-                case vc::RecordingState::Recording:
-                    instance->isRecording_ = true;
-                    instance->status_ = "Recording";
-                    break;
-                case vc::RecordingState::Stopped:
-                    instance->isRecording_ = false;
-                    instance->status_ = "Idle";
-                    break;
-                case vc::RecordingState::Error:
-                    instance->status_ = "Error";
-                    break;
-                default:
-                    break;
-            }
-            emit instance->recordingChanged();
-            emit instance->statusChanged();
-        });
-    });
+s_recorder->stateChanged.connect([instance = s_instance](vc::RecordingState state) {
+QMetaObject::invokeMethod(instance, [instance, state] {
+switch (state) {
+case vc::RecordingState::Recording:
+instance->isRecording_ = true;
+instance->status_ = "Recording";
+break;
+case vc::RecordingState::Stopping:
+instance->status_ = "Stopping...";
+break;
+case vc::RecordingState::Finalizing:
+instance->isRecording_ = false;
+instance->status_ = "Finalizing...";
+break;
+case vc::RecordingState::Stopped:
+instance->isRecording_ = false;
+instance->status_ = "Idle";
+break;
+case vc::RecordingState::Error:
+instance->status_ = "Error";
+break;
+default:
+break;
+}
+emit instance->recordingChanged();
+emit instance->statusChanged();
+});
+});
 
     s_recorder->statsUpdated.connect([instance = s_instance](const vc::RecordingStats& stats) {
         QMetaObject::invokeMethod(instance, [instance, stats] {
@@ -105,34 +112,30 @@ QStringList RecordingBridge::availableCodecs() const
 
 bool RecordingBridge::startRecording(const QString& outputPath)
 {
-    if (!s_recorder) return false;
+if (!s_recorder) return false;
 
-    QString path = outputPath;
-    if (path.isEmpty()) {
-        auto settings = vc::EncoderSettings::fromConfig();
-        path = QString::fromStdString(settings.outputPath.string());
-    }
+QString path = outputPath;
+if (path.isEmpty()) {
+auto settings = vc::EncoderSettings::fromConfig();
+path = QString::fromStdString(settings.outputPath.string());
+}
 
-    outputPath_ = path;
-    isRecording_ = true;
-    status_ = "Recording";
+outputPath_ = path;
 
-    emit recordingChanged();
-    emit statusChanged();
+auto result = s_recorder->start(path.toStdString());
+if (!result) {
+emit errorOccurred(QString::fromStdString(result.error().message));
+return false;
+}
 
-    return true;
+return true;
 }
 
 void RecordingBridge::stopRecording()
 {
-    if (!s_recorder || !isRecording_) return;
+if (!s_recorder || !isRecording_) return;
 
-    s_recorder->stop();
-    isRecording_ = false;
-    status_ = "Idle";
-
-    emit recordingChanged();
-    emit statusChanged();
+s_recorder->stop();
 }
 
 void RecordingBridge::setCodec(const QString& codec)

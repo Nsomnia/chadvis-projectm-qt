@@ -26,7 +26,7 @@ namespace vc {
 // Forward declarations
 class VideoRecorderThread;
 
-enum class RecordingState { Stopped, Starting, Recording, Stopping, Error };
+enum class RecordingState { Stopped, Starting, Recording, Stopping, Finalizing, Error };
 
 struct RecordingStats {
     Duration elapsed{0};

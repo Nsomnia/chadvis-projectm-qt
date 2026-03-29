@@ -55,6 +55,10 @@ Result<void> VideoRecorder::stop() {
     state_ = RecordingState::Stopping;
     stateChanged.emitSignal(state_);
 
+    // Transition to Finalizing before worker cleanup
+    state_ = RecordingState::Finalizing;
+    stateChanged.emitSignal(state_);
+
     if (worker_) {
         worker_->stop();
         worker_.reset();
@@ -64,10 +68,9 @@ Result<void> VideoRecorder::stop() {
     stateChanged.emitSignal(state_);
 
     LOG_INFO("Recording stopped. Frames: {}, Dropped: {}",
-             stats_.framesWritten,
-             stats_.framesDropped);
+        stats_.framesWritten, stats_.framesDropped);
 
-    return Result<void>::ok();
+return Result<void>::ok();
 }
 
 void VideoRecorder::submitVideoFrame(std::vector<u8>&& data,
