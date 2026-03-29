@@ -191,6 +191,49 @@ QUrl PlaylistBridge::getUrl(int index) const
     return QUrl::fromLocalFile(QString::fromStdString(items[index].path.string()));
 }
 
+void PlaylistBridge::moveItem(int from, int to)
+{
+    if (!engine_) return;
+
+    const auto& items = engine_->playlist().items();
+    if (from < 0 || from >= static_cast<int>(items.size())) return;
+    if (to < 0 || to >= static_cast<int>(items.size())) return;
+
+    engine_->playlist().move(static_cast<size_t>(from), static_cast<size_t>(to));
+    emit countChanged();
+}
+
+QString PlaylistBridge::getItemPath(int index) const
+{
+    if (!engine_) return {};
+
+    const auto& items = engine_->playlist().items();
+    if (index < 0 || index >= static_cast<int>(items.size())) return {};
+
+    return QString::fromStdString(items[index].path.string());
+}
+
+void PlaylistBridge::cycleRepeatMode()
+{
+    if (!engine_) return;
+
+    engine_->playlist().cycleRepeatMode();
+    emit repeatModeChanged();
+}
+
+int PlaylistBridge::repeatMode() const
+{
+    if (!engine_) return 0;
+    return static_cast<int>(engine_->playlist().repeatMode());
+}
+
+void PlaylistBridge::setRepeatMode(int mode)
+{
+    if (!engine_) return;
+    engine_->playlist().setRepeatMode(static_cast<vc::RepeatMode>(mode));
+    emit repeatModeChanged();
+}
+
 void PlaylistBridge::onPlaylistChanged()
 {
     beginResetModel();
