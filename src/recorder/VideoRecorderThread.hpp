@@ -1,10 +1,12 @@
 /**
  * @file VideoRecorderThread.hpp
  * @brief Recording thread management and encoding loop.
+ * @version 1.1.0
+ * @last-edited 2026-03-29 12:00:00
  *
  * This file defines the VideoRecorderThread class which handles the
  * asynchronous encoding process. It consumes video frames from a
- * FrameGrabber and audio samples from a buffer, feeding them to
+ * FrameGrabber and audio samples from a lock-free queue, feeding them to
  * VideoRecorderFFmpeg for encoding.
  *
  * @section Patterns
@@ -25,6 +27,8 @@
 
 namespace vc {
 
+class AudioQueue;
+
 class VideoRecorderThread {
 public:
     VideoRecorderThread(VideoRecorder& parent, const EncoderSettings& settings);
@@ -35,17 +39,16 @@ public:
 
     // Data input
     void pushVideoFrame(GrabbedFrame frame);
-    void pushAudioSamples(const f32* data,
-                          usize size,
-                          u32 channels,
-                          u32 sampleRate);
-    
+
+    // Set audio queue for lock-free consumption
+    void setAudioQueue(AudioQueue* queue) { audioQueue_ = queue; }
+
     // Thread-safe stats access
     RecordingStats getStats() const;
 
 private:
     using TimePoint = std::chrono::steady_clock::time_point;
-    
+
     void threadLoop(std::stop_token stopToken);
     void updateStats(TimePoint startTime,
                      u64& lastFramesWritten,
@@ -61,12 +64,9 @@ private:
     FrameGrabber frameGrabber_;
     VideoRecorderFFmpeg ffmpeg_;
 
-    // Audio buffering
-    std::vector<f32> audioBuffer_;
-    std::mutex audioMutex_;
-    u32 audioSampleRate_{48000};
-    u32 audioChannels_{2};
-    
+    // Lock-free audio queue (replaces mutex-protected buffer)
+    AudioQueue* audioQueue_{nullptr};
+
     // Thread-safe stats
     mutable std::mutex statsMutex_;
     RecordingStats stats_;

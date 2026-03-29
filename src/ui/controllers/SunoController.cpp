@@ -44,67 +44,74 @@ SunoController::SunoController(AudioEngine* audioEngine,
     
     lyricsManager_ = std::make_unique<SunoLyricsManager>(client_.get(), db_, this);
 
-    // --- Connect Signals ---
+	// --- Connect Signals ---
 
-    // Auth Manager
-    authManager_->statusMessage.connect([this](const std::string& msg) {
-        statusMessage.emitSignal(msg);
-    });
-    authManager_->authenticationRequired.connect([this]() {
-        emit authenticationRequired();
-    });
-    // Re-emit auth initialization
-    authManager_->initialize();
+	// Auth Manager
+	connect(authManager_.get(), &SunoAuthManager::statusMessage,
+		this, [this](const std::string& msg) {
+			emit statusMessage(msg);
+		});
+	connect(authManager_.get(), &SunoAuthManager::authenticationRequired,
+		this, [this]() {
+			emit authenticationRequired();
+		});
+	// Re-emit auth initialization
+	authManager_->initialize();
 
-    // Library Manager
-    libraryManager_->statusMessage.connect([this](const std::string& msg) {
-        statusMessage.emitSignal(msg);
-    });
-    libraryManager_->libraryUpdated.connect([this](const std::vector<SunoClip>& clips) {
-        libraryUpdated.emitSignal(clips);
-        
-        // Check for missing lyrics in newly fetched clips
-        for (const auto& clip : clips) {
-             auto lyricsRes = db_.getAlignedLyrics(clip.id);
-             if (lyricsRes.isErr() || lyricsRes.value().empty()) {
-                 lyricsManager_->queueLyricsFetch(clip.id);
-             }
-        }
-    });
-    libraryManager_->authenticationRequired.connect([this]() {
-        emit authenticationRequired();
-    });
+	// Library Manager
+	connect(libraryManager_.get(), &SunoLibraryManager::statusMessage,
+		this, [this](const std::string& msg) {
+			emit statusMessage(msg);
+		});
+	connect(libraryManager_.get(), &SunoLibraryManager::libraryUpdated,
+		this, [this](const std::vector<SunoClip>& clips) {
+			emit libraryUpdated(clips);
 
-    // Lyrics Manager
-    lyricsManager_->statusMessage.connect([this](const std::string& msg) {
-        statusMessage.emitSignal(msg);
-    });
-    lyricsManager_->lyricsFetched.connect([this](const std::string& id, const std::string& json) {
-        // Immediate display logic
-        QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(json));
-        
-        bool isCurrent = isCurrentlyPlaying(id);
-        if (isCurrent && !CONFIG.suno().debugLyrics) {
-            auto lyricsOpt = parseAndDisplayLyrics(id, json, doc);
-            if (lyricsOpt) {
-                directLyricsCache_[id] = *lyricsOpt;
-                LOG_INFO("SunoController: Immediately displayed lyrics for current track {}", id);
-            }
-        }
-        
-        // Background: Save to DB and Sidecar
-        db_.saveAlignedLyrics(id, json);
-        clipUpdated.emitSignal(id);
-        
-        if (CONFIG.suno().saveLyrics) {
-            downloader_->saveLyricsSidecar(id, json, doc, libraryManager_->accumulatedClips());
-        }
-    });
-    
-    // Connect to track changes
-    audioEngine_->playlist().currentChanged.connect([this](size_t) {
-        onTrackChanged();
-    });
+			// Check for missing lyrics in newly fetched clips
+			for (const auto& clip : clips) {
+				auto lyricsRes = db_.getAlignedLyrics(clip.id);
+				if (lyricsRes.isErr() || lyricsRes.value().empty()) {
+					lyricsManager_->queueLyricsFetch(clip.id);
+				}
+			}
+		});
+	connect(libraryManager_.get(), &SunoLibraryManager::authenticationRequired,
+		this, [this]() {
+			emit authenticationRequired();
+		});
+
+	// Lyrics Manager
+	connect(lyricsManager_.get(), &SunoLyricsManager::statusMessage,
+		this, [this](const std::string& msg) {
+			emit statusMessage(msg);
+		});
+	connect(lyricsManager_.get(), &SunoLyricsManager::lyricsFetched,
+		this, [this](const std::string& id, const std::string& json) {
+			// Immediate display logic
+			QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(json));
+
+			bool isCurrent = isCurrentlyPlaying(id);
+			if (isCurrent && !CONFIG.suno().debugLyrics) {
+				auto lyricsOpt = parseAndDisplayLyrics(id, json, doc);
+				if (lyricsOpt) {
+					directLyricsCache_[id] = *lyricsOpt;
+					LOG_INFO("SunoController: Immediately displayed lyrics for current track {}", id);
+				}
+			}
+
+			// Background: Save to DB and Sidecar
+			db_.saveAlignedLyrics(id, json);
+			emit clipUpdated(id);
+
+			if (CONFIG.suno().saveLyrics) {
+				downloader_->saveLyricsSidecar(id, json, doc, libraryManager_->accumulatedClips());
+			}
+		});
+
+	// Connect to track changes
+	audioEngine_->playlist().currentChanged.connect([this](size_t) {
+		onTrackChanged();
+	});
     
     // Initial Library Refresh if authenticated
     if (client_->isAuthenticated()) {

@@ -5,16 +5,18 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QStringList>
+#include "visualizer/PresetData.hpp"
 
 namespace vc {
 class PresetManager;
-struct PresetInfo;
 }
 
 namespace qml_bridge {
 
 class PresetBridge : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
 
     Q_PROPERTY(QVariantList presets READ presets NOTIFY presetsChanged)
     Q_PROPERTY(QVariantList activePresets READ activePresets NOTIFY presetsChanged)

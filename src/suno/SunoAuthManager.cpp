@@ -52,29 +52,29 @@ void SunoAuthManager::onPersistentAuthRestored(const chadvis::SunoAuthState& aut
     if (!cookieStr.isEmpty()) {
          client_->setCookie(cookieStr.toStdString());
          CONFIG.suno().cookie = cookieStr.toStdString();
-    }
-    CONFIG.save(CONFIG.configPath());
-    
-    statusMessage.emitSignal("Authentication restored from persistent session");
+	}
+	CONFIG.save(CONFIG.configPath());
+
+	emit statusMessage("Authentication restored from persistent session");
 }
 
 void SunoAuthManager::onSystemAuthSuccess(const QString& token) {
     LOG_INFO("SunoAuthManager: System auth success");
     
     // If it's a bearer token (JWT)
-    if (token.startsWith("eyJ")) {
-         client_->setToken(token.toStdString());
-         CONFIG.suno().token = token.toStdString();
-         CONFIG.save(CONFIG.configPath());
-         statusMessage.emitSignal("System authentication successful");
-    } else {
-         LOG_INFO("SunoAuthManager: Received token from system auth: {}", token.left(10).toStdString());
-    }
+	if (token.startsWith("eyJ")) {
+		client_->setToken(token.toStdString());
+		CONFIG.suno().token = token.toStdString();
+		CONFIG.save(CONFIG.configPath());
+		emit statusMessage("System authentication successful");
+	} else {
+		LOG_INFO("SunoAuthManager: Received token from system auth: {}", token.left(10).toStdString());
+	}
 }
 
 void SunoAuthManager::onSystemAuthFailed(const QString& reason) {
-    LOG_ERROR("SunoAuthManager: System auth failed: {}", reason.toStdString());
-    statusMessage.emitSignal("System Login Failed: " + reason.toStdString());
+	LOG_ERROR("SunoAuthManager: System auth failed: {}", reason.toStdString());
+	emit statusMessage("System Login Failed: " + reason.toStdString());
 }
 
 } // namespace vc::suno

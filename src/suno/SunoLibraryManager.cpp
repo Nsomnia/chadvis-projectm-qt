@@ -36,12 +36,12 @@ void SunoLibraryManager::refreshLibrary(int page) {
         isSyncing_ = true;
     }
     
-    std::string msg = "Syncing Suno library (Page " + std::to_string(page) + ")";
-    if (!accumulatedClips_.empty()) {
-        msg += " - " + std::to_string(accumulatedClips_.size()) + " clips found so far...";
-    }
-    statusMessage.emitSignal(msg);
-    client_->fetchLibrary(page);
+	std::string msg = "Syncing Suno library (Page " + std::to_string(page) + ")";
+	if (!accumulatedClips_.empty()) {
+		msg += " - " + std::to_string(accumulatedClips_.size()) + " clips found so far...";
+	}
+	emit statusMessage(msg);
+	client_->fetchLibrary(page);
 }
 
 void SunoLibraryManager::syncDatabase(bool forceAuth) {
@@ -67,13 +67,13 @@ void SunoLibraryManager::onLibraryFetched(const std::vector<SunoClip>& clips) {
         currentSyncPage_++;
         refreshLibrary(currentSyncPage_);
     } else {
-        isSyncing_ = false;
-        currentSyncPage_ = 1;
-        LOG_INFO("SunoLibraryManager: Sync complete. Total clips: {}", accumulatedClips_.size());
-        
-        libraryUpdated.emitSignal(accumulatedClips_);
-        statusMessage.emitSignal("Suno library sync complete (" + std::to_string(accumulatedClips_.size()) + " clips)");
-    }
+		isSyncing_ = false;
+		currentSyncPage_ = 1;
+		LOG_INFO("SunoLibraryManager: Sync complete. Total clips: {}", accumulatedClips_.size());
+
+		emit libraryUpdated(accumulatedClips_);
+		emit statusMessage("Suno library sync complete (" + std::to_string(accumulatedClips_.size()) + " clips)");
+	}
 }
 
 } // namespace vc::suno

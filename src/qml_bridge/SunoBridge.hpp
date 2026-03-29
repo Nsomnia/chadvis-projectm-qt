@@ -16,6 +16,8 @@ namespace qml_bridge {
 
 class SunoBridge : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
 
     Q_PROPERTY(bool isAuthenticated READ isAuthenticated NOTIFY authChanged)
     Q_PROPERTY(bool isSyncing READ isSyncing NOTIFY syncingChanged)

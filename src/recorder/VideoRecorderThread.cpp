@@ -1,4 +1,9 @@
+// Version: 1.1.0
+// Last Edited: 2026-03-29 12:00:00
+// Description: Video recorder thread implementation with lock-free queue
+
 #include "VideoRecorderThread.hpp"
+#include "audio/AudioQueue.hpp"
 #include "core/Logger.hpp"
 
 namespace vc {
@@ -57,16 +62,6 @@ void VideoRecorderThread::pushVideoFrame(GrabbedFrame frame) {
     frameGrabber_.pushFrame(std::move(frame));
 }
 
-void VideoRecorderThread::pushAudioSamples(const f32* data,
-                                            usize size,
-                                            u32 channels,
-                                            u32 sampleRate) {
-    std::lock_guard<std::mutex> lock(audioMutex_);
-    audioSampleRate_ = sampleRate;
-    audioChannels_ = channels;
-    audioBuffer_.insert(audioBuffer_.end(), data, data + size);
-}
-
 RecordingStats VideoRecorderThread::getStats() const {
     std::lock_guard<std::mutex> lock(statsMutex_);
     return stats_;
@@ -93,23 +88,27 @@ void VideoRecorderThread::threadLoop(std::stop_token stopToken) {
             } else {
                 hadError = true;
                 LOG_WARN("Failed to encode video frame");
+        }
+    }
+
+    // Pop audio from lock-free queue (no mutex)
+    if (audioQueue_) {
+        static constexpr usize AUDIO_BATCH_SIZE = 4096;
+        alignas(64) float audioBatch[AUDIO_BATCH_SIZE * 2];
+        u32 popped = audioQueue_->popRecBatch(audioBatch, AUDIO_BATCH_SIZE);
+        if (popped > 0) {
+            std::vector<f32> audioBuffer(audioBatch, audioBatch + popped * 2);
+            if (!ffmpeg_.encodeAudio(audioBuffer, 2, bytesWritten)) {
+                hadError = true;
+                LOG_WARN("Failed to encode audio samples");
+            } else {
+                std::lock_guard<std::mutex> statsLock(statsMutex_);
+                stats_.bytesWritten += bytesWritten;
             }
         }
+    }
 
-        {
-            std::lock_guard<std::mutex> lock(audioMutex_);
-            if (!audioBuffer_.empty()) {
-                if (!ffmpeg_.encodeAudio(audioBuffer_, audioChannels_, bytesWritten)) {
-                    hadError = true;
-                    LOG_WARN("Failed to encode audio samples");
-                } else {
-                    std::lock_guard<std::mutex> statsLock(statsMutex_);
-                    stats_.bytesWritten += bytesWritten;
-                }
-            }
-        }
-
-        // Update dropped frames count
+    // Update dropped frames count
         {
             std::lock_guard<std::mutex> lock(statsMutex_);
             stats_.framesDropped = frameGrabber_.droppedFrames();

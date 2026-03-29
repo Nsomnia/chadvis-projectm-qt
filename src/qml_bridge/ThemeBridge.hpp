@@ -15,6 +15,8 @@ namespace qml_bridge {
  */
 class ThemeBridge : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
 
     // Colors - Primary palette (Cyan accent)
     Q_PROPERTY(QColor accent READ accent CONSTANT)

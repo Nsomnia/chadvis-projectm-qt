@@ -1,4 +1,9 @@
+// Version: 1.1.0
+// Last Edited: 2026-03-29 12:00:00
+// Description: Visualizer renderer implementation with lock-free queue
+
 #include "VisualizerRenderer.hpp"
+#include "audio/AudioQueue.hpp"
 #include <chrono>
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
@@ -84,24 +89,22 @@ void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
     if (recording_ && !renderTarget_.isValid())
         return;
 
-projectM_.syncState();
+    projectM_.syncState();
 
-u32 renderW = recording_ ? recordWidth_ : w;
-u32 renderH = recording_ ? recordHeight_ : h;
+    u32 renderW = recording_ ? recordWidth_ : w;
+    u32 renderH = recording_ ? recordHeight_ : h;
 
-{
-std::lock_guard lock(audioMutex_);
-if (!audioQueue_.empty()) {
-u32 framesToFeed = (audioSampleRate_ + targetFps_ - 1) / targetFps_;
-u32 availableFrames = audioQueue_.size() / 2;
-u32 feedFrames = std::min(framesToFeed, availableFrames);
-if (feedFrames > 0) {
-auto [data, count] = audioQueue_.getContiguous(feedFrames);
-projectM_.engine().addPCMDataInterleaved(data, feedFrames, 2);
-audioQueue_.pop(feedFrames * 2);
-}
-}
-}
+    // Pop audio from lock-free queue (no mutex)
+    if (audioQueue_) {
+        u32 framesToFeed = (audioSampleRate_ + targetFps_ - 1) / targetFps_;
+        static constexpr usize BATCH_BUFFER_SIZE = 4096;
+        alignas(64) float batchBuffer[BATCH_BUFFER_SIZE * 2];
+
+        u32 popped = audioQueue_->popVizBatch(batchBuffer, framesToFeed);
+        if (popped > 0) {
+            projectM_.engine().addPCMDataInterleaved(batchBuffer, popped, 2);
+        }
+    }
 
 bool useFBO = recording_;
 
@@ -268,35 +271,6 @@ void VisualizerRenderer::captureAsync() {
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
     pboIndex_ = nextIndex;
     pboAvailable_ = true;
-}
-
-void VisualizerRenderer::feedAudio(const f32* data,
-                                   u32 frames,
-                                   u32 channels,
-                                   u32 sampleRate) {
-    std::lock_guard lock(audioMutex_);
-    if (sampleRate != audioSampleRate_)
-        audioSampleRate_ = sampleRate;
-    
-    // Convert to stereo and push to circular buffer (O(1) per sample)
-    if (channels == 2) {
-        audioQueue_.push(data, static_cast<usize>(frames) * 2);
-    } else {
-        // Convert mono/multi-channel to stereo
-        std::array<f32, 512> stereoBuffer; // Stack buffer for conversion
-        usize processed = 0;
-        while (processed < frames) {
-            usize batch = std::min(static_cast<usize>(frames) - processed, static_cast<usize>(256));
-            for (u32 i = 0; i < static_cast<u32>(batch); ++i) {
-                stereoBuffer[i * 2] = data[(processed + i) * channels];
-                stereoBuffer[i * 2 + 1] = (channels > 1) 
-                    ? data[(processed + i) * channels + 1]
-                    : data[(processed + i) * channels];
-            }
-            audioQueue_.push(stereoBuffer.data(), batch * 2);
-            processed += batch;
-        }
-    }
 }
 
 void VisualizerRenderer::setRecordingSize(u32 width, u32 height) {

@@ -31,29 +31,28 @@
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
 #include "util/Result.hpp"
-#include "util/Signal.hpp"
 
 namespace vc::suno {
 
 class SunoLibraryManager : public QObject {
-    Q_OBJECT
+Q_OBJECT
 
 public:
-    explicit SunoLibraryManager(SunoClient* client, SunoDatabase& db, QObject* parent = nullptr);
-    ~SunoLibraryManager() override;
+	explicit SunoLibraryManager(SunoClient* client, SunoDatabase& db, QObject* parent = nullptr);
+	~SunoLibraryManager() override;
 
-    void refreshLibrary(int page = 1);
-    void syncDatabase(bool forceAuth);
-    
-    // Accessors
-    const std::vector<SunoClip>& accumulatedClips() const { return accumulatedClips_; }
-    void clearAccumulatedClips() { accumulatedClips_.clear(); }
+	void refreshLibrary(int page = 1);
+	void syncDatabase(bool forceAuth);
 
-    // Signals
-    vc::Signal<std::string> statusMessage;
-    vc::Signal<std::vector<SunoClip>> libraryUpdated;
-    vc::Signal<std::string> clipUpdated;
-    vc::Signal<> authenticationRequired;
+	// Accessors
+	const std::vector<SunoClip>& accumulatedClips() const { return accumulatedClips_; }
+	void clearAccumulatedClips() { accumulatedClips_.clear(); }
+
+signals:
+	void statusMessage(const std::string& message);
+	void libraryUpdated(const std::vector<SunoClip>& clips);
+	void clipUpdated(const std::string& clipId);
+	void authenticationRequired();
 
 private:
     SunoClient* client_;
