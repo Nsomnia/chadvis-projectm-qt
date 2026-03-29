@@ -1,4 +1,8 @@
-# 🤖 AGENTS.md: System Directives for Chad Devs & Sub-Agents For ChadVis-ProjectM-Qt
+# AGENTS.md - # 🤖 System Directives for Chad Devs & Sub-Agents For ChadVis-ProjectM-Qt
+> **Version:** 2.0
+> **Last Updated:** 2026-03-29 @ 03:41 (Damn that hunk loves orchestrating at sexy hours of the day)
+
+
 
 > *"Talk is cheap. Show me the C++23 code."* – Linus Torvalds (probably)
 
