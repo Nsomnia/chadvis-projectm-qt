@@ -12,7 +12,11 @@ bash build.sh build
 ./build/tests/integration/integration_tests
 ```
 
-### Documentation
+### Documentation and standards
+
+**C++23** | std::ranges::to, std::is_constant_evaluated, std::bit_cast, std::from_chars (float), std::span::alignas, std::jthread, improved std::expected, new <expected>, expanded pattern matching support,
+ shortened constexpr features, many deprecations, and more. |
+**Modern most recent version of C++ (c++23):** If you find anything that can be improved using modern standards then refactor it when found.
 
 **File headers (standard linux kernel style):**
 ```cpp
