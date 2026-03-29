@@ -176,11 +176,13 @@ void VisualizerWindow::setRenderRate(int fps) {
         renderTimer_.stop();
 }
 
-void VisualizerWindow::feedAudio(const f32* data,
-                                 u32 frames,
-                                 u32 channels,
-                                 u32 sampleRate) {
-    renderer_->feedAudio(data, frames, channels, sampleRate);
+void VisualizerWindow::feedAudio(const f32*,
+                                  u32,
+                                  u32,
+                                  u32) {
+    // DEPRECATED: Audio now flows through lock-free AudioQueue.
+    // AudioEngine pushes to queue, VisualizerRenderer pops during render.
+    // This method exists for backward compatibility but does nothing.
 }
 
 void VisualizerWindow::toggleFullscreen() {
