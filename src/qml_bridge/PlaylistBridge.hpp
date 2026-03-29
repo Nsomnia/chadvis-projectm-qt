@@ -45,6 +45,7 @@ class PlaylistBridge : public QAbstractListModel {
     Q_PROPERTY(int currentIndex READ currentIndex NOTIFY currentIndexChanged)
     Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
     Q_PROPERTY(QStringList supportedFormats READ supportedFormats CONSTANT)
+    Q_PROPERTY(int repeatMode READ repeatMode WRITE setRepeatMode NOTIFY repeatModeChanged)
 
 public:
     enum Roles {
@@ -70,6 +71,8 @@ public:
 
     int currentIndex() const;
     QStringList supportedFormats() const;
+    int repeatMode() const;
+    void setRepeatMode(int mode);
 
 public slots:
     Q_INVOKABLE void addFiles(const QList<QUrl>& urls);
@@ -79,10 +82,14 @@ public slots:
     Q_INVOKABLE void playAt(int index);
     Q_INVOKABLE void shuffle();
     Q_INVOKABLE QUrl getUrl(int index) const;
+    Q_INVOKABLE void moveItem(int from, int to);
+    Q_INVOKABLE QString getItemPath(int index) const;
+    Q_INVOKABLE void cycleRepeatMode();
 
 signals:
     void currentIndexChanged();
     void countChanged();
+    void repeatModeChanged();
 
 private slots:
     void onPlaylistChanged();
