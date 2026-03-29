@@ -105,12 +105,24 @@ endif()
 
 # KissFFT - replace custom FFT implementation
 CPMAddPackage(
-    NAME kissfft
-    GIT_REPOSITORY https://github.com/mborgerding/kissfft.git
-    GIT_TAG 131.1.0
-    VERSION 131.1.0
-    OPTIONS "KISS_FFT_STATIC ON" "KISS_FFT_DATATYPE=float" "KISS_FFT_USE_ALLOCA ON"
+  NAME kissfft
+  GIT_REPOSITORY https://github.com/mborgerding/kissfft.git
+  GIT_TAG 131.1.0
+  VERSION 131.1.0
+  OPTIONS "KISS_FFT_STATIC ON" "KISS_FFT_DATATYPE=float" "KISS_FFT_USE_ALLOCA ON"
 )
+
+# moodycamel::ReaderWriterQueue - Lock-free SPSC queue for audio
+CPMAddPackage(
+  NAME readerwriterqueue
+  GIT_REPOSITORY https://github.com/cameron314/readerwriterqueue.git
+  GIT_TAG v1.0.6
+)
+
+# readerwriterqueue is header-only, add include directory
+if(readerwriterqueue_ADDED)
+  message(STATUS "Using CPM readerwriterqueue (header-only)")
+endif()
 
 # Large libraries - keep as system dependencies
 pkg_check_modules(TAGLIB REQUIRED taglib)
@@ -221,16 +233,17 @@ set(CORE_SOURCES
 )
 
 set(AUDIO_SOURCES
-    src/audio/AudioEngine.hpp
-    src/audio/AudioEngine.cpp
-    src/audio/AudioAnalyzer.hpp
-    src/audio/AudioAnalyzer.cpp
-    src/audio/Playlist.hpp
-    src/audio/Playlist.cpp
-    src/audio/MediaMetadata.hpp
-    src/audio/MediaMetadata.cpp
-    src/audio/FFmpegAudioSource.hpp
-    src/audio/FFmpegAudioSource.cpp
+  src/audio/AudioEngine.hpp
+  src/audio/AudioEngine.cpp
+  src/audio/AudioAnalyzer.hpp
+  src/audio/AudioAnalyzer.cpp
+  src/audio/AudioQueue.hpp
+  src/audio/Playlist.hpp
+  src/audio/Playlist.cpp
+  src/audio/MediaMetadata.hpp
+  src/audio/MediaMetadata.cpp
+  src/audio/FFmpegAudioSource.hpp
+  src/audio/FFmpegAudioSource.cpp
 )
 
 set(VISUALIZER_SOURCES
@@ -316,26 +329,28 @@ set(LYRICS_SOURCES
 # QML BRIDGE SOURCES - C++ types exposed to QML
 # ═══════════════════════════════════════════════════════════════════════════
 set(QML_BRIDGE_SOURCES
-src/qml_bridge/AudioBridge.hpp
-src/qml_bridge/AudioBridge.cpp
-src/qml_bridge/PlaylistBridge.hpp
-src/qml_bridge/PlaylistBridge.cpp
-src/qml_bridge/VisualizerBridge.hpp
-src/qml_bridge/VisualizerBridge.cpp
-src/qml_bridge/RecordingBridge.hpp
-src/qml_bridge/RecordingBridge.cpp
-src/qml_bridge/PresetBridge.hpp
-src/qml_bridge/PresetBridge.cpp
-src/qml_bridge/LyricsBridge.hpp
-src/qml_bridge/LyricsBridge.cpp
-src/qml_bridge/SunoBridge.hpp
-src/qml_bridge/SunoBridge.cpp
-src/qml_bridge/ThemeBridge.hpp
-src/qml_bridge/ThemeBridge.cpp
-src/qml_bridge/BridgeRegistration.hpp
-src/qml_bridge/BridgeRegistration.cpp
-src/qml_bridge/VisualizerItem.hpp
-src/qml_bridge/VisualizerItem.cpp
+    src/qml_bridge/AudioBridge.hpp
+    src/qml_bridge/AudioBridge.cpp
+    src/qml_bridge/PlaylistBridge.hpp
+    src/qml_bridge/PlaylistBridge.cpp
+    src/qml_bridge/VisualizerBridge.hpp
+    src/qml_bridge/VisualizerBridge.cpp
+    src/qml_bridge/RecordingBridge.hpp
+    src/qml_bridge/RecordingBridge.cpp
+    src/qml_bridge/PresetBridge.hpp
+    src/qml_bridge/PresetBridge.cpp
+    src/qml_bridge/LyricsBridge.hpp
+    src/qml_bridge/LyricsBridge.cpp
+    src/qml_bridge/SunoBridge.hpp
+    src/qml_bridge/SunoBridge.cpp
+    src/qml_bridge/ThemeBridge.hpp
+    src/qml_bridge/ThemeBridge.cpp
+    src/qml_bridge/BridgeRegistration.hpp
+    src/qml_bridge/BridgeRegistration.cpp
+    src/qml_bridge/VisualizerItem.hpp
+    src/qml_bridge/VisualizerItem.cpp
+    src/qml_bridge/VisualizerQFBO.hpp
+    src/qml_bridge/VisualizerQFBO.cpp
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -370,15 +385,17 @@ set(QML_SOURCES
 
 # Common include directories
 set(COMMON_INCLUDES
-    ${CMAKE_SOURCE_DIR}/src
-    ${SPDLOG_INCLUDE_DIRS}
-    ${FMT_INCLUDE_DIRS}
-    ${TOMLPP_INCLUDE_DIRS}
-    ${GLEW_INCLUDE_DIRS}
-    ${GLM_INCLUDE_DIRS}
-    ${FFMPEG_INCLUDE_DIRS}
-    ${PROJECTM_INCLUDE_DIRS}
-    ${KISSFFT_INCLUDE_DIRS}
+  ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_SOURCE_DIR}/src/qml_bridge
+  ${SPDLOG_INCLUDE_DIRS}
+  ${FMT_INCLUDE_DIRS}
+  ${TOMLPP_INCLUDE_DIRS}
+  ${GLEW_INCLUDE_DIRS}
+  ${GLM_INCLUDE_DIRS}
+  ${FFMPEG_INCLUDE_DIRS}
+  ${PROJECTM_INCLUDE_DIRS}
+  ${KISSFFT_INCLUDE_DIRS}
+  ${readerwriterqueue_SOURCE_DIR}
 )
 
 # Common link libraries
@@ -409,7 +426,7 @@ elseif(CPM_spdlog)
 endif()
 
 if(TARGET fmt::fmt)
-    list(APPEND CPM_LIBS CPM_fmt)
+    list(APPEND CPM_LIBS fmt::fmt)
 elseif(CPM_fmt)
     list(APPEND CPM_LIBS CPM_fmt)
 endif()
@@ -459,6 +476,7 @@ qt_add_qml_module(project_lib
     URI ChadVis
     VERSION 1.0
     QML_FILES ${QML_SOURCES}
+    SOURCES ${QML_BRIDGE_SOURCES}
     RESOURCES
         resources/icons/play.svg
         resources/icons/pause.svg
