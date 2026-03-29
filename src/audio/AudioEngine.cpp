@@ -1,3 +1,7 @@
+// Version: 1.1.0
+// Last Edited: 2026-03-29 12:00:00
+// Description: Audio playback engine implementation with lock-free queue
+
 #include "AudioEngine.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
@@ -159,24 +163,24 @@ void AudioEngine::onPlayerStateChanged(QMediaPlayer::PlaybackState state) {
         break;
     }
 
-    LOG_INFO("AudioEngine: Player state changed from {} to {}",
-             static_cast<int>(oldState),
-             static_cast<int>(state_));
-    stateChanged.emitSignal(state_);
+	LOG_INFO("AudioEngine: Player state changed from {} to {}",
+		static_cast<int>(oldState),
+		static_cast<int>(state_));
+	emit stateChanged(state_);
 }
 
 void AudioEngine::onPositionChanged(qint64 position) {
-    positionChanged.emitSignal(Duration(position));
+	emit positionChanged(Duration(position));
 }
 
 void AudioEngine::onDurationChanged(qint64 duration) {
-    durationChanged.emitSignal(Duration(duration));
+	emit durationChanged(Duration(duration));
 }
 
 void AudioEngine::onErrorOccurred(QMediaPlayer::Error err,
-                                  const QString& errorString) {
-    LOG_ERROR("Playback error: {}", errorString.toStdString());
-    errorSignal.emitSignal(errorString.toStdString());
+	const QString& errorString) {
+	LOG_ERROR("Playback error: {}", errorString.toStdString());
+	emit errorSignal(errorString.toStdString());
 }
 
 void AudioEngine::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
@@ -197,9 +201,9 @@ void AudioEngine::onAudioBufferReceived(const QAudioBuffer& buffer) {
 }
 
 void AudioEngine::onPlaylistCurrentChanged(usize index) {
-    loadCurrentTrack();
-    trackChanged.emitSignal();
-    play();
+	loadCurrentTrack();
+	emit trackChanged();
+	play();
 }
 
 void AudioEngine::loadCurrentTrack() {
@@ -238,8 +242,6 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     if (!buffer.isValid())
         return;
 
-    std::lock_guard lock(audioMutex_);
-
     const auto format = buffer.format();
     const auto sampleRate = format.sampleRate();
     const auto channels = format.channelCount();
@@ -267,15 +269,21 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
         }
     }
 
-    // Analyze audio
+    // Analyze audio (lock-free, no mutex needed)
     currentSpectrum_ = analyzer_.analyze(scratchBuffer_, sampleRate, channels);
-    spectrumUpdated.emitSignal(currentSpectrum_);
+    emit spectrumUpdated(currentSpectrum_);
 
-    // Emit PCM data for visualizer
-    pcmReceived.emitSignal(scratchBuffer_,
-                           static_cast<u32>(frameCount),
-                           static_cast<u32>(channels),
-                           static_cast<u32>(sampleRate));
+    // Push to lock-free audio queues (no mutex)
+    audioQueue_.pushBoth(scratchBuffer_.data(),
+                         static_cast<u32>(frameCount),
+                         static_cast<u32>(channels),
+                         static_cast<u32>(sampleRate));
+
+    // Emit PCM data for legacy consumers (backward compatibility)
+    emit pcmReceived(scratchBuffer_,
+                     static_cast<u32>(frameCount),
+                     static_cast<u32>(channels),
+                     static_cast<u32>(sampleRate));
 }
 
 } // namespace vc

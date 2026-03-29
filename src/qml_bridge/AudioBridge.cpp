@@ -36,21 +36,18 @@ void AudioBridge::connectSignals()
 {
     if (!s_engine || !s_instance) return;
 
-    s_engine->stateChanged.connect([](vc::PlaybackState s) {
-        QMetaObject::invokeMethod(s_instance, [s] { s_instance->onEngineStateChanged(s); });
-    });
+    // Qt queued connections handle thread safety automatically
+    connect(s_engine, &vc::AudioEngine::stateChanged,
+            s_instance, &AudioBridge::onEngineStateChanged, Qt::QueuedConnection);
 
-    s_engine->positionChanged.connect([](std::chrono::milliseconds p) {
-        QMetaObject::invokeMethod(s_instance, [p] { s_instance->onEnginePositionChanged(p); });
-    });
+    connect(s_engine, &vc::AudioEngine::positionChanged,
+            s_instance, &AudioBridge::onEnginePositionChanged, Qt::QueuedConnection);
 
-    s_engine->durationChanged.connect([](std::chrono::milliseconds d) {
-        QMetaObject::invokeMethod(s_instance, [d] { s_instance->onEngineDurationChanged(d); });
-    });
+    connect(s_engine, &vc::AudioEngine::durationChanged,
+            s_instance, &AudioBridge::onEngineDurationChanged, Qt::QueuedConnection);
 
-    s_engine->trackChanged.connect([] {
-        QMetaObject::invokeMethod(s_instance, &AudioBridge::onEngineTrackChanged);
-    });
+    connect(s_engine, &vc::AudioEngine::trackChanged,
+            s_instance, &AudioBridge::onEngineTrackChanged, Qt::QueuedConnection);
 
     s_instance->volume_ = s_engine->volume();
     s_instance->position_ = s_engine->position().count();
