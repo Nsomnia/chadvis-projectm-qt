@@ -58,6 +58,7 @@ public:
     void render(u32 x, u32 y, u32 width, u32 height, bool isExposed);
 
     void setAudioQueue(AudioQueue* queue) { audioQueue_ = queue; }
+AudioQueue* audioQueue() const { return audioQueue_; }
 
     // Recording
     void setRecordingSize(u32 width, u32 height);

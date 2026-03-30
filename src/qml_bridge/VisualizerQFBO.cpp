@@ -155,11 +155,10 @@ QQuickFramebufferObject::Renderer* VisualizerQFBO::createRenderer() const {
 VisualizerQFBORenderer::VisualizerQFBORenderer() = default;
 
 VisualizerQFBORenderer::~VisualizerQFBORenderer() {
-    if (renderer_) {
-        renderer_->cleanup();
-        delete renderer_;
-        renderer_ = nullptr;
-    }
+    // Don't call cleanup() - OpenGL context may be destroyed
+    // Just delete the renderer, let it handle its own cleanup in destructor
+    delete renderer_;
+    renderer_ = nullptr;
 }
 
 QOpenGLFramebufferObject* VisualizerQFBORenderer::createFramebufferObject(const QSize& size) {
@@ -211,9 +210,27 @@ void VisualizerQFBORenderer::synchronize(QQuickFramebufferObject* item) {
 }
 
 void VisualizerQFBORenderer::render() {
-    if (!renderer_ || !initialized_) return;
+    if (!renderer_ || !initialized_ || width_ == 0 || height_ == 0) return;
 
-    renderer_->render(width_, height_, true);
+    auto* audioQueue = renderer_->audioQueue();
+    if (audioQueue) {
+        constexpr u32 BATCH_SIZE = 4096;
+        alignas(64) float batchBuffer[BATCH_SIZE * 2];
+        u32 framesToFeed = 2048;
+        u32 popped = audioQueue->popVizBatch(batchBuffer, framesToFeed);
+        if (popped > 0) {
+            renderer_->projectM().engine().addPCMDataInterleaved(batchBuffer, popped, 2);
+        }
+    }
+
+    renderer_->projectM().syncState();
+
+    glViewport(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
+    glScissor(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
+    glEnable(GL_SCISSOR_TEST);
+
+    renderer_->projectM().engine().resize(width_, height_);
+    renderer_->projectM().engine().render();
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_SCISSOR_TEST);
