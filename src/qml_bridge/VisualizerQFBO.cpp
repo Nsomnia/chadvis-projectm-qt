@@ -162,23 +162,23 @@ VisualizerQFBORenderer::~VisualizerQFBORenderer() {
 }
 
 QOpenGLFramebufferObject* VisualizerQFBORenderer::createFramebufferObject(const QSize& size) {
-    // Create FBO with MSAA for quality
     QOpenGLFramebufferObjectFormat format;
     format.setSamples(16);
     format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
 
     auto* fbo = new QOpenGLFramebufferObject(size, format);
 
-    // Initialize VisualizerRenderer if needed
+    // Store the FBO size for render()
+    width_ = static_cast<u32>(size.width());
+    height_ = static_cast<u32>(size.height());
+
     if (!renderer_) {
         renderer_ = new VisualizerRenderer();
     }
 
-    // Initialize with FBO dimensions (will be called on resize too)
     if (!initialized_) {
-        renderer_->initialize(static_cast<u32>(size.width()), static_cast<u32>(size.height()));
+        renderer_->initialize(width_, height_);
 
-        // Load first preset if available
         if (VisualizerQFBO::globalPresetManager()) {
             const auto& presets = VisualizerQFBO::globalPresetManager()->allPresets();
             if (!presets.empty()) {
@@ -188,7 +188,7 @@ QOpenGLFramebufferObject* VisualizerQFBORenderer::createFramebufferObject(const 
         }
 
         initialized_ = true;
-        LOG_INFO("VisualizerQFBORenderer: Initialized {}x{}", size.width(), size.height());
+        LOG_INFO("VisualizerQFBORenderer: Initialized {}x{}", width_, height_);
     }
 
     return fbo;
