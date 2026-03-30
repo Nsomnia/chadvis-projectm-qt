@@ -99,7 +99,10 @@ void VisualizerQFBO::handleWindowChanged(QQuickWindow* window) {
 
     connectAudioSignal();
 
-    update();
+    QTimer::singleShot(0, this, [this, window]() {
+        update();
+        window->update();
+    });
 }
 
 void VisualizerQFBO::cleanup() {
