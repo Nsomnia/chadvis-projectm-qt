@@ -85,7 +85,10 @@ VisualizerBridge* VisualizerBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsE
 
 void VisualizerBridge::setVisualizerWindow(vc::VisualizerWindow* window)
 {
-    window_ = window;
+if (window_ != window) {
+window_ = window;
+emit visualizerWindowChanged();
+}
 }
 
 int VisualizerBridge::fps() const
@@ -158,7 +161,12 @@ QString VisualizerBridge::currentPresetName() const
 
 QObject* VisualizerBridge::presetModel() const
 {
-    return presetModel_;
+return presetModel_;
+}
+
+QWindow* VisualizerBridge::visualizerWindow() const
+{
+return window_;
 }
 
 void VisualizerBridge::nextPreset()

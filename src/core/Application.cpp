@@ -10,6 +10,7 @@
 #include "util/GLIncludes.hpp"
 #include "visualizer/RatingManager.hpp"
 #include "visualizer/PresetManager.hpp"
+#include "visualizer/VisualizerWindow.hpp"
 #include "lyrics/LyricsSync.hpp"
 #include "ui/controllers/SunoController.hpp"
 #include "suno/SunoModels.hpp"
@@ -458,37 +459,41 @@ Result<void> Application::init(const AppOptions& opts) {
         LOG_WARN("Failed to load preset ratings: {}", result.error().message);
     }
 
-	// Create QML window (unless headless)
-	if (!opts.headless) {
-		LOG_DEBUG("Creating QML window...");
+// Create QML window (unless headless)
+if (!opts.headless) {
+LOG_DEBUG("Creating QML window...");
 
-		// Create QML-specific managers
-		LOG_DEBUG("Initializing preset manager for QML...");
-		presetManager_ = std::make_unique<PresetManager>();
-		if (auto presetDir = CONFIG.visualizer().presetPath; !presetDir.empty()) {
-			presetManager_->scan(presetDir, true);
-		}
+// Create QML-specific managers
+LOG_DEBUG("Initializing preset manager for QML...");
+presetManager_ = std::make_unique<PresetManager>();
+if (auto presetDir = CONFIG.visualizer().presetPath; !presetDir.empty()) {
+presetManager_->scan(presetDir, true);
+}
 
-		LOG_DEBUG("Initializing lyrics sync for QML...");
-		lyricsSync_ = std::make_unique<LyricsSync>(audioEngine_.get());
+LOG_DEBUG("Creating VisualizerWindow for QML embedding...");
+visualizerWindow_ = std::make_unique<VisualizerWindow>();
+visualizerWindow_->setMinimumSize(QSize(640, 480));
 
-		LOG_DEBUG("Initializing Suno controller for QML...");
-		sunoController_ = std::make_unique<suno::SunoController>(
-			audioEngine_.get(), overlayEngine_.get(), nullptr);
+LOG_DEBUG("Initializing lyrics sync for QML...");
+lyricsSync_ = std::make_unique<LyricsSync>(audioEngine_.get());
 
-	qmlEngine_ = std::make_unique<QQmlApplicationEngine>();
+LOG_DEBUG("Initializing Suno controller for QML...");
+sunoController_ = std::make_unique<suno::SunoController>(
+audioEngine_.get(), overlayEngine_.get(), nullptr);
 
-	// Connect to QML warnings for debugging
-	QObject::connect(qmlEngine_.get(), &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
-		for (const auto& warning : warnings) {
-			LOG_ERROR("QML Warning: {} (line {})", warning.description().toStdString(), warning.line());
-		}
-	});
+qmlEngine_ = std::make_unique<QQmlApplicationEngine>();
 
-	// Register QML bridges with all managers
-	qml_bridge::registerBridges(qmlEngine_.get(),
-		audioEngine_.get(), nullptr, videoRecorder_.get(),
-		presetManager_.get(), lyricsSync_.get(), sunoController_.get());
+// Connect to QML warnings for debugging
+QObject::connect(qmlEngine_.get(), &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+for (const auto& warning : warnings) {
+LOG_ERROR("QML Warning: {} (line {})", warning.description().toStdString(), warning.line());
+}
+});
+
+// Register QML bridges with all managers - now includes VisualizerWindow
+qml_bridge::registerBridges(qmlEngine_.get(),
+audioEngine_.get(), visualizerWindow_.get(), videoRecorder_.get(),
+presetManager_.get(), lyricsSync_.get(), sunoController_.get());
 
 	// Load main QML file from Qt resource system
 	const QUrl url(QStringLiteral("qrc:/qt/qml/ChadVis/src/qml/main.qml"));
