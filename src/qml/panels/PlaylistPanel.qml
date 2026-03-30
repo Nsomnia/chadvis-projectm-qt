@@ -193,7 +193,7 @@ ColumnLayout {
                     onDoubleClicked: PlaylistBridge.playAt(index)
                     onClicked: (mouse) => {
                         if (mouse.button === Qt.RightButton) {
-                            contextMenu.currentIndex = index
+                            contextMenu.menuIndex = index
                             contextMenu.popup()
                         }
                     }
@@ -232,16 +232,16 @@ ColumnLayout {
     // CONTEXT MENU
     // ═══════════════════════════════════════════════════════════
 
-    Menu {
-        id: contextMenu
+Menu {
+    id: contextMenu
 
-        property int currentIndex: -1
+    property int menuIndex: -1
 
         MenuItem {
             text: "Remove"
             onTriggered: {
-                if (contextMenu.currentIndex >= 0) {
-                    PlaylistBridge.removeAt(contextMenu.currentIndex)
+                if (contextMenu.menuIndex >= 0) {
+                    PlaylistBridge.removeAt(contextMenu.menuIndex)
                 }
             }
         }
@@ -255,10 +255,10 @@ ColumnLayout {
 
         MenuItem {
             text: "Show in Folder"
-            enabled: contextMenu.currentIndex >= 0
+            enabled: contextMenu.menuIndex >= 0
             onTriggered: {
-                if (contextMenu.currentIndex >= 0) {
-                    var path = PlaylistBridge.getItemPath(contextMenu.currentIndex)
+                if (contextMenu.menuIndex >= 0) {
+                    var path = PlaylistBridge.getItemPath(contextMenu.menuIndex)
                     if (path && path.length > 0) {
                         Qt.openUrlExternally("file://" + path)
                     }
