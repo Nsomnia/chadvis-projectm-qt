@@ -18,6 +18,7 @@
 
 #include <QQuickFramebufferObject>
 #include <QTimer>
+#include <QOpenGLFunctions_3_3_Core>
 #include <atomic>
 #include <vector>
 #include "util/Types.hpp"
@@ -101,7 +102,7 @@ private:
     std::unique_ptr<QTimer> renderTimer_;
 };
 
-class VisualizerQFBORenderer : public QQuickFramebufferObject::Renderer {
+class VisualizerQFBORenderer : public QQuickFramebufferObject::Renderer, protected QOpenGLFunctions_3_3_Core {
 public:
     explicit VisualizerQFBORenderer();
     ~VisualizerQFBORenderer() override;
@@ -113,6 +114,7 @@ public:
 private:
     vc::VisualizerRenderer* renderer_{nullptr};
     bool initialized_{false};
+    bool glInitialized_{false};
 
     vc::u32 width_{0};
     vc::u32 height_{0};

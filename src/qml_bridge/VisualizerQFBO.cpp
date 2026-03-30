@@ -212,6 +212,13 @@ void VisualizerQFBORenderer::synchronize(QQuickFramebufferObject* item) {
 void VisualizerQFBORenderer::render() {
     if (!renderer_ || !initialized_ || width_ == 0 || height_ == 0) return;
 
+    if (!glInitialized_) {
+        if (!initializeOpenGLFunctions()) {
+            return;
+        }
+        glInitialized_ = true;
+    }
+
     auto* audioQueue = renderer_->audioQueue();
     if (audioQueue) {
         constexpr u32 BATCH_SIZE = 4096;
@@ -226,14 +233,14 @@ void VisualizerQFBORenderer::render() {
     renderer_->projectM().syncState();
 
     glViewport(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
-    glScissor(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
     glEnable(GL_SCISSOR_TEST);
+    glScissor(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
 
     renderer_->projectM().engine().resize(width_, height_);
     renderer_->projectM().engine().render();
 
-    glDisable(GL_DEPTH_TEST);
     glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
