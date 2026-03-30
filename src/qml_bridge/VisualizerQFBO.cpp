@@ -210,13 +210,22 @@ void VisualizerQFBORenderer::synchronize(QQuickFramebufferObject* item) {
 }
 
 void VisualizerQFBORenderer::render() {
-    if (!renderer_ || !initialized_ || width_ == 0 || height_ == 0) return;
+    if (!renderer_ || !initialized_ || width_ == 0 || height_ == 0) {
+        static int logCount = 0;
+        if (logCount++ < 5) {
+            LOG_INFO("QFBO render() early return: renderer={}, init={}, w={}, h={}",
+                     (void*)renderer_, initialized_, width_, height_);
+        }
+        return;
+    }
 
     if (!glInitialized_) {
         if (!initializeOpenGLFunctions()) {
+            LOG_ERROR("QFBO: Failed to initialize GL functions");
             return;
         }
         glInitialized_ = true;
+        LOG_INFO("QFBO: GL functions initialized");
     }
 
     auto* audioQueue = renderer_->audioQueue();
