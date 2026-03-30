@@ -1,5 +1,5 @@
-// Version: 1.1.0
-// Last Edited: 2026-03-29 12:00:00
+// Version: 1.1.1
+// Last Edited: 2026-03-30 06:30:00
 // Description: Visualizer QFBO implementation with lock-free queue
 
 #include "VisualizerQFBO.hpp"
@@ -77,7 +77,14 @@ void VisualizerQFBO::handleWindowChanged(QQuickWindow* window) {
     if (!window) return;
 
     connect(window, &QQuickWindow::sceneGraphInvalidated, this, &VisualizerQFBO::cleanup,
-            Qt::DirectConnection);
+        Qt::DirectConnection);
+
+    // Connect to sceneGraphInitialized to ensure initial render happens
+    connect(window, &QQuickWindow::sceneGraphInitialized, this, [this, window]() {
+        LOG_INFO("VisualizerQFBO: Scene graph initialized, triggering initial update");
+        update();
+        window->update();
+    }, Qt::DirectConnection);
 
     window->setColor(Qt::black);
 
@@ -85,7 +92,7 @@ void VisualizerQFBO::handleWindowChanged(QQuickWindow* window) {
         int interval = 1000 / fps_.load();
         renderTimer_->setInterval(interval);
         connect(renderTimer_.get(), &QTimer::timeout, window, &QQuickWindow::update,
-                Qt::DirectConnection);
+            Qt::DirectConnection);
         renderTimer_->start();
         LOG_INFO("VisualizerQFBO: Render timer started at {} FPS", fps_.load());
     }
@@ -93,16 +100,11 @@ void VisualizerQFBO::handleWindowChanged(QQuickWindow* window) {
     if (silentAudioTimer_) {
         silentAudioTimer_->setInterval(16);
         connect(silentAudioTimer_.get(), &QTimer::timeout, this, &VisualizerQFBO::feedSilentAudio,
-                Qt::DirectConnection);
+            Qt::DirectConnection);
         silentAudioTimer_->start();
     }
 
     connectAudioSignal();
-
-    QTimer::singleShot(0, this, [this, window]() {
-        update();
-        window->update();
-    });
 }
 
 void VisualizerQFBO::cleanup() {
