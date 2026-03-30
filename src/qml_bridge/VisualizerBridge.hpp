@@ -10,6 +10,7 @@
 #pragma once
 
 #include <QObject>
+#include <QWindow>
 #include <QtQml/qqml.h>
 #include <QStringList>
 #include <QAbstractListModel>
@@ -62,12 +63,13 @@ class VisualizerBridge : public QObject {
     QML_ELEMENT
     QML_SINGLETON
 
-    Q_PROPERTY(int fps READ fps WRITE setFps NOTIFY fpsChanged)
-    Q_PROPERTY(bool fullscreen READ fullscreen WRITE setFullscreen NOTIFY fullscreenChanged)
-    Q_PROPERTY(bool presetLocked READ presetLocked WRITE setPresetLocked NOTIFY presetLockedChanged)
-    Q_PROPERTY(int currentPresetIndex READ currentPresetIndex NOTIFY currentPresetChanged)
-    Q_PROPERTY(QString currentPresetName READ currentPresetName NOTIFY currentPresetChanged)
-    Q_PROPERTY(QObject* presetModel READ presetModel CONSTANT)
+Q_PROPERTY(int fps READ fps WRITE setFps NOTIFY fpsChanged)
+Q_PROPERTY(bool fullscreen READ fullscreen WRITE setFullscreen NOTIFY fullscreenChanged)
+Q_PROPERTY(bool presetLocked READ presetLocked WRITE setPresetLocked NOTIFY presetLockedChanged)
+Q_PROPERTY(int currentPresetIndex READ currentPresetIndex NOTIFY currentPresetChanged)
+Q_PROPERTY(QString currentPresetName READ currentPresetName NOTIFY currentPresetChanged)
+Q_PROPERTY(QObject* presetModel READ presetModel CONSTANT)
+Q_PROPERTY(QWindow* visualizerWindow READ visualizerWindow NOTIFY visualizerWindowChanged)
 
 public:
     explicit VisualizerBridge(QObject* parent = nullptr);
@@ -86,10 +88,11 @@ public:
     bool presetLocked() const;
     void setPresetLocked(bool locked);
 
-    int currentPresetIndex() const;
-    QString currentPresetName() const;
+int currentPresetIndex() const;
+QString currentPresetName() const;
 
-    QObject* presetModel() const;
+QObject* presetModel() const;
+QWindow* visualizerWindow() const;
 
 public slots:
     Q_INVOKABLE void nextPreset();
@@ -100,11 +103,12 @@ public slots:
     Q_INVOKABLE void searchPresets(const QString& query);
 
 signals:
-    void fpsChanged();
-    void fullscreenChanged();
-    void presetLockedChanged();
-    void currentPresetChanged();
-    void presetsUpdated();
+void fpsChanged();
+void fullscreenChanged();
+void presetLockedChanged();
+void currentPresetChanged();
+void presetsUpdated();
+void visualizerWindowChanged();
 
 private:
     vc::VisualizerWindow* window_{nullptr};

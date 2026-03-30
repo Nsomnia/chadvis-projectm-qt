@@ -34,6 +34,7 @@ class OverlayEngine;
 class VideoRecorder;
 class PresetManager;
 class LyricsSync;
+class VisualizerWindow;
 
 namespace suno {
 class SunoController;
@@ -136,10 +137,11 @@ private:
 	std::unique_ptr<OverlayEngine> overlayEngine_;
 	std::unique_ptr<VideoRecorder> videoRecorder_;
 
-	// QML-specific managers
-	std::unique_ptr<PresetManager> presetManager_;
-	std::unique_ptr<LyricsSync> lyricsSync_;
-	std::unique_ptr<suno::SunoController> sunoController_;
+// QML-specific managers
+std::unique_ptr<PresetManager> presetManager_;
+std::unique_ptr<LyricsSync> lyricsSync_;
+std::unique_ptr<suno::SunoController> sunoController_;
+std::unique_ptr<VisualizerWindow> visualizerWindow_;
 
 	int argc_;
 	char** argv_;

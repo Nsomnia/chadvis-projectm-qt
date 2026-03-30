@@ -204,20 +204,22 @@ Component {
 }
 
 // ─────────────────────────────────────────────────────────
-        // VISUALIZER AREA
-        // ─────────────────────────────────────────────────────────
+// VISUALIZER AREA
+// ─────────────────────────────────────────────────────────
 
-        Item {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+Item {
+Layout.fillWidth: true
+Layout.fillHeight: true
 
-            VisualizerQFBO {
-                id: visualizerItem
-                anchors.fill: parent
-                fps: 60
-            }
+// Embed VisualizerWindow using WindowContainer (Qt 6.7+)
+WindowContainer {
+id: visualizerContainer
+anchors.fill: parent
+window: VisualizerBridge.visualizerWindow
+visible: VisualizerBridge.visualizerWindow !== null
+}
 
-	// Visualizer info overlay
+// Visualizer info overlay
 	Column {
 	    anchors.bottom: parent.bottom
 	    anchors.horizontalCenter: parent.horizontalCenter
