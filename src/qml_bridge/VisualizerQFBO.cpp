@@ -76,13 +76,11 @@ void VisualizerQFBO::setFullscreen(bool fullscreen) {
 void VisualizerQFBO::handleWindowChanged(QQuickWindow* window) {
     if (!window) return;
 
-    // Connect cleanup
     connect(window, &QQuickWindow::sceneGraphInvalidated, this, &VisualizerQFBO::cleanup,
             Qt::DirectConnection);
 
     window->setColor(Qt::black);
 
-    // Render timer - triggers continuous rendering at target FPS
     if (renderTimer_) {
         int interval = 1000 / fps_.load();
         renderTimer_->setInterval(interval);
@@ -92,7 +90,6 @@ void VisualizerQFBO::handleWindowChanged(QQuickWindow* window) {
         LOG_INFO("VisualizerQFBO: Render timer started at {} FPS", fps_.load());
     }
 
-    // Silent audio timer (keeps projectM active when no audio)
     if (silentAudioTimer_) {
         silentAudioTimer_->setInterval(16);
         connect(silentAudioTimer_.get(), &QTimer::timeout, this, &VisualizerQFBO::feedSilentAudio,
@@ -101,6 +98,8 @@ void VisualizerQFBO::handleWindowChanged(QQuickWindow* window) {
     }
 
     connectAudioSignal();
+
+    update();
 }
 
 void VisualizerQFBO::cleanup() {
