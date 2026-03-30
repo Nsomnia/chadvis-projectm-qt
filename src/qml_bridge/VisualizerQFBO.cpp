@@ -26,8 +26,9 @@ vc::PresetManager* VisualizerQFBO::s_presetManager = nullptr;
 // ============================================================================
 
 VisualizerQFBO::VisualizerQFBO(QQuickItem* parent)
-    : QQuickFramebufferObject(parent)
-    , silentAudioTimer_(std::make_unique<QTimer>())
+: QQuickFramebufferObject(parent)
+, silentAudioTimer_(std::make_unique<QTimer>())
+, renderTimer_(std::make_unique<QTimer>())
 {
     setFlag(ItemHasContents);
     connect(this, &QQuickItem::windowChanged, this, &VisualizerQFBO::handleWindowChanged);
@@ -80,6 +81,16 @@ void VisualizerQFBO::handleWindowChanged(QQuickWindow* window) {
             Qt::DirectConnection);
 
     window->setColor(Qt::black);
+
+    // Render timer - triggers continuous rendering at target FPS
+    if (renderTimer_) {
+        int interval = 1000 / fps_.load();
+        renderTimer_->setInterval(interval);
+        connect(renderTimer_.get(), &QTimer::timeout, window, &QQuickWindow::update,
+                Qt::DirectConnection);
+        renderTimer_->start();
+        LOG_INFO("VisualizerQFBO: Render timer started at {} FPS", fps_.load());
+    }
 
     // Silent audio timer (keeps projectM active when no audio)
     if (silentAudioTimer_) {

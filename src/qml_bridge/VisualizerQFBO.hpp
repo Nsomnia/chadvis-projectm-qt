@@ -98,6 +98,7 @@ private:
     qreal devicePixelRatio_{1.0};
 
     std::unique_ptr<QTimer> silentAudioTimer_;
+    std::unique_ptr<QTimer> renderTimer_;
 };
 
 class VisualizerQFBORenderer : public QQuickFramebufferObject::Renderer {
