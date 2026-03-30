@@ -1,6 +1,6 @@
-// Version: 1.1.1
-// Last Edited: 2026-03-30 06:30:00
-// Description: Visualizer QFBO implementation with lock-free queue
+// Version: 1.2.0
+// Last Edited: 2026-03-30 06:50:00
+// Description: Visualizer QFBO implementation with visibility handling for tiling WMs
 
 #include "VisualizerQFBO.hpp"
 #include "audio/AudioEngine.hpp"
@@ -30,126 +30,146 @@ VisualizerQFBO::VisualizerQFBO(QQuickItem* parent)
 , silentAudioTimer_(std::make_unique<QTimer>())
 , renderTimer_(std::make_unique<QTimer>())
 {
-    setFlag(ItemHasContents);
-    connect(this, &QQuickItem::windowChanged, this, &VisualizerQFBO::handleWindowChanged);
+setFlag(ItemHasContents);
+connect(this, &QQuickItem::windowChanged, this, &VisualizerQFBO::handleWindowChanged);
 }
 
 VisualizerQFBO::~VisualizerQFBO() = default;
 
 void VisualizerQFBO::setGlobalAudioEngine(vc::AudioEngine* engine) {
-    s_audioEngine = engine;
+s_audioEngine = engine;
 }
 
 void VisualizerQFBO::setGlobalPresetManager(vc::PresetManager* manager) {
-    s_presetManager = manager;
+s_presetManager = manager;
 }
 
 vc::AudioEngine* VisualizerQFBO::globalAudioEngine() {
-    return s_audioEngine;
+return s_audioEngine;
 }
 
 vc::PresetManager* VisualizerQFBO::globalPresetManager() {
-    return s_presetManager;
+return s_presetManager;
 }
 
 void VisualizerQFBO::setFps(int fps) {
-    if (fps > 0 && fps <= 120 && fps_.load() != fps) {
-        fps_.store(fps);
-        emit fpsChanged();
-    }
+if (fps > 0 && fps <= 120 && fps_.load() != fps) {
+fps_.store(fps);
+emit fpsChanged();
+}
 }
 
 void VisualizerQFBO::setPresetIndex(int index) {
-    if (presetIndex_.load() != index) {
-        presetIndex_.store(index);
-        emit presetIndexChanged();
-    }
+if (presetIndex_.load() != index) {
+presetIndex_.store(index);
+emit presetIndexChanged();
+}
 }
 
 void VisualizerQFBO::setFullscreen(bool fullscreen) {
-    if (fullscreen_.load() != fullscreen) {
-        fullscreen_.store(fullscreen);
-        emit fullscreenChanged();
-    }
+if (fullscreen_.load() != fullscreen) {
+fullscreen_.store(fullscreen);
+emit fullscreenChanged();
+}
 }
 
 void VisualizerQFBO::handleWindowChanged(QQuickWindow* window) {
-    if (!window) return;
+if (!window) return;
 
-    connect(window, &QQuickWindow::sceneGraphInvalidated, this, &VisualizerQFBO::cleanup,
-        Qt::DirectConnection);
+connect(window, &QQuickWindow::sceneGraphInvalidated, this, &VisualizerQFBO::cleanup,
+Qt::DirectConnection);
 
-    // Connect to sceneGraphInitialized to ensure initial render happens
-    connect(window, &QQuickWindow::sceneGraphInitialized, this, [this, window]() {
-        LOG_INFO("VisualizerQFBO: Scene graph initialized, triggering initial update");
-        update();
-        window->update();
-    }, Qt::DirectConnection);
+connect(window, &QQuickWindow::sceneGraphInitialized, this, [this, window]() {
+LOG_INFO("VisualizerQFBO: Scene graph initialized, triggering initial update");
+forceInitialUpdate();
+}, Qt::DirectConnection);
 
-    window->setColor(Qt::black);
+connect(window, &QQuickWindow::visibilityChanged, this, [this, window](QWindow::Visibility visibility) {
+if (visibility != QWindow::Hidden) {
+LOG_INFO("VisualizerQFBO: Window visibility changed to {}, forcing update", static_cast<int>(visibility));
+forceInitialUpdate();
+}
+}, Qt::DirectConnection);
 
-    if (renderTimer_) {
-        int interval = 1000 / fps_.load();
-        renderTimer_->setInterval(interval);
-        connect(renderTimer_.get(), &QTimer::timeout, window, &QQuickWindow::update,
-            Qt::DirectConnection);
-        renderTimer_->start();
-        LOG_INFO("VisualizerQFBO: Render timer started at {} FPS", fps_.load());
-    }
+window->setColor(Qt::black);
 
-    if (silentAudioTimer_) {
-        silentAudioTimer_->setInterval(16);
-        connect(silentAudioTimer_.get(), &QTimer::timeout, this, &VisualizerQFBO::feedSilentAudio,
-            Qt::DirectConnection);
-        silentAudioTimer_->start();
-    }
+if (renderTimer_) {
+int interval = 1000 / fps_.load();
+renderTimer_->setInterval(interval);
+connect(renderTimer_.get(), &QTimer::timeout, window, &QQuickWindow::update,
+Qt::DirectConnection);
+renderTimer_->start();
+LOG_INFO("VisualizerQFBO: Render timer started at {} FPS", fps_.load());
+}
 
-    connectAudioSignal();
+if (silentAudioTimer_) {
+silentAudioTimer_->setInterval(16);
+connect(silentAudioTimer_.get(), &QTimer::timeout, this, &VisualizerQFBO::feedSilentAudio,
+Qt::DirectConnection);
+silentAudioTimer_->start();
+}
+
+connectAudioSignal();
 }
 
 void VisualizerQFBO::cleanup() {
 }
 
+void VisualizerQFBO::itemChange(ItemChange change, const ItemChangeData& value) {
+QQuickFramebufferObject::itemChange(change, value);
+
+if (change == ItemVisibleHasChanged) {
+LOG_INFO("VisualizerQFBO: Item visibility changed to {}, forcing update", value.boolValue);
+if (value.boolValue && window()) {
+forceInitialUpdate();
+}
+}
+}
+
+void VisualizerQFBO::forceInitialUpdate() {
+if (window()) {
+update();
+window()->update();
+}
+}
+
 void VisualizerQFBO::connectAudioSignal() {
-	if (audioConnected_.load() || !s_audioEngine) return;
+if (audioConnected_.load() || !s_audioEngine) return;
 
-	connect(s_audioEngine, &vc::AudioEngine::pcmReceived,
-		this, [this](const std::vector<float>& data, u32 frames, u32 channels, u32 sampleRate) {
-			onPcmReceived(data, frames, channels, sampleRate);
-		}, Qt::QueuedConnection);
+connect(s_audioEngine, &vc::AudioEngine::pcmReceived,
+this, [this](const std::vector<float>& data, u32 frames, u32 channels, u32 sampleRate) {
+onPcmReceived(data, frames, channels, sampleRate);
+}, Qt::QueuedConnection);
 
-    audioConnected_.store(true);
-    LOG_INFO("VisualizerQFBO: Connected to audio engine PCM signal");
+audioConnected_.store(true);
+LOG_INFO("VisualizerQFBO: Connected to audio engine PCM signal");
 }
 
 void VisualizerQFBO::onPcmReceived(const std::vector<float>&, vc::u32,
-                                   vc::u32, vc::u32) {
-    // Audio is now handled via lock-free queue in AudioEngine
-    // This callback is kept for backward compatibility but does nothing
+vc::u32, vc::u32) {
 }
 
 void VisualizerQFBO::feedSilentAudio() {
-    // Silent audio no longer needed - lock-free queue handles everything
 }
 
 void VisualizerQFBO::updateDimensions() {
-    if (!window()) return;
+if (!window()) return;
 
-    devicePixelRatio_ = window()->devicePixelRatio();
-    width_.store(static_cast<vc::u32>(width() * devicePixelRatio_));
-    height_.store(static_cast<vc::u32>(height() * devicePixelRatio_));
+devicePixelRatio_ = window()->devicePixelRatio();
+width_.store(static_cast<vc::u32>(width() * devicePixelRatio_));
+height_.store(static_cast<vc::u32>(height() * devicePixelRatio_));
 }
 
 void VisualizerQFBO::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) {
-    QQuickFramebufferObject::geometryChange(newGeometry, oldGeometry);
+QQuickFramebufferObject::geometryChange(newGeometry, oldGeometry);
 
-    if (newGeometry.size() != oldGeometry.size()) {
-        updateDimensions();
-    }
+if (newGeometry.size() != oldGeometry.size()) {
+updateDimensions();
+}
 }
 
 QQuickFramebufferObject::Renderer* VisualizerQFBO::createRenderer() const {
-    return new VisualizerQFBORenderer();
+return new VisualizerQFBORenderer();
 }
 
 // ============================================================================
@@ -159,102 +179,98 @@ QQuickFramebufferObject::Renderer* VisualizerQFBO::createRenderer() const {
 VisualizerQFBORenderer::VisualizerQFBORenderer() = default;
 
 VisualizerQFBORenderer::~VisualizerQFBORenderer() {
-    // Don't call cleanup() - OpenGL context may be destroyed
-    // Just delete the renderer, let it handle its own cleanup in destructor
-    delete renderer_;
-    renderer_ = nullptr;
+delete renderer_;
+renderer_ = nullptr;
 }
 
 QOpenGLFramebufferObject* VisualizerQFBORenderer::createFramebufferObject(const QSize& size) {
-    QOpenGLFramebufferObjectFormat format;
-    format.setSamples(16);
-    format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
+QOpenGLFramebufferObjectFormat format;
+format.setSamples(16);
+format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
 
-    auto* fbo = new QOpenGLFramebufferObject(size, format);
+auto* fbo = new QOpenGLFramebufferObject(size, format);
 
-    // Store the FBO size for render()
-    width_ = static_cast<u32>(size.width());
-    height_ = static_cast<u32>(size.height());
+width_ = static_cast<u32>(size.width());
+height_ = static_cast<u32>(size.height());
 
-    if (!renderer_) {
-        renderer_ = new VisualizerRenderer();
-    }
+if (!renderer_) {
+renderer_ = new VisualizerRenderer();
+}
 
-    if (!initialized_) {
-        renderer_->initialize(width_, height_);
+if (!initialized_) {
+renderer_->initialize(width_, height_);
 
-        if (VisualizerQFBO::globalPresetManager()) {
-            const auto& presets = VisualizerQFBO::globalPresetManager()->allPresets();
-            if (!presets.empty()) {
-                renderer_->projectM().engine().loadPreset(presets[0].path.string());
-                LOG_INFO("VisualizerQFBORenderer: Loaded preset: {}", presets[0].name);
-            }
-        }
+if (VisualizerQFBO::globalPresetManager()) {
+const auto& presets = VisualizerQFBO::globalPresetManager()->allPresets();
+if (!presets.empty()) {
+renderer_->projectM().engine().loadPreset(presets[0].path.string());
+LOG_INFO("VisualizerQFBORenderer: Loaded preset: {}", presets[0].name);
+}
+}
 
-        initialized_ = true;
-        LOG_INFO("VisualizerQFBORenderer: Initialized {}x{}", width_, height_);
-    }
+initialized_ = true;
+LOG_INFO("VisualizerQFBORenderer: Initialized {}x{}", width_, height_);
+}
 
-    return fbo;
+return fbo;
 }
 
 void VisualizerQFBORenderer::synchronize(QQuickFramebufferObject* item) {
-    auto* qmlItem = static_cast<VisualizerQFBO*>(item);
-    if (!qmlItem) return;
+auto* qmlItem = static_cast<VisualizerQFBO*>(item);
+if (!qmlItem) return;
 
-    width_ = qmlItem->width_.load();
-    height_ = qmlItem->height_.load();
-    presetIndex_ = qmlItem->presetIndex_.load();
-    recording_ = qmlItem->isRecording();
+width_ = qmlItem->width_.load();
+height_ = qmlItem->height_.load();
+presetIndex_ = qmlItem->presetIndex_.load();
+recording_ = qmlItem->isRecording();
 
-    // Set audio queue on renderer (lock-free, no data copy needed)
-    if (renderer_ && qmlItem->globalAudioEngine()) {
-        renderer_->setAudioQueue(&qmlItem->globalAudioEngine()->audioQueue());
-    }
+if (renderer_ && qmlItem->globalAudioEngine()) {
+renderer_->setAudioQueue(&qmlItem->globalAudioEngine()->audioQueue());
+}
 }
 
 void VisualizerQFBORenderer::render() {
-    if (!renderer_ || !initialized_ || width_ == 0 || height_ == 0) {
-        static int logCount = 0;
-        if (logCount++ < 5) {
-            LOG_INFO("QFBO render() early return: renderer={}, init={}, w={}, h={}",
-                     (void*)renderer_, initialized_, width_, height_);
-        }
-        return;
-    }
+if (!renderer_ || !initialized_ || width_ == 0 || height_ == 0) {
+static int logCount = 0;
+if (logCount++ < 5) {
+LOG_INFO("QFBO render() early return: renderer={}, init={}, w={}, h={}",
+(void*)renderer_, initialized_, width_, height_);
+}
+return;
+}
 
-    if (!glInitialized_) {
-        if (!initializeOpenGLFunctions()) {
-            LOG_ERROR("QFBO: Failed to initialize GL functions");
-            return;
-        }
-        glInitialized_ = true;
-        LOG_INFO("QFBO: GL functions initialized");
-    }
+if (!glInitialized_) {
+if (!initializeOpenGLFunctions()) {
+LOG_ERROR("QFBO: Failed to initialize GL functions");
+return;
+}
+glInitialized_ = true;
+LOG_INFO("QFBO: GL functions initialized");
+}
 
-    auto* audioQueue = renderer_->audioQueue();
-    if (audioQueue) {
-        constexpr u32 BATCH_SIZE = 4096;
-        alignas(64) float batchBuffer[BATCH_SIZE * 2];
-        u32 framesToFeed = 2048;
-        u32 popped = audioQueue->popVizBatch(batchBuffer, framesToFeed);
-        if (popped > 0) {
-            renderer_->projectM().engine().addPCMDataInterleaved(batchBuffer, popped, 2);
-        }
-    }
+auto* audioQueue = renderer_->audioQueue();
+if (audioQueue) {
+constexpr u32 BATCH_SIZE = 4096;
+alignas(64) float batchBuffer[BATCH_SIZE * 2];
+u32 framesToFeed = 2048;
+u32 popped = audioQueue->popVizBatch(batchBuffer, framesToFeed);
+if (popped > 0) {
+renderer_->projectM().engine().addPCMDataInterleaved(batchBuffer, popped, 2);
+}
+}
 
-    renderer_->projectM().syncState();
+renderer_->projectM().syncState();
 
-    glViewport(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
+glViewport(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
 
-    // TEST: Clear to red to verify FBO is rendering at all
-    glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+// TEST: Clear to red to verify FBO is rendering at all
+glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+glClear(GL_COLOR_BUFFER_BIT);
 
-    glDisable(GL_SCISSOR_TEST);
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+glDisable(GL_SCISSOR_TEST);
+glDisable(GL_DEPTH_TEST);
+glEnable(GL_BLEND);
+glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 } // namespace qml_bridge
