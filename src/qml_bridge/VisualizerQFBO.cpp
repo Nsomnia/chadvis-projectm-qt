@@ -242,11 +242,10 @@ void VisualizerQFBORenderer::render() {
     renderer_->projectM().syncState();
 
     glViewport(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
 
-    renderer_->projectM().engine().resize(width_, height_);
-    renderer_->projectM().engine().render();
+    // TEST: Clear to red to verify FBO is rendering at all
+    glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
