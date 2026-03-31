@@ -26,24 +26,41 @@
 #include <QSurfaceFormat>
 #include <iostream>
 #include <cstdlib>
+#include <csignal>
 
 namespace vc {
 
 Application* Application::instance_ = nullptr;
 
 Application::Application(int& argc, char** argv) : argc_(argc), argv_(argv) {
-    instance_ = this;
+instance_ = this;
+
+std::signal(SIGINT, [](int) {
+if (instance_) {
+instance_->quit();
+}
+std::exit(0);
+});
+std::signal(SIGTERM, [](int) {
+if (instance_) {
+instance_->quit();
+}
+std::exit(0);
+});
 }
 
 Application::~Application() {
-	// Cleanup order matters
-	videoRecorder_.reset();
-	overlayEngine_.reset();
-	audioEngine_.reset();
-	qapp_.reset();
+// Cleanup order: QML engine first, then visualizer, then Qt app
+qmlEngine_.reset();
+visualizerWindow_.reset();
 
-	Logger::shutdown();
-	instance_ = nullptr;
+videoRecorder_.reset();
+overlayEngine_.reset();
+audioEngine_.reset();
+qapp_.reset();
+
+Logger::shutdown();
+instance_ = nullptr;
 }
 
 Result<AppOptions> Application::parseArgs() {
