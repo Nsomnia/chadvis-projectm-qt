@@ -1,23 +1,24 @@
 # agent and scratch or git cloned
-third_party/
-.agent/
-scratch/
+third_party/*
+scratch/*
 
 # User note and working directories
 zzz*/
 zzzz*
 .ralph/*
-
-
+# Potential API keys
+.agent/suno_endpoint*
+# scrachpad for git clones
+.agent/scratch*
+# keys
+.agent/URL*
 # an older suno http clerk reference that might still be valuable to end users
 docs/suno_api_reference.md
 docs/SUNO_API_CPP_QT6_INTEGRATION_GUIDE.md
 
-# not used so far and using as a scratchpad for repos
-third_party/*
 
 # Agent internal notes
-.agent/
+#.agent/
 #.backup_graveyard/
 logs/
 scratch/

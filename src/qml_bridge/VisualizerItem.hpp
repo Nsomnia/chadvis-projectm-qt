@@ -29,9 +29,10 @@ class PresetManager;
 namespace qml_bridge {
 
 class VisualizerItem : public QQuickItem, protected QOpenGLFunctions_3_3_Core {
-	Q_OBJECT
+    Q_OBJECT
+    QML_ELEMENT
 
-	Q_PROPERTY(int fps READ fps WRITE setFps NOTIFY fpsChanged)
+    Q_PROPERTY(int fps READ fps WRITE setFps NOTIFY fpsChanged)
 
 public:
 	explicit VisualizerItem(QQuickItem* parent = nullptr);

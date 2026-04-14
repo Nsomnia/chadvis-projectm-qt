@@ -35,9 +35,10 @@ namespace qml_bridge {
 class VisualizerQFBORenderer;
 
 class VisualizerQFBO : public QQuickFramebufferObject {
-Q_OBJECT
+    Q_OBJECT
+    QML_ELEMENT
 
-Q_PROPERTY(int fps READ fps WRITE setFps NOTIFY fpsChanged)
+    Q_PROPERTY(int fps READ fps WRITE setFps NOTIFY fpsChanged)
 Q_PROPERTY(int presetIndex READ presetIndex WRITE setPresetIndex NOTIFY presetIndexChanged)
 Q_PROPERTY(bool isRecording READ isRecording NOTIFY recordingChanged)
 Q_PROPERTY(bool isFullscreen READ isFullscreen WRITE setFullscreen NOTIFY fullscreenChanged)
