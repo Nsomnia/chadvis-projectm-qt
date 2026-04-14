@@ -55,6 +55,7 @@
 - [ ] **Modernize QML Registration:** Replace manual `qmlRegisterSingletonType` with Qt 6 declarative macros (`QML_ELEMENT`, `QML_SINGLETON`). Use `qt_add_qml_module` in CMake. This enables `qmltc` (QML Type Compiler) for ahead-of-time compilation and massive UI performance gains.
 - [ ] **Standardize Signal/Slot Mechanics:** The codebase mixes `Q_OBJECT` with custom `vc::Signal`. Qt's native `signals:` handle thread-safe cross-thread queuing automatically. The custom `Signal` lacks queued connections, which is dangerous for cross-thread emissions (e.g., `VideoRecorderThread` → GUI).
 - [ ] **Reimplement Audio Playlist:** Restore the pre-QML audio playlist functionality with robust, gapless-capable handling of both local audio files and remote HTTP Suno streams.
+- [~] **(NEEDS TO BE CHECKED) Force Quit Causes SIGSEGV fault:** A top menu bar needs to be re-added to the project but good housekeeping means fixing the force quit (ctrl+c) segmentation fault error via gdm.
 
 ---
 

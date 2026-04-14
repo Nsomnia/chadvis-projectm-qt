@@ -76,18 +76,6 @@ void registerBridges(QQmlApplicationEngine* engine,
         s_sunoBridge->connectSignals();
     }
 
-	qmlRegisterSingletonInstance("ChadVis", 1, 0, "AudioBridge", s_audioBridge);
-	qmlRegisterSingletonInstance("ChadVis", 1, 0, "PlaylistBridge", s_playlistBridge);
-	qmlRegisterSingletonInstance("ChadVis", 1, 0, "VisualizerBridge", s_visualizerBridge);
-	qmlRegisterSingletonInstance("ChadVis", 1, 0, "RecordingBridge", s_recordingBridge);
-	qmlRegisterSingletonInstance("ChadVis", 1, 0, "PresetBridge", s_presetBridge);
-	qmlRegisterSingletonInstance("ChadVis", 1, 0, "LyricsBridge", s_lyricsBridge);
-	qmlRegisterSingletonInstance("ChadVis", 1, 0, "SunoBridge", s_sunoBridge);
-	qmlRegisterSingletonInstance("ChadVis", 1, 0, "Theme", s_themeBridge);
-
-    qmlRegisterType<VisualizerItem>("ChadVis", 1, 0, "VisualizerItem");
-    qmlRegisterType<VisualizerQFBO>("ChadVis", 1, 0, "VisualizerQFBO");
-
     if (audioEngine) {
         VisualizerItem::setGlobalAudioEngine(audioEngine);
         VisualizerQFBO::setGlobalAudioEngine(audioEngine);

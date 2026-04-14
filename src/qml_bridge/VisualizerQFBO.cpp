@@ -145,11 +145,22 @@ audioConnected_.store(true);
 LOG_INFO("VisualizerQFBO: Connected to audio engine PCM signal");
 }
 
-void VisualizerQFBO::onPcmReceived(const std::vector<float>&, vc::u32,
-vc::u32, vc::u32) {
+void VisualizerQFBO::onPcmReceived(const std::vector<float>& data, vc::u32 frames,
+    vc::u32 channels, vc::u32 sampleRate) {
+    Q_UNUSED(data)
+    Q_UNUSED(frames)
+    Q_UNUSED(channels)
+    Q_UNUSED(sampleRate)
 }
 
 void VisualizerQFBO::feedSilentAudio() {
+    if (!s_audioEngine) return;
+
+    auto& audioQueue = s_audioEngine->audioQueue();
+    if (audioQueue.vizDepth() < 100) {
+        alignas(64) float silentBuffer[1024 * 2] = {0};
+        audioQueue.pushViz(silentBuffer, 512, 2, 48000);
+    }
 }
 
 void VisualizerQFBO::updateDimensions() {
@@ -230,47 +241,53 @@ renderer_->setAudioQueue(&qmlItem->globalAudioEngine()->audioQueue());
 }
 
 void VisualizerQFBORenderer::render() {
-if (!renderer_ || !initialized_ || width_ == 0 || height_ == 0) {
-static int logCount = 0;
-if (logCount++ < 5) {
-LOG_INFO("QFBO render() early return: renderer={}, init={}, w={}, h={}",
-(void*)renderer_, initialized_, width_, height_);
-}
-return;
-}
+    if (!renderer_ || !initialized_ || width_ == 0 || height_ == 0) {
+        static int logCount = 0;
+        if (logCount++ < 5) {
+            LOG_INFO("QFBO render() early return: renderer={}, init={}, w={}, h={}",
+                (void*)renderer_, initialized_, width_, height_);
+        }
+        return;
+    }
 
-if (!glInitialized_) {
-if (!initializeOpenGLFunctions()) {
-LOG_ERROR("QFBO: Failed to initialize GL functions");
-return;
-}
-glInitialized_ = true;
-LOG_INFO("QFBO: GL functions initialized");
-}
+    if (!glInitialized_) {
+        if (!initializeOpenGLFunctions()) {
+            LOG_ERROR("QFBO: Failed to initialize GL functions");
+            return;
+        }
+        glInitialized_ = true;
+        LOG_INFO("QFBO: GL functions initialized");
+    }
 
-auto* audioQueue = renderer_->audioQueue();
-if (audioQueue) {
-constexpr u32 BATCH_SIZE = 4096;
-alignas(64) float batchBuffer[BATCH_SIZE * 2];
-u32 framesToFeed = 2048;
-u32 popped = audioQueue->popVizBatch(batchBuffer, framesToFeed);
-if (popped > 0) {
-renderer_->projectM().engine().addPCMDataInterleaved(batchBuffer, popped, 2);
-}
-}
+    auto* audioQueue = renderer_->audioQueue();
+    if (audioQueue) {
+        constexpr u32 BATCH_SIZE = 4096;
+        alignas(64) float batchBuffer[BATCH_SIZE * 2];
+        u32 framesToFeed = 2048;
+        u32 popped = audioQueue->popVizBatch(batchBuffer, framesToFeed);
+        if (popped > 0) {
+            renderer_->projectM().engine().addPCMDataInterleaved(batchBuffer, popped, 2);
+        }
+    }
 
-renderer_->projectM().syncState();
+    renderer_->projectM().syncState();
 
-glViewport(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
+    glViewport(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
 
-// TEST: Clear to red to verify FBO is rendering at all
-glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-glDisable(GL_SCISSOR_TEST);
-glDisable(GL_DEPTH_TEST);
-glEnable(GL_BLEND);
-glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    renderer_->projectM().engine().resize(width_, height_);
+    renderer_->projectM().engine().render();
+
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glViewport(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
 }
 
 } // namespace qml_bridge
