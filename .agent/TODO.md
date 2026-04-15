@@ -59,7 +59,7 @@
 
 ## [P1] High Impact / Performance & Feature Parity
 
-- [-] **Asynchronous Frame Readback & FBO Lifecycle:** Use **Pixel Buffer Objects (PBOs)** with double-buffering for asynchronous frame recording to avoid `glReadPixels` pipeline stalls. Ensure `VisualizerQFBO` manages QSG textures optimally. **[2026-04-15]** AsyncFrameGrabber implemented but not wired to VideoRecorderThread.
+- [x] **Asynchronous Frame Readback & FBO Lifecycle:** Use **Pixel Buffer Objects (PBOs)** with double-buffering for asynchronous frame recording to avoid `glReadPixels` pipeline stalls. Ensure `VisualizerQFBO` manages QSG textures optimally. **[2026-04-15]** ALREADY IMPLEMENTED in `VisualizerRenderer::captureAsync()`. The `AsyncFrameGrabber` class in FrameGrabber.cpp is dead code (duplicate).
 - [ ] **Decouple FFT Analysis from Audio Thread:** Background FFT. Process `AudioAnalyzer::analyze()` using a lock-free queue on a dedicated background worker to prevent audio dropouts (underruns).
 - [ ] **Migrate Overlays & CPU Rasterization to QML:** Delete `OverlayRenderer.cpp` and `OverlayEngine.cpp`. Moving overlay rendering from CPU `QPainter` to QML `Text` and hardware-accelerated shaders (Scene Graph).
 - [ ] **Remove Redundant Audio Sources:** Remove `FFmpegAudioSource.cpp` and `SDLMixerAudioSource.cpp`. Rely on `QMediaPlayer` + `QAudioBufferOutput` or **miniaudio**.
