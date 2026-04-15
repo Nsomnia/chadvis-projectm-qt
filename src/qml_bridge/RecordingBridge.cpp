@@ -4,8 +4,11 @@
  */
 
 #include "RecordingBridge.hpp"
+#include "audio/AudioEngine.hpp"
 #include "recorder/VideoRecorder.hpp"
 #include "recorder/EncoderSettings.hpp"
+#include "audio/AudioQueue.hpp"
+#include "VisualizerItem.hpp"
 #include <QQmlEngine>
 
 namespace qml_bridge {
@@ -112,23 +115,28 @@ QStringList RecordingBridge::availableCodecs() const
 
 bool RecordingBridge::startRecording(const QString& outputPath)
 {
-if (!s_recorder) return false;
+  if (!s_recorder) return false;
 
-QString path = outputPath;
-if (path.isEmpty()) {
-auto settings = vc::EncoderSettings::fromConfig();
-path = QString::fromStdString(settings.outputPath.string());
-}
+  QString path = outputPath;
+  if (path.isEmpty()) {
+    auto settings = vc::EncoderSettings::fromConfig();
+    path = QString::fromStdString(settings.outputPath.string());
+  }
 
-outputPath_ = path;
+  outputPath_ = path;
 
-auto result = s_recorder->start(path.toStdString());
-if (!result) {
-emit errorOccurred(QString::fromStdString(result.error().message));
-return false;
-}
+  auto result = s_recorder->start(path.toStdString());
+  if (!result) {
+    emit errorOccurred(QString::fromStdString(result.error().message));
+    return false;
+  }
 
-return true;
+  auto* audioEngine = qml_bridge::VisualizerItem::globalAudioEngine();
+  if (audioEngine) {
+    s_recorder->setAudioQueue(&audioEngine->audioQueue());
+  }
+
+  return true;
 }
 
 void RecordingBridge::stopRecording()

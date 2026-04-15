@@ -1,5 +1,8 @@
+// Version: 2.1.0 - 2026-04-14 14:25:00 MDT
+
 #include "VideoRecorderFFmpeg.hpp"
 #include <libavcodec/version.h>
+#include <libavutil/opt.h>
 #include "core/Logger.hpp"
 
 #if LIBAVCODEC_VERSION_MAJOR >= 60
@@ -12,54 +15,61 @@ namespace vc {
 VideoRecorderFFmpeg::VideoRecorderFFmpeg() = default;
 
 VideoRecorderFFmpeg::~VideoRecorderFFmpeg() {
-    cleanup();
+  cleanup();
 }
 
 Result<void> VideoRecorderFFmpeg::init(const EncoderSettings& settings) {
-    int ret;
+  int ret;
 
-    AVFormatContext* ctx = nullptr;
-    ret = avformat_alloc_output_context2(
-            &ctx, nullptr, nullptr, settings.outputPath.c_str());
-    formatCtx_.reset(ctx);
+  AVFormatContext* ctx = nullptr;
+  ret = avformat_alloc_output_context2(
+    &ctx, nullptr, nullptr, settings.outputPath.c_str());
+  formatCtx_.reset(ctx);
 
-    if (ret < 0 || !formatCtx_) {
-        return Result<void>::err("Failed to create output context: " +
-                                 ffmpegError(ret));
+  if (ret < 0 || !formatCtx_) {
+    return Result<void>::err("Failed to create output context: " +
+      ffmpegError(ret));
+  }
+
+  if (settings.video.isHardwareAccelerated()) {
+    if (auto result = initHWDevice(settings); !result) {
+      LOG_WARN("HW accel init failed, falling back to software: {}", result.error().message);
     }
+  }
 
-    if (auto result = initVideoStream(settings); !result) {
-        return result;
-    }
+  if (auto result = initVideoStream(settings); !result) {
+    return result;
+  }
 
-    if (auto result = initAudioStream(settings); !result) {
-        return result;
-    }
+  if (auto result = initAudioStream(settings); !result) {
+    return result;
+  }
 
-    if (!(formatCtx_->oformat->flags & AVFMT_NOFILE)) {
-        ret = avio_open(
-                &formatCtx_->pb, settings.outputPath.c_str(), AVIO_FLAG_WRITE);
-        if (ret < 0) {
-            return Result<void>::err("Failed to open output file: " +
-                                     ffmpegError(ret));
-        }
-    }
-
-    AVDictionary* opts = nullptr;
-    ret = avformat_write_header(formatCtx_.get(), &opts);
-    av_dict_free(&opts);
-
+  if (!(formatCtx_->oformat->flags & AVFMT_NOFILE)) {
+    ret = avio_open(
+      &formatCtx_->pb, settings.outputPath.c_str(), AVIO_FLAG_WRITE);
     if (ret < 0) {
-        return Result<void>::err("Failed to write header: " + ffmpegError(ret));
+      return Result<void>::err("Failed to open output file: " +
+        ffmpegError(ret));
     }
+  }
 
-    packet_.reset(av_packet_alloc());
-    if (!packet_) {
-        return Result<void>::err("Failed to allocate packet");
-    }
+  AVDictionary* opts = nullptr;
+  ret = avformat_write_header(formatCtx_.get(), &opts);
+  av_dict_free(&opts);
 
-    LOG_DEBUG("FFmpeg initialized successfully");
-    return Result<void>::ok();
+  if (ret < 0) {
+    return Result<void>::err("Failed to write header: " + ffmpegError(ret));
+  }
+
+  packet_.reset(av_packet_alloc());
+  if (!packet_) {
+    return Result<void>::err("Failed to allocate packet");
+  }
+
+  LOG_DEBUG("FFmpeg initialized successfully (HW accel: {})",
+    settings.video.isHardwareAccelerated() ? "yes" : "no");
+  return Result<void>::ok();
 }
 
 void VideoRecorderFFmpeg::cleanup() {
@@ -85,42 +95,55 @@ void VideoRecorderFFmpeg::cleanup() {
 }
 
 bool VideoRecorderFFmpeg::encodeVideo(const GrabbedFrame& frame,
-                                      u64& bytesWritten) {
-    if (frame.data.empty())
-        return false;
+  u64& bytesWritten) {
+  if (frame.data.empty())
+    return false;
 
-    std::lock_guard lock(mutex_);
-    if (!videoCodecCtx_ || !videoFrame_)
-        return false;
+  std::lock_guard lock(mutex_);
+  if (!videoCodecCtx_ || !videoFrame_)
+    return false;
 
-    const u8* srcData[1] = {frame.data.data()};
-    int srcLinesize[1] = {static_cast<int>(frame.width * 4)};
+  const u8* srcData[1] = {frame.data.data()};
+  int srcLinesize[1] = {static_cast<int>(frame.width * 4)};
 
-    // Re-create SwsContext if needed (resizing handling could go here)
-    if (!swsCtx_) {
-        swsCtx_.reset(sws_getContext(frame.width,
-                                     frame.height,
-                                     AV_PIX_FMT_RGBA,
-                                     videoCodecCtx_->width,
-                                     videoCodecCtx_->height,
-                                     videoCodecCtx_->pix_fmt,
-                                     SWS_BILINEAR,
-                                     nullptr,
-                                     nullptr,
-                                     nullptr));
+  AVPixelFormat targetFmt = swPixelFormat_;
+
+  if (!swsCtx_) {
+    swsCtx_.reset(sws_getContext(frame.width,
+      frame.height,
+      AV_PIX_FMT_RGBA,
+      videoCodecCtx_->width,
+      videoCodecCtx_->height,
+      targetFmt,
+      SWS_BILINEAR,
+      nullptr,
+      nullptr,
+      nullptr));
+  }
+
+  sws_scale(swsCtx_.get(),
+    srcData,
+    srcLinesize,
+    0,
+    frame.height,
+    videoFrame_->data,
+    videoFrame_->linesize);
+
+  videoFrame_->pts = videoFrameCount_++;
+
+  AVFrame* encodeFrame = videoFrame_.get();
+
+  if (hwFramesCtx_ && hwFrame_) {
+    int ret = av_hwframe_transfer_data(hwFrame_.get(), videoFrame_.get(), 0);
+    if (ret < 0) {
+      LOG_WARN("HW frame transfer failed: {}", ffmpegError(ret));
+    } else {
+      hwFrame_->pts = videoFrame_->pts;
+      encodeFrame = hwFrame_.get();
     }
+  }
 
-    sws_scale(swsCtx_.get(),
-              srcData,
-              srcLinesize,
-              0,
-              frame.height,
-              videoFrame_->data,
-              videoFrame_->linesize);
-
-    videoFrame_->pts = videoFrameCount_++;
-
-    return encodeVideoFrame(videoFrame_.get(), bytesWritten);
+  return encodeVideoFrame(encodeFrame, bytesWritten);
 }
 
 bool VideoRecorderFFmpeg::encodeAudio(std::vector<f32>& buffer,
@@ -190,66 +213,94 @@ void VideoRecorderFFmpeg::flush(u64& bytesWritten) {
 }
 
 Result<void> VideoRecorderFFmpeg::initVideoStream(
-        const EncoderSettings& settings) {
-    const AVCodec* codec =
-            avcodec_find_encoder_by_name(settings.video.codecName().c_str());
-    if (!codec) {
-        return Result<void>::err("Video codec not found: " +
-                                 settings.video.codecName());
+  const EncoderSettings& settings) {
+  const AVCodec* codec =
+    avcodec_find_encoder_by_name(settings.video.codecName().c_str());
+  if (!codec) {
+    return Result<void>::err("Video codec not found: " +
+      settings.video.codecName());
+  }
+
+  videoStream_ = avformat_new_stream(formatCtx_.get(), nullptr);
+  if (!videoStream_)
+    return Result<void>::err("Failed to create video stream");
+
+  videoCodecCtx_.reset(avcodec_alloc_context3(codec));
+  if (!videoCodecCtx_)
+    return Result<void>::err("Failed to allocate video codec context");
+
+  videoCodecCtx_->width = settings.video.width;
+  videoCodecCtx_->height = settings.video.height;
+  videoCodecCtx_->time_base =
+    AVRational{1, static_cast<int>(settings.video.fps)};
+  videoCodecCtx_->framerate =
+    AVRational{static_cast<int>(settings.video.fps), 1};
+  videoCodecCtx_->gop_size = settings.video.gopSize > 0
+    ? settings.video.gopSize
+    : settings.video.fps * 2;
+  videoCodecCtx_->max_b_frames = settings.video.bFrames;
+
+  if (settings.video.isHardwareAccelerated() && hwDeviceCtx_) {
+    auto result = initHWFrames(settings);
+    if (!result) {
+      LOG_WARN("HW frames init failed: {}", result.error().message);
     }
-
-    videoStream_ = avformat_new_stream(formatCtx_.get(), nullptr);
-    if (!videoStream_)
-        return Result<void>::err("Failed to create video stream");
-
-    videoCodecCtx_.reset(avcodec_alloc_context3(codec));
-    if (!videoCodecCtx_)
-        return Result<void>::err("Failed to allocate video codec context");
-
-    videoCodecCtx_->width = settings.video.width;
-    videoCodecCtx_->height = settings.video.height;
-    videoCodecCtx_->time_base =
-            AVRational{1, static_cast<int>(settings.video.fps)};
-    videoCodecCtx_->framerate =
-            AVRational{static_cast<int>(settings.video.fps), 1};
+    videoCodecCtx_->pix_fmt = getHWPixelFormat(settings);
+  } else {
     videoCodecCtx_->pix_fmt = AV_PIX_FMT_YUV420P;
-    videoCodecCtx_->gop_size = settings.video.gopSize > 0
-                                       ? settings.video.gopSize
-                                       : settings.video.fps * 2;
-    videoCodecCtx_->max_b_frames = settings.video.bFrames;
+  }
 
-    if (formatCtx_->oformat->flags & AVFMT_GLOBALHEADER) {
-        videoCodecCtx_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+  if (formatCtx_->oformat->flags & AVFMT_GLOBALHEADER) {
+    videoCodecCtx_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+  }
+
+  AVDictionary* opts = nullptr;
+  if (settings.video.isHardwareAccelerated()) {
+    if (settings.video.bitrate > 0) {
+      videoCodecCtx_->bit_rate = settings.video.bitrate * 1000;
+      videoCodecCtx_->rc_max_rate = videoCodecCtx_->bit_rate;
+      videoCodecCtx_->rc_buffer_size = videoCodecCtx_->bit_rate;
     }
+    av_dict_set(&opts, "preset", "p4", 0);
+    av_dict_set(&opts, "rc", "vbr", 0);
+  } else if (settings.video.codec == VideoCodec::H264 ||
+       settings.video.codec == VideoCodec::H265) {
+    av_dict_set(&opts, "preset", settings.video.presetName().c_str(), 0);
+    av_dict_set(
+      &opts, "crf", std::to_string(settings.video.crf).c_str(), 0);
+    av_dict_set(&opts, "tune", "zerolatency", 0);
+  }
 
-    AVDictionary* opts = nullptr;
-    if (settings.video.codec == VideoCodec::H264 ||
-        settings.video.codec == VideoCodec::H265) {
-        av_dict_set(&opts, "preset", settings.video.presetName().c_str(), 0);
-        av_dict_set(
-                &opts, "crf", std::to_string(settings.video.crf).c_str(), 0);
-        av_dict_set(&opts, "tune", "zerolatency", 0);
-    }
+  int ret = avcodec_open2(videoCodecCtx_.get(), codec, &opts);
+  av_dict_free(&opts);
 
-    int ret = avcodec_open2(videoCodecCtx_.get(), codec, &opts);
-    av_dict_free(&opts);
+  if (ret < 0) {
+    return Result<void>::err("Failed to open video codec: " +
+      ffmpegError(ret));
+  }
 
+  avcodec_parameters_from_context(videoStream_->codecpar,
+    videoCodecCtx_.get());
+  videoStream_->time_base = videoCodecCtx_->time_base;
+
+  videoFrame_.reset(av_frame_alloc());
+  videoFrame_->format = AV_PIX_FMT_YUV420P;
+  videoFrame_->width = videoCodecCtx_->width;
+  videoFrame_->height = videoCodecCtx_->height;
+  av_frame_get_buffer(videoFrame_.get(), 0);
+
+  if (hwFramesCtx_) {
+    hwFrame_.reset(av_frame_alloc());
+    hwFrame_->format = videoCodecCtx_->pix_fmt;
+    hwFrame_->width = videoCodecCtx_->width;
+    hwFrame_->height = videoCodecCtx_->height;
+    ret = av_hwframe_get_buffer(hwFramesCtx_.get(), hwFrame_.get(), 0);
     if (ret < 0) {
-        return Result<void>::err("Failed to open video codec: " +
-                                 ffmpegError(ret));
+      LOG_WARN("Failed to allocate HW frame: {}", ffmpegError(ret));
     }
+  }
 
-    avcodec_parameters_from_context(videoStream_->codecpar,
-                                    videoCodecCtx_.get());
-    videoStream_->time_base = videoCodecCtx_->time_base;
-
-    videoFrame_.reset(av_frame_alloc());
-    videoFrame_->format = videoCodecCtx_->pix_fmt;
-    videoFrame_->width = videoCodecCtx_->width;
-    videoFrame_->height = videoCodecCtx_->height;
-    av_frame_get_buffer(videoFrame_.get(), 0);
-
-    return Result<void>::ok();
+  return Result<void>::ok();
 }
 
 Result<void> VideoRecorderFFmpeg::initAudioStream(
@@ -352,19 +403,112 @@ bool VideoRecorderFFmpeg::encodeAudioFrame(AVFrame* frame, u64& bytesWritten) {
 }
 
 bool VideoRecorderFFmpeg::writePacket(AVPacket* packet,
-                                      AVStream* stream,
-                                      u64& bytesWritten) {
-    av_packet_rescale_ts(packet,
-                         stream == videoStream_ ? videoCodecCtx_->time_base
-                                                : audioCodecCtx_->time_base,
-                         stream->time_base);
-    packet->stream_index = stream->index;
+  AVStream* stream,
+  u64& bytesWritten) {
+  av_packet_rescale_ts(packet,
+    stream == videoStream_ ? videoCodecCtx_->time_base
+    : audioCodecCtx_->time_base,
+    stream->time_base);
+  packet->stream_index = stream->index;
 
-    if (av_interleaved_write_frame(formatCtx_.get(), packet) >= 0) {
-        bytesWritten += packet->size;
-        return true;
-    }
-    return false;
+  if (av_interleaved_write_frame(formatCtx_.get(), packet) >= 0) {
+    bytesWritten += packet->size;
+    return true;
+  }
+  return false;
+}
+
+AVPixelFormat VideoRecorderFFmpeg::getHWPixelFormat(const EncoderSettings& settings) const {
+  switch (settings.video.hwAccel) {
+    case HWAccelDevice::NVENC:
+      return AV_PIX_FMT_CUDA;
+    case HWAccelDevice::VAAPI:
+      return AV_PIX_FMT_VAAPI;
+    case HWAccelDevice::QuickSync:
+      return AV_PIX_FMT_QSV;
+    case HWAccelDevice::AMF:
+      return AV_PIX_FMT_D3D11;
+    default:
+      return AV_PIX_FMT_YUV420P;
+  }
+}
+
+Result<void> VideoRecorderFFmpeg::initHWDevice(const EncoderSettings& settings) {
+  AVHWDeviceType devType = AV_HWDEVICE_TYPE_NONE;
+  const char* devName = nullptr;
+
+  switch (settings.video.hwAccel) {
+    case HWAccelDevice::NVENC:
+      devType = AV_HWDEVICE_TYPE_CUDA;
+      devName = "CUDA";
+      break;
+    case HWAccelDevice::VAAPI:
+      devType = AV_HWDEVICE_TYPE_VAAPI;
+      devName = "VAAPI";
+      break;
+    case HWAccelDevice::QuickSync:
+      devType = AV_HWDEVICE_TYPE_QSV;
+      devName = "QSV";
+      break;
+    case HWAccelDevice::AMF:
+      devType = AV_HWDEVICE_TYPE_D3D11VA;
+      devName = "D3D11VA";
+      break;
+    case HWAccelDevice::None:
+      return Result<void>::ok();
+  }
+
+  AVBufferRef* devCtx = nullptr;
+  char devPath[64] = {0};
+
+  if (devType == AV_HWDEVICE_TYPE_VAAPI) {
+    snprintf(devPath, sizeof(devPath), "/dev/dri/renderD%d", 128 + settings.video.hwDevice);
+  } else if (devType == AV_HWDEVICE_TYPE_CUDA) {
+    snprintf(devPath, sizeof(devPath), "%d", settings.video.hwDevice);
+  }
+
+  int ret = av_hwdevice_ctx_create(&devCtx, devType,
+    devPath[0] ? devPath : nullptr, nullptr, 0);
+
+  if (ret < 0) {
+    return Result<void>::err(std::string("Failed to create ") + devName +
+      " device context: " + ffmpegError(ret));
+  }
+
+  hwDeviceCtx_.reset(devCtx);
+  swPixelFormat_ = AV_PIX_FMT_YUV420P;
+
+  LOG_INFO("HW device context created: {} (device {})", devName, settings.video.hwDevice);
+  return Result<void>::ok();
+}
+
+Result<void> VideoRecorderFFmpeg::initHWFrames(const EncoderSettings& settings) {
+  if (!hwDeviceCtx_) {
+    return Result<void>::err("HW device context not initialized");
+  }
+
+  AVBufferRef* framesRef = av_hwframe_ctx_alloc(hwDeviceCtx_.get());
+  if (!framesRef) {
+    return Result<void>::err("Failed to allocate HW frames context");
+  }
+
+  AVHWFramesContext* framesCtx = reinterpret_cast<AVHWFramesContext*>(framesRef->data);
+  framesCtx->format = getHWPixelFormat(settings);
+  framesCtx->sw_format = swPixelFormat_;
+  framesCtx->width = settings.video.width;
+  framesCtx->height = settings.video.height;
+  framesCtx->initial_pool_size = 20;
+
+  int ret = av_hwframe_ctx_init(framesRef);
+  if (ret < 0) {
+    av_buffer_unref(&framesRef);
+    return Result<void>::err("Failed to init HW frames: " + ffmpegError(ret));
+  }
+
+  hwFramesCtx_.reset(framesRef);
+  videoCodecCtx_->hw_frames_ctx = av_buffer_ref(framesRef);
+
+  return Result<void>::ok();
 }
 
 } // namespace vc

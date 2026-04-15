@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+**When this document becomes too long, archive it with a date-time stamp in docs/ under the appropriate place and name, then write this fresh skeleton in the root CHANGELOG.md file to keep the main one clean and tidy.**
+
+---
+
+## [Unreleased] - 2026-04-15
+
+### Added
+- **Video Recorder Hardware Acceleration**: Full NVENC/VAAPI/QSV/AMF support via AVHWDeviceContext
+  - `initHWDevice()` - Creates hardware device contexts for GPU encoding
+  - `initHWFrames()` - Sets up hardware frames context with proper sw_format
+  - `getHWPixelFormat()` - Returns device-specific pixel formats (CUDA, VAAPI, QSV, D3D11)
+  - NVENC uses VBR encoding with `preset=p4` and configurable bitrate
+- **AudioQueue Integration for Recording**: Wired lock-free audio queue to video recorder
+  - `VideoRecorder::setAudioQueue()` public API added
+  - `RecordingBridge::startRecording()` connects AudioEngine's queue to recorder
+  - Audio flow: AudioEngine → AudioQueue → VideoRecorderThread → FFmpeg encoder
+
+### Changed
+- **VisualizerQFBO::render()**: Fixed to call actual projectM rendering instead of clearing to red
+- **QML Registration**: Added `QML_ELEMENT` macro to VisualizerItem and VisualizerQFBO classes
+- **VideoRecorderCore**: Refactored for cleaner audio queue integration
+
+### Verified
+- **Cross-thread Signal Safety**: Confirmed `vc::Signal` handlers use `QMetaObject::invokeMethod()` for thread-safe emissions
+- **FFT Implementation**: KissFFT already integrated via CPM (TODO item was stale)
+- **Build Verification**: All new symbols present in `libproject_lib.a`
+
+### Technical Details
+- Hardware encoding uses SW frame → HW frame transfer (not zero-copy)
+- Audio queue uses `moodycamel::ReaderWriterQueue` for lock-free SPSC
+- Files modified: VideoRecorderFFmpeg.{hpp,cpp}, VideoRecorderCore.{hpp,cpp}, RecordingBridge.cpp
+
+---
+
 ## [Unreleased] - 2026-02-02
 
 ### Added
