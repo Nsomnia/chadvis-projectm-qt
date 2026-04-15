@@ -2,6 +2,9 @@
 third_party/*
 scratch/*
 
+# messy opencode stuff
+node_modules/
+
 # User note and working directories
 zzz*/
 zzzz*
@@ -19,6 +22,7 @@ docs/SUNO_API_CPP_QT6_INTEGRATION_GUIDE.md
 
 # Agent internal notes
 #.agent/
+.agent/notes/
 #.backup_graveyard/
 logs/
 scratch/
