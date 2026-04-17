@@ -52,9 +52,13 @@ public:
     // Fetch specific project clips
     void fetchProject(const std::string& projectId, int page = 1);
 
+    // Generate new song
+    void generate(const std::string& prompt, const std::string& tags, bool makeInstrumental = false);
+
     // Signals
     Signal<const std::vector<SunoClip>&> libraryFetched;
     Signal<const std::vector<SunoProject>&> projectsFetched;
+    Signal<const std::vector<SunoClip>&> generationStarted; // returned clips with pending status
     Signal<std::string, std::string> alignedLyricsFetched; // clipId, json
     Signal<std::string, std::string> wavConversionReady; // clipId, wavUrl
     Signal<std::string> tokenChanged; // New token
