@@ -1,6 +1,5 @@
 #include "audio/AudioAnalyzer.hpp"
-#include "kiss_fft.h"
-#include "kiss_fftr.h"
+#include "pffft/pffft.h"
 #include "core/Logger.hpp"
 
 #include <array>
@@ -8,9 +7,16 @@
 
 namespace vc {
 
+static PFFFT_Setup* g_pffft_setup = nullptr;
+
 AudioAnalyzer::AudioAnalyzer() {
-    energyHistory_.resize(60, 0.0f); // ~1 second at 60fps
-    // pcmBuffer_ is default-constructed (circular buffer)
+	energyHistory_.resize(60, 0.0f);
+	if (!g_pffft_setup) {
+		g_pffft_setup = pffft_new_setup(FFT_SIZE, PFFFT_REAL);
+		if (!g_pffft_setup) {
+			LOG_ERROR("Failed to initialize PFFFT setup for FFT_SIZE={}", FFT_SIZE);
+		}
+	}
 }
 
 void AudioAnalyzer::reset() {
@@ -67,7 +73,7 @@ AudioSpectrum AudioAnalyzer::analyze(std::span<const vc::f32> samples,
 
     // 3. Perform FFT
     std::array<f32, SPECTRUM_SIZE> currentMagnitudes;
-    performKissFFT(pcmBuffer_, currentMagnitudes);
+	performFFT(pcmBuffer_, currentMagnitudes);
 
     // 4. Smoothing and normalization
     f32 currentEnergy = 0.0f;
@@ -88,30 +94,27 @@ AudioSpectrum AudioAnalyzer::analyze(std::span<const vc::f32> samples,
     return spectrum;
 }
 
-void AudioAnalyzer::performKissFFT(const CircularBuffer<vc::f32, FFT_SIZE>& input,
-                                   std::span<vc::f32> magnitudes) {
-    // Initialize config once
-    static kiss_fftr_cfg cfg =
-            kiss_fftr_alloc(static_cast<int>(FFT_SIZE), 0, nullptr, nullptr);
+void AudioAnalyzer::performFFT(const CircularBuffer<vc::f32, FFT_SIZE>& input,
+		std::span<vc::f32> magnitudes) {
+	if (!g_pffft_setup)
+		return;
 
-    if (!cfg)
-        return;
+	static std::array<f32, FFT_SIZE> work;
+	static std::array<f32, FFT_SIZE> output;
 
-    // Copy circular buffer to contiguous array for FFT
-    std::array<vc::f32, FFT_SIZE> contiguous;
-    for (usize i = 0; i < FFT_SIZE; ++i) {
-        contiguous[i] = input[i];
-    }
+	std::array<f32, FFT_SIZE> contiguous;
+	for (usize i = 0; i < FFT_SIZE; ++i) {
+		contiguous[i] = input[i];
+	}
 
-    std::array<kiss_fft_cpx, FFT_SIZE / 2 + 1> out;
-    kiss_fftr(cfg, contiguous.data(), out.data());
+	pffft_transform_ordered(g_pffft_setup, contiguous.data(), output.data(), work.data(), PFFFT_FORWARD);
 
-    for (usize i = 0; i < SPECTRUM_SIZE; ++i) {
-        // Compute magnitude: sqrt(re^2 + im^2)
-        float mag = std::sqrt(out[i].r * out[i].r + out[i].i * out[i].i);
-        // Normalize by FFT size
-        magnitudes[i] = mag / (FFT_SIZE / 2);
-    }
+	for (usize i = 0; i < SPECTRUM_SIZE; ++i) {
+		f32 re = output[i * 2];
+		f32 im = output[i * 2 + 1];
+		f32 mag = std::sqrt(re * re + im * im);
+		magnitudes[i] = mag / (FFT_SIZE / 2);
+	}
 }
 
 vc::f32 AudioAnalyzer::detectBeat(vc::f32 currentEnergy) {
