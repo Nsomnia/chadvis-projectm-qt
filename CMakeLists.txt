@@ -29,8 +29,9 @@ project(chadvis-projectm-qt VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
-# Disable global Qt automatic features to prevent overhead on dependencies (like kissfft)
+# Disable global Qt automatic features to prevent overhead on dependencies (like pffft)
 set(CMAKE_AUTOMOC OFF)
 set(CMAKE_AUTORCC OFF)
 set(CMAKE_AUTOUIC OFF)
@@ -103,14 +104,17 @@ else()
     )
 endif()
 
-# KissFFT - replace custom FFT implementation
-CPMAddPackage(
-  NAME kissfft
-  GIT_REPOSITORY https://github.com/mborgerding/kissfft.git
-  GIT_TAG 131.1.0
-  VERSION 131.1.0
-  OPTIONS "KISS_FFT_STATIC ON" "KISS_FFT_DATATYPE=float" "KISS_FFT_USE_ALLOCA ON"
+# PFFFT - High-performance SIMD FFT (replaces kissfft)
+# Uses FetchContent for clean CMake integration (no RPATH issues)
+include(FetchContent)
+FetchContent_Declare(
+	pffft
+	GIT_REPOSITORY https://github.com/marton78/pffft.git
+	GIT_TAG master
 )
+set(PFFFT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(PFFFT_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(pffft)
 
 # moodycamel::ReaderWriterQueue - Lock-free SPSC queue for audio
 CPMAddPackage(
@@ -437,11 +441,8 @@ elseif(CPM_tomlplusplus)
     list(APPEND CPM_LIBS CPM_tomlplusplus)
 endif()
 
-if(TARGET kissfft::kissfft)
-    list(APPEND CPM_LIBS kissfft::kissfft)
-elseif(CPM_kissfft)
-    list(APPEND CPM_LIBS CPM_kissfft)
-endif()
+# PFFFT library linkage
+list(APPEND CPM_LIBS PFFFT::PFFFT)
 
 # Define libraries
 add_library(project_lib STATIC

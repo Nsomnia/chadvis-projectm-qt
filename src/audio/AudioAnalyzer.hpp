@@ -87,8 +87,8 @@ public:
     void reset();
 
 private:
-    void performKissFFT(const CircularBuffer<vc::f32, FFT_SIZE>& input,
-                        std::span<vc::f32> magnitudes);
+	void performFFT(const CircularBuffer<vc::f32, FFT_SIZE>& input,
+		std::span<vc::f32> magnitudes);
     vc::f32 detectBeat(vc::f32 currentEnergy);
 
     // Circular buffer for O(1) push/pop (fixes O(N) vector erase)
