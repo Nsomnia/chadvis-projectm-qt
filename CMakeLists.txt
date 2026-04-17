@@ -26,7 +26,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "" FORCE)
 project(chadvis-projectm-qt VERSION 1.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
@@ -246,8 +246,6 @@ set(AUDIO_SOURCES
   src/audio/Playlist.cpp
   src/audio/MediaMetadata.hpp
   src/audio/MediaMetadata.cpp
-  src/audio/FFmpegAudioSource.hpp
-  src/audio/FFmpegAudioSource.cpp
 )
 
 set(VISUALIZER_SOURCES

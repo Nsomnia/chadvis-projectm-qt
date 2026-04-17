@@ -1,15 +1,15 @@
 /**
- * @file main.qml
- * @brief Root QML file for ChadVis modern GUI
- *
- * Main application window with:
- * - ProjectM visualizer canvas (central)
- * - Accordion sidebar (collapsible panels)
- * - Top bar (window controls)
- * - Status bar (playback info)
- *
- * @version 1.0.0
- */
+* @file main.qml
+* @brief Root QML file for ChadVis modern GUI
+*
+* Main application window with:
+* - ProjectM visualizer canvas (central - full screen by default)
+* - Drawer-based sidebar (hamburger menu style)
+* - Top ToolBar header with controls
+* - Status bar footer (playback info)
+*
+* @version 2.0.0 - Pseudo-Mobile Desktop Layout
+*/
 
 import QtQuick
 import QtQuick.Layouts
@@ -42,142 +42,357 @@ ApplicationWindow {
     background: Rectangle { color: Theme.background }
 
     // ═══════════════════════════════════════════════════════════
-    // MAIN LAYOUT
+    // HEADER TOOLBAR
     // ═══════════════════════════════════════════════════════════
 
-    RowLayout {
-        anchors.fill: parent
-        spacing: 0
+    header: ToolBar {
+        id: headerToolBar
 
-        // ─────────────────────────────────────────────────────────
-        // ACCORDION SIDEBAR
-        // ─────────────────────────────────────────────────────────
-
-        Rectangle {
-            id: sidebar
-
-            Layout.preferredWidth: sidebarExpanded ? Theme.sidebarExpandedWidth : Theme.sidebarCollapsedWidth
-            Layout.fillHeight: true
-
+        implicitHeight: Theme.topBarHeight
+        background: Rectangle {
             color: Theme.surface
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 1
+                color: Theme.border
+            }
+        }
 
-            property bool sidebarExpanded: true
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.spacingSmall
+            anchors.rightMargin: Theme.spacingSmall
+            spacing: Theme.spacingSmall
 
-            Behavior on Layout.preferredWidth {
-                NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.OutCubic }
+            // Hamburger menu button
+            AppButton {
+                icon: "qrc:/qt/qml/ChadVis/resources/icons/expand.svg"
+                flat: true
+                implicitWidth: Theme.iconLarge + Theme.spacingSmall
+                implicitHeight: Theme.iconLarge
+                radius: Theme.radiusSmall
+                onClicked: sidebarDrawer.open()
+                ToolTip.visible: hovered
+                ToolTip.text: "Open menu"
+                ToolTip.delay: 500
             }
 
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 0
+            // Current track info
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Theme.topBarHeight - Theme.spacingSmall
+                color: "transparent"
+                clip: true
 
-                // Sidebar header
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.topBarHeight
-                    color: Theme.backgroundAlt
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.spacingSmall
+                    spacing: Theme.spacingSmall
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: Theme.spacingSmall
-                        anchors.rightMargin: Theme.spacingSmall
+                    // Play/Pause indicator
+                    Rectangle {
+                        Layout.preferredWidth: Theme.iconSmall
+                        Layout.preferredHeight: Theme.iconSmall
+                        radius: width / 2
+                        color: AudioBridge.isPlaying ? Theme.success : Theme.textDisabled
 
-                        Text {
-                            text: "ChadVis"
-                            color: Theme.accent
-                            font: Theme.fontSubtitle
-                            visible: sidebar.sidebarExpanded
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        AppButton {
-                            icon: sidebar.sidebarExpanded ? "qrc:/qt/qml/ChadVis/resources/icons/collapse.svg" : "qrc:/qt/qml/ChadVis/resources/icons/expand.svg"
-                            flat: true
-                            implicitWidth: 28
-                            implicitHeight: 28
-                            radius: Theme.radiusSmall
-                            onClicked: sidebar.sidebarExpanded = !sidebar.sidebarExpanded
+                        SequentialAnimation on opacity {
+                            running: AudioBridge.isPlaying
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 0.5; duration: 800 }
+                            NumberAnimation { to: 1.0; duration: 800 }
                         }
                     }
-                }
 
-                // Accordion panels
-                AccordionContainer {
-                    id: accordionContainer
+                    // Track title
+                    Text {
+                        Layout.fillWidth: true
+                        text: AudioBridge.currentTrack.title || "No Track Selected"
+                        color: Theme.textPrimary
+                        font: Theme.fontSubtitle
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                    }
 
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.margins: Theme.spacingTiny
-
-                    expandedPanel: "playback"
-
-panels: [
-            {
-                id: "playback",
-                title: "Playback",
-                icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playback.svg",
-                expandedHeight: 280,
-                component: playbackPanelComponent
-            },
-            {
-                id: "playlist",
-                title: "Library",
-                icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playlist.svg",
-                expandedHeight: 300,
-                component: playlistPanelComponent
-            },
-            {
-                id: "presets",
-                title: "Presets",
-                icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/presets.svg",
-                expandedHeight: 350,
-                component: presetsPanelComponent
-            },
-            {
-                id: "lyrics",
-                title: "Lyrics",
-                icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/lyrics.svg",
-                expandedHeight: 300,
-                component: lyricsPanelComponent
-            },
-            {
-                id: "suno",
-                title: "Suno",
-                icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/suno.svg",
-                expandedHeight: 400,
-                component: sunoPanelComponent
-            },
-            {
-                id: "overlay",
-                title: "Overlay",
-                icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/overlay.svg",
-                expandedHeight: 300,
-                component: overlayPanelComponent
-            },
-            {
-                id: "recording",
-                title: "Recording",
-                icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/recording.svg",
-                expandedHeight: 350,
-                component: recordingPanelComponent
-            }
-        ]
+                    // Artist
+                    Text {
+                        visible: AudioBridge.currentTrack.artist !== ""
+                        text: AudioBridge.currentTrack.artist ? "• " + AudioBridge.currentTrack.artist : ""
+                        color: Theme.textSecondary
+                        font: Theme.fontBody
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                    }
                 }
             }
 
-            // Component definitions for lazy loading
-            Component {
-                id: playbackPanelComponent
-                PlaybackPanel {}
+            // Recording indicator (in header when active)
+            Rectangle {
+                visible: RecordingBridge.isRecording
+                implicitWidth: recordingHeaderRow.implicitWidth + Theme.spacingMedium
+                implicitHeight: 28
+                radius: Theme.radiusSmall
+                color: Theme.recording
+
+                RowLayout {
+                    id: recordingHeaderRow
+                    anchors.centerIn: parent
+                    spacing: Theme.spacingSmall
+
+                    Rectangle {
+                        width: 8
+                        height: 8
+                        radius: 4
+                        color: Theme.textPrimary
+
+                        SequentialAnimation on opacity {
+                            running: RecordingBridge.isRecording
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 0.3; duration: 500 }
+                            NumberAnimation { to: 1.0; duration: 500 }
+                        }
+                    }
+
+                    Text {
+                        text: "REC"
+                        color: Theme.textPrimary
+                        font: Theme.fontCaption
+                        font.weight: Font.Bold
+                    }
+                }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // FOOTER STATUS BAR
+    // ═══════════════════════════════════════════════════════════
+
+    footer: ToolBar {
+        id: footerStatusBar
+
+        implicitHeight: Theme.statusBarHeight
+        background: Rectangle {
+            color: Theme.surface
+            Rectangle {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 1
+                color: Theme.border
+            }
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.spacingSmall
+            anchors.rightMargin: Theme.spacingSmall
+
+            Text {
+                text: AudioBridge.isPlaying ? "▶ Playing" : "⏹ Stopped"
+                color: Theme.textSecondary
+                font: Theme.fontCaption
             }
 
-            Component {
-                id: playlistPanelComponent
-                PlaylistPanel {}
+            Item { Layout.fillWidth: true }
+
+            Text {
+                text: (PresetBridge.currentPreset && PresetBridge.currentPreset.name) ? PresetBridge.currentPreset.name : "No Preset"
+                color: Theme.textSecondary
+                font: Theme.fontCaption
+                elide: Text.ElideRight
+                Layout.maximumWidth: 200
             }
 
-Component {
+            Rectangle {
+                width: 1
+                height: Theme.statusBarHeight - 8
+                color: Theme.border
+            }
+
+            Text {
+                text: "v1.0.0 • I use Arch btw"
+                color: Theme.textSecondary
+                font: Theme.fontCaption
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // CENTRAL VISUALIZER AREA (MAXIMUM REAL ESTATE)
+    // ═══════════════════════════════════════════════════════════
+
+    Item {
+        anchors.fill: parent
+
+        WindowContainer {
+            id: visualizerContainer
+            anchors.fill: parent
+            window: VisualizerBridge.visualizerWindow
+            visible: VisualizerBridge.visualizerWindow !== null
+        }
+
+        Column {
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottomMargin: Theme.spacingLarge + Theme.statusBarHeight
+            spacing: Theme.spacingSmall
+
+            Text {
+                text: "ProjectM v4 • " + (AudioBridge.isPlaying ? "Playing" : "Ready")
+                color: Theme.onBackground
+                font: Theme.fontCaption
+                opacity: 0.5
+            }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "transparent"
+            border.color: Theme.border
+            border.width: 1
+            visible: !RecordingBridge.isRecording
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // DRAWER SIDEBAR (HAMBURGER MENU STYLE)
+    // ═══════════════════════════════════════════════════════════
+
+    Drawer {
+        id: sidebarDrawer
+
+        edge: Qt.LeftEdge
+        width: Math.min(Theme.sidebarExpandedWidth, mainWindow.width * 0.85)
+        height: mainWindow.height
+
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: Theme.surface
+            Rectangle {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 1
+                color: Theme.border
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 0
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Theme.topBarHeight
+                color: Theme.backgroundAlt
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.spacingSmall
+                    anchors.rightMargin: Theme.spacingSmall
+
+                    Text {
+                        text: "ChadVis"
+                        color: Theme.accent
+                        font: Theme.fontSubtitle
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    AppButton {
+                        icon: "qrc:/qt/qml/ChadVis/resources/icons/clear.svg"
+                        flat: true
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        radius: Theme.radiusSmall
+                        onClicked: sidebarDrawer.close()
+                    }
+                }
+            }
+
+            AccordionContainer {
+                id: accordionContainer
+
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: Theme.spacingTiny
+
+                expandedPanel: "playback"
+
+                panels: [
+                    {
+                        id: "playback",
+                        title: "Playback",
+                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playback.svg",
+                        expandedHeight: 280,
+                        component: playbackPanelComponent
+                    },
+                    {
+                        id: "playlist",
+                        title: "Library",
+                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playlist.svg",
+                        expandedHeight: 300,
+                        component: playlistPanelComponent
+                    },
+                    {
+                        id: "presets",
+                        title: "Presets",
+                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/presets.svg",
+                        expandedHeight: 350,
+                        component: presetsPanelComponent
+                    },
+                    {
+                        id: "lyrics",
+                        title: "Lyrics",
+                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/lyrics.svg",
+                        expandedHeight: 300,
+                        component: lyricsPanelComponent
+                    },
+                    {
+                        id: "suno",
+                        title: "Suno",
+                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/suno.svg",
+                        expandedHeight: 400,
+                        component: sunoPanelComponent
+                    },
+                    {
+                        id: "overlay",
+                        title: "Overlay",
+                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/overlay.svg",
+                        expandedHeight: 300,
+                        component: overlayPanelComponent
+                    },
+                    {
+                        id: "recording",
+                        title: "Recording",
+                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/recording.svg",
+                        expandedHeight: 350,
+                        component: recordingPanelComponent
+                    }
+                ]
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // COMPONENT DEFINITIONS FOR LAZY LOADING
+    // ═══════════════════════════════════════════════════════════
+
+    Component {
+        id: playbackPanelComponent
+        PlaybackPanel {}
+    }
+
+    Component {
+        id: playlistPanelComponent
+        PlaylistPanel {}
+    }
+
+    Component {
         id: presetsPanelComponent
         PresetsPanel {}
     }
@@ -201,132 +416,9 @@ Component {
         id: recordingPanelComponent
         RecordingPanel {}
     }
-}
-
-// ─────────────────────────────────────────────────────────
-// VISUALIZER AREA
-// ─────────────────────────────────────────────────────────
-
-Item {
-Layout.fillWidth: true
-Layout.fillHeight: true
-
-// Embed VisualizerWindow using WindowContainer (Qt 6.7+)
-WindowContainer {
-id: visualizerContainer
-anchors.fill: parent
-window: VisualizerBridge.visualizerWindow
-visible: VisualizerBridge.visualizerWindow !== null
-}
-
-// Visualizer info overlay
-	Column {
-	    anchors.bottom: parent.bottom
-	    anchors.horizontalCenter: parent.horizontalCenter
-	    anchors.bottomMargin: Theme.spacingLarge
-	    spacing: Theme.spacingSmall
-
-	    Text {
-	        text: (PresetBridge.currentPreset && PresetBridge.currentPreset.name) ? PresetBridge.currentPreset.name : "No Preset Selected"
-	        color: Theme.onBackground
-	        font: Theme.fontCaption
-	        opacity: 0.7
-	        visible: AudioBridge.isPlaying
-	    }
-
-	    Text {
-	        text: "ProjectM v4 • " + (AudioBridge.isPlaying ? "Playing" : "Ready")
-	        color: Theme.onBackground
-	        font: Theme.fontCaption
-	        opacity: 0.5
-	    }
-	}
-
-	// Border overlay
-	Rectangle {
-	    anchors.fill: parent
-	    color: "transparent"
-	    border.color: Theme.border
-	    border.width: 1
-	    radius: Theme.radiusMedium
-	    visible: !RecordingBridge.isRecording
-	}
-
-	// Recording indicator
-	Rectangle {
-	    anchors.top: parent.top
-	    anchors.right: parent.right
-	    anchors.margins: Theme.spacingMedium
-	    width: recordingIndicatorRow.implicitWidth + Theme.spacingMedium
-	    height: 32
-	    radius: Theme.radiusMedium
-	    color: Theme.recording
-	    visible: RecordingBridge.isRecording
-
-	    RowLayout {
-	        id: recordingIndicatorRow
-	        anchors.centerIn: parent
-	        spacing: Theme.spacingSmall
-
-	        Rectangle {
-	            width: 10
-	            height: 10
-	            radius: 5
-	            color: Theme.textPrimary
-
-	            SequentialAnimation on opacity {
-	                running: RecordingBridge.isRecording
-	                loops: Animation.Infinite
-	                NumberAnimation { to: 0.3; duration: 500 }
-	                NumberAnimation { to: 1.0; duration: 500 }
-	            }
-	        }
-
-	        Text {
-	            text: "REC"
-	            color: Theme.textPrimary
-	            font: Theme.fontCaption
-	        }
-	    }
-	}
-    }
-}
 
     // ═══════════════════════════════════════════════════════════
-    // STATUS BAR
-    // ═══════════════════════════════════════════════════════════
-
-    Rectangle {
-        anchors.bottom: parent.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: Theme.statusBarHeight
-
-        color: Theme.surface
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: Theme.spacingSmall
-            anchors.rightMargin: Theme.spacingSmall
-
-            Text {
-                text: AudioBridge.isPlaying ? "▶ Playing" : "⏹ Stopped"
-                color: Theme.textSecondary
-                font: Theme.fontCaption
-            }
-
-            Item { Layout.fillWidth: true }
-
-            Text {
-                text: "v1.0.0 • I use Arch btw"
-                color: Theme.textSecondary
-                font: Theme.fontCaption
-            }
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // KEYBOARD SHORTCUTS
+    // KEYBOARD SHORTCUTS (PRESERVED)
     // ═══════════════════════════════════════════════════════════
 
     Shortcut {
@@ -356,6 +448,17 @@ visible: VisualizerBridge.visualizerWindow !== null
                 RecordingBridge.stopRecording()
             } else {
                 RecordingBridge.startRecording()
+            }
+        }
+    }
+
+    Shortcut {
+        sequence: "M"
+        onActivated: {
+            if (sidebarDrawer.visible) {
+                sidebarDrawer.close()
+            } else {
+                sidebarDrawer.open()
             }
         }
     }

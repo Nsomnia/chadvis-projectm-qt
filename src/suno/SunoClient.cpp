@@ -591,6 +591,44 @@ void SunoClient::fetchProject(const std::string& projectId, int page) {
     // Skeleton implementation
 }
 
+void SunoClient::generate(const std::string& prompt, const std::string& tags, bool makeInstrumental) {
+    if (!isAuthenticated()) {
+        errorOccurred.emitSignal("Not authenticated for generation");
+        return;
+    }
+
+    auto proceed = [this, prompt, tags, makeInstrumental] {
+        QString url = "/generate/v2/";
+        QNetworkRequest req = createAuthenticatedRequest(url);
+        req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+        QJsonObject json;
+        json["prompt"] = QString::fromStdString(prompt);
+        json["tags"] = QString::fromStdString(tags);
+        json["make_instrumental"] = makeInstrumental;
+        json["mv"] = "chirp-v3-5";
+
+        QByteArray data = QJsonDocument(json).toJson();
+        LOG_INFO("SunoClient: Initiating generation with tags '{}'", tags);
+
+        enqueueRequest(req, "POST", data, [this](QNetworkReply* reply) {
+            onLibraryReply(reply);
+        });
+    };
+
+    if (token_.empty() && !cookie_.empty()) {
+        refreshAuthToken([this, proceed](bool success) {
+            if (!success) {
+                errorOccurred.emitSignal("Authentication refresh failed before generation");
+                return;
+            }
+            proceed();
+        });
+    } else {
+        proceed();
+    }
+}
+
 void SunoClient::handleNetworkError(QNetworkReply* reply) {
     std::string err = reply->errorString().toStdString();
     if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() ==
