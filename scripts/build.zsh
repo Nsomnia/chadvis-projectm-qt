@@ -22,6 +22,13 @@ readonly LOG_FILE="${LOG_DIR}/build.log"
 readonly BINARY_NAME="chadvis-projectm-qt"
 readonly BINARY_PATH="${BUILD_DIR}/${BINARY_NAME}"
 
+# Log format options (for agentic workflows)
+# TIMESTAMP_FORMAT: Controls timestamp format in log files
+# - 'iso': ISO 8601 format (2024-01-15T10:30:45)
+# - 'unix': Unix timestamp (1705315845)
+# - 'human': Human-readable (2024-01-15 10:30:45) [default]
+readonly TIMESTAMP_FORMAT="${CHADVIS_LOG_TIMESTAMP:-human}"
+
 # Minimum libprojectm version required
 readonly PROJECTM_MIN_VERSION="4.1.0"
 readonly PROJECTM_GIT_TAG="v4.1.6"  # CPM version to use
@@ -29,17 +36,51 @@ readonly PROJECTM_GIT_TAG="v4.1.6"  # CPM version to use
 # Hardware Detection (Zsh-native, no grep/sed/nproc bloat)
 local cpu_cores
 if (( ${+commands[getconf]} )); then
-    cpu_cores=$(getconf _NPROCESSORS_ONLN)
+	cpu_cores=$(getconf _NPROCESSORS_ONLN)
 else
-    local cpuinfo=(${(f)"$(< /proc/cpuinfo)"})
-    cpu_cores=${#${(M)cpuinfo:#processor*}}
+	local cpuinfo=(${(f)"$(< /proc/cpuinfo)"})
+	cpu_cores=${#${(M)cpuinfo:#processor*}}
 fi
 readonly CPU_CORES=${cpu_cores:-4}
 
+# Detect total memory in MB (for job optimization)
+local total_mem_mb=4096
+if [[ -f /proc/meminfo ]]; then
+	local meminfo_content=${(f)"$(< /proc/meminfo)"}
+	local mem_line=${(M)meminfo_content:#MemTotal*}
+	if [[ -n "$mem_line" ]]; then
+		# Extract number: "MemTotal:       3877452 kB" -> 3877452
+		local mem_kb=${${mem_line##*[:space:]}%kB}
+		[[ -n "$mem_kb" && "$mem_kb" == <-> ]] && total_mem_mb=$(( mem_kb / 1024 ))
+	fi
+fi
+readonly TOTAL_MEM_MB=${total_mem_mb}
+
+# Optimize jobs based on CPU and memory
+# For 2-core systems with <8GB RAM, use 1 job to avoid OOM
+# For 4+ cores with 8GB+, use cores-1 for safety
+# Rule: ~2GB RAM per compile job needed for C++
+local optimal_jobs
+if (( CPU_CORES <= 2 )); then
+# Potato mode: 1 job, system is too constrained
+optimal_jobs=1
+elif (( TOTAL_MEM_MB < 4096 )); then
+# Low memory: 1 job regardless of cores
+optimal_jobs=1
+elif (( TOTAL_MEM_MB < 8192 )); then
+# Medium memory: half cores
+optimal_jobs=$(( CPU_CORES / 2 ))
+optimal_jobs=$(( optimal_jobs < 1 ? 1 : optimal_jobs ))
+else
+# Good memory: cores - 1 (leave 1 for system)
+optimal_jobs=$(( CPU_CORES - 1 ))
+fi
+readonly OPTIMAL_JOBS=${optimal_jobs}
+
 local cpu_model="Unknown Chad CPU"
 if [[ -f /proc/cpuinfo ]]; then
-    local model_line=${(M)${(f)"$(< /proc/cpuinfo)"}:#model name*}
-    cpu_model=${model_line#*: }
+	local model_line=${(M)${(f)"$(< /proc/cpuinfo)"}:#model name*}
+	cpu_model=${model_line#*: }
 fi
 readonly CPU_MODEL=${cpu_model}
 
@@ -66,16 +107,71 @@ readonly ICON_CHAD="${C_CYAN}󰭹${C_RESET}"
 # ─── Helper Functions ───────────────────────────────────────────────────────
 
 log() {
-    local type=$1
-    local msg=$2
-    case $type in
-        info)  print -P "${ICON_INFO} ${msg}" ;;
-        ok)    print -P "${ICON_OK} ${msg}" ;;
-        warn)  print -P "${ICON_WARN} ${msg}" ;;
-        error) print -P "${ICON_ERROR} ${C_BOLD}${msg}${C_RESET}" >&2 ;;
-        header) print -P "\n${C_CYAN}═══ ${C_BOLD}${msg}${C_RESET}${C_CYAN} ═══${C_RESET}" ;;
-        chad)  print -P "${ICON_CHAD} ${C_CYAN}${C_BOLD}${msg}${C_RESET}" ;;
-    esac
+	local type=$1
+	local msg=$2
+	case $type in
+		info) print -P "${ICON_INFO} ${msg}" ;;
+		ok) print -P "${ICON_OK} ${msg}" ;;
+		warn) print -P "${ICON_WARN} ${msg}" ;;
+		error) print -P "${ICON_ERROR} ${C_BOLD}${msg}${C_RESET}" >&2 ;;
+		header) print -P "\n${C_CYAN}═══ ${C_BOLD}${msg}${C_RESET}${C_CYAN} ═══${C_RESET}" ;;
+		chad) print -P "${ICON_CHAD} ${C_CYAN}${C_BOLD}${msg}${C_RESET}" ;;
+	esac
+}
+
+# Extract and display errors/warnings from log file for agentic workflows
+# Usage: extract_build_errors <log_file> [count]
+# Outputs structured format: ERROR: <file>:<line>: <message>
+#                             WARNING: <file>:<line>: <message>
+extract_build_errors() {
+	local log_file="$1"
+	local count="${2:-20}"
+
+	[[ -f "$log_file" ]] || return 1
+
+	# Extract CMake/Compiler errors and warnings with context
+	# Patterns: error:, warning:, Error:, Warning:, ERROR:, WARNING:
+	# Also catch CMake errors like "CMake Error at"
+	local -a errors=()
+	local -a warnings=()
+
+	# Read log and categorize
+	local line content
+	while IFS= read -r line; do
+		# Skip timestamp prefix if present [YYYY-MM-DD HH:MM:SS]
+		content="${line#\[*\] }"
+
+		# Check for errors (case-insensitive check using lowercase conversion)
+		local lc_content="${(L)content}"
+		if [[ "$lc_content" == *error:* || "$lc_content" == *cmake\ error* || "$lc_content" == *fatal\ error* || "$lc_content" == *undefined\ reference* ]]; then
+			errors+=("$content")
+		# Check for warnings (case-insensitive)
+		elif [[ "$lc_content" == *warning:* || "$lc_content" == *note:* ]]; then
+			warnings+=("$content")
+		fi
+	done < "$log_file"
+
+	# Output summary for agentic parsing
+	if (( ${#errors[@]} > 0 )); then
+		print -P "\n${ICON_ERROR} ${C_RED}${C_BOLD}ERRORS (${#errors[@]}):${C_RESET}"
+		local i=0
+		for line in "${errors[@]}"; do
+			print "${C_RED}ERROR:${C_RESET} $line"
+			(( i++ >= count )) && break
+		done
+	fi
+
+	if (( ${#warnings[@]} > 0 )); then
+		print -P "\n${ICON_WARN} ${C_YELLOW}${C_BOLD}WARNINGS (${#warnings[@]}):${C_RESET}"
+		local i=0
+		for line in "${warnings[@]}"; do
+			print "${C_YELLOW}WARNING:${C_RESET} $line"
+			(( i++ >= count )) && break
+		done
+	fi
+
+	# Return non-zero if errors found (for scripting)
+	(( ${#errors[@]} == 0 ))
 }
 
 # Compare two version strings (returns 0 if v1 >= v2, 1 otherwise)
@@ -175,25 +271,114 @@ human_size() {
 }
 
 # Run command with output to both console and log file
-# Usage: run_logged <log_file> <command> [args...]
+# Usage: run_logged [--clear] <log_file> <command> [args...]
+# Captures BOTH stdout AND stderr completely, preserving order and colors
+# Environment: CHADVIS_LOG_TIMESTAMP controls timestamp format in logs
+# - 'human': Human-readable (2024-01-15 10:30:45) [default]
+# - 'iso': ISO 8601 format (2024-01-15T10:30:45)
+# - 'unix': Unix timestamp (1705315845)
+# - 'none': No timestamp (raw output)
+#
+# Options:
+# --clear Clear the log file before writing (default: append)
+# --header Add a section header to the log before output
 run_logged() {
-    local log_file="$1"
-    shift
-    
-    # Clear log file BEFORE running command
-    : > "$log_file"
-    
-    # Run command with unbuffered output to both console and log
-    # stdbuf -oL -eL makes stdout and stderr line-buffered for immediate display
-    # Use && sync to ensure log is written if process exits quickly
-    if (( ${+commands[stdbuf]} )); then
-        stdbuf -oL -eL "$@" 2>&1 | tee -a "$log_file" && sync
-    else
-        "$@" 2>&1 | tee -a "$log_file" && sync
-    fi
-    
-    # Return the exit status of the command (not tee)
-    return $pipestatus[1]
+	local clear_log=false
+	local add_header=false
+
+	# Parse options
+	while [[ "$1" == --clear || "$1" == --header ]]; do
+		case "$1" in
+			--clear) clear_log=true; shift ;;
+			--header) add_header=true; shift ;;
+		esac
+	done
+
+	local log_file="$1"
+	shift
+
+	# Ensure log directory exists
+	mkdir -p "$(dirname "$log_file")" 2>/dev/null || true
+
+	# Clear log file if requested (only for first command in sequence)
+	if [[ "$clear_log" == true ]]; then
+		: > "$log_file"
+	fi
+
+	# Add header if requested
+	if [[ "$add_header" == true ]]; then
+		local header_ts
+		case "${TIMESTAMP_FORMAT:-human}" in
+			iso) header_ts=$(strftime '%Y-%m-%dT%H:%M:%S') ;;
+			unix) header_ts=$(strftime '%s') ;;
+			human) header_ts=$(strftime '%Y-%m-%d %H:%M:%S') ;;
+			none) header_ts="" ;;
+			*) header_ts=$(strftime '%Y-%m-%d %H:%M:%S') ;;
+		esac
+		local cmd_str="$*"
+		if [[ -n "$header_ts" ]]; then
+			printf '\n[%s] ═══ Running: %s ═══\n\n' "$header_ts" "$cmd_str" >> "$log_file"
+		else
+			printf '\n═══ Running: %s ═══\n\n' "$cmd_str" >> "$log_file"
+		fi
+	fi
+
+	# Use a simple tee-based approach - robust and works everywhere
+	# We use a temp file to add timestamps while tee handles console output
+	local raw_output=$(mktemp --tmpdir="${TMPDIR:-/tmp}" chadvis-XXXXXX.log)
+	local exit_status=0
+
+	# Run command, capture all output (stdout + stderr) to temp file and console
+	# Use unbuffer to preserve colors if available, otherwise direct
+	if (( ${+commands[unbuffer]} )); then
+		unbuffer "$@" 2>&1 | tee "$raw_output"
+		exit_status=${pipestatus[1]}
+	else
+		"$@" 2>&1 | tee "$raw_output"
+		exit_status=${pipestatus[1]}
+	fi
+
+	# Add timestamps to log file based on TIMESTAMP_FORMAT
+	local ts_prefix=""
+	case "${TIMESTAMP_FORMAT:-human}" in
+		iso)
+			# ISO 8601 timestamps
+			while IFS= read -r line; do
+				ts_prefix=$(strftime '%Y-%m-%dT%H:%M:%S')
+				printf '[%s] %s\n' "$ts_prefix" "$line"
+			done < "$raw_output" >> "$log_file"
+		;;
+		unix)
+			# Unix timestamps
+			while IFS= read -r line; do
+				ts_prefix=$(strftime '%s')
+				printf '[%s] %s\n' "$ts_prefix" "$line"
+			done < "$raw_output" >> "$log_file"
+		;;
+		human)
+			# Human-readable timestamps
+			while IFS= read -r line; do
+				ts_prefix=$(strftime '%Y-%m-%d %H:%M:%S')
+				printf '[%s] %s\n' "$ts_prefix" "$line"
+			done < "$raw_output" >> "$log_file"
+		;;
+		none)
+			# No timestamps - raw output
+			cat "$raw_output" >> "$log_file"
+		;;
+		*)
+			# Default to human-readable
+			while IFS= read -r line; do
+				ts_prefix=$(strftime '%Y-%m-%d %H:%M:%S')
+				printf '[%s] %s\n' "$ts_prefix" "$line"
+			done < "$raw_output" >> "$log_file"
+		;;
+	esac
+
+	# Cleanup temp file
+	rm -f "$raw_output"
+
+	return $exit_status
 }
 
 show_help() {
@@ -239,7 +424,8 @@ BUILD_TYPE="Release"
 [[ -n "${opts[(i)-d]}" || -n "${opts[(i)--debug]}" ]] && BUILD_TYPE="Debug"
 [[ -n "${opts[(i)-r]}" || -n "${opts[(i)--release]}" ]] && BUILD_TYPE="Release"
 
-JOBS=${opts[-j]:-${opts[--jobs]:-$CPU_CORES}}
+# Use optimal jobs by default, but allow override
+JOBS=${opts[-j]:-${opts[--jobs]:-$OPTIMAL_JOBS}}
 CLEAN_FIRST=false
 [[ -n "${opts[(i)-c]}" || -n "${opts[(i)--clean]}" ]] && CLEAN_FIRST=true
 
@@ -454,12 +640,13 @@ cmd_build() {
         return 1 
     }
 
-    log header "Building ChadVis"
-    log_kv "CPU" "$CPU_MODEL"
-    log_kv "Cores" "$CPU_CORES"
-    log_kv "Type" "$BUILD_TYPE"
-    log_kv "Jobs" "$JOBS"
-    log_kv "Log" "$LOG_FILE"
+	log header "Building ChadVis"
+	log_kv "CPU" "$CPU_MODEL"
+	log_kv "Cores" "$CPU_CORES"
+	log_kv "Memory" "${TOTAL_MEM_MB}MB"
+	log_kv "Type" "$BUILD_TYPE"
+	log_kv "Jobs" "$JOBS (optimal: $OPTIMAL_JOBS)"
+	log_kv "Log" "$LOG_FILE"
 
     if [[ "$CLEAN_FIRST" == true ]]; then
         cmd_clean
@@ -467,19 +654,28 @@ cmd_build() {
 
     mkdir -p "$BUILD_DIR"
 
-    log info "Configuring with CMake..."
-    log info "Output: Console + $LOG_FILE"
-    
-    # Build CMake arguments 
-    local cmake_args=(
-        -G Ninja
-        -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
-	-DCMAKE_CXX_COMPILER_LAUNCHER=sccache
-	-DCMAKE_CXX_FLAGS="-O0 -g"
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-        -S "$PROJECT_ROOT"
-        -B "$BUILD_DIR"
-    )
+	log info "Configuring with CMake..."
+	log info "Output: Console + $LOG_FILE"
+
+	# Build CMake arguments
+	# Optimize flags based on build type
+	local cmake_cxx_flags=""
+	if [[ "$BUILD_TYPE" == "Debug" ]]; then
+		cmake_cxx_flags="-O0 -g"
+	else
+		# Release: Use -O2 for faster compilation than -O3, with LTO for size
+		cmake_cxx_flags="-O2"
+	fi
+
+	local cmake_args=(
+		-G Ninja
+		-DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+		-DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+		-DCMAKE_CXX_FLAGS="$cmake_cxx_flags"
+		-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+		-S "$PROJECT_ROOT"
+		-B "$BUILD_DIR"
+	)
     
     # Pass CPM preference to CMake if set (check environment variable set by cmd_check_deps)
     if [[ -n "${CHADVIS_CPM_PROJECTM:-}" ]]; then
@@ -487,31 +683,26 @@ cmd_build() {
         cmake_args+=(-DCHADVIS_FORCE_CPM_PROJECTM=ON)
     fi
     
-    # Run cmake with output to console and log file
-    if ! run_logged "$LOG_FILE" cmake "${cmake_args[@]}"; then
-        
-        log error "CMake configuration failed!"
-        log info "Check $LOG_FILE for full details."
-        log info "Last 10 lines of error:"
-        tail -n 10 "$LOG_FILE" | while read line; do
-            print -P "${C_RED}  │${C_RESET} $line"
-        done
-        return 1
-    fi
+	# Run cmake with output to console and log file
+	# Clear log at start and add header for this build step
+	if ! run_logged --clear --header "$LOG_FILE" cmake "${cmake_args[@]}"; then
+		log error "CMake configuration failed!"
+		log info "Check $LOG_FILE for full details."
+		extract_build_errors "$LOG_FILE" 10
+		return 1
+	fi
 
     log info "Compiling with Ninja ($JOBS jobs)..."
     log info "Output: Console + $LOG_FILE"
     
-    # Run ninja with output to console and log file
-    if ! run_logged "$LOG_FILE" ninja -C "$BUILD_DIR" -j "$JOBS"; then
-        log error "Compilation failed!"
-        log info "Check $LOG_FILE for full details."
-        log info "Last 20 lines of error:"
-        tail -n 20 "$LOG_FILE" | while read line; do
-            print -P "${C_RED}  │${C_RESET} $line"
-        done
-        return 1
-    fi
+	# Run ninja with output to console and log file
+	# Append to existing log and add header for this build step
+	if ! run_logged --header "$LOG_FILE" ninja -C "$BUILD_DIR" -j "$JOBS"; then
+		log error "Compilation failed!"
+		log info "Check $LOG_FILE for full details."
+		extract_build_errors "$LOG_FILE" 20
+		return 1
+	fi
 
     local end_time=$EPOCHSECONDS
     local duration=$(( end_time - start_time ))
@@ -544,7 +735,7 @@ cmd_clean() {
 cmd_install() {
     log header "Installing"
     log info "Running installation (might need sudo)..."
-    if ! run_logged "$LOG_FILE" sudo ninja -C "$BUILD_DIR" install; then
+    if ! run_logged --header "$LOG_FILE" sudo ninja -C "$BUILD_DIR" install; then
         log error "Installation failed!"
         log info "Check $LOG_FILE for full details."
         return 1
@@ -568,7 +759,7 @@ cmd_test() {
     fi
     # Assuming tests are built into build/tests/
     if [[ -d "$BUILD_DIR/tests" ]]; then
-        run_logged "$LOG_FILE" ctest --test-dir "$BUILD_DIR" --output-on-failure
+        run_logged --header "$LOG_FILE" ctest --test-dir "$BUILD_DIR" --output-on-failure
     else
         log warn "No tests found. Did you build them?"
     fi
