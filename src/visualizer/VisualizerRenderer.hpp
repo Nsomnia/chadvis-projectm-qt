@@ -34,7 +34,6 @@
 
 namespace vc {
 
-class OverlayEngine;
 class AudioQueue;
 
 } // namespace vc
@@ -80,10 +79,6 @@ AudioQueue* audioQueue() const { return audioQueue_; }
         return renderTarget_;
     }
 
-    // Overlay
-    void setOverlayEngine(OverlayEngine* engine) {
-        overlayEngine_ = engine;
-    }
 
     // Signals (proxied via parent window or custom)
     Signal<std::vector<u8>, u32, u32, i64> frameCaptured;
@@ -97,9 +92,7 @@ private:
     void captureAsync();
 
     pm::Bridge projectM_;
-    OverlayEngine* overlayEngine_{nullptr};
     RenderTarget renderTarget_;
-    RenderTarget overlayTarget_;
 
     std::unique_ptr<QOpenGLShaderProgram> blitProgram_;
     QOpenGLVertexArrayObject blitVao_;

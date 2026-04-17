@@ -18,6 +18,10 @@ AudioEngine::AudioEngine() : QObject(nullptr) {
 
 AudioEngine::~AudioEngine() {
     stop();
+    stopAnalyzer_ = true;
+    if (analyzerThread_.joinable()) {
+        analyzerThread_.join();
+    }
 }
 
 Result<void> AudioEngine::init() {
@@ -79,6 +83,9 @@ Result<void> AudioEngine::init() {
         bufferReceivedSinceLastCheck_ = false;
     });
     bufferCheckTimer_.start(1000);
+
+    stopAnalyzer_ = false;
+    analyzerThread_ = std::jthread(&AudioEngine::analyzerWorker, this);
 
     LOG_INFO("Audio engine initialized with QAudioBufferOutput");
     return Result<void>::ok();
@@ -238,6 +245,22 @@ void AudioEngine::saveLastPlaylist() {
     playlist_.saveM3U(path);
 }
 
+void AudioEngine::analyzerWorker() {
+    std::vector<f32> localBuffer;
+    localBuffer.resize(2048);
+    
+    while (!stopAnalyzer_) {
+        u32 popped = audioQueue_.popAnaBatch(localBuffer.data(), localBuffer.size() / 2);
+        
+        if (popped > 0) {
+            currentSpectrum_ = analyzer_.analyze(std::span(localBuffer.data(), popped * 2), 48000, 2);
+            emit spectrumUpdated(currentSpectrum_);
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    }
+}
+
 void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     if (!buffer.isValid())
         return;
@@ -269,12 +292,8 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
         }
     }
 
-    // Analyze audio (lock-free, no mutex needed)
-    currentSpectrum_ = analyzer_.analyze(scratchBuffer_, sampleRate, channels);
-    emit spectrumUpdated(currentSpectrum_);
-
     // Push to lock-free audio queues (no mutex)
-    audioQueue_.pushBoth(scratchBuffer_.data(),
+    audioQueue_.pushAll(scratchBuffer_.data(),
                          static_cast<u32>(frameCount),
                          static_cast<u32>(channels),
                          static_cast<u32>(sampleRate));

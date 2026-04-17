@@ -47,10 +47,13 @@ void VisualizerWindow::exposeEvent(QExposeEvent* event) {
 }
 
 void VisualizerWindow::resizeEvent(QResizeEvent* event) {
-    Q_UNUSED(event);
     if (!initialized_)
         initialize();
     if (context_ && context_->makeCurrent(this)) {
+        if (isExposed()) {
+            renderer_->render(width(), height(), true);
+            context_->swapBuffers(this);
+        }
         context_->doneCurrent();
     }
 }
@@ -131,10 +134,6 @@ void VisualizerWindow::updateSettings() {
                 vizConfig.aspectCorrection);
         context_->doneCurrent();
     }
-}
-
-void VisualizerWindow::setOverlayEngine(OverlayEngine* engine) {
-    renderer_->setOverlayEngine(engine);
 }
 
 void VisualizerWindow::nextPreset(bool smooth) {

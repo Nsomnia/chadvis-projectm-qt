@@ -2,7 +2,7 @@
 #include "audio/AudioEngine.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
-#include "overlay/OverlayEngine.hpp"
+
 #include "suno/SunoAuthManager.hpp"
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoDownloader.hpp"
@@ -18,15 +18,14 @@
 #include <QJsonObject>
 #include <regex>
 #include <fstream>
+#include <iterator>
 
 namespace vc::suno {
 
 SunoController::SunoController(AudioEngine* audioEngine,
-	OverlayEngine* overlayEngine,
 	QObject* parent)
 : QObject(parent),
 	audioEngine_(audioEngine),
-	overlayEngine_(overlayEngine),
 	client_(std::make_unique<SunoClient>(nullptr)) {
     
     // Initialize Database
@@ -223,7 +222,7 @@ const std::vector<SunoClip>& SunoController::clips() const {
 }
 
 void SunoController::setDebugLyrics(const AlignedLyrics& lyrics) {
-    overlayEngine_->setAlignedLyrics(lyrics);
+    // overlayEngine_->setAlignedLyrics(lyrics); // Legacy CPU overlay removed
 }
 
 void SunoController::onTrackChanged() {
@@ -231,7 +230,6 @@ void SunoController::onTrackChanged() {
 
     auto item = audioEngine_->playlist().currentItem();
     if (!item) {
-        overlayEngine_->setAlignedLyrics({});
         return;
     }
 
@@ -242,21 +240,18 @@ void SunoController::onTrackChanged() {
     if (!clipId.empty()) lastRequestedClipId_ = clipId;
 
     if (clipId.empty()) {
-        overlayEngine_->setAlignedLyrics({});
         return;
     }
 
     // 1. Direct Cache
     auto cacheIt = directLyricsCache_.find(clipId);
     if (cacheIt != directLyricsCache_.end()) {
-        overlayEngine_->setAlignedLyrics(cacheIt->second);
         return;
     }
 
     // 2. Database
     auto res = getLyrics(clipId);
     if (res.isOk()) {
-        overlayEngine_->setAlignedLyrics(res.value());
         directLyricsCache_[clipId] = res.value();
         return;
     }
@@ -277,7 +272,6 @@ void SunoController::onTrackChanged() {
                 auto lyrics = LyricsAligner::parseSrt(content);
                 if (!lyrics.empty()) {
                     lyrics.songId = clipId;
-                    overlayEngine_->setAlignedLyrics(lyrics);
                     directLyricsCache_[clipId] = lyrics;
                     return;
                 }
@@ -300,7 +294,6 @@ void SunoController::onTrackChanged() {
                     line.end_s = words.back().end_s;
                     for (const auto& w : words) line.text += w.word + " ";
                     lyrics.lines.push_back(line);
-                    overlayEngine_->setAlignedLyrics(lyrics);
                     directLyricsCache_[clipId] = lyrics;
                     return;
                 }
@@ -312,8 +305,6 @@ void SunoController::onTrackChanged() {
     if (client_->isAuthenticated()) {
         lyricsManager_->queueLyricsFetch(clipId);
     }
-    
-    overlayEngine_->setAlignedLyrics({});
 }
 
 std::optional<AlignedLyrics> SunoController::parseAndDisplayLyrics(
@@ -339,7 +330,6 @@ std::optional<AlignedLyrics> SunoController::parseAndDisplayLyrics(
 
     AlignedLyrics lyrics = LyricsAligner::align(prompt, words);
     lyrics.songId = clipId;
-    overlayEngine_->setAlignedLyrics(lyrics);
     return lyrics;
 }
 

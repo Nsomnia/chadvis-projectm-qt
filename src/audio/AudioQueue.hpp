@@ -48,8 +48,10 @@ public:
     explicit AudioQueue(u32 capacity = DEFAULT_QUEUE_CAPACITY)
         : vizQueue_(capacity)
         , recQueue_(capacity)
+        , anaQueue_(capacity)
         , vizDropCount_(0)
         , recDropCount_(0)
+        , anaDropCount_(0)
         , totalPushed_(0)
     {}
 
@@ -87,13 +89,14 @@ public:
         return pushInternal(recQueue_, recDropCount_, data, frames, channels, sampleRate);
     }
 
-    /**
-     * Push to both queues atomically (convenience method).
-     * Used when both visualizer and recorder need the same data.
-     */
-    void pushBoth(const float* data, u32 frames, u32 channels, u32 sampleRate) {
+    bool pushAna(const float* data, u32 frames, u32 channels, u32 sampleRate) {
+        return pushInternal(anaQueue_, anaDropCount_, data, frames, channels, sampleRate);
+    }
+
+    void pushAll(const float* data, u32 frames, u32 channels, u32 sampleRate) {
         pushViz(data, frames, channels, sampleRate);
         pushRec(data, frames, channels, sampleRate);
+        pushAna(data, frames, channels, sampleRate);
     }
 
     // ========================================================================
@@ -139,6 +142,10 @@ public:
         return popBatchInternal(recQueue_, buffer, maxFrames);
     }
 
+    u32 popAnaBatch(float* buffer, u32 maxFrames) {
+        return popBatchInternal(anaQueue_, buffer, maxFrames);
+    }
+
     // ========================================================================
     // Metrics (thread-safe via atomics)
     // ========================================================================
@@ -180,6 +187,7 @@ public:
         AudioFrame frame;
         while (vizQueue_.try_dequeue(frame)) {}
         while (recQueue_.try_dequeue(frame)) {}
+        while (anaQueue_.try_dequeue(frame)) {}
     }
 
 private:
@@ -187,9 +195,11 @@ private:
 
     Queue vizQueue_;
     Queue recQueue_;
+    Queue anaQueue_;
 
     std::atomic<u64> vizDropCount_;
     std::atomic<u64> recDropCount_;
+    std::atomic<u64> anaDropCount_;
     std::atomic<u64> totalPushed_;
 
     bool pushInternal(Queue& queue, std::atomic<u64>& dropCount,

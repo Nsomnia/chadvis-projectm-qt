@@ -30,7 +30,6 @@
 namespace vc {
 
 class AudioEngine;
-class OverlayEngine;
 class VideoRecorder;
 class PresetManager;
 class LyricsSync;
@@ -103,9 +102,6 @@ public:
 	AudioEngine* audioEngine() const {
 		return audioEngine_.get();
 	}
-	OverlayEngine* overlayEngine() const {
-		return overlayEngine_.get();
-	}
 	VideoRecorder* videoRecorder() const {
 		return videoRecorder_.get();
 	}
@@ -134,7 +130,6 @@ private:
 	// Components - Declaration order matters for destruction (reverse order)
 	// We want engines to stay alive until the UI is gone
 	std::unique_ptr<AudioEngine> audioEngine_;
-	std::unique_ptr<OverlayEngine> overlayEngine_;
 	std::unique_ptr<VideoRecorder> videoRecorder_;
 
 // QML-specific managers

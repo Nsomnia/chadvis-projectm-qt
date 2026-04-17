@@ -16,6 +16,8 @@
 #include <QMediaPlayer>
 #include <QTimer>
 #include <memory>
+#include <thread>
+#include <atomic>
 
 namespace vc {
 
@@ -95,6 +97,7 @@ private slots:
 private:
     void loadCurrentTrack();
     void processAudioBuffer(const QAudioBuffer& buffer);
+    void analyzerWorker();
     void onFFmpegPCM(const std::vector<f32>& pcm,
                      u32 frames,
                      u32 channels,
@@ -106,6 +109,9 @@ private:
     std::unique_ptr<QMediaPlayer> player_;
     std::unique_ptr<QAudioOutput> audioOutput_;
     std::unique_ptr<QAudioBufferOutput> bufferOutput_;
+
+    std::jthread analyzerThread_;
+    std::atomic<bool> stopAnalyzer_{false};
 
     Playlist playlist_;
     AudioAnalyzer analyzer_;
