@@ -292,19 +292,6 @@ set(SUNO_SOURCES
     src/suno/SunoLyricsManager.cpp
 )
 
-set(OVERLAY_SOURCES
-    src/overlay/TextElement.hpp
-    src/overlay/TextElement.cpp
-    src/overlay/TextAnimator.hpp
-    src/overlay/TextAnimator.cpp
-    src/overlay/OverlayConfig.hpp
-    src/overlay/OverlayConfig.cpp
-    src/overlay/OverlayEngine.hpp
-    src/overlay/OverlayEngine.cpp
-    src/overlay/OverlayRenderer.hpp
-    src/overlay/OverlayRenderer.cpp
-)
-
 set(RECORDER_SOURCES
     src/recorder/EncoderSettings.hpp
     src/recorder/EncoderSettings.cpp
@@ -449,7 +436,6 @@ ${CORE_SOURCES}
 ${AUDIO_SOURCES}
 ${VISUALIZER_SOURCES}
 ${SUNO_SOURCES}
-${OVERLAY_SOURCES}
 ${RECORDER_SOURCES}
 ${LYRICS_SOURCES}
 ${UI_SOURCES}

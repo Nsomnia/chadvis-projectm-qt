@@ -7,7 +7,7 @@
 #include <chrono>
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
-#include "overlay/OverlayEngine.hpp"
+
 
 namespace vc {
 
@@ -53,23 +53,15 @@ void VisualizerRenderer::initialize(u32 width, u32 height) {
         return;
     }
 
-    if (auto result = overlayTarget_.create(width, height, false); !result) {
-        LOG_ERROR("VisualizerRenderer: Failed to create overlay target: {}",
-            result.error().message);
-        return;
-    }
 
     LOG_INFO("VisualizerRenderer: Initialized successfully ({}x{})", width, height);
     initialized_ = true;
 }
 
 void VisualizerRenderer::cleanup() {
-    if (overlayEngine_)
-        overlayEngine_->cleanup();
     destroyPBOs();
     projectM_.shutdown();
     renderTarget_.destroy();
-    overlayTarget_.destroy();
 }
 
 void VisualizerRenderer::render(u32 width, u32 height, bool isExposed) {
@@ -125,8 +117,6 @@ projectM_.engine().renderToTarget(renderTarget_);
 
 if (recording_) {
 renderTarget_.bind();
-if (overlayEngine_)
-overlayEngine_->render(renderW, renderH);
 captureAsync();
 renderTarget_.unbind();
 }
@@ -135,9 +125,6 @@ glViewport(x, y, w, h);
 GLuint tex = renderTarget_.texture();
 if (tex)
 drawTexture(tex, w, h);
-
-if (!recording_ && overlayEngine_)
-overlayEngine_->render(w, h);
 } else {
 glViewport(x, y, w, h);
 glScissor(x, y, w, h);
@@ -155,9 +142,6 @@ glClear(GL_COLOR_BUFFER_BIT);
 glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 }
 glDisable(GL_SCISSOR_TEST);
-
-if (overlayEngine_)
-overlayEngine_->render(w, h);
 }
 }
 

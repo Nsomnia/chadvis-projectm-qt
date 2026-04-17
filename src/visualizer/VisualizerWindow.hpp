@@ -57,7 +57,6 @@ public:
 
     void loadPresetFromManager();
     void updateSettings();
-    void setOverlayEngine(OverlayEngine* engine);
 
     void nextPreset(bool smooth = true);
     void previousPreset(bool smooth = true);

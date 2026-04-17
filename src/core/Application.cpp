@@ -4,7 +4,6 @@
 #include "Config.hpp"
 #include "Logger.hpp"
 #include "audio/AudioEngine.hpp"
-#include "overlay/OverlayEngine.hpp"
 #include "recorder/VideoRecorder.hpp"
 #include "util/FileUtils.hpp"
 #include "util/GLIncludes.hpp"
@@ -54,9 +53,8 @@ Application::~Application() {
 qmlEngine_.reset();
 visualizerWindow_.reset();
 
-videoRecorder_.reset();
-overlayEngine_.reset();
-audioEngine_.reset();
+    videoRecorder_.reset();
+    audioEngine_.reset();
 qapp_.reset();
 
 Logger::shutdown();
@@ -464,9 +462,6 @@ Result<void> Application::init(const AppOptions& opts) {
         return result;
     }
 
-    LOG_DEBUG("Initializing overlay engine...");
-    overlayEngine_ = std::make_unique<OverlayEngine>();
-    overlayEngine_->init();
 
     LOG_DEBUG("Initializing video recorder...");
     videoRecorder_ = std::make_unique<VideoRecorder>();
@@ -496,7 +491,7 @@ lyricsSync_ = std::make_unique<LyricsSync>(audioEngine_.get());
 
 LOG_DEBUG("Initializing Suno controller for QML...");
 sunoController_ = std::make_unique<suno::SunoController>(
-audioEngine_.get(), overlayEngine_.get(), nullptr);
+audioEngine_.get(), nullptr);
 
 qmlEngine_ = std::make_unique<QQmlApplicationEngine>();
 

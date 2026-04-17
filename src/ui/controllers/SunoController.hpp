@@ -16,7 +16,7 @@
 // Forward declarations
 namespace vc {
 class AudioEngine;
-class OverlayEngine;
+
 namespace suno {
 class SunoAuthManager;
 class SunoLibraryManager;
@@ -32,7 +32,6 @@ Q_OBJECT
 
 public:
 	explicit SunoController(AudioEngine* audioEngine,
-		OverlayEngine* overlayEngine,
 		QObject* parent = nullptr);
 	~SunoController() override;
 
@@ -81,7 +80,7 @@ private:
 		const QJsonDocument& doc);
 
 	AudioEngine* audioEngine_;
-	OverlayEngine* overlayEngine_;
+
 	std::unique_ptr<SunoClient> client_;
 	SunoDatabase db_;
 	
