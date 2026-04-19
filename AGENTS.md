@@ -45,7 +45,7 @@
 
 ## [P0] Critical Fixes & Architecture Blockers
 
-- [ ] **Enforce C++23 Standard:** Update `CMakeLists.txt` to require `CXX_STANDARD 23`. Use modern standard library features across the board.
+- [x] **Enforce C++23 Standard:** Update `CMakeLists.txt` to require `CXX_STANDARD 23`. Use modern standard library features across the board. **[2026-04-19]** C++23 enforced and build verified.
 - [ ] **Gut and Rewrite Video Recording Pipeline:** The current recording implementation is non-functional. Completely rip it out. Build a new, versatile FFmpeg pipeline that handles automation, conflict resolution (file locks, name collisions), and allows starting/stopping at any point. **[2026-04-15]** HW accel (NVENC/VAAPI) implemented. AudioQueue wired. Recording path now functional.
 - [-] **Implement QQuickFramebufferObject:** Wrap the `VisualizerRenderer` logic inside a `QQuickFramebufferObject` to ensure QML/RHI compatibility and prevent OpenGL context-collision segfaults. Ensure zero-copy rendering into Qt Quick scenegraph. **[2026-04-15]** `VisualizerQFBO` implemented, render() calls projectM correctly. Needs user testing.
 - [-] **Lock-Free Queues for Audio/ProjectM (Partially Done):** `moodycamel::ReaderWriterQueue` has been implemented in `AudioQueue.hpp`. Ensure `audioMutex_` is removed from audio processing callbacks (`pushAudioSamples`). Avoid priority inversion on real-time audio threads. **[2026-04-15]** AudioQueue wired to VideoRecorderThread for recording.
