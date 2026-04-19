@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 2026-04-19
+
+### Changed
+- **Enforced C++23 Standard**: Updated `CMakeLists.txt` to require `CXX_STANDARD 23` and `CXX_STANDARD_REQUIRED ON`.
+  - Updated documentation to reflect C++23 as the project standard.
+  - Verified build compatibility with GCC on Arch Linux.
+
 ## [Unreleased] - 2026-04-15
 
 ### Added

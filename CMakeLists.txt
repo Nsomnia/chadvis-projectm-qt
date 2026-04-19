@@ -450,7 +450,7 @@ install(FILES resources/icons/chadvis-projectm-qt.svg DESTINATION share/icons/hi
 # CPack for packaging
 set(CPACK_PACKAGE_NAME "chadvis-projectm-qt")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Qt6 projectM v4 visualizer with modern C++20")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Qt6 projectM v4 visualizer with modern C++23")
 include(CPack)
 
 # Tests
