@@ -248,7 +248,7 @@ void AudioEngine::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         LOG_DEBUG("Track ended, playing next");
         
         if (!nextPlayer_->source().isEmpty()) {
-            LOG_INFO("Swapping players for gapless playback");
+            LOG_INFO("Swapping to preloaded player for next track");
             swapPlayers();
             playlist_.next(); 
         } else {

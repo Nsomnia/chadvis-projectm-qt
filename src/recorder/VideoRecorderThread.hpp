@@ -45,6 +45,7 @@ public:
 
     // Thread-safe stats access
     RecordingStats getStats() const;
+    std::string getOutputPath() const { return actualOutputPath_; }
 
 private:
     using TimePoint = std::chrono::steady_clock::time_point;
@@ -57,6 +58,7 @@ private:
 
     VideoRecorder& parent_;
     EncoderSettings settings_;
+    std::string actualOutputPath_;
 
     std::jthread thread_;
     std::atomic<bool> shouldStop_{false};
