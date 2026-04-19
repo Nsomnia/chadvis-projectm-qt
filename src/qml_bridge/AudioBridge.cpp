@@ -6,52 +6,35 @@
 #include "AudioBridge.hpp"
 #include "audio/AudioEngine.hpp"
 #include "audio/MediaMetadata.hpp"
+#include "core/Application.hpp"
 #include <QQmlEngine>
 
 namespace qml_bridge {
 
-vc::AudioEngine* AudioBridge::s_engine = nullptr;
-AudioBridge* AudioBridge::s_instance = nullptr;
-
 AudioBridge::AudioBridge(QObject* parent)
     : QObject(parent)
 {
-    s_instance = this;
-}
+    if (vc::Application::instance()) {
+        s_engine = vc::Application::instance()->audioEngine();
+    }
 
-AudioBridge* AudioBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
-{
-    Q_UNUSED(jsEngine)
-    auto* bridge = new AudioBridge(qmlEngine);
-    QQmlEngine::setObjectOwnership(bridge, QQmlEngine::CppOwnership);
-    return bridge;
-}
+    if (s_engine) {
+        connect(s_engine, &vc::AudioEngine::stateChanged,
+                this, &AudioBridge::onEngineStateChanged, Qt::QueuedConnection);
 
-void AudioBridge::setAudioEngine(vc::AudioEngine* engine)
-{
-    s_engine = engine;
-}
+        connect(s_engine, &vc::AudioEngine::positionChanged,
+                this, &AudioBridge::onEnginePositionChanged, Qt::QueuedConnection);
 
-void AudioBridge::connectSignals()
-{
-    if (!s_engine || !s_instance) return;
+        connect(s_engine, &vc::AudioEngine::durationChanged,
+                this, &AudioBridge::onEngineDurationChanged, Qt::QueuedConnection);
 
-    // Qt queued connections handle thread safety automatically
-    connect(s_engine, &vc::AudioEngine::stateChanged,
-            s_instance, &AudioBridge::onEngineStateChanged, Qt::QueuedConnection);
+        connect(s_engine, &vc::AudioEngine::trackChanged,
+                this, &AudioBridge::onEngineTrackChanged, Qt::QueuedConnection);
 
-    connect(s_engine, &vc::AudioEngine::positionChanged,
-            s_instance, &AudioBridge::onEnginePositionChanged, Qt::QueuedConnection);
-
-    connect(s_engine, &vc::AudioEngine::durationChanged,
-            s_instance, &AudioBridge::onEngineDurationChanged, Qt::QueuedConnection);
-
-    connect(s_engine, &vc::AudioEngine::trackChanged,
-            s_instance, &AudioBridge::onEngineTrackChanged, Qt::QueuedConnection);
-
-    s_instance->volume_ = s_engine->volume();
-    s_instance->position_ = s_engine->position().count();
-    s_instance->duration_ = s_engine->duration().count();
+        volume_ = s_engine->volume();
+        position_ = s_engine->position().count();
+        duration_ = s_engine->duration().count();
+    }
 }
 
 int AudioBridge::playbackState() const

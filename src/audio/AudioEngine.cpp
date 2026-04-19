@@ -35,25 +35,73 @@ Result<void> AudioEngine::init() {
 
     // Create buffer output for visualization
     bufferOutput_ = std::make_unique<QAudioBufferOutput>();
+
+    nextAudioOutput_ = std::make_unique<QAudioOutput>();
+    nextAudioOutput_->setVolume(volume_);
+    nextPlayer_ = std::make_unique<QMediaPlayer>();
+    nextPlayer_->setAudioOutput(nextAudioOutput_.get());
+    nextBufferOutput_ = std::make_unique<QAudioBufferOutput>();
+    nextPlayer_->setAudioBufferOutput(nextBufferOutput_.get());
+
     player_->setAudioBufferOutput(bufferOutput_.get());
 
     // Connect signals
+    // Connect nextPlayer signals
+    connect(nextPlayer_.get(), &QMediaPlayer::playbackStateChanged, this, &AudioEngine::onPlayerStateChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::positionChanged, this, &AudioEngine::onPositionChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::durationChanged, this, &AudioEngine::onDurationChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::errorOccurred, this, &AudioEngine::onErrorOccurred);
+    connect(nextPlayer_.get(), &QMediaPlayer::mediaStatusChanged, this, &AudioEngine::onMediaStatusChanged);
+    connect(nextBufferOutput_.get(), &QAudioBufferOutput::audioBufferReceived, this, &AudioEngine::onAudioBufferReceived);
+
     connect(player_.get(),
             &QMediaPlayer::playbackStateChanged,
             this,
             &AudioEngine::onPlayerStateChanged);
+    // Connect nextPlayer signals
+    connect(nextPlayer_.get(), &QMediaPlayer::playbackStateChanged, this, &AudioEngine::onPlayerStateChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::positionChanged, this, &AudioEngine::onPositionChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::durationChanged, this, &AudioEngine::onDurationChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::errorOccurred, this, &AudioEngine::onErrorOccurred);
+    connect(nextPlayer_.get(), &QMediaPlayer::mediaStatusChanged, this, &AudioEngine::onMediaStatusChanged);
+    connect(nextBufferOutput_.get(), &QAudioBufferOutput::audioBufferReceived, this, &AudioEngine::onAudioBufferReceived);
+
     connect(player_.get(),
             &QMediaPlayer::positionChanged,
             this,
             &AudioEngine::onPositionChanged);
+    // Connect nextPlayer signals
+    connect(nextPlayer_.get(), &QMediaPlayer::playbackStateChanged, this, &AudioEngine::onPlayerStateChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::positionChanged, this, &AudioEngine::onPositionChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::durationChanged, this, &AudioEngine::onDurationChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::errorOccurred, this, &AudioEngine::onErrorOccurred);
+    connect(nextPlayer_.get(), &QMediaPlayer::mediaStatusChanged, this, &AudioEngine::onMediaStatusChanged);
+    connect(nextBufferOutput_.get(), &QAudioBufferOutput::audioBufferReceived, this, &AudioEngine::onAudioBufferReceived);
+
     connect(player_.get(),
             &QMediaPlayer::durationChanged,
             this,
             &AudioEngine::onDurationChanged);
+    // Connect nextPlayer signals
+    connect(nextPlayer_.get(), &QMediaPlayer::playbackStateChanged, this, &AudioEngine::onPlayerStateChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::positionChanged, this, &AudioEngine::onPositionChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::durationChanged, this, &AudioEngine::onDurationChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::errorOccurred, this, &AudioEngine::onErrorOccurred);
+    connect(nextPlayer_.get(), &QMediaPlayer::mediaStatusChanged, this, &AudioEngine::onMediaStatusChanged);
+    connect(nextBufferOutput_.get(), &QAudioBufferOutput::audioBufferReceived, this, &AudioEngine::onAudioBufferReceived);
+
     connect(player_.get(),
             &QMediaPlayer::errorOccurred,
             this,
             &AudioEngine::onErrorOccurred);
+    // Connect nextPlayer signals
+    connect(nextPlayer_.get(), &QMediaPlayer::playbackStateChanged, this, &AudioEngine::onPlayerStateChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::positionChanged, this, &AudioEngine::onPositionChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::durationChanged, this, &AudioEngine::onDurationChanged);
+    connect(nextPlayer_.get(), &QMediaPlayer::errorOccurred, this, &AudioEngine::onErrorOccurred);
+    connect(nextPlayer_.get(), &QMediaPlayer::mediaStatusChanged, this, &AudioEngine::onMediaStatusChanged);
+    connect(nextBufferOutput_.get(), &QAudioBufferOutput::audioBufferReceived, this, &AudioEngine::onAudioBufferReceived);
+
     connect(player_.get(),
             &QMediaPlayer::mediaStatusChanged,
             this,
@@ -156,6 +204,7 @@ Duration AudioEngine::duration() const {
 }
 
 void AudioEngine::onPlayerStateChanged(QMediaPlayer::PlaybackState state) {
+    if (sender() != player_.get()) return;
     PlaybackState oldState = state_;
     switch (state) {
     case QMediaPlayer::StoppedState:
@@ -177,29 +226,41 @@ void AudioEngine::onPlayerStateChanged(QMediaPlayer::PlaybackState state) {
 }
 
 void AudioEngine::onPositionChanged(qint64 position) {
+    if (sender() != player_.get()) return;
 	emit positionChanged(Duration(position));
 }
 
 void AudioEngine::onDurationChanged(qint64 duration) {
+    if (sender() != player_.get()) return;
 	emit durationChanged(Duration(duration));
 }
 
 void AudioEngine::onErrorOccurred(QMediaPlayer::Error err,
 	const QString& errorString) {
+    if (sender() != player_.get()) return;
 	LOG_ERROR("Playback error: {}", errorString.toStdString());
 	emit errorSignal(errorString.toStdString());
 }
 
 void AudioEngine::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
+    if (sender() != player_.get()) return;
     if (status == QMediaPlayer::EndOfMedia && autoPlayNext_) {
         LOG_DEBUG("Track ended, playing next");
-        if (!playlist_.next()) {
-            stop();
+        
+        if (!nextPlayer_->source().isEmpty()) {
+            LOG_INFO("Swapping players for gapless playback");
+            swapPlayers();
+            playlist_.next(); 
+        } else {
+            if (!playlist_.next()) {
+                stop();
+            }
         }
     }
 }
 
 void AudioEngine::onAudioBufferReceived(const QAudioBuffer& buffer) {
+    if (sender() != bufferOutput_.get()) return;
     bufferReceivedSinceLastCheck_ = true;
     LOG_DEBUG("AudioEngine::onAudioBufferReceived: buffer valid={}, frames={}",
               buffer.isValid(),
@@ -213,19 +274,41 @@ void AudioEngine::onPlaylistCurrentChanged(usize index) {
 	play();
 }
 
+void AudioEngine::prepareNextTrack() {
+    const auto* nextItem = playlist_.itemAt(playlist_.currentIndex().value_or(0) + 1);
+    if (!nextItem) return;
+
+    if (nextItem->isRemote) {
+        nextPlayer_->setSource(QUrl(QString::fromStdString(nextItem->url)));
+    } else {
+        nextPlayer_->setSource(QUrl::fromLocalFile(QString::fromStdString(nextItem->path.string())));
+    }
+}
+
+void AudioEngine::swapPlayers() {
+    player_.swap(nextPlayer_);
+    audioOutput_.swap(nextAudioOutput_);
+    bufferOutput_.swap(nextBufferOutput_);
+}
+
 void AudioEngine::loadCurrentTrack() {
     const auto* item = playlist_.currentItem();
     if (!item)
         return;
 
+    QUrl newSource;
     if (item->isRemote) {
-        LOG_INFO("Loading remote track: {}", item->url);
-        player_->setSource(QUrl(QString::fromStdString(item->url)));
+        newSource = QUrl(QString::fromStdString(item->url));
     } else {
-        LOG_INFO("Loading track: {}", item->path.filename().string());
-        player_->setSource(
-                QUrl::fromLocalFile(QString::fromStdString(item->path.string())));
+        newSource = QUrl::fromLocalFile(QString::fromStdString(item->path.string()));
     }
+
+    if (player_->source() != newSource) {
+        LOG_INFO("Loading track: {}", item->path.filename().string());
+        player_->setSource(newSource);
+    }
+    
+    prepareNextTrack();
 }
 
 void AudioEngine::loadLastPlaylist() {

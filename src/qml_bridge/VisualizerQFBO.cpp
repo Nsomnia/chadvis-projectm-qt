@@ -176,6 +176,7 @@ QQuickFramebufferObject::geometryChange(newGeometry, oldGeometry);
 
 if (newGeometry.size() != oldGeometry.size()) {
 updateDimensions();
+dimensionsDirty_.store(true, std::memory_order_release);
 }
 }
 
@@ -230,10 +231,14 @@ void VisualizerQFBORenderer::synchronize(QQuickFramebufferObject* item) {
 auto* qmlItem = static_cast<VisualizerQFBO*>(item);
 if (!qmlItem) return;
 
-width_ = qmlItem->width_.load();
-height_ = qmlItem->height_.load();
-presetIndex_ = qmlItem->presetIndex_.load();
+width_ = qmlItem->width_.load(std::memory_order_relaxed);
+height_ = qmlItem->height_.load(std::memory_order_relaxed);
+presetIndex_ = qmlItem->presetIndex_.load(std::memory_order_relaxed);
 recording_ = qmlItem->isRecording();
+
+if (qmlItem->dimensionsDirty_.exchange(false, std::memory_order_acquire)) {
+    dimensionsDirty_ = true;
+}
 
 if (renderer_ && qmlItem->globalAudioEngine()) {
 renderer_->setAudioQueue(&qmlItem->globalAudioEngine()->audioQueue());
@@ -279,7 +284,10 @@ void VisualizerQFBORenderer::render() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    renderer_->projectM().engine().resize(width_, height_);
+    if (dimensionsDirty_) {
+        renderer_->projectM().engine().resize(width_, height_);
+        dimensionsDirty_ = false;
+    }
     renderer_->projectM().engine().render();
 
     glDisable(GL_SCISSOR_TEST);

@@ -7,6 +7,7 @@
 #include "audio/AudioEngine.hpp"
 #include "audio/Playlist.hpp"
 #include "audio/MediaMetadata.hpp"
+#include "core/Application.hpp"
 #include <QQmlEngine>
 #include <QUrl>
 #include <QFile>
@@ -17,32 +18,18 @@ namespace qml_bridge {
 PlaylistBridge::PlaylistBridge(QObject* parent)
     : QAbstractListModel(parent)
 {
-}
+    if (vc::Application::instance()) {
+        engine_ = vc::Application::instance()->audioEngine();
+    }
+    
+    if (engine_) {
+        connect(engine_, &vc::AudioEngine::trackChanged,
+            this, [this] {
+                QMetaObject::invokeMethod(this, &PlaylistBridge::onPlaylistChanged);
+            }, Qt::QueuedConnection);
 
-PlaylistBridge* PlaylistBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
-{
-    Q_UNUSED(jsEngine)
-    auto* bridge = new PlaylistBridge(qmlEngine);
-    QQmlEngine::setObjectOwnership(bridge, QQmlEngine::CppOwnership);
-    return bridge;
-}
-
-void PlaylistBridge::setAudioEngine(vc::AudioEngine* engine)
-{
-    if (engine_ == engine) return;
-
-    beginResetModel();
-    engine_ = engine;
-    endResetModel();
-
-	if (engine_) {
-		connect(engine_, &vc::AudioEngine::trackChanged,
-			this, [this] {
-				QMetaObject::invokeMethod(this, &PlaylistBridge::onPlaylistChanged);
-			}, Qt::QueuedConnection);
-
-		connect(this, &PlaylistBridge::countChanged, this, &PlaylistBridge::onPlaylistChanged);
-	}
+        connect(this, &PlaylistBridge::countChanged, this, &PlaylistBridge::onPlaylistChanged);
+    }
 }
 
 int PlaylistBridge::rowCount(const QModelIndex& parent) const
