@@ -101,10 +101,12 @@ private:
   AVFramePtr audioFrame_;
   AVPacketPtr packet_;
 
-  i64 videoFrameCount_{0};
-  i64 audioFrameCount_{0};
-
   std::mutex mutex_;
+  u64 videoFrameCount_{0};
+  u64 audioFrameCount_{0};
+
+  int fileLockFd_{-1};
+  std::string currentOutputPath_;
 };
 
 } // namespace vc
