@@ -19,14 +19,14 @@ class ThemeBridge : public QObject {
     QML_SINGLETON
 
     // Colors - Primary palette (Cyan accent)
-    Q_PROPERTY(QColor accent READ accent CONSTANT)
+    Q_PROPERTY(QColor accent READ accent WRITE setAccent NOTIFY accentChanged)
     Q_PROPERTY(QColor accentHover READ accentHover CONSTANT)
     Q_PROPERTY(QColor accentPressed READ accentPressed CONSTANT)
     Q_PROPERTY(QColor accentLight READ accentLight CONSTANT)
     Q_PROPERTY(QColor accentDark READ accentDark CONSTANT)
 
     // Background colors
-    Q_PROPERTY(QColor background READ background CONSTANT)
+    Q_PROPERTY(QColor background READ background WRITE setBackground NOTIFY backgroundChanged)
     Q_PROPERTY(QColor backgroundAlt READ backgroundAlt CONSTANT)
     Q_PROPERTY(QColor surface READ surface CONSTANT)
     Q_PROPERTY(QColor surfaceRaised READ surfaceRaised CONSTANT)
@@ -98,13 +98,15 @@ public:
     static ThemeBridge* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
 
     // Colors
-    QColor accent() const { return "#00bcd4"; }
+    QColor accent() const;
+    void setAccent(const QColor& color);
     QColor accentHover() const { return "#26c6da"; }
     QColor accentPressed() const { return "#0097a7"; }
     QColor accentLight() const { return "#80deea"; }
     QColor accentDark() const { return "#00838f"; }
 
-    QColor background() const { return "#1a1a1a"; }
+    QColor background() const;
+    void setBackground(const QColor& color);
     QColor backgroundAlt() const { return "#1e1e1e"; }
     QColor surface() const { return "#252525"; }
     QColor surfaceRaised() const { return "#2d2d2d"; }
@@ -197,6 +199,10 @@ public:
     Q_INVOKABLE QString formatTime(int ms) const;
     Q_INVOKABLE QColor lighten(const QColor& color, double amount) const;
     Q_INVOKABLE QColor darken(const QColor& color, double amount) const;
+
+signals:
+    void accentChanged();
+    void backgroundChanged();
 
 private:
     explicit ThemeBridge(QObject* parent = nullptr);

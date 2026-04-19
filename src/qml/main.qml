@@ -372,6 +372,13 @@ ApplicationWindow {
                         icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/recording.svg",
                         expandedHeight: 350,
                         component: recordingPanelComponent
+                    },
+                    {
+                        id: "settings",
+                        title: "Settings",
+                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playback.svg",
+                        expandedHeight: 300,
+                        component: settingsPanelComponent
                     }
                 ]
             }
@@ -415,6 +422,11 @@ ApplicationWindow {
     Component {
         id: recordingPanelComponent
         RecordingPanel {}
+    }
+
+    Component {
+        id: settingsPanelComponent
+        SettingsPanel {}
     }
 
     // ═══════════════════════════════════════════════════════════

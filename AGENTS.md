@@ -24,11 +24,11 @@
 
 4. **Agent Workspace:** Agents are encouraged to create supplemental `AGENTS.md` files in any subdirectory to track architectural decisions, diagrams, or persistent memory across work loops.
 
-5. **Branch Focus:** All work on this branch targets the **QML GUI refactor** and **C++23 Modernization**. The previous Qt Widgets codebase is the source of truth for feature parity.
+5. **Branch Focus:** All work on this branch targets the **QML GUI refactor** and **C++23 Modernization**. The previous Qt Widgets codebase is the source of truth for feature parity found under the main branch (as well as in `../chadvis-projectm-qt_main-branch` locally) but this project has evolved and this branh will become the new main master branch when all features are reimplemnted alongside the new ones and changed as well given the power of modern models.
 
-6. **Build System:** Build is slow on the user's system. Prefer to batch changes and let the user compile. Only run `cmake`/`build.sh` for small targeted fixes or when explicitly finishing a task.
+6. **Build System:** build.sh script that calls scripts/build.zsh has been optomized for quick unoptomized builds due to the users system performance.
 
-7. **Destructive Operations:** NEVER use `rm` on critical references. Move outdated files to `.backup_graveyard/` with timestamps instead. See `AGENTS.md` for the full protocol.
+7. **Destructive Operations:** NEVER use `rm` on critical references. Move outdated files to `.backup_graveyard/` with timestamps instead. See `AGENTS.md` for the full protocol or create it if missing which contains only these core drectives.
 
 ---
 
