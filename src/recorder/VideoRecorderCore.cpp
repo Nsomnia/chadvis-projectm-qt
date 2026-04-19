@@ -37,7 +37,10 @@ Result<void> VideoRecorder::start(const EncoderSettings& settings) {
   state_ = RecordingState::Recording;
   stateChanged.emitSignal(state_);
 
-  LOG_INFO("Recording started: {}", settings_.outputPath.string());
+  stats_.currentFile = worker_->getOutputPath();
+  statsUpdated.emitSignal(stats_);
+
+  LOG_INFO("Recording started: {}", stats_.currentFile);
   return Result<void>::ok();
 }
 

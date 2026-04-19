@@ -123,13 +123,14 @@ bool RecordingBridge::startRecording(const QString& outputPath)
     path = QString::fromStdString(settings.outputPath.string());
   }
 
-  outputPath_ = path;
-
   auto result = s_recorder->start(path.toStdString());
   if (!result) {
     emit errorOccurred(QString::fromStdString(result.error().message));
     return false;
   }
+
+  outputPath_ = QString::fromStdString(s_recorder->stats().currentFile);
+  emit outputPathChanged();
 
   auto* audioEngine = qml_bridge::VisualizerItem::globalAudioEngine();
   if (audioEngine) {

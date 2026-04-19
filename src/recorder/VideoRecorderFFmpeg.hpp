@@ -65,6 +65,8 @@ public:
   Result<void> init(const EncoderSettings& settings);
   void cleanup();
 
+  std::string getOutputPath() const { return currentOutputPath_; }
+
   bool encodeVideo(const GrabbedFrame& frame, u64& bytesWritten);
   bool encodeAudio(std::vector<f32>& buffer, u32 channels, u64& bytesWritten);
   void flush(u64& bytesWritten);

@@ -26,11 +26,13 @@ void VideoRecorderThread::start() {
         return;
     }
     
+    actualOutputPath_ = ffmpeg_.getOutputPath();
+    
     // Reset stats atomically
     {
         std::lock_guard<std::mutex> lock(statsMutex_);
         stats_ = RecordingStats{};
-        stats_.currentFile = settings_.outputPath.string();
+        stats_.currentFile = actualOutputPath_;
     }
     
     thread_ = std::jthread([this](std::stop_token st) { threadLoop(st); });
