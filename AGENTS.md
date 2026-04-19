@@ -52,7 +52,7 @@
 - [x] **Window Resizing / Render Dimensions:** Fix the bug where resizing the Qt window fails to properly update the projectM OpenGL render dimensions or framebuffer size.
 - [x] **Modernize QML Registration:** Replace manual `qmlRegisterSingletonType` with Qt 6 declarative macros (`QML_ELEMENT`, `QML_SINGLETON`). Use `qt_add_qml_module` in CMake to enable `qmltc` (QML Type Compiler) for AOT UI compilation. **[2026-04-15]** Added `QML_ELEMENT` to VisualizerItem, VisualizerQFBO. Removed redundant manual registration.
 - [x] **Standardize Signal/Slot Mechanics:** The codebase mixes `Q_OBJECT` with custom `vc::Signal`. Qt's native `signals:` handle thread-safe cross-thread queuing automatically. Remove custom `Signal` for cross-thread emissions. **[2026-04-15]** Verified vc::Signal handlers use QMetaObject::invokeMethod for thread safety.
-- [x] **Reimplement Audio Playlist:** Restore the pre-QML audio playlist functionality with robust, gapless-capable handling of both local audio files and remote HTTP Suno streams.
+- [x] **Reimplement Audio Playlist:** Restore the pre-QML audio playlist functionality with robust handling of both local audio files and remote HTTP Suno streams (Note: true gapless omitted due to QMediaPlayer limitations).
 - [x] **Force Quit Causes SIGSEGV Fault:** Fix the segmentation fault error when force quitting (ctrl+c) via terminal or window manager.
 
 ---

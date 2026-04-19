@@ -4,6 +4,11 @@
 #include <libavcodec/version.h>
 #include <libavutil/opt.h>
 #include "core/Logger.hpp"
+#include <filesystem>
+#include <fmt/core.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/file.h>
 
 #if LIBAVCODEC_VERSION_MAJOR >= 60
 #pragma GCC diagnostic push
@@ -21,9 +26,49 @@ VideoRecorderFFmpeg::~VideoRecorderFFmpeg() {
 Result<void> VideoRecorderFFmpeg::init(const EncoderSettings& settings) {
   int ret;
 
+  std::filesystem::path originalPath(settings.outputPath);
+  std::filesystem::path finalPath = originalPath;
+  std::string base = originalPath.stem().string();
+  std::string ext = originalPath.extension().string();
+  std::filesystem::path dir = originalPath.parent_path();
+  
+  if (!std::filesystem::exists(dir)) {
+    std::filesystem::create_directories(dir);
+  }
+
+  int counter = 1;
+  int fd = -1;
+
+  while (true) {
+    // Attempt to open with O_CREAT | O_EXCL to prevent race conditions
+    fd = ::open(finalPath.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0644);
+    if (fd >= 0) {
+      // Successfully created a unique file, now lock it
+      if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+        ::close(fd);
+        return Result<void>::err(fmt::format("Failed to lock file {}: {}", finalPath.string(), strerror(errno)));
+      }
+      break;
+    }
+    
+    if (errno != EEXIST) {
+      return Result<void>::err(fmt::format("Failed to resolve file conflict for {}: {}", finalPath.string(), strerror(errno)));
+    }
+    
+    // File exists, try next suffix
+    finalPath = dir / fmt::format("{}_{:02d}{}", base, counter, ext);
+    counter++;
+    if (counter > 999) {
+      return Result<void>::err("Failed to find a non-colliding filename after 999 attempts.");
+    }
+  }
+  
+  fileLockFd_ = fd;
+  currentOutputPath_ = finalPath.string();
+
   AVFormatContext* ctx = nullptr;
   ret = avformat_alloc_output_context2(
-    &ctx, nullptr, nullptr, settings.outputPath.c_str());
+    &ctx, nullptr, nullptr, currentOutputPath_.c_str());
   formatCtx_.reset(ctx);
 
   if (ret < 0 || !formatCtx_) {
@@ -47,7 +92,7 @@ Result<void> VideoRecorderFFmpeg::init(const EncoderSettings& settings) {
 
   if (!(formatCtx_->oformat->flags & AVFMT_NOFILE)) {
     ret = avio_open(
-      &formatCtx_->pb, settings.outputPath.c_str(), AVIO_FLAG_WRITE);
+      &formatCtx_->pb, currentOutputPath_.c_str(), AVIO_FLAG_WRITE);
     if (ret < 0) {
       return Result<void>::err("Failed to open output file: " +
         ffmpegError(ret));
@@ -67,8 +112,9 @@ Result<void> VideoRecorderFFmpeg::init(const EncoderSettings& settings) {
     return Result<void>::err("Failed to allocate packet");
   }
 
-  LOG_DEBUG("FFmpeg initialized successfully (HW accel: {})",
-    settings.video.isHardwareAccelerated() ? "yes" : "no");
+  LOG_DEBUG("FFmpeg initialized successfully (HW accel: {}, file: {})",
+    settings.video.isHardwareAccelerated() ? "yes" : "no",
+    currentOutputPath_);
   return Result<void>::ok();
 }
 
@@ -92,6 +138,12 @@ void VideoRecorderFFmpeg::cleanup() {
     audioStream_ = nullptr;
     videoFrameCount_ = 0;
     audioFrameCount_ = 0;
+
+    if (fileLockFd_ >= 0) {
+        flock(fileLockFd_, LOCK_UN);
+        ::close(fileLockFd_);
+        fileLockFd_ = -1;
+    }
 }
 
 bool VideoRecorderFFmpeg::encodeVideo(const GrabbedFrame& frame,
