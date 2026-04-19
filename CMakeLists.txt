@@ -26,6 +26,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "" FORCE)
 project(chadvis-projectm-qt VERSION 1.0.0 LANGUAGES CXX)
 
+# C++23 is REQUIRED. Modern standard library features (std::expected, std::ranges, std::jthread, etc.)
+# must be utilized across the codebase for maximum performance and safety.
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -105,16 +107,14 @@ else()
 endif()
 
 # PFFFT - High-performance SIMD FFT (replaces kissfft)
-# Uses FetchContent for clean CMake integration (no RPATH issues)
-include(FetchContent)
-FetchContent_Declare(
-	pffft
-	GIT_REPOSITORY https://github.com/marton78/pffft.git
-	GIT_TAG master
+CPMAddPackage(
+    NAME pffft
+    GIT_REPOSITORY https://github.com/marton78/pffft.git
+    GIT_TAG master
+    OPTIONS
+        "PFFFT_BUILD_TESTS OFF"
+        "PFFFT_BUILD_BENCHMARKS OFF"
 )
-set(PFFFT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(PFFFT_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(pffft)
 
 # moodycamel::ReaderWriterQueue - Lock-free SPSC queue for audio
 CPMAddPackage(
@@ -135,75 +135,8 @@ find_package(glm REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale libswresample)
 
 # ProjectM - Intelligent detection with CPM fallback
-# Option to force CPM build (useful when system version is outdated)
-option(CHADVIS_FORCE_CPM_PROJECTM "Force building libprojectm from source via CPM" OFF)
-
-if(CHADVIS_FORCE_CPM_PROJECTM)
-    message(STATUS "CHADVIS_FORCE_CPM_PROJECTM is set, skipping system libprojectm detection")
-else()
-    # 1. Try modern CMake config (installed by libprojectm on Arch)
-    find_package(projectM4 CONFIG QUIET)
-    if(projectM4_FOUND)
-        message(STATUS "Found ProjectM v4 via CMake config")
-        set(PROJECTM_LIBRARIES libprojectM::projectM libprojectM::playlist)
-        set(PROJECTM_FOUND TRUE)
-    endif()
-
-    # 2. Try pkg-config
-    if(NOT PROJECTM_FOUND)
-        pkg_check_modules(PROJECTM projectM-4 QUIET)
-        if(NOT PROJECTM_FOUND)
-            pkg_check_modules(PROJECTM libprojectM QUIET)
-        endif()
-    endif()
-
-    # 3. Try manual search (fallback for custom installs)
-    if(NOT PROJECTM_FOUND)
-        find_path(PROJECTM_INCLUDE_DIRS projectM-4/projectM.h
-            HINTS /usr/local/include /usr/include
-        )
-        find_library(PROJECTM_LIBRARIES projectM-4
-            HINTS /usr/local/lib /usr/lib
-        )
-        if(PROJECTM_INCLUDE_DIRS AND PROJECTM_LIBRARIES)
-            set(PROJECTM_FOUND TRUE)
-            message(STATUS "Found ProjectM v4 manually: ${PROJECTM_LIBRARIES}")
-        endif()
-    endif()
-endif()
-
-# 4. CPM Fallback - Build from source
-if(NOT PROJECTM_FOUND)
-    if(CHADVIS_FORCE_CPM_PROJECTM)
-        message(STATUS "Building libprojectm from source via CPM (forced)...")
-    else()
-        message(STATUS "ProjectM v4 not found on system. Building from source via CPM...")
-    endif()
-    CPMAddPackage(
-        NAME projectm
-        GIT_REPOSITORY https://github.com/projectM-visualizer/projectm.git
-        GIT_TAG v4.1.6
-        OPTIONS 
-            "BUILD_PROJECTM_STATIC ON"
-            "BUILD_PROJECTM_SAMPLES OFF"
-            "BUILD_PROJECTM_TESTS OFF"
-            "BUILD_PROJECTM_JACK OFF"
-            "BUILD_PROJECTM_PULSE OFF"
-            "BUILD_PROJECTM_SDL OFF"
-            "BUILD_PROJECTM_QT OFF"
-    )
-    if(projectm_FOUND)
-        set(PROJECTM_LIBRARIES projectM projectM-playlist)
-        set(PROJECTM_FOUND TRUE)
-        # Ensure headers are found with projectM-4 prefix if built as subproject
-        # ProjectM v4 headers are usually in <src>/src/libprojectM
-        target_include_directories(projectM INTERFACE $<BUILD_INTERFACE:${projectm_SOURCE_DIR}/src/libprojectM>)
-    endif()
-endif()
-
-if(NOT PROJECTM_FOUND)
-    message(FATAL_ERROR "ProjectM v4 could not be found or built. Please install libprojectm (Arch) or build from source.")
-endif()
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+include(FindProjectM4)
 
 # Fix pkg-config bug: -l:projectM-4 -> -lprojectM-4
 if(PROJECTM_LDFLAGS)
