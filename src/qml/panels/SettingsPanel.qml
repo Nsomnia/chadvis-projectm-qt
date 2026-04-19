@@ -150,7 +150,8 @@ ColumnLayout {
             
             onClicked: {
                 console.log("Apply color settings: Accent=" + accentColorInput.text + " Bg=" + bgColorInput.text)
-                // TODO: Wire to C++ Settings/ThemeManager
+                Theme.accent = accentColorInput.text
+                Theme.background = bgColorInput.text
             }
         }
     }

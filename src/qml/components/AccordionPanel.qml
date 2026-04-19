@@ -96,6 +96,8 @@ Item {
                 Image {
                     visible: root.icon !== ""
                     source: root.icon
+                    sourceSize.width: Theme.iconMedium
+                    sourceSize.height: Theme.iconMedium
                     Layout.preferredWidth: Theme.iconMedium
                     Layout.preferredHeight: Theme.iconMedium
                     fillMode: Image.PreserveAspectFit

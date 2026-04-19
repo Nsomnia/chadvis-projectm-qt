@@ -145,6 +145,8 @@ ColumnLayout {
 
 	Image {
 		source: delegate.isFavorite ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : (delegate.isBlacklisted ? "qrc:/qt/qml/ChadVis/resources/icons/blacklist.svg" : "")
+		sourceSize.width: 24
+		sourceSize.height: 24
 		Layout.preferredWidth: visible ? 24 : 0
 		Layout.preferredHeight: visible ? 24 : 0
 		fillMode: Image.PreserveAspectFit
@@ -186,6 +188,8 @@ ColumnLayout {
 			model: 5
 			Image {
 				source: index < delegate.rating ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : "qrc:/qt/qml/ChadVis/resources/icons/star-outline.svg"
+				sourceSize.width: 16
+				sourceSize.height: 16
 				Layout.preferredWidth: 16
 				Layout.preferredHeight: 16
 				fillMode: Image.PreserveAspectFit

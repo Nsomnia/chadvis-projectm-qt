@@ -303,6 +303,7 @@ set(QML_SOURCES
     src/qml/panels/SunoPanel.qml
     src/qml/panels/OverlayPanel.qml
     src/qml/panels/RecordingPanel.qml
+    src/qml/panels/SettingsPanel.qml
 )
 
 # Common include directories

@@ -158,6 +158,8 @@ ColumnLayout {
 
             Image {
                 source: modelData ? modelData.imageUrl : ""
+                sourceSize.width: 64
+                sourceSize.height: 64
                 Layout.preferredWidth: 64
                 Layout.preferredHeight: 64
                 fillMode: Image.PreserveAspectCrop
