@@ -52,10 +52,6 @@ public:
     explicit AudioBridge(QObject* parent = nullptr);
     ~AudioBridge() override = default;
 
-    static AudioBridge* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
-    static void setAudioEngine(vc::AudioEngine* engine);
-    static void connectSignals();
-
     int playbackState() const;
     qint64 position() const;
     qint64 duration() const;
@@ -92,8 +88,7 @@ private slots:
     void onEngineTrackChanged();
 
 private:
-    static vc::AudioEngine* s_engine;
-    static AudioBridge* s_instance;
+    vc::AudioEngine* s_engine{nullptr};
 
     QVariantMap currentTrack_;
     qint64 position_{0};

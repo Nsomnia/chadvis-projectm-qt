@@ -61,10 +61,6 @@ public:
     explicit PlaylistBridge(QObject* parent = nullptr);
     ~PlaylistBridge() override = default;
 
-    static PlaylistBridge* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
-
-    void setAudioEngine(vc::AudioEngine* engine);
-
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;

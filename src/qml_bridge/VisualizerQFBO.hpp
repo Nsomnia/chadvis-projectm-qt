@@ -96,6 +96,7 @@ std::atomic<int> presetIndex_{0};
 std::atomic<bool> recording_{false};
 std::atomic<bool> fullscreen_{false};
 std::atomic<bool> audioConnected_{false};
+std::atomic<bool> dimensionsDirty_{false};
 
 std::atomic<vc::u32> width_{0};
 std::atomic<vc::u32> height_{0};
@@ -123,6 +124,7 @@ private:
     vc::u32 height_{0};
     int presetIndex_{0};
     bool recording_{false};
+    bool dimensionsDirty_{false};
 };
 
 } // namespace qml_bridge

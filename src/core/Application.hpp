@@ -105,6 +105,18 @@ public:
 	VideoRecorder* videoRecorder() const {
 		return videoRecorder_.get();
 	}
+    PresetManager* presetManager() const {
+        return presetManager_.get();
+    }
+    LyricsSync* lyricsSync() const {
+        return lyricsSync_.get();
+    }
+    suno::SunoController* sunoController() const {
+        return sunoController_.get();
+    }
+    VisualizerWindow* visualizerWindow() const {
+        return visualizerWindow_.get();
+    }
 
 	// Global instance
 	static Application* instance() {

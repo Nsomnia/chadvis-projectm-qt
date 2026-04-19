@@ -10,10 +10,11 @@
 #include "visualizer/RatingManager.hpp"
 #include "visualizer/PresetManager.hpp"
 #include "visualizer/VisualizerWindow.hpp"
+#include "qml_bridge/VisualizerItem.hpp"
+#include "qml_bridge/VisualizerQFBO.hpp"
 #include "lyrics/LyricsSync.hpp"
 #include "ui/controllers/SunoController.hpp"
 #include "suno/SunoModels.hpp"
-#include "qml_bridge/BridgeRegistration.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -35,16 +36,18 @@ Application::Application(int& argc, char** argv) : argc_(argc), argv_(argv) {
 instance_ = this;
 
 std::signal(SIGINT, [](int) {
-if (instance_) {
-instance_->quit();
-}
-std::exit(0);
+    if (instance_) {
+        QMetaObject::invokeMethod(instance_, "quit", Qt::QueuedConnection);
+    } else {
+        std::exit(0);
+    }
 });
 std::signal(SIGTERM, [](int) {
-if (instance_) {
-instance_->quit();
-}
-std::exit(0);
+    if (instance_) {
+        QMetaObject::invokeMethod(instance_, "quit", Qt::QueuedConnection);
+    } else {
+        std::exit(0);
+    }
 });
 }
 
@@ -502,10 +505,15 @@ LOG_ERROR("QML Warning: {} (line {})", warning.description().toStdString(), warn
 }
 });
 
-// Register QML bridges with all managers - now includes VisualizerWindow
-qml_bridge::registerBridges(qmlEngine_.get(),
-audioEngine_.get(), visualizerWindow_.get(), videoRecorder_.get(),
-presetManager_.get(), lyricsSync_.get(), sunoController_.get());
+// Setup static global items for QML custom types
+if (audioEngine_) {
+    qml_bridge::VisualizerItem::setGlobalAudioEngine(audioEngine_.get());
+    qml_bridge::VisualizerQFBO::setGlobalAudioEngine(audioEngine_.get());
+}
+if (presetManager_) {
+    qml_bridge::VisualizerItem::setGlobalPresetManager(presetManager_.get());
+    qml_bridge::VisualizerQFBO::setGlobalPresetManager(presetManager_.get());
+}
 
 	// Load main QML file from Qt resource system
 	const QUrl url(QStringLiteral("qrc:/qt/qml/ChadVis/src/qml/main.qml"));
@@ -567,9 +575,6 @@ void Application::quit() {
     if (qapp_) {
         qapp_->quit();
     }
-    
-    // Hard exit to ensure all threads (FFmpeg, etc) are terminated if they hang
-    std::exit(0);
 }
 
 void Application::reloadTheme() {

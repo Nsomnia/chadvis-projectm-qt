@@ -96,6 +96,8 @@ private slots:
 
 private:
     void loadCurrentTrack();
+    void prepareNextTrack();
+    void swapPlayers();
     void processAudioBuffer(const QAudioBuffer& buffer);
     void analyzerWorker();
     void onFFmpegPCM(const std::vector<f32>& pcm,
@@ -109,6 +111,10 @@ private:
     std::unique_ptr<QMediaPlayer> player_;
     std::unique_ptr<QAudioOutput> audioOutput_;
     std::unique_ptr<QAudioBufferOutput> bufferOutput_;
+
+    std::unique_ptr<QMediaPlayer> nextPlayer_;
+    std::unique_ptr<QAudioOutput> nextAudioOutput_;
+    std::unique_ptr<QAudioBufferOutput> nextBufferOutput_;
 
     std::jthread analyzerThread_;
     std::atomic<bool> stopAnalyzer_{false};

@@ -37,20 +37,12 @@ void registerBridges(QQmlApplicationEngine* engine,
     vc::LyricsSync* lyricsSync,
     vc::suno::SunoController* sunoController)
 {
-    s_audioBridge = AudioBridge::create(engine, nullptr);
-    s_playlistBridge = PlaylistBridge::create(engine, nullptr);
     s_visualizerBridge = VisualizerBridge::create(engine, nullptr);
     s_recordingBridge = RecordingBridge::create(engine, nullptr);
     s_presetBridge = PresetBridge::create(engine, nullptr);
     s_lyricsBridge = LyricsBridge::create(engine, nullptr);
     s_sunoBridge = SunoBridge::create(engine, nullptr);
     s_themeBridge = ThemeBridge::create(engine, nullptr);
-
-    if (audioEngine) {
-        s_audioBridge->setAudioEngine(audioEngine);
-        s_audioBridge->connectSignals();
-        s_playlistBridge->setAudioEngine(audioEngine);
-    }
 
     if (visualizer) {
         s_visualizerBridge->setVisualizerWindow(visualizer);
