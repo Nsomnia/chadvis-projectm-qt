@@ -26,5 +26,12 @@
 - [ ] Profile Support: Save/Load different UI themes and visualizer preset banks
 - [ ] Persistent state for all sidebar toggles and view modes
 
+## C++23 Agent Guidelines
+- **Standard**: C++23 is the required minimum.
+- **I/O**: Prefer `std::println` over `std::cout` or `printf`.
+- **Error Handling**: Prefer `std::expected` for error handling (utilize monadic `.and_then()`/`.or_else()`).
+- **Optionals**: Use monadic operations for `std::optional`.
+- **Target**: Arch Linux (latest GCC/Clang) is the primary development target.
+
 ---
 *Date: 2026-04-21*
