@@ -210,6 +210,8 @@ set(SUNO_SOURCES
     src/suno/SunoModels.hpp
     src/suno/SunoClient.hpp
     src/suno/SunoClient.cpp
+    src/suno/SunoOrchestrator.hpp
+    src/suno/SunoOrchestrator.cpp
     src/suno/SunoDatabase.hpp
     src/suno/SunoDatabase.cpp
     src/suno/LyricAligner.hpp

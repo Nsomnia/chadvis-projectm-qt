@@ -1,16 +1,10 @@
 #pragma once
-
 #include <QObject>
 #include <QtQml/qqml.h>
 #include <QVariantList>
 #include <QVariantMap>
 
-namespace vc {
-namespace suno {
-class SunoController;
-struct SunoClip;
-}
-}
+namespace vc::suno { class SunoClient; }
 
 namespace qml_bridge {
 
@@ -19,71 +13,46 @@ class SunoBridge : public QObject {
     QML_ELEMENT
     QML_SINGLETON
 
-    Q_PROPERTY(bool isAuthenticated READ isAuthenticated NOTIFY authChanged)
-    Q_PROPERTY(bool isSyncing READ isSyncing NOTIFY syncingChanged)
-    Q_PROPERTY(QVariantList clips READ clips NOTIFY clipsChanged)
-    Q_PROPERTY(int totalClips READ totalClips NOTIFY clipsChanged)
-    Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusChanged)
-    Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
-    Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchResultsChanged)
+    Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
+    Q_PROPERTY(QVariantList library READ library NOTIFY libraryChanged)
+    Q_PROPERTY(int totalCount READ totalCount NOTIFY totalCountChanged)
 
 public:
     explicit SunoBridge(QObject* parent = nullptr);
     ~SunoBridge() override = default;
 
-    static SunoBridge* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
-    static void setSunoController(vc::suno::SunoController* controller);
-    static void connectSignals();
+    bool isLoading() const { return isLoading_; }
+    QVariantList library() const { return library_; }
+    int totalCount() const { return totalCount_; }
 
-    bool isAuthenticated() const;
-    bool isSyncing() const;
-    QVariantList clips() const;
-    int totalClips() const;
-    QString statusMessage() const;
-    QString searchQuery() const;
-    QVariantList searchResults() const;
-
-    void setSearchQuery(const QString& query);
-
-public slots:
-    Q_INVOKABLE void authenticate();
-    Q_INVOKABLE void signOut();
-    Q_INVOKABLE void refreshLibrary(int page = 1);
-    Q_INVOKABLE void syncDatabase();
-    Q_INVOKABLE void downloadAndPlay(const QString& clipId);
-    Q_INVOKABLE QVariantMap getClip(const QString& clipId) const;
-    Q_INVOKABLE bool hasLyrics(const QString& clipId) const;
-    Q_INVOKABLE void fetchLyrics(const QString& clipId);
+    Q_INVOKABLE void refreshLibrary();
+    Q_INVOKABLE void loadMore();
+    Q_INVOKABLE void generate(const QString& prompt, const QString& tags, bool instrumental, const QString& modelId);
     
-    // Generation
-    Q_INVOKABLE void generate(const QString& prompt, const QString& tags, bool makeInstrumental, const QString& model);
+    // B-Side Orchestrator
+    Q_INVOKABLE void sendChatMessage(const QString& message, const QString& workspaceId = "");
+    Q_INVOKABLE void fetchChatHistory();
 
 signals:
-    void authChanged();
-    void syncingChanged();
-    void clipsChanged();
-    void statusChanged();
-    void searchQueryChanged();
-    void searchResultsChanged();
-    void clipDownloaded(const QString& clipId, const QString& path);
+    void isLoadingChanged();
+    void libraryChanged();
+    void totalCountChanged();
     void generationStarted();
+    void chatMessageReceived(const QString& response, const QString& workspaceId);
+    void chatHistoryFetched(const QVariantList& sessions);
+    void errorOccurred(const QString& error);
 
 private slots:
-    void onLibraryUpdated(const std::vector<vc::suno::SunoClip>& clips);
-    void onClipUpdated(const std::string& clipId);
-    void onStatusMessage(const std::string& message);
+    void onLibraryUpdated();
+    void onGenerationStarted();
+    void onChatMessageReceived(const QString& response, const QString& workspaceId);
 
 private:
-    QVariantMap clipToVariant(const vc::suno::SunoClip& clip) const;
-    void updateSearchResults();
-
-    static vc::suno::SunoController* s_controller;
-    static SunoBridge* s_instance;
-
-    QString statusMessage_;
-    QString searchQuery_;
-    QVariantList searchResults_;
-    bool isSyncing_{false};
+    vc::suno::SunoClient* client_{nullptr};
+    QVariantList library_;
+    bool isLoading_{false};
+    int totalCount_{0};
+    int currentPage_{0};
 };
 
 } // namespace qml_bridge
