@@ -4,7 +4,7 @@
  *
  * Allows users to modify UI accent and background colors at runtime.
  *
- * @version 1.0.0 - 2026-04-19
+ * @version 1.1.0 - 2026-04-21
  */
 
 import QtQuick
@@ -57,7 +57,11 @@ ColumnLayout {
                 text: Theme.accent
                 font: Theme.fontBody
                 color: Theme.textPrimary
-                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+                background: Rectangle { 
+                    color: Theme.surfaceRaised
+                    radius: Theme.radiusSmall
+                    border.color: parent.activeFocus ? Theme.accent : Theme.border 
+                }
             }
         }
 
@@ -84,7 +88,11 @@ ColumnLayout {
                 text: Theme.background
                 font: Theme.fontBody
                 color: Theme.textPrimary
-                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+                background: Rectangle { 
+                    color: Theme.surfaceRaised
+                    radius: Theme.radiusSmall
+                    border.color: parent.activeFocus ? Theme.accent : Theme.border 
+                }
             }
         }
     }
@@ -132,7 +140,11 @@ ColumnLayout {
         ComboBox {
             model: ["32x32", "64x64", "128x128"]
             currentIndex: 1
-            background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+            background: Rectangle { 
+                color: Theme.surfaceRaised
+                radius: Theme.radiusSmall
+                border.color: Theme.border 
+            }
         }
     }
 
@@ -145,6 +157,8 @@ ColumnLayout {
         onClicked: {
             Theme.accent = accentInput.text
             Theme.background = bgInput.text
+            // Proactively log success
+            console.log("SunoBridge: Settings saved - Accent: " + Theme.accent + ", BG: " + Theme.background)
         }
     }
 }
