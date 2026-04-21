@@ -10,14 +10,21 @@ namespace qml_bridge {
 SunoBridge::SunoBridge(QObject* parent)
     : QObject(parent)
 {
-    if (vc::Application::instance() && vc::Application::instance()->sunoController()) {
-        client_ = vc::Application::instance()->sunoController()->client();
-    }
+}
 
+void SunoBridge::setSunoController(vc::suno::SunoController* controller)
+{
+    controller_ = controller;
+    if (controller_) {
+        client_ = controller_->client();
+    }
+}
+
+void SunoBridge::connectSignals()
+{
     if (client_) {
-        // Correct signal handling for vc::Signal
         client_->libraryFetched.connect([this](const std::vector<vc::suno::SunoClip>& clips) {
-            onLibraryUpdated();
+            onLibraryUpdated(clips);
         });
         
         client_->generationStarted.connect([this](const std::vector<vc::suno::SunoClip>& clips) {
@@ -26,12 +33,12 @@ SunoBridge::SunoBridge(QObject* parent)
     }
 }
 
-void SunoBridge::refreshLibrary()
+void SunoBridge::refreshLibrary(int page)
 {
     if (!client_) return;
     isLoading_ = true;
     emit isLoadingChanged();
-    client_->fetchLibrary(0);
+    client_->fetchLibrary(page);
 }
 
 void SunoBridge::loadMore()
@@ -58,20 +65,22 @@ void SunoBridge::fetchChatHistory()
     // Orchestrator logic will go here
 }
 
-void SunoBridge::onLibraryUpdated()
+void SunoBridge::onLibraryUpdated(const std::vector<vc::suno::SunoClip>& clips)
 {
-    if (!client_) return;
-    
     library_.clear();
-    const auto& clips = client_->library();
     for (const auto& clip : clips) {
         QVariantMap map;
         map["id"] = QString::fromStdString(clip.id);
         map["title"] = QString::fromStdString(clip.title);
-        map["imageUrl"] = QString::fromStdString(clip.image_url);
-        map["audioUrl"] = QString::fromStdString(clip.audio_url);
-        map["prompt"] = QString::fromStdString(clip.metadata.prompt);
-        map["tags"] = QString::fromStdString(clip.metadata.tags);
+        map["image_url"] = QString::fromStdString(clip.image_url);
+        map["audio_url"] = QString::fromStdString(clip.audio_url);
+        map["status"] = QString::fromStdString(clip.status);
+        
+        QVariantMap metadata;
+        metadata["prompt"] = QString::fromStdString(clip.metadata.prompt);
+        metadata["tags"] = QString::fromStdString(clip.metadata.tags);
+        map["metadata"] = metadata;
+        
         library_.append(map);
     }
     
