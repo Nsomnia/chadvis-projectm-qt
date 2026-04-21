@@ -19,12 +19,35 @@ Flickable {
         spacing: Theme.spacingMedium
 
         // ═══════════════════════════════════════════════════════════
+        // PERFORMANCE PRESETS
+        // ═══════════════════════════════════════════════════════════
+        Text {
+            text: "Performance Presets"
+            color: Theme.accent
+            font: Theme.fontSubtitle
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSmall
+            Repeater {
+                model: ["Performance", "Balanced", "High Fidelity", "Ultra (Chad)"]
+                delegate: AppButton {
+                    text: modelData
+                    Layout.fillWidth: true
+                    onClicked: SettingsBridge.setPerformancePreset(modelData)
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
         // APPEARANCE
         // ═══════════════════════════════════════════════════════════
         Text {
             text: "Appearance"
             color: Theme.accent
             font: Theme.fontSubtitle
+            Layout.topMargin: Theme.spacingSmall
         }
 
         GridLayout {
@@ -83,6 +106,17 @@ Flickable {
                 from: 15; to: 240; stepSize: 15
                 value: SettingsBridge.visualizerFps
                 onValueModified: SettingsBridge.visualizerFps = value
+                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "Mesh Complexity (X)"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+            SpinBox {
+                from: 16; to: 512; stepSize: 8
+                value: SettingsBridge.visualizerMeshX
+                onValueModified: SettingsBridge.visualizerMeshX = value
                 background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
             }
         }

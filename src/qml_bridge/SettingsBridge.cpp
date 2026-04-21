@@ -162,4 +162,30 @@ void SettingsBridge::resetToDefaults()
     LOG_WARN("SettingsBridge: resetToDefaults not fully implemented yet");
 }
 
+void SettingsBridge::setPerformancePreset(const QString& preset)
+{
+    if (preset == "Performance") {
+        setVisualizerMeshX(32);
+        setVisualizerMeshY(24);
+        setVisualizerFps(60);
+        setAudioBufferSize(2048);
+    } else if (preset == "Balanced") {
+        setVisualizerMeshX(64);
+        setVisualizerMeshY(48);
+        setVisualizerFps(120);
+        setAudioBufferSize(1024);
+    } else if (preset == "High Fidelity") {
+        setVisualizerMeshX(128);
+        setVisualizerMeshY(96);
+        setVisualizerFps(144);
+        setAudioBufferSize(512);
+    } else if (preset == "Ultra (Chad)") {
+        setVisualizerMeshX(256);
+        setVisualizerMeshY(192);
+        setVisualizerFps(240);
+        setAudioBufferSize(256);
+    }
+    LOG_INFO("SettingsBridge: Performance preset applied: {}", preset.toStdString());
+}
+
 } // namespace qml_bridge
