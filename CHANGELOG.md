@@ -9,7 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] - 2026-04-19
+## [2.1.0] - 2026-04-20
+
+### Added
+- **Overlay System**: Implemented hardware-accelerated QML text overlays.
+  - New `VisualizerOverlay.qml` component for rendering overlays over the OpenGL canvas.
+  - New `OverlayBridge` C++ class for managing overlay state and persistence via `overlays.json`.
+  - Added shadow shader (`shadow.frag`) for improved text readability.
+  - Supported animations: Fade Pulse, Scroll Left, Scroll Right, Bounce.
+
+### Fixed
+- **Recording Bridge**: Fixed missing `outputPathChanged` signal causing compilation failure.
+- **Audio Logic**: Decoupled FFT analysis from the audio thread using a background worker and lock-free queues.
+- **Overlay Panel**: Ported `OverlayPanel.qml` to use `OverlayBridge` for state management instead of local QML variables.
+
+## [2.0.0] - 2026-04-19
+
 
 ### Changed
 - **Enforced C++23 Standard**: Updated `CMakeLists.txt` to require `CXX_STANDARD 23` and `CXX_STANDARD_REQUIRED ON`.

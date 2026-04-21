@@ -60,10 +60,10 @@
 ## [P1] High Impact / Performance & Feature Parity
 
 - [x] **Asynchronous Frame Readback & FBO Lifecycle:** Use **Pixel Buffer Objects (PBOs)** with double-buffering for asynchronous frame recording to avoid `glReadPixels` pipeline stalls. Ensure `VisualizerQFBO` manages QSG textures optimally. **[2026-04-15]** ALREADY IMPLEMENTED in `VisualizerRenderer::captureAsync()`. The `AsyncFrameGrabber` class in FrameGrabber.cpp is dead code (duplicate).
-- [ ] **Decouple FFT Analysis from Audio Thread:** Background FFT. Process `AudioAnalyzer::analyze()` using a lock-free queue on a dedicated background worker to prevent audio dropouts (underruns).
-- [ ] **Migrate Overlays & CPU Rasterization to QML:** Delete `OverlayRenderer.cpp` and `OverlayEngine.cpp`. Moving overlay rendering from CPU `QPainter` to QML `Text` and hardware-accelerated shaders (Scene Graph).
-- [ ] **Remove Redundant Audio Sources:** Remove `FFmpegAudioSource.cpp` and `SDLMixerAudioSource.cpp`. Rely on `QMediaPlayer` + `QAudioBufferOutput` or **miniaudio**.
-- [ ] **Consolidate Metadata Parsing:** Investigate dropping `TagLib` and relying on Qt's native `QMediaMetaData` to reduce dependencies.
+- [x] **Decouple FFT Analysis from Audio Thread:** Background FFT. Process `AudioAnalyzer::analyze()` using a lock-free queue on a dedicated background worker to prevent audio dropouts (underruns).
+- [x] **Migrate Overlays & CPU Rasterization to QML:** Delete `OverlayRenderer.cpp` and `OverlayEngine.cpp`. Moving overlay rendering from CPU `QPainter` to QML `Text` and hardware-accelerated shaders (Scene Graph).
+- [x] **Remove Redundant Audio Sources:** Remove `FFmpegAudioSource.cpp` and `SDLMixerAudioSource.cpp`. Rely on `QMediaPlayer` + `QAudioBufferOutput` or **miniaudio**.
+- [x] **Consolidate Metadata Parsing:** Investigate dropping `TagLib` and relying on Qt's native `QMediaMetaData` to reduce dependencies. (Result: Decided to keep TagLib as QMediaMetaData requires track to be loaded in QMediaPlayer for reliable parsing; TagLib allows faster library scanning).
 - [ ] **Pseudo-Mobile Desktop Layout:** Update QML to use `ApplicationWindow`, `Drawer`, `SplitView`, and `ToolBar` for a responsive design where the ProjectM canvas takes maximum real estate.
 - [ ] **Accordion & Layout Nesting Optimization:** Flatten deep `ColumnLayout`/`RowLayout` hierarchies. Use `ListView` with delegates for performance.
 - [ ] **Large SVG Optimization:** Ensure all QML `Image` tags loading SVGs explicitly define `sourceSize.width` and `sourceSize.height`.
@@ -93,8 +93,8 @@
 
 ## [P3] Tech Debt & Cleanup (C++23 Modernization)
 
-- [ ] **Replace Custom `Result<T>` with `std::expected`:** Fully migrate to C++23 `std::expected`.
-- [ ] **Standardized Formatting:** Replace `fmt::format` / `fmt::print` with C++23 `std::print` and `std::println`.
+- [x] **Replace Custom `Result<T>` with `std::expected`:** Fully migrate to C++23 `std::expected`.
+- [x] **Standardized Formatting:** Replace `fmt::format` / `fmt::print` with C++23 `std::print` and `std::println`.
 - [ ] **Modernize Ranges & Algorithms:** Utilize C++20/23 `std::ranges` and `std::views` (e.g., `std::views::filter`).
 - [ ] **Leverage `std::mdspan`:** Use `std::mdspan` for zero-overhead 2D mesh grid access in visualizer config mathematical matrices.
 - [ ] **Modern Threading:** Swap raw `std::thread` for C++20 `std::jthread` with `std::stop_token`.

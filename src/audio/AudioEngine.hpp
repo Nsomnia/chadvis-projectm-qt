@@ -21,8 +21,6 @@
 
 namespace vc {
 
-class FFmpegAudioSource;
-
 enum class PlaybackState { Stopped, Playing, Paused };
 
 class AudioEngine : public QObject {
@@ -100,10 +98,6 @@ private:
     void swapPlayers();
     void processAudioBuffer(const QAudioBuffer& buffer);
     void analyzerWorker();
-    void onFFmpegPCM(const std::vector<f32>& pcm,
-                     u32 frames,
-                     u32 channels,
-                     u32 sampleRate);
 
     void loadLastPlaylist();
     void saveLastPlaylist();

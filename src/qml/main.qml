@@ -234,6 +234,11 @@ ApplicationWindow {
             visible: VisualizerBridge.visualizerWindow !== null
         }
 
+        VisualizerOverlay {
+            id: visualizerOverlay
+            anchors.fill: parent
+        }
+
         Column {
             anchors.bottom: parent.bottom
             anchors.horizontalCenter: parent.horizontalCenter
