@@ -16,143 +16,135 @@ import "../components"
 ColumnLayout {
     id: root
 
-    spacing: Theme.spacingLarge
+    spacing: Theme.spacingMedium
 
     // ═══════════════════════════════════════════════════════════
-    // UI SETTINGS
+    // UI CUSTOMIZATION
     // ═══════════════════════════════════════════════════════════
 
-    ColumnLayout {
+    Text {
+        text: "Appearance"
+        color: Theme.accent
+        font: Theme.fontSubtitle
+    }
+
+    GridLayout {
         Layout.fillWidth: true
-        spacing: Theme.spacingMedium
+        columns: 2
+        columnSpacing: Theme.spacingMedium
+        rowSpacing: Theme.spacingSmall
 
         Text {
-            text: "Appearance"
+            text: "Accent"
+            color: Theme.textSecondary
+            font: Theme.fontCaption
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSmall
+            
+            Rectangle {
+                width: 24; height: 24
+                radius: Theme.radiusSmall
+                color: accentInput.text
+                border.color: Theme.border
+            }
+
+            TextField {
+                id: accentInput
+                Layout.fillWidth: true
+                text: Theme.accent
+                font: Theme.fontBody
+                color: Theme.textPrimary
+                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+            }
+        }
+
+        Text {
+            text: "Background"
+            color: Theme.textSecondary
+            font: Theme.fontCaption
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSmall
+            
+            Rectangle {
+                width: 24; height: 24
+                radius: Theme.radiusSmall
+                color: bgInput.text
+                border.color: Theme.border
+            }
+
+            TextField {
+                id: bgInput
+                Layout.fillWidth: true
+                text: Theme.background
+                font: Theme.fontBody
+                color: Theme.textPrimary
+                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // VISUALIZER SETTINGS
+    // ═══════════════════════════════════════════════════════════
+
+    Text {
+        text: "Engine"
+        color: Theme.accent
+        font: Theme.fontSubtitle
+        Layout.topMargin: Theme.spacingMedium
+    }
+
+    CheckBox {
+        text: "High Quality FFT"
+        checked: true
+        font: Theme.fontBody
+        contentItem: Text {
+            text: parent.text
+            font: parent.font
             color: Theme.textPrimary
-            font: Theme.fontTitle
-        }
-
-        // Accent Color Setting
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacingMedium
-
-            Text {
-                text: "Accent Color"
-                color: Theme.textSecondary
-                font: Theme.fontBody
-                Layout.preferredWidth: 120
-            }
-
-            Rectangle {
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                radius: Theme.radiusSmall
-                color: accentColorInput.text
-                border.color: Theme.border
-                border.width: 1
-
-                // Fallback to Theme accent if input is invalid
-                onColorChanged: {
-                    if (color.toString() === "#000000" && accentColorInput.text !== "#000000") {
-                        color = Theme.accent
-                    }
-                }
-            }
-
-            TextField {
-                id: accentColorInput
-                Layout.fillWidth: true
-                text: Theme.accent.toString()
-                placeholderText: "#RRGGBB"
-                
-                color: Theme.textPrimary
-                font.family: Theme.fontFamily
-                
-                background: Rectangle {
-                    color: Theme.surfaceRaised
-                    radius: Theme.radiusSmall
-                    border.color: accentColorInput.activeFocus ? Theme.borderFocus : Theme.border
-                    border.width: 1
-                }
-                
-                leftPadding: Theme.spacingSmall
-                rightPadding: Theme.spacingSmall
-            }
-        }
-
-        // Background Color Setting
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacingMedium
-
-            Text {
-                text: "Background Color"
-                color: Theme.textSecondary
-                font: Theme.fontBody
-                Layout.preferredWidth: 120
-            }
-
-            Rectangle {
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                radius: Theme.radiusSmall
-                color: bgColorInput.text
-                border.color: Theme.border
-                border.width: 1
-                
-                onColorChanged: {
-                    if (color.toString() === "#000000" && bgColorInput.text !== "#000000") {
-                        color = Theme.background
-                    }
-                }
-            }
-
-            TextField {
-                id: bgColorInput
-                Layout.fillWidth: true
-                text: Theme.background.toString()
-                placeholderText: "#RRGGBB"
-                
-                color: Theme.textPrimary
-                font.family: Theme.fontFamily
-                
-                background: Rectangle {
-                    color: Theme.surfaceRaised
-                    radius: Theme.radiusSmall
-                    border.color: bgColorInput.activeFocus ? Theme.borderFocus : Theme.border
-                    border.width: 1
-                }
-                
-                leftPadding: Theme.spacingSmall
-                rightPadding: Theme.spacingSmall
-            }
+            leftPadding: parent.indicator.width + parent.spacing
+            verticalAlignment: Text.AlignVCenter
         }
     }
 
-    Item {
-        // Spacer to push everything to the top
-        Layout.fillHeight: true
+    CheckBox {
+        text: "Show FPS Counter"
+        checked: false
+        font: Theme.fontBody
+        contentItem: Text {
+            text: parent.text
+            font: parent.font
+            color: Theme.textPrimary
+            leftPadding: parent.indicator.width + parent.spacing
+            verticalAlignment: Text.AlignVCenter
+        }
     }
 
-    // Apply Button
     RowLayout {
         Layout.fillWidth: true
-        
-        Item { Layout.fillWidth: true } // Spacer
-        
-        AppButton {
-            text: "Apply Changes"
-            implicitWidth: 140
-            implicitHeight: Theme.buttonHeight
-            radius: Theme.radiusMedium
-            // highlighted: true
-            
-            onClicked: {
-                console.log("Apply color settings: Accent=" + accentColorInput.text + " Bg=" + bgColorInput.text)
-                Theme.accent = accentColorInput.text
-                Theme.background = bgColorInput.text
-            }
+        Text { text: "Mesh Size"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+        ComboBox {
+            model: ["32x32", "64x64", "128x128"]
+            currentIndex: 1
+            background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+        }
+    }
+
+    Item { Layout.fillHeight: true }
+
+    AppButton {
+        text: "Save Configuration"
+        Layout.fillWidth: true
+        implicitHeight: 40
+        onClicked: {
+            Theme.accent = accentInput.text
+            Theme.background = bgInput.text
         }
     }
 }
