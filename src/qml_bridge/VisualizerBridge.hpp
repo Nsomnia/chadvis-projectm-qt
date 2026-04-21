@@ -1,16 +1,7 @@
-/**
- * @file VisualizerBridge.hpp
- * @brief QML bridge for ProjectM visualizer control with throttled updates
- */
-
 #pragma once
-
 #include <QObject>
-#include <QWindow>
 #include <QtQml/qqml.h>
-#include <QStringList>
-#include <QAbstractListModel>
-#include <QTimer>
+#include <QVariantMap>
 
 namespace vc {
 class VisualizerWindow;
@@ -18,99 +9,37 @@ class VisualizerWindow;
 
 namespace qml_bridge {
 
-class PresetModel : public QAbstractListModel {
-    Q_OBJECT
-
-public:
-    enum Roles {
-        NameRole = Qt::UserRole + 1,
-        PathRole,
-        RatingRole,
-        IsCurrentRole
-    };
-
-    explicit PresetModel(QObject* parent = nullptr);
-
-    int rowCount(const QModelIndex& parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex& index, int role) const override;
-    QHash<int, QByteArray> roleNames() const override;
-
-    void setPresets(const QStringList& presets);
-    void setCurrentIndex(int idx);
-
-private:
-    QStringList presets_;
-    int currentIdx_{-1};
-};
-
 class VisualizerBridge : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
 
-    Q_PROPERTY(int fps READ fps WRITE setFps NOTIFY fpsChanged)
-    Q_PROPERTY(bool fullscreen READ fullscreen WRITE setFullscreen NOTIFY fullscreenChanged)
-    Q_PROPERTY(bool presetLocked READ presetLocked WRITE setPresetLocked NOTIFY presetLockedChanged)
-    Q_PROPERTY(int currentPresetIndex READ currentPresetIndex NOTIFY currentPresetChanged)
-    Q_PROPERTY(QString currentPresetName READ currentPresetName NOTIFY currentPresetChanged)
-    Q_PROPERTY(QObject* presetModel READ presetModel CONSTANT)
-    Q_PROPERTY(QWindow* visualizerWindow READ visualizerWindow NOTIFY visualizerWindowChanged)
-    Q_PROPERTY(qreal renderProgress READ renderProgress NOTIFY renderProgressChanged)
+    Q_PROPERTY(bool active READ active NOTIFY activeChanged)
+    Q_PROPERTY(QString currentPreset READ currentPreset NOTIFY presetChanged)
+    Q_PROPERTY(int fps READ fps NOTIFY statsChanged)
 
 public:
     explicit VisualizerBridge(QObject* parent = nullptr);
-    ~VisualizerBridge() override = default;
+    static QObject* create(QQmlEngine*, QJSEngine*);
+    static void setVisualizerEngine(vc::VisualizerWindow* engine);
 
-    static VisualizerBridge* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
-
-    void setVisualizerWindow(vc::VisualizerWindow* window);
-
+    bool active() const;
+    QString currentPreset() const;
     int fps() const;
-    void setFps(int fps);
-
-    bool fullscreen() const;
-    void setFullscreen(bool fullscreen);
-
-    bool presetLocked() const;
-    void setPresetLocked(bool locked);
-
-    int currentPresetIndex() const;
-    QString currentPresetName() const;
-    qreal renderProgress() const { return renderProgress_; }
-
-    QObject* presetModel() const;
-    QWindow* visualizerWindow() const;
 
 public slots:
     Q_INVOKABLE void nextPreset();
     Q_INVOKABLE void previousPreset();
-    Q_INVOKABLE void randomPreset();
-    Q_INVOKABLE void selectPreset(int index);
-    Q_INVOKABLE void selectPresetByName(const QString& name);
-    Q_INVOKABLE void searchPresets(const QString& query);
+    Q_INVOKABLE void toggleActive();
 
 signals:
-    void fpsChanged();
-    void fullscreenChanged();
-    void presetLockedChanged();
-    void currentPresetChanged();
-    void presetsUpdated();
-    void visualizerWindowChanged();
-    void renderProgressChanged();
-
-private slots:
-    void updateThrottledData();
+    void activeChanged();
+    void presetChanged();
+    void statsChanged();
 
 private:
-    vc::VisualizerWindow* window_{nullptr};
-    PresetModel* presetModel_{nullptr};
-    QTimer* throttleTimer_{nullptr};
-    
-    int fps_{60};
-    bool fullscreen_{false};
-    bool presetLocked_{false};
-    int currentPresetIndex_{-1};
-    qreal renderProgress_{0.0};
+    static vc::VisualizerWindow* s_engine;
+    static VisualizerBridge* s_instance;
 };
 
 } // namespace qml_bridge

@@ -11,7 +11,7 @@ ThemeBridge::ThemeBridge(QObject* parent)
 {
 }
 
-ThemeBridge* ThemeBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
+QObject* ThemeBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
 {
     Q_UNUSED(jsEngine)
     if (!s_instance) {

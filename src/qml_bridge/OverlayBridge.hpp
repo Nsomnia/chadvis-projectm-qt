@@ -26,7 +26,7 @@ public:
     explicit OverlayBridge(QObject* parent = nullptr);
     ~OverlayBridge() override = default;
 
-    static OverlayBridge* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
+    static QObject* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
 
     QVariantList overlays() const;
     void setOverlays(const QVariantList& overlays);

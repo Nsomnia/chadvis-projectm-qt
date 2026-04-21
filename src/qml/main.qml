@@ -275,6 +275,13 @@ ApplicationWindow {
             }
 
             VisualizerOverlay {
+            KaraokeMaster {
+                id: karaokeMaster
+                anchors.fill: parent
+                accentColor: Theme.accent
+                showGlow: karaokeSettings.showGlow
+                verticalPosition: karaokeSettings.verticalPos
+            }
                 id: visualizerOverlay
                 anchors.fill: parent
             }

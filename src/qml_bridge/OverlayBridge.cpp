@@ -19,7 +19,7 @@ OverlayBridge::OverlayBridge(QObject* parent)
     loadOverlays();
 }
 
-OverlayBridge* OverlayBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
+QObject* OverlayBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
 {
     Q_UNUSED(jsEngine)
     auto* bridge = new OverlayBridge(qmlEngine);

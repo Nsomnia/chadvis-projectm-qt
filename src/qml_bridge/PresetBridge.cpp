@@ -14,7 +14,7 @@ PresetBridge::PresetBridge(QObject* parent)
 {
 }
 
-PresetBridge* PresetBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
+QObject* PresetBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
 {
     Q_UNUSED(jsEngine)
     if (!s_instance) {
