@@ -29,6 +29,7 @@ public:
     void setToken(const std::string& token);
     void setCookie(const std::string& cookie);
     std::string getCookie() const { return cookie_; }
+    QString token() const { return QString::fromStdString(token_); }
     bool isAuthenticated() const;
 
     // Refresh Bearer token using cookie (Clerk API)
@@ -42,6 +43,8 @@ public:
     
     // Generation (v2/v3-web)
     void generate(const std::string& prompt, const std::string& tags, bool makeInstrumental = false, const std::string& model = "chirp-v3.5");
+
+    QNetworkAccessManager* networkManager() { return manager_; }
 
     // Signals
     Signal<const std::vector<SunoClip>&> libraryFetched;
