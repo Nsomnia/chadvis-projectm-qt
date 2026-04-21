@@ -6,7 +6,7 @@
 #include "PlaylistBridge.hpp"
 #include "audio/AudioEngine.hpp"
 #include "audio/Playlist.hpp"
-#include "audio/MediaMetadata.hpp"
+#include "audio/analysis/MediaMetadata.hpp"
 #include "core/Application.hpp"
 #include <QQmlEngine>
 #include <QUrl>
