@@ -6,75 +6,114 @@ import "../components"
 
 ColumnLayout {
     id: root
-    property string searchQuery: ""
-    property bool showSearch: false
-    spacing: 0
+    spacing: Theme.spacingMedium
 
-    ToolBar {
-        Layout.fillWidth: true; background: Rectangle { color: Theme.surfaceVariant }
-        RowLayout {
-            anchors.fill: parent; spacing: Theme.spacingSmall
-            Label { text: "Suno Library"; color: Theme.onSurface; font.pixelSize: Theme.fontSizeMedium; font.bold: true }
-            Item { Layout.fillWidth: true }
-            ToolButton { icon.source: "qrc:/qt/qml/ChadVis/resources/icons/search.svg"; onClicked: root.showSearch = !root.showSearch }
-            ToolButton { icon.source: "qrc:/qt/qml/ChadVis/resources/icons/refresh.svg"; enabled: !SunoBridge.isSyncing; onClicked: SunoBridge.refreshLibrary() }
-            ToolButton { icon.source: "qrc:/qt/qml/ChadVis/resources/icons/save.svg"; enabled: !SunoBridge.isSyncing && SunoBridge.isAuthenticated; onClicked: SunoBridge.syncDatabase() }
-        }
+    // ═══════════════════════════════════════════════════════════
+    // GENERATION UI (CHAD CREATION SUITE)
+    // ═══════════════════════════════════════════════════════════
+    
+    Text {
+        text: "Create Magic"
+        color: Theme.accent
+        font: Theme.fontSubtitle
     }
 
     TextField {
-        id: searchField; Layout.fillWidth: true; Layout.margins: Theme.spacingSmall; visible: root.showSearch; placeholderText: "Search songs..."; text: root.searchQuery
-        onTextChanged: SunoBridge.searchQuery = text
-        background: Rectangle { radius: Theme.radiusSmall; color: Theme.surface; border.color: searchField.activeFocus ? Theme.primary : Theme.outline }
+        id: promptInput
+        Layout.fillWidth: true
+        placeholderText: "Describe your vibe..."
+        background: Rectangle { 
+            color: Theme.surfaceRaised
+            radius: Theme.radiusSmall
+            border.color: parent.activeFocus ? Theme.accent : Theme.border
+        }
     }
 
-    Label {
-        Layout.fillWidth: true; Layout.margins: Theme.spacingMedium; visible: !SunoBridge.isAuthenticated
-        text: "Sign in to access your Suno library"; color: Theme.onSurfaceVariant; font.pixelSize: Theme.fontSizeMedium; horizontalAlignment: Text.AlignHCenter
-        AppButton { anchors.top: parent.bottom; anchors.topMargin: Theme.spacingSmall; anchors.horizontalCenter: parent.horizontalCenter; text: "Sign In"; onClicked: SunoBridge.authenticate() }
+    RowLayout {
+        Layout.fillWidth: true
+        TextField {
+            id: styleInput
+            Layout.fillWidth: true
+            placeholderText: "Style/Tags..."
+            background: Rectangle { 
+                color: Theme.surfaceRaised
+                radius: Theme.radiusSmall
+                border.color: parent.activeFocus ? Theme.accent : Theme.border
+            }
+        }
+        
+        ComboBox {
+            id: modelSelector
+            model: ["v4 (Advanced)", "v3.5 (Classic)", "v3.0 (Legacy)"]
+            background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+        }
+    }
+
+    AppButton {
+        text: "Generate Song"
+        Layout.fillWidth: true
+        onClicked: {
+            console.log("SunoBridge: Generating with model: " + modelSelector.currentText)
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // LIBRARY VIEW
+    // ═══════════════════════════════════════════════════════════
+
+    Text {
+        text: "Your Library"
+        color: Theme.accent
+        font: Theme.fontSubtitle
+        Layout.topMargin: Theme.spacingMedium
     }
 
     ListView {
-        id: clipList; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; visible: SunoBridge.isAuthenticated && SunoBridge.clips.length > 0
-        model: root.searchQuery.length > 0 ? SunoBridge.searchResults : SunoBridge.clips
-        delegate: ClipDelegate {
-            width: clipList.width; onPlayClicked: SunoBridge.downloadAndPlay(modelData.id); onLyricsClicked: SunoBridge.fetchLyrics(modelData.id)
-        }
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-        footer: Item {
-            height: Theme.spacingLarge; visible: !SunoBridge.isSyncing
-            AppButton { anchors.centerIn: parent; text: "Load More"; visible: SunoBridge.totalClips > 0; onClicked: SunoBridge.refreshLibrary() }
-        }
-    }
-
-    component ClipDelegate: Rectangle {
-        id: delegate; height: 80; color: mouseArea.containsMouse ? Theme.surfaceVariant : Theme.surface; radius: Theme.radiusSmall
-        property bool hasLyrics: modelData ? SunoBridge.hasLyrics(modelData.id) : false
-        signal playClicked(); signal lyricsClicked()
-
-        RowLayout {
-            anchors.fill: parent; anchors.margins: Theme.spacingSmall; spacing: Theme.spacingSmall
-            Image {
-                source: modelData ? modelData.imageUrl : ""; sourceSize.width: 64; sourceSize.height: 64
-                Layout.preferredWidth: 64; Layout.preferredHeight: 64; fillMode: Image.PreserveAspectCrop
+        id: libraryList
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        clip: true
+        model: SunoBridge.clips
+        
+        delegate: ItemDelegate {
+            width: libraryList.width
+            height: 60
+            
+            contentItem: RowLayout {
+                spacing: Theme.spacingMedium
+                
                 Rectangle {
-                    anchors.fill: parent; color: Theme.surface; visible: parent.status !== Image.Ready
-                    Label { anchors.centerIn: parent; text: "♪"; font.pixelSize: 24; color: Theme.onSurfaceVariant }
+                    width: 48; height: 48
+                    radius: Theme.radiusSmall
+                    color: Theme.surfaceRaised
+                    Image {
+                        anchors.fill: parent
+                        source: modelData.image_url || ""
+                        sourceSize: Qt.size(48, 48)
+                        fillMode: Image.PreserveAspectCrop
+                    }
+                }
+                
+                Column {
+                    Layout.fillWidth: true
+                    Text { text: modelData.title || "Untitled"; color: Theme.textPrimary; font: Theme.fontBody }
+                    Text { text: modelData.metadata.tags || ""; color: Theme.textSecondary; font: Theme.fontCaption }
+                }
+
+                Text {
+                    text: modelData.status === "complete" ? "Ready" : "Creating..."
+                    color: modelData.status === "complete" ? Theme.accent : Theme.textSecondary
+                    font: Theme.fontCaption
                 }
             }
-            ColumnLayout {
-                Layout.fillWidth: true; spacing: 2
-                Text { text: modelData ? modelData.title : ""; color: Theme.onSurface; font.pixelSize: Theme.fontSizeMedium; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
-                Text { text: modelData ? modelData.displayName : ""; color: Theme.onSurfaceVariant; font.pixelSize: Theme.fontSizeSmall; elide: Text.ElideRight; Layout.fillWidth: true }
-                Row {
-                    spacing: Theme.spacingSmall
-                    Text { text: modelData ? modelData.duration : ""; color: Theme.onSurfaceVariant; font.pixelSize: Theme.fontSizeSmall; visible: text !== "" }
-                    Text { text: modelData && modelData.isInstrumental ? "Instrumental" : ""; color: Theme.accent; font.pixelSize: Theme.fontSizeSmall; visible: text !== "" }
-                }
-            }
-            AppButton { icon: "qrc:/qt/qml/ChadVis/resources/icons/video.svg"; implicitWidth: 44; implicitHeight: 44; onClicked: delegate.lyricsClicked(); visible: !delegate.hasLyrics }
-            AppButton { icon: "qrc:/qt/qml/ChadVis/resources/icons/play.svg"; implicitWidth: 44; implicitHeight: 44; highlighted: true; onClicked: delegate.playClicked() }
         }
-        MouseArea { id: mouseArea; anchors.fill: parent; hoverEnabled: true; onDoubleClicked: delegate.playClicked() }
+
+        // Infinite Scrolling Implementation
+        onAtYEndChanged: {
+            if (atYEnd && SunoBridge.clips.length < SunoBridge.totalClips) {
+                console.log("SunoBridge: Fetching next page...")
+                SunoBridge.refreshLibrary(Math.floor(SunoBridge.clips.length / 20) + 2)
+            }
+        }
     }
 }
