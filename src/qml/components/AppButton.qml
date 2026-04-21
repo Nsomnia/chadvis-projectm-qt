@@ -112,7 +112,9 @@ Rectangle {
             sourceSize.height: Theme.iconMedium
             Layout.preferredWidth: Theme.iconMedium
             Layout.preferredHeight: Theme.iconMedium
-            fillMode: Image.PreserveAspectFit
+            sourceSize.width: width
+                    sourceSize.height: height
+                    fillMode: Image.PreserveAspectFit
 
             ColorOverlay {
                 anchors.fill: parent

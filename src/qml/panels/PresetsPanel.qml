@@ -149,7 +149,9 @@ ColumnLayout {
 		sourceSize.height: 24
 		Layout.preferredWidth: visible ? 24 : 0
 		Layout.preferredHeight: visible ? 24 : 0
-		fillMode: Image.PreserveAspectFit
+		sourceSize.width: width
+                    sourceSize.height: height
+                    fillMode: Image.PreserveAspectFit
 		visible: delegate.isFavorite || delegate.isBlacklisted
 
 		ColorOverlay {
@@ -192,7 +194,9 @@ ColumnLayout {
 				sourceSize.height: 16
 				Layout.preferredWidth: 16
 				Layout.preferredHeight: 16
-				fillMode: Image.PreserveAspectFit
+				sourceSize.width: width
+                    sourceSize.height: height
+                    fillMode: Image.PreserveAspectFit
 				ColorOverlay {
 					anchors.fill: parent
 					source: parent
