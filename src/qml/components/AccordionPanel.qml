@@ -1,125 +1,86 @@
-/**
- * @file AccordionPanel.qml
- * @brief Collapsible panel with header and animated content area
- */
-
 import QtQuick
-import Qt5Compat.GraphicalEffects
 import QtQuick.Layouts
+import QtQuick.Controls
 import ChadVis
 
-Item {
+ColumnLayout {
     id: root
-
-    property string panelId: ""
     property string title: "Panel"
-    property string icon: ""
-    property bool isExpanded: false
-    property int collapsedHeight: Theme.panelHeaderHeight
-    property int expandedHeight: 250
-    property alias contentComponent: contentLoader.sourceComponent
+    property string iconSource: ""
+    property bool expanded: false
+    property alias content: contentLoader.sourceComponent
 
-    signal headerClicked()
+    Layout.fillWidth: true
+    spacing: 0
 
-    implicitHeight: isExpanded ? expandedHeight : collapsedHeight
-    clip: true
+    // Header
+    Rectangle {
+        id: header
+        Layout.fillWidth: true
+        height: 48
+        color: expanded ? Theme.surfaceRaised : Theme.surface
+        
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.spacingMedium
+            anchors.rightMargin: Theme.spacingMedium
+            spacing: Theme.spacingSmall
 
-    Behavior on implicitHeight {
-        NumberAnimation {
-            duration: Theme.durationNormal
-            easing.type: Easing.OutCubic
+            Image {
+                width: 24; height: 24
+                source: iconSource
+                sourceSize: Qt.size(24, 24)
+                fillMode: Image.PreserveAspectFit
+                visible: iconSource !== ""
+            }
+
+            Text {
+                text: title
+                color: expanded ? Theme.accent : Theme.textPrimary
+                font: Theme.fontBodyBold
+                Layout.fillWidth: true
+            }
+
+            Image {
+                width: 16; height: 16
+                source: "qrc:/ChadVis/resources/icons/expand.svg"
+                rotation: expanded ? 180 : 0
+                sourceSize: Qt.size(16, 16)
+                Behavior on rotation { NumberAnimation { duration: 200 } }
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: expanded = !expanded
         }
     }
 
-    ColumnLayout {
-        anchors.fill: parent
-        spacing: 1
-
-        Rectangle {
-            id: header
-            Layout.fillWidth: true
-            Layout.preferredHeight: root.collapsedHeight
-            color: root.isExpanded ? Theme.accent : Theme.surface
-            radius: Theme.radiusMedium
-
-            gradient: Gradient {
-                GradientStop { position: 0; color: root.isExpanded ? Theme.accent : Qt.lighter(Theme.surface, 1.1) }
-                GradientStop { position: 1; color: root.isExpanded ? Qt.darker(Theme.accent, 1.1) : Theme.surface }
-            }
-
-            Rectangle {
-                anchors.fill: parent
-                color: Theme.glassBackground
-                opacity: root.isExpanded ? 0.2 : 0.85
-                radius: Theme.radiusMedium
-                border.color: root.isExpanded ? Theme.accentLight : Theme.border
-                border.width: 1
-            }
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: Theme.spacingSmall
-                anchors.rightMargin: Theme.spacingSmall
-                spacing: Theme.spacingSmall
-
-                Image {
-                    visible: root.icon !== ""
-                    source: root.icon
-                    sourceSize.width: Theme.iconMedium
-                    sourceSize.height: Theme.iconMedium
-                    Layout.preferredWidth: Theme.iconMedium
-                    Layout.preferredHeight: Theme.iconMedium
-                    fillMode: Image.PreserveAspectFit
-
-                    ColorOverlay {
-                        anchors.fill: parent
-                        source: parent
-                        color: root.isExpanded ? Theme.textOnAccent : Theme.textSecondary
-                    }
-                }
-
-                Text {
-                    text: root.title
-                    color: root.isExpanded ? Theme.textOnAccent : Theme.textPrimary
-                    font: Theme.fontBodyStrong
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                }
-
-                Text {
-                    text: "▶"
-                    color: root.isExpanded ? Theme.textOnAccent : Theme.textSecondary
-                    font.pixelSize: 10
-                    rotation: root.isExpanded ? 90 : 0
-                    Behavior on rotation { NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.OutCubic } }
-                }
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                hoverEnabled: true
-                onClicked: root.headerClicked()
-            }
+    // Content
+    Rectangle {
+        id: contentContainer
+        Layout.fillWidth: true
+        Layout.preferredHeight: expanded ? -1 : 0
+        clip: true
+        color: Theme.surface
+        
+        Behavior on Layout.preferredHeight {
+            NumberAnimation { duration: 250; easing.type: Easing.InOutQuad }
         }
 
-        Rectangle {
-            id: contentArea
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.topMargin: 1
-            visible: root.isExpanded
-            color: Theme.surface
-            radius: Theme.radiusMedium
-
-            Loader {
-                id: contentLoader
-                anchors.fill: parent
-                anchors.margins: Theme.spacingSmall
-                active: root.isExpanded
-                opacity: root.isExpanded ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: Theme.durationFast } }
-            }
+        Loader {
+            id: contentLoader
+            anchors.fill: parent
+            anchors.margins: expanded ? Theme.spacingSmall : 0
+            opacity: expanded ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 200 } }
         }
+    }
+    
+    // Bottom Border
+    Rectangle {
+        Layout.fillWidth: true
+        height: 1
+        color: Theme.border
     }
 }
