@@ -8,261 +8,212 @@ import "../components"
 ColumnLayout {
     id: root
 
-    property bool isRecording: RecordingBridge ? RecordingBridge.isRecording : false
-    property string selectedCodec: "libx264"
-    property int selectedQuality: 23
-    property string outputPath: ""
+    spacing: Theme.spacingMedium
 
-    spacing: 0
+    // ═══════════════════════════════════════════════════════════
+    // HEADER (Removed redundant ToolBar since it's in an accordion)
+    // ═══════════════════════════════════════════════════════════
 
-    ToolBar {
+    RowLayout {
         Layout.fillWidth: true
-        background: Rectangle { color: Theme.surfaceVariant }
+        spacing: Theme.spacingMedium
 
-        RowLayout {
-            anchors.fill: parent
-            spacing: Theme.spacingSmall
-
-            Label {
-                text: "Video Recording"
-                color: Theme.onSurface
-                font.pixelSize: Theme.fontSizeMedium
-                font.bold: true
-            }
-
-            Item { Layout.fillWidth: true }
-
-            Rectangle {
-                width: 12
-                height: 12
-                radius: 6
-                color: root.isRecording ? Theme.error : Theme.onSurfaceVariant
-
-                SequentialAnimation on opacity {
-                    running: root.isRecording
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0.3; duration: 500 }
-                    NumberAnimation { to: 1.0; duration: 500 }
+        AppButton {
+            id: recordButton
+            text: RecordingBridge.isRecording ? "Stop" : "Record"
+            icon: RecordingBridge.isRecording ? "qrc:/qt/qml/ChadVis/resources/icons/stop.svg" : "qrc:/qt/qml/ChadVis/resources/icons/record.svg"
+            highlighted: !RecordingBridge.isRecording
+            onClicked: {
+                if (RecordingBridge.isRecording) {
+                    RecordingBridge.stopRecording()
+                } else {
+                    RecordingBridge.startRecording(outputPathField.text)
                 }
+            }
+        }
+
+        Label {
+            visible: RecordingBridge.isRecording
+            text: RecordingBridge.recordingTime
+            color: Theme.error
+            font: Theme.fontSubtitle
+        }
+
+        Item { Layout.fillWidth: true }
+
+        // Pulse indicator
+        Rectangle {
+            width: 12
+            height: 12
+            radius: 6
+            color: RecordingBridge.isRecording ? Theme.recording : Theme.textDisabled
+
+            SequentialAnimation on opacity {
+                running: RecordingBridge.isRecording
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.3; duration: 500 }
+                NumberAnimation { to: 1.0; duration: 500 }
             }
         }
     }
 
-    Pane {
+    // ═══════════════════════════════════════════════════════════
+    // SETTINGS GRID
+    // ═══════════════════════════════════════════════════════════
+
+    GridLayout {
         Layout.fillWidth: true
-        background: Rectangle { color: Theme.surface }
+        columns: 2
+        columnSpacing: Theme.spacingMedium
+        rowSpacing: Theme.spacingSmall
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: Theme.spacingMedium
+        Label {
+            text: "Codec"
+            color: Theme.textSecondary
+            font: Theme.fontCaption
+        }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spacingMedium
-
-	AppButton {
-		id: recordButton
-		text: root.isRecording ? "Stop" : "Record"
-		icon: root.isRecording ? "qrc:/qt/qml/ChadVis/resources/icons/stop.svg" : "qrc:/qt/qml/ChadVis/resources/icons/record.svg"
-		highlighted: !root.isRecording
-		onClicked: {
-			if (root.isRecording) {
-				RecordingBridge.stopRecording()
-			} else {
-				RecordingBridge.startRecording(root.outputPath)
-			}
-		}
-	}
-
-                Label {
-                    visible: root.isRecording
-                    text: RecordingBridge ? RecordingBridge.recordingTime : "00:00"
-                    color: Theme.error
-                    font.pixelSize: Theme.fontSizeLarge
-                    font.bold: true
-                }
+        ComboBox {
+            id: codecCombo
+            Layout.fillWidth: true
+            model: ["libx264", "libx265", "libvpx-vp9", "h264_nvenc", "hevc_nvenc"]
+            currentIndex: 0
+            
+            contentItem: Text {
+                text: codecCombo.displayText
+                font: Theme.fontBody
+                color: Theme.textPrimary
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: Theme.spacingSmall
             }
 
-            GridLayout {
+            background: Rectangle {
+                radius: Theme.radiusSmall
+                color: Theme.surfaceRaised
+                border.color: Theme.border
+            }
+        }
+
+        Label {
+            text: "Quality (CRF)"
+            color: Theme.textSecondary
+            font: Theme.fontCaption
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            AppSlider {
+                id: qualitySlider
                 Layout.fillWidth: true
-                columns: 2
-                columnSpacing: Theme.spacingMedium
-                rowSpacing: Theme.spacingSmall
+                from: 0
+                to: 51
+                value: 23
+            }
+            Label {
+                text: Math.round(qualitySlider.value)
+                color: Theme.textPrimary
+                font: Theme.fontCaption
+                Layout.preferredWidth: 20
+            }
+        }
 
-                Label {
-                    text: "Codec:"
-                    color: Theme.onSurfaceVariant
+        Label {
+            text: "Output Path"
+            color: Theme.textSecondary
+            font: Theme.fontCaption
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSmall
+
+            TextField {
+                id: outputPathField
+                Layout.fillWidth: true
+                placeholderText: "Auto-generated if empty"
+                color: Theme.textPrimary
+                font: Theme.fontBody
+                
+                background: Rectangle {
+                    radius: Theme.radiusSmall
+                    color: Theme.surfaceRaised
+                    border.color: Theme.border
                 }
-
-                ComboBox {
-                    id: codecCombo
-                    Layout.fillWidth: true
-                    model: ["libx264", "libx265", "libvpx-vp9", "h264_nvenc", "hevc_nvenc"]
-                    currentIndex: model.indexOf(root.selectedCodec)
-                    onActivated: root.selectedCodec = model[index]
-
-                    background: Rectangle {
-                        radius: Theme.radiusSmall
-                        color: Theme.surfaceVariant
-                        border.color: Theme.outline
-                    }
-                }
-
-                Label {
-                    text: "Quality (CRF):"
-                    color: Theme.onSurfaceVariant
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    Slider {
-                        id: qualitySlider
-                        Layout.fillWidth: true
-                        from: 0
-                        to: 51
-                        stepSize: 1
-                        value: root.selectedQuality
-                        onValueChanged: root.selectedQuality = value
-                    }
-                    Label {
-                        text: Math.round(qualitySlider.value)
-                        color: Theme.onSurface
-                        font.pixelSize: Theme.fontSizeMedium
-                        Layout.preferredWidth: 30
-                    }
-                }
-
-                Label {
-                    text: "Output:"
-                    color: Theme.onSurfaceVariant
-                }
-
-                TextField {
-                    id: outputPathField
-                    Layout.fillWidth: true
-                    text: root.outputPath
-                    placeholderText: "/path/to/output.mp4"
-                    onTextChanged: root.outputPath = text
-
-                    background: Rectangle {
-                        radius: Theme.radiusSmall
-                        color: Theme.surfaceVariant
-                        border.color: Theme.outline
-                    }
-                }
+                padding: Theme.spacingSmall
             }
 
             AppButton {
-                text: "Browse..."
+                icon: "qrc:/qt/qml/ChadVis/resources/icons/plus.svg"
+                implicitWidth: 32
+                implicitHeight: 32
                 onClicked: fileDialog.open()
             }
         }
     }
 
-    Pane {
+    // ═══════════════════════════════════════════════════════════
+    // LIVE STATS (Visible only when recording)
+    // ═══════════════════════════════════════════════════════════
+
+    Rectangle {
         Layout.fillWidth: true
-        visible: root.isRecording
-        background: Rectangle { color: Theme.surfaceVariant }
+        visible: RecordingBridge.isRecording
+        height: statsLayout.implicitHeight + Theme.spacingMedium * 2
+        color: Theme.backgroundAlt
+        radius: Theme.radiusSmall
+        border.color: Theme.border
 
         ColumnLayout {
+            id: statsLayout
             anchors.fill: parent
+            anchors.margins: Theme.spacingMedium
             spacing: Theme.spacingSmall
 
-            Label {
-                text: "Recording Stats"
-                font.bold: true
-                color: Theme.onSurface
+            RowLayout {
+                Layout.fillWidth: true
+                Text { text: "Frames"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+                Text { text: RecordingBridge.framesWritten; color: Theme.textPrimary; font: Theme.fontCaption; font.bold: true }
             }
 
-            GridLayout {
+            RowLayout {
                 Layout.fillWidth: true
-                columns: 2
-                columnSpacing: Theme.spacingMedium
-                rowSpacing: Theme.spacingSmall
+                Text { text: "Size"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+                Text { text: RecordingBridge.fileSize; color: Theme.textPrimary; font: Theme.fontCaption; font.bold: true }
+            }
 
-                Label {
-                    text: "Frames Written:"
-                    color: Theme.onSurfaceVariant
-                }
-                Label {
-                    text: RecordingBridge ? RecordingBridge.framesWritten : "0"
-                    color: Theme.onSurface
-                }
-
-                Label {
-                    text: "Frames Dropped:"
-                    color: Theme.onSurfaceVariant
-                }
-                Label {
-                    text: RecordingBridge ? RecordingBridge.framesDropped : "0"
-                    color: Theme.error
-                }
-
-                Label {
-                    text: "File Size:"
-                    color: Theme.onSurfaceVariant
-                }
-                Label {
-                    text: RecordingBridge ? RecordingBridge.fileSize : "0 MB"
-                    color: Theme.onSurface
-                }
-
-                Label {
-                    text: "Encode FPS:"
-                    color: Theme.onSurfaceVariant
-                }
-                Label {
-                    text: RecordingBridge ? RecordingBridge.encodeFps : "0"
-                    color: Theme.onSurface
-                }
+            RowLayout {
+                Layout.fillWidth: true
+                Text { text: "FPS"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+                Text { text: RecordingBridge.encodeFps; color: Theme.textPrimary; font: Theme.fontCaption; font.bold: true }
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.spacingSmall
-
-                Label {
-                    text: "Buffer:"
-                    color: Theme.onSurfaceVariant
-                }
-
+                Text { text: "Buffer"; color: Theme.textSecondary; font: Theme.fontCaption }
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 8
-                    radius: 4
+                    height: 4
+                    radius: 2
                     color: Theme.surface
-
                     Rectangle {
-                        width: parent.width * (RecordingBridge ? RecordingBridge.bufferHealth / 100 : 1)
+                        width: parent.width * (RecordingBridge.bufferHealth / 100)
                         height: parent.height
                         radius: parent.radius
-                        color: {
-                            var health = RecordingBridge ? RecordingBridge.bufferHealth : 100
-                            if (health > 70) return Theme.success
-                            if (health > 30) return Theme.warning
-                            return Theme.error
-                        }
+                        color: RecordingBridge.bufferHealth > 70 ? Theme.success : (RecordingBridge.bufferHealth > 30 ? Theme.warning : Theme.error)
                     }
                 }
             }
         }
     }
 
-    Label {
-        Layout.fillWidth: true
-        Layout.margins: Theme.spacingMedium
-        visible: !root.isRecording
-        text: "Click Record to start capturing.\nOutput will be saved to the specified file."
-        color: Theme.onSurfaceVariant
-        font.pixelSize: Theme.fontSizeSmall
-        horizontalAlignment: Text.AlignHCenter
-        wrapMode: Text.WordWrap
-    }
+    Item { Layout.fillHeight: true }
 
     FileDialog {
         id: fileDialog
         title: "Save Recording"
-        nameFilters: ["MP4 files (*.mp4)", "MKV files (*.mkv)", "WebM files (*.webm)"]
-        onAccepted: root.outputPath = selectedFile
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["MP4 files (*.mp4)", "MKV files (*.mkv)"]
+        onAccepted: outputPathField.text = selectedFile.toString().replace("file://", "")
     }
 }

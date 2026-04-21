@@ -25,8 +25,8 @@ ApplicationWindow {
     visible: true
     width: 1400
     height: 900
-    minimumWidth: 1024
-    minimumHeight: 768
+    minimumWidth: 800
+    minimumHeight: 600
 
     title: {
         var title = "ChadVis"
@@ -77,6 +77,7 @@ ApplicationWindow {
                 ToolTip.visible: hovered
                 ToolTip.text: "Open menu"
                 ToolTip.delay: 500
+                visible: !desktopSidebar.visible
             }
 
             // Current track info
@@ -213,7 +214,7 @@ ApplicationWindow {
             }
 
             Text {
-                text: "v1.0.0 • I use Arch btw"
+                text: "v2.0.0 • Refactor Edition"
                 color: Theme.textSecondary
                 font: Theme.fontCaption
             }
@@ -221,49 +222,196 @@ ApplicationWindow {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // CENTRAL VISUALIZER AREA (MAXIMUM REAL ESTATE)
+    // MAIN CONTENT SPLITVIEW
     // ═══════════════════════════════════════════════════════════
 
-    Item {
+    SplitView {
         anchors.fill: parent
+        orientation: Qt.Horizontal
 
-        WindowContainer {
-            id: visualizerContainer
-            anchors.fill: parent
-            window: VisualizerBridge.visualizerWindow
-            visible: VisualizerBridge.visualizerWindow !== null
-        }
+        // Desktop Sidebar (Static when window is wide)
+        Rectangle {
+            id: desktopSidebar
+            SplitView.preferredWidth: Theme.sidebarExpandedWidth
+            SplitView.minimumWidth: 200
+            SplitView.maximumWidth: 400
+            visible: mainWindow.width > 1200
+            color: Theme.surface
 
-        VisualizerOverlay {
-            id: visualizerOverlay
-            anchors.fill: parent
-        }
+            Rectangle {
+                anchors.right: parent.right
+                height: parent.height
+                width: 1
+                color: Theme.border
+            }
 
-        Column {
-            anchors.bottom: parent.bottom
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottomMargin: Theme.spacingLarge + Theme.statusBarHeight
-            spacing: Theme.spacingSmall
-
-            Text {
-                text: "ProjectM v4 • " + (AudioBridge.isPlaying ? "Playing" : "Ready")
-                color: Theme.onBackground
-                font: Theme.fontCaption
-                opacity: 0.5
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
+                
+                Loader {
+                    Layout.fillWidth: true
+                    sourceComponent: sidebarHeader
+                }
+                
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    sourceComponent: sidebarContent
+                }
             }
         }
 
-        Rectangle {
-            anchors.fill: parent
-            color: "transparent"
-            border.color: Theme.border
-            border.width: 1
-            visible: !RecordingBridge.isRecording
+        // Central Visualizer Area
+        Item {
+            SplitView.fillWidth: true
+            SplitView.fillHeight: true
+
+            WindowContainer {
+                id: visualizerContainer
+                anchors.fill: parent
+                window: VisualizerBridge.visualizerWindow
+                visible: VisualizerBridge.visualizerWindow !== null
+            }
+
+            VisualizerOverlay {
+                id: visualizerOverlay
+                anchors.fill: parent
+            }
+
+            Column {
+                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottomMargin: Theme.spacingLarge
+                spacing: Theme.spacingSmall
+
+                Text {
+                    text: "ProjectM v4 • " + (AudioBridge.isPlaying ? "Playing" : "Ready")
+                    color: Theme.onBackground
+                    font: Theme.fontCaption
+                    opacity: 0.5
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: "transparent"
+                border.color: Theme.border
+                border.width: 1
+                visible: !RecordingBridge.isRecording
+            }
         }
     }
 
     // ═══════════════════════════════════════════════════════════
-    // DRAWER SIDEBAR (HAMBURGER MENU STYLE)
+    // SHARED SIDEBAR COMPONENTS
+    // ═══════════════════════════════════════════════════════════
+
+    property Component sidebarHeader: Component {
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Theme.topBarHeight
+            color: Theme.backgroundAlt
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.spacingSmall
+                anchors.rightMargin: Theme.spacingSmall
+
+                Text {
+                    text: "ChadVis"
+                    color: Theme.accent
+                    font: Theme.fontSubtitle
+                }
+
+                Item { Layout.fillWidth: true }
+
+                AppButton {
+                    icon: "qrc:/qt/qml/ChadVis/resources/icons/clear.svg"
+                    flat: true
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    radius: Theme.radiusSmall
+                    visible: sidebarDrawer.visible
+                    onClicked: sidebarDrawer.close()
+                }
+            }
+        }
+    }
+
+    property Component sidebarContent: Component {
+        AccordionContainer {
+            id: accordionContainer
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.margins: Theme.spacingTiny
+
+            expandedPanel: "playback"
+
+            panels: [
+                {
+                    id: "playback",
+                    title: "Playback",
+                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playback.svg",
+                    expandedHeight: 280,
+                    component: playbackPanelComponent
+                },
+                {
+                    id: "playlist",
+                    title: "Library",
+                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playlist.svg",
+                    expandedHeight: 300,
+                    component: playlistPanelComponent
+                },
+                {
+                    id: "presets",
+                    title: "Presets",
+                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/presets.svg",
+                    expandedHeight: 350,
+                    component: presetsPanelComponent
+                },
+                {
+                    id: "lyrics",
+                    title: "Lyrics",
+                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/lyrics.svg",
+                    expandedHeight: 300,
+                    component: lyricsPanelComponent
+                },
+                {
+                    id: "suno",
+                    title: "Suno",
+                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/suno.svg",
+                    expandedHeight: 400,
+                    component: sunoPanelComponent
+                },
+                {
+                    id: "overlay",
+                    title: "Overlay",
+                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/overlay.svg",
+                    expandedHeight: 300,
+                    component: overlayPanelComponent
+                },
+                {
+                    id: "recording",
+                    title: "Recording",
+                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/recording.svg",
+                    expandedHeight: 350,
+                    component: recordingPanelComponent
+                },
+                {
+                    id: "settings",
+                    title: "Settings",
+                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playback.svg",
+                    expandedHeight: 300,
+                    component: settingsPanelComponent
+                }
+            ]
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // DRAWER SIDEBAR (MOBILE/COMPACT MODE)
     // ═══════════════════════════════════════════════════════════
 
     Drawer {
@@ -272,6 +420,7 @@ ApplicationWindow {
         edge: Qt.LeftEdge
         width: Math.min(Theme.sidebarExpandedWidth, mainWindow.width * 0.85)
         height: mainWindow.height
+        enabled: !desktopSidebar.visible
 
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
@@ -289,103 +438,16 @@ ApplicationWindow {
         ColumnLayout {
             anchors.fill: parent
             spacing: 0
-
-            Rectangle {
+            
+            Loader {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Theme.topBarHeight
-                color: Theme.backgroundAlt
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: Theme.spacingSmall
-                    anchors.rightMargin: Theme.spacingSmall
-
-                    Text {
-                        text: "ChadVis"
-                        color: Theme.accent
-                        font: Theme.fontSubtitle
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    AppButton {
-                        icon: "qrc:/qt/qml/ChadVis/resources/icons/clear.svg"
-                        flat: true
-                        implicitWidth: 28
-                        implicitHeight: 28
-                        radius: Theme.radiusSmall
-                        onClicked: sidebarDrawer.close()
-                    }
-                }
+                sourceComponent: sidebarHeader
             }
-
-            AccordionContainer {
-                id: accordionContainer
-
+            
+            Loader {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.margins: Theme.spacingTiny
-
-                expandedPanel: "playback"
-
-                panels: [
-                    {
-                        id: "playback",
-                        title: "Playback",
-                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playback.svg",
-                        expandedHeight: 280,
-                        component: playbackPanelComponent
-                    },
-                    {
-                        id: "playlist",
-                        title: "Library",
-                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playlist.svg",
-                        expandedHeight: 300,
-                        component: playlistPanelComponent
-                    },
-                    {
-                        id: "presets",
-                        title: "Presets",
-                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/presets.svg",
-                        expandedHeight: 350,
-                        component: presetsPanelComponent
-                    },
-                    {
-                        id: "lyrics",
-                        title: "Lyrics",
-                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/lyrics.svg",
-                        expandedHeight: 300,
-                        component: lyricsPanelComponent
-                    },
-                    {
-                        id: "suno",
-                        title: "Suno",
-                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/suno.svg",
-                        expandedHeight: 400,
-                        component: sunoPanelComponent
-                    },
-                    {
-                        id: "overlay",
-                        title: "Overlay",
-                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/overlay.svg",
-                        expandedHeight: 300,
-                        component: overlayPanelComponent
-                    },
-                    {
-                        id: "recording",
-                        title: "Recording",
-                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/recording.svg",
-                        expandedHeight: 350,
-                        component: recordingPanelComponent
-                    },
-                    {
-                        id: "settings",
-                        title: "Settings",
-                        icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playback.svg",
-                        expandedHeight: 300,
-                        component: settingsPanelComponent
-                    }
-                ]
+                sourceComponent: sidebarContent
             }
         }
     }
