@@ -88,11 +88,30 @@ ColumnLayout {
                 }
             }
 
-            Text {
-                text: "Your Library"
-                color: Theme.accent
-                font: Theme.fontSubtitle
+            RowLayout {
+                Layout.fillWidth: true
                 Layout.topMargin: Theme.spacingMedium
+                
+                Text {
+                    text: "Your Library"
+                    color: Theme.accent
+                    font: Theme.fontSubtitle
+                    Layout.fillWidth: true
+                }
+
+                TextField {
+                    id: searchBar
+                    placeholderText: "Search library..."
+                    Layout.preferredWidth: 150
+                    font: Theme.fontCaption
+                    color: Theme.textPrimary
+                    background: Rectangle {
+                        color: Theme.surfaceRaised
+                        radius: Theme.radiusSmall
+                        border.color: parent.activeFocus ? Theme.accent : Theme.border
+                    }
+                    onTextChanged: SunoBridge.filterText = text
+                }
             }
 
             ListView {
@@ -136,7 +155,7 @@ ColumnLayout {
                 }
 
                 onAtYEndChanged: {
-                    if (atYEnd && SunoBridge.clips.length < SunoBridge.totalClips) {
+                    if (atYEnd && SunoBridge.clips.length < SunoBridge.totalClips && searchBar.text === "") {
                         SunoBridge.refreshLibrary(Math.floor(SunoBridge.clips.length / 20) + 2)
                     }
                 }

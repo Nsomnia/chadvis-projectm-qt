@@ -38,10 +38,17 @@ bool SunoBridge::loading() const { return loading_; }
 QVariantList SunoBridge::clips() const { return clips_; }
 
 int SunoBridge::totalClips() const {
-    return clips_.size(); // Simplified for now
+    return allClips_.size();
 }
 
 QVariantList SunoBridge::chatHistory() const { return chatHistory_; }
+
+void SunoBridge::setFilterText(const QString& filter) {
+    if (filterText_ == filter) return;
+    filterText_ = filter;
+    updateFilteredClips();
+    emit filterTextChanged();
+}
 
 void SunoBridge::generate(const QString& prompt, const QString& tags, bool instrumental, const QString& model) {
     if (s_client) {
@@ -59,7 +66,6 @@ void SunoBridge::refreshLibrary(int page) {
 }
 
 void SunoBridge::sendChatMessage(const QString& message) {
-    // Orchestrator integration would go here
     QVariantMap userMsg;
     userMsg["role"] = "user";
     userMsg["content"] = message;
@@ -74,7 +80,7 @@ void SunoBridge::fetchChatHistory() {
 void SunoBridge::onLibraryUpdated() {
     if (!s_controller) return;
 
-    clips_.clear();
+    allClips_.clear();
     const auto& clips = s_controller->clips();
     for (const auto& clip : clips) {
         QVariantMap map;
@@ -88,11 +94,30 @@ void SunoBridge::onLibraryUpdated() {
         meta["prompt"] = QString::fromStdString(clip.metadata.prompt);
         map["metadata"] = meta;
         
-        clips_.append(map);
+        allClips_.append(map);
     }
 
+    updateFilteredClips();
     loading_ = false;
     emit loadingChanged();
+}
+
+void SunoBridge::updateFilteredClips() {
+    if (filterText_.isEmpty()) {
+        clips_ = allClips_;
+    } else {
+        clips_.clear();
+        QString filter = filterText_.toLower();
+        for (const auto& clipVar : allClips_) {
+            QVariantMap clip = clipVar.toMap();
+            QString title = clip["title"].toString().toLower();
+            QString tags = clip["metadata"].toMap()["tags"].toString().toLower();
+            
+            if (title.contains(filter) || tags.contains(filter)) {
+                clips_.append(clip);
+            }
+        }
+    }
     emit clipsChanged();
 }
 

@@ -22,6 +22,7 @@ class SunoBridge : public QObject {
     Q_PROPERTY(QVariantList clips READ clips NOTIFY clipsChanged)
     Q_PROPERTY(int totalClips READ totalClips NOTIFY clipsChanged)
     Q_PROPERTY(QVariantList chatHistory READ chatHistory NOTIFY chatHistoryChanged)
+    Q_PROPERTY(QString filterText READ filterText WRITE setFilterText NOTIFY filterTextChanged)
 
 public:
     explicit SunoBridge(QObject* parent = nullptr);
@@ -32,6 +33,8 @@ public:
     QVariantList clips() const;
     int totalClips() const;
     QVariantList chatHistory() const;
+    QString filterText() const { return filterText_; }
+    void setFilterText(const QString& filter);
 
 public slots:
     Q_INVOKABLE void generate(const QString& prompt, const QString& tags, bool instrumental, const QString& model);
@@ -44,17 +47,22 @@ signals:
     void clipsChanged();
     void chatHistoryChanged();
     void generationStarted();
+    void filterTextChanged();
 
 private slots:
     void onLibraryUpdated();
 
 private:
+    void updateFilteredClips();
+
     static vc::suno::SunoController* s_controller;
     static vc::suno::SunoClient* s_client;
     static SunoBridge* s_instance;
 
     QVariantList clips_;
+    QVariantList allClips_; // Full cache from backend
     QVariantList chatHistory_;
+    QString filterText_;
     bool loading_{false};
 };
 
