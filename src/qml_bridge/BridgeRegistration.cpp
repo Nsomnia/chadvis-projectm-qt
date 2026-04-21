@@ -8,6 +8,7 @@
 #include "SunoBridge.hpp"
 #include "ThemeBridge.hpp"
 #include "OverlayBridge.hpp"
+#include "SettingsBridge.hpp"
 
 #include "audio/AudioEngine.hpp"
 #include "suno/SunoClient.hpp"
@@ -32,6 +33,7 @@ void registerBridges(QQmlApplicationEngine* engine,
     qmlRegisterSingletonType<SunoBridge>("ChadVis", 1, 0, "SunoBridge", SunoBridge::create);
     qmlRegisterSingletonType<ThemeBridge>("ChadVis", 1, 0, "Theme", ThemeBridge::create);
     qmlRegisterSingletonType<OverlayBridge>("ChadVis", 1, 0, "OverlayBridge", OverlayBridge::create);
+    qmlRegisterSingletonType<SettingsBridge>("ChadVis", 1, 0, "SettingsBridge", SettingsBridge::create);
 
     AudioBridge::setAudioEngine(audioEngine);
     PlaylistBridge::setPlaylist(&audioEngine->playlist());

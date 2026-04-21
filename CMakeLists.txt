@@ -272,6 +272,8 @@ set(QML_BRIDGE_SOURCES
     src/qml_bridge/ThemeBridge.cpp
     src/qml_bridge/OverlayBridge.hpp
     src/qml_bridge/OverlayBridge.cpp
+    src/qml_bridge/SettingsBridge.hpp
+    src/qml_bridge/SettingsBridge.cpp
     src/qml_bridge/BridgeRegistration.hpp
     src/qml_bridge/BridgeRegistration.cpp
     src/qml_bridge/VisualizerItem.hpp

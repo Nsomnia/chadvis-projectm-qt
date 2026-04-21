@@ -76,28 +76,25 @@ Flickable {
             Layout.topMargin: Theme.spacingSmall
         }
 
-        CheckBox {
-            text: "High Quality FFT (PFFFT)"
-            checked: true
-            font: Theme.fontBody
-            contentItem: Text { text: parent.text; font: parent.font; color: Theme.textPrimary; leftPadding: parent.indicator.width + parent.spacing; verticalAlignment: Text.AlignVCenter }
-        }
-
-        CheckBox {
-            id: gaplessToggle
-            text: "Gapless Playback (Preload Next)"
-            checked: true
-            font: Theme.fontBody
-            contentItem: Text { text: parent.text; font: parent.font; color: Theme.textPrimary; leftPadding: parent.indicator.width + parent.spacing; verticalAlignment: Text.AlignVCenter }
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "FPS Limit"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+            SpinBox {
+                from: 15; to: 240; stepSize: 15
+                value: SettingsBridge.visualizerFps
+                onValueModified: SettingsBridge.visualizerFps = value
+                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+            }
         }
 
         RowLayout {
             Layout.fillWidth: true
-            Text { text: "Mesh Complexity"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
-            ComboBox {
-                model: ["Low (32x32)", "Medium (64x64)", "High (128x128)", "Ultra (256x256)"]
-                currentIndex: 1
-                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+            Text { text: "Beat Sensitivity"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+            Slider {
+                from: 0.1; to: 3.0
+                value: SettingsBridge.visualizerBeatSensitivity
+                onMoved: SettingsBridge.visualizerBeatSensitivity = value
+                Layout.preferredWidth: 150
             }
         }
 
@@ -105,7 +102,9 @@ Flickable {
             Layout.fillWidth: true
             Text { text: "Audio Buffer (ms)"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
             SpinBox {
-                from: 10; to: 500; value: 100; stepSize: 10
+                from: 10; to: 1000; stepSize: 10
+                value: SettingsBridge.audioBufferSize
+                onValueModified: SettingsBridge.audioBufferSize = value
                 background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
             }
         }
@@ -122,21 +121,46 @@ Flickable {
 
         RowLayout {
             Layout.fillWidth: true
-            Text { text: "Encoder Profile"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
-            ComboBox {
-                model: ["Fast (Low Latency)", "Balanced", "Slow (Max Quality)"]
-                currentIndex: 1
+            Text { text: "CRF (Quality)"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+            SpinBox {
+                from: 0; to: 51; value: SettingsBridge.recorderCrf
+                onValueModified: SettingsBridge.recorderCrf = value
                 background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
             }
         }
 
         RowLayout {
             Layout.fillWidth: true
-            Text { text: "Output Format"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+            Text { text: "Encoder Preset"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
             ComboBox {
-                model: ["MP4 (H.264)", "WebM (VP9)", "MOV (ProRes)"]
-                currentIndex: 0
+                model: ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]
+                currentIndex: model.indexOf(SettingsBridge.recorderPreset)
+                onActivated: SettingsBridge.recorderPreset = currentText
                 background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // SUNO AI
+        // ═══════════════════════════════════════════════════════════
+        Text {
+            text: "Suno AI"
+            color: Theme.accent
+            font: Theme.fontSubtitle
+            Layout.topMargin: Theme.spacingSmall
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingTiny
+            Text { text: "Session Token"; color: Theme.textSecondary; font: Theme.fontCaption }
+            TextField {
+                Layout.fillWidth: true
+                text: SettingsBridge.sunoToken
+                onTextEdited: SettingsBridge.sunoToken = text
+                placeholderText: "Enter Suno token..."
+                echoMode: TextInput.PasswordEchoOnEdit
+                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: parent.activeFocus ? Theme.accent : Theme.border }
             }
         }
 
@@ -148,6 +172,7 @@ Flickable {
             onClicked: {
                 Theme.accent = accentInput.text
                 Theme.background = bgInput.text
+                SettingsBridge.save()
                 console.log("Settings saved and applied.")
             }
         }
@@ -155,7 +180,7 @@ Flickable {
         AppButton {
             text: "Reset Defaults"
             Layout.fillWidth: true
-            onClicked: console.log("Resetting to factory defaults...")
+            onClicked: SettingsBridge.resetToDefaults()
         }
     }
 }
