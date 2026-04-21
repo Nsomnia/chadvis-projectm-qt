@@ -122,8 +122,7 @@ bool SunoClient::isAuthenticated() const {
 
 void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
     if (cookie_.empty()) {
-        if (callback)
-            callback(false);
+        if (callback) callback(false);
         return;
     }
 
@@ -133,46 +132,30 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
                               .arg(QString::fromStdString(clerkVersion_));
         QNetworkRequest req((QUrl(url)));
         req.setRawHeader("Cookie", QString::fromStdString(cookie_).toUtf8());
-        req.setRawHeader(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        req.setRawHeader("User-Agent", "Mozilla/5.0");
 
         QNetworkReply* reply = manager_->get(req);
-        connect(reply,
-                &QNetworkReply::finished,
-                this,
-                [this, reply, callback]() {
-                    reply->deleteLater();
-                    if (reply->error() == QNetworkReply::NoError) {
-                        QJsonDocument doc =
-                                QJsonDocument::fromJson(reply->readAll());
-                        
-                        QJsonObject resp = doc.object()["response"].toObject();
-                        std::string sid = resp["last_active_session_id"].toString().toStdString();
-                        
-                        if (sid.empty()) {
-                            QJsonArray sessions = resp["sessions"].toArray();
-                            if (!sessions.isEmpty()) {
-                                sid = sessions[0].toObject()["id"].toString().toStdString();
-                            }
-                        }
-
-                        clerkSid_ = sid;
-                        if (!clerkSid_.empty()) {
-                            refreshAuthToken(callback);
-                        } else {
-                            LOG_ERROR("SunoClient: Failed to extract Clerk SID from response");
-                            if (callback)
-                                callback(false);
-                        }
-                    } else {
-                        LOG_ERROR("SunoClient: Clerk Session ID request failed: {}",
-                                  reply->errorString().toStdString());
-                        if (callback)
-                            callback(false);
-                    }
-                });
+        connect(reply, &QNetworkReply::finished, this, [this, reply, callback]() {
+            reply->deleteLater();
+            if (reply->error() == QNetworkReply::NoError) {
+                QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+                QJsonObject resp = doc.object()["response"].toObject();
+                std::string sid = resp["last_active_session_id"].toString().toStdString();
+                if (sid.empty()) {
+                    QJsonArray sessions = resp["sessions"].toArray();
+                    if (!sessions.isEmpty()) sid = sessions[0].toObject()["id"].toString().toStdString();
+                }
+                clerkSid_ = sid;
+                if (!clerkSid_.empty()) refreshAuthToken(callback);
+                else {
+                    LOG_ERROR("SunoClient: Failed to extract Clerk SID");
+                    if (callback) callback(false);
+                }
+            } else {
+                LOG_ERROR("SunoClient: Clerk Session ID request failed: {}", reply->errorString().toStdString());
+                if (callback) callback(false);
+            }
+        });
         return;
     }
 
@@ -182,10 +165,7 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
                           .arg(QString::fromStdString(clerkVersion_));
     QNetworkRequest req((QUrl(url)));
     req.setRawHeader("Cookie", QString::fromStdString(cookie_).toUtf8());
-    req.setRawHeader(
-            "User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    req.setRawHeader("User-Agent", "Mozilla/5.0");
 
     QNetworkReply* reply = manager_->post(req, QByteArray());
     connect(reply, &QNetworkReply::finished, this, [this, reply, callback]() {
@@ -193,81 +173,31 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
         if (reply->error() == QNetworkReply::NoError) {
             QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
             token_ = doc.object()["jwt"].toString().toStdString();
-            if (token_.empty()) {
-                token_ = doc.object()["response"].toObject()["jwt"].toString().toStdString();
-            }
-            
+            if (token_.empty()) token_ = doc.object()["response"].toObject()["jwt"].toString().toStdString();
             if (!token_.empty()) {
-                LOG_INFO("SunoClient: Refreshed auth token ({}...)", token_.substr(0, 10));
+                LOG_INFO("SunoClient: Refreshed auth token");
                 tokenChanged.emitSignal(token_);
-            } else {
-                LOG_ERROR("SunoClient: JWT missing in refresh response");
             }
-            
-            if (callback)
-                callback(!token_.empty());
+            if (callback) callback(!token_.empty());
         } else {
-            LOG_ERROR("SunoClient: Clerk Token request failed: {}",
-                      reply->errorString().toStdString());
-            if (callback)
-                callback(false);
+            LOG_ERROR("SunoClient: Clerk Token request failed: {}", reply->errorString().toStdString());
+            if (callback) callback(false);
         }
     });
 }
 
-QNetworkRequest SunoClient::createRequest(const QString& endpoint) {
-    QUrl url;
-    if (endpoint.startsWith("http")) {
-        url = QUrl(endpoint);
-    } else {
-        url = QUrl(API_BASE + endpoint);
-    }
-    QNetworkRequest request(url);
-    if (!token_.empty()) {
-        request.setRawHeader(
-                "Authorization",
-                QString::fromStdString("Bearer " + token_).toUtf8());
-    }
-    if (!cookie_.empty()) {
-        request.setRawHeader("Cookie",
-                             QString::fromStdString(cookie_).toUtf8());
-    }
-    request.setRawHeader(
-            "User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-    return request;
-}
-
 QNetworkRequest SunoClient::createAuthenticatedRequest(const QString& endpoint) {
-    QUrl url;
-    if (endpoint.startsWith("http")) {
-        url = QUrl(endpoint);
-    } else {
-        url = QUrl(API_BASE + endpoint);
-    }
+    QUrl url = endpoint.startsWith("http") ? QUrl(endpoint) : QUrl(API_BASE + endpoint);
     QNetworkRequest request(url);
-    
-    // Use Bearer token (matching working Sidetrack implementation)
-    if (!token_.empty()) {
-        request.setRawHeader("Authorization", QString::fromStdString("Bearer " + token_).toUtf8());
-    }
-    
-    // Simple headers like working implementation
+    if (!token_.empty()) request.setRawHeader("Authorization", "Bearer " + QByteArray::fromStdString(token_));
     request.setRawHeader("Accept", "application/json,text/plain,*/*");
     request.setRawHeader("User-Agent", "Mozilla/5.0");
-    
     return request;
 }
 
-void SunoClient::enqueueRequest(const QNetworkRequest& req,
-                               const std::string& method,
-                               const QByteArray& data,
-                               std::function<void(QNetworkReply*)> callback) {
+void SunoClient::enqueueRequest(const QNetworkRequest& req, const std::string& method, const QByteArray& data, std::function<void(QNetworkReply*)> callback) {
     requestQueue_.push_back({req, method, data, callback});
-    if (!queueTimer_->isActive()) {
-        queueTimer_->start();
-    }
+    if (!queueTimer_->isActive()) queueTimer_->start();
 }
 
 void SunoClient::fetchLibrary(int page) {
@@ -275,369 +205,102 @@ void SunoClient::fetchLibrary(int page) {
         errorOccurred.emitSignal("Not authenticated");
         return;
     }
-
     auto proceed = [this, page] {
-        // Use GET with Bearer token (matching working Sidetrack implementation)
-        QString url = QString("/feed/v2?hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=%1").arg(page - 1);
+        QString url = QString("/feed/v3?hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=%1").arg(page - 1);
         enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this](QNetworkReply* reply) {
             onLibraryReply(reply);
         });
     };
-
     if (token_.empty() && !cookie_.empty()) {
         refreshAuthToken([this, proceed](bool success) {
-            if (!success) {
-                errorOccurred.emitSignal("Authentication refresh failed");
-                return;
-            }
-            proceed();
+            if (success) proceed();
+            else errorOccurred.emitSignal("Auth refresh failed");
         });
-    } else {
-        proceed();
-    }
-}
-
-void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
-    if (!isAuthenticated())
-        return;
-
-    auto proceed = [this, clipId] {
-        QString url = QString("/gen/%1/aligned_lyrics/v2")
-                              .arg(QString::fromStdString(clipId));
-        
-        LOG_INFO("SunoClient: Fetching aligned lyrics for {}", clipId);
-        
-        // Use createAuthenticatedRequest to ensure Bearer token is used
-        enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this, clipId](QNetworkReply* reply) {
-            reply->deleteLater();
-            
-            int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            
-            if (reply->error() == QNetworkReply::NoError) {
-                QByteArray data = reply->readAll();
-                if (data.isEmpty()) {
-                    LOG_WARN("SunoClient: Empty lyrics response for {}", clipId);
-                } else {
-                    // Check for "Processing lyrics" message
-                    if (data.contains("Processing lyrics")) {
-                        LOG_WARN("SunoClient: Lyrics still processing for {}. Will retry later.", clipId);
-                        // Treat as error to trigger retry logic if applicable, or custom signal?
-                        // For now, logging it clearly. Controller handles queue.
-                        // Ideally we should emit a specific signal or error code.
-                        // But current flow assumes success = alignedLyricsFetched.
-                        // Let's emit error so controller can re-queue?
-                        errorOccurred.emitSignal("Lyrics processing: " + clipId);
-                    } else {
-                        // Log first 100 chars of response for debugging
-                        std::string preview = data.left(100).toStdString();
-                        LOG_INFO("SunoClient: Received lyrics data ({} bytes). Preview: {}", data.size(), preview);
-                        alignedLyricsFetched.emitSignal(clipId, data.toStdString());
-                    }
-                }
-            } else if (status == 404) {
-                LOG_WARN("SunoClient: v2 lyrics not found, trying fallback for {}", clipId);
-                QString lyricsUrl = QString("/lyrics/%1")
-                                      .arg(QString::fromStdString(clipId));
-                enqueueRequest(createAuthenticatedRequest(lyricsUrl), "GET", {}, [this, clipId](QNetworkReply* r2) {
-                    r2->deleteLater();
-                    if (r2->error() == QNetworkReply::NoError) {
-                        QByteArray data = r2->readAll();
-                        LOG_INFO("SunoClient: Received fallback lyrics data ({} bytes)", data.size());
-                        alignedLyricsFetched.emitSignal(clipId, data.toStdString());
-                    } else {
-                        LOG_ERROR("SunoClient: Fallback lyrics fetch failed: {}", r2->errorString().toStdString());
-                    }
-                });
-            } else {
-                std::string err = reply->errorString().toStdString();
-                // If 401, treat same as handleNetworkError to trigger refresh logic
-                if (status == 401) {
-                    err = "Unauthorized: Token expired or invalid";
-                    // DO NOT clear token here if it's going to be used by other concurrent requests
-                    // But we MUST clear it so next fetch triggers refresh
-                    token_.clear();
-                }
-                
-                LOG_ERROR("SunoClient: Aligned lyrics fetch failed: {} (Status: {})", 
-                          err, status);
-                errorOccurred.emitSignal(err);
-            }
-        });
-    };
-
-    if (token_.empty() && !cookie_.empty()) {
-        refreshAuthToken([this, proceed](bool success) {
-            if (!success)
-                return;
-            proceed();
-        });
-    } else {
-        proceed();
-    }
-}
-
-void SunoClient::initiateWavConversion(const std::string& clipId) {
-    if (!isAuthenticated()) {
-        errorOccurred.emitSignal("Not authenticated for WAV conversion");
-        return;
-    }
-
-    QString url = QString("/gen/%1/convert_wav/").arg(QString::fromStdString(clipId));
-    LOG_INFO("SunoClient: Initiating WAV conversion for {}", clipId);
-
-    enqueueRequest(createAuthenticatedRequest(url), "POST", {}, [this, clipId](QNetworkReply* reply) {
-        reply->deleteLater();
-        int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-
-        if (reply->error() == QNetworkReply::NoError || status == 202) {
-            LOG_INFO("SunoClient: WAV conversion initiated for {}. Polling for result...", clipId);
-            // Start polling after a short delay
-            QTimer::singleShot(2000, this, [this, clipId]() {
-                pollWavFile(clipId, 60);
-            });
-        } else {
-            std::string err = reply->errorString().toStdString();
-            LOG_ERROR("SunoClient: WAV conversion initiation failed: {} (Status: {})", err, status);
-            errorOccurred.emitSignal("WAV conversion failed: " + err);
-        }
-    });
-}
-
-void SunoClient::pollWavFile(const std::string& clipId, int maxAttempts) {
-    if (!isAuthenticated()) {
-        errorOccurred.emitSignal("Not authenticated for WAV polling");
-        return;
-    }
-
-    if (maxAttempts <= 0) {
-        LOG_ERROR("SunoClient: WAV conversion timed out for {}", clipId);
-        errorOccurred.emitSignal("WAV conversion timeout for: " + clipId);
-        return;
-    }
-
-    QString url = QString("/gen/%1/wav_file/").arg(QString::fromStdString(clipId));
-    
-    enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this, clipId, maxAttempts](QNetworkReply* reply) {
-        reply->deleteLater();
-        QByteArray data = reply->readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(data);
-        
-        if (reply->error() == QNetworkReply::NoError) {
-            QJsonObject obj = doc.object();
-            
-            if (obj.contains("wav_file_url")) {
-                QString wavUrl = obj["wav_file_url"].toString();
-                if (!wavUrl.isEmpty()) {
-                    LOG_INFO("SunoClient: WAV file ready for {} at {}", clipId, wavUrl.toStdString());
-                    wavConversionReady.emitSignal(clipId, wavUrl.toStdString());
-                    return;
-                }
-            }
-            
-            // Check if still processing
-            if (data.contains("processing") || data.contains("pending")) {
-                LOG_DEBUG("SunoClient: WAV still processing for {}, {} attempts remaining", clipId, maxAttempts - 1);
-                QTimer::singleShot(2000, this, [this, clipId, maxAttempts]() {
-                    pollWavFile(clipId, maxAttempts - 1);
-                });
-            } else {
-                LOG_ERROR("SunoClient: Unexpected WAV response for {}: {}", clipId, data.toStdString());
-                errorOccurred.emitSignal("WAV conversion failed for: " + clipId);
-            }
-        } else if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 202) {
-            // Still processing
-            LOG_DEBUG("SunoClient: WAV still processing for {} (HTTP 202), {} attempts remaining", clipId, maxAttempts - 1);
-            QTimer::singleShot(2000, this, [this, clipId, maxAttempts]() {
-                pollWavFile(clipId, maxAttempts - 1);
-            });
-        } else {
-            std::string err = reply->errorString().toStdString();
-            LOG_ERROR("SunoClient: WAV poll failed: {} (Status: {})", err, reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt());
-            errorOccurred.emitSignal("WAV poll failed: " + err);
-        }
-    });
+    } else proceed();
 }
 
 void SunoClient::onLibraryReply(QNetworkReply* reply) {
     reply->deleteLater();
-
     if (reply->error() != QNetworkReply::NoError) {
         handleNetworkError(reply);
         return;
     }
-
     QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
     std::vector<SunoClip> clips;
     QJsonArray array;
-
-    if (doc.isArray()) {
-        array = doc.array();
-    } else if (doc.isObject() && doc.object().contains("clips")) {
-        array = doc.object()["clips"].toArray();
-    } else if (doc.isObject() && doc.object().contains("project_clips")) {
-        QJsonArray projClips = doc.object()["project_clips"].toArray();
-        for (const auto& item : projClips) {
-            if (item.toObject().contains("clip")) {
-                array.append(item.toObject()["clip"]);
-            }
-        }
-    }
+    if (doc.isObject() && doc.object().contains("clips")) array = doc.object()["clips"].toArray();
+    else if (doc.isArray()) array = doc.array();
 
     for (const auto& item : array) {
         QJsonObject obj = item.toObject();
         SunoClip clip;
         clip.id = obj["id"].toString().toStdString();
         clip.title = obj["title"].toString().toStdString();
-        
-        if (clip.title.empty()) {
-            clip.title = obj["name"].toString().toStdString();
-        }
-
-        LOG_DEBUG("SunoClient: Parsing clip {} - {}", clip.id, clip.title);
-
-        clip.video_url = obj["video_url"].toString().toStdString();
+        if (clip.title.empty()) clip.title = obj["name"].toString().toStdString();
         clip.audio_url = obj["audio_url"].toString().toStdString();
         clip.image_url = obj["image_url"].toString().toStdString();
-        
-        // Handle model info which can be at root or in metadata
-        clip.major_model_version = obj["major_model_version"].toString().toStdString();
-        clip.model_name = obj["model_name"].toString().toStdString();
-        
-        QJsonObject meta = obj["metadata"].toObject();
-        if (clip.major_model_version.empty()) 
-            clip.major_model_version = meta["major_model_version"].toString().toStdString();
-        if (clip.model_name.empty())
-            clip.model_name = meta["model_name"].toString().toStdString();
-            
-        if (meta.contains("mv"))
-            clip.mv = meta["mv"].toString().toStdString();
-        
-        if (meta.contains("control_sliders")) {
-             QJsonObject sliders = meta["control_sliders"].toObject();
-             if (sliders.contains("weirdness_constraint"))
-                 clip.metadata.weirdness = sliders["weirdness_constraint"].toDouble();
-             if (sliders.contains("style_weight"))
-                 clip.metadata.style_weight = sliders["style_weight"].toDouble();
-        } else {
-             if (meta.contains("weirdness_constraint"))
-                 clip.metadata.weirdness = meta["weirdness_constraint"].toDouble();
-             if (meta.contains("style_weight"))
-                 clip.metadata.style_weight = meta["style_weight"].toDouble();
-        }
-        
-        if (meta.contains("make_instrumental")) {
-            QJsonValue val = meta["make_instrumental"];
-            if (val.isBool()) clip.metadata.make_instrumental = val.toBool();
-            else if (val.isString()) clip.metadata.make_instrumental = (val.toString() == "true");
-        }
-
-        clip.display_name = obj["display_name"].toString().toStdString();
-        clip.handle = obj["handle"].toString().toStdString();
-        clip.is_liked = obj["is_liked"].toBool() || obj["is_liked"].toInt() != 0;
-        clip.is_trashed = obj["is_trashed"].toBool() || obj["is_trashed"].toInt() != 0;
-        clip.is_public = obj["is_public"].toBool() || obj["is_public"].toInt() != 0;
-        
-        // created_at can be "created_at" or "created_at" in metadata
-        clip.created_at = obj["created_at"].toString().toStdString();
-        if (clip.created_at.empty()) {
-             clip.created_at = meta["created_at"].toString().toStdString();
-        }
-        
         clip.status = obj["status"].toString().toStdString();
-
+        QJsonObject meta = obj["metadata"].toObject();
         clip.metadata.prompt = meta["prompt"].toString().toStdString();
         clip.metadata.tags = meta["tags"].toString().toStdString();
-        clip.metadata.lyrics = meta["lyrics"].toString().toStdString();
-        
-        if (clip.metadata.lyrics.empty()) {
-             std::string prompt = meta["prompt"].toString().toStdString();
-             if (!prompt.empty()) {
-                 clip.metadata.lyrics = prompt;
-             }
-        }
-
-        clip.metadata.type = meta["type"].toString().toStdString();
-        
-        if (meta.contains("duration")) {
-            if (meta["duration"].isDouble()) {
-                double secs = meta["duration"].toDouble();
-                clip.metadata.duration = file::formatDuration(Duration(static_cast<i64>(secs * 1000)));
-            } else {
-                clip.metadata.duration = meta["duration"].toString().toStdString();
-            }
-        }
-        
-        clip.metadata.error_message = meta["error_message"].toString().toStdString();
-
-        LOG_DEBUG("  Model: {}, Version: {}, Duration: {}, Created: {}", 
-                 clip.model_name, clip.major_model_version, clip.metadata.duration, clip.created_at);
-
         clips.push_back(clip);
     }
-
     libraryFetched.emitSignal(clips);
-}
-
-void SunoClient::fetchProjects(int page) {
-    // Skeleton implementation
-}
-
-void SunoClient::onProjectsReply(QNetworkReply* reply) {
-    reply->deleteLater();
-    // Skeleton implementation
-}
-
-void SunoClient::fetchProject(const std::string& projectId, int page) {
-    // Skeleton implementation
-}
-
-void SunoClient::generate(const std::string& prompt, const std::string& tags, bool makeInstrumental) {
-    if (!isAuthenticated()) {
-        errorOccurred.emitSignal("Not authenticated for generation");
-        return;
-    }
-
-    auto proceed = [this, prompt, tags, makeInstrumental] {
-        QString url = "/generate/v2/";
-        QNetworkRequest req = createAuthenticatedRequest(url);
-        req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-        QJsonObject json;
-        json["prompt"] = QString::fromStdString(prompt);
-        json["tags"] = QString::fromStdString(tags);
-        json["make_instrumental"] = makeInstrumental;
-        json["mv"] = "chirp-v3-5";
-
-        QByteArray data = QJsonDocument(json).toJson();
-        LOG_INFO("SunoClient: Initiating generation with tags '{}'", tags);
-
-        enqueueRequest(req, "POST", data, [this](QNetworkReply* reply) {
-            onLibraryReply(reply);
-        });
-    };
-
-    if (token_.empty() && !cookie_.empty()) {
-        refreshAuthToken([this, proceed](bool success) {
-            if (!success) {
-                errorOccurred.emitSignal("Authentication refresh failed before generation");
-                return;
-            }
-            proceed();
-        });
-    } else {
-        proceed();
-    }
 }
 
 void SunoClient::handleNetworkError(QNetworkReply* reply) {
     std::string err = reply->errorString().toStdString();
-    if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() ==
-        401) {
-        err = "Unauthorized: Token expired or invalid";
-        token_.clear(); // Clear token so next call attempts refresh
+    if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 401) {
+        err = "Unauthorized: Token expired";
+        token_.clear();
     }
     errorOccurred.emitSignal(err);
     LOG_ERROR("SunoClient API Error: {}", err);
 }
+
+void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
+    if (!isAuthenticated()) return;
+    auto proceed = [this, clipId] {
+        QString url = QString("/gen/%1/aligned_lyrics/v2").arg(QString::fromStdString(clipId));
+        enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this, clipId](QNetworkReply* reply) {
+            reply->deleteLater();
+            if (reply->error() == QNetworkReply::NoError) alignedLyricsFetched.emitSignal(clipId, reply->readAll().toStdString());
+            else errorOccurred.emitSignal("Lyrics fetch failed");
+        });
+    };
+    if (token_.empty() && !cookie_.empty()) refreshAuthToken([this, proceed](bool success) { if (success) proceed(); });
+    else proceed();
+}
+
+void SunoClient::initiateWavConversion(const std::string& clipId) {
+    if (!isAuthenticated()) return;
+    QString url = QString("/gen/%1/convert_wav/").arg(QString::fromStdString(clipId));
+    enqueueRequest(createAuthenticatedRequest(url), "POST", {}, [this, clipId](QNetworkReply* reply) {
+        reply->deleteLater();
+        if (reply->error() == QNetworkReply::NoError || reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 202) {
+            QTimer::singleShot(2000, this, [this, clipId]() { pollWavFile(clipId, 60); });
+        }
+    });
+}
+
+void SunoClient::pollWavFile(const std::string& clipId, int maxAttempts) {
+    if (!isAuthenticated() || maxAttempts <= 0) return;
+    QString url = QString("/gen/%1/wav_file/").arg(QString::fromStdString(clipId));
+    enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this, clipId, maxAttempts](QNetworkReply* reply) {
+        reply->deleteLater();
+        QByteArray data = reply->readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (reply->error() == QNetworkReply::NoError && doc.object().contains("wav_file_url")) {
+            wavConversionReady.emitSignal(clipId, doc.object()["wav_file_url"].toString().toStdString());
+        } else {
+            QTimer::singleShot(2000, this, [this, clipId, maxAttempts]() { pollWavFile(clipId, maxAttempts - 1); });
+        }
+    });
+}
+
+void SunoClient::fetchProjects(int) {}
+void SunoClient::fetchProject(const std::string&, int) {}
+void SunoClient::generate(const std::string&, const std::string&, bool) {}
+void SunoClient::onProjectsReply(QNetworkReply*) {}
 
 } // namespace vc::suno
