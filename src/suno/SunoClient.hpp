@@ -35,41 +35,27 @@ public:
     void refreshAuthToken(std::function<void(bool)> callback = nullptr);
 
     // API Methods
-    // Fetch songs from "My Library" (Feed)
-    // page: 1-based index
     void fetchLibrary(int page = 1);
-
-    // Fetch aligned lyrics for a clip
     void fetchAlignedLyrics(const std::string& clipId);
-
-    // WAV conversion (server-side conversion)
     void initiateWavConversion(const std::string& clipId);
     void pollWavFile(const std::string& clipId, int maxAttempts = 60);
-
-    // Fetch projects/workspaces
-    void fetchProjects(int page = 1);
-
-    // Fetch specific project clips
-    void fetchProject(const std::string& projectId, int page = 1);
-
-    // Generate new song
-    void generate(const std::string& prompt, const std::string& tags, bool makeInstrumental = false);
+    
+    // Generation (v2/v3-web)
+    void generate(const std::string& prompt, const std::string& tags, bool makeInstrumental = false, const std::string& model = "chirp-v3.5");
 
     // Signals
     Signal<const std::vector<SunoClip>&> libraryFetched;
-    Signal<const std::vector<SunoProject>&> projectsFetched;
     Signal<const std::vector<SunoClip>&> generationStarted; // returned clips with pending status
-    Signal<std::string, std::string> alignedLyricsFetched; // clipId, json
-    Signal<std::string, std::string> wavConversionReady; // clipId, wavUrl
-    Signal<std::string> tokenChanged; // New token
-    Signal<std::string> errorOccurred; // Error message
+    Signal<std::string, std::string> alignedLyricsFetched;
+    Signal<std::string, std::string> wavConversionReady;
+    Signal<std::string> tokenChanged;
+    Signal<std::string> errorOccurred;
 
 private slots:
     void onLibraryReply(QNetworkReply* reply);
-    void onProjectsReply(QNetworkReply* reply);
+    void onGenerateReply(QNetworkReply* reply);
 
 private:
-    QNetworkRequest createRequest(const QString& endpoint);
     QNetworkRequest createAuthenticatedRequest(const QString& endpoint);
     void enqueueRequest(const QNetworkRequest& req,
                         const std::string& method,
@@ -94,9 +80,8 @@ private:
     std::string clerkSid_;
     std::string clerkVersion_{"5.117.0"};
 
-    const QString API_BASE = "https://studio-api.prod.suno.com/api";
+    const QString API_BASE = "https://studio-api-prod.suno.com/api";
     const QString CLERK_BASE = "https://clerk.suno.com/v1";
 };
-
 
 } // namespace vc::suno

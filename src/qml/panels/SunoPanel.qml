@@ -53,6 +53,8 @@ ColumnLayout {
         text: "Generate Song"
         Layout.fillWidth: true
         onClicked: {
+            promptInput.text = ""
+            SunoBridge.generate(promptInput.text, styleInput.text, false, modelSelector.currentText)
             console.log("SunoBridge: Generating with model: " + modelSelector.currentText)
         }
     }

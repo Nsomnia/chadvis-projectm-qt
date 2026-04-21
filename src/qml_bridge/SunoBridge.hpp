@@ -54,6 +54,9 @@ public slots:
     Q_INVOKABLE QVariantMap getClip(const QString& clipId) const;
     Q_INVOKABLE bool hasLyrics(const QString& clipId) const;
     Q_INVOKABLE void fetchLyrics(const QString& clipId);
+    
+    // Generation
+    Q_INVOKABLE void generate(const QString& prompt, const QString& tags, bool makeInstrumental, const QString& model);
 
 signals:
     void authChanged();
@@ -63,6 +66,7 @@ signals:
     void searchQueryChanged();
     void searchResultsChanged();
     void clipDownloaded(const QString& clipId, const QString& path);
+    void generationStarted();
 
 private slots:
     void onLibraryUpdated(const std::vector<vc::suno::SunoClip>& clips);
