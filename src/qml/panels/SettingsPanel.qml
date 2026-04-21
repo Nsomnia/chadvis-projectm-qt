@@ -1,164 +1,151 @@
-/**
- * @file SettingsPanel.qml
- * @brief Settings configuration panel
- *
- * Allows users to modify UI accent and background colors at runtime.
- *
- * @version 1.1.0 - 2026-04-21
- */
-
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import ChadVis
 import "../components"
 
-ColumnLayout {
+Flickable {
     id: root
+    Layout.fillWidth: true
+    Layout.fillHeight: true
+    contentHeight: contentLayout.implicitHeight
+    clip: true
 
-    spacing: Theme.spacingMedium
+    ColumnLayout {
+        id: contentLayout
+        anchors.fill: parent
+        spacing: Theme.spacingMedium
 
-    // ═══════════════════════════════════════════════════════════
-    // UI CUSTOMIZATION
-    // ═══════════════════════════════════════════════════════════
-
-    Text {
-        text: "Appearance"
-        color: Theme.accent
-        font: Theme.fontSubtitle
-    }
-
-    GridLayout {
-        Layout.fillWidth: true
-        columns: 2
-        columnSpacing: Theme.spacingMedium
-        rowSpacing: Theme.spacingSmall
-
+        // ═══════════════════════════════════════════════════════════
+        // APPEARANCE
+        // ═══════════════════════════════════════════════════════════
         Text {
-            text: "Accent"
-            color: Theme.textSecondary
-            font: Theme.fontCaption
+            text: "Appearance"
+            color: Theme.accent
+            font: Theme.fontSubtitle
         }
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
-            spacing: Theme.spacingSmall
-            
-            Rectangle {
-                width: 24; height: 24
-                radius: Theme.radiusSmall
-                color: accentInput.text
-                border.color: Theme.border
+            columns: 2
+            columnSpacing: Theme.spacingMedium
+            rowSpacing: Theme.spacingSmall
+
+            Text { text: "Accent"; color: Theme.textSecondary; font: Theme.fontCaption }
+            RowLayout {
+                Layout.fillWidth: true
+                Rectangle { width: 20; height: 20; radius: 4; color: accentInput.text; border.color: Theme.border }
+                TextField {
+                    id: accentInput
+                    Layout.fillWidth: true
+                    text: Theme.accent
+                    background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: parent.activeFocus ? Theme.accent : Theme.border }
+                }
             }
 
-            TextField {
-                id: accentInput
+            Text { text: "Background"; color: Theme.textSecondary; font: Theme.fontCaption }
+            RowLayout {
                 Layout.fillWidth: true
-                text: Theme.accent
-                font: Theme.fontBody
-                color: Theme.textPrimary
-                background: Rectangle { 
-                    color: Theme.surfaceRaised
-                    radius: Theme.radiusSmall
-                    border.color: parent.activeFocus ? Theme.accent : Theme.border 
+                Rectangle { width: 20; height: 20; radius: 4; color: bgInput.text; border.color: Theme.border }
+                TextField {
+                    id: bgInput
+                    Layout.fillWidth: true
+                    text: Theme.background
+                    background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: parent.activeFocus ? Theme.accent : Theme.border }
                 }
             }
         }
 
+        // ═══════════════════════════════════════════════════════════
+        // AUDIO & VISUALIZER ENGINE
+        // ═══════════════════════════════════════════════════════════
         Text {
-            text: "Background"
-            color: Theme.textSecondary
-            font: Theme.fontCaption
+            text: "Engine Controls"
+            color: Theme.accent
+            font: Theme.fontSubtitle
+            Layout.topMargin: Theme.spacingSmall
+        }
+
+        CheckBox {
+            text: "High Quality FFT (PFFFT)"
+            checked: true
+            font: Theme.fontBody
+            contentItem: Text { text: parent.text; font: parent.font; color: Theme.textPrimary; leftPadding: parent.indicator.width + parent.spacing; verticalAlignment: Text.AlignVCenter }
+        }
+
+        CheckBox {
+            id: gaplessToggle
+            text: "Gapless Playback (Preload Next)"
+            checked: true
+            font: Theme.fontBody
+            contentItem: Text { text: parent.text; font: parent.font; color: Theme.textPrimary; leftPadding: parent.indicator.width + parent.spacing; verticalAlignment: Text.AlignVCenter }
         }
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: Theme.spacingSmall
-            
-            Rectangle {
-                width: 24; height: 24
-                radius: Theme.radiusSmall
-                color: bgInput.text
-                border.color: Theme.border
-            }
-
-            TextField {
-                id: bgInput
-                Layout.fillWidth: true
-                text: Theme.background
-                font: Theme.fontBody
-                color: Theme.textPrimary
-                background: Rectangle { 
-                    color: Theme.surfaceRaised
-                    radius: Theme.radiusSmall
-                    border.color: parent.activeFocus ? Theme.accent : Theme.border 
-                }
+            Text { text: "Mesh Complexity"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+            ComboBox {
+                model: ["Low (32x32)", "Medium (64x64)", "High (128x128)", "Ultra (256x256)"]
+                currentIndex: 1
+                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
             }
         }
-    }
 
-    // ═══════════════════════════════════════════════════════════
-    // VISUALIZER SETTINGS
-    // ═══════════════════════════════════════════════════════════
-
-    Text {
-        text: "Engine"
-        color: Theme.accent
-        font: Theme.fontSubtitle
-        Layout.topMargin: Theme.spacingMedium
-    }
-
-    CheckBox {
-        text: "High Quality FFT"
-        checked: true
-        font: Theme.fontBody
-        contentItem: Text {
-            text: parent.text
-            font: parent.font
-            color: Theme.textPrimary
-            leftPadding: parent.indicator.width + parent.spacing
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
-
-    CheckBox {
-        text: "Show FPS Counter"
-        checked: false
-        font: Theme.fontBody
-        contentItem: Text {
-            text: parent.text
-            font: parent.font
-            color: Theme.textPrimary
-            leftPadding: parent.indicator.width + parent.spacing
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
-
-    RowLayout {
-        Layout.fillWidth: true
-        Text { text: "Mesh Size"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
-        ComboBox {
-            model: ["32x32", "64x64", "128x128"]
-            currentIndex: 1
-            background: Rectangle { 
-                color: Theme.surfaceRaised
-                radius: Theme.radiusSmall
-                border.color: Theme.border 
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "Audio Buffer (ms)"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+            SpinBox {
+                from: 10; to: 500; value: 100; stepSize: 10
+                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
             }
         }
-    }
 
-    Item { Layout.fillHeight: true }
+        // ═══════════════════════════════════════════════════════════
+        // RECORDER SETTINGS
+        // ═══════════════════════════════════════════════════════════
+        Text {
+            text: "Recording"
+            color: Theme.accent
+            font: Theme.fontSubtitle
+            Layout.topMargin: Theme.spacingSmall
+        }
 
-    AppButton {
-        text: "Save Configuration"
-        Layout.fillWidth: true
-        implicitHeight: 40
-        onClicked: {
-            Theme.accent = accentInput.text
-            Theme.background = bgInput.text
-            // Proactively log success
-            console.log("SunoBridge: Settings saved - Accent: " + Theme.accent + ", BG: " + Theme.background)
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "Encoder Profile"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+            ComboBox {
+                model: ["Fast (Low Latency)", "Balanced", "Slow (Max Quality)"]
+                currentIndex: 1
+                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "Output Format"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
+            ComboBox {
+                model: ["MP4 (H.264)", "WebM (VP9)", "MOV (ProRes)"]
+                currentIndex: 0
+                background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
+            }
+        }
+
+        Item { Layout.fillHeight: true; Layout.preferredHeight: Theme.spacingLarge }
+
+        AppButton {
+            text: "Save & Apply"
+            Layout.fillWidth: true
+            onClicked: {
+                Theme.accent = accentInput.text
+                Theme.background = bgInput.text
+                console.log("SunoBridge: Settings saved and applied.")
+            }
+        }
+        
+        AppButton {
+            text: "Reset Defaults"
+            Layout.fillWidth: true
+            onClicked: console.log("SunoBridge: Resetting to factory defaults...")
         }
     }
 }
