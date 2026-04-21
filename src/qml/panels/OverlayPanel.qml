@@ -7,7 +7,6 @@ import "../components"
 ColumnLayout {
     id: root
 
-    property var overlays: []
     property int selectedOverlay: -1
 
     spacing: 0
@@ -42,17 +41,17 @@ ColumnLayout {
         Layout.fillHeight: true
         clip: true
 
-        model: root.overlays
+        model: OverlayBridge.overlays
         delegate: OverlayDelegate {
             width: overlayList.width
             isSelected: index === root.selectedOverlay
             onSelectClicked: root.selectedOverlay = index
-            onDeleteClicked: root.overlays.splice(index, 1)
+            onDeleteClicked: OverlayBridge.removeOverlay(index)
         }
 
         Label {
             anchors.centerIn: parent
-            visible: root.overlays.length === 0
+            visible: OverlayBridge.overlays.length === 0
             text: "No overlays.\nClick + to add."
             color: Theme.onSurfaceVariant
             font.pixelSize: Theme.fontSizeMedium
@@ -83,10 +82,12 @@ ColumnLayout {
                 id: textInput
                 Layout.fillWidth: true
                 placeholderText: "Overlay text..."
-                text: root.selectedOverlay >= 0 ? root.overlays[root.selectedOverlay].text : ""
+                text: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].text : ""
                 onTextChanged: {
-                    if (root.selectedOverlay >= 0) {
-                        root.overlays[root.selectedOverlay].text = text
+                    if (root.selectedOverlay >= 0 && activeFocus) {
+                        let overlay = OverlayBridge.overlays[root.selectedOverlay]
+                        overlay.text = text
+                        OverlayBridge.updateOverlay(root.selectedOverlay, overlay)
                     }
                 }
             }
@@ -105,10 +106,12 @@ ColumnLayout {
                     Layout.fillWidth: true
                     from: 0
                     to: 100
-                    value: root.selectedOverlay >= 0 ? root.overlays[root.selectedOverlay].x * 100 : 0
+                    value: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].x * 100 : 0
                     onValueChanged: {
-                        if (root.selectedOverlay >= 0) {
-                            root.overlays[root.selectedOverlay].x = value / 100
+                        if (root.selectedOverlay >= 0 && activeFocus) {
+                            let overlay = OverlayBridge.overlays[root.selectedOverlay]
+                            overlay.x = value / 100
+                            OverlayBridge.updateOverlay(root.selectedOverlay, overlay)
                         }
                     }
                 }
@@ -126,20 +129,24 @@ ColumnLayout {
                 SpinBox {
                     from: 12
                     to: 72
-                    value: root.selectedOverlay >= 0 ? root.overlays[root.selectedOverlay].fontSize : 24
+                    value: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].fontSize : 24
                     onValueChanged: {
-                        if (root.selectedOverlay >= 0) {
-                            root.overlays[root.selectedOverlay].fontSize = value
+                        if (root.selectedOverlay >= 0 && activeFocus) {
+                            let overlay = OverlayBridge.overlays[root.selectedOverlay]
+                            overlay.fontSize = value
+                            OverlayBridge.updateOverlay(root.selectedOverlay, overlay)
                         }
                     }
                 }
 
                 CheckBox {
                     text: "Bold"
-                    checked: root.selectedOverlay >= 0 ? root.overlays[root.selectedOverlay].bold : false
+                    checked: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].bold : false
                     onCheckedChanged: {
                         if (root.selectedOverlay >= 0) {
-                            root.overlays[root.selectedOverlay].bold = checked
+                            let overlay = OverlayBridge.overlays[root.selectedOverlay]
+                            overlay.bold = checked
+                            OverlayBridge.updateOverlay(root.selectedOverlay, overlay)
                         }
                     }
                 }
@@ -158,7 +165,7 @@ ColumnLayout {
                     width: 32
                     height: 32
                     radius: Theme.radiusSmall
-                    color: root.selectedOverlay >= 0 ? root.overlays[root.selectedOverlay].color : "#FFFFFF"
+                    color: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].color : "#FFFFFF"
                     border.color: Theme.outline
 
                     MouseArea {
@@ -176,10 +183,12 @@ ColumnLayout {
                     Layout.fillWidth: true
                     from: 0
                     to: 100
-                    value: root.selectedOverlay >= 0 ? root.overlays[root.selectedOverlay].opacity * 100 : 100
+                    value: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].opacity * 100 : 100
                     onValueChanged: {
-                        if (root.selectedOverlay >= 0) {
-                            root.overlays[root.selectedOverlay].opacity = value / 100
+                        if (root.selectedOverlay >= 0 && activeFocus) {
+                            let overlay = OverlayBridge.overlays[root.selectedOverlay]
+                            overlay.opacity = value / 100
+                            OverlayBridge.updateOverlay(root.selectedOverlay, overlay)
                         }
                     }
                 }
@@ -189,10 +198,12 @@ ColumnLayout {
                 id: animationCombo
                 Layout.fillWidth: true
                 model: ["None", "Fade Pulse", "Scroll Left", "Scroll Right", "Bounce"]
-                currentIndex: root.selectedOverlay >= 0 ? root.overlays[root.selectedOverlay].animation : 0
+                currentIndex: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].animation : 0
                 onActivated: {
                     if (root.selectedOverlay >= 0) {
-                        root.overlays[root.selectedOverlay].animation = index
+                        let overlay = OverlayBridge.overlays[root.selectedOverlay]
+                        overlay.animation = index
+                        OverlayBridge.updateOverlay(root.selectedOverlay, overlay)
                     }
                 }
 
@@ -222,17 +233,8 @@ ColumnLayout {
         }
 
         onAccepted: {
-            root.overlays.push({
-                text: newOverlayText.text || "New Overlay",
-                x: 0.5,
-                y: 0.5,
-                fontSize: 24,
-                bold: false,
-                color: "#FFFFFF",
-                opacity: 1.0,
-                animation: 0
-            })
-            root.selectedOverlay = root.overlays.length - 1
+            OverlayBridge.addOverlay(newOverlayText.text || "New Overlay")
+            root.selectedOverlay = OverlayBridge.overlays.length - 1
             newOverlayText.clear()
         }
     }
@@ -260,7 +262,9 @@ ColumnLayout {
                         anchors.fill: parent
                         onClicked: {
                             if (root.selectedOverlay >= 0) {
-                                root.overlays[root.selectedOverlay].color = modelData
+                                let overlay = OverlayBridge.overlays[root.selectedOverlay]
+                                overlay.color = modelData
+                                OverlayBridge.updateOverlay(root.selectedOverlay, overlay)
                             }
                             colorDialog.close()
                         }

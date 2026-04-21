@@ -72,6 +72,7 @@ signals:
     void recordingChanged();
     void statusChanged();
     void durationChanged();
+    void outputPathChanged();
     void errorOccurred(const QString& message);
 
 private slots:

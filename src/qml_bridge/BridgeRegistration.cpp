@@ -14,6 +14,7 @@
 #include "LyricsBridge.hpp"
 #include "SunoBridge.hpp"
 #include "ThemeBridge.hpp"
+#include "OverlayBridge.hpp"
 #include <QQmlApplicationEngine>
 
 namespace qml_bridge {
@@ -27,6 +28,7 @@ PresetBridge* s_presetBridge = nullptr;
 LyricsBridge* s_lyricsBridge = nullptr;
 SunoBridge* s_sunoBridge = nullptr;
 ThemeBridge* s_themeBridge = nullptr;
+OverlayBridge* s_overlayBridge = nullptr;
 }
 
 void registerBridges(QQmlApplicationEngine* engine,
@@ -43,6 +45,7 @@ void registerBridges(QQmlApplicationEngine* engine,
     s_lyricsBridge = LyricsBridge::create(engine, nullptr);
     s_sunoBridge = SunoBridge::create(engine, nullptr);
     s_themeBridge = ThemeBridge::create(engine, nullptr);
+    s_overlayBridge = OverlayBridge::create(engine, nullptr);
 
     if (visualizer) {
         s_visualizerBridge->setVisualizerWindow(visualizer);
@@ -86,5 +89,6 @@ PresetBridge* getPresetBridge() { return s_presetBridge; }
 LyricsBridge* getLyricsBridge() { return s_lyricsBridge; }
 SunoBridge* getSunoBridge() { return s_sunoBridge; }
 ThemeBridge* getThemeBridge() { return s_themeBridge; }
+OverlayBridge* getOverlayBridge() { return s_overlayBridge; }
 
 }
