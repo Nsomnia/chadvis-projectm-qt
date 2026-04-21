@@ -177,8 +177,8 @@ set(AUDIO_SOURCES
   src/audio/AudioQueue.hpp
   src/audio/Playlist.hpp
   src/audio/Playlist.cpp
-  src/audio/MediaMetadata.hpp
-  src/audio/MediaMetadata.cpp
+  src/audio/analysis/MediaMetadata.hpp
+  src/audio/analysis/MediaMetadata.cpp
 )
 
 set(VISUALIZER_SOURCES
@@ -252,6 +252,7 @@ set(LYRICS_SOURCES
 # ═══════════════════════════════════════════════════════════════════════════
 set(QML_BRIDGE_SOURCES
     src/qml_bridge/AudioBridge.hpp
+    src/audio/analysis/MediaMetadata.hpp
     src/qml_bridge/AudioBridge.cpp
     src/qml_bridge/PlaylistBridge.hpp
     src/qml_bridge/PlaylistBridge.cpp

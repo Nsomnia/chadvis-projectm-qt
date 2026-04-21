@@ -4,7 +4,7 @@
 
 #include "util/Types.hpp"
 #include "util/Signal.hpp"
-#include "MediaMetadata.hpp"
+#include "analysis/MediaMetadata.hpp"
 #include <vector>
 #include <random>
 #include <optional>

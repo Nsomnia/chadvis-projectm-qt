@@ -5,7 +5,7 @@
 
 #include "AudioBridge.hpp"
 #include "audio/AudioEngine.hpp"
-#include "audio/MediaMetadata.hpp"
+#include "audio/analysis/MediaMetadata.hpp"
 #include "core/Application.hpp"
 #include <QQmlEngine>
 
