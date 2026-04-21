@@ -162,7 +162,9 @@ ColumnLayout {
                 sourceSize.height: 64
                 Layout.preferredWidth: 64
                 Layout.preferredHeight: 64
-                fillMode: Image.PreserveAspectCrop
+                sourceSize.width: width
+                    sourceSize.height: height
+                    fillMode: Image.PreserveAspectCrop
 
                 Rectangle {
                     anchors.fill: parent

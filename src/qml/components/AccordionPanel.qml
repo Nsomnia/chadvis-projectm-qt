@@ -100,6 +100,8 @@ Item {
                     sourceSize.height: Theme.iconMedium
                     Layout.preferredWidth: Theme.iconMedium
                     Layout.preferredHeight: Theme.iconMedium
+                    sourceSize.width: width
+                    sourceSize.height: height
                     fillMode: Image.PreserveAspectFit
 
                     ColorOverlay {
