@@ -9,13 +9,6 @@ namespace qml_bridge {
 
 /**
  * @brief SettingsBridge provides access to core engine settings from QML.
- * 
- * It interfaces with vc::Config to persist and apply settings for:
- * - Audio Engine (buffer size, sample rate)
- * - Visualizer (mesh complexity, FPS, beat sensitivity)
- * - Video Recorder (CRF, preset, resolution)
- * - Karaoke (font, position, colors)
- * - Suno (token, download path)
  */
 class SettingsBridge : public QObject {
     Q_OBJECT
@@ -92,6 +85,9 @@ public:
 
     Q_INVOKABLE void save();
     Q_INVOKABLE void resetToDefaults();
+    
+    // Performance Presets
+    Q_INVOKABLE void setPerformancePreset(const QString& preset);
 
 signals:
     void audioBufferSizeChanged();
