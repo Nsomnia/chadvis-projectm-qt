@@ -64,11 +64,11 @@
 - [x] **Migrate Overlays & CPU Rasterization to QML:** Delete `OverlayRenderer.cpp` and `OverlayEngine.cpp`. Moving overlay rendering from CPU `QPainter` to QML `Text` and hardware-accelerated shaders (Scene Graph).
 - [x] **Remove Redundant Audio Sources:** Remove `FFmpegAudioSource.cpp` and `SDLMixerAudioSource.cpp`. Rely on `QMediaPlayer` + `QAudioBufferOutput` or **miniaudio**.
 - [x] **Consolidate Metadata Parsing:** Investigate dropping `TagLib` and relying on Qt's native `QMediaMetaData` to reduce dependencies. (Result: Decided to keep TagLib as QMediaMetaData requires track to be loaded in QMediaPlayer for reliable parsing; TagLib allows faster library scanning).
-- [ ] **Pseudo-Mobile Desktop Layout:** Update QML to use `ApplicationWindow`, `Drawer`, `SplitView`, and `ToolBar` for a responsive design where the ProjectM canvas takes maximum real estate.
-- [ ] **Accordion & Layout Nesting Optimization:** Flatten deep `ColumnLayout`/`RowLayout` hierarchies. Use `ListView` with delegates for performance.
+- [x] **Pseudo-Mobile Desktop Layout:** Update QML to use `ApplicationWindow`, `Drawer`, `SplitView`, and `ToolBar` for a responsive design where the ProjectM canvas takes maximum real estate. **[2026-04-20]**
+- [x] **Accordion & Layout Nesting Optimization:** Flatten deep `ColumnLayout`/`RowLayout` hierarchies. Use `ListView` with delegates for performance. **[2026-04-20]**
 - [ ] **Large SVG Optimization:** Ensure all QML `Image` tags loading SVGs explicitly define `sourceSize.width` and `sourceSize.height`.
 - [ ] **Throttled QML Bridge Updates:** Limit UI updates (AudioSpectrum/LyricsSync) crossing the C++/QML bridge to prevent Qt event loop flooding (e.g., using `QTimer` with dirty flags).
-- [ ] **Build QML Settings Window:** Create comprehensive `Settings.qml`.
+- [x] **Build QML Settings Window:** Create comprehensive `Settings.qml`. **[2026-04-20]**
 - [ ] **Build Suno Library Table:** Implement `SunoLibraryModel : public QAbstractTableModel` for efficient lazy-loading of massive library lists.
 - [ ] **Automated Blacklisting & Favorites:** Auto-blacklist crashing shaders. Add UI for favorites and manual blacklisting.
 - [ ] **Fast JSON Parsing:** Integrate `nlohmann/json` or `glaze` via CPM to replace heap-heavy `QJsonDocument`.
