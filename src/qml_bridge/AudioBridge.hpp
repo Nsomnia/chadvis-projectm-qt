@@ -1,15 +1,4 @@
-/**
- * @file AudioBridge.hpp
- * @brief QML bridge for AudioEngine - exposes audio control to QML
- *
- * Single-responsibility: QML interface for audio playback
- * Uses QML_SINGLETON for global access without instantiation
- *
- * @version 1.0.0
- */
-
 #pragma once
-
 #include <QObject>
 #include <QtQml/qqml.h>
 #include <QVariantMap>
@@ -22,17 +11,6 @@ enum class PlaybackState;
 
 namespace qml_bridge {
 
-/**
- * @brief QML bridge exposing AudioEngine to QML
- *
- * Usage in QML:
- * @code
- * AudioBridge.play()
- * AudioBridge.pause()
- * AudioBridge.volume = 0.5
- * text: AudioBridge.currentTrack.title
- * @endcode
- */
 class AudioBridge : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -50,7 +28,8 @@ public:
     Q_ENUM(PlaybackStateEnum)
 
     explicit AudioBridge(QObject* parent = nullptr);
-    ~AudioBridge() override = default;
+    static QObject* create(QQmlEngine*, QJSEngine*);
+    static void setAudioEngine(vc::AudioEngine* engine);
 
     int playbackState() const;
     qint64 position() const;
@@ -88,7 +67,8 @@ private slots:
     void onEngineTrackChanged();
 
 private:
-    vc::AudioEngine* s_engine{nullptr};
+    static vc::AudioEngine* s_engine;
+    static AudioBridge* s_instance;
 
     QVariantMap currentTrack_;
     qint64 position_{0};

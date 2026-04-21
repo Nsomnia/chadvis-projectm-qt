@@ -33,7 +33,7 @@ public:
     explicit PresetBridge(QObject* parent = nullptr);
     ~PresetBridge() override = default;
 
-    static PresetBridge* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
+    static QObject* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
     static void setPresetManager(vc::PresetManager* manager);
     static void connectSignals();
 

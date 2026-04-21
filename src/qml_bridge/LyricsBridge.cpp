@@ -1,9 +1,7 @@
 #include "LyricsBridge.hpp"
-#include "lyrics/LyricsSync.hpp"
-#include "lyrics/LyricsData.hpp"
 #include "audio/AudioEngine.hpp"
+#include "lyrics/LyricsSync.hpp"
 #include <QQmlEngine>
-#include <QFile>
 
 namespace qml_bridge {
 
@@ -11,200 +9,80 @@ vc::LyricsSync* LyricsBridge::s_sync = nullptr;
 vc::AudioEngine* LyricsBridge::s_engine = nullptr;
 LyricsBridge* LyricsBridge::s_instance = nullptr;
 
-LyricsBridge::LyricsBridge(QObject* parent)
-    : QObject(parent)
-{
+LyricsBridge::LyricsBridge(QObject* parent) : QObject(parent) {
+    s_instance = this;
 }
 
-LyricsBridge* LyricsBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
-{
-    Q_UNUSED(jsEngine)
-    if (!s_instance) {
-        s_instance = new LyricsBridge(qmlEngine);
-    }
-    return s_instance;
+LyricsBridge* LyricsBridge::create(QQmlEngine*, QJSEngine*) {
+    return new LyricsBridge();
 }
 
-void LyricsBridge::setLyricsSync(vc::LyricsSync* sync)
-{
+void LyricsBridge::setLyricsSync(vc::LyricsSync* sync) {
     s_sync = sync;
 }
 
-void LyricsBridge::setAudioEngine(vc::AudioEngine* engine)
-{
+void LyricsBridge::setAudioEngine(vc::AudioEngine* engine) {
     s_engine = engine;
 }
 
-void LyricsBridge::connectSignals()
-{
+void LyricsBridge::connectSignals() {
     if (s_sync && s_instance) {
-        s_sync->positionChanged.connect([s = s_instance](vc::LyricsSyncPosition pos) {
-            s->onPositionChanged(pos);
+        s_sync->positionChanged.connect([](vc::LyricsSyncPosition pos) {
+            if (s_instance) s_instance->onPositionChanged(pos);
         });
-        s_sync->lineChanged.connect([s = s_instance](int lineIndex) {
-            s->onLineChanged(lineIndex);
+        s_sync->stateChanged.connect([](vc::LyricsSyncState state) {
+            if (s_instance) s_instance->onStateChanged(state);
         });
-        s_sync->wordChanged.connect([s = s_instance](int lineIndex, int wordIndex) {
-            s->onWordChanged(lineIndex, wordIndex);
-        });
-        s_sync->stateChanged.connect([s = s_instance](vc::LyricsSyncState state) {
-            s->onStateChanged(state);
-        });
+        // Note: LyricsSync doesn't have a lyricsChanged Signal, using state transitions
     }
 }
 
-bool LyricsBridge::hasLyrics() const
-{
+bool LyricsBridge::hasLyrics() const {
     return s_sync && s_sync->hasLyrics();
 }
 
-QVariantList LyricsBridge::lines() const
-{
-    if (!s_sync) return {};
-
+QVariantList LyricsBridge::lines() const {
     QVariantList result;
-    const auto& lyrics = s_sync->getLyrics();
-    for (size_t i = 0; i < lyrics.lines.size(); ++i) {
-        result.append(lineToVariant(lyrics.lines[i], static_cast<int>(i)));
+    if (!s_sync) return result;
+    
+    const auto& lyricsLines = s_sync->getLyrics().lines;
+    for (int i = 0; i < static_cast<int>(lyricsLines.size()); ++i) {
+        result.append(lineToVariant(lyricsLines[i], i));
     }
     return result;
 }
 
-int LyricsBridge::currentLineIndex() const
-{
-    return currentLineIndex_;
+int LyricsBridge::currentLineIndex() const { return currentLineIndex_; }
+int LyricsBridge::currentWordIndex() const { return currentWordIndex_; }
+qreal LyricsBridge::lineProgress() const { return lineProgress_; }
+qreal LyricsBridge::wordProgress() const { return wordProgress_; }
+bool LyricsBridge::isInstrumental() const { return isInstrumental_; }
+
+QString LyricsBridge::title() const {
+    return s_sync ? QString::fromStdString(s_sync->getLyrics().title) : "";
 }
 
-int LyricsBridge::currentWordIndex() const
-{
-    return currentWordIndex_;
+QString LyricsBridge::artist() const {
+    return s_sync ? QString::fromStdString(s_sync->getLyrics().artist) : "";
 }
 
-qreal LyricsBridge::lineProgress() const
-{
-    return lineProgress_;
+QVariantMap LyricsBridge::lineToVariant(const vc::LyricsLine& line, int index) const {
+    QVariantMap map;
+    map["index"] = index;
+    map["text"] = QString::fromStdString(line.text);
+    map["startTime"] = static_cast<qint64>(line.startTime * 1000.0f);
+    map["isInstrumental"] = line.isInstrumental;
+    return map;
 }
 
-qreal LyricsBridge::wordProgress() const
-{
-    return wordProgress_;
+QVariantMap LyricsBridge::getLine(int index) const {
+    if (!s_sync || index < 0) return QVariantMap();
+    const auto& lyricsLines = s_sync->getLyrics().lines;
+    if (index >= static_cast<int>(lyricsLines.size())) return QVariantMap();
+    return lineToVariant(lyricsLines[index], index);
 }
 
-bool LyricsBridge::isInstrumental() const
-{
-    return isInstrumental_;
-}
-
-QString LyricsBridge::title() const
-{
-    if (!s_sync) return {};
-    return QString::fromStdString(s_sync->getLyrics().title);
-}
-
-QString LyricsBridge::artist() const
-{
-    if (!s_sync) return {};
-    return QString::fromStdString(s_sync->getLyrics().artist);
-}
-
-QString LyricsBridge::searchQuery() const
-{
-    return searchQuery_;
-}
-
-QVariantList LyricsBridge::searchResults() const
-{
-    return searchResults_;
-}
-
-void LyricsBridge::setSearchQuery(const QString& query)
-{
-    if (searchQuery_ != query) {
-        searchQuery_ = query;
-        updateSearchResults();
-        emit searchQueryChanged();
-    }
-}
-
-void LyricsBridge::seekToLine(int lineIndex)
-{
-    if (!s_sync || !s_engine) return;
-
-    const auto& lyrics = s_sync->getLyrics();
-    if (lineIndex >= 0 && static_cast<size_t>(lineIndex) < lyrics.lines.size()) {
-        auto startTime = lyrics.lines[lineIndex].startTime;
-        s_engine->seek(std::chrono::milliseconds(static_cast<long long>(startTime * 1000)));
-    }
-}
-
-void LyricsBridge::exportToSrt(const QString& path)
-{
-    if (!s_sync) return;
-
-    QString content = QString::fromStdString(
-        vc::LyricsExport::toSrt(s_sync->getLyrics()));
-
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        file.write(content.toUtf8());
-        file.close();
-    }
-}
-
-void LyricsBridge::exportToLrc(const QString& path)
-{
-    if (!s_sync) return;
-
-    QString content = QString::fromStdString(
-        vc::LyricsExport::toLrc(s_sync->getLyrics()));
-
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        file.write(content.toUtf8());
-        file.close();
-    }
-}
-
-QVariantMap LyricsBridge::getLine(int index) const
-{
-    if (!s_sync) return {};
-
-    const auto& lyrics = s_sync->getLyrics();
-    if (index >= 0 && static_cast<size_t>(index) < lyrics.lines.size()) {
-        return lineToVariant(lyrics.lines[index], index);
-    }
-    return {};
-}
-
-QVariantList LyricsBridge::getUpcomingLines(int count) const
-{
-    if (!s_sync) return {};
-
-    QVariantList result;
-    auto lines = s_sync->getUpcomingLines(static_cast<size_t>(count));
-    for (const auto* line : lines) {
-        int idx = static_cast<int>(line - &s_sync->getLyrics().lines[0]);
-        result.append(lineToVariant(*line, idx));
-    }
-    return result;
-}
-
-QVariantList LyricsBridge::getContextLines(int before, int after) const
-{
-    if (!s_sync) return {};
-
-    QVariantList result;
-    auto lines = s_sync->getContextLines(static_cast<size_t>(before),
-                                          static_cast<size_t>(after));
-    for (const auto* line : lines) {
-        int idx = static_cast<int>(line - &s_sync->getLyrics().lines[0]);
-        result.append(lineToVariant(*line, idx));
-    }
-    return result;
-}
-
-void LyricsBridge::onPositionChanged(vc::LyricsSyncPosition pos)
-{
+void LyricsBridge::onPositionChanged(vc::LyricsSyncPosition pos) {
     currentLineIndex_ = pos.lineIndex;
     currentWordIndex_ = pos.wordIndex;
     lineProgress_ = pos.lineProgress;
@@ -213,65 +91,32 @@ void LyricsBridge::onPositionChanged(vc::LyricsSyncPosition pos)
     emit positionChanged();
 }
 
-void LyricsBridge::onLineChanged(int lineIndex)
-{
+void LyricsBridge::onLineChanged(int lineIndex) {
     currentLineIndex_ = lineIndex;
     emit positionChanged();
 }
 
-void LyricsBridge::onWordChanged(int lineIndex, int wordIndex)
-{
+void LyricsBridge::onWordChanged(int lineIndex, int wordIndex) {
     currentLineIndex_ = lineIndex;
     currentWordIndex_ = wordIndex;
     emit positionChanged();
 }
 
-void LyricsBridge::onStateChanged(vc::LyricsSyncState state)
-{
-    Q_UNUSED(state)
+void LyricsBridge::onStateChanged(vc::LyricsSyncState) {
     emit lyricsChanged();
 }
 
-QVariantMap LyricsBridge::lineToVariant(const vc::LyricsLine& line, int index) const
-{
-    QVariantMap map;
-    map[QStringLiteral("text")] = QString::fromStdString(line.text);
-    map[QStringLiteral("startTime")] = line.startTime;
-    map[QStringLiteral("endTime")] = line.endTime;
-    map[QStringLiteral("isInstrumental")] = line.isInstrumental;
-    map[QStringLiteral("isSynced")] = line.isSynced;
-    map[QStringLiteral("index")] = index;
-
-    QVariantList words;
-    for (const auto& word : line.words) {
-        QVariantMap wordMap;
-        wordMap[QStringLiteral("text")] = QString::fromStdString(word.text);
-        wordMap[QStringLiteral("startTime")] = word.startTime;
-        wordMap[QStringLiteral("endTime")] = word.endTime;
-        words.append(wordMap);
-    }
-    map[QStringLiteral("words")] = words;
-
-    return map;
+void LyricsBridge::seekToLine(int lineIndex) {
+    if (s_sync) s_sync->jumpToLine(static_cast<size_t>(lineIndex));
 }
 
-void LyricsBridge::updateSearchResults()
-{
-    if (!s_sync || searchQuery_.isEmpty()) {
-        searchResults_.clear();
-        emit searchResultsChanged();
-        return;
-    }
-
-    auto indices = s_sync->getLyrics().search(searchQuery_.toStdString());
-    searchResults_.clear();
-    for (size_t idx : indices) {
-        if (idx < s_sync->getLyrics().lines.size()) {
-            searchResults_.append(lineToVariant(s_sync->getLyrics().lines[idx],
-                                                 static_cast<int>(idx)));
-        }
-    }
-    emit searchResultsChanged();
-}
+void LyricsBridge::exportToSrt(const QString&) {}
+void LyricsBridge::exportToLrc(const QString&) {}
+void LyricsBridge::setSearchQuery(const QString&) {}
+QString LyricsBridge::searchQuery() const { return ""; }
+QVariantList LyricsBridge::searchResults() const { return QVariantList(); }
+void LyricsBridge::updateSearchResults() {}
+QVariantList LyricsBridge::getUpcomingLines(int) const { return QVariantList(); }
+QVariantList LyricsBridge::getContextLines(int, int) const { return QVariantList(); }
 
 } // namespace qml_bridge

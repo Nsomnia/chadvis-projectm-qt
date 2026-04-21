@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Effects
 import ChadVis
 import "../components"
 
@@ -14,6 +15,7 @@ Flickable {
     ColumnLayout {
         id: contentLayout
         anchors.fill: parent
+        anchors.margins: Theme.spacingMedium
         spacing: Theme.spacingMedium
 
         // ═══════════════════════════════════════════════════════════
@@ -57,7 +59,15 @@ Flickable {
         }
 
         // ═══════════════════════════════════════════════════════════
-        // AUDIO & VISUALIZER ENGINE
+        // KARAOKE MASTER
+        // ═══════════════════════════════════════════════════════════
+        KaraokeSettings {
+            id: karaokeSettings
+            Layout.fillWidth: true
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // ENGINE CONTROLS
         // ═══════════════════════════════════════════════════════════
         Text {
             text: "Engine Controls"
@@ -101,7 +111,7 @@ Flickable {
         }
 
         // ═══════════════════════════════════════════════════════════
-        // RECORDER SETTINGS
+        // RECORDING
         // ═══════════════════════════════════════════════════════════
         Text {
             text: "Recording"
@@ -138,14 +148,14 @@ Flickable {
             onClicked: {
                 Theme.accent = accentInput.text
                 Theme.background = bgInput.text
-                console.log("SunoBridge: Settings saved and applied.")
+                console.log("Settings saved and applied.")
             }
         }
         
         AppButton {
             text: "Reset Defaults"
             Layout.fillWidth: true
-            onClicked: console.log("SunoBridge: Resetting to factory defaults...")
+            onClicked: console.log("Resetting to factory defaults...")
         }
     }
 }

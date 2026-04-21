@@ -95,7 +95,7 @@ class ThemeBridge : public QObject {
     Q_PROPERTY(QFont fontTitle READ fontTitle CONSTANT)
 
 public:
-    static ThemeBridge* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
+    static QObject* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
 
     // Colors
     QColor accent() const;
