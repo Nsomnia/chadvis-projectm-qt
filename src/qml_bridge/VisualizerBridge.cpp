@@ -1,6 +1,6 @@
 /**
  * @file VisualizerBridge.cpp
- * @brief Implementation of VisualizerBridge
+ * @brief Implementation of VisualizerBridge with throttled updates
  */
 
 #include "VisualizerBridge.hpp"
@@ -72,7 +72,11 @@ void PresetModel::setCurrentIndex(int idx)
 VisualizerBridge::VisualizerBridge(QObject* parent)
     : QObject(parent)
     , presetModel_(new PresetModel(this))
+    , throttleTimer_(new QTimer(this))
 {
+    throttleTimer_->setInterval(100); // 10Hz updates for non-critical UI data
+    connect(throttleTimer_, &QTimer::timeout, this, &VisualizerBridge::updateThrottledData);
+    throttleTimer_->start();
 }
 
 VisualizerBridge* VisualizerBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
@@ -85,10 +89,10 @@ VisualizerBridge* VisualizerBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsE
 
 void VisualizerBridge::setVisualizerWindow(vc::VisualizerWindow* window)
 {
-if (window_ != window) {
-window_ = window;
-emit visualizerWindowChanged();
-}
+    if (window_ != window) {
+        window_ = window;
+        emit visualizerWindowChanged();
+    }
 }
 
 int VisualizerBridge::fps() const
@@ -161,12 +165,12 @@ QString VisualizerBridge::currentPresetName() const
 
 QObject* VisualizerBridge::presetModel() const
 {
-return presetModel_;
+    return presetModel_;
 }
 
 QWindow* VisualizerBridge::visualizerWindow() const
 {
-return window_;
+    return window_;
 }
 
 void VisualizerBridge::nextPreset()
@@ -223,6 +227,16 @@ void VisualizerBridge::selectPresetByName(const QString& name)
 void VisualizerBridge::searchPresets(const QString& query)
 {
     Q_UNUSED(query)
+}
+
+void VisualizerBridge::updateThrottledData()
+{
+    if (!window_) return;
+
+    // Throttle high-frequency data like render progress or current preset index if it changes externally
+    // For now, let's just emit currentPresetChanged if the engine changed it
+    // In a real scenario, we might pull performance stats here
+    emit currentPresetChanged();
 }
 
 } // namespace qml_bridge

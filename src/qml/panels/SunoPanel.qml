@@ -6,249 +6,75 @@ import "../components"
 
 ColumnLayout {
     id: root
-
     property string searchQuery: ""
     property bool showSearch: false
-
     spacing: 0
 
     ToolBar {
-        Layout.fillWidth: true
-        background: Rectangle { color: Theme.surfaceVariant }
-
+        Layout.fillWidth: true; background: Rectangle { color: Theme.surfaceVariant }
         RowLayout {
-            anchors.fill: parent
-            spacing: Theme.spacingSmall
-
-            Label {
-                text: "Suno Library"
-                color: Theme.onSurface
-                font.pixelSize: Theme.fontSizeMedium
-                font.bold: true
-            }
-
+            anchors.fill: parent; spacing: Theme.spacingSmall
+            Label { text: "Suno Library"; color: Theme.onSurface; font.pixelSize: Theme.fontSizeMedium; font.bold: true }
             Item { Layout.fillWidth: true }
-
-	ToolButton {
-		icon.source: "qrc:/qt/qml/ChadVis/resources/icons/search.svg"
-		onClicked: root.showSearch = !root.showSearch
-	}
-
-	ToolButton {
-		icon.source: "qrc:/qt/qml/ChadVis/resources/icons/refresh.svg"
-		enabled: !SunoBridge.isSyncing
-		onClicked: SunoBridge.refreshLibrary()
-	}
-
-	ToolButton {
-		icon.source: "qrc:/qt/qml/ChadVis/resources/icons/save.svg"
-		enabled: !SunoBridge.isSyncing && SunoBridge.isAuthenticated
-		onClicked: SunoBridge.syncDatabase()
-	}
+            ToolButton { icon.source: "qrc:/qt/qml/ChadVis/resources/icons/search.svg"; onClicked: root.showSearch = !root.showSearch }
+            ToolButton { icon.source: "qrc:/qt/qml/ChadVis/resources/icons/refresh.svg"; enabled: !SunoBridge.isSyncing; onClicked: SunoBridge.refreshLibrary() }
+            ToolButton { icon.source: "qrc:/qt/qml/ChadVis/resources/icons/save.svg"; enabled: !SunoBridge.isSyncing && SunoBridge.isAuthenticated; onClicked: SunoBridge.syncDatabase() }
         }
     }
 
     TextField {
-        id: searchField
-        Layout.fillWidth: true
-        Layout.margins: Theme.spacingSmall
-        visible: root.showSearch
-        placeholderText: "Search songs..."
-        text: root.searchQuery
+        id: searchField; Layout.fillWidth: true; Layout.margins: Theme.spacingSmall; visible: root.showSearch; placeholderText: "Search songs..."; text: root.searchQuery
         onTextChanged: SunoBridge.searchQuery = text
-
-        background: Rectangle {
-            radius: Theme.radiusSmall
-            color: Theme.surface
-            border.color: searchField.activeFocus ? Theme.primary : Theme.outline
-        }
+        background: Rectangle { radius: Theme.radiusSmall; color: Theme.surface; border.color: searchField.activeFocus ? Theme.primary : Theme.outline }
     }
 
     Label {
-        Layout.fillWidth: true
-        Layout.margins: Theme.spacingMedium
-        visible: !SunoBridge.isAuthenticated
-        text: "Sign in to access your Suno library"
-        color: Theme.onSurfaceVariant
-        font.pixelSize: Theme.fontSizeMedium
-        horizontalAlignment: Text.AlignHCenter
-
-        AppButton {
-            anchors.top: parent.bottom
-            anchors.topMargin: Theme.spacingSmall
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: "Sign In"
-            onClicked: SunoBridge.authenticate()
-        }
-    }
-
-    Label {
-        Layout.fillWidth: true
-        Layout.margins: Theme.spacingMedium
-        visible: SunoBridge.isAuthenticated && SunoBridge.clips.length === 0 && !SunoBridge.isSyncing
-        text: "No songs found. Sync your library."
-        color: Theme.onSurfaceVariant
-        font.pixelSize: Theme.fontSizeMedium
-        horizontalAlignment: Text.AlignHCenter
-    }
-
-    Label {
-        Layout.fillWidth: true
-        Layout.margins: Theme.spacingMedium
-        visible: SunoBridge.isSyncing
-        text: SunoBridge.statusMessage || "Syncing..."
-        color: Theme.primary
-        font.pixelSize: Theme.fontSizeMedium
-        horizontalAlignment: Text.AlignHCenter
-
-        BusyIndicator {
-            anchors.top: parent.bottom
-            anchors.topMargin: Theme.spacingSmall
-            anchors.horizontalCenter: parent.horizontalCenter
-            running: SunoBridge.isSyncing
-        }
+        Layout.fillWidth: true; Layout.margins: Theme.spacingMedium; visible: !SunoBridge.isAuthenticated
+        text: "Sign in to access your Suno library"; color: Theme.onSurfaceVariant; font.pixelSize: Theme.fontSizeMedium; horizontalAlignment: Text.AlignHCenter
+        AppButton { anchors.top: parent.bottom; anchors.topMargin: Theme.spacingSmall; anchors.horizontalCenter: parent.horizontalCenter; text: "Sign In"; onClicked: SunoBridge.authenticate() }
     }
 
     ListView {
-        id: clipList
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        clip: true
-        visible: SunoBridge.isAuthenticated && SunoBridge.clips.length > 0
-
+        id: clipList; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; visible: SunoBridge.isAuthenticated && SunoBridge.clips.length > 0
         model: root.searchQuery.length > 0 ? SunoBridge.searchResults : SunoBridge.clips
         delegate: ClipDelegate {
-            width: clipList.width
-            onPlayClicked: SunoBridge.downloadAndPlay(modelData.id)
-            onLyricsClicked: SunoBridge.fetchLyrics(modelData.id)
+            width: clipList.width; onPlayClicked: SunoBridge.downloadAndPlay(modelData.id); onLyricsClicked: SunoBridge.fetchLyrics(modelData.id)
         }
-
-        ScrollBar.vertical: ScrollBar {
-            policy: ScrollBar.AsNeeded
-        }
-
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         footer: Item {
-            height: Theme.spacingLarge
-            visible: !SunoBridge.isSyncing
-
-            AppButton {
-                anchors.centerIn: parent
-                text: "Load More"
-                visible: SunoBridge.totalClips > 0
-                onClicked: SunoBridge.refreshLibrary()
-            }
+            height: Theme.spacingLarge; visible: !SunoBridge.isSyncing
+            AppButton { anchors.centerIn: parent; text: "Load More"; visible: SunoBridge.totalClips > 0; onClicked: SunoBridge.refreshLibrary() }
         }
     }
 
     component ClipDelegate: Rectangle {
-        id: delegate
-        height: 80
-        color: mouseArea.containsMouse ? Theme.surfaceVariant : Theme.surface
-        radius: Theme.radiusSmall
-
+        id: delegate; height: 80; color: mouseArea.containsMouse ? Theme.surfaceVariant : Theme.surface; radius: Theme.radiusSmall
         property bool hasLyrics: modelData ? SunoBridge.hasLyrics(modelData.id) : false
-
-        signal playClicked()
-        signal lyricsClicked()
+        signal playClicked(); signal lyricsClicked()
 
         RowLayout {
-            anchors.fill: parent
-            anchors.margins: Theme.spacingSmall
-            spacing: Theme.spacingSmall
-
+            anchors.fill: parent; anchors.margins: Theme.spacingSmall; spacing: Theme.spacingSmall
             Image {
-                source: modelData ? modelData.imageUrl : ""
-                sourceSize.width: 64
-                sourceSize.height: 64
-                Layout.preferredWidth: 64
-                Layout.preferredHeight: 64
-                sourceSize.width: width
-                    sourceSize.height: height
-                    fillMode: Image.PreserveAspectCrop
-
+                source: modelData ? modelData.imageUrl : ""; sourceSize.width: 64; sourceSize.height: 64
+                Layout.preferredWidth: 64; Layout.preferredHeight: 64; fillMode: Image.PreserveAspectCrop
                 Rectangle {
-                    anchors.fill: parent
-                    color: Theme.surface
-                    visible: parent.status !== Image.Ready
-
-			Label {
-				anchors.centerIn: parent
-				text: "♪"
-				font.pixelSize: 24
-				color: Theme.onSurfaceVariant
-			}
+                    anchors.fill: parent; color: Theme.surface; visible: parent.status !== Image.Ready
+                    Label { anchors.centerIn: parent; text: "♪"; font.pixelSize: 24; color: Theme.onSurfaceVariant }
                 }
             }
-
             ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-
-                Text {
-                    text: modelData ? modelData.title : ""
-                    color: Theme.onSurface
-                    font.pixelSize: Theme.fontSizeMedium
-                    font.bold: true
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                }
-
-                Text {
-                    text: modelData ? modelData.displayName : ""
-                    color: Theme.onSurfaceVariant
-                    font.pixelSize: Theme.fontSizeSmall
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                }
-
+                Layout.fillWidth: true; spacing: 2
+                Text { text: modelData ? modelData.title : ""; color: Theme.onSurface; font.pixelSize: Theme.fontSizeMedium; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: modelData ? modelData.displayName : ""; color: Theme.onSurfaceVariant; font.pixelSize: Theme.fontSizeSmall; elide: Text.ElideRight; Layout.fillWidth: true }
                 Row {
                     spacing: Theme.spacingSmall
-
-                    Text {
-                        text: modelData ? modelData.duration : ""
-                        color: Theme.onSurfaceVariant
-                        font.pixelSize: Theme.fontSizeSmall
-                        visible: text !== ""
-                    }
-
-                    Text {
-                        text: modelData ? modelData.bpm : ""
-                        color: Theme.onSurfaceVariant
-                        font.pixelSize: Theme.fontSizeSmall
-                        visible: text !== ""
-                    }
-
-                    Text {
-                        text: modelData && modelData.isInstrumental ? "Instrumental" : ""
-                        color: Theme.accent
-                        font.pixelSize: Theme.fontSizeSmall
-                        visible: text !== ""
-                    }
+                    Text { text: modelData ? modelData.duration : ""; color: Theme.onSurfaceVariant; font.pixelSize: Theme.fontSizeSmall; visible: text !== "" }
+                    Text { text: modelData && modelData.isInstrumental ? "Instrumental" : ""; color: Theme.accent; font.pixelSize: Theme.fontSizeSmall; visible: text !== "" }
                 }
             }
-
-	AppButton {
-		icon: "qrc:/qt/qml/ChadVis/resources/icons/video.svg"
-		implicitWidth: 44
-		implicitHeight: 44
-		onClicked: delegate.lyricsClicked()
-		visible: !delegate.hasLyrics
-	}
-
-	AppButton {
-		icon: "qrc:/qt/qml/ChadVis/resources/icons/play.svg"
-		implicitWidth: 44
-		implicitHeight: 44
-		highlighted: true
-		onClicked: delegate.playClicked()
-	}
+            AppButton { icon: "qrc:/qt/qml/ChadVis/resources/icons/video.svg"; implicitWidth: 44; implicitHeight: 44; onClicked: delegate.lyricsClicked(); visible: !delegate.hasLyrics }
+            AppButton { icon: "qrc:/qt/qml/ChadVis/resources/icons/play.svg"; implicitWidth: 44; implicitHeight: 44; highlighted: true; onClicked: delegate.playClicked() }
         }
-
-        MouseArea {
-            id: mouseArea
-            anchors.fill: parent
-            hoverEnabled: true
-            onDoubleClicked: delegate.playClicked()
-        }
+        MouseArea { id: mouseArea; anchors.fill: parent; hoverEnabled: true; onDoubleClicked: delegate.playClicked() }
     }
 }
