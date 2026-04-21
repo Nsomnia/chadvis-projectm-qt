@@ -1,7 +1,4 @@
 #pragma once
-// SunoModels.hpp - Data structures for Suno AI API
-// Maps JSON responses to C++ structs
-
 #include <optional>
 #include <string>
 #include <vector>
@@ -12,9 +9,9 @@ namespace vc::suno {
 struct SunoMetadata {
     std::string prompt;
     std::string tags;
-    std::string type; // "gen", "upload"
+    std::string type;
     std::string lyrics;
-    std::string infillLyrics; // Raw lyrics with \u000b line breaks
+    std::string infillLyrics;
     std::string history;
     std::string error_message;
     std::string duration;
@@ -25,29 +22,29 @@ struct SunoMetadata {
     double weirdness{0.0};
     double style_weight{0.0};
     bool make_instrumental{false};
+    std::string model_id;
 };
 
 struct SunoClip {
-    std::string id; // UUID
+    std::string id;
     std::string title;
     std::string video_url;
     std::string audio_url;
     std::string image_url;
     std::string image_large_url;
-    std::string major_model_version; // "v3", "v3.5"
-    std::string model_name; // "chirp-v3"
+    std::string major_model_version;
+    std::string model_name;
     std::string mv;
-    std::string display_name; // Artist name usually
-    std::string handle; // User handle
+    std::string display_name;
+    std::string handle;
     bool is_liked{false};
     bool is_trashed{false};
     bool is_public{false};
     std::string created_at;
-    std::string status; // "streaming", "complete"
+    std::string status;
 
     SunoMetadata metadata;
 
-    // Helper to check if it's a stem
     bool isStem() const {
         return metadata.type == "gen_stem" || metadata.type == "stem";
     }
@@ -67,6 +64,13 @@ struct SunoPlaylist {
     std::string description;
     std::string image_url;
     u32 num_total_clips{0};
+};
+
+// B-Side / Experimental feature tracking
+struct SunoFeatureGate {
+    std::string name;
+    bool enabled{false};
+    std::string value;
 };
 
 } // namespace vc::suno
