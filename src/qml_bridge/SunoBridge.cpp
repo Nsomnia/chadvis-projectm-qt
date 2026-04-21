@@ -1,6 +1,7 @@
 #include "SunoBridge.hpp"
 #include "ui/controllers/SunoController.hpp"
 #include "suno/SunoModels.hpp"
+#include "suno/SunoClient.hpp"
 #include <QQmlEngine>
 
 namespace qml_bridge {
@@ -29,20 +30,26 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller)
 
 void SunoBridge::connectSignals()
 {
-	if (s_controller && s_instance) {
-		connect(s_controller, &vc::suno::SunoController::libraryUpdated,
-			s_instance, [s = s_instance](const std::vector<vc::suno::SunoClip>& clips) {
-				s->onLibraryUpdated(clips);
-			}, Qt::QueuedConnection);
-		connect(s_controller, &vc::suno::SunoController::clipUpdated,
-			s_instance, [s = s_instance](const std::string& clipId) {
-				s->onClipUpdated(clipId);
-			}, Qt::QueuedConnection);
-		connect(s_controller, &vc::suno::SunoController::statusMessage,
-			s_instance, [s = s_instance](const std::string& msg) {
-				s->onStatusMessage(msg);
-			}, Qt::QueuedConnection);
-	}
+    if (s_controller && s_instance) {
+        connect(s_controller, &vc::suno::SunoController::libraryUpdated,
+            s_instance, [s = s_instance](const std::vector<vc::suno::SunoClip>& clips) {
+                s->onLibraryUpdated(clips);
+            }, Qt::QueuedConnection);
+        connect(s_controller, &vc::suno::SunoController::clipUpdated,
+            s_instance, [s = s_instance](const std::string& clipId) {
+                s->onClipUpdated(clipId);
+            }, Qt::QueuedConnection);
+        connect(s_controller, &vc::suno::SunoController::statusMessage,
+            s_instance, [s = s_instance](const std::string& msg) {
+                s->onStatusMessage(msg);
+            }, Qt::QueuedConnection);
+            
+        if (s_controller->client()) {
+            s_controller->client()->generationStarted.connect([](const std::vector<vc::suno::SunoClip>&) {
+                if (s_instance) emit s_instance->generationStarted();
+            });
+        }
+    }
 }
 
 bool SunoBridge::isAuthenticated() const
@@ -98,9 +105,9 @@ void SunoBridge::setSearchQuery(const QString& query)
 
 void SunoBridge::authenticate()
 {
-	if (s_controller) {
-		s_controller->requestAuthentication();
-	}
+    if (s_controller) {
+        s_controller->requestAuthentication();
+    }
 }
 
 void SunoBridge::signOut()
@@ -159,6 +166,17 @@ void SunoBridge::fetchLyrics(const QString& clipId)
 {
     if (s_controller) {
         s_controller->getLyrics(clipId.toStdString());
+    }
+}
+
+void SunoBridge::generate(const QString& prompt, const QString& tags, bool makeInstrumental, const QString& model)
+{
+    if (s_controller && s_controller->client()) {
+        std::string modelStr = "chirp-v3.5";
+        if (model.contains("v4")) modelStr = "chirp-v4";
+        else if (model.contains("v3.0")) modelStr = "chirp-v3";
+        
+        s_controller->client()->generate(prompt.toStdString(), tags.toStdString(), makeInstrumental, modelStr);
     }
 }
 

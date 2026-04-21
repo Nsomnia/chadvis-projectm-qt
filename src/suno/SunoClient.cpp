@@ -192,6 +192,7 @@ QNetworkRequest SunoClient::createAuthenticatedRequest(const QString& endpoint) 
     if (!token_.empty()) request.setRawHeader("Authorization", "Bearer " + QByteArray::fromStdString(token_));
     request.setRawHeader("Accept", "application/json,text/plain,*/*");
     request.setRawHeader("User-Agent", "Mozilla/5.0");
+    request.setRawHeader("Content-Type", "application/json");
     return request;
 }
 
@@ -248,6 +249,55 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
     libraryFetched.emitSignal(clips);
 }
 
+void SunoClient::generate(const std::string& prompt, const std::string& tags, bool makeInstrumental, const std::string& model) {
+    if (!isAuthenticated()) {
+        errorOccurred.emitSignal("Not authenticated");
+        return;
+    }
+
+    auto proceed = [this, prompt, tags, makeInstrumental, model] {
+        QJsonObject body;
+        body["gpt_description_prompt"] = QString::fromStdString(prompt);
+        body["prompt"] = ""; // Used for custom lyrics
+        body["tags"] = QString::fromStdString(tags);
+        body["mv"] = QString::fromStdString(model);
+        body["make_instrumental"] = makeInstrumental;
+        body["continue_clip_id"] = QJsonValue::Null;
+        body["continue_at"] = QJsonValue::Null;
+
+        QJsonDocument doc(body);
+        enqueueRequest(createAuthenticatedRequest("/generate/v2-web/"), "POST", doc.toJson(), [this](QNetworkReply* reply) {
+            onGenerateReply(reply);
+        });
+    };
+
+    if (token_.empty() && !cookie_.empty()) {
+        refreshAuthToken([this, proceed](bool success) { if (success) proceed(); });
+    } else proceed();
+}
+
+void SunoClient::onGenerateReply(QNetworkReply* reply) {
+    reply->deleteLater();
+    if (reply->error() != QNetworkReply::NoError) {
+        handleNetworkError(reply);
+        return;
+    }
+    
+    QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+    QJsonArray array;
+    if (doc.isObject() && doc.object().contains("clips")) array = doc.object()["clips"].toArray();
+    
+    std::vector<SunoClip> clips;
+    for (const auto& item : array) {
+        QJsonObject obj = item.toObject();
+        SunoClip clip;
+        clip.id = obj["id"].toString().toStdString();
+        clip.status = "pending";
+        clips.push_back(clip);
+    }
+    generationStarted.emitSignal(clips);
+}
+
 void SunoClient::handleNetworkError(QNetworkReply* reply) {
     std::string err = reply->errorString().toStdString();
     if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 401) {
@@ -297,10 +347,5 @@ void SunoClient::pollWavFile(const std::string& clipId, int maxAttempts) {
         }
     });
 }
-
-void SunoClient::fetchProjects(int) {}
-void SunoClient::fetchProject(const std::string&, int) {}
-void SunoClient::generate(const std::string&, const std::string&, bool) {}
-void SunoClient::onProjectsReply(QNetworkReply*) {}
 
 } // namespace vc::suno
