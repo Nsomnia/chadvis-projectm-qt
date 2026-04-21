@@ -5,6 +5,7 @@ Item {
     id: root
     anchors.fill: parent
     
+    // Modern Visualizer Overlay with reactive text and glowing aesthetics
     Repeater {
         model: OverlayBridge.overlays
         
@@ -17,23 +18,40 @@ Item {
             height: overlayText.height
             opacity: modelData.opacity
             
+            // Glow backdrop for modern aesthetic
+            Rectangle {
+                anchors.centerIn: parent
+                width: overlayText.width + 20
+                height: overlayText.height + 10
+                radius: 10
+                color: modelData.color
+                opacity: 0.15
+                visible: modelData.glow || false
+                
+                // Reactive scale based on audio intensity (pseudo-reactive for now)
+                scale: 1.0 + (AudioBridge.isPlaying ? 0.05 * Math.sin(Date.now() / 100) : 0)
+            }
+            
             Text {
                 id: overlayText
                 text: modelData.text
                 color: modelData.color
                 font.pixelSize: modelData.fontSize
                 font.bold: modelData.bold
+                font.family: "Inter, Roboto, sans-serif"
                 
                 style: Text.Outline
-                styleColor: "black"
+                styleColor: Qt.rgba(0, 0, 0, 0.5)
                 
-                // Shadow effect for readability over visualizer
+                // Optional shadow for readability
                 layer.enabled: true
-                layer.effect: ShaderEffect {
-                    property color color: "black"
-                    property real offset: 0.002
-                    
-                    fragmentShader: "qrc:/qt/qml/ChadVis/shaders/shadow.frag"
+                layer.effect: MultiEffect {
+                    autoPaddingEnabled: true
+                    shadowEnabled: true
+                    shadowColor: "black"
+                    shadowBlur: 0.5
+                    shadowHorizontalOffset: 2
+                    shadowVerticalOffset: 2
                 }
             }
             
@@ -68,8 +86,8 @@ Item {
             SequentialAnimation {
                 running: modelData.animation === 4 // Bounce
                 loops: Animation.Infinite
-                NumberAnimation { target: overlayItem; property: "y"; from: modelData.y * root.height - overlayText.height / 2; to: (modelData.y - 0.1) * root.height - overlayText.height / 2; duration: 500; easing.type: Easing.OutQuad }
-                NumberAnimation { target: overlayItem; property: "y"; from: (modelData.y - 0.1) * root.height - overlayText.height / 2; to: modelData.y * root.height - overlayText.height / 2; duration: 500; easing.type: Easing.InQuad }
+                NumberAnimation { target: overlayItem; property: "y"; from: modelData.y * root.height - overlayText.height / 2; to: (modelData.y - 0.05) * root.height - overlayText.height / 2; duration: 500; easing.type: Easing.OutQuad }
+                NumberAnimation { target: overlayItem; property: "y"; from: (modelData.y - 0.05) * root.height - overlayText.height / 2; to: modelData.y * root.height - overlayText.height / 2; duration: 500; easing.type: Easing.InQuad }
             }
         }
     }
