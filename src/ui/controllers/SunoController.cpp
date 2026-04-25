@@ -7,6 +7,7 @@
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoDownloader.hpp"
 #include "suno/SunoLyricsManager.hpp"
+#include "suno/SunoOrchestrator.hpp"
 #include "util/FileUtils.hpp"
 
 #include <QNetworkAccessManager>
@@ -42,6 +43,7 @@ SunoController::SunoController(AudioEngine* audioEngine,
     downloader_ = std::make_unique<SunoDownloader>(client_.get(), db_, audioEngine_, networkManager, this);
     
     lyricsManager_ = std::make_unique<SunoLyricsManager>(client_.get(), db_, this);
+    orchestrator_ = std::make_unique<vc::SunoOrchestrator>(client_.get(), this);
 
 	// --- Connect Signals ---
 
@@ -105,6 +107,16 @@ SunoController::SunoController(AudioEngine* audioEngine,
 			if (CONFIG.suno().saveLyrics) {
 				downloader_->saveLyricsSidecar(id, json, doc, libraryManager_->accumulatedClips());
 			}
+		});
+
+	// Orchestrator signals
+	connect(orchestrator_.get(), &vc::SunoOrchestrator::messageReceived,
+		this, [this](const QString& response, const QString& workspaceId) {
+			emit statusMessage("Orchestrator: " + response.toStdString());
+		});
+	connect(orchestrator_.get(), &vc::SunoOrchestrator::errorOccurred,
+		this, [this](const QString& error) {
+			emit statusMessage("Orchestrator Error: " + error.toStdString());
 		});
 
 	// Connect to track changes

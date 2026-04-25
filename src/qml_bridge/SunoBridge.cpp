@@ -2,6 +2,7 @@
 #include "ui/controllers/SunoController.hpp"
 #include "suno/SunoClient.hpp"
 #include "suno/SunoModels.hpp"
+#include "suno/SunoOrchestrator.hpp"
 #include <QQmlEngine>
 #include <QVariantMap>
 #include <QJsonObject>
@@ -11,6 +12,7 @@ namespace qml_bridge {
 
 vc::suno::SunoController* SunoBridge::s_controller = nullptr;
 vc::suno::SunoClient* SunoBridge::s_client = nullptr;
+vc::SunoOrchestrator* SunoBridge::s_orchestrator = nullptr;
 SunoBridge* SunoBridge::s_instance = nullptr;
 
 SunoBridge::SunoBridge(QObject* parent) : QObject(parent) {
@@ -28,8 +30,23 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
     s_controller = controller;
     if (s_controller) {
         s_client = s_controller->client();
+        s_orchestrator = s_controller->orchestrator();
         connect(s_controller, &vc::suno::SunoController::libraryUpdated,
                 s_instance, &SunoBridge::onLibraryUpdated);
+
+        // Feature gates signal (custom Signal, not QObject signal)
+        s_client->featureGatesFetched.connect([](const std::vector<vc::suno::SunoFeatureGate>& gates) {
+            if (!s_instance) return;
+            s_instance->featureGates_.clear();
+            for (const auto& gate : gates) {
+                QVariantMap map;
+                map["name"] = QString::fromStdString(gate.name);
+                map["enabled"] = gate.enabled;
+                map["value"] = QString::fromStdString(gate.value);
+                s_instance->featureGates_.append(map);
+            }
+            emit s_instance->featureGatesChanged();
+        });
     }
 }
 
@@ -50,9 +67,15 @@ void SunoBridge::setFilterText(const QString& filter) {
     emit filterTextChanged();
 }
 
-void SunoBridge::generate(const QString& prompt, const QString& tags, bool instrumental, const QString& model) {
+void SunoBridge::generate(const QString& prompt, const QString& tags, bool instrumental, const QString& model,
+                          const QString& customLyrics, double weirdness, double styleWeight,
+                          int seed, const QString& personaId, const QString& continueClipId,
+                          double continueAt) {
     if (s_client) {
-        s_client->generate(prompt.toStdString(), tags.toStdString(), instrumental, model.toStdString());
+        s_client->generate(prompt.toStdString(), tags.toStdString(), instrumental, model.toStdString(),
+                           customLyrics.toStdString(), weirdness, styleWeight,
+                           seed, personaId.toStdString(), continueClipId.toStdString(),
+                           continueAt);
         emit generationStarted();
     }
 }
@@ -71,10 +94,24 @@ void SunoBridge::sendChatMessage(const QString& message) {
     userMsg["content"] = message;
     chatHistory_.append(userMsg);
     emit chatHistoryChanged();
+
+    // Forward to B-Side orchestrator backend
+    if (s_orchestrator) {
+        s_orchestrator->sendMessage(message);
+    }
 }
 
 void SunoBridge::fetchChatHistory() {
+    if (s_orchestrator) {
+        s_orchestrator->fetchHistory();
+    }
     emit chatHistoryChanged();
+}
+
+void SunoBridge::fetchFeatureGates() {
+    if (s_client) {
+        s_client->fetchFeatureGates();
+    }
 }
 
 void SunoBridge::onLibraryUpdated() {

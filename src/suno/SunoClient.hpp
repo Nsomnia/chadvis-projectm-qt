@@ -42,7 +42,13 @@ public:
     void pollWavFile(const std::string& clipId, int maxAttempts = 60);
     
     // Generation (v2/v3-web)
-    void generate(const std::string& prompt, const std::string& tags, bool makeInstrumental = false, const std::string& model = "chirp-v3.5");
+    void generate(const std::string& prompt, const std::string& tags, bool makeInstrumental = false, const std::string& model = "chirp-v3.5",
+                  const std::string& customLyrics = "", double weirdness = 0.0, double styleWeight = 0.0,
+                  int seed = -1, const std::string& personaId = "", const std::string& continueClipId = "",
+                  double continueAt = -1.0);
+
+    // B-Side: Statsig feature gate injection
+    void fetchFeatureGates();
 
     QNetworkAccessManager* networkManager() { return manager_; }
 
@@ -53,6 +59,7 @@ public:
     Signal<std::string, std::string> wavConversionReady;
     Signal<std::string> tokenChanged;
     Signal<std::string> errorOccurred;
+    Signal<const std::vector<SunoFeatureGate>&> featureGatesFetched;
 
 private slots:
     void onLibraryReply(QNetworkReply* reply);

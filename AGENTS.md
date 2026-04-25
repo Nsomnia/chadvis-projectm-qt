@@ -30,7 +30,7 @@ months and months with hundred(s) of millions of tokems invested over many model
 - [x] Refactor Main.qml with responsive Drawer and SplitView layout
 - [x] Refactor AudioEngine for better organization and granular responsibility
 - [x] Implement throttled bridge updates in VisualizerBridge/AudioBridge
-- [ ] Complete full migration of Sidebar panels (Library, Presets, Recording)
+- [x] Complete full migration of Sidebar panels (Library, Presets, Recording)
 - [x] Finalize robust persistence for all settings (SettingsBridge + TOML auto-save)
   - [x] Debounced auto-save (2s QTimer) on every SettingsBridge setter
   - [x] Explicit save() on app close via `onClosing` in Main.qml
@@ -42,9 +42,23 @@ months and months with hundred(s) of millions of tokems invested over many model
 
 ## High Priority: Suno "Chad" Integration
 - [x] Upgrade Suno API to feed/v3 for library access
-- [ ] **[NEW]** Implement "B-Side" feature set: Access hidden/beta endpoints (orchestrator, experiment gates)
-- [ ] **[NEW]** Implement Generation Surface: Full creation suite (prompt, style, seeds) with client-side overrides
-- [ ] **[NEW]** B-Side Chat/Orchestrator: Integration of experimental Suno conversational generation
+- [~] Implement "B-Side" feature set: Access hidden/beta endpoints (orchestrator, experiment gates)
+  - [x] Wire SunoOrchestrator into SunoController (instantiate, connect signals)
+  - [x] Wire SunoBridge chat methods to SunoOrchestrator (sendChatMessage, fetchChatHistory)
+  - [x] Implement Statsig/feature gate injection (fetchFeatureGates, SunoFeatureGate)
+  - [ ] Connect orchestrator messageReceived signal back to SunoBridge chatHistory
+  - [ ] Implement workspace/session tracking for multi-turn conversational generation
+- [~] Implement Generation Surface: Full creation suite (prompt, style, seeds) with client-side overrides
+  - [x] Expand SunoClient::generate() with advanced params (weirdness, style_weight, seed, persona, infill, custom lyrics)
+  - [x] Update SunoBridge::generate() to pass all advanced params
+  - [x] Update SunoPanel.qml with collapsible Advanced Options (sliders, toggles, seed, persona, continue)
+  - [x] Update model selector to use actual API model strings (chirp-v4, chirp-auk, chirp-v3.5, chirp-v3.0)
+  - [ ] Add instrumental toggle to generation UI
+  - [ ] Add style preset dropdown (cinematic, electronic, lo-fi, etc.)
+- [~] B-Side Chat/Orchestrator: Integration of experimental Suno conversational generation
+  - [x] SunoOrchestrator instantiated and wired to SunoBridge
+  - [ ] Implement chat history persistence (fetchHistory → DB)
+  - [ ] Add generation triggers from chat context
 - [ ] Implement infinite scrolling for Suno Library (Pagination)
 - [ ] Refine Suno Library search and filtering (local + remote). Perhaps local should only be kept in-sync/tracked with remote if it stays within the defult file struture for the suno library. Ultimately downloading of tracks is optional.
 - [ ] check filetypes that API scanners use such as `for i in suno api sniff scope burp etc_tools; do fd --hidden --no-ignore --estension json --extension tsv $idx /home/nsomnia; done`to verify all abilities on the public suno website are also able to be done in the package, as well as including b-side/testing/VIP and other hidden, experimental, secret, or gated, features. This can be expanded on by adding local logic such as advanced sorting options based on API data and keeping a suno libary database with all available options and any additional that we add for more features.

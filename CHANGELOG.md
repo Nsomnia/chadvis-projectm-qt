@@ -8,7 +8,18 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 
 ## [Unreleased]
 ### Added
-- **Comprehensive Suno API Documentation** (`docs/suno_api/`):
+- **Suno B-Side Integration (Phase 1)**: Wired the dead-code `SunoOrchestrator` into the controller/bridge pipeline.
+  - `SunoOrchestrator` now instantiated in `SunoController` with signal connections for `messageReceived` and `errorOccurred`.
+  - `SunoBridge::sendChatMessage()` and `fetchChatHistory()` now forward to the orchestrator backend (Modal `orpheus-prod-web`).
+  - `SunoBridge::fetchFeatureGates()` added — queries Statsig experiment endpoint, exposes `featureGates` Q_PROPERTY.
+  - `SunoClient::fetchFeatureGates()` implemented — POSTs to `api.statsig.com/v1/experiments`, parses `SunoFeatureGate` structs.
+- **Advanced Generation Surface**: Expanded `SunoClient::generate()` with 6 new B-Side parameters:
+  - `customLyrics`, `weirdness` (0-1), `styleWeight` (0-1), `seed`, `personaId`, `continueClipId`/`continueAt` (infill).
+  - All params conditionally included in JSON body (only sent when non-default).
+- **SunoPanel QML Advanced Options**: Collapsible "Advanced Options" section with:
+  - Custom lyrics `TextArea`, weirdness/style weight `AppSlider`s, seed/persona/continue inputs.
+  - Model selector updated to actual API strings: `chirp-v4`, `chirp-auk`, `chirp-v3.5`, `chirp-v3.0`.
+  - Generate button passes all 11 parameters to `SunoBridge.generate()`.
   - `README.md` - API overview, base URLs, auth flow, model versions
   - `auth.md` - Clerk auth, JWT exchange, session endpoints, cookies, headers
   - `generation.md` - Music/lyrics generation, concat, extend, cover, remix, aligned lyrics, WAV conversion

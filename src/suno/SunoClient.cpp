@@ -249,21 +249,37 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
     libraryFetched.emitSignal(clips);
 }
 
-void SunoClient::generate(const std::string& prompt, const std::string& tags, bool makeInstrumental, const std::string& model) {
+void SunoClient::generate(const std::string& prompt, const std::string& tags, bool makeInstrumental, const std::string& model,
+                          const std::string& customLyrics, double weirdness, double styleWeight,
+                          int seed, const std::string& personaId, const std::string& continueClipId,
+                          double continueAt) {
     if (!isAuthenticated()) {
         errorOccurred.emitSignal("Not authenticated");
         return;
     }
 
-    auto proceed = [this, prompt, tags, makeInstrumental, model] {
+    auto proceed = [this, prompt, tags, makeInstrumental, model, customLyrics, weirdness, styleWeight, seed, personaId, continueClipId, continueAt] {
         QJsonObject body;
         body["gpt_description_prompt"] = QString::fromStdString(prompt);
-        body["prompt"] = ""; // Used for custom lyrics
+        body["prompt"] = QString::fromStdString(customLyrics);
         body["tags"] = QString::fromStdString(tags);
         body["mv"] = QString::fromStdString(model);
         body["make_instrumental"] = makeInstrumental;
-        body["continue_clip_id"] = QJsonValue::Null;
-        body["continue_at"] = QJsonValue::Null;
+
+        // B-Side advanced parameters
+        if (weirdness > 0.0) body["weirdness_constraint"] = weirdness;
+        if (styleWeight > 0.0) body["style_weight"] = styleWeight;
+        if (seed >= 0) body["seed"] = seed;
+        if (!personaId.empty()) body["persona_id"] = QString::fromStdString(personaId);
+
+        // Infill/continuation
+        if (!continueClipId.empty()) {
+            body["continue_clip_id"] = QString::fromStdString(continueClipId);
+            if (continueAt >= 0.0) body["continue_at"] = continueAt;
+        } else {
+            body["continue_clip_id"] = QJsonValue::Null;
+            body["continue_at"] = QJsonValue::Null;
+        }
 
         QJsonDocument doc(body);
         enqueueRequest(createAuthenticatedRequest("/generate/v2-web/"), "POST", doc.toJson(), [this](QNetworkReply* reply) {
@@ -306,6 +322,58 @@ void SunoClient::handleNetworkError(QNetworkReply* reply) {
     }
     errorOccurred.emitSignal(err);
     LOG_ERROR("SunoClient API Error: {}", err);
+}
+
+void SunoClient::fetchFeatureGates() {
+    if (!isAuthenticated()) {
+        errorOccurred.emitSignal("Not authenticated");
+        return;
+    }
+
+    auto proceed = [this] {
+        // Statsig experiment endpoint for feature gate discovery
+        QNetworkRequest request(QUrl("https://api.statsig.com/v1/experiments"));
+        request.setRawHeader("Authorization", "Bearer " + QByteArray::fromStdString(token_));
+        request.setRawHeader("Content-Type", "application/json");
+        request.setRawHeader("User-Agent", "Mozilla/5.0");
+
+        QJsonObject body;
+        body["userID"] = QString::fromStdString(clerkSid_);
+        body["appName"] = "suno-web";
+
+        enqueueRequest(request, "POST", QJsonDocument(body).toJson(), [this](QNetworkReply* reply) {
+            reply->deleteLater();
+            if (reply->error() != QNetworkReply::NoError) {
+                LOG_WARN("SunoClient: Feature gates fetch failed: {}", reply->errorString().toStdString());
+                // Non-fatal — emit empty gates
+                featureGatesFetched.emitSignal({});
+                return;
+            }
+
+            QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            std::vector<SunoFeatureGate> gates;
+
+            QJsonArray experiments = doc.object()["experiments"].toArray();
+            for (const auto& exp : experiments) {
+                QJsonObject obj = exp.toObject();
+                SunoFeatureGate gate;
+                gate.name = obj["name"].toString().toStdString();
+                gate.enabled = obj["isUserInExperiment"].toBool(false);
+                gate.value = obj["value"].toString().toStdString();
+                if (gate.value.empty()) {
+                    gate.value = QJsonDocument(obj["value"].toObject()).toJson(QJsonDocument::Compact).toStdString();
+                }
+                gates.push_back(gate);
+            }
+
+            LOG_INFO("SunoClient: Fetched {} feature gates", gates.size());
+            featureGatesFetched.emitSignal(gates);
+        });
+    };
+
+    if (token_.empty() && !cookie_.empty()) {
+        refreshAuthToken([this, proceed](bool success) { if (success) proceed(); });
+    } else proceed();
 }
 
 void SunoClient::fetchAlignedLyrics(const std::string& clipId) {

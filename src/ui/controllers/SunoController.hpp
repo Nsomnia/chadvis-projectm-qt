@@ -16,6 +16,7 @@
 // Forward declarations
 namespace vc {
 class AudioEngine;
+class SunoOrchestrator;
 
 namespace suno {
 class SunoAuthManager;
@@ -36,6 +37,7 @@ public:
 	~SunoController() override;
 
 	SunoClient* client() { return client_.get(); }
+	SunoOrchestrator* orchestrator() { return orchestrator_.get(); }
 
 	// Facade Methods (Delegated to Managers)
 	void downloadAndPlay(const SunoClip& clip);
@@ -89,6 +91,7 @@ private:
     std::unique_ptr<SunoLibraryManager> libraryManager_;
     std::unique_ptr<SunoDownloader> downloader_;
     std::unique_ptr<SunoLyricsManager> lyricsManager_;
+    std::unique_ptr<SunoOrchestrator> orchestrator_;
 
 	// Direct mapping cache for recently fetched lyrics (survives track restarts)
 	std::unordered_map<std::string, AlignedLyrics> directLyricsCache_;
