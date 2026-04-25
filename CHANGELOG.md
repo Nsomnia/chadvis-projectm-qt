@@ -6,11 +6,38 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 
 ---
 
+## [Unreleased]
+### Added
+- **Comprehensive Suno API Documentation** (`docs/suno_api/`):
+  - `README.md` - API overview, base URLs, auth flow, model versions
+  - `auth.md` - Clerk auth, JWT exchange, session endpoints, cookies, headers
+  - `generation.md` - Music/lyrics generation, concat, extend, cover, remix, aligned lyrics, WAV conversion
+  - `library.md` - Feed v1/v2/v3, clips, playlists, search, trending
+  - `billing.md` - Credits, plans, subscription management, credit abuse notes
+  - `projects.md` - Projects API, Studio endpoints, collaboration
+  - `persona.md` - Persona creation, custom models, voice cloning (V5.5)
+  - `upload.md` - Audio/image/video upload, stem processing, video generation
+  - `b-side.md` - B-Side internal routes, Labs features, Orpheus chat, Marketplace, VIP
+  - `social.md` - Profiles, comments, notifications, sharing, social feed
+   - `feature-flags.md` - Statsig integration, feature gates, override scripts
+   - `ENDPOINT-INVENTORY.md` - Complete catalog of 150+ endpoints in CSV-style table
+
+### Key Findings Documented
+- Complete B-Side route inventory (50+ internal/hidden routes)
+- Orpheus chat architecture (Modal backend: `suno-ai--orpheus-prod-web.modal.run`)
+- Marketplace pre-staged (frontend stubs, backend 404)
+- VIP gated features at `/b-side/vip`
+- Client-side feature flag override capabilities (5-layer defense)
+- Credit abuse vector (user reported, rewarded by Suno team)
+- Complete JWT claims documentation
+- All known model versions: V3, V4, V4.5, V5, V5.5
+
 ## [Unreleased] - 2026-04-19
 
 ### 🚀 Added
 - **Documentation Refactor (The Chad Refresh)**: Nuked the monolithic docs and replaced them with a modular, persona-driven masterpiece.
 - **Agent Lore**: Added `.agent/KNOWLEDGE_BASE.md` because even our AI servants deserve decent context.
+- **Suno API Modules**: Added dedicated `projects.md`, `persona.md`, and `upload.md` docs for reverse-engineered project, voice, and processing endpoints.
 
 ---
 

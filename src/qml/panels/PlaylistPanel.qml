@@ -9,7 +9,7 @@
  */
 
 import QtQuick
-import Qt5Compat.GraphicalEffects
+import QtQuick.Effects
 import QtQuick.Layouts
 import QtQuick.Controls
 import Qt.labs.platform as Platform
@@ -216,14 +216,19 @@ ColumnLayout {
                     }
                 }
 
-                RectangularGlow {
-                    visible: isCurrent
-                    glowRadius: 2
-                    spread: 0.1
-                    color: Theme.accent
-                    cornerRadius: Theme.radiusSmall
-                    anchors.fill: parent
-                }
+        Rectangle {
+            visible: isCurrent
+            anchors.fill: parent
+            radius: Theme.radiusSmall
+            color: Theme.accent
+            opacity: 0.15
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: Theme.accent
+                shadowBlur: 0.5
+            }
+        }
             }
         }
     }

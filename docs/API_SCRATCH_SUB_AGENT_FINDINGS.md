@@ -1,0 +1,268 @@
+## Scope
+- `burp/` and `NOTE_768-feature-gates-wtf/` were not present at the exact paths.
+- `suno-api-and-client-to-database_inital-prompt-template-for-llm-models` and `..._qwen3.6-high` exist as sibling repos/directories; the relevant endpoint intel is in the shared scan docs above.
+1) Base URLs / services found
+- https://auth.suno.com/v1
+- https://studio-api-prod.suno.com
+- https://studio-api.prod.suno.com (alternate spelling in inventory)
+- https://suno.com
+- https://suno.ai
+- https://s.prod.suno.com
+- https://statusz.suno.ai
+- https://cdn-o.suno.com
+- https://goto.suno.com
+- https://hcaptcha-endpoint-prod.suno.com
+- https://clerk.suno.com
+- https://suno-ai--orpheus-prod-web.modal.run
+2) Auth / cookies / tokens
+Cookies seen
+- __session
+- __client
+- __client_uat
+- __client_uat_Jnxw-muT
+- __client_uat_Jnxw-muTs
+- __session_Jnxw-muT
+- __session_Jnxw-muTs
+Headers / auth
+- Authorization: Bearer <JWT>
+- Origin: https://suno.com
+- Device-Id: <uuid>
+- Browser-Token: <base64 timestamp JSON>
+JWT/claims mentioned
+- user_id
+- clerk_id
+- token_type=access
+- aud=suno-api
+- sid
+- email
+- exp
+Clerk / auth flow
+- GET https://auth.suno.com/v1/client?_is_native=true&_clerk_js_version={ver}
+- POST https://auth.suno.com/v1/client/sessions/{sid}/tokens
+- GET https://auth.suno.com/v1/client/sync
+- GET/POST https://auth.suno.com/v1/event
+- GET https://auth.suno.com/v1/logs
+- POST https://auth.suno.com/v1/tickets/accept
+- GET https://auth.suno.com/v1/verify
+Public auth-linked routes
+- /sign-in, /sign-up, /auth, /auth/verify, /auth/error, /auth/birthday
+- /client, /client/sessions, /client/sign_ins, /client/sign_ups, /client/touch
+- /sessions, /me/sessions, /me/sessions/active
+3) Main API endpoints found
+Billing / credits
+- GET /api/billing/info/
+- GET /api/billing/usage-plan-descriptions/
+- GET /api/billing/usage-plan-faq/
+- GET /api/billing/usage-plan-web-table-comparison/
+- GET /api/billing/usage-plans
+- POST /api/billing/create-session/
+- POST /api/billing/change-plan/
+- POST /api/billing/cancel-sub/
+- POST /api/billing/unpause-sub/
+- POST /api/billing/pause-sub/
+- GET /api/billing/default-currency
+- GET /api/billing/eligible-discounts
+- GET /api/billing/get-discount-offer
+- GET /api/billing/get-churn-survey-options
+- POST /api/billing/submit-survey/
+- GET /api/billing/tax-info
+- POST /api/billing/accept-sub-coupon/
+- POST /api/billing/set-default-payment-method/
+- GET /api/billing/clips/{clip_id}/download/
+- GET /api/billing/purchase-info/{purchase_id}/
+User / session / config
+- GET /api/user/me
+- GET /api/user/get_user_session_id/
+- GET /api/user/user_config/
+- POST /api/user/update_user_config/
+- GET /api/user/tos_acceptance
+- POST /api/user/reset_onboarding/
+- POST /api/user/accept_timbaland_terms/
+- DELETE /api/user/delete-account/
+- GET /api/session/
+- GET /api/auth/verify-token
+Projects / workspace
+- GET /api/project/me
+- GET /api/project
+- POST /api/project
+- GET /api/project/trash
+- GET /api/project/invites
+- GET /api/project/{project_id}
+- GET /api/project/{project_id}/clips
+- GET /api/project/{project_id}/metadata
+- GET /api/project/{project_id}/pinned-clips
+- GET /api/project/{project_id}/collaborators
+- GET /api/project/{project_id}/collaborators/me
+- GET /api/project/{project_id}/ably-token
+- GET /api/project/{project_id}/ably-client-id
+- POST /api/project/{project_id}/invite
+- POST /api/project/{project_id}/ably-update
+Generation / clips / media
+- POST /api/generate/v2-web/
+- GET/POST /api/gen/{clip_id}/* family
+- GET /api/gen/{gen_id}/* family
+- GET /api/clips/* family
+- GET /api/clip/{clip_id}
+- GET /api/clip/{clip_id}/stems
+- GET /api/clip/{clip_id}/stems/pages
+- POST /api/edit/crop/{clip_id}/
+- POST /api/edit/stems/{clip_id}/
+- GET /api/openai-speech/
+- GET /api/deepgram-token
+- GET /api/uploads/video/
+- POST /api/uploads/video/{upload_id}/upload-finish/
+- GET /api/video/generate/{clip_id}/status/
+- POST /api/video/hooks/create
+- GET /api/video/hooks/feed
+- GET /api/video/hooks/{hook_id}/flag
+Social / feed / profiles / comments
+- GET /api/feed/v3
+- GET /api/feed/v3/offset
+- GET /api/unified/feed
+- GET /api/unified/homepage
+- GET /api/unified/homepage/explore
+- GET /api/search/
+- GET /api/search/users
+- GET /api/profiles/
+- GET /api/profiles/{handle}
+- GET /api/profiles/{handle}/info
+- GET /api/profiles/follow
+- GET /api/profiles/pinned-clips
+- GET /api/comment/{comment_id}
+- POST /api/comment/block-user
+- POST /api/comment/unblock-user
+- POST /api/comment/{comment_id}/reaction
+- POST /api/comment/{comment_id}/replies
+- POST /api/comment/{comment_id}/report
+Misc
+- GET /api/modals
+- POST /api/statsig/experiment/
+- GET /api/statsig/experiment/forked-onboarding
+- GET /api/notification/v2
+- GET /api/notification/v2/badge-count
+- GET /api/notification/v2/clear-badge
+- GET /api/notification/v2/read
+- GET /api/mango/rights
+- POST /api/moderation/ack-copyright-warning
+- GET /api/song_copy/send-song
+- POST /api/recommend/hide-creator
+- GET /api/tags/recommend
+- GET /api/trending/metaplaylist/
+4) Hidden / beta / B-side / experimental
+/b-side/* routes
+- /b-side
+- /b-side/account-moderation
+- /b-side/agentic-transcript
+- /b-side/agentic-transcript/:clipId
+- /b-side/api-explorer
+- /b-side/audible-magic
+- /b-side/banner
+- /b-side/because-you-like
+- /b-side/billing/revcat
+- /b-side/contests
+- /b-side/cover-art-eval
+- /b-side/creators
+- /b-side/describe-clip
+- /b-side/dsp-diag
+- /b-side/dsp-engine-talk
+- /b-side/explore
+- /b-side/feature-flags
+- /b-side/hipster
+- /b-side/hook-song-gen
+- /b-side/hooks-explorer/:slug*?
+- /b-side/impersonate
+- /b-side/isthisus
+- /b-side/labs-control
+- /b-side/lyrics-eval
+- /b-side/lyrics-eval-reports/:slug*?
+- /b-side/lyrics-eval/:slug*?
+- /b-side/lyrics-gen
+- /b-side/lyrics-viewer
+- /b-side/milo
+- /b-side/music-soulmate
+- /b-side/music-soulmate-talk
+- /b-side/nux
+- /b-side/on-repeat
+- /b-side/onboarding-survey
+- /b-side/orpheus
+- /b-side/personalization
+- /b-side/playlist-copier
+- /b-side/project-state-tour
+- /b-side/search-lens/*
+- /b-side/simple-remix/:slug*?
+- /b-side/song-moderation
+- /b-side/sse-demo
+- /b-side/studio-access
+- /b-side/trending-moderation
+- /b-side/user-activity
+- /b-side/user-mix
+- /b-side/user-similarity
+- /b-side/video-gen
+- /b-side/vip
+- /b-side/visual-art
+- /b-side/visual-art/:type/:id
+- /b-side/voice-verification
+/labs/*
+- /labs/canvas
+- /labs/divisi
+- /labs/genre-wheel
+- /labs/listen-and-rank
+- /labs/live-radio
+- /labs/marketplace
+- /labs/milo
+- /labs/pedalboard
+- /labs/suno-mania
+- /labs/turntable
+- /labs/turntable/:roomId
+- /labs/verse
+Statsig / feature flags
+- orpheus_is_enabled
+- orpheus_is_auto_mode
+- orpheus_is_canvas_enabled
+- orpheus_default_to_chat
+- orpheus_mobile_web_enabled
+- orpheus_group
+- marketplace_enabled
+- marketplace_access
+- labs_marketplace
+- gen-video-covers
+- statsig.cached.evaluations.*
+- statsig::gate_exposure
+- statsig::config_exposure
+- statsig::layer_exposure
+- statsig::non_exposed_checks
+5) Credit abuse / exploit / override mentions
+- scripts/orpheus-flag-override.js forcibly sets Orpheus + marketplace gates to true by:
+  - intercepting fetch to /api/statsig/experiment/
+  - poisoning localStorage keys beginning with statsig.cached.evaluations
+  - reapplying periodically
+- Marketplace investigation explicitly frames the feature as credit-bounty based.
+- Scan word lists include abuse-ish / bypass-ish flags:
+  - bypass_hook_feed_caches
+  - bypass_unified_feed_caches
+  - captcha_bypasses
+  - captcha_oauth_bypasses
+  - hide-credits-enabled
+  - hide-credits-for-subscribers-enabled
+  - out-of-credits-banner*
+  - free_*
+  - can_buy_credit_top_up
+  - reward_credit
+  - refund_credit
+  - golden_ticket_reward_credit
+  - jail-fraudulent-accounts-tenure-limit-days
+- MARKETPLACE-INVESTIGATION.md notes the marketplace backend is not deployed; all /api/marketplace/* return 404.
+6) Marketplace probe results
+- Auth base: https://studio-api-prod.suno.com
+- /api/marketplace, /api/marketplace/listings, /api/marketplace/featured, /api/marketplace/categories, /api/labs/marketplace => 404
+- /api/statsig/experiment/:
+  - onboarding layer returns Orpheus flags all false
+  - creation layer returns orpheus_group: "CONTROL"
+- /api/modals => 200, empty array
+- /api/project/me => 200, workspace/project list
+- /api/billing/usage-plan-descriptions/ => 200, reveals Free/Pro/Premier plan text and credit limits
+7) Notes from the HTML / asset files
+- Suno _ AI Music.html is a saved copy of https://suno.com/marketplace.
+- It includes GTM (GTM-NQ9L4VGG), OneTrust, and Cloudflare analytics references.
+- clerk.browser.js is Clerk SDK internals; no Suno API routes beyond Clerk auth plumbing.
+- saved_resource is GTM payload; it contains analytics events, not Suno API endpoints.

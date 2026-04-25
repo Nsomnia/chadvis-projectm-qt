@@ -5,7 +5,10 @@
 * Defines color palette, metrics, and typography for the modern UI.
 * Supports runtime theme switching via ThemeManager.
 *
-* @version 1.0.0
+* Mutable properties: accent family + background family (user-customizable)
+* Readonly properties: text, semantic, border, metrics, typography, shadows
+*
+* @version 1.1.0
 */
 
 pragma Singleton
@@ -15,24 +18,31 @@ QtObject {
     id: theme
 
     // ═══════════════════════════════════════════════════════════
-    // PRIMARY PALETTE - Cyan accent system
+    // SIGNALS
     // ═══════════════════════════════════════════════════════════
 
-    readonly property color accent: "#00bcd4"
-    readonly property color accentHover: "#26c6da"
-    readonly property color accentPressed: "#0097a7"
-    readonly property color accentLight: "#80deea"
-    readonly property color accentDark: "#00838f"
+    /** Emitted when any mutable theme property changes (accent or background family) */
+    signal themeChanged()
 
     // ═══════════════════════════════════════════════════════════
-    // BACKGROUND COLORS - Dark theme base
+    // PRIMARY PALETTE - Cyan accent system (MUTABLE)
     // ═══════════════════════════════════════════════════════════
 
-    readonly property color background: "#1a1a1a"
-    readonly property color backgroundAlt: "#1e1e1e"
-    readonly property color surface: "#252525"
-    readonly property color surfaceRaised: "#2d2d2d"
-    readonly property color surfaceOverlay: "#353535"
+    property color accent: "#00bcd4"
+    property color accentHover: "#26c6da"
+    property color accentPressed: "#0097a7"
+    property color accentLight: "#80deea"
+    property color accentDark: "#00838f"
+
+    // ═══════════════════════════════════════════════════════════
+    // BACKGROUND COLORS - Dark theme base (MUTABLE)
+    // ═══════════════════════════════════════════════════════════
+
+    property color background: "#1a1a1a"
+    property color backgroundAlt: "#1e1e1e"
+    property color surface: "#252525"
+    property color surfaceRaised: "#2d2d2d"
+    property color surfaceOverlay: "#353535"
 
     // Glassmorphism backgrounds (semi-transparent)
     readonly property color glassBackground: Qt.rgba(0.164, 0.164, 0.164, 0.85)
@@ -245,5 +255,35 @@ QtObject {
 
     function withAlpha(color, alpha) {
         return Qt.rgba(color.r, color.g, color.b, alpha)
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // RUNTIME THEME MUTATORS
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Apply a new accent color and recompute all derived accent variants.
+     * @param baseColor - The new accent color (string or color)
+     */
+    function applyAccent(baseColor) {
+        accent = baseColor
+        accentHover = Qt.lighter(baseColor, 1.15)
+        accentPressed = Qt.darker(baseColor, 1.2)
+        accentLight = Qt.lighter(baseColor, 1.5)
+        accentDark = Qt.darker(baseColor, 1.5)
+        themeChanged()
+    }
+
+    /**
+     * Apply a new background color and recompute all derived surface variants.
+     * @param baseColor - The new background color (string or color)
+     */
+    function applyBackground(baseColor) {
+        background = baseColor
+        backgroundAlt = Qt.lighter(baseColor, 1.05)
+        surface = Qt.lighter(baseColor, 1.15)
+        surfaceRaised = Qt.lighter(baseColor, 1.25)
+        surfaceOverlay = Qt.lighter(baseColor, 1.35)
+        themeChanged()
     }
 }

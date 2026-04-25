@@ -69,9 +69,12 @@ output_directory = '/home/nsomnia/Videos/ChadVis'
 
 [ui]
 accent_color = '#00FF88FF'
+drawer_open = false
+expanded_panel = 'playback'
 show_debug_panel = false
 show_playlist = true
 show_presets = true
+sidebar_width = 280
 theme = 'dark'
 visualizer_background = '#000000FF'
 
