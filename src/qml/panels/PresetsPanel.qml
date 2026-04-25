@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
-import Qt5Compat.GraphicalEffects
+import QtQuick.Effects
 import ChadVis
 import "../components"
 
@@ -62,13 +62,18 @@ ColumnLayout {
 
         RowLayout {
             anchors.fill: parent; anchors.margins: Theme.spacingSmall; spacing: Theme.spacingSmall
-            Image {
-                source: delegate.isFavorite ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : (delegate.isBlacklisted ? "qrc:/qt/qml/ChadVis/resources/icons/blacklist.svg" : "")
-                sourceSize.width: 24; sourceSize.height: 24
-                Layout.preferredWidth: visible ? 24 : 0; Layout.preferredHeight: visible ? 24 : 0
-                fillMode: Image.PreserveAspectFit; visible: delegate.isFavorite || delegate.isBlacklisted
-                ColorOverlay { anchors.fill: parent; source: parent; color: delegate.isFavorite ? Theme.accent : Theme.onSurfaceVariant }
-            }
+    Image {
+        source: delegate.isFavorite ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : (delegate.isBlacklisted ? "qrc:/qt/qml/ChadVis/resources/icons/blacklist.svg" : "")
+        sourceSize.width: 24; sourceSize.height: 24
+        Layout.preferredWidth: visible ? 24 : 0; Layout.preferredHeight: visible ? 24 : 0
+        fillMode: Image.PreserveAspectFit; visible: delegate.isFavorite || delegate.isBlacklisted
+        layer.enabled: true
+        layer.effect: MultiEffect {
+            autoPaddingEnabled: true
+            colorizationEnabled: true
+            colorizationColor: delegate.isFavorite ? Theme.accent : Theme.onSurfaceVariant
+        }
+    }
             ColumnLayout {
                 Layout.fillWidth: true; spacing: 2
                 Text { text: modelData ? modelData.name : ""; color: delegate.isBlacklisted ? Theme.onSurfaceVariant : Theme.onSurface; font.pixelSize: Theme.fontSizeMedium; elide: Text.ElideRight; Layout.fillWidth: true }
@@ -78,13 +83,18 @@ ColumnLayout {
                 spacing: 2; Layout.alignment: Qt.AlignVCenter
                 Repeater {
                     model: 5
-                    Image {
-                        source: index < delegate.rating ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : "qrc:/qt/qml/ChadVis/resources/icons/star-outline.svg"
-                        sourceSize.width: 16; sourceSize.height: 16
-                        fillMode: Image.PreserveAspectFit
-                        ColorOverlay { anchors.fill: parent; source: parent; color: index < delegate.rating ? Theme.accent : Theme.onSurfaceVariant }
-                        MouseArea { anchors.fill: parent; onClicked: PresetBridge.setRating(modelData.index, index + 1) }
-                    }
+        Image {
+            source: index < delegate.rating ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : "qrc:/qt/qml/ChadVis/resources/icons/star-outline.svg"
+            sourceSize.width: 16; sourceSize.height: 16
+            fillMode: Image.PreserveAspectFit
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                autoPaddingEnabled: true
+                colorizationEnabled: true
+                colorizationColor: index < delegate.rating ? Theme.accent : Theme.onSurfaceVariant
+            }
+            MouseArea { anchors.fill: parent; onClicked: PresetBridge.setRating(modelData.index, index + 1) }
+        }
                 }
             }
             AppButton { icon: delegate.isFavorite ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : "qrc:/qt/qml/ChadVis/resources/icons/star-outline.svg"; implicitWidth: 36; implicitHeight: 36; highlighted: delegate.isFavorite; onClicked: delegate.favoriteToggled() }

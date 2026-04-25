@@ -123,6 +123,11 @@ struct UIConfig {
     bool showDebugPanel{false};
     Color backgroundColor{Color::black()};
     Color accentColor{Color::fromHex("#00FF88")};
+
+    // Sidebar & layout persistence
+    std::string expandedPanel{"playback"};  // Which accordion panel is expanded
+    i32 sidebarWidth{280};                  // Desktop sidebar width in px
+    bool drawerOpen{false};                 // Mobile drawer open state
 };
 
 // Keyboard shortcuts

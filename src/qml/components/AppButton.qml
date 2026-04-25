@@ -4,7 +4,7 @@
  */
 
 import QtQuick
-import Qt5Compat.GraphicalEffects
+import QtQuick.Effects
 import QtQuick.Layouts
 import ChadVis
 
@@ -74,11 +74,12 @@ Rectangle {
             Layout.preferredHeight: Theme.iconMedium
             fillMode: Image.PreserveAspectFit
 
-            ColorOverlay {
-                anchors.fill: parent
-                source: parent
-                color: root.enabled ? (root.highlighted ? Theme.textOnAccent : Theme.textPrimary) : Theme.textDisabled
-            }
+        layer.enabled: true
+        layer.effect: MultiEffect {
+            autoPaddingEnabled: true
+            colorizationEnabled: true
+            colorizationColor: root.enabled ? (root.highlighted ? Theme.textOnAccent : Theme.textPrimary) : Theme.textDisabled
+        }
         }
 
         Text {

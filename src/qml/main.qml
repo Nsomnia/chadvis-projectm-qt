@@ -28,6 +28,9 @@ ApplicationWindow {
     minimumWidth: 800
     minimumHeight: 600
 
+    // Flush any pending auto-save on close
+    onClosing: SettingsBridge.save()
+
     title: {
         var title = "ChadVis"
         if (AudioBridge.currentTrack.title) {
@@ -229,14 +232,21 @@ ApplicationWindow {
         anchors.fill: parent
         orientation: Qt.Horizontal
 
-        // Desktop Sidebar (Static when window is wide)
-        Rectangle {
-            id: desktopSidebar
-            SplitView.preferredWidth: Theme.sidebarExpandedWidth
-            SplitView.minimumWidth: 200
-            SplitView.maximumWidth: 400
-            visible: mainWindow.width > 1200
-            color: Theme.surface
+    // Desktop Sidebar (Static when window is wide)
+    Rectangle {
+        id: desktopSidebar
+        SplitView.preferredWidth: SettingsBridge.sidebarWidth
+        SplitView.minimumWidth: 200
+        SplitView.maximumWidth: 400
+        visible: mainWindow.width > 1200
+        color: Theme.surface
+
+        // Persist sidebar width when user drags the SplitView handle
+        onWidthChanged: {
+            if (desktopSidebar.visible && width >= 200 && width <= 400) {
+                SettingsBridge.sidebarWidth = Math.round(width)
+            }
+        }
 
             Rectangle {
                 anchors.right: parent.right
@@ -347,14 +357,15 @@ ApplicationWindow {
     }
 
     property Component sidebarContent: Component {
-        AccordionContainer {
-            id: accordionContainer
+    AccordionContainer {
+        id: accordionContainer
 
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.margins: Theme.spacingTiny
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        Layout.margins: Theme.spacingTiny
 
-            expandedPanel: "playback"
+        expandedPanel: SettingsBridge.expandedPanel
+        onExpandedPanelChanged: SettingsBridge.expandedPanel = expandedPanel
 
             panels: [
                 {
@@ -428,6 +439,11 @@ ApplicationWindow {
         width: Math.min(Theme.sidebarExpandedWidth, mainWindow.width * 0.85)
         height: mainWindow.height
         enabled: !desktopSidebar.visible
+
+        // Persist drawer open state
+        onOpened: SettingsBridge.drawerOpen = true
+        onClosed: SettingsBridge.drawerOpen = false
+        Component.onCompleted: if (SettingsBridge.drawerOpen) open()
 
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 

@@ -157,9 +157,12 @@ void ConfigParsers::parseUI(const toml::table& tbl, UIConfig& cfg) {
         cfg.showPresets = get(*uiTbl, "show_presets", true);
         cfg.showDebugPanel = get(*uiTbl, "show_debug_panel", false);
         cfg.backgroundColor = Color::fromHex(
-                get(*uiTbl, "visualizer_background", std::string("#000000")));
+            get(*uiTbl, "visualizer_background", std::string("#000000")));
         cfg.accentColor = Color::fromHex(
-                get(*uiTbl, "accent_color", std::string("#00FF88")));
+            get(*uiTbl, "accent_color", std::string("#00FF88")));
+        cfg.expandedPanel = get(*uiTbl, "expanded_panel", std::string("playback"));
+        cfg.sidebarWidth = std::clamp(get(*uiTbl, "sidebar_width", 280), 200, 400);
+        cfg.drawerOpen = get(*uiTbl, "drawer_open", false);
     }
 }
 
@@ -282,13 +285,16 @@ toml::table ConfigParsers::serialize(
                 toml::table{{"enabled", true}, {"elements", elementsArr}});
 
     root.insert(
-            "ui",
-            toml::table{{"theme", ui.theme},
-                        {"show_playlist", ui.showPlaylist},
-                        {"show_presets", ui.showPresets},
-                        {"show_debug_panel", ui.showDebugPanel},
-                        {"visualizer_background", ui.backgroundColor.toHex()},
-                        {"accent_color", ui.accentColor.toHex()}});
+        "ui",
+        toml::table{{"theme", ui.theme},
+                     {"show_playlist", ui.showPlaylist},
+                     {"show_presets", ui.showPresets},
+                     {"show_debug_panel", ui.showDebugPanel},
+                     {"visualizer_background", ui.backgroundColor.toHex()},
+                     {"accent_color", ui.accentColor.toHex()},
+                     {"expanded_panel", ui.expandedPanel},
+                     {"sidebar_width", (i64)ui.sidebarWidth},
+                     {"drawer_open", ui.drawerOpen}});
 
     root.insert("keyboard",
                 toml::table{{"play_pause", keyboard.playPause},
