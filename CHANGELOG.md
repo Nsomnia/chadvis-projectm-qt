@@ -8,6 +8,12 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 
 ## [Unreleased]
 ### Added
+- **PlaylistBridge: Full QML API** — Added `shuffle` (bool), `repeatMode` (int: 0=Off/1=All/2=One) Q_PROPERTYs with notify signals. Added `toggleShuffle()`, `setShuffle(bool)`, `cycleRepeatMode()`, `moveItem(int,int)`, `getItemPath(int)` Q_INVOKABLEs. Added `DurationFormattedRole` to model. Wired `vc::Playlist` signals through bridge.
+- **RecordingBridge: Real Recording Support** — `startRecording()` now calls `vc::VideoRecorder::start()`. Added live stats Q_PROPERTYs: `recordingTime`, `framesWritten`, `fileSize`, `encodeFps`, `bufferHealth`. Wired `stateChanged`/`statsUpdated`/`error` signals from VideoRecorder.
+- **Suno Orchestrator Wiring** — `SunoController` now owns `SunoOrchestrator` instance. `sendChatMessage()` and `fetchChatHistory()` flow through controller → orchestrator → bridge. Chat responses and history sessions update QML in real-time.
+- **Suno Auth Signal Wiring** — `SunoAuthManager` now emits `authenticationSuccess()` and `authenticationFailed(QString)`. Controller re-emits these signals. Persistent auth restore and system-browser auth both properly signal success/failure.
+- **Suno Endpoint Centralization** — Created `src/suno/SunoEndpoints.hpp` with `namespace vc::suno::endpoints` containing all API base URLs and path constants as `constexpr string_view`. Replaced all hardcoded URLs in SunoClient, SunoOrchestrator, SunoPersistentAuth, SystemBrowserAuth.
+- **Suno Library Pagination** — `SunoLibraryManager` now emits per-page instead of auto-paginating all. Added `hasMorePages` signal. `SunoBridge` exposes `hasMorePages`/`currentPage` Q_PROPERTYs. `SunoPanel.qml` implements infinite scroll with loading footer.
 - **Comprehensive Suno API Documentation** (`docs/suno_api/`):
   - `README.md` - API overview, base URLs, auth flow, model versions
   - `auth.md` - Clerk auth, JWT exchange, session endpoints, cookies, headers
