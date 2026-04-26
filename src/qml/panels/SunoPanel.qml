@@ -154,12 +154,25 @@ ColumnLayout {
                     }
                 }
 
-                onAtYEndChanged: {
-                    if (atYEnd && SunoBridge.clips.length < SunoBridge.totalClips && searchBar.text === "") {
-                        SunoBridge.refreshLibrary(Math.floor(SunoBridge.clips.length / 20) + 2)
-                    }
-                }
-            }
+  onAtYEndChanged: {
+    if (atYEnd && SunoBridge.hasMorePages && !SunoBridge.loading && searchBar.text === "") {
+      SunoBridge.refreshLibrary(SunoBridge.currentPage + 1)
+    }
+  }
+
+  footer: Item {
+    width: libraryList.width
+    height: SunoBridge.loading ? 36 : 0
+    visible: SunoBridge.loading
+
+    RowLayout {
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.verticalCenter: parent.verticalCenter
+      BusyIndicator { running: SunoBridge.loading; Layout.preferredHeight: 20; Layout.preferredWidth: 20 }
+      Text { text: "Loading more..."; color: Theme.textSecondary; font: Theme.fontCaption }
+    }
+  }
+  }
         }
 
         // ═══════════════════════════════════════════════════════════

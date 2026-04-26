@@ -41,26 +41,30 @@ public:
 	explicit SunoLibraryManager(SunoClient* client, SunoDatabase& db, QObject* parent = nullptr);
 	~SunoLibraryManager() override;
 
-	void refreshLibrary(int page = 1);
-	void syncDatabase(bool forceAuth);
+  void refreshLibrary(int page = 1);
+  void syncDatabase(bool forceAuth);
 
-	// Accessors
-	const std::vector<SunoClip>& accumulatedClips() const { return accumulatedClips_; }
-	void clearAccumulatedClips() { accumulatedClips_.clear(); }
+  // Accessors
+  const std::vector<SunoClip>& accumulatedClips() const { return accumulatedClips_; }
+  void clearAccumulatedClips() { accumulatedClips_.clear(); }
+  bool hasMorePages() const { return hasMorePages_; }
+  int currentPage() const { return currentSyncPage_; }
 
-signals:
-	void statusMessage(const std::string& message);
-	void libraryUpdated(const std::vector<SunoClip>& clips);
-	void clipUpdated(const std::string& clipId);
-	void authenticationRequired();
+ signals:
+  void statusMessage(const std::string& message);
+  void libraryUpdated(const std::vector<SunoClip>& clips);
+  void clipUpdated(const std::string& clipId);
+  void authenticationRequired();
+  void hasMorePagesChanged();
 
 private:
     SunoClient* client_;
     SunoDatabase& db_;
     
-    std::vector<SunoClip> accumulatedClips_;
-    bool isSyncing_ = false;
-    int currentSyncPage_ = 1;
+  std::vector<SunoClip> accumulatedClips_;
+  bool isSyncing_ = false;
+  int currentSyncPage_ = 1;
+  bool hasMorePages_ = false;
 
     void onLibraryFetched(const std::vector<SunoClip>& clips);
 };
