@@ -27,7 +27,7 @@ readonly BINARY_PATH="${BUILD_DIR}/${BINARY_NAME}"
 # - 'iso': ISO 8601 format (2024-01-15T10:30:45)
 # - 'unix': Unix timestamp (1705315845)
 # - 'human': Human-readable (2024-01-15 10:30:45) [default]
-readonly TIMESTAMP_FORMAT="${CHADVIS_LOG_TIMESTAMP:-human}"
+readonly TIMESTAMP_FORMAT="${CHADVIS_LOG_TIMESTAMP:-iso}"
 
 # Minimum libprojectm version required
 readonly PROJECTM_MIN_VERSION="4.1.0"
