@@ -44,7 +44,7 @@ ColumnLayout {
             implicitWidth: 28
             implicitHeight: 28
             radius: Theme.radiusSmall
-            onClicked: PlaylistBridge.shuffle()
+            onClicked: PlaylistBridge.toggleShuffle()
         }
 
         AppButton {
