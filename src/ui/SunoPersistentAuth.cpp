@@ -4,6 +4,7 @@
  */
 
 #include "SunoPersistentAuth.hpp"
+#include "suno/SunoEndpoints.hpp"
 #include <QStandardPaths>
 #include <QDir>
 #include <QJsonDocument>
@@ -138,13 +139,14 @@ QWebEngineView* SunoPersistentAuth::createWebView(QWidget* parent) {
 
 void SunoPersistentAuth::navigateToLogin(QWebEngineView* view) {
     if (view && view->page()) {
-        view->load(QUrl("https://suno.com/login"));
+        view->load(QUrl(QString::fromUtf8(vc::suno::endpoints::WEB_BASE.data(), static_cast<int>(vc::suno::endpoints::WEB_BASE.size())) +
+                        QString::fromUtf8(vc::suno::endpoints::LOGIN.data(), static_cast<int>(vc::suno::endpoints::LOGIN.size()))));
     }
 }
 
 void SunoPersistentAuth::navigateToSuno(QWebEngineView* view) {
     if (view && view->page()) {
-        view->load(QUrl("https://suno.com"));
+        view->load(QUrl(QString::fromUtf8(vc::suno::endpoints::WEB_BASE.data(), static_cast<int>(vc::suno::endpoints::WEB_BASE.size()))));
     }
 }
 

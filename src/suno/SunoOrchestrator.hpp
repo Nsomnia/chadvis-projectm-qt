@@ -5,6 +5,7 @@
 #include <QNetworkReply>
 #include <memory>
 #include "SunoModels.hpp"
+#include "SunoEndpoints.hpp"
 
 namespace vc::suno {
 class SunoClient;
@@ -36,7 +37,7 @@ private slots:
 
 private:
     vc::suno::SunoClient* client_;
-    QString modalBaseUrl_{"https://suno-ai--orpheus-prod-web.modal.run"};
+    QString modalBaseUrl_{QString::fromUtf8(vc::suno::endpoints::MODAL_BASE.data(), static_cast<int>(vc::suno::endpoints::MODAL_BASE.size()))};
 };
 
 } // namespace vc
