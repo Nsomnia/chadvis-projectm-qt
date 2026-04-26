@@ -3,6 +3,7 @@
 // Coordinates fetching, downloading, and metadata processing
 
 #include <QObject>
+#include <QVariantList>
 #include <memory>
 #include <vector>
 #include <string>
@@ -12,6 +13,7 @@
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
 #include "suno/SunoLyrics.hpp"
+#include "suno/SunoOrchestrator.hpp"
 
 // Forward declarations
 namespace vc {
@@ -35,7 +37,8 @@ public:
 		QObject* parent = nullptr);
 	~SunoController() override;
 
-	SunoClient* client() { return client_.get(); }
+  SunoClient* client() { return client_.get(); }
+  SunoLibraryManager* libraryManager() { return libraryManager_.get(); }
 
 	// Facade Methods (Delegated to Managers)
 	void downloadAndPlay(const SunoClip& clip);
@@ -46,6 +49,8 @@ public:
 	// Auth - triggers signal for QML to handle
 	Q_INVOKABLE void requestAuthentication();
 	Q_INVOKABLE void startSystemBrowserAuth();
+	Q_INVOKABLE void sendChatMessage(const QString& message, const QString& workspaceId = {});
+	Q_INVOKABLE void fetchChatHistory();
 
 	const std::vector<SunoClip>& clips() const;
 	SunoDatabase& db() { return db_; }
@@ -67,6 +72,9 @@ signals:
 	void authenticationRequired();
 	void authenticationSuccess();
 	void authenticationFailed(const QString& reason);
+	void chatMessageReceived(const QString& response, const QString& workspaceId);
+	void chatHistoryFetched(const QVariantList& sessions);
+	void chatError(const QString& error);
 
 private:
 	void onTrackChanged();
@@ -82,6 +90,7 @@ private:
 	AudioEngine* audioEngine_;
 
 	std::unique_ptr<SunoClient> client_;
+	std::unique_ptr<vc::SunoOrchestrator> orchestrator_;
 	SunoDatabase db_;
 	
     // Managers

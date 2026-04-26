@@ -50,6 +50,8 @@ public:
 signals:
 	void statusMessage(const std::string& message);
 	void authenticationRequired();
+	void authenticationSuccess();
+	void authenticationFailed(const QString& reason);
 
 private:
     SunoClient* client_;
