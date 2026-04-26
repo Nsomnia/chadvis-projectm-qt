@@ -56,6 +56,7 @@ void SunoAuthManager::onPersistentAuthRestored(const chadvis::SunoAuthState& aut
 	CONFIG.save(CONFIG.configPath());
 
 	emit statusMessage("Authentication restored from persistent session");
+	emit authenticationSuccess();
 }
 
 void SunoAuthManager::onSystemAuthSuccess(const QString& token) {
@@ -67,14 +68,17 @@ void SunoAuthManager::onSystemAuthSuccess(const QString& token) {
 		CONFIG.suno().token = token.toStdString();
 		CONFIG.save(CONFIG.configPath());
 		emit statusMessage("System authentication successful");
+		emit authenticationSuccess();
 	} else {
 		LOG_INFO("SunoAuthManager: Received token from system auth: {}", token.left(10).toStdString());
+		emit authenticationFailed("Received non-JWT token from browser auth");
 	}
 }
 
 void SunoAuthManager::onSystemAuthFailed(const QString& reason) {
 	LOG_ERROR("SunoAuthManager: System auth failed: {}", reason.toStdString());
 	emit statusMessage("System Login Failed: " + reason.toStdString());
+	emit authenticationFailed(reason);
 }
 
 } // namespace vc::suno

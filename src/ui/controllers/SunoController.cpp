@@ -43,6 +43,11 @@ SunoController::SunoController(AudioEngine* audioEngine,
     
     lyricsManager_ = std::make_unique<SunoLyricsManager>(client_.get(), db_, this);
 
+    orchestrator_ = std::make_unique<SunoOrchestrator>(client_.get(), this);
+    connect(orchestrator_.get(), &SunoOrchestrator::messageReceived, this, &SunoController::chatMessageReceived);
+    connect(orchestrator_.get(), &SunoOrchestrator::historyFetched, this, &SunoController::chatHistoryFetched);
+    connect(orchestrator_.get(), &SunoOrchestrator::errorOccurred, this, &SunoController::chatError);
+
 	// --- Connect Signals ---
 
 	// Auth Manager
@@ -54,6 +59,10 @@ SunoController::SunoController(AudioEngine* audioEngine,
 		this, [this]() {
 			emit authenticationRequired();
 		});
+	connect(authManager_.get(), &SunoAuthManager::authenticationSuccess,
+		this, &SunoController::authenticationSuccess);
+	connect(authManager_.get(), &SunoAuthManager::authenticationFailed,
+		this, &SunoController::authenticationFailed);
 	// Re-emit auth initialization
 	authManager_->initialize();
 
@@ -215,6 +224,14 @@ void SunoController::requestAuthentication() {
 
 void SunoController::startSystemBrowserAuth() {
     authManager_->startSystemBrowserAuth();
+}
+
+void SunoController::sendChatMessage(const QString& message, const QString& workspaceId) {
+    if (orchestrator_) orchestrator_->sendMessage(message, workspaceId);
+}
+
+void SunoController::fetchChatHistory() {
+    if (orchestrator_) orchestrator_->fetchHistory();
 }
 
 const std::vector<SunoClip>& SunoController::clips() const {
