@@ -22,7 +22,7 @@ months and months with hundred(s) of millions of tokems invested over many model
 - Follow industry stadards whenever both relevent and possible. Every aspect should not only be production ready but also ooze the vibe that it was done by a human to really try to keep everything both maintainable and to not become burden with slop (which is already happening in small degrees all over the project!).
 
 ## Ralph Loop/Self-Repetition/Infinite Mode
-- You have complete freedom to work as long as you feel comfortable so long as either there are tasks in this AGENTS.md TODO list, or you are aware of improvments that may be possible to the codebase. In these cases design and use a simple self-harness for repeating until your confident that your work is done and start with this harness wrapper, then end with a self promise statement of all tasks being done, compiled, tests run where appropriate, verified, logs checked, git commits made and then pushed to remote, and so-on until one step is fatally blocked or broken without being able to amend. 
+- You have complete freedom to, and are requested to, work as long as seems appropriate on this TODO list, so long as either there are tasks in this AGENTS.md TODO list, or you are aware of improvments that may be possible to the codebase. In these cases design and use a simple self-harness for repeating until your confident that your work is done and start with this harness wrapper, then end with a self promise statement of all tasks being done, compiled, tests run where appropriate, verified, logs checked, git commits made and then pushed to remote, and so-on until one step is fatally blocked or broken without being able to amend. 
 
 ---
 
@@ -30,7 +30,7 @@ months and months with hundred(s) of millions of tokems invested over many model
 - [x] Refactor Main.qml with responsive Drawer and SplitView layout
 - [x] Refactor AudioEngine for better organization and granular responsibility
 - [x] Implement throttled bridge updates in VisualizerBridge/AudioBridge
-- [ ] Complete full migration of Sidebar panels (Library, Presets, Recording)
+- [~] Complete full migration of Sidebar panels (Library, Presets, Recording) — PlaylistBridge + RecordingBridge APIs fixed; LyricsBridge search/export still stubbed
 - [x] Finalize robust persistence for all settings (SettingsBridge + TOML auto-save)
   - [x] Debounced auto-save (2s QTimer) on every SettingsBridge setter
   - [x] Explicit save() on app close via `onClosing` in Main.qml
@@ -42,10 +42,10 @@ months and months with hundred(s) of millions of tokems invested over many model
 
 ## High Priority: Suno "Chad" Integration
 - [x] Upgrade Suno API to feed/v3 for library access
-- [ ] **[NEW]** Implement "B-Side" feature set: Access hidden/beta endpoints (orchestrator, experiment gates)
+- [~] **[NEW]** Implement "B-Side" feature set: Access hidden/beta endpoints (orchestrator, experiment gates) — Orchestrator wired into controller/bridge; endpoint map centralized; feature gates still unused
 - [ ] **[NEW]** Implement Generation Surface: Full creation suite (prompt, style, seeds) with client-side overrides
-- [ ] **[NEW]** B-Side Chat/Orchestrator: Integration of experimental Suno conversational generation
-- [ ] Implement infinite scrolling for Suno Library (Pagination)
+- [~] **[NEW]** B-Side Chat/Orchestrator: Integration of experimental Suno conversational generation — Orchestrator wired, chat flows through bridge; workspace/session persistence still TODO
+- [x] Implement infinite scrolling for Suno Library (Pagination)
 - [ ] Refine Suno Library search and filtering (local + remote). Perhaps local should only be kept in-sync/tracked with remote if it stays within the defult file struture for the suno library. Ultimately downloading of tracks is optional.
 - [ ] check filetypes that API scanners use such as `for i in suno api sniff scope burp etc_tools; do fd --hidden --no-ignore --estension json --extension tsv $idx /home/nsomnia; done`to verify all abilities on the public suno website are also able to be done in the package, as well as including b-side/testing/VIP and other hidden, experimental, secret, or gated, features. This can be expanded on by adding local logic such as advanced sorting options based on API data and keeping a suno libary database with all available options and any additional that we add for more features.
 
@@ -54,6 +54,11 @@ months and months with hundred(s) of millions of tokems invested over many model
 - [x] Expand Settings.qml with comprehensive engine/recorder controls
 - [ ] Implement "Modern Visualizer Overlay" with reactive text/graphics
 - [ ] Add "Karaoke Master" mode: Synced lyrics with custom aesthetic overrides
+
+## Low Priority: Random
+- [ ] qss themes and theme switching. The user touched some theme files within resources that should have a section in one of the settings window canvas areas to change it. These default qss theme files can probaby be kept in a sub-directory.
+- [ ] Ability for end user to add custom themes to an appropriate directory or custom directory and have them populated to be able to be switched to.
+- [ ] Any tests that are either industry standard or useful for agentic workflows and the overall health of the codebase during development cycles.
 
 ## Strategic Goals: Maximum Customizability
 - [ ] TOML-based "Chad Config": Every UI constant and engine parameter exposed
