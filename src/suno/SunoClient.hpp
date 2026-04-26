@@ -4,6 +4,7 @@
 
 #include "SunoModels.hpp"
 #include "SunoLyrics.hpp"
+#include "SunoEndpoints.hpp"
 #include "util/Result.hpp"
 #include "util/Signal.hpp"
 #include "util/Types.hpp"
@@ -81,10 +82,10 @@ private:
     std::string token_;
     std::string cookie_;
     std::string clerkSid_;
-    std::string clerkVersion_{"5.117.0"};
+    std::string clerkVersion_{vc::suno::endpoints::CLERK_VERSION};
 
-    const QString API_BASE = "https://studio-api-prod.suno.com/api";
-    const QString CLERK_BASE = "https://clerk.suno.com/v1";
+    const QString API_BASE = QString::fromUtf8(vc::suno::endpoints::API_BASE.data(), static_cast<int>(vc::suno::endpoints::API_BASE.size()));
+    const QString CLERK_BASE = QString::fromUtf8(vc::suno::endpoints::CLERK_BASE.data(), static_cast<int>(vc::suno::endpoints::CLERK_BASE.size()));
 };
 
 } // namespace vc::suno

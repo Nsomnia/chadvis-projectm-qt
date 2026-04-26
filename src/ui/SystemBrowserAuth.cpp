@@ -1,4 +1,5 @@
 #include "SystemBrowserAuth.hpp"
+#include "suno/SunoEndpoints.hpp"
 #include "core/Logger.hpp"
 #include <QUrlQuery>
 #include <QNetworkRequest>
@@ -64,7 +65,9 @@ void SystemBrowserAuth::startAuth() {
     QString encodedCallback = QUrl::toPercentEncoding(callbackUrl);
     
     // We provide multiple variants to cover different Clerk/Suno routing logic
-    QString loginUrl = QString("https://suno.com/sign-in?redirect_url=%1&after_sign_in_url=%2&after_sign_up_url=%3")
+    QString loginUrl = QString::fromUtf8(vc::suno::endpoints::WEB_BASE.data(), static_cast<int>(vc::suno::endpoints::WEB_BASE.size()))
+                       + QString::fromUtf8(vc::suno::endpoints::SIGN_IN.data(), static_cast<int>(vc::suno::endpoints::SIGN_IN.size()))
+                       + QString("?redirect_url=%1&after_sign_in_url=%2&after_sign_up_url=%3")
                        .arg(encodedCallback, encodedCallback, encodedCallback);
     
     // Some implementations use 'next' or 'return_to'

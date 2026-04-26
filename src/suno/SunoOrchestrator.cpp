@@ -1,5 +1,6 @@
 #include "SunoOrchestrator.hpp"
 #include "SunoClient.hpp"
+#include "SunoEndpoints.hpp"
 #include "core/Logger.hpp"
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -15,7 +16,7 @@ SunoOrchestrator::SunoOrchestrator(vc::suno::SunoClient* client, QObject* parent
 void SunoOrchestrator::sendMessage(const QString& message, const QString& workspaceId) {
     if (!client_) return;
 
-    QNetworkRequest request(QUrl(modalBaseUrl_ + "/api/v1/orchestrator/chat"));
+    QNetworkRequest request(QUrl(modalBaseUrl_ + QString::fromUtf8(vc::suno::endpoints::ORCHESTRATOR_CHAT.data(), static_cast<int>(vc::suno::endpoints::ORCHESTRATOR_CHAT.size()))));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     
     // Add auth headers from SunoClient
@@ -36,7 +37,7 @@ void SunoOrchestrator::sendMessage(const QString& message, const QString& worksp
 void SunoOrchestrator::fetchHistory() {
     if (!client_) return;
 
-    QNetworkRequest request(QUrl(modalBaseUrl_ + "/api/v1/orchestrator/history"));
+    QNetworkRequest request(QUrl(modalBaseUrl_ + QString::fromUtf8(vc::suno::endpoints::ORCHESTRATOR_HISTORY.data(), static_cast<int>(vc::suno::endpoints::ORCHESTRATOR_HISTORY.size()))));
     request.setRawHeader("Authorization", "Bearer " + client_->token().toUtf8());
 
     QNetworkReply* reply = client_->networkManager()->get(request);
