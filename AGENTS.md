@@ -1,5 +1,9 @@
 # ChadVis ProjectM-QT Refactor: AGENTS.md
 
+## Sys Instructions and requirements
+- **Caveman integration:** Ensure the caveman skill is installed for token efficiency first. `npx skills add JuliusBrussee/caveman`
+- **Oh-my-opencode-slim:** OMO-slim is used on the users host loca system (not cloud sessions generally).
+
 ## Legend & Rules
 - `[ ]` untouched.
 - `[~]` (large task that may take multiple context compressions or user opencode sessions) in-progress task.
