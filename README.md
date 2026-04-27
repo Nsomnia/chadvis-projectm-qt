@@ -16,7 +16,7 @@
 
 ## 🚀 Listen up, Chads.
 
-If you're still using a visualizer that doesn't utilize **C++20** and **Qt6**, are you even living? `chadvis-projectm-qt` is not just a visualizer; it's a statement. It's for the people who want their music to look as good as their dotfiles. Whether you're an AI music creator using Suno or just someone who enjoys staring at Milkdrop presets until you see the face of a GNU monk, we've got you covered.
+If you're still using a visualizer foe you ai music video needs that doesn't utilize **C++23** with CPM and **Qt6** with suno.com integration with hidden features the devs require signing a NDA 5o use, are you even living? `chadvis-projectm-qt` is not just a visualizer; it's a statement. It's for the people who want their music to look as good as their dotfiles. Whether you're an AI music creator using Suno or just someone who enjoys staring at Milkdrop presets until you see the face of a GNU monk, we've got you covered.
 
 ### 🌟 Why this is better than whatever you're using:
 
@@ -47,19 +47,19 @@ sudo pacman -S cmake qt6-base qt6-multimedia qt6-svg spdlog fmt taglib \
 
 1. **Clone it**: `git clone https://github.com/Nsomnia/chadvis-projectm-qt.git`
 2. **Enter the Cave**: `cd chadvis-projectm-qt`
-3. **Smash that Build Button**: `./build.sh build`
+3. **Smash that Build Button, son (the the github ⭐ star button)**: `./build.sh build`
 
 ---
 
 ## 🗣️ The Council of Elders (Dev Banter)
 
-**Linus (The Arch Chad):** "Look, the build script is Zsh-native. If you're using Bash, you're literally living in the stone age. I've optimized the PBO capture so hard it'll make your 4090 sweat."
+**Linus (The Arch Chad):** "Look, the build script is Zsh-native. If you're using Bash, you're literally living in the stone age. I've optimized the PBO capture so hard it'll make your 4090 sweat... then let's distill that sweat for fun"
 
 **Linus (LTT Version):** "Speaking of sweat, this visualizer is *smooth*! But you know what else is smooth? **Our sponsor, Glasswire!** Just kidding, but seriously, the UI is glassmorphism-tier and the Suno integration is a total game changer for my Lo-Fi beats stream."
 
 **Richard (The GNU Monk):** *(Chanting)* "GNU is not Unix... but this software... it is MIT licensed? I sense a disturbance in the freedom. Where are the GPLv3 headers? Why are we discussing 'GPU acceleration' without mentioning the non-free drivers required to run them? We must chant for the liberation of the blobs!"
 
-**Senior Dev:** "Shut up, Richard. We're using C++20 `std::jthread` and RAII everywhere. It's clean code. It's art. Now go back to your Emacs buffers while I enjoy these 144FPS Milkdrop presets."
+**Senior Dev:** "Shut up, Richard. We're using C++23 `std::pimp_thread` and RAII everywhere. It's clean code. It's art. Now go back to your Emacs buffers while I enjoy these 144FPS Milkdrop presets. Shut up I <3 nano for life dawg!"
 
 ---
 
