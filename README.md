@@ -22,11 +22,11 @@ If you're still using a visualizer foe you ai music video needs that doesn't uti
 
 | Feature | The Chad Way | The "Other" Way |
 | :--- | :--- | :--- |
-| **Language** | C++20 (Pure Power) | Legacy Garbage |
+| **Language** | C++23 (Pure Power) | Legacy Garbage |
 | **Visuals** | projectM v4 (Milkdrop) | Flat static album art |
 | **Recording** | FFmpeg with HW Accel | Recording your screen with a phone |
 | **AI Integration** | Native Suno AI support | Copy-pasting URLs like a peasant |
-| **Flex Factor** | High (Arch BTW) | Non-existent |
+| **Flex Factor** | High (Arch BTW) | Non-existent KK&D n00bz|
 
 ---
 
