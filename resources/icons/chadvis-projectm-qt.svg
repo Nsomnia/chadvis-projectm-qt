@@ -1,44 +1,192 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+    <!-- Deep space background -->
+    <radialGradient id="bgRadial" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" style="stop-color:#1e1e3a;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#0d0d1a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#050510;stop-opacity:1" />
+    </radialGradient>
+
+    <!-- Neon green-to-cyan sweep -->
+    <linearGradient id="neonSweep" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#00ff88;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#00ccff;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#00e5ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7b2ff7;stop-opacity:1" />
     </linearGradient>
+
+    <!-- Hot accent for the "Chad" energy -->
+    <linearGradient id="hotAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ff2d75;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff8c00;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Glow filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- Strong glow for text -->
+    <filter id="textGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Subtle inner glow for the ring -->
+    <filter id="ringGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Clip for circular content -->
+    <clipPath id="circleClip">
+      <circle cx="128" cy="128" r="108" />
+    </clipPath>
   </defs>
-  
-  <!-- Background circle -->
-  <circle cx="64" cy="64" r="60" fill="url(#bgGrad)" stroke="url(#accentGrad)" stroke-width="3"/>
-  
-  <!-- Audio wave bars -->
-  <g fill="url(#accentGrad)">
-    <rect x="28" y="50" width="8" height="28" rx="2">
-      <animate attributeName="height" values="28;45;20;35;28" dur="0.8s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="50;42;54;46;50" dur="0.8s" repeatCount="indefinite"/>
+
+  <!-- Outer glow ring -->
+  <circle cx="128" cy="128" r="118" fill="none" stroke="url(#neonSweep)" stroke-width="1.5" opacity="0.3" filter="url(#ringGlow)"/>
+
+  <!-- Main background circle -->
+  <circle cx="128" cy="128" r="112" fill="url(#bgRadial)" stroke="url(#neonSweep)" stroke-width="2.5"/>
+
+  <!-- Inner decorative ring -->
+  <circle cx="128" cy="128" r="100" fill="none" stroke="url(#neonSweep)" stroke-width="0.5" opacity="0.25" stroke-dasharray="4 8"/>
+
+  <!-- Subtle star field -->
+  <g clip-path="url(#circleClip)" opacity="0.4">
+    <circle cx="45" cy="60" r="1" fill="#ffffff"/>
+    <circle cx="190" cy="45" r="0.8" fill="#ffffff"/>
+    <circle cx="80" cy="30" r="0.6" fill="#ffffff"/>
+    <circle cx="200" cy="90" r="1.2" fill="#00ff88"/>
+    <circle cx="55" cy="180" r="0.7" fill="#ffffff"/>
+    <circle cx="170" cy="200" r="0.9" fill="#00e5ff"/>
+    <circle cx="210" cy="160" r="0.5" fill="#ffffff"/>
+    <circle cx="35" cy="130" r="0.8" fill="#7b2ff7"/>
+    <circle cx="150" cy="35" r="0.6" fill="#ffffff"/>
+    <circle cx="100" cy="210" r="1" fill="#ffffff"/>
+    <circle cx="220" cy="120" r="0.4" fill="#00ff88"/>
+    <circle cx="70" cy="95" r="0.5" fill="#ffffff"/>
+  </g>
+
+  <!-- Audio spectrum bars — the heartbeat -->
+  <g clip-path="url(#circleClip)" filter="url(#glow)">
+    <!-- Bar 1 - far left -->
+    <rect x="52" y="108" width="10" height="40" rx="3" fill="url(#neonSweep)" opacity="0.85">
+      <animate attributeName="height" values="40;62;28;50;40" dur="1.1s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="108;97;114;103;108" dur="1.1s" repeatCount="indefinite"/>
     </rect>
-    <rect x="42" y="40" width="8" height="48" rx="2">
-      <animate attributeName="height" values="48;30;55;38;48" dur="0.6s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="40;49;36;45;40" dur="0.6s" repeatCount="indefinite"/>
+
+    <!-- Bar 2 -->
+    <rect x="68" y="92" width="10" height="72" rx="3" fill="url(#neonSweep)" opacity="0.9">
+      <animate attributeName="height" values="72;45;85;55;72" dur="0.8s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="92;105;85;100;92" dur="0.8s" repeatCount="indefinite"/>
     </rect>
-    <rect x="56" y="32" width="8" height="64" rx="2">
-      <animate attributeName="height" values="64;45;70;50;64" dur="0.7s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="32;42;29;39;32" dur="0.7s" repeatCount="indefinite"/>
+
+    <!-- Bar 3 - rising to center -->
+    <rect x="84" y="78" width="10" height="100" rx="3" fill="url(#neonSweep)" opacity="0.95">
+      <animate attributeName="height" values="100;65;110;75;100" dur="0.7s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="78;95;73;90;78" dur="0.7s" repeatCount="indefinite"/>
     </rect>
-    <rect x="70" y="38" width="8" height="52" rx="2">
-      <animate attributeName="height" values="52;65;40;58;52" dur="0.5s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="38;31;44;35;38" dur="0.5s" repeatCount="indefinite"/>
+
+    <!-- Bar 4 - center peak -->
+    <rect x="100" y="68" width="10" height="120" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="120;80;130;90;120" dur="0.6s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="68;88;63;83;68" dur="0.6s" repeatCount="indefinite"/>
     </rect>
-    <rect x="84" y="45" width="8" height="38" rx="2">
-      <animate attributeName="height" values="38;25;48;32;38" dur="0.9s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="45;52;40;48;45" dur="0.9s" repeatCount="indefinite"/>
+
+    <!-- Bar 5 - center peak -->
+    <rect x="116" y="62" width="10" height="132" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="132;90;140;95;132" dur="0.55s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="62;83;58;80;62" dur="0.55s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Bar 6 - center peak (tallest) -->
+    <rect x="132" y="56" width="10" height="144" rx="3" fill="url(#hotAccent)">
+      <animate attributeName="height" values="144;100;150;105;144" dur="0.5s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="56;78;53;75;56" dur="0.5s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Bar 7 - center peak -->
+    <rect x="148" y="64" width="10" height="128" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="128;85;135;92;128" dur="0.58s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="64;85;60;82;64" dur="0.58s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Bar 8 -->
+    <rect x="164" y="74" width="10" height="108" rx="3" fill="url(#neonSweep)" opacity="0.95">
+      <animate attributeName="height" values="108;70;118;78;108" dur="0.65s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="74;93;69;89;74" dur="0.65s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Bar 9 -->
+    <rect x="180" y="88" width="10" height="80" rx="3" fill="url(#neonSweep)" opacity="0.9">
+      <animate attributeName="height" values="80;50;92;58;80" dur="0.75s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="88;103;82;99;88" dur="0.75s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Bar 10 - far right -->
+    <rect x="196" y="104" width="10" height="48" rx="3" fill="url(#neonSweep)" opacity="0.85">
+      <animate attributeName="height" values="48;30;58;35;48" dur="0.95s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="104;113;99;110;104" dur="0.95s" repeatCount="indefinite"/>
     </rect>
   </g>
-  
-  <!-- V and C letters stylized -->
-  <text x="64" y="108" font-family="sans-serif" font-size="18" font-weight="bold" 
-        fill="url(#accentGrad)" text-anchor="middle">VC</text>
+
+  <!-- Reflection / waveform echo below bars -->
+  <g clip-path="url(#circleClip)" opacity="0.15" transform="translate(0, 260) scale(1, -1)">
+    <rect x="52" y="108" width="10" height="40" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="40;62;28;50;40" dur="1.1s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="108;97;114;103;108" dur="1.1s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="68" y="92" width="10" height="72" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="72;45;85;55;72" dur="0.8s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="92;105;85;100;92" dur="0.8s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="84" y="78" width="10" height="100" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="100;65;110;75;100" dur="0.7s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="78;95;73;90;78" dur="0.7s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="100" y="68" width="10" height="120" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="120;80;130;90;120" dur="0.6s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="68;88;63;83;68" dur="0.6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="116" y="62" width="10" height="132" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="132;90;140;95;132" dur="0.55s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="62;83;58;80;62" dur="0.55s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="132" y="56" width="10" height="144" rx="3" fill="url(#hotAccent)">
+      <animate attributeName="height" values="144;100;150;105;144" dur="0.5s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="56;78;53;75;56" dur="0.5s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="148" y="64" width="10" height="128" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="128;85;135;92;128" dur="0.58s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="64;85;60;82;64" dur="0.58s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="164" y="74" width="10" height="108" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="108;70;118;78;108" dur="0.65s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="74;93;69;89;74" dur="0.65s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="180" y="88" width="10" height="80" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="80;50;92;58;80" dur="0.75s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="88;103;82;99;88" dur="0.75s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="196" y="104" width="10" height="48" rx="3" fill="url(#neonSweep)">
+      <animate attributeName="height" values="48;30;58;35;48" dur="0.95s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="104;113;99;110;104" dur="0.95s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+
+  <!-- "ChadVis" text — the identity -->
+  <text x="128" y="218" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="3" fill="url(#neonSweep)" text-anchor="middle" filter="url(#textGlow)">ChadVis</text>
+
+  <!-- Subtle tagline -->
+  <text x="128" y="238" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="9" font-weight="400" letter-spacing="5" fill="#00ff88" text-anchor="middle" opacity="0.6">PROJECTM · QT</text>
 </svg>
