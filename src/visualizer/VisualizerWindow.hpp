@@ -66,8 +66,9 @@ public:
     void setRecordingSize(u32 width, u32 height);
     void startRecording();
     void stopRecording();
-    void setRenderRate(int fps);
-    void feedAudio(const f32* data, u32 frames, u32 channels, u32 sampleRate);
+	void setRenderRate(int fps);
+	[[nodiscard]] f32 actualFps() const { return actualFps_; }
+	void feedAudio(const f32* data, u32 frames, u32 channels, u32 sampleRate);
 
 public slots:
     void toggleFullscreen();

@@ -2,6 +2,7 @@
 #include "audio/AudioEngine.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
+#include "lyrics/LyricsData.hpp"
 
 #include "suno/SunoAuthManager.hpp"
 #include "suno/SunoLibraryManager.hpp"
@@ -273,50 +274,44 @@ void SunoController::onTrackChanged() {
         return;
     }
 
-    // 3. Sidecar Files
-    // Logic from original controller
-     fs::path trackPath = item->isRemote ? fs::path() : item->path;
-    if (!trackPath.empty()) {
-        fs::path dir = trackPath.parent_path();
-        std::string stem = trackPath.stem().string();
-        
-        fs::path srtPath = dir / (stem + ".srt");
-        if (fs::exists(srtPath)) {
-            std::ifstream file(srtPath);
-            if (file) {
-                std::string content((std::istreambuf_iterator<char>(file)),
-                                     std::istreambuf_iterator<char>());
-                auto lyrics = LyricsAligner::parseSrt(content);
-                if (!lyrics.empty()) {
-                    lyrics.songId = clipId;
-                    directLyricsCache_[clipId] = lyrics;
-                    return;
-                }
-            }
-        }
-        
-        fs::path jsonPath = dir / (stem + ".json");
-        if (fs::exists(jsonPath)) {
-            std::ifstream file(jsonPath);
-            if (file) {
-                std::string content((std::istreambuf_iterator<char>(file)),
-                                     std::istreambuf_iterator<char>());
-                auto words = LyricsAligner::parseJson(QByteArray::fromStdString(content));
-                if (!words.empty()) {
-                    AlignedLyrics lyrics;
-                    lyrics.songId = clipId;
-                    lyrics.words = words;
-                    AlignedLine line;
-                    line.start_s = words.front().start_s;
-                    line.end_s = words.back().end_s;
-                    for (const auto& w : words) line.text += w.word + " ";
-                    lyrics.lines.push_back(line);
-                    directLyricsCache_[clipId] = lyrics;
-                    return;
-                }
-            }
-        }
-    }
+	// 3. Sidecar Files
+	fs::path trackPath = item->isRemote ? fs::path() : item->path;
+	if (!trackPath.empty()) {
+		fs::path dir = trackPath.parent_path();
+		std::string stem = trackPath.stem().string();
+
+		fs::path srtPath = dir / (stem + ".srt");
+		if (fs::exists(srtPath)) {
+			std::ifstream file(srtPath);
+			if (file) {
+				std::string content((std::istreambuf_iterator<char>(file)),
+						    std::istreambuf_iterator<char>());
+				auto data = vc::LyricsFactory::fromSrt(content);
+				if (!data.empty()) {
+					AlignedLyrics lyrics = AlignedLyrics::fromLyricsData(data);
+					lyrics.songId = clipId;
+					directLyricsCache_[clipId] = lyrics;
+					return;
+				}
+			}
+		}
+
+		fs::path jsonPath = dir / (stem + ".json");
+		if (fs::exists(jsonPath)) {
+			std::ifstream file(jsonPath);
+			if (file) {
+				std::string content((std::istreambuf_iterator<char>(file)),
+						    std::istreambuf_iterator<char>());
+				auto data = vc::LyricsFactory::fromSunoJson(content);
+				if (!data.empty()) {
+					AlignedLyrics lyrics = AlignedLyrics::fromLyricsData(data);
+					lyrics.songId = clipId;
+					directLyricsCache_[clipId] = lyrics;
+					return;
+				}
+			}
+		}
+	}
 
     // 4. API
     if (client_->isAuthenticated()) {
