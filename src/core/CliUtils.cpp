@@ -92,37 +92,65 @@ void printUnknownFlagError(std::string_view flag,
 }
 
 std::optional<std::string> findClosestMatch(
-    std::string_view input,
-    std::initializer_list<std::string_view> candidates) {
-    
-    std::optional<std::string> bestMatch;
-    size_t bestDistance = std::numeric_limits<size_t>::max();
-    
-    for (const auto& candidate : candidates) {
-        // Simple Levenshtein distance approximation for short strings
-        size_t distance = 0;
-        size_t minLen = std::min(input.length(), candidate.length());
-        
-        for (size_t i = 0; i < minLen; ++i) {
-            if (input[i] != candidate[i]) {
-                distance++;
-            }
-        }
-        
-        distance += std::abs(static_cast<int>(input.length()) - static_cast<int>(candidate.length()));
-        
-        // Only suggest if reasonably close (max 3 differences for typical flags)
-        if (distance < bestDistance && distance <= 3) {
-            bestDistance = distance;
-            bestMatch = std::string(candidate);
-        }
-    }
-    
-    return bestMatch;
+	std::string_view input,
+	std::initializer_list<std::string_view> candidates) {
+
+	std::optional<std::string> bestMatch;
+	size_t bestDistance = std::numeric_limits<size_t>::max();
+
+	for (const auto& candidate : candidates) {
+		// Simple Levenshtein distance approximation for short strings
+		size_t distance = 0;
+		size_t minLen = std::min(input.length(), candidate.length());
+
+		for (size_t i = 0; i < minLen; ++i) {
+			if (input[i] != candidate[i]) {
+				distance++;
+			}
+		}
+
+		distance += std::abs(static_cast<int>(input.length()) - static_cast<int>(candidate.length()));
+
+		// Only suggest if reasonably close (max 3 differences for typical flags)
+		if (distance < bestDistance && distance <= 3) {
+			bestDistance = distance;
+			bestMatch = std::string(candidate);
+		}
+	}
+
+	return bestMatch;
+}
+
+std::optional<std::string> findClosestMatch(
+	std::string_view input,
+	std::span<const std::string_view> candidates) {
+
+	std::optional<std::string> bestMatch;
+	size_t bestDistance = std::numeric_limits<size_t>::max();
+
+	for (const auto& candidate : candidates) {
+		size_t distance = 0;
+		size_t minLen = std::min(input.length(), candidate.length());
+
+		for (size_t i = 0; i < minLen; ++i) {
+			if (input[i] != candidate[i]) {
+				distance++;
+			}
+		}
+
+		distance += std::abs(static_cast<int>(input.length()) - static_cast<int>(candidate.length()));
+
+		if (distance < bestDistance && distance <= 3) {
+			bestDistance = distance;
+			bestMatch = std::string(candidate);
+		}
+	}
+
+	return bestMatch;
 }
 
 std::string formatPath(const std::filesystem::path& path) {
-    return std::string(CliColor::brightCyan()) + path.string() + CliColor::reset();
+	return std::string(CliColor::brightCyan()) + path.string() + CliColor::reset();
 }
 
 void generateCompletionScript(std::string_view shell) {
@@ -211,7 +239,7 @@ complete -c chadvis-projectm-qt -l suno-id -d "Fetch Suno song by ID"
 
 // HelpSystem implementation
 void HelpSystem::printHelp(Topic topic) {
-    using enum Topic;
+using enum Topic;
     
     switch (topic) {
     case General:

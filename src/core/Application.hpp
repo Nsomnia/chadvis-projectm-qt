@@ -10,7 +10,6 @@
  * @section Dependencies
  * - QApplication
  * - AudioEngine
- * - OverlayEngine
  * - VideoRecorder
  *
  * @section Patterns
@@ -130,10 +129,13 @@ public slots:
     void quit();
 
 private:
-    void setupStyle();
-    void setupQmlStyle();
-    void printVersion();
-    void printHelp();
+	void setupStyle();
+	void setupQmlStyle();
+	void printVersion();
+	void printHelp();
+
+	/// Generate list of all flag names from CliArgs.inc table (for findClosestMatch)
+	std::vector<std::string_view> allFlagNames();
 
     static Application* instance_;
 
