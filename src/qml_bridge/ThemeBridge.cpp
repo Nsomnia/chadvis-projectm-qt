@@ -1,6 +1,7 @@
 #include "ThemeBridge.hpp"
 #include <QQmlEngine>
 #include "core/Config.hpp"
+#include "util/FileUtils.hpp"
 
 namespace qml_bridge {
 
@@ -49,11 +50,7 @@ void ThemeBridge::setBackground(const QColor& color) {
 
 QString ThemeBridge::formatTime(int ms) const
 {
-    if (ms < 0) return "0:00";
-    int totalSec = ms / 1000;
-    int min = totalSec / 60;
-    int sec = totalSec % 60;
-    return QString("%1:%2").arg(min).arg(sec, 2, 10, QChar('0'));
+  return vc::file::formatDurationQString(static_cast<vc::i64>(ms));
 }
 
 QColor ThemeBridge::lighten(const QColor& color, double amount) const

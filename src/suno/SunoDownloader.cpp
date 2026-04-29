@@ -42,6 +42,24 @@ SunoDownloader::SunoDownloader(SunoClient* client,
 
 SunoDownloader::~SunoDownloader() = default;
 
+fs::path SunoDownloader::getDownloadDir() const {
+  fs::path dir = CONFIG.suno().downloadPath;
+  if (dir.empty()) {
+    QString musicLoc = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+    if (musicLoc.isEmpty()) musicLoc = QDir::homePath() + "/Music";
+    dir = fs::path(musicLoc.toStdString());
+  }
+  vc::file::ensureDir(dir);
+  return dir;
+}
+
+std::string SunoDownloader::sanitizeFilename(const std::string& title) {
+  std::string safe = title;
+  std::replace(safe.begin(), safe.end(), '/', '_');
+  std::replace(safe.begin(), safe.end(), '\\', '_');
+  return safe;
+}
+
 void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
     if (clip.id.empty()) return;
 
@@ -60,20 +78,12 @@ void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
         return;
     }
 
-    std::string safeTitle = clip.title;
-    std::replace(safeTitle.begin(), safeTitle.end(), '/', '_');
-    std::replace(safeTitle.begin(), safeTitle.end(), '\\', '_');
-    if (safeTitle.empty()) safeTitle = clip.id;
+  std::string safeTitle = sanitizeFilename(clip.title);
+  if (safeTitle.empty()) safeTitle = clip.id;
 
-    fs::path downloadDir = CONFIG.suno().downloadPath;
-    if (downloadDir.empty()) {
-        QString musicLoc = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
-        if (musicLoc.isEmpty()) musicLoc = QDir::homePath() + "/Music";
-        downloadDir = fs::path(musicLoc.toStdString());
-    }
-    file::ensureDir(downloadDir);
+  fs::path downloadDir = getDownloadDir();
 
-    fs::path targetPath = downloadDir / (safeTitle + extension);
+  fs::path targetPath = downloadDir / (safeTitle + extension);
 
     if (fs::exists(targetPath)) {
         audioEngine_->playlist().addFile(targetPath);
@@ -93,22 +103,14 @@ void SunoDownloader::downloadAudio(const SunoClip& clip) {
     QNetworkRequest request(url);
     QNetworkReply* reply = networkManager_->get(request);
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, clip]() {
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) return;
+  connect(reply, &QNetworkReply::finished, this, [this, reply, clip]() {
+    reply->deleteLater();
+    if (reply->error() != QNetworkReply::NoError) return;
 
-        fs::path downloadDir = CONFIG.suno().downloadPath;
-        if (downloadDir.empty()) {
-            QString musicLoc = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
-            if (musicLoc.isEmpty()) musicLoc = QDir::homePath() + "/Music";
-            downloadDir = fs::path(musicLoc.toStdString());
-        }
-        vc::file::ensureDir(downloadDir);
+    fs::path downloadDir = getDownloadDir();
 
-        std::string safeTitle = clip.title;
-        std::replace(safeTitle.begin(), safeTitle.end(), '/', '_');
-        std::replace(safeTitle.begin(), safeTitle.end(), '\\', '_');
-        if (safeTitle.empty()) safeTitle = clip.id;
+    std::string safeTitle = sanitizeFilename(clip.title);
+    if (safeTitle.empty()) safeTitle = clip.id;
 
         fs::path filePath = downloadDir / (safeTitle + ".mp3");
 
@@ -194,24 +196,17 @@ void SunoDownloader::downloadAudioFromUrl(const std::string& clipId, const std::
     QNetworkRequest request(qurl);
     QNetworkReply* reply = networkManager_->get(request);
     
-    connect(reply, &QNetworkReply::finished, this, [this, reply, clipId, extension]() {
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) return;
-        
-        fs::path downloadDir = CONFIG.suno().downloadPath;
-        if (downloadDir.empty()) {
-            QString musicLoc = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
-            if (musicLoc.isEmpty()) musicLoc = QDir::homePath() + "/Music";
-            downloadDir = fs::path(musicLoc.toStdString());
-        }
-        vc::file::ensureDir(downloadDir);
-        
-        std::string safeTitle = clipId;
-        auto clipOpt = db_.getClip(clipId);
-        if (clipOpt.isOk() && clipOpt.value()) safeTitle = clipOpt.value()->title;
-        
-        std::replace(safeTitle.begin(), safeTitle.end(), '/', '_');
-        std::replace(safeTitle.begin(), safeTitle.end(), '\\', '_');
+  connect(reply, &QNetworkReply::finished, this, [this, reply, clipId, extension]() {
+    reply->deleteLater();
+    if (reply->error() != QNetworkReply::NoError) return;
+
+    fs::path downloadDir = getDownloadDir();
+
+    std::string safeTitle = clipId;
+    auto clipOpt = db_.getClip(clipId);
+    if (clipOpt.isOk() && clipOpt.value()) safeTitle = sanitizeFilename(clipOpt.value()->title);
+
+    if (safeTitle.empty()) safeTitle = clipId;
         
         fs::path filePath = downloadDir / (safeTitle + extension);
         
@@ -235,35 +230,30 @@ void SunoDownloader::downloadAudioFromUrl(const std::string& clipId, const std::
 }
 
 void SunoDownloader::saveLyricsSidecar(const std::string& clipId, const std::string& json, const QJsonDocument& doc, const std::vector<SunoClip>& clips) {
-    fs::path saveDir = CONFIG.suno().downloadPath;
-    if (saveDir.empty()) {
-        QString musicLoc = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
-        if (musicLoc.isEmpty()) musicLoc = QDir::homePath() + "/Music";
-        saveDir = fs::path(musicLoc.toStdString());
-    }
+  fs::path saveDir = getDownloadDir();
 
-    std::string safeTitle = clipId;
-    std::string prompt;
-    bool found = false;
-    for (const auto& clip : clips) {
-        if (clip.id == clipId) {
-            safeTitle = clip.title;
-            prompt = clip.metadata.prompt;
-            found = true;
-            break;
-        }
+  std::string safeTitle = clipId;
+  std::string prompt;
+  bool found = false;
+  for (const auto& clip : clips) {
+    if (clip.id == clipId) {
+      safeTitle = clip.title;
+      prompt = clip.metadata.prompt;
+      found = true;
+      break;
     }
-    
-    if (!found) {
-        auto clipOpt = db_.getClip(clipId);
-        if (clipOpt.isOk() && clipOpt.value()) {
-            safeTitle = clipOpt.value()->title;
-            prompt = clipOpt.value()->metadata.prompt;
-        }
-    }
+  }
 
-    std::replace(safeTitle.begin(), safeTitle.end(), '/', '_');
-    std::replace(safeTitle.begin(), safeTitle.end(), '\\', '_');
+  if (!found) {
+    auto clipOpt = db_.getClip(clipId);
+    if (clipOpt.isOk() && clipOpt.value()) {
+      safeTitle = clipOpt.value()->title;
+      prompt = clipOpt.value()->metadata.prompt;
+    }
+  }
+
+  safeTitle = sanitizeFilename(safeTitle);
+  if (safeTitle.empty()) safeTitle = clipId;
     
     fs::path audioPath = saveDir / (safeTitle + ".mp3");
     if (fs::exists(audioPath)) {
@@ -295,16 +285,10 @@ void SunoDownloader::saveLyricsSidecar(const std::string& clipId, const std::str
 }
 
 void SunoDownloader::saveMetadataSidecar(const SunoClip& clip) {
-    fs::path downloadDir = CONFIG.suno().downloadPath;
-    if (downloadDir.empty()) {
-        QString musicLoc = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
-        if (musicLoc.isEmpty()) musicLoc = QDir::homePath() + "/Music";
-        downloadDir = fs::path(musicLoc.toStdString());
-    }
-    
-    std::string safeTitle = clip.title;
-    std::replace(safeTitle.begin(), safeTitle.end(), '/', '_');
-    std::replace(safeTitle.begin(), safeTitle.end(), '\\', '_');
+  fs::path downloadDir = getDownloadDir();
+
+  std::string safeTitle = sanitizeFilename(clip.title);
+  if (safeTitle.empty()) safeTitle = clip.id;
     
     std::ofstream file(downloadDir / (safeTitle + ".txt"));
     if (file) {

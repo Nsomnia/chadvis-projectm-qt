@@ -8,6 +8,36 @@
 
 namespace vc::suno {
 
+namespace {
+
+SunoClip clipFromQuery(const QSqlQuery& query) {
+    SunoClip clip;
+    clip.id = query.value("id").toString().toStdString();
+    clip.title = query.value("title").toString().toStdString();
+    clip.audio_url = query.value("audio_url").toString().toStdString();
+    clip.video_url = query.value("video_url").toString().toStdString();
+    clip.image_url = query.value("image_url").toString().toStdString();
+    clip.image_large_url = query.value("image_large_url").toString().toStdString();
+    clip.model_name = query.value("model_name").toString().toStdString();
+    clip.major_model_version = query.value("major_model_version").toString().toStdString();
+    clip.display_name = query.value("display_name").toString().toStdString();
+    clip.handle = query.value("handle").toString().toStdString();
+    clip.is_liked = query.value("is_liked").toInt() != 0;
+    clip.is_trashed = query.value("is_trashed").toInt() != 0;
+    clip.is_public = query.value("is_public").toInt() != 0;
+    clip.status = query.value("status").toString().toStdString();
+    clip.created_at = query.value("created_at").toString().toStdString();
+    clip.metadata.prompt = query.value("prompt").toString().toStdString();
+    clip.metadata.tags = query.value("tags").toString().toStdString();
+    clip.metadata.lyrics = query.value("lyrics").toString().toStdString();
+    clip.metadata.type = query.value("type").toString().toStdString();
+    clip.metadata.duration = query.value("duration").toString().toStdString();
+    clip.metadata.error_message = query.value("error_message").toString().toStdString();
+    return clip;
+}
+
+} // namespace
+
 SunoDatabase::SunoDatabase() = default;
 
 SunoDatabase::~SunoDatabase() {
@@ -178,29 +208,7 @@ Result<std::vector<SunoClip>> SunoDatabase::getAllClips() {
     std::vector<SunoClip> clips;
 
     while (query.next()) {
-        SunoClip clip;
-        clip.id = query.value("id").toString().toStdString();
-        clip.title = query.value("title").toString().toStdString();
-        clip.audio_url = query.value("audio_url").toString().toStdString();
-        clip.video_url = query.value("video_url").toString().toStdString();
-        clip.image_url = query.value("image_url").toString().toStdString();
-        clip.image_large_url = query.value("image_large_url").toString().toStdString();
-        clip.model_name = query.value("model_name").toString().toStdString();
-        clip.major_model_version = query.value("major_model_version").toString().toStdString();
-        clip.display_name = query.value("display_name").toString().toStdString();
-        clip.handle = query.value("handle").toString().toStdString();
-        clip.is_liked = query.value("is_liked").toInt() != 0;
-        clip.is_trashed = query.value("is_trashed").toInt() != 0;
-        clip.is_public = query.value("is_public").toInt() != 0;
-        clip.status = query.value("status").toString().toStdString();
-        clip.created_at = query.value("created_at").toString().toStdString();
-        clip.metadata.prompt = query.value("prompt").toString().toStdString();
-        clip.metadata.tags = query.value("tags").toString().toStdString();
-        clip.metadata.lyrics = query.value("lyrics").toString().toStdString();
-        clip.metadata.type = query.value("type").toString().toStdString();
-        clip.metadata.duration = query.value("duration").toString().toStdString();
-        clip.metadata.error_message = query.value("error_message").toString().toStdString();
-        clips.push_back(clip);
+        clips.push_back(clipFromQuery(query));
     }
 
     return Result<std::vector<SunoClip>>::ok(clips);
@@ -220,30 +228,7 @@ Result<std::optional<SunoClip>> SunoDatabase::getClip(const std::string& id) {
     }
 
     if (query.next()) {
-        SunoClip clip;
-        clip.id = query.value("id").toString().toStdString();
-        clip.title = query.value("title").toString().toStdString();
-        clip.audio_url = query.value("audio_url").toString().toStdString();
-        clip.video_url = query.value("video_url").toString().toStdString();
-        clip.image_url = query.value("image_url").toString().toStdString();
-        clip.image_large_url = query.value("image_large_url").toString().toStdString();
-        clip.model_name = query.value("model_name").toString().toStdString();
-        clip.major_model_version = query.value("major_model_version").toString().toStdString();
-        clip.display_name = query.value("display_name").toString().toStdString();
-        clip.handle = query.value("handle").toString().toStdString();
-        clip.is_liked = query.value("is_liked").toInt() != 0;
-        clip.is_trashed = query.value("is_trashed").toInt() != 0;
-        clip.is_public = query.value("is_public").toInt() != 0;
-        clip.status = query.value("status").toString().toStdString();
-        clip.created_at = query.value("created_at").toString().toStdString();
-        clip.metadata.prompt = query.value("prompt").toString().toStdString();
-        clip.metadata.tags = query.value("tags").toString().toStdString();
-        clip.metadata.lyrics = query.value("lyrics").toString().toStdString();
-        clip.metadata.type = query.value("type").toString().toStdString();
-        clip.metadata.duration = query.value("duration").toString().toStdString();
-        clip.metadata.error_message = query.value("error_message").toString().toStdString();
-        
-        return Result<std::optional<SunoClip>>::ok(clip);
+        return Result<std::optional<SunoClip>>::ok(clipFromQuery(query));
     }
 
     return Result<std::optional<SunoClip>>::ok(std::nullopt);
@@ -332,30 +317,7 @@ Result<std::vector<SunoClip>> SunoDatabase::searchClips(const std::string& query
     }
     
     while (q.next()) {
-        SunoClip clip;
-        clip.id = q.value("id").toString().toStdString();
-        clip.title = q.value("title").toString().toStdString();
-        clip.audio_url = q.value("audio_url").toString().toStdString();
-        clip.video_url = q.value("video_url").toString().toStdString();
-        clip.image_url = q.value("image_url").toString().toStdString();
-        clip.image_large_url = q.value("image_large_url").toString().toStdString();
-        clip.model_name = q.value("model_name").toString().toStdString();
-        clip.major_model_version = q.value("major_model_version").toString().toStdString();
-        clip.display_name = q.value("display_name").toString().toStdString();
-        clip.handle = q.value("handle").toString().toStdString();
-        clip.is_liked = q.value("is_liked").toInt() != 0;
-        clip.is_trashed = q.value("is_trashed").toInt() != 0;
-        clip.is_public = q.value("is_public").toInt() != 0;
-        clip.status = q.value("status").toString().toStdString();
-        clip.created_at = q.value("created_at").toString().toStdString();
-        clip.metadata.prompt = q.value("prompt").toString().toStdString();
-        clip.metadata.tags = q.value("tags").toString().toStdString();
-        clip.metadata.lyrics = q.value("lyrics").toString().toStdString();
-        clip.metadata.type = q.value("type").toString().toStdString();
-        clip.metadata.duration = q.value("duration").toString().toStdString();
-        clip.metadata.error_message = q.value("error_message").toString().toStdString();
-        
-        clips.push_back(clip);
+        clips.push_back(clipFromQuery(q));
     }
     
     LOG_INFO("SunoDatabase: Search for '{}' found {} clips", query, clips.size());

@@ -49,11 +49,14 @@ private:
     QNetworkAccessManager* networkManager_;
 
     void downloadAudio(const SunoClip& clip);
-    void downloadAudioFromUrl(const std::string& clipId,
-                             const std::string& url,
-                             const std::string& extension);
-    void onWavConversionReady(const std::string& clipId, const std::string& wavUrl);
-    void processDownloadedFile(const SunoClip& clip, const fs::path& path);
+  void downloadAudioFromUrl(const std::string& clipId,
+  const std::string& url,
+  const std::string& extension);
+  void onWavConversionReady(const std::string& clipId, const std::string& wavUrl);
+  void processDownloadedFile(const SunoClip& clip, const fs::path& path);
+
+  [[nodiscard]] fs::path getDownloadDir() const;
+  [[nodiscard]] static std::string sanitizeFilename(const std::string& title);
 };
 
 } // namespace vc::suno
