@@ -154,19 +154,21 @@ set(UTIL_SOURCES
 )
 
 set(CORE_SOURCES
-    src/core/Logger.hpp
-    src/core/Logger.cpp
-    src/core/ConfigData.hpp
-    src/core/ConfigParsers.hpp
-    src/core/ConfigParsers.cpp
-    src/core/ConfigLoader.hpp
-    src/core/ConfigLoader.cpp
-    src/core/Config.hpp
-    src/core/Config.cpp
-    src/core/CliUtils.hpp
-    src/core/CliUtils.cpp
-    src/core/Application.hpp
-    src/core/Application.cpp
+	src/core/Logger.hpp
+	src/core/Logger.cpp
+	src/core/ConfigData.hpp
+	src/core/ConfigParsers.hpp
+	src/core/ConfigParsers.cpp
+	src/core/ConfigLoader.hpp
+	src/core/ConfigLoader.cpp
+	src/core/Config.hpp
+	src/core/Config.cpp
+	src/core/CliArg.hpp
+	src/core/CliArgs.inc
+	src/core/CliUtils.hpp
+	src/core/CliUtils.cpp
+	src/core/Application.hpp
+	src/core/Application.cpp
 )
 
 set(AUDIO_SOURCES
@@ -212,10 +214,9 @@ set(SUNO_SOURCES
     src/suno/SunoClient.cpp
     src/suno/SunoOrchestrator.hpp
     src/suno/SunoOrchestrator.cpp
-    src/suno/SunoDatabase.hpp
-    src/suno/SunoDatabase.cpp
-    src/suno/LyricAligner.hpp
-    src/suno/SunoLyrics.hpp
+  src/suno/SunoDatabase.hpp
+  src/suno/SunoDatabase.cpp
+  src/suno/SunoLyrics.hpp
     src/suno/SunoLyrics.cpp
     src/suno/SunoAuthManager.hpp
     src/suno/SunoAuthManager.cpp
@@ -325,7 +326,6 @@ set(COMMON_INCLUDES
   ${GLM_INCLUDE_DIRS}
   ${FFMPEG_INCLUDE_DIRS}
   ${PROJECTM_INCLUDE_DIRS}
-  ${KISSFFT_INCLUDE_DIRS}
   ${readerwriterqueue_SOURCE_DIR}
 )
 
