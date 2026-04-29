@@ -77,7 +77,7 @@ Rectangle {
         layer.enabled: true
         layer.effect: MultiEffect {
             autoPaddingEnabled: true
-            colorizationEnabled: true
+            colorization: 1.0
             colorizationColor: root.enabled ? (root.highlighted ? Theme.textOnAccent : Theme.textPrimary) : Theme.textDisabled
         }
         }

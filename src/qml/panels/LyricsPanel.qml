@@ -15,7 +15,7 @@ ColumnLayout {
     ToolBar {
         Layout.fillWidth: true
         visible: LyricsBridge.hasLyrics
-        background: Rectangle { color: Theme.surfaceVariant }
+        background: Rectangle { color: Theme.surfaceRaised }
 
         RowLayout {
             anchors.fill: parent
@@ -23,8 +23,8 @@ ColumnLayout {
 
             Label {
                 text: LyricsBridge.title + (LyricsBridge.artist ? " - " + LyricsBridge.artist : "")
-                color: Theme.onSurface
-                font.pixelSize: Theme.fontSizeMedium
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontBody.pixelSize
                 font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
@@ -54,7 +54,7 @@ ColumnLayout {
         background: Rectangle {
             radius: Theme.radiusSmall
             color: Theme.surface
-            border.color: searchField.activeFocus ? Theme.primary : Theme.outline
+            border.color: searchField.activeFocus ? Theme.accent : Theme.border
         }
     }
 
@@ -73,7 +73,7 @@ ColumnLayout {
         }
 
         highlight: Rectangle {
-            color: Theme.primary
+            color: Theme.accent
             opacity: 0.15
             radius: Theme.radiusSmall
         }
@@ -101,8 +101,8 @@ ColumnLayout {
         Layout.fillHeight: true
         visible: !LyricsBridge.hasLyrics
         text: "No lyrics loaded"
-        color: Theme.onSurfaceVariant
-        font.pixelSize: Theme.fontSizeLarge
+        color: Theme.textPrimaryVariant
+        font.pixelSize: Theme.fontSubtitle.pixelSize
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
     }
@@ -151,7 +151,7 @@ ColumnLayout {
     component LyricsLineDelegate: Rectangle {
         id: delegate
         height: lineText.implicitHeight + Theme.spacingMedium
-        color: mouseArea.containsMouse ? Theme.surfaceVariant : Theme.surface
+        color: mouseArea.containsMouse ? Theme.surfaceRaised : Theme.surface
         radius: Theme.radiusSmall
 
         property bool isCurrentLine: false
@@ -177,8 +177,8 @@ ColumnLayout {
             Text {
                 id: lineText
                 text: modelData ? modelData.text : ""
-                color: delegate.isCurrentLine ? Theme.primary : Theme.onSurface
-                font.pixelSize: delegate.isCurrentLine ? Theme.fontSizeLarge : Theme.fontSizeMedium
+                color: delegate.isCurrentLine ? Theme.accent : Theme.textPrimary
+                font.pixelSize: delegate.isCurrentLine ? Theme.fontSubtitle.pixelSize : Theme.fontBody.pixelSize
                 font.bold: delegate.isCurrentLine
                 font.italic: delegate.isInstrumental
                 elide: Text.ElideRight
@@ -197,8 +197,8 @@ ColumnLayout {
 
 	Text {
 		text: delegate.isInstrumental ? "♪" : ""
-		color: Theme.onSurfaceVariant
-		font.pixelSize: Theme.fontSizeMedium
+		color: Theme.textPrimaryVariant
+		font.pixelSize: Theme.fontBody.pixelSize
 		visible: text !== ""
 	}
         }

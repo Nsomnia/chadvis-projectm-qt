@@ -23,9 +23,9 @@ ColumnLayout {
             text: root.searchQuery
             onTextChanged: root.searchQuery = text
             background: Rectangle {
-                radius: Theme.radiusSmall; color: Theme.surfaceVariant; border.color: Theme.outline; border.width: searchField.activeFocus ? 2 : 1
+                radius: Theme.radiusSmall; color: Theme.surfaceRaised; border.color: Theme.border; border.width: searchField.activeFocus ? 2 : 1
             }
-            color: Theme.onSurface; font.pixelSize: Theme.fontSizeMedium; leftPadding: Theme.spacingMedium; rightPadding: Theme.spacingMedium
+            color: Theme.textPrimary; font.pixelSize: Theme.fontBody.pixelSize; leftPadding: Theme.spacingMedium; rightPadding: Theme.spacingMedium
         }
 
         RowLayout {
@@ -35,8 +35,8 @@ ColumnLayout {
                 onActivated: {
                     var val = model[index]; if (val === "All") root.selectedCategory = ""; else if (val === "Favorites") root.selectedCategory = "__favorites__"; else if (val === "Blacklisted") root.selectedCategory = "__blacklisted__"; else root.selectedCategory = val
                 }
-                background: Rectangle { radius: Theme.radiusSmall; color: Theme.surfaceVariant; border.color: Theme.outline }
-                contentItem: Text { text: categoryCombo.displayText; color: Theme.onSurface; font.pixelSize: Theme.fontSizeMedium; verticalAlignment: Text.AlignVCenter; leftPadding: Theme.spacingSmall }
+                background: Rectangle { radius: Theme.radiusSmall; color: Theme.surfaceRaised; border.color: Theme.border }
+                contentItem: Text { text: categoryCombo.displayText; color: Theme.textPrimary; font.pixelSize: Theme.fontBody.pixelSize; verticalAlignment: Text.AlignVCenter; leftPadding: Theme.spacingSmall }
             }
             AppButton { icon: "qrc:/qt/qml/ChadVis/resources/icons/random.svg"; implicitWidth: 44; implicitHeight: 44; onClicked: PresetBridge.selectRandom() }
         }
@@ -48,13 +48,13 @@ ColumnLayout {
             width: presetList.width; onSelected: PresetBridge.selectByIndex(modelData.index); onFavoriteToggled: PresetBridge.toggleFavorite(modelData.index); onBlacklistToggled: PresetBridge.toggleBlacklist(modelData.index)
         }
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-        highlight: Rectangle { color: Theme.primary; opacity: 0.2; radius: Theme.radiusSmall }
+        highlight: Rectangle { color: Theme.accent; opacity: 0.2; radius: Theme.radiusSmall }
         highlightFollowsCurrentItem: true; highlightMoveDuration: 150
         Connections { target: PresetBridge; function onPresetsChanged() { presetList.model = PresetBridge.filteredPresets() } }
     }
 
     component PresetDelegate: Rectangle {
-        id: delegate; height: 64; color: mouseArea.containsMouse ? Theme.surfaceVariant : Theme.surface; radius: Theme.radiusSmall
+        id: delegate; height: 64; color: mouseArea.containsMouse ? Theme.surfaceRaised : Theme.surface; radius: Theme.radiusSmall
         property bool isFavorite: modelData ? modelData.favorite : false
         property bool isBlacklisted: modelData ? modelData.blacklisted : false
         property int rating: modelData ? modelData.rating : 0
@@ -70,14 +70,14 @@ ColumnLayout {
         layer.enabled: true
         layer.effect: MultiEffect {
             autoPaddingEnabled: true
-            colorizationEnabled: true
-            colorizationColor: delegate.isFavorite ? Theme.accent : Theme.onSurfaceVariant
+            colorization: 1.0
+            colorizationColor: delegate.isFavorite ? Theme.accent : Theme.textSecondary
         }
     }
             ColumnLayout {
                 Layout.fillWidth: true; spacing: 2
-                Text { text: modelData ? modelData.name : ""; color: delegate.isBlacklisted ? Theme.onSurfaceVariant : Theme.onSurface; font.pixelSize: Theme.fontSizeMedium; elide: Text.ElideRight; Layout.fillWidth: true }
-                Text { text: modelData ? (modelData.author ? modelData.author : modelData.category) : ""; color: Theme.onSurfaceVariant; font.pixelSize: Theme.fontSizeSmall; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: modelData ? modelData.name : ""; color: delegate.isBlacklisted ? Theme.textSecondary : Theme.textPrimary; font.pixelSize: Theme.fontBody.pixelSize; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: modelData ? (modelData.author ? modelData.author : modelData.category) : ""; color: Theme.textSecondary; font.pixelSize: Theme.fontCaption.pixelSize; elide: Text.ElideRight; Layout.fillWidth: true }
             }
             Row {
                 spacing: 2; Layout.alignment: Qt.AlignVCenter
@@ -90,8 +90,8 @@ ColumnLayout {
             layer.enabled: true
             layer.effect: MultiEffect {
                 autoPaddingEnabled: true
-                colorizationEnabled: true
-                colorizationColor: index < delegate.rating ? Theme.accent : Theme.onSurfaceVariant
+                colorization: 1.0
+                colorizationColor: index < delegate.rating ? Theme.accent : Theme.textSecondary
             }
             MouseArea { anchors.fill: parent; onClicked: PresetBridge.setRating(modelData.index, index + 1) }
         }

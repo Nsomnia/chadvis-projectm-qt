@@ -13,7 +13,7 @@ ColumnLayout {
 
     ToolBar {
         Layout.fillWidth: true
-        background: Rectangle { color: Theme.surfaceVariant }
+        background: Rectangle { color: Theme.surfaceRaised }
 
         RowLayout {
             anchors.fill: parent
@@ -21,8 +21,8 @@ ColumnLayout {
 
             Label {
                 text: "Text Overlays"
-                color: Theme.onSurface
-                font.pixelSize: Theme.fontSizeMedium
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontBody.pixelSize
                 font.bold: true
             }
 
@@ -53,8 +53,8 @@ ColumnLayout {
             anchors.centerIn: parent
             visible: OverlayBridge.overlays.length === 0
             text: "No overlays.\nClick + to add."
-            color: Theme.onSurfaceVariant
-            font.pixelSize: Theme.fontSizeMedium
+            color: Theme.textPrimaryVariant
+            font.pixelSize: Theme.fontBody.pixelSize
             horizontalAlignment: Text.AlignHCenter
         }
 
@@ -75,7 +75,7 @@ ColumnLayout {
             Label {
                 text: "Edit Overlay"
                 font.bold: true
-                color: Theme.onSurface
+                color: Theme.textPrimary
             }
 
             TextField {
@@ -98,7 +98,7 @@ ColumnLayout {
 
                 Label {
                     text: "Position:"
-                    color: Theme.onSurfaceVariant
+                    color: Theme.textPrimaryVariant
                 }
 
                 Slider {
@@ -123,7 +123,7 @@ ColumnLayout {
 
                 Label {
                     text: "Font Size:"
-                    color: Theme.onSurfaceVariant
+                    color: Theme.textPrimaryVariant
                 }
 
                 SpinBox {
@@ -158,7 +158,7 @@ ColumnLayout {
 
                 Label {
                     text: "Color:"
-                    color: Theme.onSurfaceVariant
+                    color: Theme.textPrimaryVariant
                 }
 
                 Rectangle {
@@ -166,7 +166,7 @@ ColumnLayout {
                     height: 32
                     radius: Theme.radiusSmall
                     color: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].color : "#FFFFFF"
-                    border.color: Theme.outline
+                    border.color: Theme.border
 
                     MouseArea {
                         anchors.fill: parent
@@ -176,7 +176,7 @@ ColumnLayout {
 
                 Label {
                     text: "Opacity:"
-                    color: Theme.onSurfaceVariant
+                    color: Theme.textPrimaryVariant
                 }
 
                 Slider {
@@ -209,8 +209,8 @@ ColumnLayout {
 
                 background: Rectangle {
                     radius: Theme.radiusSmall
-                    color: Theme.surfaceVariant
-                    border.color: Theme.outline
+                    color: Theme.surfaceRaised
+                    border.color: Theme.border
                 }
             }
         }
@@ -256,7 +256,7 @@ ColumnLayout {
                     height: 32
                     radius: Theme.radiusSmall
                     color: modelData
-                    border.color: Theme.outline
+                    border.color: Theme.border
 
                     MouseArea {
                         anchors.fill: parent
@@ -277,7 +277,7 @@ ColumnLayout {
     component OverlayDelegate: Rectangle {
         id: delegate
         height: 48
-        color: isSelected ? Theme.primary : (mouseArea.containsMouse ? Theme.surfaceVariant : Theme.surface)
+        color: isSelected ? Theme.accent : (mouseArea.containsMouse ? Theme.surfaceRaised : Theme.surface)
         opacity: isSelected ? 0.2 : 1.0
         radius: Theme.radiusSmall
 
@@ -293,8 +293,8 @@ ColumnLayout {
 
             Text {
                 text: modelData ? modelData.text : ""
-                color: Theme.onSurface
-                font.pixelSize: Theme.fontSizeMedium
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontBody.pixelSize
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
