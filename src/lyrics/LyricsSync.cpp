@@ -11,11 +11,6 @@
 
 namespace vc {
 
-// Inline lerp helper for early use
-static inline f32 lerp_f32(f32 a, f32 b, f32 t) {
-    return a + (b - a) * t;
-}
-
 LyricsSync::LyricsSync(AudioEngine* audio, QObject* parent)
     : QObject(parent), audio_(audio), updateTimer_(new QTimer(this)) {
     
@@ -122,7 +117,7 @@ void LyricsSync::updatePosition(f32 time) {
     if (lyrics_.empty()) return;
     
     // Apply smoothing
-    smoothedTime_ = lerp_f32(smoothedTime_, time, config_.smoothingFactor);
+	smoothedTime_ = vc::lerp(smoothedTime_, time, config_.smoothingFactor);
     
     LyricsSyncPosition newPos;
     newPos.time = smoothedTime_;
@@ -281,11 +276,6 @@ void LyricsSync::onAudioStateChanged(PlaybackState state) {
 void LyricsSync::onAudioTrackChanged() {
     // Clear current lyrics - new track will load new lyrics
     clear();
-}
-
-// Animation helpers
-f32 LyricsSync::lerp(f32 a, f32 b, f32 t) const {
-    return a + (b - a) * t;
 }
 
 // LyricsSyncInterpolator implementations

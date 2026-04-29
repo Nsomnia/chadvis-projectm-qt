@@ -34,6 +34,13 @@ using f64 = double;
 using usize = std::size_t;
 using isize = std::ptrdiff_t;
 
+// ── Math helpers ────────────────────────────────────────────────────────────
+
+/// Linear interpolation: a + (b - a) * t
+[[nodiscard]] constexpr f32 lerp(f32 a, f32 b, f32 t) noexcept {
+	return a + (b - a) * t;
+}
+
 // Time types
 using Duration = chr::milliseconds;
 using TimePoint = chr::steady_clock::time_point;
@@ -100,7 +107,6 @@ class Config;
 class AudioEngine;
 class Playlist;
 class VisualizerWindow;
-class OverlayEngine;
 class VideoRecorder;
 
 } // namespace vc

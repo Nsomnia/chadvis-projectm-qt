@@ -9,7 +9,7 @@
 #include <QRegularExpression>
 #include <QRandomGenerator>
 
-namespace chadvis {
+namespace vc::ui {
 
 SystemBrowserAuth::SystemBrowserAuth(QObject* parent)
     : QObject(parent)
@@ -229,4 +229,4 @@ void SystemBrowserAuth::onTimeout() {
     }
 }
 
-} // namespace chadvis
+} // namespace vc::ui

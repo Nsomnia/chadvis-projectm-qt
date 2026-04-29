@@ -99,9 +99,8 @@ std::pair<f32, f32> LyricsData::getTimeRange(size_t lineIndex, size_t contextLin
 
 namespace LyricsFactory {
 
-// Helper: Align words to lines using prompt text
-static std::vector<LyricsLine> alignWordsToLines(const std::vector<LyricsWord>& words, 
-                                                  const std::string& prompt) {
+std::vector<LyricsLine> alignWordsToLines(const std::vector<LyricsWord>& words,
+						  const std::string& prompt) {
     std::vector<LyricsLine> lines;
     
     std::istringstream stream(prompt);
@@ -214,7 +213,38 @@ LyricsData fromSunoJson(const std::string& json, const std::string& prompt) {
         }
     }
     
-    // Parse words
+    // Recursive Deep Search for any array containing words
+  // Handles nested objects and non-standard JSON structures from Suno API
+  if (wordArray.isEmpty() && doc.isObject()) {
+    std::function<QJsonArray(const QJsonObject&)> findArray;
+
+    findArray = [&](const QJsonObject& obj) -> QJsonArray {
+      for (auto it = obj.begin(); it != obj.end(); ++it) {
+        if (it.value().isArray()) {
+          QJsonArray arr = it.value().toArray();
+          if (!arr.isEmpty() && arr[0].isObject()) {
+            QJsonObject first = arr[0].toObject();
+            // Check for word-like structure (duck typing)
+            if (first.contains("word") &&
+                (first.contains("start") || first.contains("start_s"))) {
+              return arr;
+            }
+          }
+        } else if (it.value().isObject()) {
+          QJsonArray res = findArray(it.value().toObject());
+          if (!res.isEmpty()) return res;
+        }
+      }
+      return QJsonArray();
+    };
+
+    QJsonArray deepResult = findArray(doc.object());
+    if (!deepResult.isEmpty()) {
+      wordArray = deepResult;
+    }
+  }
+
+  // Parse words
     for (const auto& val : wordArray) {
         if (!val.isObject()) continue;
         QJsonObject w = val.toObject();
@@ -230,17 +260,29 @@ LyricsData fromSunoJson(const std::string& json, const std::string& prompt) {
         word.text.erase(0, word.text.find_first_not_of(" \t\r\n"));
         word.text.erase(word.text.find_last_not_of(" \t\r\n") + 1);
         
-        if (word.text.empty()) continue;
-        
-        // Parse timing
-        if (w.contains("start")) word.startTime = w["start"].toDouble();
-        else if (w.contains("start_s")) word.startTime = w["start_s"].toDouble();
-        
-        if (w.contains("end")) word.endTime = w["end"].toDouble();
-        else if (w.contains("end_s")) word.endTime = w["end_s"].toDouble();
-        
-        if (w.contains("score")) word.confidence = w["score"].toDouble();
-        else if (w.contains("p_align")) word.confidence = w["p_align"].toDouble();
+    if (word.text.empty()) {
+      // If the word was JUST a tag (e.g. "[Verse]", "[Instrumental]"), check for instrumental
+      std::string lowerRaw = w["word"].toString().toStdString();
+      std::transform(lowerRaw.begin(), lowerRaw.end(), lowerRaw.begin(), ::tolower);
+      if (lowerRaw.find("instrumental") != std::string::npos) {
+        word.text = "\xF0\x9F\x8E\xB5"; // 🎵 placeholder for instrumental sections
+      } else {
+        continue; // Skip other tags like [Verse], [Chorus]
+      }
+    }
+
+    // Parse timing (strict: skip words without timestamps)
+    if (w.contains("start")) word.startTime = w["start"].toDouble();
+    else if (w.contains("start_s")) word.startTime = w["start_s"].toDouble();
+    else continue;
+
+    if (w.contains("end")) word.endTime = w["end"].toDouble();
+    else if (w.contains("end_s")) word.endTime = w["end_s"].toDouble();
+    else continue;
+
+    if (w.contains("score")) word.confidence = w["score"].toDouble();
+    else if (w.contains("p_align")) word.confidence = w["p_align"].toDouble();
+    else word.confidence = 1.0f;
         
         words.push_back(word);
     }
@@ -270,10 +312,14 @@ LyricsData fromSunoJson(const std::string& json, const std::string& prompt) {
         }
         line.isSynced = true;
         data.lines.push_back(line);
-        data.isSynced = true;
-    }
-    
-    return data;
+    data.isSynced = true;
+  }
+
+  if (words.empty()) {
+    LOG_WARN("LyricsFactory: Parsed Suno JSON but found no valid words");
+  }
+
+  return data;
 }
 
 LyricsData fromSrt(const std::string& content) {

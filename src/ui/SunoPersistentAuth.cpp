@@ -15,7 +15,7 @@
 #include <QWebEngineScriptCollection>
 #include "core/Logger.hpp"
 
-namespace chadvis {
+namespace vc::ui {
 
 SunoPersistentAuth::SunoPersistentAuth(QObject* parent)
     : QObject(parent)
@@ -236,4 +236,4 @@ void SunoPersistentAuth::setBearerToken(const QString& token) {
     emit authStateChanged(authState_);
 }
 
-} // namespace chadvis
+} // namespace vc::ui

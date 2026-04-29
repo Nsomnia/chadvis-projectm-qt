@@ -7,18 +7,18 @@ namespace vc::suno {
 SunoAuthManager::SunoAuthManager(SunoClient* client, QObject* parent)
     : QObject(parent),
       client_(client),
-      persistentAuth_(std::make_unique<chadvis::SunoPersistentAuth>(nullptr)),
-      systemAuth_(std::make_unique<chadvis::SystemBrowserAuth>(nullptr)) {
+      persistentAuth_(std::make_unique<vc::ui::SunoPersistentAuth>(nullptr)),
+      systemAuth_(std::make_unique<vc::ui::SystemBrowserAuth>(nullptr)) {
     
     // Connect Persistent Auth Signals
-    connect(persistentAuth_.get(), &chadvis::SunoPersistentAuth::authenticated, 
+    connect(persistentAuth_.get(), &vc::ui::SunoPersistentAuth::authenticated, 
             this, &SunoAuthManager::onPersistentAuthRestored);
 
     // Connect System Auth Signals
-    connect(systemAuth_.get(), &chadvis::SystemBrowserAuth::authSuccess, 
+    connect(systemAuth_.get(), &vc::ui::SystemBrowserAuth::authSuccess, 
             this, &SunoAuthManager::onSystemAuthSuccess);
     
-    connect(systemAuth_.get(), &chadvis::SystemBrowserAuth::authFailed, 
+    connect(systemAuth_.get(), &vc::ui::SystemBrowserAuth::authFailed, 
             this, &SunoAuthManager::onSystemAuthFailed);
 }
 
@@ -37,7 +37,7 @@ void SunoAuthManager::startSystemBrowserAuth() {
     systemAuth_->startAuth();
 }
 
-void SunoAuthManager::onPersistentAuthRestored(const chadvis::SunoAuthState& authState) {
+void SunoAuthManager::onPersistentAuthRestored(const vc::ui::SunoAuthState& authState) {
     LOG_INFO("SunoAuthManager: Persistent auth session restored");
     
     if (!authState.bearerToken.isEmpty()) {

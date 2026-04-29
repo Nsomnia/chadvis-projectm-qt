@@ -25,10 +25,10 @@ namespace vc {
  * with float precision for smooth animations.
  */
 struct LyricsWord {
-    std::string text;           ///< The word text
-    f32 startTime{0.0f};        ///< Start time in seconds
-    f32 endTime{0.0f};          ///< End time in seconds
-    f32 confidence{1.0f};       ///< Confidence score (0.0-1.0, for Suno aligned lyrics)
+  std::string text; ///< The word text
+  f32 startTime{0.0f}; ///< Start time in seconds
+  f32 endTime{0.0f}; ///< End time in seconds
+  f32 confidence{1.0f}; ///< Confidence score (0.0-1.0, for Suno aligned lyrics)
     
     /**
      * @brief Check if a given time falls within this word's duration
@@ -158,30 +158,44 @@ public:
  * @brief Factory functions for creating LyricsData from various formats
  */
 namespace LyricsFactory {
-    /**
-     * @brief Create from Suno aligned lyrics JSON
-     */
-    LyricsData fromSunoJson(const std::string& json, const std::string& prompt = "");
-    
-    /**
-     * @brief Create from SRT subtitle format
-     */
-    LyricsData fromSrt(const std::string& content);
-    
-    /**
-     * @brief Create from LRC lyrics format
-     */
-    LyricsData fromLrc(const std::string& content);
-    
-    /**
-     * @brief Create from plain text (no timing)
-     */
-    LyricsData fromText(const std::string& text);
-    
-    /**
-     * @brief Create from database JSON storage
-     */
-    LyricsData fromDatabase(const std::string& json);
+/**
+ * @brief Create from Suno aligned lyrics JSON
+ */
+LyricsData fromSunoJson(const std::string& json, const std::string& prompt = "");
+
+/**
+ * @brief Create from SRT subtitle format
+ */
+LyricsData fromSrt(const std::string& content);
+
+/**
+ * @brief Create from LRC lyrics format
+ */
+LyricsData fromLrc(const std::string& content);
+
+/**
+ * @brief Create from plain text (no timing)
+ */
+LyricsData fromText(const std::string& text);
+
+/**
+ * @brief Create from database JSON storage
+ */
+LyricsData fromDatabase(const std::string& json);
+
+/**
+ * @brief Align flat words to lines using prompt text
+ *
+ * Splits the prompt into lines and matches words to each line by
+ * normalizing and comparing tokens. Words without a prompt match
+ * are grouped into estimated-timing lines.
+ *
+ * @param words  Flat list of timed words (e.g. from Suno JSON)
+ * @param prompt Song lyrics text with line breaks
+ * @return Lines with words assigned and timing set
+ */
+std::vector<LyricsLine> alignWordsToLines(const std::vector<LyricsWord>& words,
+                                           const std::string& prompt);
 } // namespace LyricsFactory
 
 /**
