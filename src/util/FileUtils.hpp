@@ -7,6 +7,8 @@
 #include <vector>
 #include <set>
 
+class QString;
+
 namespace vc::file {
 
 // Get standard paths
@@ -53,8 +55,14 @@ fs::path uniquePath(const fs::path& desired);
 // Human-readable file size
 std::string humanSize(std::uintmax_t bytes);
 
-// Format duration as HH:MM:SS
+// Human-readable file size (QString overload for QML bridges)
+QString humanSizeQString(vc::u64 bytes);
+
+// Format duration as HH:MM:SS (zero-padded hours) or MM:SS
 std::string formatDuration(Duration dur);
+
+// Format duration as H:MM:SS (non-zero-padded hours) or M:SS (QString for QML bridges)
+QString formatDurationQString(vc::i64 ms);
 
 // Parse duration from string
 std::optional<Duration> parseDuration(std::string_view str);

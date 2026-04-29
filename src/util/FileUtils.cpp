@@ -5,6 +5,7 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <QString>
 #include "core/Logger.hpp"
 
 namespace vc::file {
@@ -248,6 +249,45 @@ std::string formatDuration(Duration dur) {
         return std::format("{:02}:{:02}:{:02}", hours, minutes, seconds);
     }
     return std::format("{:02}:{:02}", minutes, seconds);
+}
+
+QString humanSizeQString(vc::u64 bytes) {
+  constexpr double kib = 1024.0;
+  constexpr double mib = kib * 1024.0;
+  constexpr double gib = mib * 1024.0;
+
+  if (bytes >= static_cast<vc::u64>(gib)) {
+    return QStringLiteral("%1 GB").arg(static_cast<double>(bytes) / gib, 0, 'f', 1);
+  }
+  if (bytes >= static_cast<vc::u64>(mib)) {
+    return QStringLiteral("%1 MB").arg(static_cast<double>(bytes) / mib, 0, 'f', 1);
+  }
+  if (bytes >= static_cast<vc::u64>(kib)) {
+    return QStringLiteral("%1 KB").arg(static_cast<double>(bytes) / kib, 0, 'f', 1);
+  }
+  return QStringLiteral("%1 B").arg(bytes);
+}
+
+QString formatDurationQString(vc::i64 ms) {
+  if (ms <= 0) {
+    return QStringLiteral("0:00");
+  }
+
+  const auto totalSeconds = ms / 1000;
+  const auto hours = totalSeconds / 3600;
+  const auto minutes = (totalSeconds % 3600) / 60;
+  const auto seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return QStringLiteral("%1:%2:%3")
+      .arg(static_cast<qlonglong>(hours))
+      .arg(static_cast<int>(minutes), 2, 10, QLatin1Char('0'))
+      .arg(static_cast<int>(seconds), 2, 10, QLatin1Char('0'));
+  }
+
+  return QStringLiteral("%1:%2")
+    .arg(static_cast<int>(minutes))
+    .arg(static_cast<int>(seconds), 2, 10, QLatin1Char('0'));
 }
 
 std::optional<Duration> parseDuration(std::string_view str) {

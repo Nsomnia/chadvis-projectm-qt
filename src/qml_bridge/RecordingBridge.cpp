@@ -1,49 +1,9 @@
 #include "RecordingBridge.hpp"
 #include "core/Logger.hpp"
 #include "recorder/VideoRecorderCore.hpp"
+#include "util/FileUtils.hpp"
 #include <QQmlEngine>
 #include <QString>
-
-namespace {
-
-QString formatDuration(vc::Duration duration)
-{
-    const auto totalSeconds = std::chrono::duration_cast<std::chrono::seconds>(duration).count();
-    const auto hours = totalSeconds / 3600;
-    const auto minutes = (totalSeconds % 3600) / 60;
-    const auto seconds = totalSeconds % 60;
-
-    if (hours > 0) {
-        return QStringLiteral("%1:%2:%3")
-            .arg(hours)
-            .arg(minutes, 2, 10, QChar('0'))
-            .arg(seconds, 2, 10, QChar('0'));
-    }
-
-    return QStringLiteral("%1:%2")
-        .arg(minutes)
-        .arg(seconds, 2, 10, QChar('0'));
-}
-
-QString formatBytes(vc::u64 bytes)
-{
-    constexpr double kib = 1024.0;
-    constexpr double mib = kib * 1024.0;
-    constexpr double gib = mib * 1024.0;
-
-    if (bytes >= static_cast<vc::u64>(gib)) {
-        return QStringLiteral("%1 GB").arg(static_cast<double>(bytes) / gib, 0, 'f', 1);
-    }
-    if (bytes >= static_cast<vc::u64>(mib)) {
-        return QStringLiteral("%1 MB").arg(static_cast<double>(bytes) / mib, 0, 'f', 1);
-    }
-    if (bytes >= static_cast<vc::u64>(kib)) {
-        return QStringLiteral("%1 KB").arg(static_cast<double>(bytes) / kib, 0, 'f', 1);
-    }
-    return QStringLiteral("%1 B").arg(bytes);
-}
-
-} // namespace
 
 namespace qml_bridge {
 
@@ -104,9 +64,9 @@ QString RecordingBridge::currentFile() const
     return QString::fromStdString(cachedStats_.currentFile);
 }
 
-QString RecordingBridge::recordingTime() const { return formatDuration(cachedStats_.elapsed); }
+QString RecordingBridge::recordingTime() const { return vc::file::formatDurationQString(cachedStats_.elapsed.count()); }
 int RecordingBridge::framesWritten() const { return static_cast<int>(cachedStats_.framesWritten); }
-QString RecordingBridge::fileSize() const { return formatBytes(cachedStats_.bytesWritten); }
+QString RecordingBridge::fileSize() const { return vc::file::humanSizeQString(cachedStats_.bytesWritten); }
 QString RecordingBridge::encodeFps() const { return QString::number(cachedStats_.encodingFps, 'f', 1); }
 int RecordingBridge::bufferHealth() const
 {

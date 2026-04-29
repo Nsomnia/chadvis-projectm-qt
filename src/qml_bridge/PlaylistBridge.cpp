@@ -1,35 +1,10 @@
 #include "PlaylistBridge.hpp"
 #include "audio/Playlist.hpp"
+#include "util/FileUtils.hpp"
 #include <QAbstractItemModel>
 #include <QQmlEngine>
 #include <QString>
 #include <cstdint>
-
-namespace {
-
-QString formatDurationMs(std::int64_t ms) {
-    if (ms <= 0) {
-        return QStringLiteral("0:00");
-    }
-
-    const auto totalSeconds = ms / 1000;
-    const auto hours = totalSeconds / 3600;
-    const auto minutes = (totalSeconds % 3600) / 60;
-    const auto seconds = totalSeconds % 60;
-
-    if (hours > 0) {
-        return QStringLiteral("%1:%2:%3")
-            .arg(static_cast<qlonglong>(hours))
-            .arg(static_cast<int>(minutes), 2, 10, QLatin1Char('0'))
-            .arg(static_cast<int>(seconds), 2, 10, QLatin1Char('0'));
-    }
-
-    return QStringLiteral("%1:%2")
-        .arg(static_cast<int>(minutes))
-        .arg(static_cast<int>(seconds), 2, 10, QLatin1Char('0'));
-}
-
-} // namespace
 
 namespace qml_bridge {
 
@@ -107,8 +82,8 @@ QVariant PlaylistBridge::data(const QModelIndex& index, int role) const {
         case ArtistRole: return QString::fromStdString(item.metadata.displayArtist());
         case PathRole:
             return QString::fromStdString(item.isRemote ? item.url : item.path.string());
-        case DurationFormattedRole:
-            return formatDurationMs(item.metadata.duration.count());
+  case DurationFormattedRole:
+    return vc::file::formatDurationQString(item.metadata.duration.count());
         case IsCurrentRole: return s_playlist->currentIndex() == static_cast<size_t>(index.row());
     }
     return QVariant();
