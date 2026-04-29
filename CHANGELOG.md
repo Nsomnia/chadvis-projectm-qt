@@ -7,6 +7,30 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 ---
 
 ## [Unreleased]
+### Changed
+- **Codebase Audit (Phases 1-4)**: Full audit of 19,294 LOC across 10 modules. 24 issues found, 18 fixed. Net impact: **-894 LOC removed** (38 files changed, 2022 deletions, 1128 insertions).
+- **Lyrics Unification** (#1/#12): `LyricsFactory` is now the canonical parser. `SunoLyrics` delegates and converts at boundaries. Removed dead `LyricAligner.hpp`. Exposed `alignWordsToLines()` publicly.
+- **SettingsBridge Macro System** (#3): X-macro table + `SettingMacros.hpp` reduced boilerplate from 453→~120 LOC. `resetToDefaults()` signal emissions auto-generated.
+- **CLI Argument Table** (#5/#13): Per-type X-macro table (`CliArgs.inc`) + `applyOverride<T>()` templates replaced 250 LOC if/else chain + 80 LOC override boilerplate. Application.cpp: 687→584 LOC.
+- **VisualizerBridge Wired** (#10): All stubs now delegate to real `VisualizerWindow`. Added `visualizerWindow` Q_PROPERTY + `actualFps()` accessor.
+- **SunoController Lyrics Dedup** (#6/#23): Removed 84-line fallback JSON parser. `onTrackChanged()` uses `LyricsFactory` directly.
+- **SunoDatabase Dedup** (#2): Extracted `clipFromQuery()` helper (3 identical blocks → 1).
+- **SunoDownloader Dedup** (#7/#8): Extracted `getDownloadDir()` (5x) + `sanitizeFilename()` (4x).
+- **Format Utilities Unified** (#9/#22): `formatDurationQString()` + `humanSizeQString()` in `vc::file` namespace. Removed 3 local duplicates.
+- **Namespace Migration** (#11): `chadvis` → `vc::ui` in SunoPersistentAuth/SystemBrowserAuth.
+- **Lerp Consolidation** (#15): Single `vc::lerp()` in Types.hpp. Removed 3 duplicates.
+
+### Fixed
+- **Broken QML Theme Refs** (#4): `KaraokeMaster.qml` + `KaraokeSettings.qml` referenced non-existent Theme properties (`onSurface`, `fontSizeMedium`, etc.). Fixed to use actual Theme.qml API.
+- **Duplicate GL State** (#18): Removed redundant glViewport/glDisable/glEnable in `VisualizerQFBO::render()`.
+- **Stale CMake Ref** (#24): Removed `${KISSFFT_INCLUDE_DIRS}` (project uses PFFFT).
+- **Orphaned License Block** (#16): Removed MIT license header from `SunoAuthManager.hpp` (only file with it).
+- **Duplicate Include** (#17): Removed redundant `#include <QtSql/QSqlDatabase>` from `SunoDatabase.hpp`.
+
+### Removed
+- **Dead LyricsLoader.hpp** (#19): Header-only, no .cpp, not in CMakeLists, zero includes. Archived to `.backup_graveyard/lyrics/`.
+- **Orphaned OverlayEngine forward-decl** (#21): Class doesn't exist. Removed from `Types.hpp` + `Application.hpp`.
+
 ### Added
 - **PlaylistBridge: Full QML API** — Added `shuffle` (bool), `repeatMode` (int: 0=Off/1=All/2=One) Q_PROPERTYs with notify signals. Added `toggleShuffle()`, `setShuffle(bool)`, `cycleRepeatMode()`, `moveItem(int,int)`, `getItemPath(int)` Q_INVOKABLEs. Added `DurationFormattedRole` to model. Wired `vc::Playlist` signals through bridge.
 - **RecordingBridge: Real Recording Support** — `startRecording()` now calls `vc::VideoRecorder::start()`. Added live stats Q_PROPERTYs: `recordingTime`, `framesWritten`, `fileSize`, `encodeFps`, `bufferHealth`. Wired `stateChanged`/`statsUpdated`/`error` signals from VideoRecorder.
