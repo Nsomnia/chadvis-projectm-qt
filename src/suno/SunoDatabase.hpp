@@ -3,7 +3,6 @@
 // Uses SQLite for persistent storage of song metadata and lyrics
 
 #include <QSqlDatabase>
-#include <QtSql/QSqlDatabase>
 #include <optional>
 #include <string>
 #include <vector>

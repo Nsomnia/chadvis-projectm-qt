@@ -9,7 +9,7 @@ Item {
     property alias title: titleLabel.text
     property alias artist: artistLabel.text
     property color accentColor: Theme.accent
-    property color textColor: Theme.onSurface
+    property color textColor: Theme.textPrimary
     property bool showGlow: true
     property real verticalPosition: 0.8 // 0.0 to 1.0 (bottom heavy by default)
 
@@ -43,14 +43,14 @@ Item {
                     id: titleLabel
                     text: LyricsBridge.title
                     color: root.textColor
-                    font.pixelSize: Theme.fontSizeMedium
-                    font.bold: true
-                }
-                Label {
-                    id: artistLabel
-                    text: LyricsBridge.artist
-                    color: root.textColor
-                    font.pixelSize: Theme.fontSizeSmall
+        font.pixelSize: Theme.fontBody.pixelSize
+        font.bold: true
+      }
+      Label {
+        id: artistLabel
+        text: LyricsBridge.artist
+        color: root.textColor
+        font.pixelSize: Theme.fontCaption.pixelSize
                     opacity: 0.8
                 }
             }
@@ -92,7 +92,7 @@ Item {
                     text: LyricsBridge.currentLineIndex > 0 ? LyricsBridge.getLine(LyricsBridge.currentLineIndex - 1).text : ""
                     color: root.textColor
                     opacity: 0.3
-                    font.pixelSize: Theme.fontSizeMedium
+                    font.pixelSize: Theme.fontBody.pixelSize
                     font.italic: true
                     visible: text !== ""
                 }
@@ -107,7 +107,7 @@ Item {
                         anchors.centerIn: parent
                         text: LyricsBridge.currentLineIndex >= 0 ? LyricsBridge.getLine(LyricsBridge.currentLineIndex).text : "♫ CHADVIS VISUALIZER ♫"
                         color: root.textColor
-                        font.pixelSize: Theme.fontSizeXXL
+                        font.pixelSize: Theme.fontDisplay.pixelSize
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         
@@ -151,7 +151,7 @@ Item {
                     text: LyricsBridge.currentLineIndex < LyricsBridge.lines.length - 1 ? LyricsBridge.getLine(LyricsBridge.currentLineIndex + 1).text : ""
                     color: root.textColor
                     opacity: 0.6
-                    font.pixelSize: Theme.fontSizeLarge
+                    font.pixelSize: Theme.fontSubtitle.pixelSize
                     visible: text !== ""
                 }
             }

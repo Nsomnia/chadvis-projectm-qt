@@ -41,7 +41,7 @@ ColumnLayout {
         Rectangle {
             width: 24; height: 24; radius: 4
             color: Theme.accent
-            border.color: Theme.onSurface
+            border.color: Theme.textPrimary
             MouseArea {
                 anchors.fill: parent
                 onClicked: console.log("Color picker TODO")

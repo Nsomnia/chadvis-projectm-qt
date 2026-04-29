@@ -288,14 +288,7 @@ void VisualizerQFBORenderer::render() {
         renderer_->projectM().engine().resize(width_, height_);
         dimensionsDirty_ = false;
     }
-    renderer_->projectM().engine().render();
-
-    glDisable(GL_SCISSOR_TEST);
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glViewport(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
+  renderer_->projectM().engine().render();
 }
 
 } // namespace qml_bridge
