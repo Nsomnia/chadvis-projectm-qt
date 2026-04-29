@@ -53,10 +53,6 @@ f32 LyricsRenderer::smoothStep(f32 edge0, f32 edge1, f32 x) const {
     return t * t * (3.0f - 2.0f * t);
 }
 
-f32 LyricsRenderer::lerp(f32 a, f32 b, f32 t) const {
-    return a + (b - a) * t;
-}
-
 // KaraokeRenderer implementation
 
 KaraokeRenderer::KaraokeRenderer() {
@@ -313,9 +309,9 @@ void PanelRenderer::render(QPainter& painter, const QRect& rect) {
     }
     
     // Smooth scroll interpolation
-    scrollOffset_ = static_cast<int>(lerp(static_cast<f32>(scrollOffset_), 
-                                          static_cast<f32>(targetScroll_), 
-                                          style_.animationSpeed));
+    scrollOffset_ = static_cast<int>(vc::lerp(static_cast<f32>(scrollOffset_),
+        static_cast<f32>(targetScroll_),
+        style_.animationSpeed));
     
     // Calculate visible range
     int startY = rect.top() + 20 - scrollOffset_;

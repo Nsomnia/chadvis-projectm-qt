@@ -100,9 +100,8 @@ protected:
     void drawProgressBar(QPainter& painter, const QRect& rect, f32 progress,
                         const QColor& color);
     
-    // Animation helpers
-    f32 smoothStep(f32 edge0, f32 edge1, f32 x) const;
-    f32 lerp(f32 a, f32 b, f32 t) const;
+	// Animation helpers
+	f32 smoothStep(f32 edge0, f32 edge1, f32 x) const;
 };
 
 /**

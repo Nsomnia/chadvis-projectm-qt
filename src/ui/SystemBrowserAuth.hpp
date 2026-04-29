@@ -8,7 +8,7 @@
 #include <QTimer>
 #include <QPointer>
 
-namespace chadvis {
+namespace vc::ui {
 
 class SystemBrowserAuth : public QObject {
     Q_OBJECT
@@ -63,4 +63,4 @@ private:
     static constexpr int AUTH_TIMEOUT_MS = 180000; // 3 minutes
 };
 
-} // namespace chadvis
+} // namespace vc::ui

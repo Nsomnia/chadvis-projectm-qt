@@ -20,7 +20,7 @@
 #include <memory>
 #include <functional>
 
-namespace chadvis {
+namespace vc::ui {
 
 /**
  * @brief Authentication state information
@@ -137,4 +137,4 @@ private:
     bool initialized_ = false;
 };
 
-} // namespace chadvis
+} // namespace vc::ui
