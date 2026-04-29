@@ -299,20 +299,23 @@ src/ui/SystemBrowserAuth.cpp
 # QML FILES - Declarative UI components
 # ═══════════════════════════════════════════════════════════════════════════
 set(QML_SOURCES
-    src/qml/main.qml
-    src/qml/components/AccordionPanel.qml
-    src/qml/components/AccordionContainer.qml
-    src/qml/components/AppButton.qml
-    src/qml/components/AppSlider.qml
-    src/qml/panels/PlaybackPanel.qml
-    src/qml/panels/PlaylistPanel.qml
-    src/qml/panels/PresetsPanel.qml
-    src/qml/panels/LyricsPanel.qml
-    src/qml/panels/SunoPanel.qml
-    src/qml/panels/OverlayPanel.qml
-    src/qml/panels/RecordingPanel.qml
-    src/qml/panels/SettingsPanel.qml
-    src/qml/components/VisualizerOverlay.qml
+  src/qml/main.qml
+  src/qml/styles/Theme.qml
+  src/qml/components/AccordionPanel.qml
+  src/qml/components/AccordionContainer.qml
+  src/qml/components/AppButton.qml
+  src/qml/components/AppSlider.qml
+  src/qml/components/KaraokeMaster.qml
+  src/qml/components/KaraokeSettings.qml
+  src/qml/components/VisualizerOverlay.qml
+  src/qml/panels/PlaybackPanel.qml
+  src/qml/panels/PlaylistPanel.qml
+  src/qml/panels/PresetsPanel.qml
+  src/qml/panels/LyricsPanel.qml
+  src/qml/panels/SunoPanel.qml
+  src/qml/panels/OverlayPanel.qml
+  src/qml/panels/RecordingPanel.qml
+  src/qml/panels/SettingsPanel.qml
 )
 
 # Common include directories
@@ -398,6 +401,9 @@ target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
 # QML MODULE - Modern UI components
 # ═══════════════════════════════════════════════════════════════════════════
 qt_policy(SET QTP0001 NEW)
+
+# Mark QML singletons before qt_add_qml_module
+set_source_files_properties(src/qml/styles/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(project_lib
     URI ChadVis
