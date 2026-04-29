@@ -72,6 +72,43 @@ months and months with hundred(s) of millions of tokems invested over many model
 - [ ] Profile Support: Save/Load different UI themes and visualizer preset banks
 - [x] Persistent state for all sidebar toggles and view modes
 
+## Codebase Audit & Refactoring (2026-04-28)
+
+Full audit of 19,294 LOC across 10 modules. 24 issues found, 18 fixed across 5 phases.
+
+### Completed (Phases 1-4)
+- [x] **#1/#12** Lyrics unification: LyricsFactory canonical parser + AlignedLyrics conversion methods; removed dead LyricAligner.hpp
+- [x] **#2** SunoDatabase: Extracted `clipFromQuery()` helper (3 identical blocks → 1)
+- [x] **#3** SettingsBridge: X-macro table + SettingMacros.hpp (453→~120 LOC)
+- [x] **#4** Fixed broken QML Theme refs in KaraokeMaster.qml + KaraokeSettings.qml
+- [x] **#5/#13** CLI argument table: CliArgs.inc + per-type X-macros + applyOverride<T> (687→584 LOC)
+- [x] **#6/#23** SunoController lyrics dedup: Uses LyricsFactory directly, removed 84-line fallback parser
+- [x] **#7/#8** SunoDownloader: Extracted `getDownloadDir()` (5x) + `sanitizeFilename()` (4x)
+- [x] **#9/#22** Unified formatDuration/formatBytes into FileUtils (removed 3 local duplicates)
+- [x] **#10** VisualizerBridge: Wired stubs to real VisualizerWindow (added visualizerWindow Q_PROPERTY, actualFps())
+- [x] **#11** Namespace migration: `chadvis` → `vc::ui` in SunoPersistentAuth/SystemBrowserAuth
+- [x] **#15** Lerp consolidation: Single `vc::lerp()` in Types.hpp (removed 3 duplicates)
+- [x] **#16** Removed orphaned MIT license block from SunoAuthManager.hpp
+- [x] **#17** Removed duplicate `#include <QtSql/QSqlDatabase>` from SunoDatabase.hpp
+- [x] **#18** Removed duplicate GL state setup in VisualizerQFBO::render()
+- [x] **#19** Archived dead LyricsLoader.hpp to `.backup_graveyard/lyrics/`
+- [x] **#21** Removed orphaned `OverlayEngine` forward-decl from Types.hpp + Application.hpp
+- [x] **#24** Removed stale `${KISSFFT_INCLUDE_DIRS}` from CMakeLists.txt
+
+### Remaining (Phase 5+)
+- [ ] **#14** OverlayBridge uses separate JSON persistence instead of Config — documented, left alone (JSON appropriate for list data; future: add debouncing)
+- [ ] **#20** Remove ~20 stale cmake modules (only CPM.cmake + FindProjectM4.cmake are used; Conan.cmake, Vcpkg.cmake, Doxygen.cmake, etc. are dead)
+- [ ] **#25** VisualizerBridge::toggleActive() still no-op (no pause/resume in VisualizerWindow)
+- [ ] **#26** LyricsBridge has 6 stubbed methods (exportToSrt, exportToLrc, search, getUpcomingLines, getContextLines)
+- [ ] **#27** Result.hpp custom type should migrate to `std::expected` (has map/andThen but missing orElse)
+- [ ] **#28** FileUtils Color::fromHex()/toHex() should move to Types.hpp or dedicated Color.hpp
+- [ ] **#29** PresetBridge presetToVariantMap() should become QAbstractListModel for large preset lists
+- [ ] **#30** SunoBridge onLibraryUpdated() manual QVariantMap construction should use shared conversion
+
+### Net Impact
+- **38 files changed, -894 net LOC removed** (2022 deletions, 1128 insertions)
+- 7 commits: Phase 1 quick wins → Phase 2 dedup → Phase 2 lyrics/namespace/lerp → Phase 3 SettingsBridge → Phase 3 CLI table → Phase 4 VisualizerBridge+lyrics → archive
+
 ## C++23 Agent Guidelines
 - **Standard**: C++23 is the required minimum.
 - **I/O**: Prefer `std::println` over `std::cout` or `printf`.
@@ -80,4 +117,4 @@ months and months with hundred(s) of millions of tokems invested over many model
 - **Target**: Arch Linux (latest GCC/Clang) is the primary development target.
 
 ---
-*Date: 2026-04-23 04:03 MST by USER*
+*Date: 2026-04-28 by AGENT (audit phases 1-4)*
