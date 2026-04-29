@@ -100,12 +100,19 @@ namespace Cli {
     void printUnknownFlagError(std::string_view flag, 
                                std::initializer_list<std::string_view> suggestions);
     
-    /**
-     * @brief Find closest matching flag for typo correction
-     */
-    std::optional<std::string> findClosestMatch(
-        std::string_view input,
-        std::initializer_list<std::string_view> candidates);
+	/** 
+	 * @brief Find closest matching flag for typo correction
+	 */
+	std::optional<std::string> findClosestMatch(
+		std::string_view input,
+		std::initializer_list<std::string_view> candidates);
+
+	/**
+	 * @brief Find closest matching flag for typo correction (span overload)
+	 */
+	std::optional<std::string> findClosestMatch(
+		std::string_view input,
+		std::span<const std::string_view> candidates);
     
     /**
      * @brief Format a boolean value for display
