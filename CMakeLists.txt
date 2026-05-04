@@ -1,27 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
-# Remove problematic compiler flags that cause build failures
-# These flags can come from system config or Qt defaults
-string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-string(REPLACE "-mno-direct-extern-access" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
-string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
-string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL}")
-string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 
-### cmake/ninja machine readable token efficiency
-## To make CMake output more token-efficient for an agent, you can modify the verbosity settings. Here are a few approaches:
-# 1. Use --no-color flag:
-# cmake --no-color [options] [source_dir]
-# 2. Set CMAKE_COLOR_NONE environment variable:
-# export CMAKE_COLOR_NONE=ON
-# 3. Modify CMakeLists.txt:
-set(CMAKE_COLOR_NONE ON)
-# 4. Use --output-on-error instead of --verbose:
-# cmake --output-on-error [options] [source_dir]
-# 5. Redirect output to /dev/null:
-# cmake [options] [source_dir] > /dev/null 2>&1
+# TODO: Ability to and defaults to the most speed optimized for fast development interactions whenever possible due to users "potato" host syatem.
 
+
+# TODO: What do these flag sets do? Needed? 
 # Also set them explicitly to ensure they stay clean
+# TODO: VERSIONING FOR PROJECT WHOLE AND FILE MILESTONES AS PER CHANGELOG.md AND docs/CHANGELOG-v*.me history. GitHub releases need to be done as the user only has one dated release. Can be a standards codebase release with the user manually doing executable releases.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "" FORCE)
 project(chadvis-projectm-qt VERSION 1.0.0 LANGUAGES CXX)
@@ -38,9 +22,9 @@ set(CMAKE_AUTOMOC OFF)
 set(CMAKE_AUTORCC OFF)
 set(CMAKE_AUTOUIC OFF)
 
-# Build type default
+# Build type default. User changed it from Release for rapid development (?).
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
+    set(CMAKE_BUILD_TYPE Debug)
 endif()
 
 # Include CPM.cmake for header-only libraries
@@ -51,7 +35,7 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/CPM.cmake")
 endif()
 include(${CMAKE_SOURCE_DIR}/cmake/CPM.cmake)
 
-# Compiler warnings (we're professionals here)
+# Compiler warnings (we're seniors here)
 add_compile_options(
     -Wall -Wextra -Wpedantic
     -Wno-unused-parameter
@@ -64,6 +48,7 @@ add_compile_options(
 )
 
 # Find packages
+# TODO: is web engine needed anymore? As browser code removed and the user has a file somewhere showing how to do callback urls for Google login if needed via Suno API. 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Multimedia Network Quick Qml QuickControls2 WebEngineWidgets Sql)
 find_package(PkgConfig REQUIRED)
 
@@ -106,7 +91,7 @@ else()
     )
 endif()
 
-# PFFFT - High-performance SIMD FFT (replaces kissfft)
+# PFFFT - High-performance SIMD FFT (replaced kissfft)
 CPMAddPackage(
     NAME pffft
     GIT_REPOSITORY https://github.com/marton78/pffft.git
@@ -154,33 +139,33 @@ set(UTIL_SOURCES
 )
 
 set(CORE_SOURCES
-	src/core/Logger.hpp
-	src/core/Logger.cpp
-	src/core/ConfigData.hpp
-	src/core/ConfigParsers.hpp
-	src/core/ConfigParsers.cpp
-	src/core/ConfigLoader.hpp
-	src/core/ConfigLoader.cpp
-	src/core/Config.hpp
-	src/core/Config.cpp
-	src/core/CliArg.hpp
-	src/core/CliArgs.inc
-	src/core/CliUtils.hpp
-	src/core/CliUtils.cpp
-	src/core/Application.hpp
-	src/core/Application.cpp
+    src/core/Logger.hpp
+    src/core/Logger.cpp
+    src/core/ConfigData.hpp
+    src/core/ConfigParsers.hpp
+    src/core/ConfigParsers.cpp
+    src/core/ConfigLoader.hpp
+    src/core/ConfigLoader.cpp
+    src/core/Config.hpp
+    src/core/Config.cpp
+    src/core/CliArg.hpp
+    src/core/CliArgs.inc
+    src/core/CliUtils.hpp
+    src/core/CliUtils.cpp
+    src/core/Application.hpp
+    src/core/Application.cpp
 )
 
 set(AUDIO_SOURCES
-  src/audio/AudioEngine.hpp
-  src/audio/AudioEngine.cpp
-  src/audio/AudioAnalyzer.hpp
-  src/audio/AudioAnalyzer.cpp
-  src/audio/AudioQueue.hpp
-  src/audio/Playlist.hpp
-  src/audio/Playlist.cpp
-  src/audio/analysis/MediaMetadata.hpp
-  src/audio/analysis/MediaMetadata.cpp
+    src/audio/AudioEngine.hpp
+    src/audio/AudioEngine.cpp
+    src/audio/AudioAnalyzer.hpp
+    src/audio/AudioAnalyzer.cpp
+    src/audio/AudioQueue.hpp
+    src/audio/Playlist.hpp
+    src/audio/Playlist.cpp
+    src/audio/analysis/MediaMetadata.hpp
+    src/audio/analysis/MediaMetadata.cpp
 )
 
 set(VISUALIZER_SOURCES
@@ -214,9 +199,9 @@ set(SUNO_SOURCES
     src/suno/SunoClient.cpp
     src/suno/SunoOrchestrator.hpp
     src/suno/SunoOrchestrator.cpp
-  src/suno/SunoDatabase.hpp
-  src/suno/SunoDatabase.cpp
-  src/suno/SunoLyrics.hpp
+    src/suno/SunoDatabase.hpp
+    src/suno/SunoDatabase.cpp
+    src/suno/SunoLyrics.hpp
     src/suno/SunoLyrics.cpp
     src/suno/SunoAuthManager.hpp
     src/suno/SunoAuthManager.cpp
@@ -283,71 +268,71 @@ set(QML_BRIDGE_SOURCES
     src/qml_bridge/VisualizerQFBO.cpp
 )
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════
 # UI SOURCES - Minimal auth/controller classes for QML
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════
 set(UI_SOURCES
-src/ui/controllers/SunoController.hpp
-src/ui/controllers/SunoController.cpp
-src/ui/SunoPersistentAuth.hpp
-src/ui/SunoPersistentAuth.cpp
-src/ui/SystemBrowserAuth.hpp
-src/ui/SystemBrowserAuth.cpp
+    src/ui/controllers/SunoController.hpp
+    src/ui/controllers/SunoController.cpp
+    src/ui/SunoPersistentAuth.hpp
+    src/ui/SunoPersistentAuth.cpp
+    src/ui/SystemBrowserAuth.hpp
+    src/ui/SystemBrowserAuth.cpp
 )
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════
 # QML FILES - Declarative UI components
-# ═══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════
 set(QML_SOURCES
-  src/qml/main.qml
-  src/qml/styles/Theme.qml
-  src/qml/components/AccordionPanel.qml
-  src/qml/components/AccordionContainer.qml
-  src/qml/components/AppButton.qml
-  src/qml/components/AppSlider.qml
-  src/qml/components/KaraokeMaster.qml
-  src/qml/components/KaraokeSettings.qml
-  src/qml/components/VisualizerOverlay.qml
-  src/qml/panels/PlaybackPanel.qml
-  src/qml/panels/PlaylistPanel.qml
-  src/qml/panels/PresetsPanel.qml
-  src/qml/panels/LyricsPanel.qml
-  src/qml/panels/SunoPanel.qml
-  src/qml/panels/OverlayPanel.qml
-  src/qml/panels/RecordingPanel.qml
-  src/qml/panels/SettingsPanel.qml
+    src/qml/main.qml
+    src/qml/styles/Theme.qml
+    src/qml/components/AccordionPanel.qml
+    src/qml/components/AccordionContainer.qml
+    src/qml/components/AppButton.qml
+    src/qml/components/AppSlider.qml
+    src/qml/components/KaraokeMaster.qml
+    src/qml/components/KaraokeSettings.qml
+    src/qml/components/VisualizerOverlay.qml
+    src/qml/panels/PlaybackPanel.qml
+    src/qml/panels/PlaylistPanel.qml
+    src/qml/panels/PresetsPanel.qml
+    src/qml/panels/LyricsPanel.qml
+    src/qml/panels/SunoPanel.qml
+    src/qml/panels/OverlayPanel.qml
+    src/qml/panels/RecordingPanel.qml
+    src/qml/panels/SettingsPanel.qml
 )
 
 # Common include directories
 set(COMMON_INCLUDES
-  ${CMAKE_SOURCE_DIR}/src
-  ${CMAKE_SOURCE_DIR}/src/qml_bridge
-  ${SPDLOG_INCLUDE_DIRS}
-  ${FMT_INCLUDE_DIRS}
-  ${TOMLPP_INCLUDE_DIRS}
-  ${GLEW_INCLUDE_DIRS}
-  ${GLM_INCLUDE_DIRS}
-  ${FFMPEG_INCLUDE_DIRS}
-  ${PROJECTM_INCLUDE_DIRS}
-  ${readerwriterqueue_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/qml_bridge
+    ${SPDLOG_INCLUDE_DIRS}
+    ${FMT_INCLUDE_DIRS}
+    ${TOMLPP_INCLUDE_DIRS}
+    ${GLEW_INCLUDE_DIRS}
+    ${GLM_INCLUDE_DIRS}
+    ${FFMPEG_INCLUDE_DIRS}
+    ${PROJECTM_INCLUDE_DIRS}
+    ${readerwriterqueue_SOURCE_DIR}
 )
 
 # Common link libraries
 set(COMMON_LIBS
-Qt6::Core
-Qt6::Gui
-Qt6::Multimedia
-Qt6::Network
-Qt6::Quick
-Qt6::Qml
-Qt6::QuickControls2
-Qt6::WebEngineWidgets
-Qt6::Sql
-${TAGLIB_LIBRARIES}
-${GLEW_LIBRARIES}
-${FFMPEG_LIBRARIES}
-projectM-4
-projectM-4-playlist
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Multimedia
+    Qt6::Network
+    Qt6::Quick
+    Qt6::Qml
+    Qt6::QuickControls2
+    Qt6::WebEngineWidgets
+    Qt6::Sql
+    ${TAGLIB_LIBRARIES}
+    ${GLEW_LIBRARIES}
+    ${FFMPEG_LIBRARIES}
+    projectM-4
+    projectM-4-playlist
     OpenGL
 )
 
@@ -376,16 +361,16 @@ list(APPEND CPM_LIBS PFFFT::PFFFT)
 
 # Define libraries
 add_library(project_lib STATIC
-${UTIL_SOURCES}
-${CORE_SOURCES}
-${AUDIO_SOURCES}
-${VISUALIZER_SOURCES}
-${SUNO_SOURCES}
-${RECORDER_SOURCES}
-${LYRICS_SOURCES}
-${UI_SOURCES}
-${QML_BRIDGE_SOURCES}
-resources/chadvis-projectm-qt.qrc
+    ${UTIL_SOURCES}
+    ${CORE_SOURCES}
+    ${AUDIO_SOURCES}
+    ${VISUALIZER_SOURCES}
+    ${SUNO_SOURCES}
+    ${RECORDER_SOURCES}
+    ${LYRICS_SOURCES}
+    ${UI_SOURCES}
+    ${QML_BRIDGE_SOURCES}
+    resources/chadvis-projectm-qt.qrc
 )
 
 set_target_properties(project_lib PROPERTIES
@@ -397,14 +382,15 @@ set_target_properties(project_lib PROPERTIES
 target_include_directories(project_lib PUBLIC ${COMMON_INCLUDES})
 target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════
 # QML MODULE - Modern UI components
-# ═══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════
 qt_policy(SET QTP0001 NEW)
 
 # Mark QML singletons before qt_add_qml_module
 set_source_files_properties(src/qml/styles/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
+# TODO: Can a versions variable replace all instances of project version?
 qt_add_qml_module(project_lib
     URI ChadVis
     VERSION 1.0
