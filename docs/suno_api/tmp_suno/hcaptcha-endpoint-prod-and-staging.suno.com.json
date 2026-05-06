@@ -1,0 +1,571 @@
+<!DOCTYPE html><!-- Last Published: Thu Apr 23 2026 15:12:58 GMT+0000 (Coordinated Universal Time) --><html data-wf-domain="www.hcaptcha.com" data-wf-page="64da8519e2366b2db167b1d3" data-wf-site="64da82f6bf67de1b12789030" lang="en"><head><meta charset="utf-8"><link href="https://cdn.prod.website-files.com" rel="preconnect" crossorigin="anonymous"><title>hCaptcha - Stop bots and human abuse.</title><meta content="Enterprise grade AI security platform with a privacy focus. Replace reCAPTCHA v2, v3, or Enterprise with next generation tech at better value. Used by millions." name="description"><meta content="hCaptcha - Stop bots and human abuse." property="og:title"><meta content="Enterprise grade AI security platform with a privacy focus. Replace reCAPTCHA v2, v3, or Enterprise with next generation tech at better value. Used by millions." property="og:description"><meta content="hCaptcha - Stop bots and human abuse." property="twitter:title"><meta content="Enterprise grade AI security platform with a privacy focus. Replace reCAPTCHA v2, v3, or Enterprise with next generation tech at better value. Used by millions." property="twitter:description"><meta property="og:type" content="website"><meta content="summary_large_image" name="twitter:card"><meta content="width=device-width, initial-scale=1" name="viewport"><link href="css/2927a5ba2cd455141ae68582f8d38f73e0a40a37bb24e7ceaa488e5e293e2e3d.css" rel="stylesheet" type="text/css" crossorigin="anonymous"><link href="https://fonts.googleapis.com" rel="preconnect"><link href="https://fonts.gstatic.com" rel="preconnect" crossorigin="anonymous"><script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js" type="text/javascript"></script><script type="text/javascript">WebFont.load({  google: {    families: ["DM Sans:300,400,500,600,700"]  }});</script><script type="text/javascript">!function(o,c){var n=c.documentElement,t=" w-mod-";n.className+=t+"js",("ontouchstart"in o||o.DocumentTouch&&c instanceof DocumentTouch)&&(n.className+=t+"touch")}(window,document);</script><link href="images/64da82f6bf67de1b1278926d_favicon%25403x.png" rel="shortcut icon" type="image/x-icon"><link href="images/64da82f6bf67de1b127890f9_hcaptcha-symbol-256.png" rel="apple-touch-icon"><link href="https://www.hcaptcha.com" rel="canonical"><script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "@id": "https://www.hcaptcha.com/#product",
+  "name": "hCaptcha",
+  "applicationCategory": "SecurityApplication",
+  "applicationSubCategory": "Bot Detection and Fraud Prevention",
+  "operatingSystem": "Web, iOS, Android",
+  "url": "https://www.hcaptcha.com",
+  "description": "Privacy-first bot detection and fraud prevention platform that identifies and counters AI agents, bots, and human threats targeting their online properties using behavioral and intent-based analysis.",
+  "publisher": {
+    "@id": "https://www.hcaptcha.com/#organization"
+  },
+  "sameAs": [
+    "https://www.linkedin.com/company/hcaptcha",
+    "https://twitter.com/hcaptcha",
+    "https://www.g2.com/products/hcaptcha-hcaptcha/reviews"
+  ],
+  "applicationSuite": "hCaptcha",
+  "featureList": [
+    "Bot detection and mitigation",
+    "Fraud prevention",
+    "Account defense",
+    "User journey analysis",
+    "Multi-factor authentication",
+    "Machine learning-based abuse detection",
+    "AI agent detection",
+    "Account takeover protection",
+    "Multi-accounting detection",
+    "Synthetic identity detection",
+    "Incentive abuse detection",
+    "Transaction fraud prevention"
+  ]
+}
+</script><style type="text/css">
+  .w-embed { pointer-events:none; }
+  .noclick, .more-info { pointer-events:none; }
+  .click { pointer-events:all; }
+  * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  p { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+</style>
+
+
+<script type="text/javascript">
+  function getqvar(varName){
+    var qs = unescape(window.location.search) + '&';
+    var regex = new RegExp('.*?[&\\?]' + varName + '=(.*?)&.*');
+    val = qs.replace(regex, "$1");
+    return val == qs ? false : val;
+  }
+
+  window.referrer = getqvar('r');
+  if (window.referrer) {
+    document.cookie = "r=" + window.referrer + ';path=/;domain=.hcaptcha.com';
+  }
+</script>
+
+<script>
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    posthog.init('phc_fhS1E6ysPjT3r9Q1EO1kehh905Xla2NweqvcLnIYjO3', {
+        api_host: 'https://u.hcaptcha.com',
+        persistence: 'memory',
+        disable_session_recording: true,
+        enable_heatmaps: true,
+        disable_surveys: true,
+    })
+</script>
+
+<script async="" defer="" data-domain="hcaptcha.com" src="https://newassets.hcaptcha.com/js/p.js"></script>
+<script type="text/javascript">window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }</script>
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "https://www.hcaptcha.com/#organization",
+  "name": "hCaptcha",
+  "alternateName": "hCaptcha Enterprise",
+  "legalName": "Intuition Machines, Inc.",
+  "url": "https://www.hcaptcha.com",
+  "description": "hCaptcha is a comprehensive bot management and fraud prevention suite for organizations seeking to effectively identify and counter AI agent, bot, or human threats targeting their online properties.",
+  "sameAs": [
+    "https://www.linkedin.com/company/hcaptcha",
+    "https://x.com/hcaptcha",
+    "https://www.g2.com/products/hcaptcha-hcaptcha/reviews"
+  ]
+}
+</script><style>
+.sub-menu { overflow: scroll; overflow-x: hidden; }
+.sub-menu::-webkit-scrollbar {
+    width: 0;  /* Remove scrollbar space */
+    height: 0; 
+    background: transparent;  /* Optional: just make scrollbar invisible */
+}
+/* Optional: show position indicator in red */
+.sub-menu::-webkit-scrollbar-thumb {
+    background: transparent;
+}
+
+.carousel-nav {
+  -ms-overflow-style: none;
+}
+.carousel-nav::-webkit-scrollbar {
+  display: none;
+}
+</style>
+
+<!-- Script 1: GCLID + UTM Saver -->
+<script type="text/javascript">
+(function() {
+  // Function to get a URL parameter
+  function getQueryParam(param) {
+    var query = window.location.search.substring(1);
+    var vars = query.split('&');
+    for (var i = 0; i < vars.length; i++) {
+      var pair = vars[i].split('=');
+      if (decodeURIComponent(pair[0]) === param) {
+        return decodeURIComponent(pair[1]);
+      }
+    }
+    return null;
+  }
+  
+  // Parameters we want to store
+	const utmParams = [
+    'utm_source',
+    'utm_medium',
+    'utm_campaign',
+    'utm_term',
+    'utm_content',
+  ];
+
+  // Get gclid from URL
+  var gclid = getQueryParam('gclid');
+
+  // If gclid exists, save it in session storage
+  if (gclid) {
+    sessionStorage.setItem('gclid', gclid);
+  }
+  
+  // Save any UTM params if present
+  var newUtmData = {};
+  utmParams.forEach(function(param) {
+    var value = getQueryParam(param);
+    if (value) {
+      newUtmData[param] = value.trim();
+    }
+  });
+  
+  if (Object.keys(newUtmData).length === 0) {
+  	return;
+  };
+  
+  var existing = {};
+  try {
+  	existing = JSON.parse(sessionStorage.getItem('utmData') || '{}');
+  } catch (e) {
+  	existing = {};
+  }
+  
+  for (var key in newUtmData) {
+  	if (Object.prototype.hasOwnProperty.call(newUtmData, key)) {
+    	existing[key] = newUtmData[key];
+    }
+  }
+  
+  sessionStorage.setItem('utmData', JSON.stringify(existing));
+})();
+</script>
+
+<script type="text/javascript" src="https://js.hcaptcha.com/1/api.js?render=explicit&amp;onload=onLoad" async="" defer=""></script>
+<script type="text/javascript">
+  function onLoad() {
+    hcaptcha.render("h-captcha", {
+      sitekey: "bff2db2a-931a-42e0-a13e-12746ada9366",
+      size: "invisible",
+    });
+
+    hcaptcha.execute();
+  }
+</script></head><body><div data-animation="default" class="header w-nav" data-easing2="ease-out-cubic" data-vavilon="header-labeling-services" data-easing="ease-in-cubic" aria-label="top" data-collapse="medium" role="banner" data-no-scroll="1" data-duration="300" bind="69afaaec-36d3-5321-a161-243b8802a3b9"><div class="mobile-menu"><div class="mobile-header-trigger"><a aria-label="hCaptcha home page" href="index.html" aria-current="page" class="w-inline-block w--current"><img src="fonts/64da82f6bf67de1b127890b5_hcaptcha-logo-landscape.svg" loading="lazy" alt="hCaptcha logo (horizontal)" class="mobile-header-logo"></a><div class="mobile-menu-icon"><img src="images/64f60bf617f515e82d3150ff_close-icon-24px.png" loading="lazy" data-w-id="35ec06ba-7260-17f5-9aa9-7b720c816f52" alt="close menu" class="mobile-header-close-icon"><img src="fonts/64f5f0dbb2064353a5bf1cb5_menu.svg" loading="lazy" data-w-id="35ec06ba-7260-17f5-9aa9-7b720c816f53" alt="menu button" class="mobile-header-menu-icon"></div></div><div class="mobile-header-menu-content enterpriisev2-mobile-menu-content"><div class="enterprisev2-mobile-menu-items"><div data-w-id="35ec06ba-7260-17f5-9aa9-7b720c816f56" class="mobile-dropdown-wrapper mobile-sub-dropdown mobile-sub-chevron"><div class="dropdown-text-chevron"><div class="text-block-39">Platform</div><img src="fonts/695c58478f3531c5566b44d6_chevron-dark.svg" loading="lazy" alt="" class="mobile-chevron mobile-sub-chevron"></div><div class="mobile-dropdown-content mobile-sub-dropdown"><div class="platform-type-header">PLANS</div><a href="pro.html" class="mobile-dropdown-link">Pro</a><a href="enterprise.html" class="mobile-dropdown-link">Enterprise</a><div class="platform-type-header pt-5">FEATURES</div><a href="bot-detection.html" class="mobile-dropdown-link">Bot Detection</a><a href="user-journeys.html" class="mobile-dropdown-link">User Journeys</a><a href="mfa.html" class="mobile-dropdown-link">MFA</a><a href="fraud-protection.html" class="mobile-dropdown-link">Fraud Protection</a><a href="use-case-account-defense.html" class="mobile-dropdown-link">Account Defense</a><a href="private-learning.html" class="mobile-dropdown-link mb-5">Private Learning</a></div></div><div data-w-id="35ec06ba-7260-17f5-9aa9-7b720c816f70" class="mobile-dropdown-wrapper mobile-sub-dropdown mobile-sub-chevron"><div class="dropdown-text-chevron"><div class="text-block-39">Use Cases</div><img src="fonts/695c58478f3531c5566b44d6_chevron-dark.svg" loading="lazy" alt="" class="mobile-chevron mobile-sub-chevron"></div><div class="mobile-dropdown-content mobile-sub-dropdown"><div class="platform-type-header">ACCOUNT&nbsp;SECURITY</div><a href="account-takeovers.html" class="mobile-dropdown-link">Account Takeover</a><a href="multi-accounting-collusion.html" class="mobile-dropdown-link">Multi-Accounting</a><a href="account-sharing.html" class="mobile-dropdown-link">Account Sharing</a><div class="platform-type-header pt-5">IDENTITY &amp;&nbsp;FRAUD</div><a href="synthetic-identities.html" class="mobile-dropdown-link">Synthetic Identities</a><a href="incentive-abuse.html" class="mobile-dropdown-link">Incentive Abuse</a><a href="transaction-fraud.html" class="mobile-dropdown-link">Transaction Fraud</a></div></div><a href="pricing.html" class="mobile-header-item w-inline-block"><div class="text-block-41">Pricing</div></a><div data-w-id="9a7bc4b1-f472-24a7-e90a-1455f6bb1ac5" class="mobile-dropdown-wrapper mobile-sub-dropdown mobile-sub-chevron docs-dropdown"><div class="dropdown-text-chevron"><div class="text-block-39">Docs</div><img src="fonts/695c58478f3531c5566b44d6_chevron-dark.svg" loading="lazy" alt="" class="mobile-chevron mobile-sub-chevron"></div><div class="mobile-dropdown-content mobile-sub-dropdown docs-links"><div class="platform-type-header">DOCUMENTATION</div><a href="https://docs.hcaptcha.com/" class="mobile-dropdown-link">Developer Guide</a><a href="https://docs.hcaptcha.com/integrations" class="mobile-dropdown-link">Integrations</a><a href="https://docs.hcaptcha.com/ent_overview" class="mobile-dropdown-link">Enterprise Features</a><a href="https://docs.hcaptcha.com/switch" class="mobile-dropdown-link">Switch from reCAPTCHA</a><div class="platform-type-header pt-5">RESOURCES</div><a href="https://docs.hcaptcha.com/faq" class="mobile-dropdown-link">FAQ</a><a href="blog.html" class="mobile-dropdown-link">Blog</a></div></div></div><div class="mobile-menu-ctas"><a href="pricing.html" data-ph-event="nav_sign_up_light" id="w-node-e22d0e3d-0fd4-b1ef-84e4-43111614a9c6-1614a9c6" class="btn-signup mw-100 w-button">Sign Up</a><a href="https://dashboard.hcaptcha.com/login" id="login-btn" data-ph-event="nav_log_in_light" class="button btn-stroke btn-login w-node-cc03cbc4-d1b0-7d41-521c-8a2094b44f57-94b44f57 w-button">Log In</a></div></div></div><div class="a11y-blog"><div class="a11y-blog-wrapper"><div data-w-id="7167a8eb-2d00-6867-f8e5-bd916e4cd9a2" class="parent"><div class="div-block-70 grey-600-text"><div class="cap1">From the blog:</div><a href="https://www.hcaptcha.com/post/hcaptcha-captchas-are-highly-effective-against-bots-and-agents-in-2026" rel="noopener" class="cap1 bold grey-600-text">hCaptcha CAPTCHAs: Highly Effective Against Bots and Agents in 2026 →</a><div data-w-id="7167a8eb-2d00-6867-f8e5-bd916e4cd9a8" class="x-container"><div class="x-icon w-embed"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M3.293 3.29279C2.90247 3.68331 2.90231 4.31664 3.29264 4.70736L8.24477 9.66448L3.30166 14.6126C2.91134 15.0033 2.91149 15.6366 3.30202 16.0271C3.69254 16.4177 4.32555 16.4175 4.71588 16.0268L9.65827 11.0794L14.6006 16.0268C14.991 16.4175 15.624 16.4176 16.0145 16.0271C16.405 15.6366 16.4052 15.0033 16.0149 14.6126L11.0718 9.66447L16.0239 4.70737C16.4142 4.31665 16.4141 3.68332 16.0235 3.2928C15.633 2.90227 15 2.90243 14.6097 3.29316L9.65827 8.24955L4.70685 3.29315C4.31653 2.90242 3.68352 2.90226 3.293 3.29279Z" fill="currentColor"></path>
+</svg></div></div></div></div><div data-w-id="7167a8eb-2d00-6867-f8e5-bd916e4cd9aa" class="parent"><div class="div-block-74"><a id="switch-to-english" tabindex="0" aria-label="Switch to English translation" data-vavilon="switch-to-english-link--do-not-translate" whenclicked="setLang('en')" bind="492c3087-facd-576f-62be-84e9a7d5f70b" href="#" class="cap1 grey-600-text subheader-second english">Switch to English</a><a id="acc-button-dup" tabindex="0" aria-label="Learn more about accessibility options and sign up to  bypass the challenge" bind="492c3087-facd-576f-62be-84e9a7d5f709" href="accessibility.html" class="cap1 grey-600-text subheader-second">Accessibility</a><div data-w-id="7167a8eb-2d00-6867-f8e5-bd916e4cd9b0" class="x-container"><div class="x-icon second w-embed"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M3.293 3.29279C2.90247 3.68331 2.90231 4.31664 3.29264 4.70736L8.24477 9.66448L3.30166 14.6126C2.91134 15.0033 2.91149 15.6366 3.30202 16.0271C3.69254 16.4177 4.32555 16.4175 4.71588 16.0268L9.65827 11.0794L14.6006 16.0268C14.991 16.4175 15.624 16.4176 16.0145 16.0271C16.405 15.6366 16.4052 15.0033 16.0149 14.6126L11.0718 9.66447L16.0239 4.70737C16.4142 4.31665 16.4141 3.68332 16.0235 3.2928C15.633 2.90227 15 2.90243 14.6097 3.29316L9.65827 8.24955L4.70685 3.29315C4.31653 2.90242 3.68352 2.90226 3.293 3.29279Z" fill="currentColor"></path>
+</svg></div></div></div></div></div></div><div aria-hidden="false" class="desktop-menu"><div class="navbar-container-dekstop allow-overflow"><a data-ph-event="nav_logo_light" aria-label="hCaptcha homepage" href="index.html" aria-current="page" class="hcaptcha-logo logo-nav w-nav-brand w--current"></a><div class="header-nav"><div id="dropdown-wrapper" data-ph-event="nav_open_platform_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a48d8" class="dropdown-wrapper height-full dropdown-hover dropdown-spacing chevron-rotate cursor-pointer tab-pr-8 tab-full-h"><div class="nav-link vavilon nav-dark dark-nav-spacing cursor-pointer px-0 light-grey-800">Platform</div><div class="dropdown-content dc-tablet dropdown-hover dropdown-platform tab-pos tab-w-platform tab-fix-pos desk-pos light-border-pos"><div class="use-case-div tab-w-auto platform-plans-container"><div class="use-case-type pl-16">PLANS</div><div class="platform-plans tab-gap-24"><a data-ph-event="nav_platform_pro_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a48e0" href="pro.html" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6955c08179ae452fdc251391_pro-code-icon.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Pro</div><div class="use-case-description tab-15px">Frictionless user experience</div></div></a><a data-ph-event="nav_platform_enterprise_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a48e7" href="enterprise.html" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6955c0ae5c2847a6ec442497_ent-shield-icon.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Enterprise</div><div class="use-case-description tab-15px">World-class bot and abuse protection</div></div></a></div></div><div class="use-case-div tab-w-auto platform-plans-container"><div class="use-case-type pl-16">FEATURES</div><div class="platform-plans pb-32 tab-space-24"><a data-ph-event="nav_platform_bot_detection_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a48f2" href="bot-detection.html" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6952e2d4d52e0f49a076c50e_Robot.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Bot Detection</div><div class="use-case-description tab-15px">Multi-layered bot defense</div></div></a><a data-ph-event="nav_platform_user_journeys_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a48f9" href="user-journeys.html" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6955c730f4aaa93f56bcf30f_user-journeys.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">User Journeys</div><div class="use-case-description tab-15px">Protect across sessions, devices, and apps</div></div></a></div><div class="platform-plans pb-32 tab-space-24"><a data-ph-event="nav_platform_fraud_protection_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a4901" href="fraud-protection.html" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6952e3115555eff0c0889776_CreditCard.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Fraud Protection</div><div class="use-case-description tab-15px">Secure transactions from fraud and abuse</div></div></a><a data-ph-event="nav_platform_mfa_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a4908" href="mfa.html" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6955c72f95d001019bf768cf_mfa.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">MFA</div><div class="use-case-description tab-15px">Stronger verification with pull-based SMS&nbsp;</div></div></a></div><div class="platform-plans tab-gap-24"><a data-ph-event="nav_platform_account_defense_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a4910" href="use-case-account-defense.html" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6955c72ff2d41978299b0f7b_account-defense.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Account Defense</div><div class="use-case-description tab-15px">Privacy-preserving ATO&nbsp;detection</div></div></a><a data-ph-event="nav_platform_private_learning_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a4917" href="private-learning.html" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6955c874d8593e9b7fc4f39c_private-learning.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Private Learning</div><div class="use-case-description tab-15px">ML-driven detection, response, and analysis</div></div></a></div></div></div><img src="fonts/695c58478f3531c5566b44d6_chevron-dark.svg" loading="lazy" alt="" class="chevron-dropdown chevron-icon chevron-rotate"></div><div id="dropdown-wrapper" data-ph-event="nav_open_use_cases_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a491f" class="dropdown-wrapper height-full dropdown-hover dropdown-spacing chevron-rotate cursor-pointer tab-px-8 tab-full-h"><div class="nav-link vavilon nav-dark dark-nav-spacing cursor-pointer px-0 light-grey-800">Use Cases</div><div class="dropdown-content dc-tablet dropdown-hover dropdown-use-cases mw-mh tab-pos tab-fix-pos desk-pos light-border-pos"><div class="use-case-div tab-w-auto max-w-369 tab-mw"><div class="use-case-type pl-16">ACCOUNT&nbsp;SECURITY</div><a data-ph-event="nav_use_case_ato_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a4926" href="account-takeovers.html" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6952e21bd696d96b3037519f_UserCircleDashed.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Account Takeover</div><div class="use-case-description tab-15px">Block takeover attempts</div></div></a><a data-ph-event="nav_use_case_multi_accounting_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a492d" href="multi-accounting-collusion.html" class="use-case-link mb-32 full-w tab-mb-24 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6952e2444949e4600faf3359_UsersFour.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Multi-Accounting</div><div class="use-case-description tab-15px">Stop abuse across accounts</div></div></a><a data-ph-event="nav_use_case_account_sharing_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a4934" href="account-sharing.html" class="use-case-link full-w w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6952e26634a95786a99574a5_UsersTwo.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Account Sharing</div><div class="use-case-description tab-15px">Enforce access and usage policies</div></div></a></div><div id="w-node-_0b3f5aca-6481-0fa3-c2b7-67a9a11a493b-6e4cd97e" class="use-case-div tab-w-auto max-w-369 tab-mw tab-mt"><div class="use-case-type pl-16">IDENTITY&nbsp;&amp;&nbsp;FRAUD</div><a data-ph-event="nav_use_case_synthetic_identities_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a493e" href="synthetic-identities.html" class="use-case-link mb-32 full-w tab-mb-24 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6952e2d4d52e0f49a076c50e_Robot.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Synthetic Identities</div><div class="use-case-description tab-15px">Prevent fake account creation</div></div></a><a data-ph-event="nav_use_case_incentive_abuse_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a4945" href="incentive-abuse.html" class="use-case-link mb-32 full-w tab-mb-24 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6952e2f2d36e4f0e1376723b_HandCoins.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Incentive Abuse</div><div class="use-case-description tab-15px">Stop fraudulent reward claims</div></div></a><a data-ph-event="nav_use_case_transaction_fraud_light" data-w-id="0b3f5aca-6481-0fa3-c2b7-67a9a11a494c" href="transaction-fraud.html" class="use-case-link full-w w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6952e3115555eff0c0889776_CreditCard.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Transaction Fraud</div><div class="use-case-description tab-15px">Prevent fraudulent payments</div></div></a></div></div><img src="fonts/695c58478f3531c5566b44d6_chevron-dark.svg" loading="lazy" alt="" class="chevron-dropdown chevron-icon chevron-rotate"></div><a href="pricing.html" data-ph-event="nav_pricing_light" class="nav-link vavilon first tab-pricing tab-link w-nav-link">Pricing</a><div id="dropdown-wrapper" data-ph-event="nav_open_docs_light" data-w-id="364b87b4-fe49-79cc-0336-29fef222a9a6" class="dropdown-wrapper height-full dropdown-hover dropdown-spacing chevron-rotate cursor-pointer tab-px-8 tab-full-h"><div class="nav-link vavilon nav-dark dark-nav-spacing cursor-pointer px-0 light-grey-800">Docs</div><div class="dropdown-content dc-tablet dropdown-hover dropdown-platform tab-pos tab-w-platform tab-fix-pos desk-pos light-border-pos docs-dropdown tab-w"><div class="use-case-div tab-w-auto platform-plans-container"><div class="use-case-type pl-16">DOCUMENTATION</div><div class="platform-plans pb-32 tab-space-24"><a data-ph-event="nav_docs_docs_home_light" data-w-id="c0d55d49-7825-b925-1faa-00bc9e5f0f85" href="https://docs.hcaptcha.com/" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6955c08179ae452fdc251391_pro-code-icon.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Developer Guide</div><div class="use-case-description tab-15px">Get started in minutes</div></div></a><a data-ph-event="nav_docs_docs_integrations_light" data-w-id="c0d55d49-7825-b925-1faa-00bc9e5f0f8d" href="https://docs.hcaptcha.com/integrations" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/69952c9fe7133be44ce3f4cd_integrations-docs%20%282%29.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Integrations</div><div class="use-case-description tab-15px">Hundreds of plugins and integrations</div></div></a></div><div class="platform-plans tab-gap-24"><a data-ph-event="nav_docs_docs_ent_overview_light" data-w-id="c0d55d49-7825-b925-1faa-00bc9e5f0fa7" href="https://docs.hcaptcha.com/ent_overview" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6994e28e7e9dcf5618501b74_ent-docs.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Enterprise Features</div><div class="use-case-description tab-15px">Overview of hCaptcha Enterprise</div></div></a><a data-ph-event="nav_docs_docs_switch_light" data-w-id="c0d55d49-7825-b925-1faa-00bc9e5f0faf" href="https://docs.hcaptcha.com/switch" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6994e3bfaff0b0fd34a1190e_switch-docs%20%281%29.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Switch from reCAPTCHA</div><div class="use-case-description tab-15px">Switch with two lines of code</div></div></a></div></div><div class="use-case-div tab-w-auto platform-plans-container"><div class="use-case-type pl-16">RESOURCES</div><div class="platform-plans tab-gap-24"><a data-ph-event="nav_docs_docs_faq_light" data-w-id="c0d55d49-7825-b925-1faa-00bc9e5f0f71" href="https://docs.hcaptcha.com/faq" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6994e4b0245299fe2de1ece2_faq-docs%20%281%29.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">FAQ</div><div class="use-case-description tab-15px">Frequently asked questions</div></div></a><a data-ph-event="nav_docs_blog_light" data-w-id="c0d55d49-7825-b925-1faa-00bc9e5f0f79" href="blog.html" class="use-case-link mb-32 full-w tab-mb-24 tab-gap-8 tab-gap-4 mb-0 w-inline-block"><div class="hover-bg-wrapper"><img src="fonts/6994e542be241f6494fa75e9_blog-docs.svg" loading="lazy" alt="" class="use-case-icon tablet-hidden"></div><div class="use-case-text tab-gap-6"><div class="use-case-title">Blog</div><div class="use-case-description tab-15px">Research, strategies, and more</div></div></a></div></div></div><img src="fonts/695c58478f3531c5566b44d6_chevron-dark.svg" loading="lazy" alt="" class="chevron-dropdown chevron-icon chevron-rotate"></div></div><div class="cta-nav"><div class="headerv2-cta-contaienr header tab-gap"><div><a data-ph-event="nav_contact_sales_light" href="start-a-pilot.html">Contact Sales</a></div><a href="pricing.html" data-ph-event="nav_sign_up_light" id="w-node-e22d0e3d-0fd4-b1ef-84e4-43111614a9c6-1614a9c6" class="btn-signup mw-100 w-button">Sign Up</a><a href="https://dashboard.hcaptcha.com/login" id="login-btn" data-ph-event="nav_log_in_light" class="button btn-stroke btn-login w-node-cc03cbc4-d1b0-7d41-521c-8a2094b44f57-94b44f57 w-button">Log In</a></div></div></div></div></div><div id="h-captcha" class="hcaptcha-beacon-home"></div><div class="section relative center-vertical mb-96 mobile-mb-0 tab-mb-48"><div class="container content-hero enterprise-v2 container-ent-1 container-tablet container-v2 mobile-pt-0"><div class="_50-50-hero-info tab-vert-hero-info"><div class="hero-left-content tab-hero-center"><h5 class="grey-500-text title-subheader-v2 tab-title-subheader-v2">hCaptcha Enterprise</h5><h1 class="title center-text max-width480 nomargin title-v2 tablet-title-v2 mobile-title-v2 tab-52">Understand intent. Stop abuse.<br></h1><h2 class="sub-hero grey-500-text home sub-hero-v2 tab-sub-hero-v2">Protect your services from automated and human threats, while preserving user privacy.</h2><div class="cta-flex-row tab-cta-flex-col"><a data-ph-event="home_get_started_hero" href="pricing.html" class="primary-cta-btn-v2 tab-text-size w-button">Get Started</a><h3 class="grey-500-text h5-sm contact-sales-text-v2 tab-text-and-spacing"><span>or</span> <a href="start-a-pilot.html" class="contact-sales-link-v2 tab-text-size"><span data-ph-event="home_contact_sales_hero">Contact Sales</span></a></h3></div><div class="free-or-pro-cta-flex-div tablet-hidden flex-wrap"><h2 class="sub-hero grey-500-text home sub-hero-v2 mr-5">Looking for hCaptcha Free or Pro? </h2><h3 class="grey-500-text h5-sm contact-sales-text-v2"> <a href="plans.html" class="contact-sales-link-v2 compare-plans-link pl-0"><span data-ph-event="home_compare_plans_hero">compare plans</span></a></h3></div></div><img src="fonts/68cd8c176944ad9b7e95a7eb_hcaptcha_intent_flow.svg" loading="lazy" alt="" class="hcaptcha_intent_flow tablet-max-w mobile-full-w tab-mw mob-mw-80 ml-mw-80"></div></div></div><div class="section section-carousel"><div data-current="Bot Detection" data-easing="ease" data-duration-in="300" data-duration-out="100" class="container-carousel w-tabs"><div class="carousel-nav w-tab-menu"><a data-w-tab="Bot Detection" class="carousel-nav-item w-inline-block w-tab-link w--current"><div class="hero-tab-icon pro-landing w-embed"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M10 13C10 11.3431 11.3431 10 13 10C14.6569 10 16 11.3431 16 13C16 14.6569 14.6569 16 13 16C11.3431 16 10 14.6569 10 13Z" fill="currentColor"></path>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M13 3C7.47715 3 3 7.47715 3 13C3 18.5228 7.47715 23 13 23C15.4013 23 17.6049 22.1536 19.3287 20.7429L28 29.4142L29.4142 28L20.7429 19.3287C22.1536 17.6049 23 15.4013 23 13C23 7.47715 18.5228 3 13 3ZM14 8.10002V6H12V8.10002C10.0409 8.4977 8.4977 10.0409 8.10002 12H6V14H8.10002C8.4977 15.9591 10.0409 17.5023 12 17.9V20H14V17.9C15.9591 17.5023 17.5023 15.9591 17.9 14H20V12H17.9C17.5023 10.0409 15.9591 8.4977 14 8.10002Z" fill="currentColor"></path>
+</svg></div><div class="hero-tab-text pro-landing-titles-carousel">Bot Detection</div></a><a data-w-tab="Fraud Protection" class="carousel-nav-item w-inline-block w-tab-link"><div class="hero-tab-icon w-embed"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M17.75 11.5H18V13H17.75C17.5511 13 17.3603 12.921 17.2197 12.7803C17.079 12.6397 17 12.4489 17 12.25C17 12.0511 17.079 11.8603 17.2197 11.7197C17.3603 11.579 17.5511 11.5 17.75 11.5Z" fill="currentColor"></path>
+<path d="M20 16.5V15H20.25C20.4489 15 20.6397 15.079 20.7803 15.2197C20.921 15.3603 21 15.5511 21 15.75C21 15.9489 20.921 16.1397 20.7803 16.2803C20.6397 16.421 20.4489 16.5 20.25 16.5H20Z" fill="currentColor"></path>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M31 6H7V22H31V6ZM20 7.5V9.5H22.5V11.5H20V13H20.25C20.9793 13 21.6788 13.2897 22.1945 13.8055C22.7103 14.3212 23 15.0207 23 15.75C23 16.4793 22.7103 17.1788 22.1945 17.6945C21.6788 18.2103 20.9793 18.5 20.25 18.5H20V20.5H18V18.5H15V16.5H18V15H17.75C17.0207 15 16.3212 14.7103 15.8055 14.1945C15.2897 13.6788 15 12.9793 15 12.25C15 11.5207 15.2897 10.8212 15.8055 10.3055C16.3212 9.78973 17.0207 9.5 17.75 9.5H18V7.5H20Z" fill="currentColor"></path>
+<path d="M5 8V10H3V26H25V24H27V28H1V8H5Z" fill="currentColor"></path>
+</svg></div><div class="hero-tab-text pro-landing-titles-carousel">Fraud Protection</div></a><a data-w-tab="Account Defense" class="carousel-nav-item w-inline-block w-tab-link"><div class="hero-tab-icon w-embed"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M16 29.3333C16 29.3333 26.6667 24 26.6667 16V6.66667L16 2.66667L5.33333 6.66667V16C5.33333 24 16 29.3333 16 29.3333ZM20.2666 20V18.9333C20.2666 18.3675 20.0419 17.8249 19.6418 17.4248C19.2417 17.0248 18.6991 16.8 18.1333 16.8H13.8666C13.3008 16.8 12.7582 17.0248 12.3581 17.4248C11.9581 17.8249 11.7333 18.3675 11.7333 18.9333V20H20.2666ZM18.1334 12.5333C18.1334 13.7115 17.1782 14.6667 16 14.6667C14.8218 14.6667 13.8667 13.7115 13.8667 12.5333C13.8667 11.3551 14.8218 10.4 16 10.4C17.1782 10.4 18.1334 11.3551 18.1334 12.5333Z" fill="currentColor"></path>
+</svg></div><div class="hero-tab-text pro-landing-titles-carousel">Account Defense</div></a><a data-w-tab="Private Learning" class="carousel-nav-item w-inline-block w-tab-link"><div class="hero-tab-icon w-embed"><svg width="33" height="32" viewBox="0 0 33 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M2.16699 3H11.167C12.8467 3 14.4576 3.66726 15.6453 4.85499C15.9702 5.17988 16.2562 5.53643 16.5002 5.91739C16.7442 5.53643 17.0301 5.17988 17.355 4.85499C18.5427 3.66726 20.1536 3 21.8333 3H30.8333V25H20.5C19.7043 25 18.9413 25.3161 18.3787 25.8787C17.8265 26.4309 17.5118 27.1762 17.5003 27.9559V28H17.5H16.5003H16.5H15.5003H15.5V27.9559C15.4885 27.1762 15.1738 26.4309 14.6216 25.8787C14.059 25.3161 13.296 25 12.5003 25H2.16699V3ZM16.5 9C14.8431 9 13.5 10.3431 13.5 12V14H11.5V20H21.5V14H19.5V12C19.5 10.3431 18.1569 9 16.5 9ZM17.5 14V12C17.5 11.4477 17.0523 11 16.5 11C15.9477 11 15.5 11.4477 15.5 12V14H17.5ZM17.5 17C17.5 17.5523 17.0523 18 16.5 18C15.9477 18 15.5 17.5523 15.5 17C15.5 16.4477 15.9477 16 16.5 16C17.0523 16 17.5 16.4477 17.5 17Z" fill="currentColor"></path>
+</svg></div><div class="hero-tab-text pro-landing-titles-carousel">Private Learning</div></a></div><div class="carousel-content w-tab-content"><div data-w-tab="Bot Detection" class="tab-pane-tab-1-2 w-tab-pane w--tab-active"><div class="carousel-view"><div class="carousel-view-info"><div class="hero-tab-view-title">AI&nbsp;Bot Detection</div><div class="hero-tab-view-text">The world’s most accurate bot detection. Stay ahead of persistent threat actors while preserving user privacy.</div><a href="bot-detection.html" id="w-node-_863a47ec-b978-45cd-4a6a-587026957a8e-26957a74" class="cta cta-stroke w-button">Learn More</a></div><div class="carousel-view-images"><div data-delay="4000" data-animation="slide" class="carousel-slide-interface w-slider" data-autoplay="false" data-easing="ease-out-quart" data-hide-arrows="false" data-disable-swipe="false" data-autoplay-limit="0" data-nav-spacing="3" data-duration="500" data-infinite="true"><div class="carousel-slide-mask w-slider-mask"><div class="carousel-image w-slide"><img sizes="(max-width: 540px) 100vw, 540px" srcset="images/661d643459d1b2809e943965_carousel-img-bot-detection-1-p-500.png 500w, images/661d643459d1b2809e943965_carousel-img-bot-detection-1.png 540w" alt="" src="images/661d643459d1b2809e943965_carousel-img-bot-detection-1.png" loading="lazy" class="ai-bot-detection-img"></div></div><div class="left-arrow w-slider-arrow-left"><div class="hero-tabs-slider-arrow w-icon-slider-left"></div></div><div class="right-arrow w-slider-arrow-right"><div class="hero-tabs-slider-arrow w-icon-slider-right"></div></div><div class="carousel-slide-nav w-slider-nav w-slider-nav-invert w-round"></div></div></div></div></div><div data-w-tab="Fraud Protection" class="w-tab-pane"><div class="carousel-view"><div class="carousel-view-info"><div class="hero-tab-view-title">Fraud Protection</div><div class="hero-tab-view-text">Stop transaction fraud faster, without false positives. Our privacy-preserving approach works with no PII required.</div><a href="fraud-protection.html" id="w-node-_863a47ec-b978-45cd-4a6a-587026957aa1-26957a74" target="_blank" class="cta cta-stroke w-button">Learn More</a></div><div class="carousel-view-images"><div data-delay="4000" data-animation="slide" class="carousel-slide-interface w-slider" data-autoplay="false" data-easing="ease" data-hide-arrows="false" data-disable-swipe="false" data-autoplay-limit="0" data-nav-spacing="3" data-duration="500" data-infinite="true"><div class="carousel-slide-mask w-slider-mask"><div class="w-slide"><img sizes="100vw" srcset="images/661d64333b680d5a1a4f864d_carousel-img-fraud-protection-1-p-500.png 500w, images/661d64333b680d5a1a4f864d_carousel-img-fraud-protection-1.png 540w" alt="" src="images/661d64333b680d5a1a4f864d_carousel-img-fraud-protection-1.png" loading="lazy"></div></div><div class="w-slider-arrow-left"><div class="hero-tabs-slider-arrow w-icon-slider-left"></div></div><div class="w-slider-arrow-right"><div class="hero-tabs-slider-arrow w-icon-slider-right"></div></div><div class="carousel-slide-nav w-slider-nav w-slider-nav-invert w-round"></div></div></div></div></div><div data-w-tab="Account Defense" class="w-tab-pane"><div class="carousel-view"><div class="carousel-view-info"><div class="hero-tab-view-title">Account Defense</div><div class="hero-tab-view-text">Highly accurate account takeover detection that works with every identity provider and integrates with our safer MFA. Included with hCaptcha Enterprise.</div><a href="use-case-account-defense.html" id="w-node-_863a47ec-b978-45cd-4a6a-587026957ab4-26957a74" target="_blank" class="cta cta-stroke w-button">Learn More</a></div><div class="carousel-view-images"><div data-delay="4000" data-animation="slide" class="carousel-slide-interface w-slider" data-autoplay="false" data-easing="ease" data-hide-arrows="false" data-disable-swipe="false" data-autoplay-limit="0" data-nav-spacing="3" data-duration="500" data-infinite="true"><div class="carousel-slide-mask w-slider-mask"><div class="w-slide"><img sizes="100vw" srcset="images/661d64330fea93d3ba6e097d_carousel-img-account-defense-1-p-500.png 500w, images/661d64330fea93d3ba6e097d_carousel-img-account-defense-1.png 540w" alt="" src="images/661d64330fea93d3ba6e097d_carousel-img-account-defense-1.png" loading="lazy"></div></div><div class="w-slider-arrow-left"><div class="hero-tabs-slider-arrow w-icon-slider-left"></div></div><div class="w-slider-arrow-right"><div class="hero-tabs-slider-arrow w-icon-slider-right"></div></div><div class="carousel-slide-nav w-slider-nav w-slider-nav-invert w-round"></div></div></div></div></div><div data-w-tab="Private Learning" class="w-tab-pane"><div class="carousel-view"><div class="carousel-view-info"><div class="hero-tab-view-title">Private Learning</div><div class="hero-tab-view-text">Privacy-preserving abuse detection with zero PII. Custom risk models, real-time adaptive learning as threats change.</div><a href="private-learning.html" id="w-node-_863a47ec-b978-45cd-4a6a-587026957ac7-26957a74" target="_blank" class="cta cta-stroke w-button">Learn More</a></div><div class="carousel-view-images"><div data-delay="4000" data-animation="slide" class="carousel-slide-interface w-slider" data-autoplay="false" data-easing="ease" data-hide-arrows="false" data-disable-swipe="false" data-autoplay-limit="0" data-nav-spacing="3" data-duration="500" data-infinite="true"><div class="carousel-slide-mask w-slider-mask"><div class="w-slide"><img sizes="100vw" srcset="images/661d6434c3d100ab4b0ccd36_carousel-img-private-learning-1-p-500.png 500w, images/661d6434c3d100ab4b0ccd36_carousel-img-private-learning-1.png 540w" alt="" src="images/661d6434c3d100ab4b0ccd36_carousel-img-private-learning-1.png" loading="lazy" class="image-54"></div></div><div class="w-slider-arrow-left"><div class="hero-tabs-slider-arrow w-icon-slider-left"></div></div><div class="w-slider-arrow-right"><div class="hero-tabs-slider-arrow w-icon-slider-right"></div></div><div class="carousel-slide-nav w-slider-nav w-slider-nav-invert w-round"></div></div></div></div></div></div></div></div><div class="section enterprisev2-box-section"><div class="enterprisev2-box-with-img-container"><div class="enterprisev2-box-img-mobile"><img src="images/64f22845dbaf4cb66367e434_Lock_small.png" loading="lazy" sizes="(max-width: 751px) 100vw, 751px" srcset="images/64f22845dbaf4cb66367e434_Lock_small-p-500.png 500w, images/64f22845dbaf4cb66367e434_Lock_small.png 751w" alt="" class="image-45"></div><div class="enterprisev2-box-content-wrapper"><div class="enterprisev2-box-content-right visible"><h1 class="enterprisev2-box-with-img-heading">Protecting category leaders in every industry</h1><div class="enterprisev2-box-with-img-copy">hCaptcha Enterprise is the leader in privacy-first online security, used to protect hundreds of millions of people around the world.</div></div><div class="enterprisev2-box-img-right"><img src="images/64f22845dbaf4cb66367e434_Lock_small.png" loading="lazy" sizes="(max-width: 751px) 100vw, 751px" srcset="images/64f22845dbaf4cb66367e434_Lock_small-p-500.png 500w, images/64f22845dbaf4cb66367e434_Lock_small.png 751w" alt="" class="image-45"></div></div><div class="div-block-136"><div id="deploy" class="teal-400-text center deploy mobile-left-align">Deploy in minutes</div><h1 class="enterprivev2-box-heading-center"><span>Switch from reCAPTCHA with</span> <a href="https://docs.hcaptcha.com/switch/" data-ph-event="home_2_loc_switch_recaptcha" aria-label="Docs on switching to hCaptcha" class="teal-link _32px">two lines of code</a>.</h1><div class="div-block-137"><div class="div-block-138"><div class="text-block-36">Universal Support: <span class="teal-400-text font-weight-700">Hundreds of plugins</span> and native integrations simplify rollout.</div><img src="images/64f219bbea83ec94b14ce5bb_platform-icons-white.png" loading="lazy" alt="" class="image-44"></div><div class="code-block fraud-home"><img src="images/64f2069341906b7deec534e2_img-code-ide-cut-right.png" loading="lazy" sizes="(max-width: 960px) 100vw, 960px" srcset="images/64f2069341906b7deec534e2_img-code-ide-cut-right-p-500.png 500w, images/64f2069341906b7deec534e2_img-code-ide-cut-right-p-800.png 800w, images/64f2069341906b7deec534e2_img-code-ide-cut-right.png 960w" alt="" class="image-43"></div></div></div></div></div><div class="section"><div id="comprehensive" class="container no-padding-bottom"><div class="enterprivev2-centered-content"><h2 class="enterprisev2-content-heading-centered bottom0">Comprehensive Security On Demand</h2><h3 class="enterprisev2-content-subheading-large head-1">One integration, many use cases</h3><div class="enterprisev2-feature-pills"><div class="enterprisev2-feature-pills-container-main"><div class="enterprisev2-feature-outlined-width-at-least-50"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt="" class="pillcheck"><div class="enterprisev2-feature-pill-text">Bad Bots</div></div><div class="enterprisev2-feature-outlined-width-at-least-50"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt="" class="pillcheck"><div class="enterprisev2-feature-pill-text">Human Abuse</div></div></div><div class="enterprisev2-feature-pills-container"><div class="enterprisev2-feature-pill"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt="" class="pillcheck"><div class="enterprisev2-feature-pill-text">Account Takeovers</div></div><div class="enterprisev2-feature-pill"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt="" class="pillcheck"><div class="enterprisev2-feature-pill-text">Credential Stuffing</div></div><div class="enterprisev2-feature-pill"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt="" class="pillcheck"><div class="enterprisev2-feature-pill-text">Purchase Fraud</div></div><div class="enterprisev2-feature-pill"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt="" class="pillcheck"><div class="enterprisev2-feature-pill-text">Card Testing </div></div><div class="enterprisev2-feature-pill"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt="" class="pillcheck"><div class="enterprisev2-feature-pill-text">Chargeback Fraud</div></div><div class="enterprisev2-feature-pill"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt="" class="pillcheck"><div class="enterprisev2-feature-pill-text">SMS Tolling Fraud </div></div><div class="enterprisev2-feature-pill enterprisev2-feature-pill-highlight"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt="" class="pillcheck"><div class="enterprisev2-feature-pill-text">Platform Abuse</div></div><div class="enterprisev2-feature-pill enterprisev2-feature-pill-highlight"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt="" class="pillcheck"><div class="enterprisev2-feature-pill-text">Affiliate Fraud</div></div></div></div><h3 class="enterprisev2-content-subheading-large head-1">Ultra low friction, fully customizable</h3><div class="enterprisev2-content-textblock--max-width">With passive and No-CAPTCHA modes, server side API protection and more, hCaptcha Enterprise is a complete security platform. From threat models to custom themes, get exactly the behavior you want.</div><div class="toppad30"><img src="images/651b50dd4dfb537c4091dced_challenges_rounded_sm.png" loading="lazy" sizes="(max-width: 1528px) 100vw, 1528px" srcset="images/651b50dd4dfb537c4091dced_challenges_rounded_sm-p-500.png 500w, images/651b50dd4dfb537c4091dced_challenges_rounded_sm-p-800.png 800w, images/651b50dd4dfb537c4091dced_challenges_rounded_sm-p-1080.png 1080w, images/651b50dd4dfb537c4091dced_challenges_rounded_sm.png 1528w" alt=""></div><div class="enterprisev2-icons-container"></div></div></div></div><div class="section"><div class="container padding-bottom-mobile"><div class="enterprivev2-centered-content"><h2 class="enterprisev2-content-heading-centered">Compliant and Universal</h2><div class="enterprise-v2-content-two-columns"><div class="enterprisev2-conent-column-left"><div class="enterprisev2-column-image"><img src="images/64de50ad39100256e40d61bc_box-img-world.png" loading="lazy" sizes="(max-width: 540px) 100vw, 540px" srcset="images/64de50ad39100256e40d61bc_box-img-world-p-500.png 500w, images/64de50ad39100256e40d61bc_box-img-world.png 540w" alt="" class="image-world-desktop enterprisev2-image"></div><h3 class="enterprisev2-content-column-heading">Works in every country</h3><div class="enterprisev2-content-column-copy">Unique Zero PII features simplify global compliance for regulated industries. Enable trust and safety while exceeding privacy standards like GDPR, CCPA, and HIPAA.</div><div class="enterprivev2-icon-container-left"><img src="images/64de634618ec1b5fb0735147_icon-padlock-left.png" loading="lazy" alt="" class="image-64"><img src="images/64de6347b938fe0767cb8998_icon-padlock-middle.png" loading="lazy" alt="" class="enterprisev2-icon-middle"><img src="images/64de6345f8b4e62a50a57df0_icon-padlock-right.png" loading="lazy" alt="" class="_25right"><img src="images/6544008d569cbc00c7a89b5e_iso27.png" loading="lazy" width="52" height="52" alt="" class="_80w"><img src="images/65a55f065e5aae11300a625c_iso27701.png" loading="lazy" width="52" height="52" alt="" class="_80w"><img src="images/6544009a0ec27c8af1f488d8_pci.png" loading="lazy" width="54" height="54" alt="" class="_80w"><img src="images/64de3405c42d0072565851ea_SOC2_Logo%20Background%20Removed%201.png" loading="lazy" alt="SOC 2 logo" class="_45w"></div></div><div class="enterprisev2-content-column-right"><div class="enterprisev2-column-image"><img src="images/64de50b1a39c3ff44ccf16bc_box-img-wcag.png" loading="lazy" sizes="(max-width: 540px) 100vw, 540px" srcset="images/64de50b1a39c3ff44ccf16bc_box-img-wcag-p-500.png 500w, images/64de50b1a39c3ff44ccf16bc_box-img-wcag.png 540w" alt="" class="image-46 enterprisev2-image"></div><h3 class="enterprisev2-content-column-heading">Designed for accessibility</h3><div class="enterprisev2-content-column-copy">Flexible options to meet both your security and WCAG 2.1 accessibility requirements, from text-based challenges to our passive Universal Accessibility system.</div><a href="mailto:sales+vpat@hcaptcha.com?subject=VPAT%20Request" class="enterprisev2-btn-outlined w-button">Request a VPAT</a></div></div></div></div></div><section class="section mfa-hp-sect"><div class="w-layout-blockcontainer container tab-mfa-sect-hp mfa-hp-sect-container w-container"><div class="enterprivev2-centered-content mfa-hp-sect"><h2 class="enterprisev2-content-heading-centered mb-0 mfa-hp-sect-header mfa-hp-sect-header-mobile">A new kind of MFA. Zero tolling attacks.</h2><h3 class="enterprisev2-content-subheading-large head-1 mfa-hp-sect-subheader mfa-hp-sect-subh-mobile ml-centered">We flipped the script on SMS</h3><div class="enterprise-v2-content-two-columns mfa-hp-sect-tablet mfa-hp-sect-mobile ml-spacing"><div class="enterprisev2-conent-column-left mfa-hp-sect-col1 tab-pr-0 ml-left"><div class="enterprisev2-column-image mfa-hp-sect-img1 tab-img1"></div><h3 class="enterprisev2-content-column-heading mfa-hp-sect-h3 tab-h3">Stronger Verification</h3><div class="enterprisev2-content-column-copy mfa-hp-sect-desc mobile-pb-0 ml-spacing">Unlike push-based SMS, <a href="mfa.html" class="bold grey-700-text _18-text mfa-hp-sect bold-600">hCaptcha MFA</a>&nbsp;uses a pull-based approach that simplifies the user experience and eliminates toll fraud, making it more secure by design.</div></div><div class="enterprisev2-content-column-right mfa-hp-sect-col2 tab-pl-0"><div class="enterprisev2-column-image mfa-hp-sect-img2 tab-img-2"></div><h3 class="enterprisev2-content-column-heading mfa-hp-sect-h3 tab-h3">Richer Signals for ATO Detection</h3><div class="enterprisev2-content-column-copy mfa-hp-sect-desc mobile-pb-0 ml-spacing">SMS alone is unreliable. Combining pull-based SMS&nbsp;with <a href="use-case-account-defense.html"><strong class="bold grey-700-text _18-text mfa-hp-sect bold-600">Account Defense</strong></a> gives you a deeper, more accurate picture of account takeover attempts.</div></div></div></div></div></section><div class="section enterprisev2-box-section topppad60"><div class="enterprisev2-box-container-with-bottom-bg-img"><div class="enterprisev2-box-content-wrapper-align-top"><div class="enterprisev2-box-title-left"><h1 class="enterprivev2-box-heading">Find Threats Without Fingerprinting Your Users</h1></div><div class="enterprisev2-box-content-right"><div class="enterprisev2-box-copy-highlight">Traditional fingerprints are becoming useless for stopping attacks. Browser makers are working to break them, and attackers can easily emulate them.</div></div></div><div class="enterprisev2-box-content-wrapper-align-top top-margin-70px"><div class="enterprisev2-box-content-left"><img src="images/64de702a6fc7cbb16fc2c7ae_icon-search.png" loading="lazy" alt=""><h2 class="enterprisev2-box-content-subtitle">Use Advanced Threat Signatures</h2><div class="enterprisev2-box-copy">Our Advanced Threat Signatures are a breakthrough in security ML, clustering attackers across thousands of IPs and devices while separating all good traffic into just one or a few signatures.</div></div><div class="enterprisev2-box-content-right"><img src="images/64de7029006fd5f66f4d33e1_icon-stop.png" loading="lazy" alt=""><h2 class="enterprisev2-box-content-subtitle">Stop Account Takeovers</h2><div class="enterprisev2-box-copy">hCaptcha Enterprise is not just a great way to stop credential stuffing and other high volume attacks. Find post-login and intra-session attacks, without sharing user data or personal information with us.</div></div></div></div></div><div class="section"><div class="container padding-sides-mobile max-width-mobile-750px"><div class="enterprivev2-left-aligned-content margin-bottom-80px"><h2 class="enterprisev2-content-heading-align-left">Find Human Fraud and Abuse Fast</h2><div class="enterprise-v2-content-two-columns align-start"><div class="enterprisev2-conent-column-left"><img src="images/64de7a2f6f9a44a3591fe703_icon-private-learning.png" loading="lazy" alt=""><h3 class="enterprisev2-content-column-heading"><span>Private Learning</span> is a Revolution in Security ML</h3><div class="enterprisev2-content-column-copy padding-bottom-20px">Learn why over 60% of the top online payment processors choose hCaptcha Enterprise to detect fraud and abuse. Our models deliver unparalleled precision with nearly zero false positives and no PII.</div><div class="enterprisev2-content-column-copy">Run it on the web, in apps, or entirely server-side.</div><a href="#" class="enterprisev2-btn-outlined hidden w-button">View Case Studies</a></div><div class="enterprisev2-content-column-right"><img src="images/64de7a2fa205b127b319adf3_icon-risk-insights.png" loading="lazy" alt=""><h3 class="enterprisev2-content-column-heading"><span>Risk Insights</span> Powers Analysis and Your Own ML</h3><div class="enterprisev2-content-column-copy padding-bottom-20px">A novel approach to signal enrichment, our scoped and blinded signals help your ML models stay compliant with global privacy laws while benefiting from our unique detection and risk analysis.</div></div></div></div></div></div><div class="section enterprisev2-box-section"><div class="enterprisev2-box-container-with-watermark padding-bottom-20px hidden"><img src="images/64de86f362b8ec92bcf52dc4_box-bg-watermark.png" loading="lazy" alt="" class="enterprisev2-box-watermark-bg-bottom-right"><img src="images/64de894752e89c8ae672f643_box-bg-watermark-top-left.png" loading="lazy" alt="" class="enterprisev2-box-watermark-bg-top-left"><div class="enterprisev2-box-content-wrapper-vertical-center"><h1 class="enterprivev2-box-heading-center">Our Expertise is Applied 24/7</h1><div class="enterprisev2-box-text-highlight bold center-text bold500">From real-time detection to 24/7/365 SOC&nbsp;coverage by ML and our trained experts, hCaptcha&nbsp;Enterprise lets you rapidly respond to new threats, whether human or automated.<br><br>Let us manage the details, or supercharge your own SOC&nbsp;with powerful new tools.</div></div></div></div><div class="section display-none-mobile"><div class="container"><h2 class="enterprisev2-content-heading-centered">Compare Plans</h2><div class="enterprisev2-plan-ctas-container"><div class="enterprisev2-left-align-copy enterprisev2-compare-plans-copy">Stop malicious bots, protect user privacy. Find the right bot management solution for your company.</div><div class="plan-ctas-wrapper"><div class="enterprise-v2-plan-cta-box"><h3 class="enterprisev2-plan-cta-box-title">Publisher</h3><a href="#" class="plan-cta-button bg-grey-900 w-button">Sign Up</a></div><div class="enterprise-v2-plan-cta-box enterprisev2-cta-element-middle"><h3 class="enterprisev2-plan-cta-box-title">Pro</h3><a href="#" class="plan-cta-button bg-grey-900 w-button">Try For Free</a></div><div class="enterprise-v2-plan-cta-box enterprise-cta-box"><h3 class="enterprisev2-plan-cta-box-title text-color-white">Enterprise</h3><a href="#" class="plan-cta-button cta-btn-plan-enterprise w-button">Contact Sales</a></div></div></div><div class="enterprisev2-plan-table-container"><div class="table-enterprise-highlight-bg"></div><div class="enterprise-v2-table"><div class="enterprisev2-plans-table-row plans-table-row-first-child"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">World-class bot protection</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt=""></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Works in every country</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Complies with GDPR, CCPA, LGPD, PIPL and more</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Friction-free “No CAPTCHA” &amp; 99.9% passive modes</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Bot detection and risk scores</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">APT mitigation</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Control challenges and types shown</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Control challenge content used</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Fine-grained difficulty levels</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Flash Sale protection features</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Multi-user dashboards, SAML SSO</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Advanced reporting features</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div><div class="enterprisev2-plans-table-row plans-table-last-child"><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-copy">Enterprise SLAs</div></div><div class="plans-table-check-columns"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column enterprisev2-cta-element-middle"><img src="images/64df90cde7a19e184a58f996_icon-minus.png" loading="lazy" alt=""></div><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a3a8b62810ad67485e9_icon-checkmark-white.png" loading="lazy" alt="checkmark"></div></div></div></div></div></div></div><div class="section enterprisev2-box-section"><div class="enterprisev2-box-container-with-bottom-bg-img white-bg container-reduce-bottom"><div class="enterprisev2-box-content-wrapper-align-top"><div class="enterprisev2-box-title-left wide"><h1 class="enterprivev2-box-heading">Who uses hCaptcha?</h1><h2 class="enterprisev2-box-content-subtitle"><span class="teal-400-textonly">hCaptcha is the largest independent service of its kind.</span> <span class="text-span-24">From Global 2000 to startups, thousands of enterprises choose hCaptcha to protect their online services.</span></h2></div></div><div class="enterprisev2-box-content-wrapper-align-top"><div class="enterprisev2-box-content-left"><div data-current="Tab 1" data-easing="ease" data-duration-in="300" data-duration-out="100" class="tabs-2 w-tabs"><div class="enterprisev2-box-content-subtitle w-tab-menu"><a data-w-tab="Tab 1" class="tab-block bold-text w-inline-block w-tab-link w--current"><div class="who-category">e-Commerce</div></a><a data-w-tab="Tab 2" class="tab-block w-inline-block w-tab-link"><div class="text-block-43">Finance</div></a><a data-w-tab="Tab 3" class="tab-block w-inline-block w-tab-link"><div class="who-category">Technology</div></a><a data-w-tab="Tab 4" class="tab-block w-inline-block w-tab-link"><div class="who-category">Gaming</div></a><a data-w-tab="Tab 5" class="tab-block w-inline-block w-tab-link"><div class="who-category">Government</div></a><a data-w-tab="Tab 6" class="tab-block w-inline-block w-tab-link"><div class="who-category">Telecom</div></a><a data-w-tab="Tab 7" class="tab-block w-inline-block w-tab-link"><div class="who-category">Privacy</div></a></div><div class="tabs-content-left-pad enterprisev2-box-copy w-tab-content"><div data-w-tab="Tab 1" class="w-tab-pane w--tab-active"><div class="toppad30"><p class="quote-text">"Why do we use hCaptcha? No one else could deliver on the features and performance we need."</p><p class="quote-person mobile-left-align">— Alex M., Product Manager @ Shopify</p></div><div><div class="enterprisev2-box-text-highlight bold center-text bold500 no-center"><span class="text-span-25">Leading e-commerce platforms like</span> <span class="teal-400-textonly">Shopify</span> <span class="text-span-26">use hCaptcha Enterprise to protect customers while preserving privacy.</span></div></div></div><div data-w-tab="Tab 2" class="w-tab-pane"><div><div class="enterprisev2-box-text-highlight bold center-text bold500 no-center"><span class="teal-400-textonly">More than 60% of all major payment platforms</span>, along with many banks and other fintechs around the world, <span>use hCaptcha Enterprise platform solutions like Private Learning to stop fraud and abuse.</span></div></div></div><div data-w-tab="Tab 3" class="w-tab-pane"><div><div class="enterprisev2-box-text-highlight bold center-text bold500 no-center"><span class="teal-400-textonly">The largest tech companies and public clouds</span>, many leading startups, and thousands of others choose hCaptcha Enterprise to protect their platforms, stop fake registrations, detect account takeovers, and more.</div></div></div><div data-w-tab="Tab 4" class="w-tab-pane"><div><div class="enterprisev2-box-text-highlight bold center-text bold500 no-center"><span class="teal-400-textonly">From global top 10 largest gaming companies to startups</span>, online game companies choose hCaptcha Enterprise to prevent giveaway abuse, account takeovers, in-game abuse, purchase fraud, and more.</div></div></div><div data-w-tab="Tab 5" class="w-tab-pane"><div><div class="enterprisev2-box-text-highlight bold center-text bold500 no-center"><span class="teal-400-textonly">Privacy-focused government agencies across the Americas, Europe, and around the world</span> choose hCaptcha Enterprise to protect their most critical services. Our managed solutions and unique features like Zero PII keep e-Government services safe for users without operating overhead.</div></div></div><div data-w-tab="Tab 6" class="w-tab-pane"><div><div class="enterprisev2-box-text-highlight bold center-text bold500 no-center"><span class="teal-400-textonly">hCaptcha offers unique features for Telecoms</span>, including First-Party Hosting to enable hcaptcha.your.com, simplifying zero rating. Mobile, satellite, and fixed line operators around the world use hCaptcha Enterprise to stop activation fraud and more, whether human or automated.</div></div></div><div data-w-tab="Tab 7" class="w-tab-pane"><div><div class="enterprisev2-box-text-highlight bold center-text bold500 no-center"><span class="teal-400-textonly">The most popular privacy-focused messaging, email, and VPN&nbsp;services all choose hCaptcha Enterprise</span> to protect their platforms while maintaining strong privacy guarantees<span>.</span></div><p><span class="_500-medium-text">Custom Threat Models and Zero PII features maintain strong security without blocking legitimate users of privacy browsers like Brave and tools like Tor.</span></p></div></div></div></div></div></div></div></div><div class="section"><div id="enterprise-features" class="container padding-sides-mobile"><h2 class="enterprisev2-content-heading-centered toppad40">Enterprise Features</h2><div class="enterprisev2-content-textblock">hCaptcha Enterprise delivers unparalleled accuracy and power to solve trust and safety issues.<br></div><div class="enterprisev2-content-textblock toppad10">From automated attacks to human abuse, our complete security platform gives you the tools you need.<br></div><div class="enterprisev2-plan-table-container"><div class="enterprise-v2-features-table"><div class="enterprisev2-plans-table-row plans-table-row-first-child"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">World-class bot protection</div><div class="enterprisev2-right-align-feature-desc">Battle-tested at web scale.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">High accuracy risk scores</div><div class="enterprisev2-right-align-feature-desc">Detect bad actors of many different types.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">Zero friction and 99.9% passive modes</div><div class="enterprisev2-right-align-feature-desc">Challenge less than 0.1% of legitimate users.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">Control challenge types shown</div><div class="enterprisev2-right-align-feature-desc">Wide library of types to choose from.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">Control challenge content used</div><div class="enterprisev2-right-align-feature-desc">Stay on brand with a consistent user experience.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">Enterprise SLAs</div><div class="enterprisev2-right-align-feature-desc">Guaranteed reliability and fast 24/7 on-call support.</div></div></div><div class="enterprisev2-plans-table-row enterprise-v2-table-row-double-line"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column enterprisev2-plan-table-multiline-row"><div class="enterprisev2-left-align-feature">Legacy browser support</div><div class="enterprisev2-right-align-feature-desc">Compatible all the way back to Internet Explorer 8.<br>Support for non-JavaScript clients.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">Advanced reporting dashboards and API</div><div class="enterprisev2-right-align-feature-desc">See what’s happening across all your sites and apps.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">Works in every country</div><div class="enterprisev2-right-align-feature-desc">Unlike reCAPTCHA, we work in every country.</div></div></div><div class="enterprisev2-plans-table-row enterprise-v2-table-row-double-line"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column enterprisev2-plan-table-multiline-row"><div class="enterprisev2-left-align-feature">GDPR, CCPA, and LGPD-friendly privacy policy</div><div class="enterprisev2-right-align-feature-desc">Designed for privacy from day one.<br>Strong Data Processing Agreement.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">Fine-grained difficulty levels</div><div class="enterprisev2-right-align-feature-desc">Dial this in to exactly fit your use case.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">First-party hosting</div><div class="enterprisev2-right-align-feature-desc">All requests and assets go to hcaptcha.yourdomain.com</div></div></div><div class="enterprisev2-plans-table-row enterprise-v2-table-row-triple-line"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column enterprisev2-plan-table-multiline-row"><div class="enterprisev2-left-align-feature">Multi-user dashboards</div><div class="enterprisev2-right-align-feature-desc">Share management across your team.<br>SAML SSO integration with Identity Providers like Okta or Azure AD.<br>Sophisticated RBAC access restrictions available.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">Instant Verification</div><div class="enterprisev2-right-align-feature-desc">0ms latency: verify hCaptcha tokens with no API call.</div></div></div><div class="enterprisev2-plans-table-row enterprise-v2-table-row-double-line"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column enterprisev2-plan-table-multiline-row"><div class="enterprisev2-left-align-feature">Mobile (iOS and Android) Integration</div><div class="enterprisev2-right-align-feature-desc">Seamless experience across web, native mobile, mobile web.<br>Pre-built integrations and native SDKs available.</div></div></div><div class="enterprisev2-plans-table-row"><div class="plans-table-check-column"><div class="enterprisev2-plan-table-checkmark-column"><img src="images/64df8a101198a43e07dbec1a_icon-checkmark-grey900.png" loading="lazy" alt=""></div></div><div class="enterprisev2-plan-table-feature-column"><div class="enterprisev2-left-align-feature">Customized Terms and Privacy Guarantees</div><div class="enterprisev2-right-align-feature-desc">Satisfy your legal needs when other companies cannot.</div></div></div></div></div><div class="feature-list-cta-wrapper"><div class="enterprisev2-content-textblock">Ready to see what we can do for you? Contact us today to get a demo or start a pilot.</div><a href="start-a-pilot.html" data-ph-event="home_contact_sales_ent_features" class="cta-button bg-grey-900 w-button">Contact Sales</a></div></div></div><div class="section"><div class="container padding-sides-mobile max-width-mobile-750px"><div class="enterprivev2-left-aligned-content margin-bottom-80px"><h2 class="enterprisev2-content-heading-align-left reduced-pad">Our Expertise is Applied 24/7</h2><div class="enterprise-v2-content-two-columns align-start vertical"><div class="enterprisev2-conent-column-left wide-col"><h3 class="enterprisev2-content-column-heading wide">Empower your SOC&nbsp;with Security ML, or let us manage response</h3><div><div class="enterprisev2-content-column-copy padding-bottom-20px">From real-time detection to 24/7/365 SOC&nbsp;coverage by ML and our trained experts, hCaptcha&nbsp;Enterprise lets you rapidly respond to new threats, whether human or automated.<br></div></div><div><div class="enterprisev2-content-column-copy">Let us manage the details, or supercharge your own SOC&nbsp;with powerful new tools.</div></div><div><img src="images/651b7915a2543e67c0535a9d_ss_rounded3_sm.png" loading="lazy" sizes="(max-width: 1240px) 100vw, 1240px" srcset="images/651b7915a2543e67c0535a9d_ss_rounded3_sm-p-500.png 500w, images/651b7915a2543e67c0535a9d_ss_rounded3_sm-p-800.png 800w, images/651b7915a2543e67c0535a9d_ss_rounded3_sm.png 1240w" alt=""></div><a href="#" class="enterprisev2-btn-outlined hidden w-button">View Case Studies</a></div></div></div></div></div><div bind="6395893a-e5fe-ad5b-d853-97b7d8379d42" role="navigation" aria-label="Footer" class="section footerv2-section"><div class="footerv2-wrapper"><img src="images/64fb6c879d8c8ef99bf1cb18_footerv2-illustration.png" loading="lazy" alt="" class="enterprisev2-footer-watermark"><div class="footerv2-container padding-0topbottom top-stroke"><div class="footerv2-hero"><div class="footer-hero-text-content"><h1 class="heading-29 heading-36px">See <span class="footer-hero-heading-highlight">hCaptcha Enterprise</span> in Action</h1><div class="enterprisev2-box-text-highlight">Get a demo or start a pilot today.</div><a href="start-a-pilot.html" data-ph-event="footer_v2_get_started" class="button btn-large btn-stroke btn-white-fill headerv2-btn-signup btn-pro-docs mobile-100--cta w-button">Get Started</a></div></div><div class="footerv2-nav"><div class="footer-columns w-clearfix"><div class="footer-link-column-desktop"><h2 class="footerv2-header">Company</h2><a href="about.html" class="footerv2-link">About</a><a rel="noopener" href="https://apply.workable.com/imachines/" class="footerv2-link">Jobs</a><a rel="noopener" href="trademarks.html" class="footerv2-link">Trademarks</a><a rel="noopener" href="ai-ethics.html" class="footerv2-link">AI&nbsp;Ethics</a><a rel="noopener" href="press-inquiries.html" class="footerv2-link">Press</a><a rel="noopener" href="certifications.html" class="footerv2-link">Compliance</a></div><div class="footer-link-column-desktop footerv2-link-column-center"><h2 class="footerv2-header">Resources</h2><a rel="noopener" href="https://www.hcaptchastatus.com/" target="_blank" class="footerv2-link">Status</a><a rel="noopener" href="https://docs.hcaptcha.com/" class="footerv2-link">Documentation</a><a href="reporting-bugs.html" class="footerv2-link">Report a Bug</a><a href="accessibility.html" class="footerv2-link">Accessibility</a><a href="hcaptcha-resources-bots-101.html" class="footerv2-link">Cyberattacks 101</a><a rel="noopener" href="gdpr.html" class="footerv2-link">GDPR</a></div><div class="enterprisev2-footer-mobile-links"><h2 class="footerv2-header">Contact Us</h2><div class="enterprisev2-footer-mobile-columns"><div class="enterprisev2-footer-mobile-column-left"><a rel="noopener" href="contact-us.html" class="footerv2-link">Contact Sales</a></div><div class="enterprisev2-footer-mobile-column-lright"><a href="contact-us.html#contact-sales" class="footerv2-link">Contact Support</a></div></div></div><div class="enterprisev2-footer-mobile-links"><h2 class="footerv2-header">Company</h2><div class="enterprisev2-footer-mobile-columns"><div class="enterprisev2-footer-mobile-column-left"><a rel="noopener" href="https://apply.workable.com/imachines/" class="footerv2-link">Jobs</a><a rel="noopener" href="ai-ethics.html" class="footerv2-link">AI&nbsp;Ethics</a><a rel="noopener" href="certifications.html" class="footerv2-link">Compliance</a></div><div class="enterprisev2-footer-mobile-column-lright"><a href="about.html" class="footerv2-link">About</a><a rel="noopener" href="trademarks.html" class="footerv2-link">Trademarks</a><a rel="noopener" href="press-inquiries.html" class="footerv2-link">Press</a></div></div></div><div class="enterprisev2-footer-mobile-links"><h2 class="footerv2-header">Resources</h2><div class="enterprisev2-footer-mobile-columns"><div class="enterprisev2-footer-mobile-column-left"><a rel="noopener" href="https://docs.hcaptcha.com/" class="footerv2-link">Documentation</a><a href="accessibility.html" class="footerv2-link">Accessibility</a></div><div class="enterprisev2-footer-mobile-column-lright"><a rel="noopener" href="https://www.hcaptchastatus.com/" target="_blank" class="footerv2-link">Status</a><a href="reporting-bugs.html" class="link-13">Report a Bug</a><a href="hcaptcha-resources-bots-101.html" class="footerv2-link">Cyberattacks 101</a></div></div></div><div class="footer-link-column-desktop"><h2 class="footerv2-header">Contact</h2><a href="contact-us.html" class="link-block-8 w-inline-block"><div class="footerv2-nav-subtitle">Support</div></a><a href="contact-us.html" class="footerv2-link">Contact Support</a><a href="contact-us.html" class="link-block-7 w-inline-block"><div class="footerv2-nav-subtitle">Sales</div></a><a href="contact-us.html#contact-sales" class="footerv2-link">Contact Sales</a><div class="footerv2-nav-subtitle mb-20"><a href="partners.html"><span class="bloglink">Partners</span></a></div><div class="footerv2-nav-subtitle"><a href="blog.html"><span class="bloglink">Blog</span></a></div><a aria-label="twitter" href="#" class="link-block-7 hidden w-inline-block"><img src="fonts/64db81e8f131416410784556_icon_twitter.svg" loading="lazy" width="32" height="32" alt="twitter logo" class="round-social-icon round-social-icon-first"></a></div></div></div><div class="footerv2-legal w-clearfix"><div class="footerv2-legal-nav"><a href="terms.html" class="cap2 footer-legal-links">Terms</a><a href="privacy.html" class="cap2 footer-legal-links">Privacy</a><a href="dmca.html" class="cap2 footer-legal-links">DMCA</a><a href="attribution.html" class="cap2 footer-legal-links">Attribution</a></div><div class="footerv2-hero-divider"></div><div class="footerv2-copyright-info-container"><div class="copyright-info">hCaptcha is a registered trademark of Intuition Machines, Inc.</div><div class="copyright-info margin-top-10px">©2026 Intuition Machines, Inc.</div></div></div></div></div></div><script src="js/jquery-3.5.1.min.dc5e7f18c8.js" type="text/javascript" crossorigin="anonymous"></script><script src="js/d2a9eefaf9517652c1af5e0dc50224f81e44e6099120d807eea0c119fa1a9107.js" type="text/javascript" crossorigin="anonymous"></script><script src="js/475ffc24b9fed684259ef2dece839eda238a2867b9429332ac96148e99ee1c17.js" type="text/javascript" crossorigin="anonymous"></script><!--
+<script type="text/javascript">
+  var xhr  = new XMLHttpRequest();
+  var data = JSON.stringify({vt: "p", p: window.location.href, r: document.referrer, sw: window.screen.width});
+  xhr.open("POST", "https://accounts.hcaptcha.com/b", true);
+  xhr.setRequestHeader("Content-type", "application/json;charset=UTF-8");
+  xhr.send(data);
+</script>
+-->
+
+<script type="text/javascript">
+/**
+ * Include on static page to enable translations.
+ *
+ * Loads only necessary dict files.
+ *
+ */
+
+/**
+ * @module Language
+ * @desc
+ * Language Translation Module used to process text and covert a string based on user defined language.
+ * Language can be defined by Client's browser or API
+ * @requires module:utils
+ */
+var Language =  {
+
+    /**
+     * @name module:Language#getLocale
+     * @return {string} Defined ISO 639-1 Language Codes
+     * @see https://www.w3schools.com/tags/ref_language_codes.asp
+     * @example
+     * en-us
+     */
+    getLocale: function(override) {
+        var locale = override || window.navigator.userLanguage || window.navigator.language;
+
+        // Get short locale for remapping purposes
+        var short_locale = Language.getShortLocale(locale);
+
+        // Remap known locales
+        if (short_locale === "in") {
+            short_locale = "id";
+        }
+        if (short_locale === "he") {
+            short_locale = "iw";
+        }
+        if (short_locale === "nb") {
+            short_locale = "no";
+        }
+
+        // need multiple versions for Chinese
+        if (locale.includes("zh-CN")) {
+            short_locale = locale;
+        }
+
+        return short_locale;
+    },
+
+
+    /**
+     * @name module:Language#getShortLocale
+     * @return {string} Restricts the ISO 639-1 Language Code to two chracters
+     * @example
+     * en-us > en
+     */
+    getShortLocale: function(locale) {
+        return locale.substring(0, 2);
+    }
+
+};
+
+// find manually data-tagged but missing translation class
+var textM = $('body *').contents().filter(function() {
+    return ($(this).parent().data("vavilon") != null) && (!$(this).parent().hasClass("vavilon"));
+});
+
+// tag with class
+textM.each(function( index ) {
+  $(this).parent().addClass("vavilon");
+});
+
+// tag all elements based on content for ease of translation
+// MurmurHash 3, MIT license. https://github.com/jensyt/imurmurhash-js/blob/master/imurmurhash.min.js
+!function(){function t(h,r){var s=this instanceof t?this:e;return s.reset(r),"string"==typeof h&&h.length>0&&s.hash(h),s!==this?s:void 0}var e;t.prototype.hash=function(t){var e,h,r,s,i;switch(i=t.length,this.len+=i,h=this.k1,r=0,this.rem){case 0:h^=i>r?65535&t.charCodeAt(r++):0;case 1:h^=i>r?(65535&t.charCodeAt(r++))<<8:0;case 2:h^=i>r?(65535&t.charCodeAt(r++))<<16:0;case 3:h^=i>r?(255&t.charCodeAt(r))<<24:0,h^=i>r?(65280&t.charCodeAt(r++))>>8:0}if(this.rem=3&i+this.rem,i-=this.rem,i>0){for(e=this.h1;;){if(h=4294967295&11601*h+3432906752*(65535&h),h=h<<15|h>>>17,h=4294967295&13715*h+461832192*(65535&h),e^=h,e=e<<13|e>>>19,e=4294967295&5*e+3864292196,r>=i)break;h=65535&t.charCodeAt(r++)^(65535&t.charCodeAt(r++))<<8^(65535&t.charCodeAt(r++))<<16,s=t.charCodeAt(r++),h^=(255&s)<<24^(65280&s)>>8}switch(h=0,this.rem){case 3:h^=(65535&t.charCodeAt(r+2))<<16;case 2:h^=(65535&t.charCodeAt(r+1))<<8;case 1:h^=65535&t.charCodeAt(r)}this.h1=e}return this.k1=h,this},t.prototype.result=function(){var t,e;return t=this.k1,e=this.h1,t>0&&(t=4294967295&11601*t+3432906752*(65535&t),t=t<<15|t>>>17,t=4294967295&13715*t+461832192*(65535&t),e^=t),e^=this.len,e^=e>>>16,e=4294967295&51819*e+2246770688*(65535&e),e^=e>>>13,e=4294967295&44597*e+3266445312*(65535&e),e^=e>>>16,e>>>0},t.prototype.reset=function(t){return this.h1="number"==typeof t?t:0,this.rem=this.k1=this.len=0,this},e=new t,"undefined"!=typeof module?module.exports=t:this.MurmurHash3=t}();
+
+// find untagged strings
+var textS = $('body *').contents().filter(function() {
+    return (this.nodeType == 3) && (this.nodeValue.length > 3) && this.nodeValue.match(/[a-z]/) && (! this.nodeValue.match(/\@|©/)) && ($(this).parent().data("vavilon") == null || typeof $(this).parent().data("vavilon") === 'number') && (!$(this).parent().is("script")) && $(this).parents('.code-snippet').length === 0;
+});
+
+tKeys = {}
+// tag with hash
+textS.each(function( index ) {
+  var h = MurmurHash3(this.nodeValue).result();
+  $(this).parent().attr("data-vavilon", h).addClass("vavilon");
+  // hack to preserve insertion order: V8 re-sorts "string" ints.
+  tKeys['XXXHHH' + h] = $(this).text().trim();
+  // tKeys[h] = $(this).text().trim();
+});
+
+// output for key file
+// console.log(JSON.stringify(tKeys));
+
+
+// check if vavilon cookie is set
+var c = document.cookie.split(";");
+var lang;
+for (var i=0; i < c.length; i++)
+    if (c[i].indexOf("vavilon") >= 0)
+        lang = c[i].split("=")[1]
+
+var urlParams = new URLSearchParams(window.location.search);
+var hl_lang = urlParams.get('hl');
+
+if (hl_lang && (hl_lang.length > 5 || ! /^[a-zA-Z0-9\-]+$/.test(hl_lang))) {
+    // reject invalid hl param: too long or unexpected chars
+    hl_lang = null;
+}
+
+var browser_lang = Language.getLocale(hl_lang);
+var pathname = window.location.pathname;
+
+// var asset_root = "https://assets.hcaptcha.com/website-i18n";
+if (browser_lang.indexOf("zh") >= 0) {
+  var asset_root = "https://website-i18n.hcaptcha.com";
+} else {
+  var asset_root = "https://newassets.hcaptcha.com/website-i18n";
+}
+
+var page = "main";
+var tr_path = asset_root + "/" + browser_lang + "/" + page + ".json";
+var en_path = asset_root + "/" + "en" + "/" + page + ".json";
+
+function updateOpt(lang) {
+  $("#switch-to-english").text("Switch to " + lang.toUpperCase());
+  var finalStr = "javascript:setLang('" + lang + "'); $('html').attr('lang', '" + lang + "');"
+  if (lang != "en") {
+    finalStr += "updateOpt('en');";
+  } else {
+    finalStr += "updateOpt('" + browser_lang + "');";
+  }
+  document.getElementById("switch-to-english").href = finalStr;
+}
+
+function switchToEnglish() {
+  $("html").attr("lang", "en");
+  setLang('en');
+  updateOpt(browser_lang);
+}
+
+
+if ((hl_lang && hl_lang  !== "en") || (browser_lang !== "en" && lang !== 'en')) {
+        $("html").attr("lang", browser_lang);
+        // unhide switch to english part on block
+        $('#switch-to-english').show();
+        // load correct lang JSON
+        var element = document.createElement("script");
+        element.src = tr_path;
+        element.setAttribute("type", "application/json");
+        element.setAttribute("data-vavilon-dict", browser_lang);
+        document.body.appendChild(element);
+
+        var haveEn = $('script').filter(function() {
+            return $(this).attr("data-vavilon-dict") === 'en';
+        }).length > 0;
+
+        // do we need to load en?
+        if (! haveEn) {
+          // load en lang JSON to switch
+          var element2 = document.createElement("script");
+          element2.src = en_path;
+          element2.setAttribute("type", "application/json");
+          element2.setAttribute("data-vavilon-dict", "en");
+          document.body.appendChild(element2);
+        }
+
+        // due to element race
+        setTimeout(function() {
+            // load vavilon JS
+            // var element2 = document.createElement("script");
+            // element2.src = "https://newassets.hcaptcha.com/website-tr/js/vavilon_mod.min.js";
+            //"https://assets.hcaptcha.com/website-tr-js/vavilon.min.js";
+            // document.body.appendChild(element2);
+            // setLang(browser_lang)
+            // once more, just in case
+
+            // direct insertion
+            !function(){"use strict";var o=(n.prototype.hasString=function(n){return this.strings.hasOwnProperty(n)},n.prototype.load=function(t){var i=this;!function(n,t){var i=new XMLHttpRequest;i.onload=function(){this.status<300&&200<=this.status&&t&&t(i.responseText)},i.open("GET",n,!0),i.send()}(this.url,function(n){i.strings=JSON.parse(n),t&&t()})},n);function n(n,t){void 0===t&&(t={}),this.url=n,this.strings=t}function t(n){var t=new Date;t.setTime(t.getTime()+31536e7);var i="; expires="+t.toUTCString();document.cookie="vavilon-locale="+(n||"")+i+"; path=/"}function i(){return(function(){var n=("; "+document.cookie).split("; vavilon-locale=");return 2===n.length?n[1].split(";")[0]:null}()||window.navigator.language||window.browserLanguage||window.userLanguage).toLowerCase()}function u(){this.n=i(),this.t=document.documentElement.lang.toLowerCase(),this.i=null,this.o={},this.u=null}var c=new(u.prototype.find=function(){this.i=document.getElementsByClassName("vavilon")},u.prototype.replace=function(){var i=this;this.i&&this.u&&(this.o[this.t]||(this.o[this.t]=new o(null)),Array.from(this.i).forEach(function(n){var t=n.dataset.vavilon;i.o[i.u].hasString(t)&&(i.o[i.t].hasString(t)||(i.o[i.t].strings[t]=n.innerText.trim()),n.innerHTML=i.o[i.u].strings[t])}))},u.prototype.addDicts=function(){var i=this;Array.from(document.scripts).filter(function(n){return n.dataset.hasOwnProperty("vavilonDict")}).forEach(function(n){var t=n.dataset.vavilonDict.toLowerCase();i.o[t]=new o(n.src)})},u.prototype.loadDicts=function(t){var i=this;Object.keys(this.o).forEach(function(n){n===i.n||n.slice(0,2)===i.n.slice(0,2)&&!i.u?(i.u=n,i.o[n].load(function(){i.pageDictLoaded=!0,t()})):i.o[n].load()})},u.prototype.setLocale=function(n){return this.o[n]?(this.u=n,t(this.u),!0):!!this.o[n.slice(0,2)]&&(this.u=n.slice(0,2),t(this.u),!0)},u),s=!1;c.addDicts(),c.loadDicts(function(){s&&c.replace()}),window.onload=function(){c.find(),s=!0,c.pageDictLoaded&&c.replace()},window.setLang=function(n){n=n.toLowerCase(),c.setLocale(n)&&c.replace()}}();
+            // make sure we translate
+            window.onload()
+
+            // double up for manual override
+            if (hl_lang !== null) {
+                // console.log("lang", hl_lang)
+                setLang(hl_lang);
+                setTimeout(function() {
+                    setLang(hl_lang);
+                }, 300);
+            } else {
+                // console.log("browser_lang", browser_lang)
+                setLang(browser_lang);
+                setTimeout(function() {
+                    setLang(browser_lang);
+                }, 300);
+
+            }
+
+            // race
+            document.getElementById("switch-to-english").href = "javascript:switchToEnglish();";
+        }, 300);
+} else {
+        // if (browser_lang == "en") {
+        //   $('#switch-to-english').hide();
+        // }
+            // we show the block on main page always page because of the link to /accessibility
+        // but the block is not visible by default on accessibility page as it only contains
+        // switch language option
+        if (window.location.pathname === '/accessibility') {
+            $('#acc-switch-block').hide();
+        }
+};
+</script>
+
+
+<script type="text/javascript">
+  function getRefQueryParam(name) {
+    name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+    var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+    var results = regex.exec(location.search);
+    return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+};
+
+var utmParamQueryString = '',
+    utmParamQueryStringTrimmed = '',
+    utm_source = '',
+    utm_medium = '',
+    utm_content = '',
+    utm_campaign = '',
+    utm_term = '';
+
+(function() {
+    utm_source = getRefQueryParam("utm_source");
+    utm_medium = getRefQueryParam("utm_medium");
+    utm_content = getRefQueryParam("utm_content");
+    utm_campaign = getRefQueryParam("utm_campaign");
+    utm_term = getRefQueryParam("utm_term");
+
+    if (utm_source) {
+        utmParamQueryString += '&utm_source=' + utm_source;
+    }
+    if (utm_medium) {
+        utmParamQueryString += '&utm_medium=' + utm_medium;
+    }
+    if (utm_content) {
+        utmParamQueryString += '&utm_content=' + utm_content;
+    }
+    if (utm_campaign) {
+        utmParamQueryString += '&utm_campaign=' + utm_campaign;
+    }
+    if (utm_term) {
+        utmParamQueryString += '&utm_term=' + utm_term;
+    }
+
+    if(utmParamQueryString.length > 0) {
+        utmParamQueryString = utmParamQueryString.substring(1);
+        utmParamQueryStringTrimmed = utmParamQueryString;
+        utmParamQueryString = utmParamQueryString;
+    }
+    if (!utmParamQueryString) return;
+    var navLinks = document.querySelectorAll('a');
+
+    navLinks.forEach(function(item) {
+      if (item.href.indexOf('mailto:') == -1 && (item.href.indexOf('/') === 0 || item.href.indexOf('botstop.com') !== -1 || item.href.indexOf('hcaptcha.com') !== -1)) {
+        if (item.href.indexOf('?') === -1) {
+            item.href += '?';
+        } else {
+          item.href += '&';
+        }
+        item.href += utmParamQueryString;
+      }
+    });
+})();
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  var targetDomain = 'dashboard.hcaptcha.com';
+
+  // Get the gclid from session storage
+  var gclid = sessionStorage.getItem('gclid');
+  var utmData = {};
+  try {
+  	utmData = JSON.parse(sessionStorage.getItem('utmData') || '{}');
+  } catch (e) {
+  	utmData = {};
+  }
+
+  if (!gclid && Object.keys(utmData).length === 0) {
+    return;
+  }
+
+  var allLinks = document.querySelectorAll('a');
+
+  allLinks.forEach(function(link) {
+    
+    // Check if the link's href contains the target domain
+    if (link && link.href && link.href.includes(targetDomain)) {
+      try {
+        var url = new URL(link.href);
+        if (gclid) {
+          url.searchParams.set('gclid', gclid);
+        }
+        
+        for (var key in utmData) {
+          if (Object.prototype.hasOwnProperty.call(utmData, key)) {
+            url.searchParams.set(key, utmData[key]);
+          }
+        }
+        
+        link.href = url.toString();
+      } catch (e) {
+        console.error("Error updating link " + link.href + ": " + e.message);
+      }
+    }
+  });
+
+});
+</script>
+
+<script>
+document.addEventListener('click', function(e) {
+  var el = e.target.closest('[data-ph-event]');
+  if (!el) return;
+  posthog.capture('cta_click', {
+    cta_name: el.getAttribute('data-ph-event'),
+    destination: el.href || null,
+    page: window.location.pathname
+  });
+});
+</script>
+
+<script>
+document.getElementById("switch-to-english").href = "javascript:setLang('en'); $('#acc-switch-block').hide();";
+
+const slider = document.querySelector(".carousel-nav");
+let isDown = false;
+let startX;
+let scrollLeft;
+
+slider.addEventListener("mousedown", e => {
+  isDown = true;
+  slider.classList.add("active");
+  startX = e.pageX - slider.offsetLeft;
+  scrollLeft = slider.scrollLeft;
+});
+slider.addEventListener("mouseleave", () => {
+  isDown = false;
+  slider.classList.remove("active");
+});
+slider.addEventListener("mouseup", () => {
+  isDown = false;
+  slider.classList.remove("active");
+});
+slider.addEventListener("mousemove", e => {
+  if (!isDown) return;
+  e.preventDefault();
+  const x = e.pageX - slider.offsetLeft;
+  const walk = x - startX;
+  slider.scrollLeft = scrollLeft - walk;
+});
+</script>
+</body></html>
