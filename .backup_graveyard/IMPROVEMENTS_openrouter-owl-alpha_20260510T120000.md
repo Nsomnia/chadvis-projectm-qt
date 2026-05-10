@@ -52,17 +52,18 @@
 ### [P1-4] Config parser defaults don't match struct defaults
 - **Files:** `src/core/ConfigParsers.cpp` vs `src/core/ConfigData.hpp`
 - **Issue:** Karaoke `yPosition`: parser default 0.85 vs struct default 0.5. Recording video: parser defaults width=1280, height=720, fps=30, preset="ultrafast", crf=23 vs struct defaults 1920x1080, fps=60, medium, crf=18.
-- **Fix:** Align all parser defaults with `ConfigData.hpp` struct defaults. Single source of truth should be `ConfigData.hpp`.
+- **Fix:** Align all parser defaults with `ConfigData.hpp` struct defaults. Single source of truth should be `ConfigData.hpp`. Othre model markdown file has some better and easier to maintain given large number of user configurable options using some form of map or table. 
 
 ### [P1-5] PULSEAUDIO_FOUND checked but never searched
 - **File:** `CMakeLists.txt:439-442`
 - **Issue:** `PULSEAUDIO_FOUND` is checked but `find_package(PulseAudio)` is never called. Dead code block.
-- **Fix:** Either add `find_package(PulseAudio)` or remove the dead conditional block.
+- **Fix:** Either add `find_package(PulseAudio)` or remove the dead conditional block. Pulse is lower priority as most reasonable end-users and operating systems have moved onto pipewire, with windows being anothrer target platform further into the development timeline and potentially mobile much further into development.
 
 ### [P1-6] Qt6::WebEngineWidgets may be unused
 - **File:** `CMakeLists.txt:52`
 - **Issue:** `Qt6::WebEngineWidgets` is in `find_package` and `COMMON_LIBS` but TODO on line 51 asks "is web engine needed anymore?" Heavyweight unused dependency.
 - **Fix:** Determine if `SunoPersistentAuth` (uses `QWebEngineProfile`) still needs it. If not, remove.
+- **User Notes:** Confirming that the WebEngine implementation is no longer needed currently as it was found to not handle auth capture at all and further investigation of the endpoints and burp suite show how authentication flow can be handled, later even with a callback url which should be able to be redirected to lcoalhost in additon to the standard JWT auth flow.
 
 ### [P1-7] Icons registered twice (duplicate resource registration)
 - **File:** `CMakeLists.txt:399-431` vs `resources/chadvis-projectm-qt.qrc`
@@ -503,6 +504,11 @@
 - **Issue:** Theme files exist but no runtime switcher. Users must rebuild or edit config.
 - **Fix:** Implement runtime QSS loading. Add theme selector in Settings. Support user themes in `~/.config/chadvis-projectm-qt/themes/`.
 
+### [P5-10] Theme style sheets and theme switcher
+- **File:** `resources/` (13 QSS + 3 style QSS files)
+- **Issue:** Only a quick dark theme `dark-theme.qss` is implemented. All others are stubs. May be benefital to create the apporpriate directory or directories for the Qt/QMl style sheets as to keep the project organized. Model training data, web search tool calls, or github searches for repos to clone and investigate should be able to provide color mapping for all the stub files the user created of various top community `nerd` themes found in software such as VS Code.
+- **Fix:** Write all stub or empty theme qss files, implement the ability to switch themes in the settings window, and ensure this setting, just like all others, is able to be stored persistantly within one of the packages directories within the users home.
+
 ### [P5-11] Profile export/import
 - **File:** `src/qml/panels/SettingsPanel.qml:489-501`
 - **Issue:** Profile buttons are `enabled: false` placeholders.
@@ -528,6 +534,11 @@
 - **Issue:** GitHub Actions workflow is for CI only, not releases. No automated package building.
 - **Fix:** Add workflow for building and publishing releases (AppImage or Arch package).
 
+### [P5-16] Audio playback filetypes
+- **File:** Unknown (user additon)
+- **Issue:** Suno.com remote only provides mp3 or wav audio filetypes. Local playback should be able to play more.
+- **Fix:** There is a note from the Xiaomi model that has at least one library for wide support audio filetypes that can be included via CPM.
+
 ---
 
 ## CROSS-CUTTING CONCERNS
@@ -539,19 +550,22 @@
 `Playlist::next()`, `Playlist::previous()`, `Playlist::jumpTo()` return `bool` indicating success but are not marked `[[nodiscard]]`. Callers may silently ignore failures.
 
 ### [CC-3] TODO/FIXME inventory
-CMakeLists.txt has 5+ inline TODOs. 4 test files are TODO stubs. QML has 3+ console.log TODOs. Convert to GitHub Issues and remove from source.
+CMakeLists.txt has 5+ inline TODOs. 4 test files are TODO stubs. QML has 3+ console.log TODOs. Convert to GitHub Issues and remove from source (may be able to be done via either `git` or `gh` commands, else via direct github calls, falling back to informing the user or writing a file that is inside `.gitignore` for the user to handle).
 
 ### [CC-4] Magic numbers throughout codebase
-`LyricsFactory::alignWordsToLines` hardcodes search window of 50 words. `AudioAnalyzer` beat threshold hardcoded at 1.5f. `VisualizerQFBO` max log count is 5. Thread loop timeout is 10ms. Should be named constants in Config.
+`LyricsFactory::alignWordsToLines` hardcodes search window of 50 words. `AudioAnalyzer` beat threshold hardcoded at 1.5f. `VisualizerQFBO` max log count is 5. Thread loop timeout is 10ms. Should be named constants in Config. The other model codebase examination markdown documents also notes additional magic numbers. Anything that may have any chance of user configuration or ability to be adjusted and tweaked should be able to be done so via the GUI even if hidden away for lesser adjusted settings and via one of the packages user config/settings storage file(s).
 
 ### [CC-5] Unicode/Emoji dependency in parser
-`LyricsData.cpp fromSunoJson()` checks for 🎵 emoji in instrumental tags. Fragile if Suno changes format.
+`LyricsData.cpp fromSunoJson()` checks for 🎵 emoji in instrumental tags. Fragile if Suno changes format. User Edit: Fairly certain suno never has any emojis in its json output. Should be able to make direct api calls via curl etc from whats in the codebase, or the user can provide the cookie details from their browser to make POST calls to the API to see exact formatting. There is likely garbage code from previous attempts at this when the user was trying to do SRT and related format lyrics saving, while this may  be reexamined in the future it adds unneeded complexity early on.
 
 ### [CC-6] FFmpeg AVFormatContextDeleter potential double-close
 `FFmpegUtils.hpp` `AVFormatContextDeleter` calls `avio_closep` before `avformat_free_context`. FFmpeg docs suggest `avformat_free_context` may handle this internally. Verify to prevent double-close.
 
 ### [CC-7] Inconsistent 401 handling
-`SunoClient::handleNetworkError()` clears token on 401 but doesn't trigger re-auth. `SunoLyricsManager` re-queues on 401. `SunoOrchestrator` just emits error. Inconsistent handling across the Suno module.
+`SunoClient::handleNetworkError()` clears token on 401 but doesn't trigger re-auth. `SunoLyricsManager` re-queues on 401. `SunoOrchestrator` just emits error. Inconsistent handling across the Suno module. User edit: given the files within `docs/`, `.agent`, and many found via a find commandfor for sniffed captured such as `json`, `js`, `burp` `suno <AND> api`, and simply `API`, found within the users `$HOME/{git,Documents,Downloads}` diretories will give more insight. There are also markdown doucments within the repository of some agents findings investigating these gigantic network traffic captures. 
+
+### [CC-7a] Feature gates, sigserv feature flag beta or b-side testing, and other "hidden" or invite-only features
+Investigating the found js files in the suno sitemap captured via normal browsing with a "scraper" browser extension via ripgrep searches of the suno POST endpoint API and its parameters finds many instances with keywords such as: `gate`, `VIP|vip`, `premium`, `prod`, `dev`, `unlock`, `invite`, `feature`, `beta`, `test`, `internal`, `staff`, `internal`, and the like has led to some intereting findings for example the chat feature which we have (untested) implmented as well as the as-of-yet not fully unfunctional but navigable via hte browser with a enabled boolean flip userscript shows a marketplace skeleton. A lot of these lilely onl work via diret POST endpoint API calls with no js and related webui frontend exposure which may explain why most features in the users browser extension do nothing when toggled.
 
 ### [CC-8] Legacy MVC controllers may be unused
 `AudioController`, `RecordingController`, `VisualizerController` capture `this` in lambdas without null checks (dangling pointer risk on shutdown). These appear to be legacy carryover from a QWidgets architecture and may be unused in the current QML-only build. Verify and remove if dead.
