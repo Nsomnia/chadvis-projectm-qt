@@ -1,0 +1,90 @@
+--- src/qml_bridge/ThemeBridge.hpp
++++ src/qml_bridge/ThemeBridge.hpp
+@@ -19,14 +19,14 @@
+     QML_SINGLETON
+ 
+     // Colors - Primary palette (Cyan accent)
+-    Q_PROPERTY(QColor accent READ accent CONSTANT)
++    Q_PROPERTY(QColor accent READ accent WRITE setAccent NOTIFY accentChanged)
+     Q_PROPERTY(QColor accentHover READ accentHover CONSTANT)
+     Q_PROPERTY(QColor accentPressed READ accentPressed CONSTANT)
+     Q_PROPERTY(QColor accentLight READ accentLight CONSTANT)
+     Q_PROPERTY(QColor accentDark READ accentDark CONSTANT)
+ 
+     // Background colors
+-    Q_PROPERTY(QColor background READ background CONSTANT)
++    Q_PROPERTY(QColor background READ background WRITE setBackground NOTIFY backgroundChanged)
+     Q_PROPERTY(QColor backgroundAlt READ backgroundAlt CONSTANT)
+     Q_PROPERTY(QColor surface READ surface CONSTANT)
+     Q_PROPERTY(QColor surfaceRaised READ surfaceRaised CONSTANT)
+@@ -98,13 +98,17 @@
+     static ThemeBridge* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
+ 
+     // Colors
+-    QColor accent() const { return "#00bcd4"; }
++    QColor accent() const;
++    void setAccent(const QColor& color);
++
+     QColor accentHover() const { return "#26c6da"; }
+     QColor accentPressed() const { return "#0097a7"; }
+     QColor accentLight() const { return "#80deea"; }
+     QColor accentDark() const { return "#00838f"; }
+ 
+-    QColor background() const { return "#1a1a1a"; }
++    QColor background() const;
++    void setBackground(const QColor& color);
++
+     QColor backgroundAlt() const { return "#1e1e1e"; }
+     QColor surface() const { return "#252525"; }
+     QColor surfaceRaised() const { return "#2d2d2d"; }
+@@ -198,6 +202,10 @@
+     Q_INVOKABLE QColor darken(const QColor& color, double amount) const;
+ 
++signals:
++    void accentChanged();
++    void backgroundChanged();
++
+ private:
+     explicit ThemeBridge(QObject* parent = nullptr);
+     static ThemeBridge* s_instance;
+--- src/qml_bridge/ThemeBridge.cpp
++++ src/qml_bridge/ThemeBridge.cpp
+@@ -1,6 +1,7 @@
+ #include "ThemeBridge.hpp"
+ #include <QQmlEngine>
++#include "core/Config.hpp"
+ 
+ namespace qml_bridge {
+ 
+@@ -18,6 +19,32 @@
+     return s_instance;
+ }
+ 
++QColor ThemeBridge::accent() const {
++    return QColor(QString::fromStdString(vc::Config::instance().ui().accentColor.toHex()));
++}
++
++void ThemeBridge::setAccent(const QColor& color) {
++    auto hex = color.name().toStdString();
++    if (vc::Config::instance().ui().accentColor.toHex() != hex) {
++        vc::Config::instance().ui().accentColor = vc::Color::fromHex(hex);
++        vc::Config::instance().save(vc::Config::instance().configPath());
++        emit accentChanged();
++    }
++}
++
++QColor ThemeBridge::background() const {
++    return QColor(QString::fromStdString(vc::Config::instance().ui().backgroundColor.toHex()));
++}
++
++void ThemeBridge::setBackground(const QColor& color) {
++    auto hex = color.name().toStdString();
++    if (vc::Config::instance().ui().backgroundColor.toHex() != hex) {
++        vc::Config::instance().ui().backgroundColor = vc::Color::fromHex(hex);
++        vc::Config::instance().save(vc::Config::instance().configPath());
++        emit backgroundChanged();
++    }
++}
++
+ QString ThemeBridge::formatTime(int ms) const
+ {
