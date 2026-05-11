@@ -319,7 +319,7 @@ using enum Topic;
         Cli::printOption("--suno-auto-download", "Auto-download when playing", "no");
         
         Cli::printSection("Authentication");
-        std::cout << "  Suno uses cookie-based authentication via QWebEngineView.\n"
+        std::cout << "  Suno uses browser-based authentication.\n"
                   << "  Use the Settings dialog or edit config.toml to set credentials.\n";
         break;
         

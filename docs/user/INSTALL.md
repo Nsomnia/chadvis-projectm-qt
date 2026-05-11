@@ -15,7 +15,7 @@ sudo pacman -S cmake qt6-base qt6-multimedia qt6-svg spdlog fmt taglib \
 ```
 
 ### The "I'm on something else" List
-*   **Qt6**: We use everything from `Core` to `WebEngine`.
+*   **Qt6**: We use everything from `Core` to `QuickControls2` and `Sql`.
 *   **projectM v4**: Specifically v4. v3 is legacy tier.
 *   **FFmpeg**: For that sweet, sweet decoding and recording.
 *   **toml++**: Because JSON is a nightmare for humans to edit.

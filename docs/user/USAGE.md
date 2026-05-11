@@ -28,7 +28,7 @@ So you've built it, you've configured it, now how do you actually *use* it?
 
 ## 🤖 Suno AI & Karaoke
 
-1.  **Login**: Go to the Suno tab, enter your credentials. We use a persistent WebEngine profile so you only have to do this once.
+1.  **Login**: Go to the Suno tab, enter your credentials. We use the system browser for authentication so you only have to do this once.
 2.  **Sync**: Hit "Sync Library". Go grab a coffee. If you have 2500 songs, it'll take a minute.
 3.  **Karaoke**: If the song has aligned lyrics, they'll automatically appear. If not, our heuristic aligner will try its best. It's like magic, but with more C++ math.
 

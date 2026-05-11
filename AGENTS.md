@@ -1,15 +1,15 @@
 # ChadVis ProjectM-QT Refactor: AGENTS.md
 
 ## Sys Instructions and requirements
-- **Caveman integration:** Ensure the caveman skill is installed for token efficiency first. `npx skills add JuliusBrussee/caveman`
-- **Oh-my-opencode-slim:** OMO-slim is used on the users host loca system (not cloud sessions generally).
-- **Never rm:** Never run `rm` commands or other destructive ones, instead append a date-time string to the file name and then move to appropriate directory within `.backup_graveyard/` for archival just-in-case. It doesn't nessecarily have to be commited to git in such a case.
-- **git:** Ensure git commits are made frequently enough that there is a great history of operations that an agent can quickly parse when doing a `git history --oneline`. Also do very thorough detailed commit messages where appropriate so that an agent can get more details when and where needed.
-- **General guidlines:** Worth a perusal when a new session, but not mandatory nor the law: `GENERAL_LLM_STARTING_PROMPT.md`.
+- **Caveman integration:** Ensure the caveman skill is being used, else install it for token efficiency first. `npx skills add JuliusBrussee/caveman`
+- **Oh-my-opencode-slim:** OMO-slim is used on the users system (not used in cloud sessions).
+- **NEVER rm:** Never run `rm` commands for safety; instead append a date-time string to the file name and then move to appropriate directory within `.backup_graveyard/` for archival and data safety. It doesn't nessecarily have to be commited to git.
+- **git:** Ensure git commits are made frequently enough that there is a great history of operations that an agent can quickly parse when doing a `git history --oneline`. Also do very thorough detailed commit messages where appropriate such as completing a chat session or othe major large changes so that an agent can get more details when and where needed.
+- **General guidelines:** Worth a perusal when a new or complex session, but not mandatory/law: `GENERAL_LLM_STARTING_PROMPT.md`.
 
 ## Legend & Rules
 - `[ ]` untouched.
-- `[~]` (large task that may take multiple context compressions or user opencode sessions) in-progress task.
+- `[~]` in-progress task.
 - `[x]` Finished for user review. Only the user may remove tasks, however the LLM model/agent is free to refactor, add, and reorganize all elements freely. The user may make changes at anytime with this noted.
 - `[?]` NOTE: something is blocking work being done.
 - `[!]` User or model attention is needed as soon as possible.
@@ -90,7 +90,7 @@
 - [ ] **PULSEAUDIO_FOUND checked but never searched** — `find_package(PulseAudio)` never called but `PULSEAUDIO_FOUND` referenced.
 - [ ] **Icons registered twice** — Duplicate registration via `.qrc` + `qt_add_qml_module`; double resource load.
 - [ ] **test_PresetScanner / test_projectm_render not in CMake** — Test targets exist but not added to CMakeLists; never compiled.
-- [ ] **WebEngineWidgets dead dependency** — Still linked but never used; bloats build and runtime deps.
+- [x] **WebEngineWidgets dead dependency** — Still linked but never used; bloats build and runtime deps.
 - [ ] **Remove ~20 stale cmake modules** — Only CPM.cmake + FindProjectM4.cmake used; Conan.cmake, Vcpkg.cmake, Doxygen.cmake, etc. are dead.
 
 ### Suno Integration
