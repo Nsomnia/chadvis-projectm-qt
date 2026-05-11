@@ -49,7 +49,7 @@ add_compile_options(
 
 # Find packages
 # TODO: is web engine needed anymore? As browser code removed and the user has a file somewhere showing how to do callback urls for Google login if needed via Suno API. 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Multimedia Network Quick Qml QuickControls2 WebEngineWidgets Sql)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Multimedia Network Quick Qml QuickControls2 Sql)
 find_package(PkgConfig REQUIRED)
 
 # Header-only libraries: try system first, fallback to CPM
@@ -326,7 +326,6 @@ set(COMMON_LIBS
     Qt6::Quick
     Qt6::Qml
     Qt6::QuickControls2
-    Qt6::WebEngineWidgets
     Qt6::Sql
     ${TAGLIB_LIBRARIES}
     ${GLEW_LIBRARIES}

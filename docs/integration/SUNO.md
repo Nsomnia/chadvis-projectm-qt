@@ -10,7 +10,7 @@ Suno uses a complex Clerk-based auth system. We've mastered it so you don't have
 
 1.  **Session Cookies**: We take your `__client` and `__session` cookies.
 2.  **JWT Extraction**: We pull the Bearer token from the session.
-3.  **Persistence**: We store these in a persistent Qt WebEngine profile. No more logging in every time you restart the app.
+3.  **Persistence**: We store these using secure storage. No more logging in every time you restart the app.
 4.  **Auto-Refresh**: Our `SunoClient` knows how to talk to the Clerk API to refresh tokens when they expire.
 
 ---
