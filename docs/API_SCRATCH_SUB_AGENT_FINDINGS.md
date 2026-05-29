@@ -266,3 +266,38 @@ Statsig / feature flags
 - It includes GTM (GTM-NQ9L4VGG), OneTrust, and Cloudflare analytics references.
 - clerk.browser.js is Clerk SDK internals; no Suno API routes beyond Clerk auth plumbing.
 - saved_resource is GTM payload; it contains analytics events, not Suno API endpoints.
+
+## Random extra ones to investigate from suno.ai
+Subdomain IP Address
+cdn1.suno.ai	3.167.99.88
+cdn2.suno.ai	13.249.8.94
+audiopipe-dev.suno.ai	44.217.60.1
+audiopipe.suno.ai	54.156.152.125
+app.suno.ai	104.20.18.158
+radio.suno.ai	172.64.80.1
+accounts.suno.ai	172.64.80.1
+dc.suno.ai	172.64.80.1
+v-day.suno.ai	172.64.80.1
+www.suno.ai	172.64.80.1
+dev.suno.ai	172.66.161.186
+staging-chopin.suno.ai	172.66.161.186
+login.suno.ai	172.66.161.186
+api.suno.ai	172.66.161.186
+margu.suno.ai	188.114.96.3
+console.suno.ai	188.114.96.3
+datasets-api.suno.ai	188.114.96.3
+chopin.suno.ai	188.114.96.3
+datasets.suno.ai	188.114.96.4
+podcasts.suno.ai	188.114.97.3
+staging.suno.ai	188.114.97.3
+data.suno.ai	188.114.97.3
+alpha.suno.ai	188.114.97.3
+clerk.suno.ai	188.114.97.3
+ninja.suno.ai	188.114.97.3
+demo.suno.ai	188.114.97.3
+studio-api.suno.ai	216.24.57.7
+api-staging.suno.ai	216.24.57.7
+statusz.suno.ai	216.24.57.251
+edu.suno.ai	N/A
+dc-aa8e722993._spfm.suno.ai	N/A
+studio.suno.ai	N/A
