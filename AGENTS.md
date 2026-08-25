@@ -1,11 +1,11 @@
 # ChadVis ProjectM-QT Refactor: AGENTS.md
 
-## Sys Instructions and requirements
-- **Caveman integration:** Ensure the caveman skill is being used, else install it for token efficiency first. `npx skills add JuliusBrussee/caveman`
-- **Oh-my-opencode-slim:** OMO-slim is used on the users system (not used in cloud sessions).
-- **NEVER rm:** Never run `rm` commands for safety; instead append a date-time string to the file name and then move to appropriate directory within `.backup_graveyard/` for archival and data safety. It doesn't nessecarily have to be commited to git.
-- **git:** Ensure git commits are made frequently enough that there is a great history of operations that an agent can quickly parse when doing a `git history --oneline`. Also do very thorough detailed commit messages where appropriate such as completing a chat session or othe major large changes so that an agent can get more details when and where needed.
-- **General guidelines:** Worth a perusal when a new or complex session, but not mandatory/law: `GENERAL_LLM_STARTING_PROMPT.md`.
+## Sys Instructions & Requirements
+> Note: The caveman skill requirement was removed temporarily because the current model has unlimited inference. Re-add it (`npx skills add JuliusBrussee/caveman`) if/when running on quota-limited models.
+- **Oh-my-opencode-slim:** Used on the user's system (not used in cloud sessions).
+- **NEVER rm:** Never run `rm` for safety; instead append a date-time string to the filename and move it into `.backup_graveyard/` for archival. Committing the move is optional.
+- **git:** Commit frequently so `git log --oneline` gives future agents a parseable history. Use detailed commit messages for session completions and other major changes.
+- **General guidelines:** Worth a perusal when starting a new or complex session, but not mandatory: `GENERAL_LLM_STARTING_PROMPT.md`.
 
 ## Legend & Rules
 - `[ ]` untouched.
@@ -14,21 +14,20 @@
 - `[?]` NOTE: something is blocking work being done.
 - `[!]` User or model attention is needed as soon as possible.
 
-## General Guidline
-- Git is a powerful history for future agent chat sessions as they *always* exceed the compression or max token usage per chat limits and thus context is lost. This project spans months and months with hundred(s) of millions of tokems invested over many models and generations.
-- expanding on the previous: if you find code or project maintence that needs attention, whether immediate or far down the road, then add it to this list and you may just see another agent working on it simutaniously or have it done in the future (you may even work on it if you choose).
-- Self prioritize task selection when given free reign over improving and expanding the codebase.
-- Write modern code that uses appropriate programming paradigms.
-- Unlmiited usage of tool calls as well as any packages on the users system such as debuggers, tui web browsers to dump sites like lynx, gh (github-cli), git, ddgr, and anything else avilable under `pacman -Qq`, If you require a specific tool then inform the user at end of output or stop poutput when needed immediately, This might include debuggers or language servers.
-- A "Chad" and "Arch, BTW" vibe as if linus Torvolds and Linus Tech Tips were orchestrating this project, all while Richard Stallman gives gnu kung-fu wisdom in the backgroud meditating to song.
-- Doducmentation, especially the root CHANGELOG.md and the history CHANGELOG.md(s) within docs/ should be kept up-to-date.
-- Write test if truely benenfical to the project in the long run or if it allows you to verify logic is working programmatically.
-- If you need to orchestrate a specific task to a specific model you may be able to find an approach. `opencode --models` will list models with any containing "free" being fair game . The configured API's nay not be operational or have quota so be warned. You can then run `opencode --model provider/name run "input_message_tokens"`.
-- Use appropriate programming paradigms based on the current task. May be helpful to seed your context window with a brief overview of how you'll ensure maintance of current and writing of new portisons of the codebase. *Nesting files and directories is "free" whereas input and output tokens, as well as edit tool calls being tougher on huge code blocks, all ask cost with every token not being worked with. The user has been told 500 LOC for C++ 23 classes is a general good limit but your free to use best judgment.
-- Follow industry stadards whenever both relevent and possible. Every aspect should not only be production ready but also ooze the vibe that it was done by a human to really try to keep everything both maintainable and to not become burden with slop (which is already happening in small degrees all over the project!).
+## General Guidelines
+- Git history is the primary memory for future agent sessions, which *always* exceed compression/token limits and lose context. This project spans months with hundreds of millions of tokens invested over many models and generations.
+- If you find code or project maintenance that needs attention — immediate or far down the road — add it to this list. Another agent may pick it up simultaneously or in a future session.
+- Self-prioritize task selection when given free rein to improve the codebase.
+- Unlimited tool calls and full access to user-system packages: debuggers, `lynx`, `gh`, `git`, `ddgr`, anything under `pacman -Qq`. If you need a specific missing tool (e.g., debugger or language server), tell the user immediately.
+- Keep the "Chad" and "Arch, BTW" vibe — as if Linus Torvalds and Linus Tech Tips were orchestrating this while Richard Stallman dispenses GNU kung-fu wisdom in the background.
+- Keep documentation up-to-date, especially root `CHANGELOG.md` and the per-directory CHANGELOGs under `docs/`.
+- Write tests when they genuinely benefit the project or allow programmatic verification of logic.
+- To route a task to a specific model: `opencode --models` lists models ("free" ones are fair game; configured APIs may be non-operational or quota-limited), then run `opencode --model provider/name run "input_message"`.
+- Nesting files/directories is free; input/output tokens and edits on huge code blocks are not. ~500 LOC is a good soft limit for C++23 classes — use best judgment.
+- Follow industry standards wherever relevant. Everything should be production-ready and feel human-written: maintainable, no slop.
 
 ## Ralph Loop/Self-Repetition/Infinite Mode
-- You have complete freedom to, and are requested to, work as long as seems appropriate on this TODO list, so long as either there are tasks in this AGENTS.md TODO list, or you are aware of improvments that may be possible to the codebase. In these cases design and use a simple self-harness for repeating until your confident that your work is done and start with this harness wrapper, then end with a self promise statement of all tasks being done, compiled, tests run where appropriate, verified, logs checked, git commits made and then pushed to remote, and so-on until one step is fatally blocked or broken without being able to amend.
+- You have complete freedom to, and are requested to, work as long as seems appropriate on this TODO list, so long as either there are tasks in this AGENTS.md TODO list, or you are aware of improvements that may be possible to the codebase. In these cases design and use a simple self-harness for repeating until you're confident your work is done and start with this harness wrapper, then end with a self promise statement of all tasks being done, compiled, tests run where appropriate, verified, logs checked, git commits made and then pushed to remote, and so-on until one step is fatally blocked or broken without being able to amend.
 
 ---
 
