@@ -49,21 +49,19 @@ pipeline — only captured REST surfaces.
 - Retina DPR fix: visualizer renders full viewport (`devicePixelRatio()` scaling).
 - Commits fd357ff, ca2f33e, e26841f pushed.
 
-### P1 — Suno Core Correctness (auth + single client)
-- [ ] Rework auth: Clerk flow against `auth.suno.com/v1/client` (+`sessions/{sid}/touch`
+### P1 — Suno Core Correctness (auth + single client) ✅ DONE (2026-08-26, commits a578e1a, 8a2b898, 86ae631)
+- [x] Rework auth: Clerk flow against `auth.suno.com/v1/client` (+`sessions/{sid}/touch`
       refresh, proactive ~55-min timer), browser-like header set (Device-Id, Browser-Token,
       Origin/Referer, UA) on every studio-api call.
-- [ ] Credential storage: OS Keychain (Security.framework on macOS / libsecret on Linux);
-      plaintext TOML only as documented reduced-security fallback. Manual cookie-paste
-      bootstrap FIRST (zero login-flow code), webview/OAuth later.
-- [ ] Collapse SunoClient/SunoOrchestrator into one queued authenticated client:
-      politeness limiter (≤1 rps sustained / ≤5 burst, honor Retry-After), uniform 401
-      class handling, per-account scoping groundwork.
-- [ ] Replace recon-derived models with T1-captured shapes: feed/v3 cursor pagination
-      (already partially done), clip schema with `media_urls[]`, session bootstrap model
-      catalog (`GET /api/session/`), billing info (`GET /api/billing/info/`) with credit
-      balance surfaced BEFORE any spend action.
-- [ ] Retire dead B-Side/Orpheus routes from SunoEndpoints.hpp.
+- [x] Credential storage: OS Keychain (Security.framework; atomic 0600 file fallback);
+      TOML→keychain migration on first init. Token-paste bootstrap works via Settings;
+      webview/OAuth deferred.
+- [x] Single queued authenticated client: uniform 401→touch→retry-once→needsReauth;
+      lyrics manager duplicate path deleted; wav polling routed through queue + cancellable.
+- [x] T1-captured shapes: canonical ClipParser (full clip schema), feed/v3 cursor
+      pagination, session model catalog (`GET /api/session/`), billing
+      (`GET /api/billing/info/`) surfaced as credits/planName/userName.
+- [x] Dead routes retired (LOGIN/SIGN_IN/Clerk constants); SystemBrowserAuth archived.
 
 ### P2 — Remote Library First (UI pivot)
 - [ ] Re-home navigation: Library becomes the default landing surface; visualizer moves to
