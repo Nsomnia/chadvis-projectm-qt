@@ -2,7 +2,16 @@
 // SunoEndpoints.hpp - Centralized Suno API endpoint map
 // One source of truth for every URL we hit
 
+#include <QString>
 #include <string_view>
+
+namespace vc::suno {
+
+/// Convert a std::string_view endpoint constant to QString without the
+/// fromUtf8/data()/size() boilerplate repeated at every call site.
+inline QString qstr(std::string_view sv) {
+    return QString::fromUtf8(sv.data(), static_cast<qsizetype>(sv.size()));
+}
 
 namespace vc::suno::endpoints {
 

@@ -5,8 +5,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <QNetworkRequest>
-#include <QNetworkAccessManager>
 
 namespace vc {
 
@@ -16,61 +14,60 @@ SunoOrchestrator::SunoOrchestrator(vc::suno::SunoClient* client, QObject* parent
 void SunoOrchestrator::sendMessage(const QString& message, const QString& workspaceId) {
     if (!client_) return;
 
-    QNetworkRequest request(QUrl(modalBaseUrl_ + QString::fromUtf8(vc::suno::endpoints::ORCHESTRATOR_CHAT.data(), static_cast<int>(vc::suno::endpoints::ORCHESTRATOR_CHAT.size()))));
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    
-    // Add auth headers from SunoClient
-    request.setRawHeader("Authorization", "Bearer " + client_->token().toUtf8());
-
     QJsonObject body;
     body["message"] = message;
     if (!workspaceId.isEmpty()) {
         body["workspace_id"] = workspaceId;
     }
 
-    QNetworkReply* reply = client_->networkManager()->post(request, QJsonDocument(body).toJson());
-    connect(reply, &QNetworkReply::finished, this, [this, reply, workspaceId]() {
-        onMessageFinished(reply);
-    });
+    // Routed through SunoClient so the request respects the shared
+    // rate-limiting queue and auth-refresh gate (previously bypassed it).
+    client_->enqueueAuthenticatedRequest(
+        vc::suno::qstr(vc::suno::endpoints::MODAL_BASE) + vc::suno::qstr(vc::suno::endpoints::ORCHESTRATOR_CHAT),
+        "POST",
+        QJsonDocument(body).toJson(),
+        [this, workspaceId](QNetworkReply* reply) {
+            reply->deleteLater();
+            if (reply->error() != QNetworkReply::NoError) {
+                LOG_ERROR("SunoOrchestrator: Chat error: {}", reply->errorString().toStdString());
+                emit errorOccurred(reply->errorString());
+                return;
+            }
+            onMessageFinished(reply->readAll(), workspaceId);
+        });
 }
 
 void SunoOrchestrator::fetchHistory() {
     if (!client_) return;
 
-    QNetworkRequest request(QUrl(modalBaseUrl_ + QString::fromUtf8(vc::suno::endpoints::ORCHESTRATOR_HISTORY.data(), static_cast<int>(vc::suno::endpoints::ORCHESTRATOR_HISTORY.size()))));
-    request.setRawHeader("Authorization", "Bearer " + client_->token().toUtf8());
-
-    QNetworkReply* reply = client_->networkManager()->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        onHistoryFinished(reply);
-    });
+    client_->enqueueAuthenticatedRequest(
+        vc::suno::qstr(vc::suno::endpoints::MODAL_BASE) + vc::suno::qstr(vc::suno::endpoints::ORCHESTRATOR_HISTORY),
+        "GET",
+        {},
+        [this](QNetworkReply* reply) {
+            reply->deleteLater();
+            if (reply->error() != QNetworkReply::NoError) {
+                LOG_ERROR("SunoOrchestrator: History error: {}", reply->errorString().toStdString());
+                emit errorOccurred(reply->errorString());
+                return;
+            }
+            onHistoryFinished(reply->readAll());
+        });
 }
 
-void SunoOrchestrator::onMessageFinished(QNetworkReply* reply) {
-    reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError) {
-        LOG_ERROR("SunoOrchestrator: Chat error: {}", reply->errorString().toStdString());
-        emit errorOccurred(reply->errorString());
-        return;
-    }
-
-    QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+void SunoOrchestrator::onMessageFinished(const QByteArray& body, const QString& workspaceId) {
+    QJsonDocument doc = QJsonDocument::fromJson(body);
     QJsonObject obj = doc.object();
     QString response = obj["response"].toString();
-    QString workspaceId = obj["workspace_id"].toString();
+    // Prefer the server-reported workspace id when present.
+    QString resolvedWorkspaceId = obj["workspace_id"].toString();
+    if (resolvedWorkspaceId.isEmpty()) resolvedWorkspaceId = workspaceId;
 
-    emit messageReceived(response, workspaceId);
+    emit messageReceived(response, resolvedWorkspaceId);
 }
 
-void SunoOrchestrator::onHistoryFinished(QNetworkReply* reply) {
-    reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError) {
-        LOG_ERROR("SunoOrchestrator: History error: {}", reply->errorString().toStdString());
-        emit errorOccurred(reply->errorString());
-        return;
-    }
-
-    QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+void SunoOrchestrator::onHistoryFinished(const QByteArray& body) {
+    QJsonDocument doc = QJsonDocument::fromJson(body);
     QVariantList sessions = doc.array().toVariantList();
     emit historyFetched(sessions);
 }

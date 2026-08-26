@@ -1,4 +1,5 @@
 #include "suno/SunoLyricsManager.hpp"
+#include "suno/SunoAuthFailure.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include <QTimer>
@@ -103,9 +104,8 @@ void SunoLyricsManager::onError(const std::string& message) {
             lyricsQueue_.push_back(id);
         }
     }
-    // Check for Unauthorized/401 -> Pause
-    else if (message.find("Unauthorized") != std::string::npos || 
-             message.find("401") != std::string::npos) {
+    // Auth failure -> Pause (shared classifier, same check SunoClient uses)
+    else if (isAuthFailure(-1, QString::fromStdString(message))) {
         
         LOG_WARN("SunoLyricsManager: Auth error detected. Pausing queue for refresh.");
         

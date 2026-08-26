@@ -1,4 +1,5 @@
 #include "SunoClient.hpp"
+#include "SunoAuthFailure.hpp"
 #include "SunoEndpoints.hpp"
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -13,6 +14,12 @@
 #include <deque>
 
 namespace vc::suno {
+
+// NOTE (throttling): this deque-based limiter (1 req/s via queueTimer_) is the
+// single rate-limiting gate for all Suno API traffic. SunoLyricsManager adds a
+// separate concurrency-limited jitter queue ON TOP of this one for lyrics
+// fetches. Planned consolidation: unify both into one scheduler inside
+// SunoClient once lyrics jitter semantics are confirmed safe to fold in.
 
 SunoClient::SunoClient(QObject* parent)
     : QObject(parent),
@@ -87,7 +94,7 @@ void SunoClient::setCookie(const std::string& cookie) {
             }
         }
     }
-    
+
     if (!sessionValue.isEmpty() && sessionValue.startsWith("eyJ")) {
         std::string newToken = sessionValue.toStdString();
         if (token_ != newToken) {
@@ -95,7 +102,7 @@ void SunoClient::setCookie(const std::string& cookie) {
             tokenChanged.emitSignal(token_);
             LOG_INFO("SunoClient: Extracted JWT from __session cookie");
         }
-        
+
         std::string sid = extractSidFromToken(token_);
         if (!sid.empty()) {
             clerkSid_ = sid;
@@ -108,7 +115,7 @@ std::string SunoClient::extractSidFromToken(const std::string& token) {
     QString qtoken = QString::fromStdString(token);
     QStringList parts = qtoken.split('.');
     if (parts.size() < 2) return "";
-    
+
     QByteArray payload = QByteArray::fromBase64(parts[1].toUtf8(), QByteArray::Base64UrlEncoding);
     QJsonDocument doc = QJsonDocument::fromJson(payload);
     if (!doc.isNull() && doc.isObject()) {
@@ -129,7 +136,7 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
 
     if (clerkSid_.empty()) {
         QString url = CLERK_BASE
-                              + QString::fromUtf8(vc::suno::endpoints::CLERK_CLIENT.data(), static_cast<int>(vc::suno::endpoints::CLERK_CLIENT.size()))
+                              + qstr(vc::suno::endpoints::CLERK_CLIENT)
                               + QString::fromStdString(clerkVersion_);
         QNetworkRequest req((QUrl(url)));
         req.setRawHeader("Cookie", QString::fromStdString(cookie_).toUtf8());
@@ -161,9 +168,9 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
     }
 
     QString url = CLERK_BASE
-                          + QString::fromUtf8(vc::suno::endpoints::CLERK_SESSION.data(), static_cast<int>(vc::suno::endpoints::CLERK_SESSION.size()))
+                          + qstr(vc::suno::endpoints::CLERK_SESSION)
                           + QString::fromStdString(clerkSid_)
-                          + QString::fromUtf8(vc::suno::endpoints::CLERK_CLIENT.data(), static_cast<int>(vc::suno::endpoints::CLERK_CLIENT.size()))
+                          + qstr(vc::suno::endpoints::CLERK_CLIENT)
                           + QString::fromStdString(clerkVersion_);
     QNetworkRequest req((QUrl(url)));
     req.setRawHeader("Cookie", QString::fromStdString(cookie_).toUtf8());
@@ -188,6 +195,56 @@ void SunoClient::refreshAuthToken(std::function<void(bool)> callback) {
     });
 }
 
+void SunoClient::withValidToken(std::function<void()> proceed) {
+    if (!token_.empty() || cookie_.empty()) {
+        proceed();
+        return;
+    }
+    refreshAuthToken([this, proceed = std::move(proceed)](bool success) {
+        if (success) proceed();
+        else errorOccurred.emitSignal("Auth refresh failed");
+    });
+}
+
+void SunoClient::enqueueAuthenticatedRequest(const QString& endpoint,
+                                             const std::string& method,
+                                             const QByteArray& data,
+                                             std::function<void(QNetworkReply*)> callback) {
+    withValidToken([this, endpoint, method, data, callback = std::move(callback)]() mutable {
+        enqueueRequest(createAuthenticatedRequest(endpoint), method, data, std::move(callback));
+    });
+}
+
+void SunoClient::handleJsonReply(QNetworkReply* reply,
+                                 std::function<void(const QJsonDocument&)> handler) {
+    reply->deleteLater();
+    if (reply->error() != QNetworkReply::NoError) {
+        handleNetworkError(reply);
+        return;
+    }
+    handler(QJsonDocument::fromJson(reply->readAll()));
+}
+
+std::vector<SunoClip> SunoClient::parseClipArray(const QJsonArray& array) {
+    std::vector<SunoClip> clips;
+    clips.reserve(array.size());
+    for (const auto& item : array) {
+        QJsonObject obj = item.toObject();
+        SunoClip clip;
+        clip.id = obj["id"].toString().toStdString();
+        clip.title = obj["title"].toString().toStdString();
+        if (clip.title.empty()) clip.title = obj["name"].toString().toStdString();
+        clip.audio_url = obj["audio_url"].toString().toStdString();
+        clip.image_url = obj["image_url"].toString().toStdString();
+        clip.status = obj["status"].toString().toStdString();
+        QJsonObject meta = obj["metadata"].toObject();
+        clip.metadata.prompt = meta["prompt"].toString().toStdString();
+        clip.metadata.tags = meta["tags"].toString().toStdString();
+        clips.push_back(clip);
+    }
+    return clips;
+}
+
 QNetworkRequest SunoClient::createAuthenticatedRequest(const QString& endpoint) {
     QUrl url = endpoint.startsWith("http") ? QUrl(endpoint) : QUrl(API_BASE + endpoint);
     QNetworkRequest request(url);
@@ -208,48 +265,22 @@ void SunoClient::fetchLibrary(int page) {
         errorOccurred.emitSignal("Not authenticated");
         return;
     }
-    auto proceed = [this, page] {
-        QString url = QString::fromUtf8(vc::suno::endpoints::LIBRARY.data(), static_cast<int>(vc::suno::endpoints::LIBRARY.size()))
+    withValidToken([this, page]() {
+        QString url = qstr(vc::suno::endpoints::LIBRARY)
                       + QString("?hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=%1").arg(page - 1);
         enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this](QNetworkReply* reply) {
             onLibraryReply(reply);
         });
-    };
-    if (token_.empty() && !cookie_.empty()) {
-        refreshAuthToken([this, proceed](bool success) {
-            if (success) proceed();
-            else errorOccurred.emitSignal("Auth refresh failed");
-        });
-    } else proceed();
+    });
 }
 
 void SunoClient::onLibraryReply(QNetworkReply* reply) {
-    reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError) {
-        handleNetworkError(reply);
-        return;
-    }
-    QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-    std::vector<SunoClip> clips;
-    QJsonArray array;
-    if (doc.isObject() && doc.object().contains("clips")) array = doc.object()["clips"].toArray();
-    else if (doc.isArray()) array = doc.array();
-
-    for (const auto& item : array) {
-        QJsonObject obj = item.toObject();
-        SunoClip clip;
-        clip.id = obj["id"].toString().toStdString();
-        clip.title = obj["title"].toString().toStdString();
-        if (clip.title.empty()) clip.title = obj["name"].toString().toStdString();
-        clip.audio_url = obj["audio_url"].toString().toStdString();
-        clip.image_url = obj["image_url"].toString().toStdString();
-        clip.status = obj["status"].toString().toStdString();
-        QJsonObject meta = obj["metadata"].toObject();
-        clip.metadata.prompt = meta["prompt"].toString().toStdString();
-        clip.metadata.tags = meta["tags"].toString().toStdString();
-        clips.push_back(clip);
-    }
-    libraryFetched.emitSignal(clips);
+    handleJsonReply(reply, [this](const QJsonDocument& doc) {
+        QJsonArray array;
+        if (doc.isObject() && doc.object().contains("clips")) array = doc.object()["clips"].toArray();
+        else if (doc.isArray()) array = doc.array();
+        libraryFetched.emitSignal(parseClipArray(array));
+    });
 }
 
 void SunoClient::generate(const std::string& prompt, const std::string& tags, bool makeInstrumental, const std::string& model) {
@@ -258,7 +289,7 @@ void SunoClient::generate(const std::string& prompt, const std::string& tags, bo
         return;
     }
 
-    auto proceed = [this, prompt, tags, makeInstrumental, model] {
+    withValidToken([this, prompt, tags, makeInstrumental, model]() {
         QJsonObject body;
         body["gpt_description_prompt"] = QString::fromStdString(prompt);
         body["prompt"] = ""; // Used for custom lyrics
@@ -269,41 +300,33 @@ void SunoClient::generate(const std::string& prompt, const std::string& tags, bo
         body["continue_at"] = QJsonValue::Null;
 
         QJsonDocument doc(body);
-        enqueueRequest(createAuthenticatedRequest(QString::fromUtf8(vc::suno::endpoints::GENERATE.data(), static_cast<int>(vc::suno::endpoints::GENERATE.size()))), "POST", doc.toJson(), [this](QNetworkReply* reply) {
+        enqueueRequest(createAuthenticatedRequest(qstr(vc::suno::endpoints::GENERATE)), "POST", doc.toJson(), [this](QNetworkReply* reply) {
             onGenerateReply(reply);
         });
-    };
-
-    if (token_.empty() && !cookie_.empty()) {
-        refreshAuthToken([this, proceed](bool success) { if (success) proceed(); });
-    } else proceed();
+    });
 }
 
 void SunoClient::onGenerateReply(QNetworkReply* reply) {
-    reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError) {
-        handleNetworkError(reply);
-        return;
-    }
-    
-    QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-    QJsonArray array;
-    if (doc.isObject() && doc.object().contains("clips")) array = doc.object()["clips"].toArray();
-    
-    std::vector<SunoClip> clips;
-    for (const auto& item : array) {
-        QJsonObject obj = item.toObject();
-        SunoClip clip;
-        clip.id = obj["id"].toString().toStdString();
-        clip.status = "pending";
-        clips.push_back(clip);
-    }
-    generationStarted.emitSignal(clips);
+    handleJsonReply(reply, [this](const QJsonDocument& doc) {
+        QJsonArray array;
+        if (doc.isObject() && doc.object().contains("clips")) array = doc.object()["clips"].toArray();
+
+        std::vector<SunoClip> clips;
+        for (const auto& item : array) {
+            QJsonObject obj = item.toObject();
+            SunoClip clip;
+            clip.id = obj["id"].toString().toStdString();
+            clip.status = "pending";
+            clips.push_back(clip);
+        }
+        generationStarted.emitSignal(clips);
+    });
 }
 
 void SunoClient::handleNetworkError(QNetworkReply* reply) {
+    int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     std::string err = reply->errorString().toStdString();
-    if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 401) {
+    if (isAuthFailure(httpStatus, reply->errorString())) {
         err = "Unauthorized: Token expired";
         token_.clear();
     }
@@ -313,26 +336,23 @@ void SunoClient::handleNetworkError(QNetworkReply* reply) {
 
 void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
     if (!isAuthenticated()) return;
-    auto proceed = [this, clipId] {
-        QString url = QString::fromUtf8(vc::suno::endpoints::ALIGNED_LYRICS.data(), static_cast<int>(vc::suno::endpoints::ALIGNED_LYRICS.size()))
-                      .replace("{}", QString::fromStdString(clipId));
-        enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this, clipId](QNetworkReply* reply) {
-            reply->deleteLater();
-            if (reply->error() == QNetworkReply::NoError) alignedLyricsFetched.emitSignal(clipId, reply->readAll().toStdString());
-            else errorOccurred.emitSignal("Lyrics fetch failed");
-        });
-    };
-    if (token_.empty() && !cookie_.empty()) refreshAuthToken([this, proceed](bool success) { if (success) proceed(); });
-    else proceed();
+    withValidToken([this, clipId]() {
+        QString url = qstr(vc::suno::endpoints::ALIGNED_LYRICS).replace("{}", QString::fromStdString(clipId));
+            enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this, clipId](QNetworkReply* reply) {
+                handleJsonReply(reply, [this, clipId](const QJsonDocument& doc) {
+                    // Forward the body as compact JSON; consumers re-parse it.
+                    alignedLyricsFetched.emitSignal(clipId, doc.toJson(QJsonDocument::Compact).toStdString());
+                });
+            });
+    });
 }
 
 void SunoClient::initiateWavConversion(const std::string& clipId) {
     if (!isAuthenticated()) return;
-    QString url = QString::fromUtf8(vc::suno::endpoints::CONVERT_WAV.data(), static_cast<int>(vc::suno::endpoints::CONVERT_WAV.size()))
-                  .replace("{}", QString::fromStdString(clipId));
+    QString url = qstr(vc::suno::endpoints::CONVERT_WAV).replace("{}", QString::fromStdString(clipId));
     enqueueRequest(createAuthenticatedRequest(url), "POST", {}, [this, clipId](QNetworkReply* reply) {
         reply->deleteLater();
-        if (reply->error() == QNetworkReply::NoError || reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 202) {
+        if (reply->error() == QNetworkReply::NoError) { // 2xx incl. 202 Accepted
             QTimer::singleShot(2000, this, [this, clipId]() { pollWavFile(clipId, 60); });
         }
     });
@@ -340,8 +360,7 @@ void SunoClient::initiateWavConversion(const std::string& clipId) {
 
 void SunoClient::pollWavFile(const std::string& clipId, int maxAttempts) {
     if (!isAuthenticated() || maxAttempts <= 0) return;
-    QString url = QString::fromUtf8(vc::suno::endpoints::WAV_FILE.data(), static_cast<int>(vc::suno::endpoints::WAV_FILE.size()))
-                  .replace("{}", QString::fromStdString(clipId));
+    QString url = qstr(vc::suno::endpoints::WAV_FILE).replace("{}", QString::fromStdString(clipId));
     enqueueRequest(createAuthenticatedRequest(url), "GET", {}, [this, clipId, maxAttempts](QNetworkReply* reply) {
         reply->deleteLater();
         QByteArray data = reply->readAll();
