@@ -6,6 +6,7 @@
 #include <source_location>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -43,8 +44,10 @@ struct Error {
 };
 
 // Result type - either value or error
+// [[nodiscard]] at the class level flags every discarded Result return
+// (values AND errors) at all call sites.
 template <typename T>
-class Result {
+class [[nodiscard]] Result {
     std::variant<T, Error> data_;
 
 public:
@@ -117,6 +120,30 @@ public:
         return decltype(fn(std::declval<T>()))::err(error());
     }
 
+    // or_else: run fallback on error, pass success through untouched.
+    // F must be callable as Result<T>(const Error&).
+    template <typename F>
+    auto orElse(F&& fn) const& -> decltype(fn(std::declval<const Error&>())) {
+        using R = decltype(fn(std::declval<const Error&>()));
+        static_assert(std::is_same_v<R, Result>,
+                      "orElse callback must return Result<T> of the same type");
+        if (isErr()) {
+            return fn(error());
+        }
+        return *this;
+    }
+
+    template <typename F>
+    auto orElse(F&& fn) && -> decltype(fn(std::move(error()))) {
+        using R = decltype(fn(std::move(error())));
+        static_assert(std::is_same_v<R, Result>,
+                      "orElse callback must return Result<T> of the same type");
+        if (isErr()) {
+            return fn(std::move(error()));
+        }
+        return std::move(*this);
+    }
+
     // Pointer-like access
     T* operator->() {
         return &value();
@@ -134,7 +161,7 @@ public:
 
 // Specialization for void
 template <>
-class Result<void> {
+class [[nodiscard]] Result<void> {
     std::optional<Error> error_;
 
 public:
@@ -164,6 +191,19 @@ public:
 
     [[nodiscard]] const Error& error() const {
         return *error_;
+    }
+
+    // or_else: run fallback on error, pass success through untouched.
+    // F must be callable as Result<void>(const Error&).
+    template <typename F>
+    auto orElse(F&& fn) const -> decltype(fn(error())) {
+        using R = decltype(fn(error()));
+        static_assert(std::is_same_v<R, Result>,
+                      "orElse callback must return Result<void>");
+        if (isErr()) {
+            return fn(error());
+        }
+        return *this;
     }
 };
 

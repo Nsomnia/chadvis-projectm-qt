@@ -1,13 +1,13 @@
 #pragma once
 // FileUtils.hpp - File system helpers
-// std::filesystem is great but verbose
+// Purpose: filesystem + formatting utilities (paths, sizes, durations).
+// Does NOT own config parsing/serialization, audio processing, or UI concerns.
 
 #include "Types.hpp"
 #include "Result.hpp"
+#include <QString>
 #include <vector>
 #include <set>
-
-class QString;
 
 namespace vc::file {
 
@@ -18,16 +18,16 @@ fs::path cacheDir();           // ~/.cache/chadvis-projectm-qt
 fs::path presetsDir();         // /usr/share/projectM/presets or similar
 
 // Ensure directory exists
-Result<void> ensureDir(const fs::path& path);
+[[nodiscard]] Result<void> ensureDir(const fs::path& path);
 
 // Read entire file to string
-Result<std::string> readText(const fs::path& path);
+[[nodiscard]] Result<std::string> readText(const fs::path& path);
 
 // Write string to file (atomic)
-Result<void> writeText(const fs::path& path, std::string_view content);
+[[nodiscard]] Result<void> writeText(const fs::path& path, std::string_view content);
 
 // Read binary file
-Result<std::vector<u8>> readBinary(const fs::path& path);
+[[nodiscard]] Result<std::vector<u8>> readBinary(const fs::path& path);
 
 // List files with extension filter
 std::vector<fs::path> listFiles(const fs::path& dir, 
@@ -63,6 +63,9 @@ std::string formatDuration(Duration dur);
 
 // Format duration as H:MM:SS (non-zero-padded hours) or M:SS (QString for QML bridges)
 QString formatDurationQString(vc::i64 ms);
+
+// Format milliseconds as SRT subtitle timecode: HH:MM:SS,mmm (negative clamps to 00:00:00,000)
+QString srtTimecode(qint64 milliseconds);
 
 // Parse duration from string
 std::optional<Duration> parseDuration(std::string_view str);
