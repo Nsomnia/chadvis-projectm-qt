@@ -1,16 +1,14 @@
 #include "AudioBridge.hpp"
+#include "PlaylistItemPresenter.hpp"
 #include "audio/AudioEngine.hpp"
-#include "audio/analysis/MediaMetadata.hpp"
 #include "core/Application.hpp"
-#include <QQmlEngine>
 
 namespace qml_bridge {
 
 vc::AudioEngine* AudioBridge::s_engine = nullptr;
-AudioBridge* AudioBridge::s_instance = nullptr;
 
 AudioBridge::AudioBridge(QObject* parent) : QObject(parent) {
-    s_instance = this;
+    setInstance(this);
     if (s_engine) {
         connect(s_engine, &vc::AudioEngine::stateChanged, this, &AudioBridge::onEngineStateChanged);
         connect(s_engine, &vc::AudioEngine::positionChanged, this, &AudioBridge::onEnginePositionChanged);
@@ -20,10 +18,6 @@ AudioBridge::AudioBridge(QObject* parent) : QObject(parent) {
         position_ = s_engine->position().count();
         duration_ = s_engine->duration().count();
     }
-}
-
-QObject* AudioBridge::create(QQmlEngine*, QJSEngine*) {
-    return new AudioBridge();
 }
 
 void AudioBridge::setAudioEngine(vc::AudioEngine* engine) {
@@ -76,10 +70,7 @@ QVariantMap AudioBridge::playlistItem(int index) const {
     if (!s_engine || index < 0) return result;
     const auto& items = s_engine->playlist().items();
     if (static_cast<size_t>(index) < items.size()) {
-        const auto& item = items[index];
-        result["title"] = QString::fromStdString(item.metadata.displayTitle());
-        result["artist"] = QString::fromStdString(item.metadata.displayArtist());
-        result["path"] = QString::fromStdString(item.path.string());
+        result = PlaylistItemPresenter::toVariantMap(items[index]);
     }
     return result;
 }
@@ -98,10 +89,7 @@ void AudioBridge::onEngineTrackChanged() {
     currentTrack_.clear();
     if (s_engine) {
         if (auto* item = s_engine->playlist().currentItem()) {
-            const auto& meta = item->metadata;
-            currentTrack_["title"] = QString::fromStdString(meta.displayTitle());
-            currentTrack_["artist"] = QString::fromStdString(meta.displayArtist());
-            currentTrack_["path"] = QString::fromStdString(item->path.string());
+            currentTrack_ = PlaylistItemPresenter::toVariantMap(*item);
         }
     }
     emit trackChanged();

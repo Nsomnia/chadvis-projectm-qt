@@ -2,20 +2,25 @@
  * @file OverlayBridge.hpp
  * @brief QML bridge for managing text overlays
  *
- * @version 1.0.0 - 2026-04-20
+ * @version 1.1.0 - 2026-08-25
  */
 
 #pragma once
 
 #include <QObject>
 #include <QtQml/qqml.h>
+#include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QString>
+#include "QmlSingletonBridge.hpp"
 
 namespace qml_bridge {
 
-class OverlayBridge : public QObject {
+/// Ownership note: create() parents this bridge to the QML engine with explicit
+/// CppOwnership (preserved historical behavior) via SingletonPolicy::CppOwnership.
+class OverlayBridge : public QObject,
+                      public QmlSingletonBridge<OverlayBridge, SingletonPolicy::CppOwnership> {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -24,9 +29,7 @@ class OverlayBridge : public QObject {
 
 public:
     explicit OverlayBridge(QObject* parent = nullptr);
-    ~OverlayBridge() override = default;
-
-    static QObject* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
+    ~OverlayBridge() override;
 
     QVariantList overlays() const;
     void setOverlays(const QVariantList& overlays);
@@ -39,12 +42,13 @@ signals:
     void overlaysChanged();
 
 private:
+    void scheduleSave();
     void saveOverlays();
     void loadOverlays();
     QString getSettingsPath() const;
 
-    static OverlayBridge* s_instance;
     QVariantList overlays_;
+    QTimer autoSaveTimer_;
 };
 
 } // namespace qml_bridge

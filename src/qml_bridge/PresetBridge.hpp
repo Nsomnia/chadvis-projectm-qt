@@ -6,6 +6,7 @@
 #include <QVariantMap>
 #include <QStringList>
 #include "visualizer/PresetData.hpp"
+#include "QmlSingletonBridge.hpp"
 
 namespace vc {
 class PresetManager;
@@ -13,7 +14,8 @@ class PresetManager;
 
 namespace qml_bridge {
 
-class PresetBridge : public QObject {
+class PresetBridge : public QObject,
+                     public QmlSingletonBridge<PresetBridge, SingletonPolicy::CachedQmlParented> {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -33,7 +35,6 @@ public:
     explicit PresetBridge(QObject* parent = nullptr);
     ~PresetBridge() override = default;
 
-    static QObject* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
     static void setPresetManager(vc::PresetManager* manager);
     static void connectSignals();
 
@@ -78,7 +79,6 @@ private:
     QVariantMap presetToVariant(const vc::PresetInfo& info) const;
 
     static vc::PresetManager* s_manager;
-    static PresetBridge* s_instance;
 
     QString searchQuery_;
     QString selectedCategory_;

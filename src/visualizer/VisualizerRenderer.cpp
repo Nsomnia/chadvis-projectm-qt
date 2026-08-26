@@ -26,17 +26,7 @@ void VisualizerRenderer::initialize(u32 width, u32 height) {
     initBlitResources();
 
     const auto& vizConfig = CONFIG.visualizer();
-    pm::ProjectMConfig pmConfig;
-    pmConfig.width = width;
-    pmConfig.height = height;
-    pmConfig.fps = vizConfig.fps;
-    pmConfig.beatSensitivity = vizConfig.beatSensitivity;
-    pmConfig.presetPath = vizConfig.presetPath;
-    pmConfig.presetDuration = vizConfig.presetDuration;
-    pmConfig.transitionDuration = vizConfig.smoothPresetDuration;
-    pmConfig.shufflePresets = vizConfig.shufflePresets;
-    pmConfig.useDefaultPreset = vizConfig.useDefaultPreset;
-    pmConfig.texturePaths = vizConfig.texturePaths;
+    const auto pmConfig = pm::ProjectMConfig::fromVisualizer(vizConfig, width, height);
 
     projectM_.presetLoading.connect(
             [this](bool loading) { presetLoading_ = loading; });

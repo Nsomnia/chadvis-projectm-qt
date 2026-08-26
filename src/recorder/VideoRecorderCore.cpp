@@ -104,9 +104,6 @@ void VideoRecorder::submitVideoFrame(const u8* data,
   worker_->pushVideoFrame(std::move(frame));
 }
 
-void VideoRecorder::submitAudioSamples(const f32*, u32, u32, u32) {
-}
-
 RecordingStats VideoRecorder::getCurrentStats() const {
   if (worker_ && state_ == RecordingState::Recording) {
     return worker_->getStats();

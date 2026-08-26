@@ -4,6 +4,7 @@
 #include <QtQml/qqml.h>
 #include <QColor>
 #include <QFont>
+#include "QmlSingletonBridge.hpp"
 
 namespace qml_bridge {
 
@@ -13,7 +14,8 @@ namespace qml_bridge {
  * This bridge exposes theme colors, fonts, and metrics to QML.
  * It's registered as a singleton "Theme" in the ChadVis module.
  */
-class ThemeBridge : public QObject {
+class ThemeBridge : public QObject,
+                    public QmlSingletonBridge<ThemeBridge, SingletonPolicy::CachedQmlParented> {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -95,8 +97,6 @@ class ThemeBridge : public QObject {
     Q_PROPERTY(QFont fontTitle READ fontTitle CONSTANT)
 
 public:
-    static QObject* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
-
     // Colors
     QColor accent() const;
     void setAccent(const QColor& color);
@@ -206,7 +206,6 @@ signals:
 
 private:
     explicit ThemeBridge(QObject* parent = nullptr);
-    static ThemeBridge* s_instance;
 };
 
 } // namespace qml_bridge

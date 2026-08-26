@@ -5,6 +5,7 @@
 #include <QString>
 #include <QVariantMap>
 #include <QTimer>
+#include "QmlSingletonBridge.hpp"
 
 namespace qml_bridge {
 
@@ -14,7 +15,8 @@ namespace qml_bridge {
  * All setters automatically trigger a debounced auto-save (2s delay).
  * Call save() explicitly for immediate persistence (e.g. on app quit).
  */
-class SettingsBridge : public QObject {
+class SettingsBridge : public QObject,
+                       public QmlSingletonBridge<SettingsBridge, SingletonPolicy::CachedQmlParented> {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -66,8 +68,6 @@ class SettingsBridge : public QObject {
     Q_PROPERTY(bool drawerOpen READ drawerOpen WRITE setDrawerOpen NOTIFY drawerOpenChanged)
 
 public:
-    static QObject* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
-
     // Audio
     int audioBufferSize() const;
     void setAudioBufferSize(int size);
@@ -183,7 +183,6 @@ private:
     explicit SettingsBridge(QObject* parent = nullptr);
     void scheduleAutoSave();
 
-    static SettingsBridge* s_instance;
     QTimer m_autoSaveTimer;
 };
 

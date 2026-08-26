@@ -2,53 +2,48 @@
 #include "core/Logger.hpp"
 #include "recorder/VideoRecorderCore.hpp"
 #include "util/FileUtils.hpp"
-#include <QQmlEngine>
 #include <QString>
 
 namespace qml_bridge {
 
 vc::VideoRecorder* RecordingBridge::s_recorder = nullptr;
-RecordingBridge* RecordingBridge::s_instance = nullptr;
 
 RecordingBridge::RecordingBridge(QObject* parent) : QObject(parent) {
-    s_instance = this;
+    setInstance(this);
     if (s_recorder) {
         connectRecorderSignals();
         cachedStats_ = s_recorder->stats();
     }
 }
 
-QObject* RecordingBridge::create(QQmlEngine*, QJSEngine*) {
-    return new RecordingBridge();
-}
-
 void RecordingBridge::setRecorder(vc::VideoRecorder* recorder) {
     s_recorder = recorder;
-    if (s_instance) {
-        s_instance->connectRecorderSignals();
+    if (auto* bridge = instance()) {
+        bridge->connectRecorderSignals();
         if (s_recorder) {
-            s_instance->cachedStats_ = s_recorder->stats();
+            bridge->cachedStats_ = s_recorder->stats();
         }
     }
 }
 
 void RecordingBridge::connectRecorderSignals()
 {
-    if (!s_recorder || !s_instance) {
+    auto* bridge = instance();
+    if (!s_recorder || !bridge) {
         return;
     }
 
-    s_recorder->stateChanged.connect([s = s_instance](vc::RecordingState state) {
+    s_recorder->stateChanged.connect([s = bridge](vc::RecordingState state) {
         if (s) {
             s->onStateChanged(state);
         }
     });
-    s_recorder->statsUpdated.connect([s = s_instance](const vc::RecordingStats& stats) {
+    s_recorder->statsUpdated.connect([s = bridge](const vc::RecordingStats& stats) {
         if (s) {
             s->onStatsUpdated(stats);
         }
     });
-    s_recorder->error.connect([s = s_instance](const std::string& msg) {
+    s_recorder->error.connect([s = bridge](const std::string& msg) {
         if (s) {
             s->onError(msg);
         }

@@ -2,25 +2,19 @@
 #include "visualizer/VisualizerWindow.hpp"
 #include "visualizer/PresetManager.hpp"
 #include "core/Config.hpp"
-#include <QQmlEngine>
 
 namespace qml_bridge {
 
 vc::VisualizerWindow* VisualizerBridge::s_engine = nullptr;
-VisualizerBridge* VisualizerBridge::s_instance = nullptr;
 
 VisualizerBridge::VisualizerBridge(QObject* parent) : QObject(parent) {
-	s_instance = this;
-}
-
-QObject* VisualizerBridge::create(QQmlEngine*, QJSEngine*) {
-	return new VisualizerBridge();
+	setInstance(this);
 }
 
 void VisualizerBridge::setVisualizerEngine(vc::VisualizerWindow* engine) {
 	s_engine = engine;
-	if (s_instance) {
-		emit s_instance->visualizerWindowChanged();
+	if (auto* bridge = instance()) {
+		emit bridge->visualizerWindowChanged();
 	}
 }
 

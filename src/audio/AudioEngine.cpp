@@ -207,8 +207,13 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
         for (usize i = 0; i < totalSamples; ++i) scratchBuffer_[i] = static_cast<f32>(data[i]) / 32768.0f;
     }
 
-    audioQueue_.pushAll(scratchBuffer_.data(), static_cast<u32>(frameCount), static_cast<u32>(channels), static_cast<u32>(format.sampleRate()));
-    emit pcmReceived(scratchBuffer_, static_cast<u32>(frameCount), static_cast<u32>(channels), static_cast<u32>(format.sampleRate()));
+    const AudioChunk chunk{
+        .samples = std::span<const f32>(scratchBuffer_.data(), totalSamples),
+        .channels = static_cast<u32>(channels),
+        .sampleRate = static_cast<u32>(format.sampleRate()),
+    };
+    audioQueue_.pushAll(chunk);
+    emit pcmReceived(scratchBuffer_, static_cast<u32>(frameCount), static_cast<u32>(channels), chunk.sampleRate);
 }
 
 } // namespace vc

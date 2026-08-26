@@ -3,6 +3,7 @@
 #include <QtQml/qqml.h>
 #include <QVariantMap>
 #include <chrono>
+#include "QmlSingletonBridge.hpp"
 
 namespace vc {
 class AudioEngine;
@@ -11,7 +12,7 @@ enum class PlaybackState;
 
 namespace qml_bridge {
 
-class AudioBridge : public QObject {
+class AudioBridge : public QObject, public QmlSingletonBridge<AudioBridge> {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -28,7 +29,6 @@ public:
     Q_ENUM(PlaybackStateEnum)
 
     explicit AudioBridge(QObject* parent = nullptr);
-    static QObject* create(QQmlEngine*, QJSEngine*);
     static void setAudioEngine(vc::AudioEngine* engine);
 
     int playbackState() const;
@@ -68,7 +68,6 @@ private slots:
 
 private:
     static vc::AudioEngine* s_engine;
-    static AudioBridge* s_instance;
 
     QVariantMap currentTrack_;
     qint64 position_{0};

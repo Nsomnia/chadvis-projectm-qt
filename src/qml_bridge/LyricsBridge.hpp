@@ -6,6 +6,7 @@
 #include <QVariantMap>
 #include "lyrics/LyricsData.hpp"
 #include "lyrics/LyricsSync.hpp"
+#include "QmlSingletonBridge.hpp"
 
 namespace vc {
 class AudioEngine;
@@ -13,7 +14,8 @@ class AudioEngine;
 
 namespace qml_bridge {
 
-class LyricsBridge : public QObject {
+class LyricsBridge : public QObject,
+                     public QmlSingletonBridge<LyricsBridge> {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -34,7 +36,6 @@ public:
     explicit LyricsBridge(QObject* parent = nullptr);
     ~LyricsBridge() override = default;
 
-    static LyricsBridge* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
     static void setLyricsSync(vc::LyricsSync* sync);
     static void setAudioEngine(vc::AudioEngine* engine);
     static void connectSignals();
@@ -79,7 +80,6 @@ private:
 
     static vc::LyricsSync* s_sync;
     static vc::AudioEngine* s_engine;
-    static LyricsBridge* s_instance;
 
     int currentLineIndex_{-1};
     int currentWordIndex_{-1};

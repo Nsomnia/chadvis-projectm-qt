@@ -1,11 +1,13 @@
-// Version: 1.0.0
-// Last Edited: 2026-03-29 12:00:00
+// Version: 1.1.0
+// Last Edited: 2026-08-25 12:00:00
 // Description: Lock-free SPSC audio queues using moodycamel::ReaderWriterQueue
-//              Two-queue pattern: viz path (visualizer) + rec path (recorder)
+//              Three-queue pattern: viz (visualizer) + rec (recorder) + ana (analyzer)
+//              Producers hand over an AudioChunk view; queues store AudioFrame values.
 
 #pragma once
 
 #include "util/Types.hpp"
+#include "AudioChunk.hpp"
 #include <atomic>
 #include <cstddef>
 #include <readerwriterqueue.h>
@@ -66,37 +68,26 @@ public:
     // ========================================================================
 
     /**
-     * Push audio data to visualizer queue.
-     * @param data Interleaved stereo samples
-     * @param frames Number of frames (samples per channel)
-     * @param channels Number of channels (will be converted to stereo)
-     * @param sampleRate Sample rate
-     * @return true if pushed successfully, false if dropped
+     * Push interleaved PCM to all three consumer queues (viz/rec/ana).
+     * @param chunk Non-owning view of interleaved samples; must stay valid
+     *              until this call returns.
+     * @return true if pushed successfully, false if dropped or empty input
      */
-    bool pushViz(const float* data, u32 frames, u32 channels, u32 sampleRate) {
-        return pushInternal(vizQueue_, vizDropCount_, data, frames, channels, sampleRate);
+    bool pushAll(const AudioChunk& chunk) {
+        const bool ok = pushInternal(vizQueue_, vizDropCount_, chunk)
+                      & pushInternal(recQueue_, recDropCount_, chunk)
+                      & pushInternal(anaQueue_, anaDropCount_, chunk);
+        return ok;
     }
 
-    /**
-     * Push audio data to recorder queue.
-     * @param data Interleaved stereo samples
-     * @param frames Number of frames (samples per channel)
-     * @param channels Number of channels (will be converted to stereo)
-     * @param sampleRate Sample rate
-     * @return true if pushed successfully, false if dropped
-     */
-    bool pushRec(const float* data, u32 frames, u32 channels, u32 sampleRate) {
-        return pushInternal(recQueue_, recDropCount_, data, frames, channels, sampleRate);
-    }
-
-    bool pushAna(const float* data, u32 frames, u32 channels, u32 sampleRate) {
-        return pushInternal(anaQueue_, anaDropCount_, data, frames, channels, sampleRate);
-    }
-
-    void pushAll(const float* data, u32 frames, u32 channels, u32 sampleRate) {
-        pushViz(data, frames, channels, sampleRate);
-        pushRec(data, frames, channels, sampleRate);
-        pushAna(data, frames, channels, sampleRate);
+    /// Raw-pointer overload retained for callers that have not adopted AudioChunk.
+    bool pushAll(const float* data, u32 frames, u32 channels, u32 sampleRate) {
+        if (!data || frames == 0 || channels == 0) return false;
+        return pushAll(AudioChunk{
+            .samples = {data, data + static_cast<usize>(frames) * channels},
+            .channels = channels,
+            .sampleRate = sampleRate,
+        });
     }
 
     // ========================================================================
@@ -202,9 +193,11 @@ private:
     std::atomic<u64> anaDropCount_;
     std::atomic<u64> totalPushed_;
 
-    bool pushInternal(Queue& queue, std::atomic<u64>& dropCount,
-                      const float* data, u32 frames, u32 channels, u32 sampleRate) {
-        if (!data || frames == 0) return false;
+    bool pushInternal(Queue& queue, std::atomic<u64>& dropCount, const AudioChunk& chunk) {
+        const float* data = chunk.samples.data();
+        const u32 frames = chunk.frameCount();
+        const u32 channels = chunk.channels;
+        if (!data || frames == 0 || channels == 0) return false;
 
         totalPushed_.fetch_add(frames, std::memory_order_relaxed);
 
@@ -212,7 +205,7 @@ private:
         u32 processed = 0;
         while (processed < frames) {
             AudioFrame frame;
-            frame.sampleRate = sampleRate;
+            frame.sampleRate = chunk.sampleRate;
             frame.channels = 2;
 
             u32 remaining = frames - processed;
