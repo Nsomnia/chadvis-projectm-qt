@@ -22,7 +22,9 @@ ColumnLayout {
             id: recordButton
             text: RecordingBridge.isRecording ? "Stop" : "Record"
             icon: RecordingBridge.isRecording ? "qrc:/qt/qml/ChadVis/resources/icons/stop.svg" : "qrc:/qt/qml/ChadVis/resources/icons/record.svg"
-            highlighted: !RecordingBridge.isRecording
+            // FIX: was inverted (`!isRecording`) — active recording now
+            // shows the emphasized/highlighted state.
+            highlighted: RecordingBridge.isRecording
             onClicked: {
                 if (RecordingBridge.isRecording) {
                     RecordingBridge.stopRecording()
@@ -42,18 +44,10 @@ ColumnLayout {
         Item { Layout.fillWidth: true }
 
         // Pulse indicator
-        Rectangle {
-            width: 12
-            height: 12
-            radius: 6
-            color: RecordingBridge.isRecording ? Theme.recording : Theme.textDisabled
-
-            SequentialAnimation on opacity {
-                running: RecordingBridge.isRecording
-                loops: Animation.Infinite
-                NumberAnimation { to: 0.3; duration: 500 }
-                NumberAnimation { to: 1.0; duration: 500 }
-            }
+        PulseIndicator {
+            active: RecordingBridge.isRecording
+            baseColor: Theme.recording
+            size: 12
         }
     }
 
@@ -73,25 +67,12 @@ ColumnLayout {
             font: Theme.fontCaption
         }
 
-        ComboBox {
+        AppComboBox {
             id: codecCombo
             Layout.fillWidth: true
             model: ["libx264", "libx265", "libvpx-vp9", "h264_nvenc", "hevc_nvenc"]
             currentIndex: 0
-            
-            contentItem: Text {
-                text: codecCombo.displayText
-                font: Theme.fontBody
-                color: Theme.textPrimary
-                verticalAlignment: Text.AlignVCenter
-                leftPadding: Theme.spacingSmall
-            }
-
-            background: Rectangle {
-                radius: Theme.radiusSmall
-                color: Theme.surfaceRaised
-                border.color: Theme.border
-            }
+            contentFont: Theme.fontBody
         }
 
         Label {
@@ -127,18 +108,12 @@ ColumnLayout {
             Layout.fillWidth: true
             spacing: Theme.spacingSmall
 
-            TextField {
+            AppTextField {
                 id: outputPathField
                 Layout.fillWidth: true
                 placeholderText: "Auto-generated if empty"
                 color: Theme.textPrimary
                 font: Theme.fontBody
-                
-                background: Rectangle {
-                    radius: Theme.radiusSmall
-                    color: Theme.surfaceRaised
-                    border.color: Theme.border
-                }
                 padding: Theme.spacingSmall
             }
 
