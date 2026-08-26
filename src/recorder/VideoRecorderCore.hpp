@@ -35,7 +35,6 @@ public:
 
   void submitVideoFrame(std::vector<u8>&& data, u32 width, u32 height, i64 timestamp);
   void submitVideoFrame(const u8* data, u32 width, u32 height, i64 timestamp);
-  void submitAudioSamples(const f32* data, u32 samples, u32 channels, u32 sampleRate);
 
   void setAudioQueue(AudioQueue* queue);
 

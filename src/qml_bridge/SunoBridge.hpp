@@ -3,6 +3,7 @@
 #include <QtQml/qqml.h>
 #include <QVariantList>
 #include <QString>
+#include "QmlSingletonBridge.hpp"
 
 namespace vc {
 namespace suno {
@@ -13,7 +14,8 @@ class SunoClient;
 
 namespace qml_bridge {
 
-class SunoBridge : public QObject {
+class SunoBridge : public QObject,
+                   public QmlSingletonBridge<SunoBridge, SingletonPolicy::CachedUnparented> {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -28,7 +30,6 @@ class SunoBridge : public QObject {
 
 public:
     explicit SunoBridge(QObject* parent = nullptr);
-    static QObject* create(QQmlEngine*, QJSEngine*);
     static void setSunoController(vc::suno::SunoController* controller);
 
   bool loading() const;
@@ -63,7 +64,6 @@ private:
 
     static vc::suno::SunoController* s_controller;
     static vc::suno::SunoClient* s_client;
-    static SunoBridge* s_instance;
 
   QVariantList clips_;
   QVariantList allClips_; // Full cache from backend

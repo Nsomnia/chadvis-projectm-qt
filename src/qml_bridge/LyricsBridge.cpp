@@ -1,20 +1,14 @@
 #include "LyricsBridge.hpp"
 #include "audio/AudioEngine.hpp"
 #include "lyrics/LyricsSync.hpp"
-#include <QQmlEngine>
 
 namespace qml_bridge {
 
 vc::LyricsSync* LyricsBridge::s_sync = nullptr;
 vc::AudioEngine* LyricsBridge::s_engine = nullptr;
-LyricsBridge* LyricsBridge::s_instance = nullptr;
 
 LyricsBridge::LyricsBridge(QObject* parent) : QObject(parent) {
-    s_instance = this;
-}
-
-LyricsBridge* LyricsBridge::create(QQmlEngine*, QJSEngine*) {
-    return new LyricsBridge();
+    setInstance(this);
 }
 
 void LyricsBridge::setLyricsSync(vc::LyricsSync* sync) {
@@ -26,12 +20,12 @@ void LyricsBridge::setAudioEngine(vc::AudioEngine* engine) {
 }
 
 void LyricsBridge::connectSignals() {
-    if (s_sync && s_instance) {
+    if (s_sync && instance()) {
         s_sync->positionChanged.connect([](vc::LyricsSyncPosition pos) {
-            if (s_instance) s_instance->onPositionChanged(pos);
+            if (auto* b = instance()) b->onPositionChanged(pos);
         });
         s_sync->stateChanged.connect([](vc::LyricsSyncState state) {
-            if (s_instance) s_instance->onStateChanged(state);
+            if (auto* b = instance()) b->onStateChanged(state);
         });
         // Note: LyricsSync doesn't have a lyricsChanged Signal, using state transitions
     }

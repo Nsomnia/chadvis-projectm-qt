@@ -5,6 +5,7 @@
 #include <QStringList>
 #include <QUrl>
 #include <optional>
+#include "QmlSingletonBridge.hpp"
 
 namespace vc {
 class Playlist;
@@ -12,7 +13,7 @@ class Playlist;
 
 namespace qml_bridge {
 
-class PlaylistBridge : public QAbstractListModel {
+class PlaylistBridge : public QAbstractListModel, public QmlSingletonBridge<PlaylistBridge> {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -32,7 +33,6 @@ public:
     };
 
     explicit PlaylistBridge(QObject* parent = nullptr);
-    static QObject* create(QQmlEngine*, QJSEngine*);
     static void setPlaylist(vc::Playlist* playlist);
     static void connectPlaylistSignals();
 
@@ -68,7 +68,6 @@ private slots:
 private:
 
     static vc::Playlist* s_playlist;
-    static PlaylistBridge* s_instance;
     static vc::Playlist* s_connectedPlaylist;
     static std::optional<std::size_t> s_changedConnection;
     static std::optional<std::size_t> s_currentChangedConnection;

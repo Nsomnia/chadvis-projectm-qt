@@ -1,39 +1,34 @@
 #include "PlaylistBridge.hpp"
+#include "PlaylistItemPresenter.hpp"
 #include "audio/Playlist.hpp"
 #include "util/FileUtils.hpp"
 #include <QAbstractItemModel>
-#include <QQmlEngine>
 #include <QString>
 #include <cstdint>
 
 namespace qml_bridge {
 
 vc::Playlist* PlaylistBridge::s_playlist = nullptr;
-PlaylistBridge* PlaylistBridge::s_instance = nullptr;
 vc::Playlist* PlaylistBridge::s_connectedPlaylist = nullptr;
 std::optional<std::size_t> PlaylistBridge::s_changedConnection = std::nullopt;
 std::optional<std::size_t> PlaylistBridge::s_currentChangedConnection = std::nullopt;
 bool PlaylistBridge::s_suppressPlaylistNotifications = false;
 
 PlaylistBridge::PlaylistBridge(QObject* parent) : QAbstractListModel(parent) {
-    s_instance = this;
+    setInstance(this);
     connectPlaylistSignals();
-}
-
-QObject* PlaylistBridge::create(QQmlEngine*, QJSEngine*) {
-    return new PlaylistBridge();
 }
 
 void PlaylistBridge::setPlaylist(vc::Playlist* playlist) {
     s_playlist = playlist;
     connectPlaylistSignals();
-    if (s_instance) {
-        s_instance->onPlaylistChanged();
+    if (instance()) {
+        instance()->onPlaylistChanged();
     }
 }
 
 void PlaylistBridge::connectPlaylistSignals() {
-    if (!s_instance) {
+    if (!instance()) {
         return;
     }
 
@@ -53,17 +48,18 @@ void PlaylistBridge::connectPlaylistSignals() {
     }
 
     s_changedConnection = s_playlist->changed.connect([] {
-        if (s_instance) {
-            s_instance->onPlaylistChanged();
+        if (auto* bridge = instance()) {
+            bridge->onPlaylistChanged();
         }
     });
 
     s_currentChangedConnection = s_playlist->currentChanged.connect([](std::size_t index) {
-        if (!s_instance || s_suppressPlaylistNotifications) {
+        auto* bridge = instance();
+        if (!bridge || s_suppressPlaylistNotifications) {
             return;
         }
 
-        s_instance->onPlaylistCurrentChanged(index);
+        bridge->onPlaylistCurrentChanged(index);
     });
 }
 
@@ -78,10 +74,9 @@ QVariant PlaylistBridge::data(const QModelIndex& index, int role) const {
     
     const auto& item = items[index.row()];
     switch (role) {
-        case TitleRole: return QString::fromStdString(item.metadata.displayTitle());
-        case ArtistRole: return QString::fromStdString(item.metadata.displayArtist());
-        case PathRole:
-            return QString::fromStdString(item.isRemote ? item.url : item.path.string());
+        case TitleRole: return PlaylistItemPresenter::title(item);
+        case ArtistRole: return PlaylistItemPresenter::artist(item);
+        case PathRole: return PlaylistItemPresenter::displayPath(item);
   case DurationFormattedRole:
     return vc::file::formatDurationQString(item.metadata.duration.count());
         case IsCurrentRole: return s_playlist->currentIndex() == static_cast<size_t>(index.row());
@@ -250,27 +245,29 @@ QString PlaylistBridge::getItemPath(int idx) const {
 }
 
 void PlaylistBridge::onPlaylistChanged() {
-    if (!s_instance || s_suppressPlaylistNotifications) {
+    auto* bridge = instance();
+    if (!bridge || s_suppressPlaylistNotifications) {
         return;
     }
 
-    beginResetModel();
-    endResetModel();
+    bridge->beginResetModel();
+    bridge->endResetModel();
 
-    emit countChanged();
-    emit currentIndexChanged();
-    emit shuffleChanged();
-    emit repeatModeChanged();
+    emit bridge->countChanged();
+    emit bridge->currentIndexChanged();
+    emit bridge->shuffleChanged();
+    emit bridge->repeatModeChanged();
 }
 
 void PlaylistBridge::onPlaylistCurrentChanged(std::size_t) {
-  if (!s_instance || s_suppressPlaylistNotifications) {
+  auto* bridge = instance();
+  if (!bridge || s_suppressPlaylistNotifications) {
     return;
   }
 
-  emit currentIndexChanged();
-  if (rowCount() > 0) {
-    emit dataChanged(QAbstractListModel::index(0, 0), QAbstractListModel::index(rowCount() - 1, 0), {IsCurrentRole});
+  emit bridge->currentIndexChanged();
+  if (bridge->rowCount() > 0) {
+    emit bridge->dataChanged(bridge->index(0, 0), bridge->index(bridge->rowCount() - 1, 0), {IsCurrentRole});
   }
 }
 

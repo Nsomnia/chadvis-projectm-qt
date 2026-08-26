@@ -1,26 +1,13 @@
 #include "ThemeBridge.hpp"
-#include <QQmlEngine>
 #include "core/Config.hpp"
 #include "util/FileUtils.hpp"
 
 namespace qml_bridge {
 
-ThemeBridge* ThemeBridge::s_instance = nullptr;
-
 ThemeBridge::ThemeBridge(QObject* parent)
     : QObject(parent)
 {
 }
-
-QObject* ThemeBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
-{
-    Q_UNUSED(jsEngine)
-    if (!s_instance) {
-        s_instance = new ThemeBridge(qmlEngine);
-    }
-    return s_instance;
-}
-
 
 QColor ThemeBridge::accent() const {
     return QColor(QString::fromStdString(vc::Config::instance().ui().accentColor.toHex()));

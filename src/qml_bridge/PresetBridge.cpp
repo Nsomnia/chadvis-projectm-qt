@@ -2,25 +2,14 @@
 #include "visualizer/PresetManager.hpp"
 #include "visualizer/PresetData.hpp"
 #include "visualizer/RatingManager.hpp"
-#include <QQmlEngine>
 
 namespace qml_bridge {
 
 vc::PresetManager* PresetBridge::s_manager = nullptr;
-PresetBridge* PresetBridge::s_instance = nullptr;
 
 PresetBridge::PresetBridge(QObject* parent)
     : QObject(parent)
 {
-}
-
-QObject* PresetBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
-{
-    Q_UNUSED(jsEngine)
-    if (!s_instance) {
-        s_instance = new PresetBridge(qmlEngine);
-    }
-    return s_instance;
 }
 
 void PresetBridge::setPresetManager(vc::PresetManager* manager)
@@ -30,11 +19,11 @@ void PresetBridge::setPresetManager(vc::PresetManager* manager)
 
 void PresetBridge::connectSignals()
 {
-    if (s_manager && s_instance) {
-        s_manager->presetChanged.connect([s = s_instance](const vc::PresetInfo* p) {
+    if (auto* bridge = instance(); s_manager && bridge) {
+        s_manager->presetChanged.connect([s = bridge](const vc::PresetInfo* p) {
             s->onPresetChanged(p);
         });
-        s_manager->listChanged.connect([s = s_instance]() {
+        s_manager->listChanged.connect([s = bridge]() {
             s->onListChanged();
         });
     }

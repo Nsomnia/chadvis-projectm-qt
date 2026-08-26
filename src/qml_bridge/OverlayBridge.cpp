@@ -1,6 +1,5 @@
 #include "OverlayBridge.hpp"
 #include "core/Logger.hpp"
-#include <QQmlEngine>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -10,21 +9,25 @@
 
 namespace qml_bridge {
 
-OverlayBridge* OverlayBridge::s_instance = nullptr;
-
 OverlayBridge::OverlayBridge(QObject* parent)
     : QObject(parent)
 {
-    s_instance = this;
+    setInstance(this);
     loadOverlays();
+
+    // Debounced auto-save: persist 2s after the last change (mirrors SettingsBridge)
+    autoSaveTimer_.setSingleShot(true);
+    autoSaveTimer_.setInterval(2000);
+    connect(&autoSaveTimer_, &QTimer::timeout, this, [this]() { saveOverlays(); });
 }
 
-QObject* OverlayBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
+OverlayBridge::~OverlayBridge()
 {
-    Q_UNUSED(jsEngine)
-    auto* bridge = new OverlayBridge(qmlEngine);
-    QQmlEngine::setObjectOwnership(bridge, QQmlEngine::CppOwnership);
-    return bridge;
+    // Explicit flush so pending edits are never lost on shutdown
+    if (autoSaveTimer_.isActive()) {
+        autoSaveTimer_.stop();
+        saveOverlays();
+    }
 }
 
 QVariantList OverlayBridge::overlays() const
@@ -37,7 +40,7 @@ void OverlayBridge::setOverlays(const QVariantList& overlays)
     if (overlays_ != overlays) {
         overlays_ = overlays;
         emit overlaysChanged();
-        saveOverlays();
+        scheduleSave();
     }
 }
 
@@ -55,7 +58,7 @@ void OverlayBridge::addOverlay(const QString& text)
     
     overlays_.append(overlay);
     emit overlaysChanged();
-    saveOverlays();
+    scheduleSave();
 }
 
 void OverlayBridge::removeOverlay(int index)
@@ -63,7 +66,7 @@ void OverlayBridge::removeOverlay(int index)
     if (index >= 0 && index < overlays_.size()) {
         overlays_.removeAt(index);
         emit overlaysChanged();
-        saveOverlays();
+        scheduleSave();
     }
 }
 
@@ -72,8 +75,13 @@ void OverlayBridge::updateOverlay(int index, const QVariantMap& data)
     if (index >= 0 && index < overlays_.size()) {
         overlays_[index] = data;
         emit overlaysChanged();
-        saveOverlays();
+        scheduleSave();
     }
+}
+
+void OverlayBridge::scheduleSave()
+{
+    autoSaveTimer_.start(); // Restarts the timer if already running (debounce)
 }
 
 void OverlayBridge::saveOverlays()

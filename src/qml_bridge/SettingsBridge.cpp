@@ -3,11 +3,8 @@
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "util/Types.hpp"
-#include <QQmlEngine>
 
 namespace qml_bridge {
-
-SettingsBridge* SettingsBridge::s_instance = nullptr;
 
 SettingsBridge::SettingsBridge(QObject* parent)
     : QObject(parent)
@@ -28,15 +25,6 @@ SettingsBridge::SettingsBridge(QObject* parent)
 void SettingsBridge::scheduleAutoSave()
 {
     m_autoSaveTimer.start(); // Restarts the timer if already running (debounce)
-}
-
-QObject* SettingsBridge::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
-{
-    Q_UNUSED(jsEngine)
-    if (!s_instance) {
-        s_instance = new SettingsBridge(qmlEngine);
-    }
-    return s_instance;
 }
 
 // ═══════════════════════════════════════════════════════════

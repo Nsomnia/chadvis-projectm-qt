@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QtQml/qqml.h>
 #include "recorder/VideoRecorderCore.hpp"
+#include "QmlSingletonBridge.hpp"
 
 namespace vc {
 class VideoRecorder;
@@ -9,7 +10,8 @@ class VideoRecorder;
 
 namespace qml_bridge {
 
-class RecordingBridge : public QObject {
+class RecordingBridge : public QObject,
+                        public QmlSingletonBridge<RecordingBridge> {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -24,7 +26,6 @@ class RecordingBridge : public QObject {
 
 public:
     explicit RecordingBridge(QObject* parent = nullptr);
-    static QObject* create(QQmlEngine*, QJSEngine*);
     static void setRecorder(vc::VideoRecorder* recorder);
 
     bool isRecording() const;
@@ -51,7 +52,6 @@ private:
     void onError(const std::string& msg);
 
     static vc::VideoRecorder* s_recorder;
-    static RecordingBridge* s_instance;
     vc::RecordingStats cachedStats_;
 };
 
