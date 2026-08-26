@@ -10,7 +10,7 @@ We wrap the projectM v4 C API in a clean, modern C++ class.
 
 - **Initialization**: Handles the loading of shaders, textures, and the preset library.
 - **Rendering**: Called every frame. It feeds the `AudioSpectrum` data to projectM.
-- **Spectrum Analysis**: We use **KissFFT** (via CPM) to turn PCM data into frequency bins. We then normalize these so the visuals don't just "flicker" but actually dance.
+- **Spectrum Analysis**: We use **PFFFT** (a pretty fast FFT) to turn PCM data into frequency bins. We then normalize these so the visuals don't just "flicker" but actually dance.
 
 ---
 

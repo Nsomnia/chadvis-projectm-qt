@@ -1,5 +1,14 @@
 # Suno API Documentation Index
 
+> ⚠️ **Disclaimer — Unofficial, Reverse-Engineered API**
+>
+> Suno provides **no official public API**. Everything in this directory was
+> reverse-engineered by observing the production web app's network traffic,
+> scanning assets, and probing endpoints. It is undocumented, subject to change
+> without notice, and use of it may violate Suno's Terms of Service. ChadVis
+> uses this knowledge to build a better client experience for its users' own
+> accounts; nothing here is endorsed by or affiliated with Suno. Expect breakage.
+
 ## Overview
 
 Suno has no official public API. This documentation set covers reverse-engineered endpoints observed in the production web app and related services.
@@ -75,8 +84,12 @@ Authentication is two-tier:
 - `429` status indicates insufficient credits.
 - hCaptcha may be required; check `/api/c/check` first.
 
+## Raw Data
+
+- [`raw/endpoints_sniffed.list`](raw/endpoints_sniffed.list) — unfiltered endpoint sniff dump (706KB, one URL per line). See [`raw/README.md`](raw/README.md) for provenance.
+
 ## Related Documents
 
-- [Suno API Reconnaissance Notes](../SUNO_API_NOTES.md)
+- [Recon Archive](RECON-ARCHIVE.md) - Consolidated early reconnaissance notes (supersedes the former `SUNO_API_NOTES.md` and `SUNO_B_SIDE_DISCOVERY.md`)
 - [Suno Integration Deep Dive](../integration/SUNO.md)
-- [Suno B-Side Discovery](../SUNO_B_SIDE_DISCOVERY.md)
+- [Endpoint Inventory](ENDPOINT-INVENTORY.md)
