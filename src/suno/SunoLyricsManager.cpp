@@ -16,17 +16,6 @@ SunoLyricsManager::SunoLyricsManager(SunoClient* client, SunoDatabase& db, QObje
     client_->errorOccurred.connect([this](const auto& msg) {
         onError(msg);
     });
-    
-    // Monitor token changes to resume queue
-    client_->tokenChanged.connect([this](const auto& token) {
-        if (isRefreshingToken_) {
-            isRefreshingToken_ = false;
-            if (!token.empty()) {
-                LOG_INFO("SunoLyricsManager: Resuming lyrics queue after token refresh");
-                processQueue();
-            }
-        }
-    });
 }
 
 SunoLyricsManager::~SunoLyricsManager() = default;
@@ -41,8 +30,6 @@ void SunoLyricsManager::queueLyricsFetch(const std::string& clipId) {
 }
 
 void SunoLyricsManager::processQueue() {
-    if (isRefreshingToken_) return;
-
     // Limit concurrent requests to 3 to be nicer to API and avoid rate limits
     while (activeLyricsRequests_ < 3 && !lyricsQueue_.empty()) {
         std::string id = lyricsQueue_.front();
@@ -104,23 +91,13 @@ void SunoLyricsManager::onError(const std::string& message) {
             lyricsQueue_.push_back(id);
         }
     }
-    // Auth failure -> Pause (shared classifier, same check SunoClient uses)
+    // Auth failure: SunoClient owns refresh/retry centrally now, so a failed
+    // lyrics fetch after that chain simply drops out of the queue.
     else if (isAuthFailure(-1, QString::fromStdString(message))) {
-        
-        LOG_WARN("SunoLyricsManager: Auth error detected. Pausing queue for refresh.");
-        
-        if (!isRefreshingToken_) {
-            isRefreshingToken_ = true;
-            client_->refreshAuthToken([this](bool success) {
-                if (!success) {
-                    LOG_ERROR("SunoLyricsManager: Token refresh failed.");
-                    isRefreshingToken_ = false;
-                    lyricsQueue_.clear();
-                    activeLyricsRequests_ = 0;
-                }
-            });
-        }
-	}
+        LOG_WARN("SunoLyricsManager: auth error after central retry - clearing lyrics queue");
+        lyricsQueue_.clear();
+        activeLyricsRequests_ = 0;
+    }
 
 	processQueue();
 	emit errorOccurred(message);

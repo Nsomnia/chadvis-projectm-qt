@@ -5,7 +5,6 @@
 #include "lyrics/LyricsData.hpp"
 
 #include "suno/ClipResolver.hpp"
-#include "suno/SunoAuthManager.hpp"
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoDownloader.hpp"
 #include "suno/SunoLyricsManager.hpp"
@@ -18,15 +17,34 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QUuid>
 #include <regex>
 
 namespace vc::suno {
+
+namespace {
+
+/// Stable per-install Device-Id for the studio-api header set. Generated once
+/// and persisted as a plain (non-secret) UUID in config.toml [suno].
+QString resolveOrCreateDeviceId() {
+    auto& cfg = CONFIG.suno();
+    if (!cfg.deviceId.empty()) {
+        return QString::fromStdString(cfg.deviceId);
+    }
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    cfg.deviceId = id.toStdString();
+    std::ignore = CONFIG.save(CONFIG.configPath());
+    LOG_INFO("SunoController: generated new Device-Id {}", id.toStdString());
+    return id;
+}
+
+} // namespace
 
 SunoController::SunoController(AudioEngine* audioEngine,
 	QObject* parent)
 : QObject(parent),
 	audioEngine_(audioEngine),
-	client_(std::make_unique<SunoClient>(nullptr)) {
+	client_(std::make_unique<SunoClient>(resolveOrCreateDeviceId())) {
     
     // Initialize Database
     fs::path dataDir = file::dataDir();
@@ -35,7 +53,6 @@ SunoController::SunoController(AudioEngine* audioEngine,
     db_.init(dbPath.string());
 
     // Initialize Managers
-    authManager_ = std::make_unique<SunoAuthManager>(client_.get(), this);
     libraryManager_ = std::make_unique<SunoLibraryManager>(client_.get(), db_, this);
     
     auto networkManager = new QNetworkAccessManager(this); // Owned by SunoController (or QObject tree)
@@ -50,17 +67,24 @@ SunoController::SunoController(AudioEngine* audioEngine,
 
 	// --- Connect Signals ---
 
-	// Auth Manager (direct signal forwarding)
-	connect(authManager_.get(), &SunoAuthManager::statusMessage,
-		this, &SunoController::statusMessage);
-	connect(authManager_.get(), &SunoAuthManager::authenticationRequired,
-		this, &SunoController::authenticationRequired);
-	connect(authManager_.get(), &SunoAuthManager::authenticationSuccess,
-		this, &SunoController::authenticationSuccess);
-	connect(authManager_.get(), &SunoAuthManager::authenticationFailed,
-		this, &SunoController::authenticationFailed);
-	// Re-emit auth initialization
-	authManager_->initialize();
+	// Auth state (client runs restore/migrate in its constructor)
+	connect(client_.get(), &SunoClient::needsReauth, this, [this]() {
+		emit authenticationRequired();
+	});
+	connect(client_.get(), &SunoClient::authStateChanged, this, [this]() {
+		switch (client_->authState()) {
+		case auth::AuthState::ActiveValid:
+			emit statusMessage("Suno authentication active");
+			emit authenticationSuccess();
+			break;
+		case auth::AuthState::NeedsReauth:
+			emit authenticationFailed(
+					"Suno session expired — paste a fresh cookie or token in settings");
+			break;
+		case auth::AuthState::Disconnected:
+			break;
+		}
+	});
 
 	// Library Manager
 	connect(libraryManager_.get(), &SunoLibraryManager::statusMessage,
@@ -196,11 +220,9 @@ void SunoController::syncDatabase(bool forceAuth) {
 }
 
 void SunoController::requestAuthentication() {
-    authManager_->requestAuthentication();
-}
-
-void SunoController::startSystemBrowserAuth() {
-    authManager_->startSystemBrowserAuth();
+    // No system-browser flow anymore: surface the requirement to QML, which
+    // points users at the settings panel to paste fresh credentials.
+    emit authenticationRequired();
 }
 
 void SunoController::sendChatMessage(const QString& message, const QString& workspaceId) {

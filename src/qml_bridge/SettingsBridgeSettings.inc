@@ -44,8 +44,10 @@ SETTING_FLOAT(karaokeYPosition, KaraokeYPosition, karaoke().yPosition, vc::f32)
 SETTING_BOOL(karaokeEnabled, KaraokeEnabled, karaoke().enabled)
 
 // ─── Suno ─────────────────────────────────────────────────────
-SETTING_STRING(sunoToken, SunoToken, suno().token)
-// NOTE: sunoDownloadPath is NOT in this table — it uses fs::path, not std::string
+// NOTE: sunoToken is NOT in this table — it is a SECRET stored via
+// CredentialStore (OS keychain), never written to config.toml. It is
+// implemented manually next to sunoDownloadPath.
+// NOTE: sunoDownloadPath is also not here — it uses fs::path, not std::string
 
 // ─── UI State ─────────────────────────────────────────────────
 SETTING_STRING(expandedPanel, ExpandedPanel, ui().expandedPanel)

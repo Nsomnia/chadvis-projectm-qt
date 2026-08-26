@@ -20,7 +20,6 @@ namespace vc {
 class AudioEngine;
 
 namespace suno {
-class SunoAuthManager;
 class SunoLibraryManager;
 class SunoDownloader;
 class SunoLyricsManager;
@@ -48,7 +47,6 @@ public:
 
 	// Auth - triggers signal for QML to handle
 	Q_INVOKABLE void requestAuthentication();
-	Q_INVOKABLE void startSystemBrowserAuth();
 	Q_INVOKABLE void sendChatMessage(const QString& message, const QString& workspaceId = {});
 	Q_INVOKABLE void fetchChatHistory();
 
@@ -94,7 +92,6 @@ private:
 	SunoDatabase db_;
 	
     // Managers
-    std::unique_ptr<SunoAuthManager> authManager_;
     std::unique_ptr<SunoLibraryManager> libraryManager_;
     std::unique_ptr<SunoDownloader> downloader_;
     std::unique_ptr<SunoLyricsManager> lyricsManager_;

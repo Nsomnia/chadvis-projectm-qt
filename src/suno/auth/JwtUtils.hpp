@@ -5,6 +5,8 @@
 // deliberately NO signature verification here. These helpers only unpack the
 // payload so expiry and claim data can drive refresh scheduling.
 
+#include "AuthTypes.hpp"
+
 #include <QJsonObject>
 #include <QString>
 #include <expected>
@@ -31,6 +33,11 @@ public:
     /// such as "suno.com/claims/user_id": an exact key match wins first, then
     /// any key whose path ends with "/name". Empty string when not found.
     [[nodiscard]] static QString claimString(const QJsonObject& claims, std::string_view name);
+
+    /// Convenience: decode a JWT into a BearerToken with the exp-derived
+    /// expiry filled in. Never fails - a token without exp just has an
+    /// invalid QDateTime expiry.
+    [[nodiscard]] static BearerToken fromJwt(const QString& jwt);
 };
 
 } // namespace vc::suno::auth

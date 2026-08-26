@@ -89,3 +89,6 @@ shuffle_presets = true
 smooth_preset_duration = 5
 use_default_preset = false
 width = 1920
+
+[suno]
+device_id = ''

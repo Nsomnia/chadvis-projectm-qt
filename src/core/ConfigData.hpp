@@ -147,6 +147,11 @@ enum class SunoDownloadFormat {
 };
 
 struct SunoConfig {
+    // Non-secret install identity sent as the Device-Id header (plain UUID).
+    std::string deviceId;
+    // Legacy secret fields - parsed only so startup can migrate them into
+    // CredentialStore; SunoClient blanks them after migration. Never written
+    // with new values.
     std::string token;
     std::string cookie;
     fs::path downloadPath;

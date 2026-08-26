@@ -93,6 +93,7 @@
 - [x] **Remove ~20 stale cmake modules** — Already resolved in earlier housekeeping; cmake/ holds only CPM.cmake + FindProjectM4.cmake.
 
 ### Suno Integration
+- [~] **P1: Suno Core Correctness** (see docs/PIVOT_PLAN.md) — Lane A [~]: new `src/suno/auth/` module (AuthTypes, JwtUtils, CredentialStore keychain, ClerkAuthClient touch-refresh, AuthHeaders). Lane B pending: rewire SunoClient onto auth module + proactive 55-min refresh + uniform 401→touch→retry-once; header hardening (Device-Id/Origin/Referer); kill SystemBrowserAuth dead code. Lane C pending: full clip schema parsing + feed/v3 cursor pagination + session/billing endpoints.
 - [~] **B-Side feature set** — Orchestrator wired into controller/bridge; endpoint map centralized; feature gates still unused
 - [ ] **Implement Generation Surface** — Full creation suite (prompt, style, seeds) with client-side overrides
 - [~] **B-Side Chat/Orchestrator** — Orchestrator wired, chat flows through bridge; workspace/session persistence still TODO

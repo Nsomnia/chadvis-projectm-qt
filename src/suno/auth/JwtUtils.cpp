@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QTimeZone>
 
 namespace vc::suno::auth {
 namespace {
@@ -78,6 +79,17 @@ QString JwtUtils::claimString(const QJsonObject& claims, std::string_view name) 
         }
     }
     return {};
+}
+
+BearerToken JwtUtils::fromJwt(const QString& jwt) {
+    BearerToken token;
+    token.jwt = jwt;
+    if (auto decoded = claims(jwt)) {
+        if (const qint64 exp = expiryEpochSecs(*decoded); exp > 0) {
+            token.expiresAt = QDateTime::fromSecsSinceEpoch(exp, QTimeZone::UTC);
+        }
+    }
+    return token;
 }
 
 } // namespace vc::suno::auth

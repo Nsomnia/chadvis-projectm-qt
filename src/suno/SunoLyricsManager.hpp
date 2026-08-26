@@ -57,7 +57,6 @@ private:
     int activeLyricsRequests_{0};
     size_t totalLyricsToFetch_{0};
     std::chrono::steady_clock::time_point lyricsSyncStartTime_;
-    bool isRefreshingToken_{false};
 
     void onAlignedLyricsFetched(const std::string& clipId, const std::string& json);
     void onError(const std::string& message);

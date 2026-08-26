@@ -17,18 +17,6 @@
 namespace vc::suno::auth {
 namespace {
 
-/// Build a BearerToken from a raw JWT, decoding the exp claim when present.
-BearerToken makeBearer(const QString& jwt) {
-    BearerToken token;
-    token.jwt = jwt;
-    if (auto claims = JwtUtils::claims(jwt)) {
-        if (const qint64 exp = JwtUtils::expiryEpochSecs(*claims); exp > 0) {
-            token.expiresAt = QDateTime::fromSecsSinceEpoch(exp, QTimeZone::UTC);
-        }
-    }
-    return token;
-}
-
 std::expected<ClerkClientInfo, QString> parseClientEnvelope(const QByteArray& body) {
     const QJsonDocument doc = QJsonDocument::fromJson(body);
     const QJsonObject resp = doc.object()["response"].toObject();
@@ -46,7 +34,7 @@ std::expected<ClerkClientInfo, QString> parseClientEnvelope(const QByteArray& bo
         ClerkSession session;
         session.sessionId = sessionObj["id"].toString();
         session.lastActiveToken =
-                makeBearer(sessionObj["last_active_token"].toObject()["jwt"].toString());
+                JwtUtils::fromJwt(sessionObj["last_active_token"].toObject()["jwt"].toString());
         if (!session.sessionId.isEmpty()) {
             info.sessions.push_back(session);
         }
@@ -236,7 +224,7 @@ void ClerkAuthClient::handleLegacyBody(const QByteArray& body) {
         return;
     }
     LOG_INFO("ClerkAuthClient: legacy fallback produced a bearer token");
-    emit bearerReady(makeBearer(jwt));
+    emit bearerReady(JwtUtils::fromJwt(jwt));
 }
 
 } // namespace vc::suno::auth
