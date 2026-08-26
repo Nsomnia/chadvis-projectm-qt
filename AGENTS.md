@@ -44,7 +44,7 @@
 - [ ] **Playlist::loadM3U path traversal** — No sanitization on paths from M3U files; `../../` escapes library dir. Validate/canonicalize.
 
 ### Security & Credentials
-- [ ] **SunoPersistentAuth/SystemBrowserAuth credential storage audit** — Tokens stored in plain text QSettings; should use OS keychain (libsecret/KWallet).
+- [x] **SunoPersistentAuth/SystemBrowserAuth credential storage audit** — Tokens now in OS keychain via `CredentialStore` (macOS Security.framework, atomic 0600 file fallback); TOML→keychain migration on first init; secrets never written to TOML/logs (2026-08-26, P1 Lane B).
 - [ ] **CSRF state not validated in SystemBrowserAuth** — OAuth state parameter not verified; open redirect vulnerability.
 - [ ] **SQL injection risk in search_db.sh** — User input concatenated into SQL; parameterize queries.
 
@@ -93,14 +93,14 @@
 - [x] **Remove ~20 stale cmake modules** — Already resolved in earlier housekeeping; cmake/ holds only CPM.cmake + FindProjectM4.cmake.
 
 ### Suno Integration
-- [~] **P1: Suno Core Correctness** (see docs/PIVOT_PLAN.md) — Lane A [~]: new `src/suno/auth/` module (AuthTypes, JwtUtils, CredentialStore keychain, ClerkAuthClient touch-refresh, AuthHeaders). Lane B pending: rewire SunoClient onto auth module + proactive 55-min refresh + uniform 401→touch→retry-once; header hardening (Device-Id/Origin/Referer); kill SystemBrowserAuth dead code. Lane C pending: full clip schema parsing + feed/v3 cursor pagination + session/billing endpoints.
+- [~] **P1: Suno Core Correctness** (see docs/PIVOT_PLAN.md) — Lane A [x]: `src/suno/auth/` module (AuthTypes, JwtUtils, CredentialStore keychain, ClerkAuthClient touch-refresh, AuthHeaders). Lane B [x]: SunoClient rewired onto auth module; proactive refresh (expiry −5 min, cap 55); uniform 401→touch→retry-once→needsReauth; studio-api headers via AuthHeaders (Device-Id persisted in config); TOML→keychain migration on first init; SystemBrowserAuth + SunoAuthManager archived. Lane C [~]: full clip schema parsing + feed/v3 cursor pagination + session/billing endpoints + Orchestrator/generate null-safety sweep.
 - [~] **B-Side feature set** — Orchestrator wired into controller/bridge; endpoint map centralized; feature gates still unused
 - [ ] **Implement Generation Surface** — Full creation suite (prompt, style, seeds) with client-side overrides
 - [~] **B-Side Chat/Orchestrator** — Orchestrator wired, chat flows through bridge; workspace/session persistence still TODO
 - [x] **SunoOrchestrator bypasses request queue** — Orchestrator now routes through `SunoClient::enqueueAuthenticatedRequest` (rate limiter + auth refresh).
 - [ ] **SunoOrchestrator JSON parsing no null checks** — `.value()` calls on potentially missing keys; crash on unexpected API response.
-- [ ] **SunoClient pollWavFile not cancellable** — No cancellation token; polling blocks until timeout even if user navigates away.
-- [ ] **Inconsistent 401 handling** — Some controllers refresh token, others don't; user sees random auth failures.
+- [x] **SunoClient pollWavFile not cancellable** — Polling routed through authenticated queue with `cancelPoll()` + cancelled-set (2026-08-26, Lane B).
+- [x] **Inconsistent 401 handling** — Uniform 401→clear-bearer→touch→retry-once→needsReauth in SunoClient; SunoLyricsManager duplicate refresh path deleted (2026-08-26, Lane B).
 - [ ] **Refine Suno Library search/filtering** — Local + remote; local should stay in-sync with remote if within default file structure. Downloading optional.
 - [ ] **API feature parity audit** — Verify all public Suno website abilities available in package, plus b-side/testing/VIP/hidden features. Expand with local logic, advanced sorting, Suno library database.
 

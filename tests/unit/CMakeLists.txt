@@ -4,6 +4,7 @@ add_executable(unit_tests
     core/test_ConfigParsers.cpp
     visualizer/test_PresetScanner.cpp
     suno/test_AuthModule.cpp
+    suno/test_ClipParser.cpp
 )
 
 set_target_properties(unit_tests PROPERTIES

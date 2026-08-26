@@ -42,13 +42,18 @@ public:
 	~SunoLibraryManager() override;
 
   void refreshLibrary(int page = 1);
+  /// Fetch the next feed page using the client's next_cursor (no-op when
+  /// the current page reports exhaustion or a fetch is in flight).
+  void requestNextPage();
+  /// Server-side search: fresh feed with searchText filter.
+  void setSearchText(const QString& text);
   void syncDatabase(bool forceAuth);
 
   // Accessors
   const std::vector<SunoClip>& accumulatedClips() const { return accumulatedClips_; }
   void clearAccumulatedClips() { accumulatedClips_.clear(); }
   bool hasMorePages() const { return hasMorePages_; }
-  int currentPage() const { return currentSyncPage_; }
+  int currentPage() const { return pagesLoaded_; }
 
  signals:
   void statusMessage(const std::string& message);
@@ -63,8 +68,9 @@ private:
     
   std::vector<SunoClip> accumulatedClips_;
   bool isSyncing_ = false;
-  int currentSyncPage_ = 1;
+  int pagesLoaded_ = 0;      ///< Number of feed pages pulled this sync session
   bool hasMorePages_ = false;
+  QString searchText_;       ///< Server-side searchText filter for feed/v3
 
     void onLibraryFetched(const std::vector<SunoClip>& clips);
 };

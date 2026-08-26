@@ -56,20 +56,39 @@ void SunoOrchestrator::fetchHistory() {
 }
 
 void SunoOrchestrator::onMessageFinished(const QByteArray& body, const QString& workspaceId) {
-    QJsonDocument doc = QJsonDocument::fromJson(body);
-    QJsonObject obj = doc.object();
-    QString response = obj["response"].toString();
+    const QJsonDocument doc = QJsonDocument::fromJson(body);
+    if (!doc.isObject()) {
+        LOG_WARN("SunoOrchestrator: chat reply is not a JSON object ({} bytes)",
+                 static_cast<i64>(body.size()));
+        emit errorOccurred(QStringLiteral("Malformed chat reply from orchestrator"));
+        return;
+    }
+
+    // Tolerant read: both fields are optional on the wire.
+    const QJsonObject obj = doc.object();
+    const QString response = obj.value(QStringLiteral("response")).toString();
     // Prefer the server-reported workspace id when present.
-    QString resolvedWorkspaceId = obj["workspace_id"].toString();
+    QString resolvedWorkspaceId =
+            obj.value(QStringLiteral("workspace_id")).toString();
     if (resolvedWorkspaceId.isEmpty()) resolvedWorkspaceId = workspaceId;
 
     emit messageReceived(response, resolvedWorkspaceId);
 }
 
 void SunoOrchestrator::onHistoryFinished(const QByteArray& body) {
-    QJsonDocument doc = QJsonDocument::fromJson(body);
-    QVariantList sessions = doc.array().toVariantList();
-    emit historyFetched(sessions);
+    const QJsonDocument doc = QJsonDocument::fromJson(body);
+    if (!doc.isArray()) {
+        // Some deployments wrap the array in an object; tolerate {"sessions":[...]}.
+        const QJsonValue sessions = doc.object().value(QStringLiteral("sessions"));
+        if (sessions.isArray()) {
+            emit historyFetched(sessions.toArray().toVariantList());
+            return;
+        }
+        LOG_WARN("SunoOrchestrator: history reply is not a JSON array");
+        emit historyFetched({});
+        return;
+    }
+    emit historyFetched(doc.array().toVariantList());
 }
 
 } // namespace vc

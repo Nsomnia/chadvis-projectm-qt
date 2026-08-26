@@ -1,6 +1,7 @@
 #include "suno/SunoLibraryManager.hpp"
-#include "core/Config.hpp"
 #include "core/Logger.hpp"
+
+#include <QString>
 
 namespace vc::suno {
 
@@ -24,22 +25,45 @@ void SunoLibraryManager::refreshLibrary(int page) {
     return;
   }
 
-  // Clear accumulated clips when starting new sync from page 1
-  if (page == 1) {
+  // Page 1 (or any fresh sync) resets accumulation; higher page numbers are
+  // legacy "load more" calls and now just continue from the cursor.
+  if (page <= 1) {
     accumulatedClips_.clear();
+    pagesLoaded_ = 0;
     isSyncing_ = true;
     hasMorePages_ = true;
     emit hasMorePagesChanged();
+
+    std::string msg = "Syncing Suno library";
+    emit statusMessage(msg);
+  } else {
+    // Legacy page-number callers just continue from the cursor.
+    requestNextPage();
+    return;
   }
 
-  currentSyncPage_ = page;
+  client_->fetchLibraryPage(std::nullopt, 20, searchText_);
+}
 
-  std::string msg = "Syncing Suno library (Page " + std::to_string(page) + ")";
-  if (!accumulatedClips_.empty()) {
-    msg += " - " + std::to_string(accumulatedClips_.size()) + " clips found so far...";
+void SunoLibraryManager::requestNextPage() {
+  if (isSyncing_ || !hasMorePages_) {
+    return;
   }
-  emit statusMessage(msg);
-  client_->fetchLibrary(page);
+  if (client_->nextCursor().isEmpty()) {
+    // No cursor means the feed is exhausted even if has_more was stale.
+    hasMorePages_ = false;
+    emit hasMorePagesChanged();
+    return;
+  }
+
+  isSyncing_ = true;
+  emit statusMessage("Fetching more Suno clips...");
+  client_->fetchLibraryPage(client_->nextCursor());
+}
+
+void SunoLibraryManager::setSearchText(const QString& text) {
+  if (searchText_ == text) return;
+  searchText_ = text;
 }
 
 void SunoLibraryManager::syncDatabase(bool forceAuth) {
@@ -58,10 +82,15 @@ void SunoLibraryManager::onLibraryFetched(const std::vector<SunoClip>& clips) {
     accumulatedClips_.push_back(clip);
   }
 
+  pagesLoaded_++;
+  // Page complete: allow the next requestNextPage() through.
+  isSyncing_ = false;
+
   db_.saveClips(clips);
 
+  // Pagination truth comes straight from the feed/v3 envelope now.
   const bool hadMore = hasMorePages_;
-  hasMorePages_ = clips.size() >= 20;
+  hasMorePages_ = client_->hasMorePages() && !client_->nextCursor().isEmpty();
   if (hadMore != hasMorePages_) {
     emit hasMorePagesChanged();
   }
@@ -73,9 +102,8 @@ void SunoLibraryManager::onLibraryFetched(const std::vector<SunoClip>& clips) {
     // More pages available — but don't auto-fetch; let QML trigger next page
     emit statusMessage("Suno library: " + std::to_string(accumulatedClips_.size()) + " clips loaded (more available)");
   } else {
-    isSyncing_ = false;
-    currentSyncPage_ = 1;
-    LOG_INFO("SunoLibraryManager: Sync complete. Total clips: {}", accumulatedClips_.size());
+    LOG_INFO("SunoLibraryManager: Sync complete after {} page(s). Total clips: {}",
+             pagesLoaded_, accumulatedClips_.size());
     emit statusMessage("Suno library sync complete (" + std::to_string(accumulatedClips_.size()) + " clips)");
   }
 }

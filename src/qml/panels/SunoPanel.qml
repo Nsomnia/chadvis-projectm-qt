@@ -131,6 +131,12 @@ ColumnLayout {
                         Column {
                             Layout.fillWidth: true
                             Text { text: modelData.title || "Untitled"; color: Theme.textPrimary; font: Theme.fontBody }
+                            Text {
+                                text: [modelData.model_name, modelData.duration].filter(Boolean).join(" · ")
+                                color: Theme.textSecondary
+                                font: Theme.fontCaption
+                                visible: text.length > 0
+                            }
                             Text { text: modelData.metadata.tags || ""; color: Theme.textSecondary; font: Theme.fontCaption }
                         }
 
@@ -144,7 +150,7 @@ ColumnLayout {
 
   onAtYEndChanged: {
     if (atYEnd && SunoBridge.hasMorePages && !SunoBridge.loading && searchBar.text === "") {
-      SunoBridge.refreshLibrary(SunoBridge.currentPage + 1)
+      SunoBridge.requestNextLibraryPage()
     }
   }
 

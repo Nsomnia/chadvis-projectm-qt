@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QtQml/qqml.h>
+#include <QTimer>
 #include <QVariantList>
 #include <QString>
 #include "QmlSingletonBridge.hpp"
@@ -32,6 +33,11 @@ friend class QmlSingletonBridge<SunoBridge, SingletonPolicy::CachedUnparented>;
   Q_PROPERTY(QVariantList chatHistory READ chatHistory NOTIFY chatHistoryChanged)
   Q_PROPERTY(QString filterText READ filterText WRITE setFilterText NOTIFY filterTextChanged)
 
+  // Account snapshot (read-only; populated after auth turns ActiveValid).
+  Q_PROPERTY(int credits READ credits NOTIFY billingInfoChanged)
+  Q_PROPERTY(QString planName READ planName NOTIFY billingInfoChanged)
+  Q_PROPERTY(QString userName READ userName NOTIFY accountInfoChanged)
+
 public:
     explicit SunoBridge(QObject* parent = nullptr);
     static void setSunoController(vc::suno::SunoController* controller);
@@ -45,9 +51,18 @@ public:
     QString filterText() const { return filterText_; }
     void setFilterText(const QString& filter);
 
+    // Account snapshot getters (tolerant: empty/0 before first fetch).
+    int credits() const;
+    QString planName() const;
+    QString userName() const;
+
 public slots:
     Q_INVOKABLE void generate(const QString& prompt, const QString& tags, bool instrumental, const QString& model);
     Q_INVOKABLE void refreshLibrary(int page = 1);
+    /// Cursor-based "load more" for the infinite-scroll path.
+    Q_INVOKABLE void requestNextLibraryPage();
+    /// Server-side library search (debounced 350 ms inside the bridge).
+    Q_INVOKABLE void searchLibrary(const QString& searchText);
     Q_INVOKABLE void sendChatMessage(const QString& message, const QString& workspaceId = {});
     Q_INVOKABLE void fetchChatHistory();
 
@@ -59,6 +74,8 @@ signals:
   void chatHistoryChanged();
     void generationStarted();
     void filterTextChanged();
+    void billingInfoChanged();
+    void accountInfoChanged();
 
 private slots:
     void onLibraryUpdated();
@@ -76,6 +93,8 @@ private:
   bool loading_{false};
   bool hasMorePages_{false};
   int currentPage_{1};
+    QTimer searchDebounce_; // 350 ms server-search debounce
+    QString searchDebounceText_;
 };
 
 } // namespace qml_bridge

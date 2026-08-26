@@ -30,7 +30,9 @@ constexpr std::string_view WEB_BASE       = "https://suno.com";
 // (AUTH_BASE, LEGACY_BASE, CLERK_API_VERSION, CLERK_JS_VERSION).
 
 // ── Studio API ─────────────────────────────────────────────
-constexpr std::string_view LIBRARY        = "/feed/v3";
+constexpr std::string_view LIBRARY_FEED   = "/feed/v3";   // POST, cursor-based
+constexpr std::string_view SESSION        = "/session/";
+constexpr std::string_view BILLING_INFO   = "/billing/info/";
 constexpr std::string_view GENERATE       = "/generate/v2-web/";
 constexpr std::string_view ALIGNED_LYRICS = "/gen/{}/aligned_lyrics/v2";
 constexpr std::string_view CONVERT_WAV    = "/gen/{}/convert_wav/";

@@ -1,5 +1,6 @@
 #include "SunoBridge.hpp"
 #include "ui/controllers/SunoController.hpp"
+#include "suno/SunoAccountManager.hpp"
 #include "suno/SunoClient.hpp"
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoModels.hpp"
@@ -14,6 +15,18 @@ vc::suno::SunoClient* SunoBridge::s_client = nullptr;
 
 SunoBridge::SunoBridge(QObject* parent) : QObject(parent) {
     setInstance(this);
+
+    // 350 ms debounce for server-side library search (QML may fire per
+    // keystroke; we coalesce before hitting feed/v3).
+    searchDebounce_.setSingleShot(true);
+    searchDebounce_.setInterval(350);
+    connect(&searchDebounce_, &QTimer::timeout, this, [this]() {
+        if (!s_controller) return;
+        loading_ = true;
+        emit loadingChanged();
+        s_controller->libraryManager()->setSearchText(searchDebounceText_);
+        s_controller->libraryManager()->refreshLibrary(1);
+    });
 }
 
 void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
@@ -26,6 +39,14 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
     if (auto* bridgeInstance = instance()) {
         connect(s_controller, &vc::suno::SunoController::libraryUpdated,
                 bridgeInstance, &SunoBridge::onLibraryUpdated);
+
+        // Account snapshot -> QML properties.
+        if (auto* am = s_controller->accountManager()) {
+            connect(am, &vc::suno::SunoAccountManager::billingInfoReady,
+                    bridgeInstance, &SunoBridge::billingInfoChanged);
+            connect(am, &vc::suno::SunoAccountManager::accountInfoReady,
+                    bridgeInstance, &SunoBridge::accountInfoChanged);
+        }
         connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance, [bridge = bridgeInstance](const QString& response, const QString& workspaceId) {
             QVariantMap assistantMsg;
             assistantMsg["role"] = "assistant";
@@ -82,6 +103,44 @@ void SunoBridge::refreshLibrary(int page) {
     }
 }
 
+void SunoBridge::requestNextLibraryPage() {
+    if (!s_controller || loading_) {
+        return;
+    }
+    auto* lm = s_controller->libraryManager();
+    if (!lm->hasMorePages()) {
+        return;
+    }
+    loading_ = true;
+    emit loadingChanged();
+    lm->requestNextPage();
+}
+
+void SunoBridge::searchLibrary(const QString& searchText) {
+    searchDebounceText_ = searchText;
+    searchDebounce_.start(); // debounced in the constructor's timeout lambda
+}
+
+int SunoBridge::credits() const {
+    if (!s_controller || !s_controller->accountManager()) return 0;
+    const auto& billing = s_controller->accountManager()->billing();
+    return billing ? static_cast<int>(billing->credits) : 0;
+}
+
+QString SunoBridge::planName() const {
+    if (!s_controller || !s_controller->accountManager()) return {};
+    const auto& billing = s_controller->accountManager()->billing();
+    return billing ? QString::fromStdString(billing->plan.name) : QString();
+}
+
+QString SunoBridge::userName() const {
+    if (!s_controller || !s_controller->accountManager()) return {};
+    const auto& user = s_controller->accountManager()->user();
+    if (!user) return {};
+    return QString::fromStdString(!user->display_name.empty() ? user->display_name
+                                                              : user->username);
+}
+
 void SunoBridge::sendChatMessage(const QString& message, const QString& workspaceId) {
     QVariantMap userMsg;
     userMsg["role"] = "user";
@@ -110,11 +169,19 @@ void SunoBridge::onLibraryUpdated() {
     map["id"] = QString::fromStdString(clip.id);
     map["title"] = QString::fromStdString(clip.title);
     map["status"] = QString::fromStdString(clip.status);
-    map["image_url"] = QString::fromStdString(clip.image_url);
+    map["image_url"] = QString::fromStdString(
+            !clip.image_large_url.empty() ? clip.image_large_url : clip.image_url);
+    map["audio_url"] = QString::fromStdString(clip.audio_url);
+    map["model_name"] = QString::fromStdString(clip.model_name);
+    map["major_model_version"] = QString::fromStdString(clip.major_model_version);
+    map["created_at"] = QString::fromStdString(clip.created_at);
+    map["play_count"] = static_cast<int>(clip.play_count);
+    map["duration"] = QString::fromStdString(clip.metadata.duration);
 
     QVariantMap meta;
     meta["tags"] = QString::fromStdString(clip.metadata.tags);
     meta["prompt"] = QString::fromStdString(clip.metadata.prompt);
+    meta["lyrics"] = QString::fromStdString(clip.metadata.lyrics);
     map["metadata"] = meta;
 
     allClips_.append(map);
