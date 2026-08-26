@@ -47,30 +47,23 @@ ColumnLayout {
                 font: Theme.fontSubtitle
             }
 
-            TextField {
+            AppTextField {
                 id: promptInput
                 Layout.fillWidth: true
                 placeholderText: "Describe your vibe..."
-                background: Rectangle { 
-                    color: Theme.surfaceRaised
-                    radius: Theme.radiusSmall
-                    border.color: parent.activeFocus ? Theme.accent : Theme.border
-                }
             }
 
             RowLayout {
                 Layout.fillWidth: true
-                TextField {
+                AppTextField {
                     id: styleInput
                     Layout.fillWidth: true
                     placeholderText: "Style/Tags..."
-                    background: Rectangle { 
-                        color: Theme.surfaceRaised
-                        radius: Theme.radiusSmall
-                        border.color: parent.activeFocus ? Theme.accent : Theme.border
-                    }
                 }
-                
+
+                // NOTE: kept as a plain ComboBox — unlike the settings/recording
+                // combos, this one has no themed contentItem override in the
+                // original design, so AppComboBox would alter its visuals.
                 ComboBox {
                     id: modelSelector
                     model: ["v4 (Advanced)", "v3.5 (Classic)", "v3.0 (Legacy)"]
@@ -99,17 +92,12 @@ ColumnLayout {
                     Layout.fillWidth: true
                 }
 
-                TextField {
+                AppTextField {
                     id: searchBar
                     placeholderText: "Search library..."
                     Layout.preferredWidth: 150
                     font: Theme.fontCaption
                     color: Theme.textPrimary
-                    background: Rectangle {
-                        color: Theme.surfaceRaised
-                        radius: Theme.radiusSmall
-                        border.color: parent.activeFocus ? Theme.accent : Theme.border
-                    }
                     onTextChanged: SunoBridge.filterText = text
                 }
             }
@@ -222,15 +210,10 @@ ColumnLayout {
 
             RowLayout {
                 Layout.fillWidth: true
-                TextField {
+                AppTextField {
                     id: chatInput
                     Layout.fillWidth: true
                     placeholderText: "Command the orchestrator..."
-                    background: Rectangle { 
-                        color: Theme.surfaceRaised
-                        radius: Theme.radiusSmall
-                        border.color: parent.activeFocus ? Theme.accent : Theme.border
-                    }
                     onAccepted: sendBtn.clicked()
                 }
                 

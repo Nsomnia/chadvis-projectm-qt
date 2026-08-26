@@ -96,18 +96,14 @@ ApplicationWindow {
                     spacing: Theme.spacingSmall
 
                     // Play/Pause indicator
-                    Rectangle {
+                    PulseIndicator {
                         Layout.preferredWidth: Theme.iconSmall
                         Layout.preferredHeight: Theme.iconSmall
-                        radius: width / 2
-                        color: AudioBridge.isPlaying ? Theme.success : Theme.textDisabled
-
-                        SequentialAnimation on opacity {
-                            running: AudioBridge.isPlaying
-                            loops: Animation.Infinite
-                            NumberAnimation { to: 0.5; duration: 800 }
-                            NumberAnimation { to: 1.0; duration: 800 }
-                        }
+                        active: AudioBridge.isPlaying
+                        baseColor: Theme.success
+                        size: Theme.iconSmall
+                        dimOpacity: 0.5
+                        periodMs: 800
                     }
 
                     // Track title
@@ -145,18 +141,11 @@ ApplicationWindow {
                     anchors.centerIn: parent
                     spacing: Theme.spacingSmall
 
-                    Rectangle {
+                    PulseIndicator {
                         width: 8
                         height: 8
-                        radius: 4
-                        color: Theme.textPrimary
-
-                        SequentialAnimation on opacity {
-                            running: RecordingBridge.isRecording
-                            loops: Animation.Infinite
-                            NumberAnimation { to: 0.3; duration: 500 }
-                            NumberAnimation { to: 1.0; duration: 500 }
-                        }
+                        active: RecordingBridge.isRecording
+                        baseColor: Theme.textPrimary
                     }
 
                     Text {
@@ -289,6 +278,12 @@ ApplicationWindow {
                 id: karaokeMaster
                 anchors.fill: parent
                 accentColor: Theme.accent
+                // BUG(dangling-id): `karaokeSettings` is an id inside
+                // panels/SettingsPanel.qml (via components/KaraokeSettings.qml),
+                // not resolvable from this file — these bindings throw at
+                // runtime and KaraokeMaster silently uses its defaults.
+                // TODO(karaoke): hoist karaoke settings state to a bridge or
+                // shared singleton so both panels can bind to one source.
                 showGlow: karaokeSettings.showGlow
                 verticalPosition: karaokeSettings.verticalPos
             }
@@ -520,31 +515,41 @@ ApplicationWindow {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // KEYBOARD SHORTCUTS (PRESERVED)
+    // KEYBOARD SHORTCUTS
+    // Sequences are bound to the KeyboardConfig values exposed by
+    // SettingsBridge so the config file remains the single source of truth.
+    // NOTE: the native VisualizerWindow also honors nextPreset/prevPreset/
+    // toggleFullscreen keys when the visualizer itself has input focus;
+    // these QML shortcuts cover the case where the main window has focus.
     // ═══════════════════════════════════════════════════════════
 
     Shortcut {
-        sequence: "Space"
+        sequence: SettingsBridge.keyboardPlayPause
         onActivated: AudioBridge.togglePlayPause()
     }
 
     Shortcut {
-        sequence: "Right"
+        sequence: SettingsBridge.keyboardNextTrack
         onActivated: AudioBridge.next()
     }
 
     Shortcut {
-        sequence: "Left"
+        sequence: SettingsBridge.keyboardPrevTrack
         onActivated: AudioBridge.previous()
     }
 
+    // TODO(fullscreen): no QML-invokable fullscreen toggle exists yet.
+    // VisualizerWindow::toggleFullscreen() is not Q_INVOKABLE and
+    // VisualizerBridge exposes no fullscreen slot, so this handler cannot
+    // be wired without a C++ change (e.g. add Q_INVOKABLE toggleFullscreen()
+    // to VisualizerBridge forwarding to the window).
     Shortcut {
-        sequence: "F"
+        sequence: SettingsBridge.keyboardToggleFullscreen
         onActivated: console.log("Fullscreen toggle (TODO)")
     }
 
     Shortcut {
-        sequence: "R"
+        sequence: SettingsBridge.keyboardToggleRecord
         onActivated: {
             if (RecordingBridge.isRecording) {
                 RecordingBridge.stopRecording()
@@ -554,6 +559,19 @@ ApplicationWindow {
         }
     }
 
+    Shortcut {
+        sequence: SettingsBridge.keyboardNextPreset
+        onActivated: VisualizerBridge.nextPreset()
+    }
+
+    Shortcut {
+        sequence: SettingsBridge.keyboardPrevPreset
+        onActivated: VisualizerBridge.previousPreset()
+    }
+
+    // No KeyboardConfig property exists for toggling the sidebar drawer,
+    // so this sequence stays hardcoded until a config key is added.
+    // TODO(keyboard): expose drawerToggle in KeyboardConfig + SettingsBridge.
     Shortcut {
         sequence: "M"
         onActivated: {
