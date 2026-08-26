@@ -2,6 +2,7 @@
 #include "SettingMacros.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
+#include "suno/auth/CredentialStore.hpp"
 #include "util/Types.hpp"
 
 namespace qml_bridge {
@@ -45,6 +46,48 @@ void SettingsBridge::setSunoDownloadPath(const QString& path)
         emit sunoDownloadPathChanged();
         scheduleAutoSave();
     }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Special: sunoToken is a SECRET — persisted via CredentialStore (OS keychain
+// where available), never written to config.toml. Kept outside the X-macro
+// table because that table reads/writes plain Config fields. The value is
+// picked up by SunoClient::reloadStoredCredentials() on the next sync.
+// ─────────────────────────────────────────────────────────────
+
+QString SettingsBridge::sunoToken() const
+{
+    if (m_sunoTokenCacheDirty) {
+        m_sunoTokenCacheDirty = false;
+        vc::suno::auth::CredentialStore store;
+        if (auto loaded = store.load("suno/default"); loaded.isOk()) {
+            m_sunoTokenCache = loaded.value();
+        }
+    }
+    return m_sunoTokenCache;
+}
+
+void SettingsBridge::setSunoToken(const QString& token)
+{
+    if (token == sunoToken()) {
+        return;
+    }
+    m_sunoTokenCache = token;
+    m_sunoTokenCacheDirty = false;
+
+    vc::suno::auth::CredentialStore store;
+    if (token.isEmpty()) {
+        std::ignore = store.remove("suno/default");
+        std::ignore = store.remove("suno/bearer");
+    } else {
+        auto result = store.store("suno/default", token);
+        if (result.isErr()) {
+            LOG_ERROR("SettingsBridge: failed to persist Suno credential ({})",
+                      vc::suno::auth::CredentialStore::redact(token).toStdString());
+        }
+    }
+    // No TOML write: nothing in the config changed (secrets never live there).
+    emit sunoTokenChanged();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -97,8 +140,12 @@ void SettingsBridge::resetToDefaults()
 #undef SETTING_STRING
 #undef SETTING_RO_STRING
 
-    // Also emit the manual ones (sunoDownloadPath)
+    // Also emit the manual ones (sunoDownloadPath) and refresh the secret
+    // property from the store (the stored credential itself is NOT deleted
+    // by a settings reset — that is an explicit user action).
     emit sunoDownloadPathChanged();
+    m_sunoTokenCacheDirty = true;
+    emit sunoTokenChanged();
 
     // Save the reset config to disk
     auto path = config.configPath();

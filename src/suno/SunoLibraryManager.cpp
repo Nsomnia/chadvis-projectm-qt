@@ -16,14 +16,8 @@ SunoLibraryManager::SunoLibraryManager(SunoClient* client, SunoDatabase& db, QOb
 SunoLibraryManager::~SunoLibraryManager() = default;
 
 void SunoLibraryManager::refreshLibrary(int page) {
-  if (!client_->isAuthenticated()) {
-    if (!CONFIG.suno().cookie.empty()) {
-      client_->setCookie(CONFIG.suno().cookie);
-    }
-    if (!CONFIG.suno().token.empty()) {
-      client_->setToken(CONFIG.suno().token);
-    }
-  }
+  // Pick up credentials pasted/changed via settings before each sync.
+  client_->reloadStoredCredentials();
 
   if (!client_->isAuthenticated()) {
     emit authenticationRequired();

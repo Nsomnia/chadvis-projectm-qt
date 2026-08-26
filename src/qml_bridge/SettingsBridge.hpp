@@ -188,6 +188,10 @@ private:
     void scheduleAutoSave();
 
     QTimer m_autoSaveTimer;
+
+    // Secret cache for the sunoToken property (backed by CredentialStore).
+    mutable QString m_sunoTokenCache;
+    mutable bool m_sunoTokenCacheDirty{true};
 };
 
 } // namespace qml_bridge

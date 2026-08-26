@@ -140,7 +140,11 @@ fs::path expandPath(std::string_view path) {
     X("shadow_color", shadowColor, COLOR)
 
 // download_path and download_format handled manually (see parseSuno).
+// token/cookie stay in the table READ-ONLY by convention: they exist so the
+// one-time migration in SunoClient can find legacy secrets, and are blanked
+// afterwards. Never persist fresh values there.
 #define CHADVIS_SUNO_FIELDS(X)                    \
+    X("device_id", deviceId, STR)                 \
     X("token", token, STR)                        \
     X("cookie", cookie, STR)                      \
     X("auto_download", autoDownload, BOOL)        \

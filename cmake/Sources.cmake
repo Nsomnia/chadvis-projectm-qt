@@ -75,8 +75,6 @@ set(SUNO_SOURCES
     src/suno/SunoDatabase.cpp
     src/suno/SunoLyrics.hpp
     src/suno/SunoLyrics.cpp
-    src/suno/SunoAuthManager.hpp
-    src/suno/SunoAuthManager.cpp
     src/suno/SunoLibraryManager.hpp
     src/suno/SunoLibraryManager.cpp
     src/suno/SunoDownloader.hpp
@@ -158,8 +156,6 @@ set(QML_BRIDGE_SOURCES
 set(UI_SOURCES
     src/ui/controllers/SunoController.hpp
     src/ui/controllers/SunoController.cpp
-    src/ui/SystemBrowserAuth.hpp
-    src/ui/SystemBrowserAuth.cpp
 )
 
 # ─────────────────────────────────────────────────────────────
