@@ -13,6 +13,10 @@ enum class PlaybackState;
 namespace qml_bridge {
 
 class AudioBridge : public QObject, public QmlSingletonBridge<AudioBridge> {
+
+// The CRTP mixin constructs this singleton via its private
+// constructor; grant only the exact instantiation access.
+friend class QmlSingletonBridge<AudioBridge>;
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON

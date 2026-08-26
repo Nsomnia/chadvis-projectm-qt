@@ -6,9 +6,15 @@
 #include "core/Logger.hpp"
 #include <filesystem>
 #include <fmt/core.h>
+#ifdef _WIN32
+#include <io.h>
+#include <windows.h>
+#include <sys/stat.h>
+#else
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/file.h>
+#endif
 
 #if LIBAVCODEC_VERSION_MAJOR >= 60
 #pragma GCC diagnostic push
@@ -16,6 +22,62 @@
 #endif
 
 namespace vc {
+
+namespace {
+
+// Exclusive-create + advisory-lock primitives for claiming an output file.
+// The POSIX branches preserve the historical open/flock behavior exactly;
+// the Win32 branches use the CRT _open family plus LockFileEx over
+// _get_osfhandle for an equivalent byte-range lock.
+
+#ifdef _WIN32
+
+int openExclusive(const char* path) {
+    return _open(path,
+                 _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY,
+                 _S_IREAD | _S_IWRITE);
+}
+
+bool lockExclusive(int fd) {
+    OVERLAPPED overlapped{};
+    const HANDLE handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
+    return LockFileEx(handle,
+                      LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+                      0, MAXDWORD, MAXDWORD, &overlapped) != FALSE;
+}
+
+void unlockExclusive(int fd) {
+    OVERLAPPED overlapped{};
+    LockFileEx(reinterpret_cast<HANDLE>(_get_osfhandle(fd)),
+               LOCKFILE_FAIL_IMMEDIATELY,
+               0, MAXDWORD, MAXDWORD, &overlapped);
+}
+
+void closeExclusive(int fd) {
+    _close(fd);
+}
+
+#else
+
+int openExclusive(const char* path) {
+    return ::open(path, O_CREAT | O_EXCL | O_WRONLY, 0644);
+}
+
+bool lockExclusive(int fd) {
+    return flock(fd, LOCK_EX | LOCK_NB) == 0;
+}
+
+void unlockExclusive(int fd) {
+    flock(fd, LOCK_UN);
+}
+
+void closeExclusive(int fd) {
+    ::close(fd);
+}
+
+#endif
+
+} // namespace
 
 VideoRecorderFFmpeg::VideoRecorderFFmpeg() = default;
 
@@ -40,12 +102,13 @@ Result<void> VideoRecorderFFmpeg::init(const EncoderSettings& settings) {
   int fd = -1;
 
   while (true) {
-    // Attempt to open with O_CREAT | O_EXCL to prevent race conditions
-    fd = ::open(finalPath.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0644);
+    // Exclusive create prevents racing another recorder instance; the lock
+    // then claims the file for the lifetime of this recording.
+    fd = openExclusive(finalPath.c_str());
     if (fd >= 0) {
       // Successfully created a unique file, now lock it
-      if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
-        ::close(fd);
+      if (!lockExclusive(fd)) {
+        closeExclusive(fd);
         return Result<void>::err(fmt::format("Failed to lock file {}: {}", finalPath.string(), strerror(errno)));
       }
       break;
@@ -140,8 +203,8 @@ void VideoRecorderFFmpeg::cleanup() {
     audioFrameCount_ = 0;
 
     if (fileLockFd_ >= 0) {
-        flock(fileLockFd_, LOCK_UN);
-        ::close(fileLockFd_);
+        unlockExclusive(fileLockFd_);
+        closeExclusive(fileLockFd_);
         fileLockFd_ = -1;
     }
 }
@@ -377,8 +440,23 @@ Result<void> VideoRecorderFFmpeg::initAudioStream(
     av_channel_layout_default(&layout, settings.audio.channels);
     av_channel_layout_copy(&audioCodecCtx_->ch_layout, &layout);
 
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100)
+    // FFmpeg >= 7.1: AVCodec::sample_fmts was removed; query supported
+    // formats through avcodec_get_supported_config() instead.
+    const AVSampleFormat* supportedFmts = nullptr;
+    int numSupportedFmts = 0;
+    avcodec_get_supported_config(nullptr, codec,
+                                 AV_CODEC_CONFIG_SAMPLE_FORMAT, 0,
+                                 reinterpret_cast<const void**>(&supportedFmts),
+                                 &numSupportedFmts);
+    audioCodecCtx_->sample_fmt =
+            (supportedFmts && numSupportedFmts > 0)
+                    ? supportedFmts[0]
+                    : AV_SAMPLE_FMT_FLTP;
+#else
     audioCodecCtx_->sample_fmt =
             codec->sample_fmts ? codec->sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
+#endif
     audioCodecCtx_->time_base =
             AVRational{1, static_cast<int>(settings.audio.sampleRate)};
 

@@ -21,6 +21,19 @@ ColumnLayout {
 
     spacing: Theme.spacingSmall
 
+    // QML has no QUrl.fromLocalFile(), so build a well-formed file URL
+    // manually: normalize Windows separators and percent-encode. Naive
+    // "file://" + path concatenation corrupts spaces, '#'/'?', and drive
+    // letters.
+    function localFileUrl(path) {
+        const p = String(path).replace(/\\/g, "/")
+        // Windows drive paths lack the leading slash; POSIX paths already
+        // have it, so only one separator is ever appended after "file://".
+        return p.startsWith("/")
+               ? "file://" + encodeURI(p)
+               : "file:///" + encodeURI(p)
+    }
+
     // ═══════════════════════════════════════════════════════════
     // TOOLBAR
     // ═══════════════════════════════════════════════════════════
@@ -265,7 +278,7 @@ Menu {
                 if (contextMenu.menuIndex >= 0) {
                     var path = PlaylistBridge.getItemPath(contextMenu.menuIndex)
                     if (path && path.length > 0) {
-                        Qt.openUrlExternally("file://" + path)
+                        Qt.openUrlExternally(localFileUrl(path))
                     }
                 }
             }

@@ -135,7 +135,7 @@ ColumnLayout {
                 id: pathField
                 Layout.fillWidth: true
                 placeholderText: "Output path..."
-                text: "/tmp/lyrics." + (srtRadio.checked ? "srt" : "lrc")
+                text: "lyrics." + (srtRadio.checked ? "srt" : "lrc")
             }
         }
 

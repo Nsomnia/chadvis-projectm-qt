@@ -13,6 +13,11 @@ inline QString qstr(std::string_view sv) {
     return QString::fromUtf8(sv.data(), static_cast<qsizetype>(sv.size()));
 }
 
+} // namespace vc::suno
+
+// Top-level block: writing vc::suno::endpoints INSIDE namespace vc::suno
+// would create vc::suno::vc::suno::endpoints and leave the outer namespace
+// unclosed, poisoning every include that follows.
 namespace vc::suno::endpoints {
 
 // ── Base URLs ──────────────────────────────────────────────

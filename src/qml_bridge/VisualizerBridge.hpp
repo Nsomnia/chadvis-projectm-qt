@@ -16,6 +16,10 @@ namespace qml_bridge {
 /// preset navigation and status queries.
 class VisualizerBridge : public QObject,
                          public QmlSingletonBridge<VisualizerBridge> {
+
+// The CRTP mixin constructs this singleton via its private
+// constructor; grant only the exact instantiation access.
+friend class QmlSingletonBridge<VisualizerBridge>;
 Q_OBJECT
 QML_ELEMENT
 QML_SINGLETON

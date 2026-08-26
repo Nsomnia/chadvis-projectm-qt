@@ -46,7 +46,7 @@ Result<void> AudioEngine::init() {
     loadLastPlaylist();
 
     stopAnalyzer_ = false;
-    analyzerThread_ = std::jthread(&AudioEngine::analyzerWorker, this);
+    analyzerThread_ = JThread(&AudioEngine::analyzerWorker, this);
 
     LOG_INFO("Audio engine initialized with QAudioBufferOutput");
     return Result<void>::ok();

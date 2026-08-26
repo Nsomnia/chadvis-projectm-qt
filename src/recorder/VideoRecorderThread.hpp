@@ -19,11 +19,11 @@
 #pragma once
 #include <atomic>
 #include <mutex>
-#include <thread>
 #include <vector>
 #include "FrameGrabber.hpp"
 #include "VideoRecorderCore.hpp"
 #include "VideoRecorderFFmpeg.hpp"
+#include "util/JThread.hpp"
 
 namespace vc {
 
@@ -50,7 +50,7 @@ public:
 private:
     using TimePoint = std::chrono::steady_clock::time_point;
 
-    void threadLoop(std::stop_token stopToken);
+    void threadLoop(StopToken stopToken);
     void updateStats(TimePoint startTime,
                      u64& lastFramesWritten,
                      TimePoint& lastUpdate,
@@ -60,7 +60,7 @@ private:
     EncoderSettings settings_;
     std::string actualOutputPath_;
 
-    std::jthread thread_;
+    JThread thread_;
     std::atomic<bool> shouldStop_{false};
 
     FrameGrabber frameGrabber_;

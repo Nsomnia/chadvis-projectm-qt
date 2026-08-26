@@ -16,6 +16,10 @@ namespace qml_bridge {
 
 class PresetBridge : public QObject,
                      public QmlSingletonBridge<PresetBridge, SingletonPolicy::CachedQmlParented> {
+
+// The CRTP mixin constructs this singleton via its private
+// constructor; grant only the exact instantiation access.
+friend class QmlSingletonBridge<PresetBridge, SingletonPolicy::CachedQmlParented>;
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON

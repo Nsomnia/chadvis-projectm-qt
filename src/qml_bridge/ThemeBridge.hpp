@@ -16,6 +16,10 @@ namespace qml_bridge {
  */
 class ThemeBridge : public QObject,
                     public QmlSingletonBridge<ThemeBridge, SingletonPolicy::CachedQmlParented> {
+
+// The CRTP mixin constructs this singleton via its private
+// constructor; grant only the exact instantiation access.
+friend class QmlSingletonBridge<ThemeBridge, SingletonPolicy::CachedQmlParented>;
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON

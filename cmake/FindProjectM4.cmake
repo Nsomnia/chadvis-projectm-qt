@@ -1,72 +1,88 @@
-# Version: 1.0.0 - 2026-04-19 14:00:00 MDT
-# FindProjectM4.cmake - Intelligent detection for ProjectM v4 with CPM fallback
+# Version: 2.0.0 - 2026-08-25
+# FindProjectM4.cmake - locate or build projectM v4 (core + playlist libraries).
+#
+# Detection order:
+#   1. CMake package config   - installed by libprojectm as projectM4Config.cmake
+#   2. pkg-config             - Linux only; raw linker flags are inherently
+#                               platform-specific so we don't pretend they port
+#   3. CPM source build       - always available last resort (static libs)
+#
+# Results for consumers:
+#   PROJECTM_FOUND          TRUE when a usable projectM v4 is available
+#   PROJECTM_LINK_TARGETS   imported/ALIAS CMake targets to link (preferred;
+#                           headers propagate transitively through them)
+#   PROJECTM_LINK_FLAGS     raw linker flags (only set in the pkg-config path)
+#   PROJECTM_INCLUDE_DIRS   extra include dirs (empty for target-based paths)
 
-# Option to force CPM build (useful when system version is outdated)
-option(CHADVIS_FORCE_CPM_PROJECTM "Force building libprojectm from source via CPM" OFF)
+option(CHADVIS_FORCE_CPM_PROJECTM
+    "Force building libprojectm from source via CPM" OFF)
 
-if(CHADVIS_FORCE_CPM_PROJECTM)
-    message(STATUS "CHADVIS_FORCE_CPM_PROJECTM is set, skipping system libprojectm detection")
-else()
-    # 1. Try modern CMake config (installed by libprojectm on Arch)
+set(PROJECTM_FOUND FALSE)
+
+if(NOT CHADVIS_FORCE_CPM_PROJECTM)
+    # ── 1. CMake config package ─────────────────────────────────────────
+    # Upstream v4 exports namespace `libprojectM::` with targets
+    # `projectM` and `playlist` (i.e. libprojectM::projectM, libprojectM::playlist).
     find_package(projectM4 CONFIG QUIET)
-    if(projectM4_FOUND)
-        message(STATUS "Found ProjectM v4 via CMake config")
-        set(PROJECTM_LIBRARIES libprojectM::projectM libprojectM::playlist)
+    if(projectM4_FOUND AND TARGET libprojectM::projectM AND TARGET libprojectM::playlist)
+        message(STATUS "Found projectM v4 via CMake package config")
+        set(PROJECTM_LINK_TARGETS libprojectM::projectM libprojectM::playlist)
         set(PROJECTM_FOUND TRUE)
     endif()
 
-    # 2. Try pkg-config
-    if(NOT PROJECTM_FOUND)
-        pkg_check_modules(PROJECTM projectM-4 QUIET)
-        if(NOT PROJECTM_FOUND)
-            pkg_check_modules(PROJECTM libprojectM QUIET)
-        endif()
-    endif()
-
-    # 3. Try manual search (fallback for custom installs)
-    if(NOT PROJECTM_FOUND)
-        find_path(PROJECTM_INCLUDE_DIRS projectM-4/projectM.h
-            HINTS /usr/local/include /usr/include
-        )
-        find_library(PROJECTM_LIBRARIES projectM-4
-            HINTS /usr/local/lib /usr/lib
-        )
-        if(PROJECTM_INCLUDE_DIRS AND PROJECTM_LIBRARIES)
+    # ── 2. pkg-config fallback (Linux) ──────────────────────────────────
+    if(NOT PROJECTM_FOUND AND PKG_CONFIG_FOUND AND UNIX AND NOT APPLE)
+        pkg_check_modules(PROJECTM_PC projectM-4 QUIET)
+        if(PROJECTM_PC_FOUND)
+            # Some projectM .pc files emit GNU-ld-only `-l:name` syntax;
+            # normalize to plain `-lname`, understood by every Unix linker.
+            string(REGEX REPLACE "-l:([^ ;]+)" "-l\\1" PROJECTM_LINK_FLAGS
+                "${PROJECTM_PC_LDFLAGS}")
+            set(PROJECTM_INCLUDE_DIRS "${PROJECTM_PC_INCLUDE_DIRS}")
             set(PROJECTM_FOUND TRUE)
-            message(STATUS "Found ProjectM v4 manually: ${PROJECTM_LIBRARIES}")
+            message(STATUS "Found projectM v4 via pkg-config")
         endif()
     endif()
 endif()
 
-# 4. CPM Fallback - Build from source
+# ── 3. Build from source via CPM ────────────────────────────────────────
 if(NOT PROJECTM_FOUND)
     if(CHADVIS_FORCE_CPM_PROJECTM)
         message(STATUS "Building libprojectm from source via CPM (forced)...")
     else()
-        message(STATUS "ProjectM v4 not found on system. Building from source via CPM...")
+        message(STATUS "projectM v4 not found on system. Building from source via CPM...")
     endif()
+
+    # Valid options for upstream v4.x: BUILD_SHARED_LIBS, ENABLE_PLAYLIST,
+    # ENABLE_SDL_UI, BUILD_TESTING, BUILD_DOCS, ENABLE_* feature toggles.
+    # Static libs avoid runtime dylib/dll resolution entirely.
     CPMAddPackage(
         NAME projectm
         GIT_REPOSITORY https://github.com/projectM-visualizer/projectm.git
         GIT_TAG v4.1.6
-        OPTIONS 
-            "BUILD_PROJECTM_STATIC ON"
-            "BUILD_PROJECTM_SAMPLES OFF"
-            "BUILD_PROJECTM_TESTS OFF"
-            "BUILD_PROJECTM_JACK OFF"
-            "BUILD_PROJECTM_PULSE OFF"
-            "BUILD_PROJECTM_SDL OFF"
-            "BUILD_PROJECTM_QT OFF"
+        OPTIONS
+            "BUILD_SHARED_LIBS OFF"
+            "ENABLE_PLAYLIST ON"
+            "ENABLE_SDL_UI OFF"
+            "BUILD_TESTING OFF"
     )
-    if(projectm_FOUND)
-        set(PROJECTM_LIBRARIES projectM projectM-playlist)
+
+    if(TARGET libprojectM::projectM AND TARGET libprojectM::playlist)
+        set(PROJECTM_LINK_TARGETS libprojectM::projectM libprojectM::playlist)
         set(PROJECTM_FOUND TRUE)
-        # Ensure headers are found with projectM-4 prefix if built as subproject
-        # ProjectM v4 headers are usually in <src>/src/libprojectM
-        target_include_directories(projectM INTERFACE $<BUILD_INTERFACE:${projectm_SOURCE_DIR}/src/libprojectM>)
+        # Headers (<projectM-4/projectM.h>, <projectM-4/playlist.h>) arrive
+        # transitively: projectM_playlist -> projectM -> projectM_api all use
+        # PUBLIC $<BUILD_INTERFACE> include dirs in the upstream build tree.
+    else()
+        message(FATAL_ERROR
+            "CPM projectm source build did not produce the expected targets "
+            "(libprojectM::projectM, libprojectM::playlist). Upstream layout "
+            "may have changed.")
     endif()
 endif()
 
 if(NOT PROJECTM_FOUND)
-    message(FATAL_ERROR "ProjectM v4 could not be found or built. Please install libprojectm (Arch) or build from source.")
+    message(FATAL_ERROR
+        "projectM v4 could not be found or built. Install libprojectm "
+        "(with development headers) or allow the CPM source build.")
 endif()
