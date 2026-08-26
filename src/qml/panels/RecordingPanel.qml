@@ -10,6 +10,19 @@ ColumnLayout {
 
     spacing: Theme.spacingMedium
 
+    // QML's url value type has no toLocalFile(), so replicate
+    // QUrl::toLocalFile here: strip the scheme, percent-decode, and drop the
+    // extra slash before a Windows drive letter ("file:///C:/x" -> "C:/x").
+    function toLocalFilePath(url) {
+        const s = url.toString()
+        if (!s.startsWith("file://"))
+            return s
+        let path = decodeURIComponent(s.slice("file://".length))
+        if (/^\/[A-Za-z]:\//.test(path))
+            path = path.slice(1)
+        return path
+    }
+
     // ═══════════════════════════════════════════════════════════
     // HEADER (Removed redundant ToolBar since it's in an accordion)
     // ═══════════════════════════════════════════════════════════
@@ -147,19 +160,19 @@ ColumnLayout {
             RowLayout {
                 Layout.fillWidth: true
                 Text { text: "Frames"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
-                Text { text: RecordingBridge.framesWritten; color: Theme.textPrimary; font: Theme.fontCaption; font.bold: true }
+                Text { text: RecordingBridge.framesWritten; color: Theme.textPrimary; font: Theme.fontCaptionStrong }
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 Text { text: "Size"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
-                Text { text: RecordingBridge.fileSize; color: Theme.textPrimary; font: Theme.fontCaption; font.bold: true }
+                Text { text: RecordingBridge.fileSize; color: Theme.textPrimary; font: Theme.fontCaptionStrong }
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 Text { text: "FPS"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
-                Text { text: RecordingBridge.encodeFps; color: Theme.textPrimary; font: Theme.fontCaption; font.bold: true }
+                Text { text: RecordingBridge.encodeFps; color: Theme.textPrimary; font: Theme.fontCaptionStrong }
             }
 
             RowLayout {
@@ -189,6 +202,6 @@ ColumnLayout {
         title: "Save Recording"
         fileMode: FileDialog.SaveFile
         nameFilters: ["MP4 files (*.mp4)", "MKV files (*.mkv)"]
-        onAccepted: outputPathField.text = selectedFile.toString().replace("file://", "")
+        onAccepted: outputPathField.text = toLocalFilePath(selectedFile)
     }
 }

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import ChadVis
 
 Item {

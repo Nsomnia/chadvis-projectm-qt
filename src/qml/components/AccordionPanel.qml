@@ -50,7 +50,7 @@ ColumnLayout {
             Text {
                 text: root.title
                 color: root.isExpanded ? Theme.accent : Theme.textPrimary
-                font: Theme.fontBodyBold
+                font: Theme.fontBodyStrong
                 Layout.fillWidth: true
             }
 
