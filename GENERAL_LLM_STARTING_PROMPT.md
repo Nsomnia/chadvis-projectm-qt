@@ -53,7 +53,7 @@ Dynamic context management is active; the host chat buffer may compress, warp, o
 
 ### 6. Relentless Documentation Hygiene
 *   **File Headers:** Extensive Javadoc/Doxygen-styled metadata headers must top every crucial source file with versions, complex algorithm breakdown text, and iteration comments.
-*   **CHANGELOG.md Maintenance:** Exhaustively manage it. Archive via appending timestamped schemas to `docs/CHANGELOG_ARCHIVE_<date>.md` if `CHANGELOG.md` goes over 400 lines. The primary file must have strict headers explaining how archiving works to all future model variants hitting the repo.
+*   **CHANGELOG_CURRENT.md Maintenance:** Exhaustively manage `CHANGELOG_CURRENT.md` (the canonical changelog at the repo root). Archive via appending timestamped schemas to `docs/CHANGELOG_ARCHIVE_<date>.md` if it goes over 400 lines. Keep a single `[Unreleased]` section at the top; the file must have strict headers explaining how archiving works to all future model variants hitting the repo.
 
 ***
 # YOUR INITIALIZATION BOOT SEQUENCE (ACT NOW, BEGIN DAEMON LOOP):

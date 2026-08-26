@@ -10,18 +10,18 @@ We follow a strict pattern to ensure that the "Arch BTW" levels of cleanliness a
 
 ### 1. The Supreme Leader: `vc::Application`
 Located in `src/core/Application.hpp`.
-- Owns all core engines (`AudioEngine`, `OverlayEngine`, `VideoRecorder`).
+- Owns all core engines (`AudioEngine`, `VideoRecorder`) and the Suno subsystem controllers.
 - Manages the lifecycle. If `Application` dies, everything dies gracefully.
 - Accessible via the `APP` macro. No global variables, just a well-managed singleton.
 
 ### 2. The Heavy Lifters: Engines
 - **`AudioEngine`**: Coordinates playback and analysis. Feeds PCM data to projectM.
-- **`OverlayEngine`**: Manages text quads. It's essentially a mini-rendering engine on top of the visualizer.
 - **`VideoRecorder`**: An asynchronous beast. It lives in its own thread because blocking the UI for a frame write is a sin.
 
-### 3. The Puppeteers: Controllers
-- Bridge the gap between the UI (Qt Widgets) and the Engines.
+### 3. The Puppeteers: Bridges & Controllers
+- Bridge the gap between the UI (Qt Quick) and the Engines.
 - They handle the signals and slots so the engines don't have to know about the UI.
+- Text overlays are managed by **`OverlayBridge`**, which owns overlay state, persists it to `overlays.json`, and feeds the QML overlay layer (see below).
 
 ---
 
@@ -31,8 +31,29 @@ We don't just "draw" to the screen. We have a pipeline:
 
 1.  **projectM Render**: Renders the preset to a Framebuffer Object (FBO).
 2.  **Capture (Optional)**: If recording, we use **Pixel Buffer Objects (PBOs)** for a double-buffered, zero-copy readback. This keeps the FPS high even while encoding 4K video.
-3.  **Overlay Pass**: The `OverlayRenderer` draws text and graphics over the FBO.
+3.  **Overlay Pass**: Text and graphics are drawn over the FBO via the QML overlay layer (`VisualizerOverlay.qml`, driven by `OverlayBridge`).
 4.  **Blit**: The final result is blitted to the `VisualizerWindow`.
+
+---
+
+## 🖥️ The QML Layer (Qt Quick)
+
+The UI is a modern **Qt Quick (QML)** interface — no Qt Widgets. (This section absorbs the former `QML_REFACTOR_GUIDE.md`, now archived.)
+
+### Key Components
+- **Main.qml**: The root application window, implementing a responsive `SplitView` for desktop and a `Drawer` for compact views.
+- **VisualizerItem**: A custom C++ `QQuickItem` that bridges projectM v4 rendering into the QML scene graph.
+- **Bridges**: C++/QML bridge classes (e.g., `AudioBridge`, `RecordingBridge`) provide reactive data and control flow between the engine and the UI.
+
+### Layout System
+- **Desktop Sidebar**: Automatically visible when window width > 1200px.
+- **Hamburger Menu**: Provides access to panels via a `Drawer` when space is constrained.
+- **Accordion Panels**: UI modules (Playback, Library, Presets, etc.) are organized in an expandable accordion container.
+
+### Styling
+Global styles are managed via `src/qml/styles/Theme.qml`.
+- **Accent Color**: Cyan (#00bcd4) by default, user-customizable.
+- **Background**: Dark (#1a1a1a) for maximum visualizer contrast.
 
 ---
 
