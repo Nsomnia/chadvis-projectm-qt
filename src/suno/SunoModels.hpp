@@ -50,27 +50,4 @@ struct SunoClip {
     }
 };
 
-struct SunoProject {
-    std::string id;
-    std::string name;
-    std::string description;
-    std::string created_at;
-    std::string updated_at;
-};
-
-struct SunoPlaylist {
-    std::string id;
-    std::string name;
-    std::string description;
-    std::string image_url;
-    u32 num_total_clips{0};
-};
-
-// B-Side / Experimental feature tracking
-struct SunoFeatureGate {
-    std::string name;
-    bool enabled{false};
-    std::string value;
-};
-
 } // namespace vc::suno

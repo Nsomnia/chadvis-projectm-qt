@@ -545,7 +545,6 @@ cmd_check_deps() {
         "pkg:Qt6Multimedia:qt6-multimedia"
         # Qt6 extras
         "pkg:Qt6Svg:qt6-svg"
-        "pkg:Qt6WebEngine:qt6-webengine"
         # Core libraries (excluding libprojectm if handled via CPM)
         "pkg:libavcodec:ffmpeg" "pkg:libavformat:ffmpeg"
         "pkg:libavutil:ffmpeg" "pkg:libswresample:ffmpeg"

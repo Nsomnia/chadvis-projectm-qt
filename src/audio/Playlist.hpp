@@ -17,7 +17,6 @@ struct PlaylistItem {
     bool isRemote{false};
     MediaMetadata metadata;
     std::string lyricsPath;  // Path to external .lrc file
-    bool valid{true};
     // Helper to get title for fuzzy matching
     std::string title() const { return metadata.title.empty() ? path.stem().string() : metadata.title; }
 };

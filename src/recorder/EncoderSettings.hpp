@@ -141,13 +141,4 @@ struct EncoderSettings {
     static EncoderSettings hardware4k60();     // NVENC HEVC
 };
 
-// Quality presets
-struct QualityPreset {
-    std::string name;
-    std::string description;
-    EncoderSettings settings;
-};
-
-std::vector<QualityPreset> getQualityPresets();
-
 } // namespace vc

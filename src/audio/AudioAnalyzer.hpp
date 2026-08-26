@@ -36,21 +36,7 @@ public:
         usize pos = (head_ + Size - count_ + index) % Size;
         return buffer_[pos];
     }
-    
-    // Get contiguous span for FFT (may need two spans if wrapped)
-    std::pair<std::span<const T>, std::span<const T>> getSpans() const {
-        usize start = (head_ + Size - count_) % Size;
-        if (start + count_ <= Size) {
-            // Contiguous
-            return {std::span(&buffer_[start], count_), std::span<const T>()};
-        } else {
-            // Wrapped
-            usize firstPart = Size - start;
-            return {std::span(&buffer_[start], firstPart), 
-                    std::span(buffer_.data(), count_ - firstPart)};
-        }
-    }
-    
+
 private:
     std::array<T, Size> buffer_{};
     usize head_ = 0;

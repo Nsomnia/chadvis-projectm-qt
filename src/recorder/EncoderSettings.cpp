@@ -320,33 +320,4 @@ EncoderSettings EncoderSettings::hardware4k60() {
     return s;
 }
 
-std::vector<QualityPreset> getQualityPresets() {
-    return {
-            {"YouTube 1080p60",
-             "High quality for YouTube uploads",
-             EncoderSettings::youtube1080p60()},
-            {"YouTube 4K60",
-             "Maximum quality for 4K displays",
-             EncoderSettings::youtube4k60()},
-            {"Twitter/X 720p",
-             "Optimized for Twitter video",
-             EncoderSettings::twitter720p()},
-            {"Discord 8MB",
-             "Compressed for Discord free tier",
-             EncoderSettings::discord8mb()},
-            {"Lossless",
-             "No quality loss, huge files",
-             EncoderSettings::lossless()},
-            {"Editing (ProRes)",
-             "For video editing software",
-             EncoderSettings::editing()},
-            {"Hardware 1080p60 (NVENC)",
-             "GPU-accelerated H.264 for minimal CPU usage",
-             EncoderSettings::hardware1080p60()},
-            {"Hardware 4K60 (NVENC HEVC)",
-             "GPU-accelerated H.265 for 4K recording",
-             EncoderSettings::hardware4k60()},
-    };
-}
-
 } // namespace vc

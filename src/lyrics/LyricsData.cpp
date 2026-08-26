@@ -63,26 +63,6 @@ const LyricsWord* LyricsData::getWord(size_t lineIndex, f32 time) const {
     return nullptr;
 }
 
-std::vector<size_t> LyricsData::search(const std::string& query) const {
-    std::vector<size_t> results;
-    if (query.empty()) return results;
-    
-    // Case-insensitive search
-    std::string lowerQuery = query;
-    std::transform(lowerQuery.begin(), lowerQuery.end(), lowerQuery.begin(), ::tolower);
-    
-    for (size_t i = 0; i < lines.size(); ++i) {
-        std::string lowerLine = lines[i].text;
-        std::transform(lowerLine.begin(), lowerLine.end(), lowerLine.begin(), ::tolower);
-        
-        if (lowerLine.find(lowerQuery) != std::string::npos) {
-            results.push_back(i);
-        }
-    }
-    
-    return results;
-}
-
 std::pair<f32, f32> LyricsData::getTimeRange(size_t lineIndex, size_t contextLines) const {
     if (lines.empty()) return {0.0f, 0.0f};
     
