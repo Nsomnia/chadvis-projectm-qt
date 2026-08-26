@@ -22,7 +22,7 @@ Result<void> VideoRecorder::start(const EncoderSettings& settings) {
   }
 
   settings_ = settings;
-  file::ensureDir(settings_.outputPath.parent_path());
+  (void)file::ensureDir(settings_.outputPath.parent_path());
 
   state_ = RecordingState::Starting;
   stateChanged.emitSignal(state_);

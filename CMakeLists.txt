@@ -162,6 +162,7 @@ set(AUDIO_SOURCES
     src/audio/AudioAnalyzer.hpp
     src/audio/AudioAnalyzer.cpp
     src/audio/AudioQueue.hpp
+    src/audio/AudioChunk.hpp
     src/audio/Playlist.hpp
     src/audio/Playlist.cpp
     src/audio/analysis/MediaMetadata.hpp
@@ -211,6 +212,9 @@ set(SUNO_SOURCES
     src/suno/SunoDownloader.cpp
     src/suno/SunoLyricsManager.hpp
     src/suno/SunoLyricsManager.cpp
+    src/suno/SunoAuthFailure.hpp
+    src/suno/ClipResolver.hpp
+    src/suno/ClipResolver.cpp
 )
 
 set(RECORDER_SOURCES
@@ -237,10 +241,13 @@ set(LYRICS_SOURCES
 # QML BRIDGE SOURCES - C++ types exposed to QML
 # ═══════════════════════════════════════════════════════════════════════════
 set(QML_BRIDGE_SOURCES
+    src/qml_bridge/QmlSingletonBridge.hpp
     src/qml_bridge/AudioBridge.hpp
     src/qml_bridge/AudioBridge.cpp
     src/qml_bridge/PlaylistBridge.hpp
     src/qml_bridge/PlaylistBridge.cpp
+    src/qml_bridge/PlaylistItemPresenter.hpp
+    src/qml_bridge/PlaylistItemPresenter.cpp
     src/qml_bridge/VisualizerBridge.hpp
     src/qml_bridge/VisualizerBridge.cpp
     src/qml_bridge/RecordingBridge.hpp
@@ -281,9 +288,23 @@ set(QML_SOURCES
     src/qml/components/AccordionContainer.qml
     src/qml/components/AppButton.qml
     src/qml/components/AppSlider.qml
+    src/qml/components/AppTextField.qml
+    src/qml/components/AppComboBox.qml
+    src/qml/components/AppSwitch.qml
+    src/qml/components/SectionHeader.qml
+    src/qml/components/PulseIndicator.qml
+    src/qml/components/SettingSpinRow.qml
     src/qml/components/KaraokeMaster.qml
     src/qml/components/KaraokeSettings.qml
     src/qml/components/VisualizerOverlay.qml
+    src/qml/panels/settings/PerformanceSettings.qml
+    src/qml/panels/settings/AppearanceSettings.qml
+    src/qml/panels/settings/AudioSettings.qml
+    src/qml/panels/settings/VisualizerSettings.qml
+    src/qml/panels/settings/RecordingSettings.qml
+    src/qml/panels/settings/SunoSettings.qml
+    src/qml/panels/settings/ShortcutsSettings.qml
+    src/qml/panels/settings/ProfileSettings.qml
     src/qml/panels/PlaybackPanel.qml
     src/qml/panels/PlaylistPanel.qml
     src/qml/panels/PresetsPanel.qml

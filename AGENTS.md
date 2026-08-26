@@ -37,7 +37,7 @@
 - [ ] **PFFFT static locals thread-unsafe** — `AudioAnalyzer::performFFT()` uses static work/output arrays; concurrent calls = data race. Make thread-local or use per-instance buffers.
 - [ ] **SunoClient use-after-free** — Network replies can outlive client; dangling pointer on delayed responses. Lifetime audit needed.
 - [ ] **VideoRecorderFFmpeg nullptr deref** — `avcodec_alloc_context3()` return not checked; null codec ctx = crash.
-- [ ] **VideoRecorderThread brace mismatch** — Audio encoding path skipped due to brace scope error; audio never encoded during recording.
+- [x] **VideoRecorderThread brace mismatch** — Root cause found (2026-08-25): `VideoRecorder::setAudioQueue` was never wired, so the rec queue was always null. Wired in `Application::init()`; braces were actually balanced.
 - [ ] **LyricsOverlayRenderer OOB access** — Out-of-bounds array access in renderer; crash on edge-case lyric data.
 - [ ] **AudioEngine scratch buffer resize in audio callback** — Allocation in RT path = undefined behavior under SCHED_FIFO. Pre-allocate or use lock-free ring.
 - [ ] **Application destructor destruction order** — Members destroyed before dependent subsystems; potential use-after-destroy on shutdown.
@@ -49,7 +49,7 @@
 - [ ] **SQL injection risk in search_db.sh** — User input concatenated into SQL; parameterize queries.
 
 ### Stubs & No-Ops (Functional Dead Code)
-- [ ] **submitAudioSamples() complete no-op** — AudioBridge method body empty; visualizer receives no audio data through this path.
+- [x] **submitAudioSamples() complete no-op** — Empty method + its only dead caller removed (2026-08-25); recorder now fed via real audio-queue wiring.
 
 ---
 
@@ -80,23 +80,23 @@
 ### Application Architecture
 - [ ] **Application god object** — 150+ line `init()`, owns everything. Split into subsystem managers (AudioSubsystem, UISubsystem, etc.).
 - [ ] **Application singleton via raw pointer** — `g_app` raw pointer; should be `unique_ptr` or stack-allocated. Risk of double-delete or leak.
-- [ ] **Config parser defaults don't match struct defaults** — TOML defaults diverge from C++ struct initializers; silent wrong values on partial config.
+- [x] **Config parser defaults don't match struct defaults** — Fixed (2026-08-25): parser fallbacks now derive from default-constructed ConfigData structs (single source of truth).
 - [ ] **Config::save() errors ignored** — Save failures silently swallowed; user loses settings without warning.
 - [ ] **CLI X-macro pattern fragile** — CliArgs.inc X-macros: easy to break, poor IDE support. Consider codegen or reflection-based approach.
 - [ ] **TRY macro shadows std::expected** — Custom TRY conflicts with C++23 idiom; migrate to `std::expected` monadic chain.
 
 ### Build System
-- [ ] **PULSEAUDIO_FOUND checked but never searched** — `find_package(PulseAudio)` never called but `PULSEAUDIO_FOUND` referenced.
-- [ ] **Icons registered twice** — Duplicate registration via `.qrc` + `qt_add_qml_module`; double resource load.
-- [ ] **test_PresetScanner / test_projectm_render not in CMake** — Test targets exist but not added to CMakeLists; never compiled.
+- [x] **PULSEAUDIO_FOUND checked but never searched** — Dead branch deleted from CMakeLists.
+- [x] **Icons registered twice** — QML uses qt/qml module paths exclusively; .qrc icon entries removed, dead icons archived.
+- [x] **test_PresetScanner / test_projectm_render not in CMake** — test_PresetScanner (real QtTest) wired into unit_tests; stub test files archived to graveyard.
 - [x] **WebEngineWidgets dead dependency** — Still linked but never used; bloats build and runtime deps.
-- [ ] **Remove ~20 stale cmake modules** — Only CPM.cmake + FindProjectM4.cmake used; Conan.cmake, Vcpkg.cmake, Doxygen.cmake, etc. are dead.
+- [x] **Remove ~20 stale cmake modules** — Already resolved in earlier housekeeping; cmake/ holds only CPM.cmake + FindProjectM4.cmake.
 
 ### Suno Integration
 - [~] **B-Side feature set** — Orchestrator wired into controller/bridge; endpoint map centralized; feature gates still unused
 - [ ] **Implement Generation Surface** — Full creation suite (prompt, style, seeds) with client-side overrides
 - [~] **B-Side Chat/Orchestrator** — Orchestrator wired, chat flows through bridge; workspace/session persistence still TODO
-- [ ] **SunoOrchestrator bypasses request queue** — Direct API calls skip rate-limiting queue; potential 429s.
+- [x] **SunoOrchestrator bypasses request queue** — Orchestrator now routes through `SunoClient::enqueueAuthenticatedRequest` (rate limiter + auth refresh).
 - [ ] **SunoOrchestrator JSON parsing no null checks** — `.value()` calls on potentially missing keys; crash on unexpected API response.
 - [ ] **SunoClient pollWavFile not cancellable** — No cancellation token; polling blocks until timeout even if user navigates away.
 - [ ] **Inconsistent 401 handling** — Some controllers refresh token, others don't; user sees random auth failures.
@@ -118,10 +118,10 @@
 
 ### Config & Defaults
 - [ ] **debug=true in default.toml** — Production default config has debug logging enabled; performance impact.
-- [ ] **Duration migration runs every startup** — DB migration check always re-runs; should be idempotent or track completion.
+- [x] **Duration migration runs every startup** — Gated behind `PRAGMA user_version` (runs once).
 
 ### QML
-- [ ] **SettingsPanel.qml monolithic 526 LOC** — Single file handles all settings tabs; split into per-category components.
+- [x] **SettingsPanel.qml monolithic 526 LOC** — Split into 8 per-category panels under src/qml/panels/settings/ composed by a slim 86-LOC panel.
 
 ---
 
@@ -167,8 +167,8 @@
 - [ ] **Color picker unimplemented** — UI element present but no functionality.
 - [ ] **Fullscreen shortcut unimplemented** — F11 key binding declared but not wired.
 - [ ] **PresetPanel rebuilds model on every change** — Full model reset on single preset change; use beginInsertRows/beginRemoveRows.
-- [ ] **Record button highlight inverted** — Active recording shows wrong state; logic inverted.
-- [ ] **OverlayBridge saves on every change, no debounce** — JSON persistence writes on every property change; add 2s debounce like SettingsBridge.
+- [x] **Record button highlight inverted** — Fixed against RecordingBridge::isRecording semantics.
+- [x] **OverlayBridge saves on every change, no debounce** — 2s debounce added; destructor flushes pending writes.
 - [ ] **ThemeBridge only exposes 2 writable colors** — Most theme colors read-only; expose setters for runtime customization.
 - [ ] **No internationalization support** — All strings hardcoded in QML/C++; no i18n framework. Add Qt Linguist.
 

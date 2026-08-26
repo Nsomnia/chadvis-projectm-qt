@@ -174,7 +174,7 @@ void AudioEngine::loadLastPlaylist() {
 
 void AudioEngine::saveLastPlaylist() {
     auto path = file::configDir() / "last_session.m3u";
-    file::ensureDir(path.parent_path());
+    (void)file::ensureDir(path.parent_path());
     playlist_.saveM3U(path);
 }
 

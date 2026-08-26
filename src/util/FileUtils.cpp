@@ -263,6 +263,21 @@ fs::path uniquePath(const fs::path& desired) {
     return desired;
 }
 
+std::string sanitizeFilename(const std::string& name) {
+    std::string safe;
+    safe.reserve(name.size());
+    for (const char c : name) {
+        // Replace path separators so a crafted title can never escape the
+        // intended directory.
+        if (c == '/' || c == '\\') {
+            safe.push_back('_');
+        } else {
+            safe.push_back(c);
+        }
+    }
+    return safe;
+}
+
 std::string humanSize(std::uintmax_t bytes) {
     const auto comp = byteSizeComponents(bytes);
     if (comp.unitIndex == 0) {

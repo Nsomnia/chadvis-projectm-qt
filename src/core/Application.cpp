@@ -359,6 +359,9 @@ Result<void> Application::init(const AppOptions& opts) {
 
 	LOG_DEBUG("Initializing video recorder...");
 	videoRecorder_ = std::make_unique<VideoRecorder>();
+	// Feed the recorder from the engine's recording queue; without this the
+	// queue pointer stays null and recorded video is silently mute.
+	videoRecorder_->setAudioQueue(&audioEngine_->audioQueue());
 
 	LOG_DEBUG("Initializing rating manager...");
 	if (auto result = RatingManager::instance().load(); !result) {
@@ -379,6 +382,8 @@ Result<void> Application::init(const AppOptions& opts) {
 		LOG_DEBUG("Creating VisualizerWindow for QML embedding...");
 		visualizerWindow_ = std::make_unique<VisualizerWindow>();
 		visualizerWindow_->setMinimumSize(QSize(640, 480));
+		// Renderer owns the visualizer PCM consumer; wire it to the engine queue.
+		visualizerWindow_->renderer().setAudioQueue(&audioEngine_->audioQueue());
 
 		LOG_DEBUG("Initializing lyrics sync for QML...");
 		lyricsSync_ = std::make_unique<LyricsSync>(audioEngine_.get());
@@ -450,7 +455,7 @@ void Application::quit() {
 
 	// Save config if dirty
 	if (CONFIG.isDirty()) {
-		CONFIG.save(CONFIG.configPath());
+		(void)CONFIG.save(CONFIG.configPath());
 	}
 
 	if (qapp_) {
