@@ -51,7 +51,8 @@ void VisualizerWindow::resizeEvent(QResizeEvent* event) {
         initialize();
     if (context_ && context_->makeCurrent(this)) {
         if (isExposed()) {
-            renderer_->render(width(), height(), true);
+            const QSize fb = framebufferSize();
+            renderer_->render(fb.width(), fb.height(), true);
             context_->swapBuffers(this);
         }
         context_->doneCurrent();
@@ -68,7 +69,11 @@ void VisualizerWindow::initialize() {
         return;
     }
 
-    renderer_->initialize(width(), height());
+    // Framebuffer pixels, NOT logical points: on macOS Retina (DPR=2) the
+    // actual GL surface is 2x the logical size per axis; feeding logical
+    // points to glViewport/projectM renders into 1/(DPR^2) of the surface.
+    const QSize fb = framebufferSize();
+    renderer_->initialize(fb.width(), fb.height());
 
     renderer_->projectM().presetChanged.connect(
             [this](const std::string& name) {
@@ -92,7 +97,8 @@ void VisualizerWindow::render() {
     if (!initialized_ || !isExposed())
         return;
     if (context_->makeCurrent(this)) {
-        renderer_->render(width(), height(), isExposed());
+        const QSize fb = framebufferSize();
+        renderer_->render(fb.width(), fb.height(), isExposed());
         context_->swapBuffers(this);
         context_->doneCurrent();
         ++frameCount_;

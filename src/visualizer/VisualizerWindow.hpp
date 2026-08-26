@@ -86,6 +86,14 @@ private slots:
 private:
     void initialize();
 
+    /// Actual GL framebuffer size in device pixels (logical size x DPR).
+    /// On macOS Retina DPR=2; feeding logical points to glViewport renders
+    /// into 1/(DPR^2) of the surface.
+    QSize framebufferSize() const {
+        const qreal dpr = devicePixelRatio();
+        return QSize(qRound(width() * dpr), qRound(height() * dpr));
+    }
+
     std::unique_ptr<QOpenGLContext> context_;
     std::unique_ptr<VisualizerRenderer> renderer_;
 
