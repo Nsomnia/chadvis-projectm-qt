@@ -10,34 +10,74 @@
 
 namespace vc::file {
 
-fs::path configDir() {
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME")) {
+namespace {
+
+// Resolve an XDG base directory with HOME-relative fallback segments.
+// Shared by configDir()/dataDir()/cacheDir() which differ only in env var,
+// fallback subpath, and last-resort path.
+fs::path xdgBaseDir(const char* envVar,
+                    std::initializer_list<const char*> homeSegments,
+                    const fs::path& lastResort) {
+    if (const char* xdg = std::getenv(envVar)) {
         return fs::path(xdg) / "chadvis-projectm-qt";
     }
     if (const char* home = std::getenv("HOME")) {
-        return fs::path(home) / ".config" / "chadvis-projectm-qt";
+        fs::path p(home);
+        for (const char* seg : homeSegments)
+            p /= seg;
+        return p / "chadvis-projectm-qt";
     }
-    return fs::current_path() / ".chadvis-projectm-qt";
+    return lastResort;
+}
+
+// ── ByteSizeFormatter ────────────────────────────────────────────────
+// Single 1024-ladder shared by humanSize()/humanSizeQString(); the public
+// wrappers own only their output formatting.
+struct ByteSizeComponent {
+    double value;
+    int unitIndex; // 0=B .. 4=TB
+};
+
+constexpr std::array<const char*, 5> kByteUnits = {"B", "KB", "MB", "GB", "TB"};
+
+ByteSizeComponent byteSizeComponents(std::uintmax_t bytes) {
+    int unit = 0;
+    double size = static_cast<double>(bytes);
+    while (size >= 1024.0 && unit < 4) {
+        size /= 1024.0;
+        ++unit;
+    }
+    return {size, unit};
+}
+
+// ── TimecodeFormatter ────────────────────────────────────────────────
+// Single h/m/s decomposition shared by formatDuration()/formatDurationQString().
+struct TimecodeComponents {
+    long long hours;
+    long long minutes;
+    long long seconds;
+};
+
+TimecodeComponents timecodeComponents(long long totalMs) {
+    const long long t = totalMs > 0 ? totalMs : 0;
+    return {t / 3600000, (t % 3600000) / 60000, (t % 60000) / 1000};
+}
+
+} // namespace
+
+fs::path configDir() {
+    return xdgBaseDir("XDG_CONFIG_HOME", {".config"},
+                      fs::current_path() / ".chadvis-projectm-qt");
 }
 
 fs::path dataDir() {
-    if (const char* xdg = std::getenv("XDG_DATA_HOME")) {
-        return fs::path(xdg) / "chadvis-projectm-qt";
-    }
-    if (const char* home = std::getenv("HOME")) {
-        return fs::path(home) / ".local" / "share" / "chadvis-projectm-qt";
-    }
-    return fs::current_path() / ".chadvis-projectm-qt-data";
+    return xdgBaseDir("XDG_DATA_HOME", {".local", "share"},
+                      fs::current_path() / ".chadvis-projectm-qt-data");
 }
 
 fs::path cacheDir() {
-    if (const char* xdg = std::getenv("XDG_CACHE_HOME")) {
-        return fs::path(xdg) / "chadvis-projectm-qt";
-    }
-    if (const char* home = std::getenv("HOME")) {
-        return fs::path(home) / ".cache" / "chadvis-projectm-qt";
-    }
-    return fs::temp_directory_path() / "chadvis-projectm-qt";
+    return xdgBaseDir("XDG_CACHE_HOME", {".cache"},
+                      fs::temp_directory_path() / "chadvis-projectm-qt");
 }
 
 fs::path presetsDir() {
@@ -224,48 +264,31 @@ fs::path uniquePath(const fs::path& desired) {
 }
 
 std::string humanSize(std::uintmax_t bytes) {
-    constexpr std::array<const char*, 5> units = {"B", "KB", "MB", "GB", "TB"};
-    int unit = 0;
-    double size = static_cast<double>(bytes);
-
-    while (size >= 1024.0 && unit < 4) {
-        size /= 1024.0;
-        ++unit;
+    const auto comp = byteSizeComponents(bytes);
+    if (comp.unitIndex == 0) {
+        return std::format("{} {}", bytes, kByteUnits[comp.unitIndex]);
     }
-
-    if (unit == 0) {
-        return std::format("{} {}", bytes, units[unit]);
-    }
-    return std::format("{:.1f} {}", size, units[unit]);
+    return std::format("{:.1f} {}", comp.value, kByteUnits[comp.unitIndex]);
 }
 
 std::string formatDuration(Duration dur) {
-    auto total = dur.count();
-    auto hours = total / 3600000;
-    auto minutes = (total % 3600000) / 60000;
-    auto seconds = (total % 60000) / 1000;
-
-    if (hours > 0) {
-        return std::format("{:02}:{:02}:{:02}", hours, minutes, seconds);
+    const auto t = timecodeComponents(dur.count());
+    if (t.hours > 0) {
+        return std::format("{:02}:{:02}:{:02}", t.hours, t.minutes, t.seconds);
     }
-    return std::format("{:02}:{:02}", minutes, seconds);
+    return std::format("{:02}:{:02}", t.minutes, t.seconds);
 }
 
 QString humanSizeQString(vc::u64 bytes) {
-  constexpr double kib = 1024.0;
-  constexpr double mib = kib * 1024.0;
-  constexpr double gib = mib * 1024.0;
-
-  if (bytes >= static_cast<vc::u64>(gib)) {
-    return QStringLiteral("%1 GB").arg(static_cast<double>(bytes) / gib, 0, 'f', 1);
+  const auto comp = byteSizeComponents(bytes);
+  // QML-facing variant historically capped at GB; keep that ceiling.
+  const auto unit = std::min(comp.unitIndex, 3);
+  if (unit == 0) {
+    return QStringLiteral("%1 B").arg(bytes);
   }
-  if (bytes >= static_cast<vc::u64>(mib)) {
-    return QStringLiteral("%1 MB").arg(static_cast<double>(bytes) / mib, 0, 'f', 1);
-  }
-  if (bytes >= static_cast<vc::u64>(kib)) {
-    return QStringLiteral("%1 KB").arg(static_cast<double>(bytes) / kib, 0, 'f', 1);
-  }
-  return QStringLiteral("%1 B").arg(bytes);
+  return QStringLiteral("%1 %2")
+      .arg(comp.value, 0, 'f', 1)
+      .arg(QLatin1String(kByteUnits[unit]));
 }
 
 QString formatDurationQString(vc::i64 ms) {
@@ -273,21 +296,32 @@ QString formatDurationQString(vc::i64 ms) {
     return QStringLiteral("0:00");
   }
 
-  const auto totalSeconds = ms / 1000;
-  const auto hours = totalSeconds / 3600;
-  const auto minutes = (totalSeconds % 3600) / 60;
-  const auto seconds = totalSeconds % 60;
-
-  if (hours > 0) {
+  const auto t = timecodeComponents(ms);
+  if (t.hours > 0) {
     return QStringLiteral("%1:%2:%3")
-      .arg(static_cast<qlonglong>(hours))
-      .arg(static_cast<int>(minutes), 2, 10, QLatin1Char('0'))
-      .arg(static_cast<int>(seconds), 2, 10, QLatin1Char('0'));
+      .arg(static_cast<qlonglong>(t.hours))
+      .arg(static_cast<int>(t.minutes), 2, 10, QLatin1Char('0'))
+      .arg(static_cast<int>(t.seconds), 2, 10, QLatin1Char('0'));
   }
 
   return QStringLiteral("%1:%2")
-    .arg(static_cast<int>(minutes))
-    .arg(static_cast<int>(seconds), 2, 10, QLatin1Char('0'));
+    .arg(static_cast<int>(t.minutes))
+    .arg(static_cast<int>(t.seconds), 2, 10, QLatin1Char('0'));
+}
+
+QString srtTimecode(qint64 milliseconds) {
+  if (milliseconds < 0) {
+    milliseconds = 0;
+  }
+  const auto hours = milliseconds / 3600000;
+  const auto minutes = (milliseconds % 3600000) / 60000;
+  const auto seconds = (milliseconds % 60000) / 1000;
+  const auto millis = milliseconds % 1000;
+  return QStringLiteral("%1:%2:%3,%4")
+      .arg(static_cast<int>(hours), 2, 10, QLatin1Char('0'))
+      .arg(static_cast<int>(minutes), 2, 10, QLatin1Char('0'))
+      .arg(static_cast<int>(seconds), 2, 10, QLatin1Char('0'))
+      .arg(static_cast<int>(millis), 3, 10, QLatin1Char('0'));
 }
 
 std::optional<Duration> parseDuration(std::string_view str) {

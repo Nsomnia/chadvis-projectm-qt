@@ -17,7 +17,7 @@ void Logger::init(std::string_view appName, bool debug) {
         sinks.push_back(console);
 
         auto logDir = file::cacheDir() / "logs";
-        file::ensureDir(logDir);
+        (void)file::ensureDir(logDir); // Best-effort; sink open failure is handled below.
 
         auto logFile = logDir / (std::string(appName) + ".log");
         // Use rotating file sink to prevent massive log files

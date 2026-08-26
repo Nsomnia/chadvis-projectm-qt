@@ -46,10 +46,11 @@ Result<void> ConfigLoader::loadDefault(Config& config) {
     // Ensure subdirectories exist
     auto dataDir = file::dataDir();
     auto cacheDir = file::cacheDir();
-    file::ensureDir(dataDir);
-    file::ensureDir(cacheDir);
-    file::ensureDir(dataDir / "presets");
-    file::ensureDir(cacheDir / "logs");
+    // Best-effort directory creation; failures are non-fatal on load.
+    (void)file::ensureDir(dataDir);
+    (void)file::ensureDir(cacheDir);
+    (void)file::ensureDir(dataDir / "presets");
+    (void)file::ensureDir(cacheDir / "logs");
 
     if (fs::exists(defaultPath)) {
         config.configPath_ = defaultPath;
@@ -73,7 +74,7 @@ Result<void> ConfigLoader::loadDefault(Config& config) {
     LOG_INFO("No config found - generating fresh default config with Arch-tier quality");
     config.visualizer().presetPath = file::presetsDir();
     config.recording().outputDirectory = dataDir / "recordings";
-    file::ensureDir(config.recording().outputDirectory);
+    (void)file::ensureDir(config.recording().outputDirectory);
     config.configPath_ = defaultPath;
     
     if (auto result = save(config, defaultPath); !result) {

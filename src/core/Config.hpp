@@ -28,9 +28,9 @@ class Config {
 public:
     static Config& instance();
 
-    Result<void> load(const fs::path& path);
-    Result<void> save(const fs::path& path) const;
-    Result<void> loadDefault();
+    [[nodiscard]] Result<void> load(const fs::path& path);
+    [[nodiscard]] Result<void> save(const fs::path& path) const;
+    [[nodiscard]] Result<void> loadDefault();
 
     fs::path configPath() const {
         return configPath_;

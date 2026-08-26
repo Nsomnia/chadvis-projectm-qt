@@ -21,10 +21,10 @@ class Config;
 
 class ConfigLoader {
 public:
-    static Result<void> load(Config& config, const std::filesystem::path& path);
-    static Result<void> save(const Config& config,
-                             const std::filesystem::path& path);
-    static Result<void> loadDefault(Config& config);
+    [[nodiscard]] static Result<void> load(Config& config, const std::filesystem::path& path);
+    [[nodiscard]] static Result<void> save(const Config& config,
+                                           const std::filesystem::path& path);
+    [[nodiscard]] static Result<void> loadDefault(Config& config);
 };
 
 } // namespace vc
