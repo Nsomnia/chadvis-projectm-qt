@@ -68,6 +68,7 @@ add_library(project_lib STATIC
     ${AUDIO_SOURCES}
     ${VISUALIZER_SOURCES}
     ${SUNO_SOURCES}
+    ${SUNO_AUTH_SOURCES}
     ${RECORDER_SOURCES}
     ${LYRICS_SOURCES}
     ${UI_SOURCES}
@@ -133,3 +134,20 @@ qt_add_qml_module(project_lib
 
 add_executable(chadvis-projectm-qt src/main.cpp)
 target_link_libraries(chadvis-projectm-qt PRIVATE project_lib)
+
+# ---------------------------------------------------------------------------
+# Auth subsystem: OS keychain linkage (src/suno/auth/CredentialStore).
+#
+# macOS uses Security.framework generic-password items; every other platform
+# (or a build with CHADVIS_NO_KEYCHAIN=ON) uses the documented plaintext-file
+# fallback with 0600 permissions.
+# ---------------------------------------------------------------------------
+
+option(CHADVIS_NO_KEYCHAIN
+    "Disable OS keychain secret storage; force the file-backed fallback" OFF)
+
+if(APPLE AND NOT CHADVIS_NO_KEYCHAIN)
+    find_library(SECURITY_FRAMEWORK Security REQUIRED)
+    target_link_libraries(project_lib PUBLIC ${SECURITY_FRAMEWORK})
+    target_compile_definitions(project_lib PUBLIC CHADVIS_HAS_KEYCHAIN)
+endif()
