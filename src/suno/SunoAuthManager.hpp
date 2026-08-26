@@ -7,7 +7,6 @@
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "suno/SunoClient.hpp"
-#include "ui/SunoPersistentAuth.hpp"
 #include "ui/SystemBrowserAuth.hpp"
 #include "util/Result.hpp"
 
@@ -32,11 +31,10 @@ signals:
 
 private:
     SunoClient* client_;
-    std::unique_ptr<vc::ui::SunoPersistentAuth> persistentAuth_;
     std::unique_ptr<vc::ui::SystemBrowserAuth> systemAuth_;
     bool isRefreshingToken_ = false;
 
-    void onPersistentAuthRestored(const vc::ui::SunoAuthState& authState);
+    void restorePersistedSession();
     void onSystemAuthSuccess(const QString& token);
     void onSystemAuthFailed(const QString& reason);
 };
