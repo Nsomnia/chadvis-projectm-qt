@@ -9,6 +9,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <string>
+#include <string_view>
 #include <memory>
 #include <filesystem>
 
@@ -25,20 +26,20 @@ class SunoDownloader : public QObject {
     Q_OBJECT
 
 public:
-    explicit SunoDownloader(SunoClient* client, 
-                           SunoDatabase& db, 
+    explicit SunoDownloader(SunoClient* client,
+                           SunoDatabase& db,
                            AudioEngine* audioEngine,
                            QNetworkAccessManager* networkManager,
                            QObject* parent = nullptr);
     ~SunoDownloader() override;
 
     void downloadAndPlay(const SunoClip& clip);
-    void saveLyricsSidecar(const std::string& clipId, 
+    void saveLyricsSidecar(const std::string& clipId,
                           const std::string& json,
                           const QJsonDocument& doc,
                           const std::vector<SunoClip>& clips);
     void saveMetadataSidecar(const SunoClip& clip);
-    
+
     // Embedded tagging functionality
     void tagAudioFile(const fs::path& path, const SunoClip& clip);
 
@@ -48,6 +49,9 @@ private:
     AudioEngine* audioEngine_;
     QNetworkAccessManager* networkManager_;
 
+    /// Sanitize a title and fall back to the clip id when the result is empty.
+    [[nodiscard]] static std::string safeStem(std::string_view title, const std::string& clipId);
+
     void downloadAudio(const SunoClip& clip);
   void downloadAudioFromUrl(const std::string& clipId,
   const std::string& url,
@@ -56,7 +60,6 @@ private:
   void processDownloadedFile(const SunoClip& clip, const fs::path& path);
 
   [[nodiscard]] fs::path getDownloadDir() const;
-  [[nodiscard]] static std::string sanitizeFilename(const std::string& title);
 };
 
 } // namespace vc::suno

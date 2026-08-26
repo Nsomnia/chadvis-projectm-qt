@@ -85,46 +85,65 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
                                  query.lastError().text().toStdString());
     }
 
-    // Migration: Add missing columns if they don't exist
-    QSqlRecord record = db_.record("clips");
-    struct Column { QString name; QString type; };
-    std::vector<Column> missingColumns = {
-        {"image_large_url", "TEXT"},
-        {"major_model_version", "TEXT"},
-        {"display_name", "TEXT"},
-        {"handle", "TEXT"},
-        {"is_liked", "INTEGER"},
-        {"is_trashed", "INTEGER"},
-        {"is_public", "INTEGER"},
-        {"duration", "TEXT"},
-        {"error_message", "TEXT"},
-        {"aligned_lyrics_json", "TEXT"}
-    };
-
-    for (const auto& col : missingColumns) {
-        if (record.indexOf(col.name) == -1) {
-            LOG_INFO("SunoDatabase: Migrating table clips, adding column {}", col.name.toStdString());
-            if (!query.exec(QString("ALTER TABLE clips ADD COLUMN %1 %2").arg(col.name, col.type))) {
-                LOG_ERROR("SunoDatabase: Failed to add column {}: {}", col.name.toStdString(), query.lastError().text().toStdString());
-            }
-        }
+    // Schema migrations are gated on PRAGMA user_version so they run exactly
+    // once per version bump instead of re-scanning on every startup.
+    // Version history:
+    //   0 -> 1: add late columns + convert old "x.x" duration strings to mm:ss
+    QSqlQuery versionQuery(db_);
+    int schemaVersion = 0;
+    if (versionQuery.exec("PRAGMA user_version") && versionQuery.next()) {
+        schemaVersion = versionQuery.value(0).toInt();
     }
 
-    // Migration: Convert old x.x duration format to mm:ss
-    if (query.exec("SELECT id, duration FROM clips WHERE duration LIKE '%.%'")) {
-        while (query.next()) {
-            QString id = query.value(0).toString();
-            QString durStr = query.value(1).toString();
-            bool ok;
-            double secs = durStr.toDouble(&ok);
-            if (ok) {
-                QString formatted = QString::fromStdString(file::formatDuration(Duration(static_cast<i64>(secs * 1000))));
-                QSqlQuery updateQuery(db_);
-                updateQuery.prepare("UPDATE clips SET duration = :dur WHERE id = :id");
-                updateQuery.bindValue(":dur", formatted);
-                updateQuery.bindValue(":id", id);
-                updateQuery.exec();
+    if (schemaVersion < 1) {
+        // Migration: Add missing columns if they don't exist
+        QSqlRecord record = db_.record("clips");
+        struct Column { QString name; QString type; };
+        std::vector<Column> missingColumns = {
+            {"image_large_url", "TEXT"},
+            {"major_model_version", "TEXT"},
+            {"display_name", "TEXT"},
+            {"handle", "TEXT"},
+            {"is_liked", "INTEGER"},
+            {"is_trashed", "INTEGER"},
+            {"is_public", "INTEGER"},
+            {"duration", "TEXT"},
+            {"error_message", "TEXT"},
+            {"aligned_lyrics_json", "TEXT"}
+        };
+
+        for (const auto& col : missingColumns) {
+            if (record.indexOf(col.name) == -1) {
+                LOG_INFO("SunoDatabase: Migrating table clips, adding column {}", col.name.toStdString());
+                if (!query.exec(QString("ALTER TABLE clips ADD COLUMN %1 %2").arg(col.name, col.type))) {
+                    LOG_ERROR("SunoDatabase: Failed to add column {}: {}", col.name.toStdString(), query.lastError().text().toStdString());
+                }
             }
+        }
+
+        // Migration: Convert old x.x duration format to mm:ss
+        if (query.exec("SELECT id, duration FROM clips WHERE duration LIKE '%.%'")) {
+            while (query.next()) {
+                QString id = query.value(0).toString();
+                QString durStr = query.value(1).toString();
+                bool ok;
+                double secs = durStr.toDouble(&ok);
+                if (ok) {
+                    QString formatted = QString::fromStdString(file::formatDuration(Duration(static_cast<i64>(secs * 1000))));
+                    QSqlQuery updateQuery(db_);
+                    updateQuery.prepare("UPDATE clips SET duration = :dur WHERE id = :id");
+                    updateQuery.bindValue(":dur", formatted);
+                    updateQuery.bindValue(":id", id);
+                    updateQuery.exec();
+                }
+            }
+        }
+
+        // Mark migrations as complete so future startups skip this block.
+        if (!query.exec("PRAGMA user_version = 1")) {
+            LOG_WARN("SunoDatabase: Failed to persist schema version; migration may re-run next startup");
+        } else {
+            LOG_INFO("SunoDatabase: Schema migrated to version 1");
         }
     }
 

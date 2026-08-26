@@ -4,6 +4,7 @@
 #include "core/Logger.hpp"
 #include "lyrics/LyricsData.hpp"
 
+#include "suno/ClipResolver.hpp"
 #include "suno/SunoAuthManager.hpp"
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoDownloader.hpp"
@@ -18,8 +19,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <regex>
-#include <fstream>
-#include <iterator>
 
 namespace vc::suno {
 
@@ -51,15 +50,11 @@ SunoController::SunoController(AudioEngine* audioEngine,
 
 	// --- Connect Signals ---
 
-	// Auth Manager
+	// Auth Manager (direct signal forwarding)
 	connect(authManager_.get(), &SunoAuthManager::statusMessage,
-		this, [this](const std::string& msg) {
-			emit statusMessage(msg);
-		});
+		this, &SunoController::statusMessage);
 	connect(authManager_.get(), &SunoAuthManager::authenticationRequired,
-		this, [this]() {
-			emit authenticationRequired();
-		});
+		this, &SunoController::authenticationRequired);
 	connect(authManager_.get(), &SunoAuthManager::authenticationSuccess,
 		this, &SunoController::authenticationSuccess);
 	connect(authManager_.get(), &SunoAuthManager::authenticationFailed,
@@ -69,9 +64,7 @@ SunoController::SunoController(AudioEngine* audioEngine,
 
 	// Library Manager
 	connect(libraryManager_.get(), &SunoLibraryManager::statusMessage,
-		this, [this](const std::string& msg) {
-			emit statusMessage(msg);
-		});
+		this, &SunoController::statusMessage);
 	connect(libraryManager_.get(), &SunoLibraryManager::libraryUpdated,
 		this, [this](const std::vector<SunoClip>& clips) {
 			emit libraryUpdated(clips);
@@ -85,15 +78,11 @@ SunoController::SunoController(AudioEngine* audioEngine,
 			}
 		});
 	connect(libraryManager_.get(), &SunoLibraryManager::authenticationRequired,
-		this, [this]() {
-			emit authenticationRequired();
-		});
+		this, &SunoController::authenticationRequired);
 
 	// Lyrics Manager
 	connect(lyricsManager_.get(), &SunoLyricsManager::statusMessage,
-		this, [this](const std::string& msg) {
-			emit statusMessage(msg);
-		});
+		this, &SunoController::statusMessage);
 	connect(lyricsManager_.get(), &SunoLyricsManager::lyricsFetched,
 		this, [this](const std::string& id, const std::string& json) {
 			// Immediate display logic
@@ -179,24 +168,11 @@ Result<AlignedLyrics> SunoController::getLyrics(const std::string& clipId) {
     std::string prompt;
     f32 duration = 0.0f;
 
-    // Try to find clip in library
-    const auto& clips = libraryManager_->accumulatedClips();
-    for (const auto& clip : clips) {
-        if (clip.id == clipId) {
-            prompt = clip.metadata.prompt;
-             auto durOpt = file::parseDuration(clip.metadata.duration);
-            if (durOpt) duration = durOpt->count() / 1000.0f;
-            break;
-        }
-    }
-    
-    if (prompt.empty()) {
-        auto clipOpt = db_.getClip(clipId);
-        if (clipOpt.isOk() && clipOpt.value()) {
-            prompt = clipOpt.value()->metadata.prompt;
-             auto durOpt = file::parseDuration(clipOpt.value()->metadata.duration);
-            if (durOpt) duration = durOpt->count() / 1000.0f;
-        }
+    // Resolve clip from library cache, falling back to DB
+    if (auto clipOpt = resolveClip(libraryManager_->accumulatedClips(), db_, clipId)) {
+        prompt = clipOpt->metadata.prompt;
+        auto durOpt = file::parseDuration(clipOpt->metadata.duration);
+        if (durOpt) duration = durOpt->count() / 1000.0f;
     }
 
     if (prompt.empty()) return Result<AlignedLyrics>::err("Prompt not found");
@@ -274,43 +250,25 @@ void SunoController::onTrackChanged() {
         return;
     }
 
-	// 3. Sidecar Files
+	// 3. Sidecar Files (.srt then .json share one load path)
 	fs::path trackPath = item->isRemote ? fs::path() : item->path;
 	if (!trackPath.empty()) {
 		fs::path dir = trackPath.parent_path();
 		std::string stem = trackPath.stem().string();
 
-		fs::path srtPath = dir / (stem + ".srt");
-		if (fs::exists(srtPath)) {
-			std::ifstream file(srtPath);
-			if (file) {
-				std::string content((std::istreambuf_iterator<char>(file)),
-						    std::istreambuf_iterator<char>());
-				auto data = vc::LyricsFactory::fromSrt(content);
-				if (!data.empty()) {
-					AlignedLyrics lyrics = AlignedLyrics::fromLyricsData(data);
-					lyrics.songId = clipId;
-					directLyricsCache_[clipId] = lyrics;
-					return;
-				}
-			}
-		}
+		auto tryLoadSidecar = [&](const std::string& ext, auto&& parser) -> bool {
+			auto content = file::readText(dir / (stem + ext));
+			if (content.isErr()) return false;
+			auto data = parser(content.value());
+			if (data.empty()) return false;
+			AlignedLyrics lyrics = AlignedLyrics::fromLyricsData(data);
+			lyrics.songId = clipId;
+			directLyricsCache_[clipId] = lyrics;
+			return true;
+		};
 
-		fs::path jsonPath = dir / (stem + ".json");
-		if (fs::exists(jsonPath)) {
-			std::ifstream file(jsonPath);
-			if (file) {
-				std::string content((std::istreambuf_iterator<char>(file)),
-						    std::istreambuf_iterator<char>());
-				auto data = vc::LyricsFactory::fromSunoJson(content);
-				if (!data.empty()) {
-					AlignedLyrics lyrics = AlignedLyrics::fromLyricsData(data);
-					lyrics.songId = clipId;
-					directLyricsCache_[clipId] = lyrics;
-					return;
-				}
-			}
-		}
+		if (tryLoadSidecar(".srt", [](const std::string& s) { return vc::LyricsFactory::fromSrt(s); })) return;
+		if (tryLoadSidecar(".json", [](const std::string& s) { return vc::LyricsFactory::fromSunoJson(s); })) return;
 	}
 
     // 4. API
@@ -328,16 +286,8 @@ std::optional<AlignedLyrics> SunoController::parseAndDisplayLyrics(
     if (words.empty()) return std::nullopt;
 
     std::string prompt;
-    for (const auto& clip : libraryManager_->accumulatedClips()) {
-        if (clip.id == clipId) {
-            prompt = clip.metadata.prompt;
-            break;
-        }
-    }
-    
-    if (prompt.empty()) {
-         auto clipOpt = db_.getClip(clipId);
-         if (clipOpt.isOk() && clipOpt.value()) prompt = clipOpt.value()->metadata.prompt;
+    if (auto clipOpt = resolveClip(libraryManager_->accumulatedClips(), db_, clipId)) {
+        prompt = clipOpt->metadata.prompt;
     }
 
     AlignedLyrics lyrics = LyricsAligner::align(prompt, words);

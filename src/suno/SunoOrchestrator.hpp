@@ -2,7 +2,6 @@
 #include <QObject>
 #include <QString>
 #include <QVariantMap>
-#include <QNetworkReply>
 #include <memory>
 #include "SunoModels.hpp"
 #include "SunoEndpoints.hpp"
@@ -15,6 +14,9 @@ namespace vc {
 
 /**
  * @brief Suno B-Side Orchestrator Client
+ *
+ * All HTTP traffic is routed through vc::suno::SunoClient so orchestrator
+ * requests respect the shared rate-limiting queue and auth-refresh gate.
  */
 class SunoOrchestrator : public QObject {
     Q_OBJECT
@@ -31,13 +33,11 @@ signals:
     void historyFetched(const QVariantList& sessions);
     void errorOccurred(const QString& error);
 
-private slots:
-    void onMessageFinished(QNetworkReply* reply);
-    void onHistoryFinished(QNetworkReply* reply);
-
 private:
+    void onMessageFinished(const QByteArray& body, const QString& workspaceId);
+    void onHistoryFinished(const QByteArray& body);
+
     vc::suno::SunoClient* client_;
-    QString modalBaseUrl_{QString::fromUtf8(vc::suno::endpoints::MODAL_BASE.data(), static_cast<int>(vc::suno::endpoints::MODAL_BASE.size()))};
 };
 
 } // namespace vc

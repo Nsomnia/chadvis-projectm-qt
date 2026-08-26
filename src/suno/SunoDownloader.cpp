@@ -1,6 +1,8 @@
 #include "suno/SunoDownloader.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
+#include "suno/ClipResolver.hpp"
+#include "suno/SunoEndpoints.hpp"
 #include "suno/SunoLyrics.hpp"
 #include "util/FileUtils.hpp"
 
@@ -23,15 +25,15 @@
 
 namespace vc::suno {
 
-SunoDownloader::SunoDownloader(SunoClient* client, 
-                               SunoDatabase& db, 
+SunoDownloader::SunoDownloader(SunoClient* client,
+                               SunoDatabase& db,
                                AudioEngine* audioEngine,
                                QNetworkAccessManager* networkManager,
                                QObject* parent)
-    : QObject(parent), 
-      client_(client), 
-      db_(db), 
-      audioEngine_(audioEngine), 
+    : QObject(parent),
+      client_(client),
+      db_(db),
+      audioEngine_(audioEngine),
       networkManager_(networkManager) {
 
     client_->wavConversionReady.connect(
@@ -53,11 +55,9 @@ fs::path SunoDownloader::getDownloadDir() const {
   return dir;
 }
 
-std::string SunoDownloader::sanitizeFilename(const std::string& title) {
-  std::string safe = title;
-  std::replace(safe.begin(), safe.end(), '/', '_');
-  std::replace(safe.begin(), safe.end(), '\\', '_');
-  return safe;
+std::string SunoDownloader::safeStem(std::string_view title, const std::string& clipId) {
+  std::string safe = vc::file::sanitizeFilename(std::string(title));
+  return safe.empty() ? clipId : safe;
 }
 
 void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
@@ -69,7 +69,8 @@ void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
 
     if (clip.audio_url.empty()) {
         SunoClip resolvedClip = clip;
-        resolvedClip.audio_url = "https://cdn1.suno.ai/" + clip.id + ".mp3";
+        resolvedClip.audio_url =
+            std::string(vc::suno::endpoints::CDN_BASE) + "/" + clip.id + ".mp3";
         if (useWav) {
             client_->initiateWavConversion(clip.id);
         } else {
@@ -78,8 +79,7 @@ void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
         return;
     }
 
-  std::string safeTitle = sanitizeFilename(clip.title);
-  if (safeTitle.empty()) safeTitle = clip.id;
+  std::string safeTitle = safeStem(clip.title, clip.id);
 
   fs::path downloadDir = getDownloadDir();
 
@@ -109,8 +109,7 @@ void SunoDownloader::downloadAudio(const SunoClip& clip) {
 
     fs::path downloadDir = getDownloadDir();
 
-    std::string safeTitle = sanitizeFilename(clip.title);
-    if (safeTitle.empty()) safeTitle = clip.id;
+    std::string safeTitle = safeStem(clip.title, clip.id);
 
         fs::path filePath = downloadDir / (safeTitle + ".mp3");
 
@@ -127,7 +126,7 @@ void SunoDownloader::downloadAudio(const SunoClip& clip) {
 
 void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
     LOG_INFO("SunoDownloader: Tagging file {}", path.string());
-    
+
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
@@ -172,7 +171,7 @@ void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
         tag->addField("LYRICS", TagLib::String(clip.metadata.lyrics, TagLib::String::UTF8));
         tag->addField("SUNO_ID", TagLib::String(clip.id, TagLib::String::UTF8));
         tag->addField("SUNO_PROMPT", TagLib::String(clip.metadata.prompt, TagLib::String::UTF8));
-        
+
         f.save();
     }
 }
@@ -183,42 +182,36 @@ void SunoDownloader::processDownloadedFile(const SunoClip& clip, const fs::path&
 }
 
 void SunoDownloader::onWavConversionReady(const std::string& clipId, const std::string& wavUrl) {
-    auto clipOpt = db_.getClip(clipId);
-    if (clipOpt.isOk() && clipOpt.value()) {
-        downloadAudioFromUrl(clipId, wavUrl, ".wav");
-    } else {
-        downloadAudioFromUrl(clipId, wavUrl, ".wav");
-    }
+    // Both branches were identical; a single call is all that is needed.
+    downloadAudioFromUrl(clipId, wavUrl, ".wav");
 }
 
 void SunoDownloader::downloadAudioFromUrl(const std::string& clipId, const std::string& url, const std::string& extension) {
     QUrl qurl(QString::fromStdString(url));
     QNetworkRequest request(qurl);
     QNetworkReply* reply = networkManager_->get(request);
-    
+
   connect(reply, &QNetworkReply::finished, this, [this, reply, clipId, extension]() {
     reply->deleteLater();
     if (reply->error() != QNetworkReply::NoError) return;
 
     fs::path downloadDir = getDownloadDir();
 
-    std::string safeTitle = clipId;
-    auto clipOpt = db_.getClip(clipId);
-    if (clipOpt.isOk() && clipOpt.value()) safeTitle = sanitizeFilename(clipOpt.value()->title);
+    auto clipOpt = resolveClip({}, db_, clipId);
+    std::string safeTitle = clipOpt ? safeStem(clipOpt->title, clipId)
+                                    : clipId;
 
-    if (safeTitle.empty()) safeTitle = clipId;
-        
         fs::path filePath = downloadDir / (safeTitle + extension);
-        
+
         QFile file(QString::fromStdString(filePath.string()));
         if (file.open(QIODevice::WriteOnly)) {
             file.write(reply->readAll());
             file.close();
-            
-            if (clipOpt.isOk() && clipOpt.value()) {
-                tagAudioFile(filePath, *clipOpt.value());
-                processDownloadedFile(*clipOpt.value(), filePath);
-                saveMetadataSidecar(*clipOpt.value());
+
+            if (clipOpt) {
+                tagAudioFile(filePath, *clipOpt);
+                processDownloadedFile(*clipOpt, filePath);
+                saveMetadataSidecar(*clipOpt);
             } else {
                 SunoClip clip;
                 clip.id = clipId;
@@ -232,29 +225,16 @@ void SunoDownloader::downloadAudioFromUrl(const std::string& clipId, const std::
 void SunoDownloader::saveLyricsSidecar(const std::string& clipId, const std::string& json, const QJsonDocument& doc, const std::vector<SunoClip>& clips) {
   fs::path saveDir = getDownloadDir();
 
-  std::string safeTitle = clipId;
+  // Library cache first, database fallback (shared ClipResolver).
   std::string prompt;
-  bool found = false;
-  for (const auto& clip : clips) {
-    if (clip.id == clipId) {
-      safeTitle = clip.title;
-      prompt = clip.metadata.prompt;
-      found = true;
-      break;
-    }
+  std::string title;
+  if (auto clipOpt = resolveClip(clips, db_, clipId)) {
+    prompt = clipOpt->metadata.prompt;
+    title = clipOpt->title;
   }
 
-  if (!found) {
-    auto clipOpt = db_.getClip(clipId);
-    if (clipOpt.isOk() && clipOpt.value()) {
-      safeTitle = clipOpt.value()->title;
-      prompt = clipOpt.value()->metadata.prompt;
-    }
-  }
+  std::string safeTitle = safeStem(title, clipId);
 
-  safeTitle = sanitizeFilename(safeTitle);
-  if (safeTitle.empty()) safeTitle = clipId;
-    
     fs::path audioPath = saveDir / (safeTitle + ".mp3");
     if (fs::exists(audioPath)) {
         fs::path srtPath = saveDir / (safeTitle + ".srt");
@@ -287,9 +267,8 @@ void SunoDownloader::saveLyricsSidecar(const std::string& clipId, const std::str
 void SunoDownloader::saveMetadataSidecar(const SunoClip& clip) {
   fs::path downloadDir = getDownloadDir();
 
-  std::string safeTitle = sanitizeFilename(clip.title);
-  if (safeTitle.empty()) safeTitle = clip.id;
-    
+  std::string safeTitle = safeStem(clip.title, clip.id);
+
     std::ofstream file(downloadDir / (safeTitle + ".txt"));
     if (file) {
         file << "Title: " << clip.title << "\nArtist: " << clip.display_name << "\nTrack ID: " << clip.id << "\nPrompt: " << clip.metadata.prompt << "\nTags: " << clip.metadata.tags << "\nLyrics:\n" << clip.metadata.lyrics;
