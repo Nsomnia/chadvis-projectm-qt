@@ -7,13 +7,7 @@ namespace vc::suno {
 SunoAuthManager::SunoAuthManager(SunoClient* client, QObject* parent)
     : QObject(parent),
       client_(client),
-      persistentAuth_(std::make_unique<vc::ui::SunoPersistentAuth>(nullptr)),
       systemAuth_(std::make_unique<vc::ui::SystemBrowserAuth>(nullptr)) {
-    
-    // Connect Persistent Auth Signals
-    connect(persistentAuth_.get(), &vc::ui::SunoPersistentAuth::authenticated, 
-            this, &SunoAuthManager::onPersistentAuthRestored);
-
     // Connect System Auth Signals
     connect(systemAuth_.get(), &vc::ui::SystemBrowserAuth::authSuccess, 
             this, &SunoAuthManager::onSystemAuthSuccess);
@@ -25,7 +19,7 @@ SunoAuthManager::SunoAuthManager(SunoClient* client, QObject* parent)
 SunoAuthManager::~SunoAuthManager() = default;
 
 void SunoAuthManager::initialize() {
-    persistentAuth_->initialize();
+    restorePersistedSession();
 }
 
 void SunoAuthManager::requestAuthentication() {
@@ -37,26 +31,17 @@ void SunoAuthManager::startSystemBrowserAuth() {
     systemAuth_->startAuth();
 }
 
-void SunoAuthManager::onPersistentAuthRestored(const vc::ui::SunoAuthState& authState) {
-    LOG_INFO("SunoAuthManager: Persistent auth session restored");
-    
-    if (!authState.bearerToken.isEmpty()) {
-        client_->setToken(authState.bearerToken.toStdString());
-        CONFIG.suno().token = authState.bearerToken.toStdString();
-    }
-    
-    QString cookieStr;
-    if (!authState.clientCookie.isEmpty()) cookieStr += "__client=" + authState.clientCookie + "; ";
-    if (!authState.sessionCookie.isEmpty()) cookieStr += "__session=" + authState.sessionCookie;
-    
-    if (!cookieStr.isEmpty()) {
-         client_->setCookie(cookieStr.toStdString());
-         CONFIG.suno().cookie = cookieStr.toStdString();
-	}
-	CONFIG.save(CONFIG.configPath());
+void SunoAuthManager::restorePersistedSession() {
+    const auto& suno = CONFIG.suno();
+    if (suno.token.empty() && suno.cookie.empty()) return;
 
-	emit statusMessage("Authentication restored from persistent session");
-	emit authenticationSuccess();
+    LOG_INFO("SunoAuthManager: Restoring persisted session from config");
+
+    if (!suno.token.empty()) client_->setToken(suno.token);
+    if (!suno.cookie.empty()) client_->setCookie(suno.cookie);
+
+    emit statusMessage("Authentication restored from persisted session");
+    emit authenticationSuccess();
 }
 
 void SunoAuthManager::onSystemAuthSuccess(const QString& token) {
