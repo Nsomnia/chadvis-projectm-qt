@@ -51,7 +51,7 @@ void SunoAuthManager::onSystemAuthSuccess(const QString& token) {
 	if (token.startsWith("eyJ")) {
 		client_->setToken(token.toStdString());
 		CONFIG.suno().token = token.toStdString();
-		CONFIG.save(CONFIG.configPath());
+		(void)CONFIG.save(CONFIG.configPath());
 		emit statusMessage("System authentication successful");
 		emit authenticationSuccess();
 	} else {

@@ -8,7 +8,19 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Added
+- **Suno HTTP Layer Consolidation** *(2026-08-25)* — `ClipResolver` (single clip lookup path: library cache → DB), `SunoAuthFailure` classifier (unified 401 handling across `SunoClient` and `SunoLyricsManager`), `SunoClient::withValidToken` auth-refresh gate, `handleJsonReply` reply-preamble helper, and `qstr()` endpoint conversion helper. Orchestrator now routes through the authenticated request queue (rate limiter + refresh).
+- **Shared QML Component Set** *(2026-08-25)* — `AppTextField`, `AppComboBox`, `AppSwitch`, `SectionHeader`, `PulseIndicator`, `SettingSpinRow` extracted from ~25 duplicated inline blocks; SettingsPanel split into 8 per-category sub-panels.
+- **Runtime Consolidations** *(2026-08-25)* — CRTP `QmlSingletonBridge` base replacing 10× singleton boilerplate, `PlaylistItemPresenter`, `AudioChunk` value type, `ProjectMConfig::fromVisualizer` single-source converter, `FileUtils::sanitizeFilename`, `FileUtils::srtTimecode`, monadic `Result::orElse`.
+
+### Fixed
+- **Broken HEAD** *(2026-08-25)* — Removed dangling `SunoPersistentAuth` references left by an earlier deletion (CMake + `SunoAuthManager`); persisted-session restore now reads CONFIG directly.
+- **Silent recordings** *(2026-08-25)* — Root cause of "audio never encoded during recording": `VideoRecorder::setAudioQueue` was never wired. Wired in `Application::init()` along with the visualizer renderer's PCM queue.
+- **Record button highlight inverted**, **config defaults drift** (parser fallbacks now derive from struct initializers), **Suno download/debug settings reset every launch** (now persisted), **non-idempotent Suno DB migration** (gated behind `PRAGMA user_version`).
+
 ### Changed
+- **Dead Code Purge** *(2026-08-25)* — ~1,900 LOC of verified-dead code removed (LyricsRenderer module, VisualizerQFBO/VisualizerItem, 3 dead controllers, AsyncFrameGrabber, orphaned qss/icons, stub tests, misc unused members/types); all archived to `.backup_graveyard/deadcode_20260825_180116/`. test_PresetScanner wired into unit_tests.
+- **Documentation Wiki Restructure** *(2026-08-25)* — README is now a hub page; CHANGELOG consolidated to a single `[Unreleased]`; three superseded Suno recon notes merged into `docs/suno_api/RECON-ARCHIVE.md`; 706KB endpoint dump moved to `docs/suno_api/raw/endpoints_sniffed.list`; testing docs consolidated into `docs/dev/TESTING.md`; stale claims fixed; link check clean.
 - **Codebase Audit (Phases 1–4)**: Full audit of ~19.3k LOC across 10 modules surfaced 24 issues, of which 18 were fixed across five phases for a net removal of **−894 LOC** (38 files changed). The per-issue checklist (#1–#24) and remaining Phase 5+ items are maintained in [`AGENTS.md`](AGENTS.md) under *Codebase Audit & Refactoring* — that file is the canonical source; consult `git log --oneline` for the corresponding implementation commits.
 
 - **QML Registration** *(2026-04-15)* — Macros added. Modernity intensifies.

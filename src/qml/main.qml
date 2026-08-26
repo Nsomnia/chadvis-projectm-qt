@@ -274,21 +274,18 @@ ApplicationWindow {
             }
 
             VisualizerOverlay {
-            KaraokeMaster {
-                id: karaokeMaster
-                anchors.fill: parent
-                accentColor: Theme.accent
-                // BUG(dangling-id): `karaokeSettings` is an id inside
-                // panels/SettingsPanel.qml (via components/KaraokeSettings.qml),
-                // not resolvable from this file — these bindings throw at
-                // runtime and KaraokeMaster silently uses its defaults.
-                // TODO(karaoke): hoist karaoke settings state to a bridge or
-                // shared singleton so both panels can bind to one source.
-                showGlow: karaokeSettings.showGlow
-                verticalPosition: karaokeSettings.verticalPos
-            }
                 id: visualizerOverlay
                 anchors.fill: parent
+
+                KaraokeMaster {
+                    id: karaokeMaster
+                    anchors.fill: parent
+                    accentColor: Theme.accent
+                    // Bound to persisted settings; glow toggle remains a local
+                    // KaraokeSettings.qml preference until it gains a config key.
+                    showGlow: true
+                    verticalPosition: SettingsBridge.karaokeYPosition
+                }
             }
 
             Column {

@@ -30,7 +30,7 @@ SunoController::SunoController(AudioEngine* audioEngine,
     
     // Initialize Database
     fs::path dataDir = file::dataDir();
-    file::ensureDir(dataDir);
+    (void)file::ensureDir(dataDir);
     fs::path dbPath = dataDir / "suno_library.db";
     db_.init(dbPath.string());
 

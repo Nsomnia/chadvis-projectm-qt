@@ -52,6 +52,10 @@ inline const std::set<std::string> presetExtensions = {
 // Generate unique filename (avoids overwriting)
 fs::path uniquePath(const fs::path& desired);
 
+// Sanitize a string for use as a filename: replaces path separators ('/' '\\')
+// with '_' so the result can never escape its intended directory.
+std::string sanitizeFilename(const std::string& name);
+
 // Human-readable file size
 std::string humanSize(std::uintmax_t bytes);
 
