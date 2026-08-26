@@ -92,40 +92,4 @@ private:
     static constexpr usize MAX_QUEUE_SIZE = 30; // ~0.5 sec at 60fps
 };
 
-// PBO-based async frame grabber for better performance
-class AsyncFrameGrabber : protected QOpenGLFunctions_3_3_Core {
-public:
-    AsyncFrameGrabber();
-    ~AsyncFrameGrabber();
-
-    // Initialize with size and PBO count
-    Result<void> init(u32 width, u32 height, u32 pboCount = 3);
-    void shutdown();
-
-    // Start async read (non-blocking)
-    void startRead(RenderTarget& target, i64 timestamp);
-
-    // Get completed frame (non-blocking)
-    bool getCompletedFrame(GrabbedFrame& frame);
-
-    // Resize (recreates PBOs)
-    Result<void> resize(u32 width, u32 height);
-
-private:
-    struct PBOSlot {
-        GLuint pbo{0};
-        bool inUse{false};
-        bool ready{false};
-        i64 timestamp{0};
-        u32 frameNumber{0};
-    };
-
-    std::vector<PBOSlot> pboSlots_;
-    u32 currentSlot_{0};
-    u32 width_{0};
-    u32 height_{0};
-    u32 frameNumber_{0};
-    bool initialized_{false};
-};
-
 } // namespace vc

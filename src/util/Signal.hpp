@@ -110,46 +110,4 @@ public:
     }
 };
 
-// RAII connection guard
-template<typename... Args>
-class ScopedConnection {
-    Signal<Args...>* signal_{nullptr};
-    typename Signal<Args...>::SlotId id_{0};
-    
-public:
-    ScopedConnection() = default;
-    
-    ScopedConnection(Signal<Args...>& signal, typename Signal<Args...>::Slot callback)
-        : signal_(&signal)
-        , id_(signal.connect(std::move(callback))) {}
-    
-    ~ScopedConnection() {
-        if (signal_) signal_->disconnect(id_);
-    }
-    
-    // Non-copyable, moveable
-    ScopedConnection(const ScopedConnection&) = delete;
-    ScopedConnection& operator=(const ScopedConnection&) = delete;
-    
-    ScopedConnection(ScopedConnection&& other) noexcept
-        : signal_(std::exchange(other.signal_, nullptr))
-        , id_(other.id_) {}
-    
-    ScopedConnection& operator=(ScopedConnection&& other) noexcept {
-        if (this != &other) {
-            if (signal_) signal_->disconnect(id_);
-            signal_ = std::exchange(other.signal_, nullptr);
-            id_ = other.id_;
-        }
-        return *this;
-    }
-    
-    void disconnect() {
-        if (signal_) {
-            signal_->disconnect(id_);
-            signal_ = nullptr;
-        }
-    }
-};
-
 } // namespace vc

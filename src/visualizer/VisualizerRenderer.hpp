@@ -21,7 +21,6 @@
 #pragma once
 #include "RenderTarget.hpp"
 #include "projectm/Bridge.hpp"
-#include "util/GLIncludes.hpp"
 #include "util/Types.hpp"
 
 #include <QOpenGLBuffer>

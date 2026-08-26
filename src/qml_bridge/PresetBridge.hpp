@@ -82,7 +82,6 @@ private:
 
     QString searchQuery_;
     QString selectedCategory_;
-    QVariantList cachedPresets_;
 };
 
 } // namespace qml_bridge

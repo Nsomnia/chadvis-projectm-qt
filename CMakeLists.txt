@@ -231,8 +231,6 @@ set(LYRICS_SOURCES
     src/lyrics/LyricsData.cpp
     src/lyrics/LyricsSync.hpp
     src/lyrics/LyricsSync.cpp
-    src/lyrics/LyricsRenderer.hpp
-    src/lyrics/LyricsRenderer.cpp
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -240,7 +238,6 @@ set(LYRICS_SOURCES
 # ═══════════════════════════════════════════════════════════════════════════
 set(QML_BRIDGE_SOURCES
     src/qml_bridge/AudioBridge.hpp
-    src/audio/analysis/MediaMetadata.hpp
     src/qml_bridge/AudioBridge.cpp
     src/qml_bridge/PlaylistBridge.hpp
     src/qml_bridge/PlaylistBridge.cpp
@@ -262,10 +259,6 @@ set(QML_BRIDGE_SOURCES
     src/qml_bridge/SettingsBridge.cpp
     src/qml_bridge/BridgeRegistration.hpp
     src/qml_bridge/BridgeRegistration.cpp
-    src/qml_bridge/VisualizerItem.hpp
-    src/qml_bridge/VisualizerItem.cpp
-    src/qml_bridge/VisualizerQFBO.hpp
-    src/qml_bridge/VisualizerQFBO.cpp
 )
 
 # ═════════════════════════════════════════════
@@ -274,8 +267,6 @@ set(QML_BRIDGE_SOURCES
 set(UI_SOURCES
     src/ui/controllers/SunoController.hpp
     src/ui/controllers/SunoController.cpp
-    src/ui/SunoPersistentAuth.hpp
-    src/ui/SunoPersistentAuth.cpp
     src/ui/SystemBrowserAuth.hpp
     src/ui/SystemBrowserAuth.cpp
 )
@@ -304,12 +295,11 @@ set(QML_SOURCES
 )
 
 # Common include directories
+# NOTE: spdlog/fmt/tomlplusplus are found via find_package(CONFIG)/CPM targets,
+# so no pkg-config-style _INCLUDE_DIRS variables exist for them.
 set(COMMON_INCLUDES
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/qml_bridge
-    ${SPDLOG_INCLUDE_DIRS}
-    ${FMT_INCLUDE_DIRS}
-    ${TOMLPP_INCLUDE_DIRS}
     ${GLEW_INCLUDE_DIRS}
     ${GLM_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIRS}
@@ -403,22 +393,15 @@ qt_add_qml_module(project_lib
         resources/icons/prev.svg
         resources/icons/record.svg
         resources/icons/shuffle.svg
-        resources/icons/repeat.svg
-        resources/icons/collapse.svg
         resources/icons/expand.svg
         resources/icons/volume-high.svg
         resources/icons/volume-mute.svg
         resources/icons/plus.svg
         resources/icons/clear.svg
-        resources/icons/search.svg
-        resources/icons/refresh.svg
-        resources/icons/save.svg
-        resources/icons/video.svg
         resources/icons/star-filled.svg
         resources/icons/star-outline.svg
         resources/icons/delete.svg
         resources/icons/random.svg
-        resources/icons/music-note.svg
         resources/icons/blacklist.svg
         resources/icons/qml/playback.svg
         resources/icons/qml/playlist.svg
@@ -434,11 +417,6 @@ qt_add_qml_module(project_lib
 # Main executable
 add_executable(chadvis-projectm-qt src/main.cpp)
 target_link_libraries(chadvis-projectm-qt PRIVATE project_lib)
-
-if(PULSEAUDIO_FOUND)
-    target_link_libraries(chadvis-projectm-qt PRIVATE ${PULSEAUDIO_LIBRARIES} pulse-simple)
-    target_include_directories(chadvis-projectm-qt PRIVATE ${PULSEAUDIO_INCLUDE_DIRS})
-endif()
 
 # Installation
 install(TARGETS chadvis-projectm-qt DESTINATION bin)

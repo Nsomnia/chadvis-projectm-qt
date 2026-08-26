@@ -5,14 +5,11 @@
 #include "Config.hpp"
 #include "Logger.hpp"
 #include "audio/AudioEngine.hpp"
-#include "recorder/VideoRecorder.hpp"
+#include "recorder/VideoRecorderCore.hpp"
 #include "util/FileUtils.hpp"
-#include "util/GLIncludes.hpp"
 #include "visualizer/RatingManager.hpp"
 #include "visualizer/PresetManager.hpp"
 #include "visualizer/VisualizerWindow.hpp"
-#include "qml_bridge/VisualizerItem.hpp"
-#include "qml_bridge/VisualizerQFBO.hpp"
 #include "lyrics/LyricsSync.hpp"
 #include "ui/controllers/SunoController.hpp"
 #include "suno/SunoModels.hpp"
@@ -351,9 +348,6 @@ Result<void> Application::init(const AppOptions& opts) {
 	qapp_->setOrganizationName("ChadVis");
 	qapp_->setOrganizationDomain("github.com/chadvis-projectm-qt");
 
-	// Setup styling
-	setupStyle();
-
 	// Initialize components
 	LOG_DEBUG("Initializing audio engine...");
 	audioEngine_ = std::make_unique<AudioEngine>();
@@ -401,16 +395,6 @@ Result<void> Application::init(const AppOptions& opts) {
 				LOG_ERROR("QML Warning: {} (line {})", warning.description().toStdString(), warning.line());
 			}
 		});
-
-		// Setup static global items for QML custom types
-		if (audioEngine_) {
-			qml_bridge::VisualizerItem::setGlobalAudioEngine(audioEngine_.get());
-			qml_bridge::VisualizerQFBO::setGlobalAudioEngine(audioEngine_.get());
-		}
-		if (presetManager_) {
-			qml_bridge::VisualizerItem::setGlobalPresetManager(presetManager_.get());
-			qml_bridge::VisualizerQFBO::setGlobalPresetManager(presetManager_.get());
-		}
 
 		// Load main QML file from Qt resource system
 		const QUrl url(QStringLiteral("qrc:/qt/qml/ChadVis/src/qml/main.qml"));
@@ -472,19 +456,6 @@ void Application::quit() {
 	if (qapp_) {
 		qapp_->quit();
 	}
-}
-
-void Application::reloadTheme() {
-	setupStyle();
-}
-
-void Application::setupStyle() {
-	// QML handles its own styling via Theme.qml
-	// This function is kept for API compatibility but does nothing
-}
-
-void Application::setupQmlStyle() {
-	// QML handles its own styling via Theme.qml
 }
 
 void Application::printVersion() {

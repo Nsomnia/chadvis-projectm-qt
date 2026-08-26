@@ -95,9 +95,7 @@ public:
     Result<void> init(const AppOptions& opts);
     int exec();
 
-    void reloadTheme();
-
-	// Component access
+    // Component access
 	AudioEngine* audioEngine() const {
 		return audioEngine_.get();
 	}
@@ -129,8 +127,6 @@ public slots:
     void quit();
 
 private:
-	void setupStyle();
-	void setupQmlStyle();
 	void printVersion();
 	void printHelp();
 

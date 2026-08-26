@@ -2,6 +2,7 @@ add_executable(unit_tests
     test_main.cpp
     core/test_Logger.cpp
     core/test_ConfigParsers.cpp
+    visualizer/test_PresetScanner.cpp
 )
 
 set_target_properties(unit_tests PROPERTIES

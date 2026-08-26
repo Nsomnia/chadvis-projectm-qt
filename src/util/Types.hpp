@@ -52,15 +52,6 @@ using ChannelCount = u8;
 using SampleBuffer = std::vector<f32>;
 using StereoSample = std::pair<f32, f32>;
 
-// Normalized value [0.0, 1.0]
-struct Normalized {
-    f32 value{0.0f};
-    
-    constexpr Normalized() = default;
-    constexpr explicit Normalized(f32 v) : value(std::clamp(v, 0.0f, 1.0f)) {}
-    constexpr operator f32() const { return value; }
-};
-
 // 2D position (normalized or pixel)
 struct Vec2 {
     f32 x{0.0f};
@@ -82,15 +73,6 @@ struct Color {
     
     static Color fromHex(std::string_view hex);
     std::string toHex() const;
-};
-
-// Rectangle
-struct Rect {
-    f32 x{0}, y{0}, width{0}, height{0};
-    
-    constexpr bool contains(Vec2 p) const {
-        return p.x >= x && p.x <= x + width && p.y >= y && p.y <= y + height;
-    }
 };
 
 // Size

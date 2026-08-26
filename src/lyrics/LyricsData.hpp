@@ -137,14 +137,7 @@ public:
      * @return Pointer to word, or nullptr if none active
      */
     const LyricsWord* getWord(size_t lineIndex, f32 time) const;
-    
-    /**
-     * @brief Search for text within lyrics
-     * @param query Search string (case-insensitive)
-     * @return Vector of line indices containing the query
-     */
-    std::vector<size_t> search(const std::string& query) const;
-    
+
     /**
      * @brief Get time range for a specific line and surrounding context
      * @param lineIndex Center line

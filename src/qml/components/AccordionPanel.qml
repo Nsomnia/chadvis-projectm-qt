@@ -56,7 +56,7 @@ ColumnLayout {
 
             Image {
                 width: 16; height: 16
-                source: "qrc:/ChadVis/resources/icons/expand.svg"
+                source: "qrc:/qt/qml/ChadVis/resources/icons/expand.svg"
                 rotation: root.isExpanded ? 180 : 0
                 sourceSize: Qt.size(16, 16)
                 Behavior on rotation { NumberAnimation { duration: 200; easing.type: Easing.InOutCubic } }
