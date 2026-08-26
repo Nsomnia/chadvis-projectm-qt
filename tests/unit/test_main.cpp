@@ -4,6 +4,7 @@
 int runTestLogger(int argc, char** argv);
 int runTestConfigParsers(int argc, char** argv);
 int runTestAuthModule(int argc, char** argv);
+int runTestClipParser(int argc, char** argv);
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
@@ -12,6 +13,7 @@ int main(int argc, char* argv[]) {
     status |= runTestLogger(argc, argv);
     status |= runTestConfigParsers(argc, argv);
     status |= runTestAuthModule(argc, argv);
+    status |= runTestClipParser(argc, argv);
 
     return status;
 }

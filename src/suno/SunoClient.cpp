@@ -1,5 +1,6 @@
 #include "SunoClient.hpp"
 
+#include "ClipParser.hpp"
 #include "SunoAuthFailure.hpp"
 #include "auth/AuthHeaders.hpp"
 #include "auth/CredentialStore.hpp"
@@ -389,30 +390,62 @@ void SunoClient::handleNetworkError(QNetworkReply* reply) {
 // API surface
 // ─────────────────────────────────────────────────────────────
 
-void SunoClient::fetchLibrary(int page) {
+void SunoClient::fetchLibraryPage(std::optional<QString> cursor, int limit,
+                                  const QString& searchText) {
     if (!isAuthenticated()) {
         errorOccurred.emitSignal("Not authenticated");
         return;
     }
-    withValidToken([this, page]() {
-        QString url = qstr(vc::suno::endpoints::LIBRARY) +
-                      QString("?hide_disliked=true&hide_gen_stems=true&hide_studio_"
-                              "clips=true&page=%1")
-                              .arg(page - 1);
-        enqueueRequest(createAuthenticatedRequest(url), "GET", {},
+
+    // Request body per the CAPTURED /api/feed/v3 contract (T1, Aug 2026):
+    // disliked/trashed are STRING "True"/"False"; presence filters are
+    // objects; cursor is null/omitted on the first page.
+    QJsonObject fromStudioProject;
+    fromStudioProject["presence"] = QStringLiteral("False");
+    QJsonObject stem;
+    stem["presence"] = QStringLiteral("False");
+    QJsonObject workspace;
+    workspace["presence"] = QStringLiteral("True");
+    workspace["workspaceId"] = QStringLiteral("default");
+
+    QJsonObject filters;
+    filters["disliked"] = QStringLiteral("False");
+    filters["trashed"] = QStringLiteral("False");
+    filters["fromStudioProject"] = fromStudioProject;
+    filters["stem"] = stem;
+    filters["stemComplement"] = QStringLiteral("False");
+    filters["workspace"] = workspace;
+    if (!searchText.isEmpty()) {
+        filters["searchText"] = searchText;
+    }
+
+    QJsonObject body;
+    body["cursor"] = cursor.has_value() ? QJsonValue(*cursor) : QJsonValue::Null;
+    body["limit"] = limit;
+    body["filters"] = filters;
+
+    withValidToken([this, body = std::move(body)]() {
+        enqueueRequest(createAuthenticatedRequest(qstr(vc::suno::endpoints::LIBRARY_FEED)),
+                       "POST", QJsonDocument(body).toJson(),
                        [this](QNetworkReply* reply) { onLibraryReply(reply); });
     });
 }
 
 void SunoClient::onLibraryReply(QNetworkReply* reply) {
     handleJsonReply(reply, [this](const QJsonDocument& doc) {
-        QJsonArray array;
-        if (doc.isObject() && doc.object().contains("clips")) {
-            array = doc.object()["clips"].toArray();
-        } else if (doc.isArray()) {
-            array = doc.array();
+        auto page = ClipParser::parseFeedEnvelope(doc.object());
+        if (!page) {
+            LOG_ERROR("SunoClient: feed envelope parse failed: {}",
+                      page.error().toStdString());
+            libraryFetched.emitSignal({});
+            return;
         }
-        libraryFetched.emitSignal(parseClipArray(array));
+
+        nextCursor_ = page->nextCursor;
+        hasMore_ = page->hasMore;
+
+        std::vector<SunoClip> clips(page->clips.cbegin(), page->clips.cend());
+        libraryFetched.emitSignal(clips);
     });
 }
 
@@ -442,23 +475,30 @@ void SunoClient::generate(const std::string& prompt, const std::string& tags,
 
 void SunoClient::onGenerateReply(QNetworkReply* reply) {
     handleJsonReply(reply, [this](const QJsonDocument& doc) {
-        // Tolerant parse: accept {"clips": [...]} or a bare array.
+        // Tolerant parse: accept {"clips": [...]} or a bare array, via the
+        // canonical ClipParser (same field coverage as the library feed).
         QJsonArray array;
-        if (doc.isObject() && doc.object().contains("clips")) {
-            array = doc.object()["clips"].toArray();
+        if (doc.isObject()) {
+            const QJsonValue clips = doc.object().value(QStringLiteral("clips"));
+            if (clips.isArray()) {
+                array = clips.toArray();
+            }
         } else if (doc.isArray()) {
             array = doc.array();
         }
 
-        std::vector<SunoClip> clips;
-        for (const auto& item : array) {
-            const QJsonObject obj = item.toObject();
-            SunoClip clip;
-            clip.id = obj["id"].toString().toStdString();
-            clip.status = "pending";
-            if (!clip.id.empty()) clips.push_back(clip);
+        auto parsed = ClipParser::parseClipArray(array);
+        if (!parsed) {
+            LOG_ERROR("SunoClient: generation reply parse failed: {}",
+                      parsed.error().toStdString());
+            generationStarted.emitSignal({});
+            return;
         }
-        generationStarted.emitSignal(clips);
+        std::vector<SunoClip> clips(parsed->cbegin(), parsed->cend());
+        for (auto& clip : clips) {
+            clip.status = clip.status.empty() ? "pending" : clip.status;
+        }
+        generationStarted.emitSignal(std::move(clips));
     });
 }
 
@@ -527,26 +567,6 @@ void SunoClient::pollWavFile(const std::string& clipId, int maxAttempts) {
                                [this, id, maxAttempts]() { pollWavFile(id.toStdString(), maxAttempts - 1); });
         }
     });
-}
-
-std::vector<SunoClip> SunoClient::parseClipArray(const QJsonArray& array) {
-    std::vector<SunoClip> clips;
-    clips.reserve(array.size());
-    for (const auto& item : array) {
-        QJsonObject obj = item.toObject();
-        SunoClip clip;
-        clip.id = obj["id"].toString().toStdString();
-        clip.title = obj["title"].toString().toStdString();
-        if (clip.title.empty()) clip.title = obj["name"].toString().toStdString();
-        clip.audio_url = obj["audio_url"].toString().toStdString();
-        clip.image_url = obj["image_url"].toString().toStdString();
-        clip.status = obj["status"].toString().toStdString();
-        QJsonObject meta = obj["metadata"].toObject();
-        clip.metadata.prompt = meta["prompt"].toString().toStdString();
-        clip.metadata.tags = meta["tags"].toString().toStdString();
-        clips.push_back(clip);
-    }
-    return clips;
 }
 
 } // namespace vc::suno

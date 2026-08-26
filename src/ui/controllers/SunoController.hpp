@@ -20,6 +20,7 @@ namespace vc {
 class AudioEngine;
 
 namespace suno {
+class SunoAccountManager;
 class SunoLibraryManager;
 class SunoDownloader;
 class SunoLyricsManager;
@@ -38,6 +39,7 @@ public:
 
   SunoClient* client() { return client_.get(); }
   SunoLibraryManager* libraryManager() { return libraryManager_.get(); }
+  SunoAccountManager* accountManager() { return accountManager_.get(); }
 
 	// Facade Methods (Delegated to Managers)
 	void downloadAndPlay(const SunoClip& clip);
@@ -92,6 +94,7 @@ private:
 	SunoDatabase db_;
 	
     // Managers
+    std::unique_ptr<SunoAccountManager> accountManager_;
     std::unique_ptr<SunoLibraryManager> libraryManager_;
     std::unique_ptr<SunoDownloader> downloader_;
     std::unique_ptr<SunoLyricsManager> lyricsManager_;

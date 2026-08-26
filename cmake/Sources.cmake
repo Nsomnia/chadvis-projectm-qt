@@ -67,6 +67,10 @@ set(VISUALIZER_SOURCES
 
 set(SUNO_SOURCES
     src/suno/SunoModels.hpp
+    src/suno/ClipParser.hpp
+    src/suno/ClipParser.cpp
+    src/suno/SunoAccountManager.hpp
+    src/suno/SunoAccountManager.cpp
     src/suno/SunoClient.hpp
     src/suno/SunoClient.cpp
     src/suno/SunoOrchestrator.hpp

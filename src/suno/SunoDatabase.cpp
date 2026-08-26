@@ -27,6 +27,8 @@ SunoClip clipFromQuery(const QSqlQuery& query) {
     clip.is_public = query.value("is_public").toInt() != 0;
     clip.status = query.value("status").toString().toStdString();
     clip.created_at = query.value("created_at").toString().toStdString();
+    clip.play_count = static_cast<i64>(query.value("play_count").toLongLong());
+    clip.upvote_count = static_cast<i64>(query.value("upvote_count").toLongLong());
     clip.metadata.prompt = query.value("prompt").toString().toStdString();
     clip.metadata.tags = query.value("tags").toString().toStdString();
     clip.metadata.lyrics = query.value("lyrics").toString().toStdString();
@@ -73,6 +75,8 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
                     "is_public INTEGER, "
                     "status TEXT, "
                     "created_at TEXT, "
+                    "play_count INTEGER, "
+                    "upvote_count INTEGER, "
                     "prompt TEXT, "
                     "tags TEXT, "
                     "lyrics TEXT, "
@@ -147,6 +151,32 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
         }
     }
 
+    //   1 -> 2: captured feed/v3 schema enrichment (engagement counters).
+    if (schemaVersion < 2) {
+        QSqlRecord record = db_.record("clips");
+        const std::vector<std::pair<QString, QString>> newColumns = {
+            {"play_count", "INTEGER DEFAULT 0"},
+            {"upvote_count", "INTEGER DEFAULT 0"},
+        };
+
+        for (const auto& [name, type] : newColumns) {
+            if (record.indexOf(name) == -1) {
+                LOG_INFO("SunoDatabase: Migrating table clips (v2), adding column {}",
+                         name.toStdString());
+                if (!query.exec(QString("ALTER TABLE clips ADD COLUMN %1 %2").arg(name, type))) {
+                    LOG_ERROR("SunoDatabase: Failed to add column {}: {}",
+                              name.toStdString(), query.lastError().text().toStdString());
+                }
+            }
+        }
+
+        if (query.exec("PRAGMA user_version = 2")) {
+            LOG_INFO("SunoDatabase: Schema migrated to version 2");
+        } else {
+            LOG_WARN("SunoDatabase: Failed to persist schema version 2; migration may re-run next startup");
+        }
+    }
+
     initialized_ = true;
     LOG_INFO("Suno database initialized at {}", dbPath);
     return Result<void>::ok();
@@ -161,10 +191,12 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
             "INSERT INTO clips (id, title, audio_url, video_url, "
             "image_url, image_large_url, model_name, major_model_version, "
             "display_name, handle, is_liked, is_trashed, is_public, "
-            "status, created_at, prompt, tags, lyrics, type, duration, error_message) "
+            "status, created_at, play_count, upvote_count, "
+            "prompt, tags, lyrics, type, duration, error_message) "
             "VALUES (:id, :title, :audio_url, :video_url, :image_url, "
             ":image_large_url, :model_name, :major_model_version, :display_name, "
             ":handle, :is_liked, :is_trashed, :is_public, :status, :created_at, "
+            ":play_count, :upvote_count, "
             ":prompt, :tags, :lyrics, :type, :duration, :error_message) "
             "ON CONFLICT(id) DO UPDATE SET "
             "title=excluded.title, audio_url=excluded.audio_url, video_url=excluded.video_url, "
@@ -173,6 +205,7 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
             "display_name=excluded.display_name, handle=excluded.handle, "
             "is_liked=excluded.is_liked, is_trashed=excluded.is_trashed, is_public=excluded.is_public, "
             "status=excluded.status, created_at=excluded.created_at, "
+            "play_count=excluded.play_count, upvote_count=excluded.upvote_count, "
             "prompt=excluded.prompt, tags=excluded.tags, lyrics=excluded.lyrics, "
             "type=excluded.type, duration=excluded.duration, error_message=excluded.error_message");
 
@@ -191,6 +224,8 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
     query.bindValue(":is_public", clip.is_public ? 1 : 0);
     query.bindValue(":status", QString::fromStdString(clip.status));
     query.bindValue(":created_at", QString::fromStdString(clip.created_at));
+    query.bindValue(":play_count", static_cast<qlonglong>(clip.play_count));
+    query.bindValue(":upvote_count", static_cast<qlonglong>(clip.upvote_count));
     query.bindValue(":prompt", QString::fromStdString(clip.metadata.prompt));
     query.bindValue(":tags", QString::fromStdString(clip.metadata.tags));
     query.bindValue(":lyrics", QString::fromStdString(clip.metadata.lyrics));

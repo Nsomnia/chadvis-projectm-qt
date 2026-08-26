@@ -5,6 +5,7 @@
 #include "lyrics/LyricsData.hpp"
 
 #include "suno/ClipResolver.hpp"
+#include "suno/SunoAccountManager.hpp"
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoDownloader.hpp"
 #include "suno/SunoLyricsManager.hpp"
@@ -53,6 +54,7 @@ SunoController::SunoController(AudioEngine* audioEngine,
     db_.init(dbPath.string());
 
     // Initialize Managers
+    accountManager_ = std::make_unique<SunoAccountManager>(client_.get(), this);
     libraryManager_ = std::make_unique<SunoLibraryManager>(client_.get(), db_, this);
     
     auto networkManager = new QNetworkAccessManager(this); // Owned by SunoController (or QObject tree)
@@ -76,6 +78,10 @@ SunoController::SunoController(AudioEngine* audioEngine,
 		case auth::AuthState::ActiveValid:
 			emit statusMessage("Suno authentication active");
 			emit authenticationSuccess();
+			// Session catalog + billing bootstrap (once per activation).
+			if (accountManager_) {
+				accountManager_->refreshAll();
+			}
 			break;
 		case auth::AuthState::NeedsReauth:
 			emit authenticationFailed(
@@ -84,6 +90,15 @@ SunoController::SunoController(AudioEngine* audioEngine,
 		case auth::AuthState::Disconnected:
 			break;
 		}
+	});
+
+	// Cheap billing refresh after a generation kicks off (credits change as
+	// the clip is submitted); delayed so the backend has settled its ledger.
+	// generationStarted is a custom Signal<> (not Qt), so use .connect().
+	client_->generationStarted.connect([this](const std::vector<SunoClip>&) {
+		if (!accountManager_) return;
+		QTimer::singleShot(std::chrono::seconds(15), this,
+		                   [this]() { accountManager_->refreshBilling(); });
 	});
 
 	// Library Manager

@@ -25,6 +25,7 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace vc::suno {
 
@@ -54,7 +55,14 @@ public:
     void reloadStoredCredentials();
 
     // ── API Methods ─────────────────────────────────────────────────────
-    void fetchLibrary(int page = 1);
+    /// POST /api/feed/v3 (captured contract): cursor-based library page.
+    /// nullopt cursor = first page. Truth about exhaustion lands in
+    /// nextCursor()/hasMorePages() once the reply parses.
+    void fetchLibraryPage(std::optional<QString> cursor, int limit = 20,
+                          const QString& searchText = {});
+    /// Cursor state from the most recent feed reply.
+    const QString& nextCursor() const { return nextCursor_; }
+    bool hasMorePages() const { return hasMore_; }
     void fetchAlignedLyrics(const std::string& clipId);
     void initiateWavConversion(const std::string& clipId);
     void pollWavFile(const std::string& clipId, int maxAttempts = 60);
@@ -129,7 +137,6 @@ private:
     void handleJsonReply(QNetworkReply* reply,
                          std::function<void(const QJsonDocument&)> handler);
     void handleNetworkError(QNetworkReply* reply);
-    static std::vector<SunoClip> parseClipArray(const QJsonArray& array);
 
     // Reply handlers (existing API surface)
     void onLibraryReply(QNetworkReply* reply);
@@ -156,6 +163,10 @@ private:
 
     // Cancellable wav polling
     QSet<QString> cancelledPolls_;
+
+    // Feed pagination truth (from the last /feed/v3 envelope)
+    QString nextCursor_;
+    bool hasMore_ = false;
 
     const QString API_BASE = qstr(vc::suno::endpoints::API_BASE);
 };
