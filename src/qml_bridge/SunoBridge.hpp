@@ -16,6 +16,10 @@ namespace qml_bridge {
 
 class SunoBridge : public QObject,
                    public QmlSingletonBridge<SunoBridge, SingletonPolicy::CachedUnparented> {
+
+// The CRTP mixin constructs this singleton via its private
+// constructor; grant only the exact instantiation access.
+friend class QmlSingletonBridge<SunoBridge, SingletonPolicy::CachedUnparented>;
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON

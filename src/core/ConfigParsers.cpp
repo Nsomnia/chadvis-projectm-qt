@@ -10,7 +10,9 @@
  */
 #include "ConfigParsers.hpp"
 #include <algorithm>
+#include <QDir>
 #include "Logger.hpp"
+#include "util/FileUtils.hpp"
 
 namespace vc {
 
@@ -40,11 +42,14 @@ Vec2 parseVec2(const toml::table& tbl, Vec2 defaultVal = {}) {
 }
 
 fs::path expandPath(std::string_view path) {
+    // QDir::homePath() instead of getenv("HOME"): honors USERPROFILE on
+    // Windows and needs no environment variable to be set.
+    const QByteArray home = QDir::homePath().toUtf8();
     std::string p(path);
-    if (p.starts_with("~/")) {
-        if (const char* home = std::getenv("HOME")) {
-            p = std::string(home) + p.substr(1);
-        }
+    if (p == "~") {
+        p = home.toStdString();
+    } else if (p.starts_with("~/")) {
+        p = home.toStdString() + p.substr(1);
     }
     return fs::path(p);
 }
@@ -180,15 +185,18 @@ void ConfigParsers::parseAudio(const toml::table& tbl, AudioConfig& cfg) {
 void ConfigParsers::parseVisualizer(const toml::table& tbl,
                                     VisualizerConfig& cfg) {
     auto* t = tbl["visualizer"].as_table();
-    if (!t)
-        return;
 
     // preset_path intentionally keeps a runtime fallback instead of the empty
-    // struct default: an absent key means "resolve the system presets dir".
+    // struct default. An absent key or an explicit empty string ('' in TOML)
+    // both mean "auto-detect the system presets dir" via FileUtils; only a
+    // non-empty configured path is used literally.
+    const std::string rawPresetPath =
+            t ? get(*t, "preset_path", std::string()) : std::string();
     cfg.presetPath =
-            expandPath(get(*t,
-                           "preset_path",
-                           std::string("/usr/share/projectM/presets")));
+            rawPresetPath.empty() ? file::presetsDir() : expandPath(rawPresetPath);
+
+    if (!t)
+        return;
 
     const VisualizerConfig def{};
     auto& obj = cfg;
@@ -363,23 +371,23 @@ toml::table ConfigParsers::serialize(
     }
 
     {
-        toml::table recOut;
+        toml::table out;
         {
-            toml::table out;
+            toml::table videoOut;
             auto& obj = recording.video;
             CHADVIS_VIDEO_FIELDS(VC_SER_FIELD)
-            recOut.insert("video", std::move(out));
+            out.insert("video", std::move(videoOut));
         }
         {
-            toml::table out;
+            toml::table audioOut;
             auto& obj = recording.audio;
             CHADVIS_REC_AUDIO_FIELDS(VC_SER_FIELD)
-            recOut.insert("audio", std::move(out));
+            out.insert("audio", std::move(audioOut));
         }
         auto& obj = recording;
         CHADVIS_RECORDING_FIELDS(VC_SER_FIELD)
-        recOut.insert("output_directory", recording.outputDirectory.string());
-        root.insert("recording", std::move(recOut));
+        out.insert("output_directory", recording.outputDirectory.string());
+        root.insert("recording", std::move(out));
     }
 
     toml::array elementsArr;

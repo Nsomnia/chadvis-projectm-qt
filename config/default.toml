@@ -52,7 +52,7 @@ enabled = true
 container = 'mp4'
 default_filename = 'chadvis-projectm-qt_{date}_{time}'
 enabled = true
-output_directory = '/home/nsomnia/Videos/ChadVis'
+output_directory = '~/Videos/ChadVis'
 
     [recording.audio]
     bitrate = 320
@@ -84,7 +84,7 @@ force_preset = ''
 fps = 60
 height = 1080
 preset_duration = 30
-preset_path = '/usr/share/projectM/presets'
+preset_path = ''
 shuffle_presets = true
 smooth_preset_duration = 5
 use_default_preset = false

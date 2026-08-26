@@ -57,8 +57,12 @@ Result<void> ConfigLoader::loadDefault(Config& config) {
         return load(config, defaultPath);
     }
 
-    // Try to copy system default if available
-    fs::path systemDefault =
+    // Probe for an installed system template before generating one. Only
+    // distro packaging on Linux ships the template at a fixed FHS path; on
+    // other platforms there is no guaranteed location, so skip straight to
+    // the generated default instead of probing a path that cannot exist.
+#ifdef __linux__
+    constexpr fs::path systemDefault =
             "/usr/share/chadvis-projectm-qt/config/default.toml";
     if (fs::exists(systemDefault)) {
         std::error_code ec;
@@ -69,6 +73,7 @@ Result<void> ConfigLoader::loadDefault(Config& config) {
             return load(config, defaultPath);
         }
     }
+#endif
 
     // Generate default config with 1337 comments
     LOG_INFO("No config found - generating fresh default config with Arch-tier quality");

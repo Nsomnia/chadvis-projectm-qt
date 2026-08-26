@@ -1,10 +1,10 @@
 #include "FileUtils.hpp"
 #include <algorithm>
-#include <cstdlib>
 #include <format>
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <QStandardPaths>
 #include <QString>
 #include "core/Logger.hpp"
 
@@ -12,22 +12,22 @@ namespace vc::file {
 
 namespace {
 
-// Resolve an XDG base directory with HOME-relative fallback segments.
-// Shared by configDir()/dataDir()/cacheDir() which differ only in env var,
-// fallback subpath, and last-resort path.
-fs::path xdgBaseDir(const char* envVar,
-                    std::initializer_list<const char*> homeSegments,
-                    const fs::path& lastResort) {
-    if (const char* xdg = std::getenv(envVar)) {
-        return fs::path(xdg) / "chadvis-projectm-qt";
-    }
-    if (const char* home = std::getenv("HOME")) {
-        fs::path p(home);
-        for (const char* seg : homeSegments)
-            p /= seg;
-        return p / "chadvis-projectm-qt";
-    }
-    return lastResort;
+// Resolve a generic per-user base directory via QStandardPaths and append the
+// app-specific directory name ourselves.
+//
+// The Generic* locations are used deliberately: they derive purely from the
+// environment (XDG_* vars / HOME on Unix, %APPDATA%/%LOCALAPPDATA% on Windows)
+// and do NOT consult the application name, so they are safe before
+// QCoreApplication exists or before setApplicationName() has run. On Unix they
+// honor XDG_CONFIG_HOME/XDG_DATA_HOME/XDG_CACHE_HOME with the standard HOME
+// fallbacks, preserving the exact on-disk layout of the previous hand-rolled
+// resolution (~/.config|~/.local/share|~/.cache + chadvis-projectm-qt).
+fs::path genericBaseDir(QStandardPaths::StandardLocation location,
+                        const fs::path& lastResort) {
+    const QString base = QStandardPaths::writableLocation(location);
+    if (base.isEmpty())
+        return lastResort;
+    return fs::path(base.toStdString()) / "chadvis-projectm-qt";
 }
 
 // ── ByteSizeFormatter ────────────────────────────────────────────────
@@ -66,23 +66,28 @@ TimecodeComponents timecodeComponents(long long totalMs) {
 } // namespace
 
 fs::path configDir() {
-    return xdgBaseDir("XDG_CONFIG_HOME", {".config"},
-                      fs::current_path() / ".chadvis-projectm-qt");
+    return genericBaseDir(QStandardPaths::GenericConfigLocation,
+                          fs::current_path() / ".chadvis-projectm-qt");
 }
 
 fs::path dataDir() {
-    return xdgBaseDir("XDG_DATA_HOME", {".local", "share"},
-                      fs::current_path() / ".chadvis-projectm-qt-data");
+    return genericBaseDir(QStandardPaths::GenericDataLocation,
+                          fs::current_path() / ".chadvis-projectm-qt-data");
 }
 
 fs::path cacheDir() {
-    return xdgBaseDir("XDG_CACHE_HOME", {".cache"},
-                      fs::temp_directory_path() / "chadvis-projectm-qt");
+    return genericBaseDir(QStandardPaths::GenericCacheLocation,
+                          fs::temp_directory_path() / "chadvis-projectm-qt");
 }
 
 fs::path presetsDir() {
     std::vector<fs::path> candidates = {"/usr/share/projectM/presets",
                                         "/usr/local/share/projectM/presets",
+                                        "/opt/homebrew/share/projectM/presets",
+#ifdef _WIN32
+                                        fs::path(qEnvironmentVariable("LOCALAPPDATA").toStdString()) /
+                                                "projectM" / "presets",
+#endif
                                         "/usr/share/projectm-presets",
                                         dataDir() / "presets"};
 

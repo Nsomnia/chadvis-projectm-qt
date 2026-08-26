@@ -21,6 +21,10 @@ namespace qml_bridge {
 /// CppOwnership (preserved historical behavior) via SingletonPolicy::CppOwnership.
 class OverlayBridge : public QObject,
                       public QmlSingletonBridge<OverlayBridge, SingletonPolicy::CppOwnership> {
+
+// The CRTP mixin constructs this singleton via its private
+// constructor; grant only the exact instantiation access.
+friend class QmlSingletonBridge<OverlayBridge, SingletonPolicy::CppOwnership>;
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON

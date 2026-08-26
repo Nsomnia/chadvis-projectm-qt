@@ -35,7 +35,7 @@ void VideoRecorderThread::start() {
         stats_.currentFile = actualOutputPath_;
     }
     
-    thread_ = std::jthread([this](std::stop_token st) { threadLoop(st); });
+    thread_ = JThread([this](StopToken st) { threadLoop(st); });
     LOG_INFO("Recording thread started: {}", settings_.outputPath.string());
 }
 
@@ -69,7 +69,7 @@ RecordingStats VideoRecorderThread::getStats() const {
     return stats_;
 }
 
-void VideoRecorderThread::threadLoop(std::stop_token stopToken) {
+void VideoRecorderThread::threadLoop(StopToken stopToken) {
     LOG_DEBUG("Encoding thread started");
     auto startTime = std::chrono::steady_clock::now();
     auto lastStatsUpdate = startTime;

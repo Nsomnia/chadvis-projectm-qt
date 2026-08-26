@@ -4,13 +4,31 @@
  */
 
 #include "CliUtils.hpp"
+#include <cstdio>
 #include <cstdlib>
 #include <algorithm>
 #include <sstream>
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 #include <iomanip>
 
 namespace vc {
+
+namespace {
+
+// Portable stdout-TTY probe: _isatty on Windows, isatty elsewhere.
+bool stdoutIsTerminal() {
+#ifdef _WIN32
+    return _isatty(_fileno(stdout)) != 0;
+#else
+    return ::isatty(STDOUT_FILENO) != 0;
+#endif
+}
+
+} // namespace
 
 bool CliColor::shouldUseColor() {
     // Respect NO_COLOR environment variable
@@ -19,12 +37,12 @@ bool CliColor::shouldUseColor() {
             return false;
         }
     }
-    
+
     // Check if stdout is a TTY
-    if (!isatty(STDOUT_FILENO)) {
+    if (!stdoutIsTerminal()) {
         return false;
     }
-    
+
     return true;
 }
 

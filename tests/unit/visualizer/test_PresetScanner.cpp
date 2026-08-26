@@ -66,3 +66,5 @@ private:
         f << "dummy content";
     }
 };
+
+#include "test_PresetScanner.moc"

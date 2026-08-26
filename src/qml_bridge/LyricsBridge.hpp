@@ -16,6 +16,10 @@ namespace qml_bridge {
 
 class LyricsBridge : public QObject,
                      public QmlSingletonBridge<LyricsBridge> {
+
+// The CRTP mixin constructs this singleton via its private
+// constructor; grant only the exact instantiation access.
+friend class QmlSingletonBridge<LyricsBridge>;
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON

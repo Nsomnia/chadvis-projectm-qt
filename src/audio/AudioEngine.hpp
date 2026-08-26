@@ -1,5 +1,4 @@
 #pragma once
-#include <projectM-4/projectM.h>
 #include "AudioAnalyzer.hpp"
 #include "AudioQueue.hpp"
 #include "Playlist.hpp"
@@ -11,7 +10,14 @@
 #include <QMediaPlayer>
 #include <QTimer>
 #include <memory>
-#include <thread>
+#include "util/JThread.hpp"
+#include "util/Result.hpp"
+#include "util/Types.hpp"
+#include <QAudioBuffer>
+#include <QAudioBufferOutput>
+#include <QAudioOutput>
+#include <QMediaPlayer>
+#include <QTimer>
 #include <atomic>
 
 namespace vc {
@@ -83,7 +89,7 @@ private:
     std::unique_ptr<QAudioOutput> nextAudioOutput_;
     std::unique_ptr<QAudioBufferOutput> nextBufferOutput_;
 
-    std::jthread analyzerThread_;
+    JThread analyzerThread_;
     std::atomic<bool> stopAnalyzer_{false};
 
     Playlist playlist_;
