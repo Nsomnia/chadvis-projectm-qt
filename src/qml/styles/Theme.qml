@@ -152,6 +152,12 @@ QtObject {
         weight: Font.Normal
     })
 
+    readonly property font fontCaptionStrong: Qt.font({
+        family: fontFamily,
+        pixelSize: 12,
+        weight: Font.DemiBold
+    })
+
     readonly property font fontBody: Qt.font({
         family: fontFamily,
         pixelSize: 14,

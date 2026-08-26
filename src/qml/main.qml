@@ -151,8 +151,7 @@ ApplicationWindow {
                     Text {
                         text: "REC"
                         color: Theme.textPrimary
-                        font: Theme.fontCaption
-                        font.weight: Font.Bold
+                        font: Theme.fontCaptionStrong
                     }
                 }
             }
@@ -296,7 +295,7 @@ ApplicationWindow {
 
                 Text {
                     text: "ProjectM v4 • " + (AudioBridge.isPlaying ? "Playing" : "Ready")
-                    color: Theme.onBackground
+                    color: Theme.textPrimary
                     font: Theme.fontCaption
                     opacity: 0.5
                 }

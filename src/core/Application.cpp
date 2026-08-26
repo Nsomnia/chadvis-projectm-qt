@@ -13,11 +13,11 @@
 #include "lyrics/LyricsSync.hpp"
 #include "ui/controllers/SunoController.hpp"
 #include "suno/SunoModels.hpp"
+#include "qml_bridge/BridgeRegistration.hpp"
 
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
-#include <QStyleFactory>
 #include <QQmlEngine>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
@@ -342,7 +342,7 @@ Result<void> Application::init(const AppOptions& opts) {
 	QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
 	// Create Qt application
-	qapp_ = std::make_unique<QApplication>(argc_, argv_);
+	qapp_ = std::make_unique<QGuiApplication>(argc_, argv_);
 	qapp_->setApplicationName("ChadVis");
 	qapp_->setApplicationVersion("1.0.0");
 	qapp_->setOrganizationName("ChadVis");
@@ -394,6 +394,16 @@ Result<void> Application::init(const AppOptions& opts) {
 
 		qmlEngine_ = std::make_unique<QQmlApplicationEngine>();
 
+		// Register all QML bridge singletons BEFORE loading main.qml;
+		// without this the QML side sees no AudioBridge/SettingsBridge/etc.
+		qml_bridge::registerBridges(qmlEngine_.get(),
+			audioEngine_.get(),
+			visualizerWindow_.get(),
+			videoRecorder_.get(),
+			presetManager_.get(),
+			lyricsSync_.get(),
+			sunoController_.get());
+
 		// Connect to QML warnings for debugging
 		QObject::connect(qmlEngine_.get(), &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
 			for (const auto& warning : warnings) {
@@ -418,7 +428,7 @@ Result<void> Application::init(const AppOptions& opts) {
 
 	// Connect quit signal
 	connect(qapp_.get(),
-		&QApplication::aboutToQuit,
+		&QGuiApplication::aboutToQuit,
 		this,
 		&Application::aboutToQuit);
 
@@ -479,7 +489,7 @@ void Application::printHelp() {
 
 	std::cout << "\n" << brightCyan() << bold()
 		<< "╔════════════════════════════════════════════════════════════╗\n"
-		<< "║ ChadVis - Chad-tier Audio Visualizer for Arch Linux ║\n"
+		<< "║ ChadVis - Chad-tier Audio Visualizer ║\n"
 		<< "╚════════════════════════════════════════════════════════════╝" << reset() << "\n\n";
 
 	Cli::printSection("Usage");
