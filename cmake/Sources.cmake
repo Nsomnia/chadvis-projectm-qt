@@ -88,6 +88,19 @@ set(SUNO_SOURCES
     src/suno/ClipResolver.cpp
 )
 
+# Suno auth subsystem - Clerk auth module (Lane A of docs/PIVOT_PLAN.md).
+set(SUNO_AUTH_SOURCES
+    src/suno/auth/AuthTypes.hpp
+    src/suno/auth/JwtUtils.hpp
+    src/suno/auth/JwtUtils.cpp
+    src/suno/auth/CredentialStore.hpp
+    src/suno/auth/CredentialStore.cpp
+    src/suno/auth/ClerkAuthClient.hpp
+    src/suno/auth/ClerkAuthClient.cpp
+    src/suno/auth/AuthHeaders.hpp
+    src/suno/auth/AuthHeaders.cpp
+)
+
 set(RECORDER_SOURCES
     src/recorder/EncoderSettings.hpp
     src/recorder/EncoderSettings.cpp
