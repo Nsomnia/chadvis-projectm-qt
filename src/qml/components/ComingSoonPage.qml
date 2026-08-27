@@ -105,8 +105,10 @@ Item {
         Text {
             text: "COMING ONLINE SOON"
             color: Theme.warningDim
-            font: Theme.fontCaptionStrong
-            letterSpacing: 3
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontCaptionStrong.pixelSize
+            font.weight: Font.DemiBold
+            font.letterSpacing: 3
             Layout.alignment: Qt.AlignHCenter
         }
     }
