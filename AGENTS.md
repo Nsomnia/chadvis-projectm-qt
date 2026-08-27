@@ -1,5 +1,7 @@
 # ChadVis ProjectM-QT Refactor: AGENTS.md
 
+- Lint: using cline though clangd is available as well.
+
 ## Sys Instructions & Requirements
 > Note: The caveman skill requirement was removed temporarily because the current model has unlimited inference. Re-add it (`npx skills add JuliusBrussee/caveman`) if/when running on quota-limited models.
 - **Oh-my-opencode-slim:** Used on the user's system (not used in cloud sessions).
