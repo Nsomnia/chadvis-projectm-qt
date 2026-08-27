@@ -115,6 +115,9 @@ logs/*.log
 #*_debug.hpp
 CMakeLists_new.txt
 
+# Deepwork local state (git-local, not pushed)
+.slim/deepwork/
+
 # OS
 .DS_Store
 Thumbs.db
