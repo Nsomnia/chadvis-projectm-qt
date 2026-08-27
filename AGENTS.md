@@ -1,4 +1,7 @@
-# ChadVis ProjectM-QT Refactor: AGENTS.md
+# ChadVis — Suno.com Frontend First, projectM Second: AGENTS.md
+
+> **Product pivot ADOPTED 2026-08-26** — this repo is now the shipping **Suno.com desktop frontend** (library, generation, downloads, playlists, account) with **projectM as secondary** visualizer / music-video engine (keyframe scene composition, karaoke, batch automation, future lightweight DAW). See `docs/PIVOT_PLAN.md` phases P0–P7. The authoritative spec corpus lives in `~/Documents/suno-media-station-glm5.2/docs` (charter 00, contracts 06, storage 07, visuals 09/10); do not invent Suno API shapes — capture-driven (T1/T2/T3).
+> Live state tracker: `TODO.md`. Deepwork state: `.slim/deepwork/suno-frontend-pivot.md`.
 
 - Lint: using cline though clangd is available as well.
 

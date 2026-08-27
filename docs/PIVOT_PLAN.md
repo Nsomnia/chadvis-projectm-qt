@@ -63,14 +63,14 @@ pipeline — only captured REST surfaces.
       (`GET /api/billing/info/`) surfaced as credits/planName/userName.
 - [x] Dead routes retired (LOGIN/SIGN_IN/Clerk constants); SystemBrowserAuth archived.
 
-### P2 — Remote Library First (UI pivot)
-- [ ] Re-home navigation: Library becomes the default landing surface; visualizer moves to
+### P2 — Remote Library First (UI pivot) — Library landing ✅ 2026-08-27, full sync ✅
+- [x] Re-home navigation: Library becomes the default landing surface; visualizer moves to
       a secondary view/mode (still fullscreenable). Sidebar accordion → persistent nav rail
-      (Library / Player+Visualizer / Canvas / Studio / Automation / Settings).
-- [ ] Remote library browse/search/filter/sort over feed/v3 with debounced search;
-      per-page sync signals, resumable cursor state.
-- [ ] Download manager: max ~3 concurrent, exponential backoff cap 3, HTTP-range resume,
-      retryable queue, local↔remote parity columns (`remote_*` vs `local_*`).
+      (Library / Player+Visualizer / Canvas / Studio / Automation / Settings). `main.qml` nav rail + `activeView` persisted via `SettingsBridge.expandedPanel`; `onActiveViewChanged` crash fixed 2026-08-27 (55e8dd9).
+- [x] Remote library browse/search/filter/sort over feed/v3 with debounced search;
+      per-page sync signals, resumable cursor state. Full auto-pagination loop (feed/v3 `next_cursor`/`has_more`) with 1 Hz limiter + viewport-fill guard; incremental `libraryUpdated` per page; spinner stays true while `hasMore` (f669457). Debounced search 350 ms end-to-end.
+- [~] Download manager: max ~3 concurrent, exponential backoff cap 3, HTTP-range resume,
+      retryable queue, local↔remote parity columns (`remote_*` vs `local_*`). Queue exists (`SunoDownloader`/`DownloadQueue`) — needs range-resume verification + parity columns wired.
 - [ ] Playback parity: one player interface over remote-preview URL vs local file;
       buffer-ahead next track; graceful device-disconnect handling.
 - [ ] Playlist management once mutation captures land (listing endpoint is T1 today).
