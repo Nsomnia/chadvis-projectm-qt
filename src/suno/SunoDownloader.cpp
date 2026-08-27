@@ -33,13 +33,23 @@ SunoDownloader::SunoDownloader(SunoClient* client,
     : QObject(parent),
       client_(client),
       db_(db),
-      audioEngine_(audioEngine),
-      networkManager_(networkManager) {
+      // The queue adopts the controller-provided manager; this is the one
+      // QNetworkAccessManager for clip downloads (no ad-hoc managers here).
+      queue_(std::make_unique<DownloadQueue>(networkManager, this)) {
 
     client_->wavConversionReady.connect(
         [this](const auto& id, const auto& url) {
             onWavConversionReady(id, url);
         });
+
+    connect(queue_.get(), &DownloadQueue::itemStateChanged, this,
+            [this](const QString& clipId, int state, int progressPercent) {
+                emit downloadStateChanged(clipId, state, progressPercent);
+                handleItemState(clipId.toStdString(),
+                                static_cast<DownloadState>(state));
+            });
+    connect(queue_.get(), &DownloadQueue::queueIdle,
+            this, &SunoDownloader::downloadQueueIdle);
 }
 
 SunoDownloader::~SunoDownloader() = default;
@@ -74,7 +84,7 @@ void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
         if (useWav) {
             client_->initiateWavConversion(clip.id);
         } else {
-            downloadAudio(resolvedClip);
+            enqueueAudio(resolvedClip, resolvedClip.audio_url, extension);
         }
         return;
     }
@@ -94,34 +104,46 @@ void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
     if (useWav) {
         client_->initiateWavConversion(clip.id);
     } else {
-        downloadAudio(clip);
+        enqueueAudio(clip, clip.audio_url, extension);
     }
 }
 
-void SunoDownloader::downloadAudio(const SunoClip& clip) {
-    QUrl url(QString::fromStdString(clip.audio_url));
-    QNetworkRequest request(url);
-    QNetworkReply* reply = networkManager_->get(request);
+/// Route one transfer through the shared DownloadQueue; tagging/sidecars run
+/// from the completion hook in handleItemState().
+void SunoDownloader::enqueueAudio(const SunoClip& clip,
+                                  const std::string& url,
+                                  const std::string& extension) {
+    const fs::path targetPath =
+        getDownloadDir() / (safeStem(clip.title, clip.id) + extension);
+    pendingClips_[clip.id] = PendingDownload{clip, targetPath};
+    if (!queue_->enqueue(clip.id, url, targetPath)) {
+        pendingClips_.erase(clip.id);  // duplicate live job: queue already owns it
+    }
+}
 
-  connect(reply, &QNetworkReply::finished, this, [this, reply, clip]() {
-    reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError) return;
+void SunoDownloader::handleItemState(const std::string& clipId, DownloadState state) {
+    if (!isTerminal(state)) return;
 
-    fs::path downloadDir = getDownloadDir();
+    const auto it = pendingClips_.find(clipId);
+    if (it == pendingClips_.end()) return;
+    const PendingDownload pending = it->second;
+    pendingClips_.erase(it);
 
-    std::string safeTitle = safeStem(clip.title, clip.id);
-
-        fs::path filePath = downloadDir / (safeTitle + ".mp3");
-
-        QFile file(QString::fromStdString(filePath.string()));
-        if (file.open(QIODevice::WriteOnly)) {
-            file.write(reply->readAll());
-            file.close();
-            tagAudioFile(filePath, clip);
-            processDownloadedFile(clip, filePath);
-            saveMetadataSidecar(clip);
-        }
-    });
+    switch (state) {
+        case DownloadState::Completed:
+            tagAudioFile(pending.destPath, pending.clip);
+            processDownloadedFile(pending.clip, pending.destPath);
+            saveMetadataSidecar(pending.clip);
+            break;
+        case DownloadState::FailedPermanent:
+            LOG_ERROR("SunoDownloader: permanent failure for clip {}", clipId);
+            break;
+        case DownloadState::FailedRetryable:
+            LOG_WARN("SunoDownloader: retries exhausted for clip {}", clipId);
+            break;
+        default:
+            break;  // Cancelled needs no post-processing
+    }
 }
 
 void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
@@ -182,44 +204,17 @@ void SunoDownloader::processDownloadedFile(const SunoClip& clip, const fs::path&
 }
 
 void SunoDownloader::onWavConversionReady(const std::string& clipId, const std::string& wavUrl) {
-    // Both branches were identical; a single call is all that is needed.
-    downloadAudioFromUrl(clipId, wavUrl, ".wav");
-}
-
-void SunoDownloader::downloadAudioFromUrl(const std::string& clipId, const std::string& url, const std::string& extension) {
-    QUrl qurl(QString::fromStdString(url));
-    QNetworkRequest request(qurl);
-    QNetworkReply* reply = networkManager_->get(request);
-
-  connect(reply, &QNetworkReply::finished, this, [this, reply, clipId, extension]() {
-    reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError) return;
-
-    fs::path downloadDir = getDownloadDir();
-
+    // Resolve the clip up front so the completion hook has full metadata.
     auto clipOpt = resolveClip({}, db_, clipId);
-    std::string safeTitle = clipOpt ? safeStem(clipOpt->title, clipId)
-                                    : clipId;
+    if (clipOpt) {
+        enqueueAudio(*clipOpt, wavUrl, ".wav");
+        return;
+    }
 
-        fs::path filePath = downloadDir / (safeTitle + extension);
-
-        QFile file(QString::fromStdString(filePath.string()));
-        if (file.open(QIODevice::WriteOnly)) {
-            file.write(reply->readAll());
-            file.close();
-
-            if (clipOpt) {
-                tagAudioFile(filePath, *clipOpt);
-                processDownloadedFile(*clipOpt, filePath);
-                saveMetadataSidecar(*clipOpt);
-            } else {
-                SunoClip clip;
-                clip.id = clipId;
-                clip.title = safeTitle;
-                processDownloadedFile(clip, filePath);
-            }
-        }
-    });
+    SunoClip stub;
+    stub.id = clipId;
+    stub.title = clipId;
+    enqueueAudio(stub, wavUrl, ".wav");
 }
 
 void SunoDownloader::saveLyricsSidecar(const std::string& clipId, const std::string& json, const QJsonDocument& doc, const std::vector<SunoClip>& clips) {

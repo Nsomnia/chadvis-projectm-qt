@@ -1,15 +1,23 @@
 /**
-* @file main.qml
-* @brief Root QML file for ChadVis modern GUI
-*
-* Main application window with:
-* - ProjectM visualizer canvas (central - full screen by default)
-* - Drawer-based sidebar (hamburger menu style)
-* - Top ToolBar header with controls
-* - Status bar footer (playback info)
-*
-* @version 2.0.0 - Pseudo-Mobile Desktop Layout
-*/
+ * @file main.qml
+ * @brief ChadVis app shell — persistent nav rail over a paged view host
+ *
+ * P2 navigation re-home (docs/PIVOT_PLAN.md): Suno.com frontend first,
+ * projectM second.
+ *
+ *   NavRail │ Library (default landing) · Listen (player+visualizer) ·
+ *           │ Canvas† · Studio† · Automation† (roadmap stubs) · Settings
+ *
+ * Persistence rides existing SettingsBridge UI-state keys (no C++ changes):
+ *   - expandedPanel → active view id ("library"/"listen"/…)
+ *   - sidebarWidth  → rail state (>100 = expanded, else collapsed icons-only)
+ *
+ * The Listen view stays instantiated for the app's whole lifetime so the
+ * embedded native visualizer window is never re-created; all other views
+ * load/unload through Loaders.
+ *
+ * @version 3.0.0 — Nav Rail App Shell
+ */
 
 import QtQuick
 import QtQuick.Layouts
@@ -17,7 +25,7 @@ import QtQuick.Controls
 import QtQuick.Window
 import ChadVis
 import "components"
-import "panels"
+import "views"
 
 ApplicationWindow {
     id: mainWindow
@@ -31,26 +39,56 @@ ApplicationWindow {
     // Flush any pending auto-save on close
     onClosing: SettingsBridge.save()
 
+    readonly property var viewMeta: {
+        "library":    { label: "Library" },
+        "listen":     { label: "Listen" },
+        "canvas":     { label: "Canvas" },
+        "studio":     { label: "Studio" },
+        "automation": { label: "Automation" },
+        "settings":   { label: "Settings" }
+    }
+
+    // ── Active view (persisted via expandedPanel) ────────────────
+    property string activeView: "library"
+    onViewChanged: SettingsBridge.expandedPanel = activeView
+
+    function navigate(viewId) {
+        if (viewMeta.hasOwnProperty(viewId))
+            activeView = viewId
+    }
+
+    // ── Rail expansion (persisted via sidebarWidth; >100 = expanded) ──
+    property bool railUserExpanded: true
+    readonly property bool railEffectiveExpanded:
+        railUserExpanded && width >= Theme.navRailAutoCollapseBelow
+
+    function setRailExpanded(expanded) {
+        railUserExpanded = expanded
+        SettingsBridge.sidebarWidth = expanded ? Theme.navRailWidthExpanded
+                                               : Theme.navRailWidthCollapsed
+    }
+
+    Component.onCompleted: {
+        const savedView = SettingsBridge.expandedPanel
+        activeView = viewMeta.hasOwnProperty(savedView) ? savedView : "library"
+        railUserExpanded = SettingsBridge.sidebarWidth > 100
+    }
+
     title: {
-        var title = "ChadVis"
-        if (AudioBridge.currentTrack.title) {
-            title = AudioBridge.currentTrack.artist + " - " + AudioBridge.currentTrack.title + " | " + title
-        }
-        if (RecordingBridge.isRecording) {
-            title = "⏺ " + title
-        }
-        return title
+        var t = "ChadVis"
+        if (AudioBridge.currentTrack.title)
+            t = AudioBridge.currentTrack.artist + " - " + AudioBridge.currentTrack.title + " | " + t
+        if (RecordingBridge.isRecording)
+            t = "⏺ " + t
+        return t
     }
 
     background: Rectangle { color: Theme.background }
 
-    // ═══════════════════════════════════════════════════════════
-    // HEADER TOOLBAR
-    // ═══════════════════════════════════════════════════════════
-
+    // ══════════════════════════════════════════════
+    // TOP BAR
+    // ══════════════════════════════════════════════
     header: ToolBar {
-        id: headerToolBar
-
         implicitHeight: Theme.topBarHeight
         background: Rectangle {
             color: Theme.surface
@@ -65,86 +103,73 @@ ApplicationWindow {
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: Theme.spacingSmall
+            anchors.leftMargin: Theme.spacingMedium
             anchors.rightMargin: Theme.spacingSmall
-            spacing: Theme.spacingSmall
+            spacing: Theme.spacingMedium
 
-            // Hamburger menu button
-            AppButton {
-                icon: "qrc:/qt/qml/ChadVis/resources/icons/expand.svg"
-                flat: true
-                implicitWidth: Theme.iconLarge + Theme.spacingSmall
-                implicitHeight: Theme.iconLarge
-                radius: Theme.radiusSmall
-                onClicked: sidebarDrawer.open()
-                ToolTip.visible: hovered
-                ToolTip.text: "Open menu"
-                ToolTip.delay: 500
-                visible: !desktopSidebar.visible
+            Text {
+                text: mainWindow.viewMeta[mainWindow.activeView].label
+                color: Theme.accent
+                font: Theme.fontSubtitle
             }
 
-            // Current track info
             Rectangle {
+                width: 1
+                height: Theme.topBarHeight - 16
+                color: Theme.border
+            }
+
+            // Now playing (compact ticker)
+            RowLayout {
+                spacing: Theme.spacingSmall
                 Layout.fillWidth: true
-                Layout.preferredHeight: Theme.topBarHeight - Theme.spacingSmall
-                color: "transparent"
-                clip: true
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: Theme.spacingSmall
-                    spacing: Theme.spacingSmall
+                PulseIndicator {
+                    Layout.preferredWidth: Theme.iconSmall
+                    Layout.preferredHeight: Theme.iconSmall
+                    active: AudioBridge.isPlaying
+                    baseColor: Theme.success
+                    size: Theme.iconSmall
+                    dimOpacity: 0.5
+                    periodMs: 800
+                }
 
-                    // Play/Pause indicator
-                    PulseIndicator {
-                        Layout.preferredWidth: Theme.iconSmall
-                        Layout.preferredHeight: Theme.iconSmall
-                        active: AudioBridge.isPlaying
-                        baseColor: Theme.success
-                        size: Theme.iconSmall
-                        dimOpacity: 0.5
-                        periodMs: 800
-                    }
+                Text {
+                    Layout.fillWidth: true
+                    text: AudioBridge.currentTrack.title || "No Track Selected"
+                    color: Theme.textPrimary
+                    font: Theme.fontBody
+                    elide: Text.ElideRight
+                    maximumLineCount: 1
+                }
 
-                    // Track title
-                    Text {
-                        Layout.fillWidth: true
-                        text: AudioBridge.currentTrack.title || "No Track Selected"
-                        color: Theme.textPrimary
-                        font: Theme.fontSubtitle
-                        elide: Text.ElideRight
-                        maximumLineCount: 1
-                    }
-
-                    // Artist
-                    Text {
-                        visible: AudioBridge.currentTrack.artist !== ""
-                        text: AudioBridge.currentTrack.artist ? "• " + AudioBridge.currentTrack.artist : ""
-                        color: Theme.textSecondary
-                        font: Theme.fontBody
-                        elide: Text.ElideRight
-                        maximumLineCount: 1
-                    }
+                Text {
+                    visible: AudioBridge.currentTrack.artist !== ""
+                    text: AudioBridge.currentTrack.artist ? "• " + AudioBridge.currentTrack.artist : ""
+                    color: Theme.textSecondary
+                    font: Theme.fontBody
+                    elide: Text.ElideRight
+                    maximumLineCount: 1
                 }
             }
 
-            // Recording indicator (in header when active)
+            // Recording chip
             Rectangle {
                 visible: RecordingBridge.isRecording
-                implicitWidth: recordingHeaderRow.implicitWidth + Theme.spacingMedium
-                implicitHeight: 28
+                implicitWidth: recRow.implicitWidth + Theme.spacingMedium
+                implicitHeight: 24
                 radius: Theme.radiusSmall
                 color: Theme.recording
 
                 RowLayout {
-                    id: recordingHeaderRow
+                    id: recRow
                     anchors.centerIn: parent
                     spacing: Theme.spacingSmall
 
                     PulseIndicator {
-                        width: 8
-                        height: 8
-                        active: RecordingBridge.isRecording
+                        width: 7
+                        height: 7
+                        active: true
                         baseColor: Theme.textPrimary
                     }
 
@@ -155,16 +180,17 @@ ApplicationWindow {
                     }
                 }
             }
+
+            AccountChip {
+                onNavigateRequested: mainWindow.navigate("settings")
+            }
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════
     // FOOTER STATUS BAR
-    // ═══════════════════════════════════════════════════════════
-
+    // ══════════════════════════════════════════════
     footer: ToolBar {
-        id: footerStatusBar
-
         implicitHeight: Theme.statusBarHeight
         background: Rectangle {
             color: Theme.surface
@@ -212,312 +238,141 @@ ApplicationWindow {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // MAIN CONTENT SPLITVIEW
-    // ═══════════════════════════════════════════════════════════
-
-    SplitView {
+    // ══════════════════════════════════════════════
+    // SHELL BODY: NAV RAIL + VIEW HOST
+    // ══════════════════════════════════════════════
+    Item {
         anchors.fill: parent
-        orientation: Qt.Horizontal
 
-    // Desktop Sidebar (Static when window is wide)
-    Rectangle {
-        id: desktopSidebar
-        SplitView.preferredWidth: SettingsBridge.sidebarWidth
-        SplitView.minimumWidth: 200
-        SplitView.maximumWidth: 400
-        visible: mainWindow.width > 1200
-        color: Theme.surface
+        NavRail {
+            id: navRail
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            z: 10
 
-        // Persist sidebar width when user drags the SplitView handle
-        onWidthChanged: {
-            if (desktopSidebar.visible && width >= 200 && width <= 400) {
-                SettingsBridge.sidebarWidth = Math.round(width)
-            }
+            activeView: mainWindow.activeView
+            expanded: mainWindow.railEffectiveExpanded
+
+            onNavigate: function(viewId) { mainWindow.navigate(viewId) }
+            onExpandToggled: mainWindow.setRailExpanded(!mainWindow.railUserExpanded)
         }
 
-            Rectangle {
-                anchors.right: parent.right
-                height: parent.height
-                width: 1
-                color: Theme.border
-            }
-
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 0
-                
-                Loader {
-                    Layout.fillWidth: true
-                    sourceComponent: sidebarHeader
-                }
-                
-                Loader {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    sourceComponent: sidebarContent
-                }
-            }
-        }
-
-        // Central Visualizer Area
+        // View host — everything to the right of the rail.
+        // Every surface fades in via an explicit opacity Behavior.
         Item {
-            SplitView.fillWidth: true
-            SplitView.fillHeight: true
+            id: viewHost
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            anchors.left: navRail.right
+            clip: true
 
-            WindowContainer {
-                id: visualizerContainer
+            // ── LISTEN: lives forever (owns the native visualizer window) ──
+            ListenView {
                 anchors.fill: parent
-                window: VisualizerBridge.visualizerWindow
-                visible: VisualizerBridge.visualizerWindow !== null
-            }
-
-            VisualizerOverlay {
-                id: visualizerOverlay
-                anchors.fill: parent
-
-                KaraokeMaster {
-                    id: karaokeMaster
-                    anchors.fill: parent
-                    accentColor: Theme.accent
-                    // Bound to persisted settings; glow toggle remains a local
-                    // KaraokeSettings.qml preference until it gains a config key.
-                    showGlow: true
-                    verticalPosition: SettingsBridge.karaokeYPosition
+                visible: mainWindow.activeView === "listen"
+                opacity: visible ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
                 }
             }
 
-            Column {
-                anchors.bottom: parent.bottom
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottomMargin: Theme.spacingLarge
-                spacing: Theme.spacingSmall
-
-                Text {
-                    text: "ProjectM v4 • " + (AudioBridge.isPlaying ? "Playing" : "Ready")
-                    color: Theme.textPrimary
-                    font: Theme.fontCaption
-                    opacity: 0.5
-                }
-            }
-
-            Rectangle {
-                anchors.fill: parent
-                color: "transparent"
-                border.color: Theme.border
-                border.width: 1
-                visible: !RecordingBridge.isRecording
-            }
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // SHARED SIDEBAR COMPONENTS
-    // ═══════════════════════════════════════════════════════════
-
-    property Component sidebarHeader: Component {
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: Theme.topBarHeight
-            color: Theme.backgroundAlt
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: Theme.spacingSmall
-                anchors.rightMargin: Theme.spacingSmall
-
-                Text {
-                    text: "ChadVis"
-                    color: Theme.accent
-                    font: Theme.fontSubtitle
-                }
-
-                Item { Layout.fillWidth: true }
-
-                AppButton {
-                    icon: "qrc:/qt/qml/ChadVis/resources/icons/clear.svg"
-                    flat: true
-                    implicitWidth: 28
-                    implicitHeight: 28
-                    radius: Theme.radiusSmall
-                    visible: sidebarDrawer.visible
-                    onClicked: sidebarDrawer.close()
-                }
-            }
-        }
-    }
-
-    property Component sidebarContent: Component {
-    AccordionContainer {
-        id: accordionContainer
-
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        Layout.margins: Theme.spacingTiny
-
-        expandedPanel: SettingsBridge.expandedPanel
-        onExpandedPanelChanged: SettingsBridge.expandedPanel = expandedPanel
-
-            panels: [
-                {
-                    id: "playback",
-                    title: "Playback",
-                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playback.svg",
-                    expandedHeight: 280,
-                    component: playbackPanelComponent
-                },
-                {
-                    id: "playlist",
-                    title: "Library",
-                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playlist.svg",
-                    expandedHeight: 300,
-                    component: playlistPanelComponent
-                },
-                {
-                    id: "presets",
-                    title: "Presets",
-                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/presets.svg",
-                    expandedHeight: 350,
-                    component: presetsPanelComponent
-                },
-                {
-                    id: "lyrics",
-                    title: "Lyrics",
-                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/lyrics.svg",
-                    expandedHeight: 300,
-                    component: lyricsPanelComponent
-                },
-                {
-                    id: "suno",
-                    title: "Suno",
-                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/suno.svg",
-                    expandedHeight: 400,
-                    component: sunoPanelComponent
-                },
-                {
-                    id: "overlay",
-                    title: "Overlay",
-                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/overlay.svg",
-                    expandedHeight: 300,
-                    component: overlayPanelComponent
-                },
-                {
-                    id: "recording",
-                    title: "Recording",
-                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/recording.svg",
-                    expandedHeight: 350,
-                    component: recordingPanelComponent
-                },
-                {
-                    id: "settings",
-                    title: "Settings",
-                    icon: "qrc:/qt/qml/ChadVis/resources/icons/qml/playback.svg",
-                    expandedHeight: 300,
-                    component: settingsPanelComponent
-                }
-            ]
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // DRAWER SIDEBAR (MOBILE/COMPACT MODE)
-    // ═══════════════════════════════════════════════════════════
-
-    Drawer {
-        id: sidebarDrawer
-
-        edge: Qt.LeftEdge
-        width: Math.min(Theme.sidebarExpandedWidth, mainWindow.width * 0.85)
-        height: mainWindow.height
-        enabled: !desktopSidebar.visible
-
-        // Persist drawer open state
-        onOpened: SettingsBridge.drawerOpen = true
-        onClosed: SettingsBridge.drawerOpen = false
-        Component.onCompleted: if (SettingsBridge.drawerOpen) open()
-
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-        background: Rectangle {
-            color: Theme.surface
-            Rectangle {
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: 1
-                color: Theme.border
-            }
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 0
-            
+            // ── LIBRARY: default landing view ──
             Loader {
-                Layout.fillWidth: true
-                sourceComponent: sidebarHeader
+                anchors.fill: parent
+                active: mainWindow.activeView === "library"
+                visible: active
+                opacity: visible ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
+                }
+                sourceComponent: LibraryView {}
             }
-            
+
+            // ── Roadmap stubs ──
             Loader {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                sourceComponent: sidebarContent
+                anchors.fill: parent
+                active: mainWindow.activeView === "canvas"
+                visible: active
+                opacity: visible ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
+                }
+                sourceComponent: ComingSoonPage {
+                    pageTitle: "Canvas"
+                    glyph: "◫"
+                    blurb: "Brand every frame: layer text, imagery and karaoke captions over the live projectM texture, then keyframe the lot."
+                    milestones: [
+                        "Scene model with element stack & render-time binding",
+                        "Keyframe timeline with easing curves",
+                        "One compositing path shared by preview and export"
+                    ]
+                }
+            }
+
+            Loader {
+                anchors.fill: parent
+                active: mainWindow.activeView === "studio"
+                visible: active
+                opacity: visible ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
+                }
+                sourceComponent: ComingSoonPage {
+                    pageTitle: "Studio"
+                    glyph: "♫"
+                    blurb: "The creation suite: prompt, style and seed control with full client-side overrides over the captured v2-web endpoint."
+                    milestones: [
+                        "Generation surface with persona presets",
+                        "B-side orchestrator workspaces",
+                        "Lyrics assist & cover-art adapters"
+                    ]
+                }
+            }
+
+            Loader {
+                anchors.fill: parent
+                active: mainWindow.activeView === "automation"
+                visible: active
+                opacity: visible ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
+                }
+                sourceComponent: ComingSoonPage {
+                    pageTitle: "Automation"
+                    glyph: "⌁"
+                    blurb: "Batch music-video rendering at scale: durable runs, crash-safe resume and per-item failure isolation."
+                    milestones: [
+                        "Durable run queue with input snapshots",
+                        "Resume interrupted runs",
+                        "Named encoder presets (youtube1080p60, discord8mb…)"
+                    ]
+                }
+            }
+
+            // ── SETTINGS ──
+            Loader {
+                anchors.fill: parent
+                active: mainWindow.activeView === "settings"
+                visible: active
+                opacity: visible ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
+                }
+                sourceComponent: SettingsView {}
             }
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // COMPONENT DEFINITIONS FOR LAZY LOADING
-    // ═══════════════════════════════════════════════════════════
-
-    Component {
-        id: playbackPanelComponent
-        PlaybackPanel {}
-    }
-
-    Component {
-        id: playlistPanelComponent
-        PlaylistPanel {}
-    }
-
-    Component {
-        id: presetsPanelComponent
-        PresetsPanel {}
-    }
-
-    Component {
-        id: lyricsPanelComponent
-        LyricsPanel {}
-    }
-
-    Component {
-        id: sunoPanelComponent
-        SunoPanel {}
-    }
-
-    Component {
-        id: overlayPanelComponent
-        OverlayPanel {}
-    }
-
-    Component {
-        id: recordingPanelComponent
-        RecordingPanel {}
-    }
-
-    Component {
-        id: settingsPanelComponent
-        SettingsPanel {}
-    }
-
-    // ═══════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════
     // KEYBOARD SHORTCUTS
     // Sequences are bound to the KeyboardConfig values exposed by
     // SettingsBridge so the config file remains the single source of truth.
     // NOTE: the native VisualizerWindow also honors nextPreset/prevPreset/
     // toggleFullscreen keys when the visualizer itself has input focus;
     // these QML shortcuts cover the case where the main window has focus.
-    // ═══════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════
 
     Shortcut {
         sequence: SettingsBridge.keyboardPlayPause
@@ -565,17 +420,11 @@ ApplicationWindow {
         onActivated: VisualizerBridge.previousPreset()
     }
 
-    // No KeyboardConfig property exists for toggling the sidebar drawer,
-    // so this sequence stays hardcoded until a config key is added.
-    // TODO(keyboard): expose drawerToggle in KeyboardConfig + SettingsBridge.
+    // Toggles the nav rail between icons-only and icon+label widths.
+    // No dedicated KeyboardConfig key yet; hardcoded like the old drawer
+    // toggle until one is added.
     Shortcut {
         sequence: "M"
-        onActivated: {
-            if (sidebarDrawer.visible) {
-                sidebarDrawer.close()
-            } else {
-                sidebarDrawer.open()
-            }
-        }
+        onActivated: mainWindow.setRailExpanded(!mainWindow.railUserExpanded)
     }
 }

@@ -59,6 +59,12 @@ SunoController::SunoController(AudioEngine* audioEngine,
     
     auto networkManager = new QNetworkAccessManager(this); // Owned by SunoController (or QObject tree)
     downloader_ = std::make_unique<SunoDownloader>(client_.get(), db_, audioEngine_, networkManager, this);
+
+    // Forward queue progress so bridges/QML can consume it later.
+    connect(downloader_.get(), &SunoDownloader::downloadStateChanged,
+            this, &SunoController::downloadStateChanged);
+    connect(downloader_.get(), &SunoDownloader::downloadQueueIdle,
+            this, &SunoController::downloadQueueIdle);
     
     lyricsManager_ = std::make_unique<SunoLyricsManager>(client_.get(), db_, this);
 

@@ -54,6 +54,9 @@ QtObject {
     // ═══════════════════════════════════════════════════════════
 
     readonly property color textPrimary: "#e0e0e0"
+    // Softened primary for large quiet surfaces (was referenced by panels but
+    // never defined — LyricsPanel/OverlayPanel used it as an implicit undefined)
+    readonly property color textPrimaryVariant: "#bdbdbd"
     readonly property color textSecondary: "#888888"
     readonly property color textDisabled: "#606060"
     readonly property color textOnAccent: "#1a1a1a"
@@ -118,6 +121,15 @@ QtObject {
 
     readonly property int sidebarCollapsedWidth: 60
     readonly property int sidebarExpandedWidth: 280
+
+    // Nav rail (app shell) — collapsed = icons only, expanded = icon + label
+    readonly property int navRailWidthCollapsed: 64
+    readonly property int navRailWidthExpanded: 224
+    // Window width below which the rail force-collapses regardless of preference
+    readonly property int navRailAutoCollapseBelow: 1000
+
+    // Library grid — minimum tile width before columns reflow
+    readonly property int cardTileMinimum: 220
 
     readonly property int panelHeaderHeight: 40
     readonly property int transportHeight: 56

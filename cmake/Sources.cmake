@@ -69,6 +69,8 @@ set(SUNO_SOURCES
     src/suno/SunoModels.hpp
     src/suno/ClipParser.hpp
     src/suno/ClipParser.cpp
+    src/suno/DownloadQueue.hpp
+    src/suno/DownloadQueue.cpp
     src/suno/SunoAccountManager.hpp
     src/suno/SunoAccountManager.cpp
     src/suno/SunoClient.hpp
@@ -181,6 +183,15 @@ set(QML_SOURCES
     src/qml/components/KaraokeMaster.qml
     src/qml/components/KaraokeSettings.qml
     src/qml/components/VisualizerOverlay.qml
+    src/qml/components/NavRail.qml
+    src/qml/components/AccountChip.qml
+    src/qml/components/TransportBar.qml
+    src/qml/components/ClipCard.qml
+    src/qml/components/ClipDetailSheet.qml
+    src/qml/components/ComingSoonPage.qml
+    src/qml/views/LibraryView.qml
+    src/qml/views/ListenView.qml
+    src/qml/views/SettingsView.qml
     src/qml/panels/settings/PerformanceSettings.qml
     src/qml/panels/settings/AppearanceSettings.qml
     src/qml/panels/settings/AudioSettings.qml
