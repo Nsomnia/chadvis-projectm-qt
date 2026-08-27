@@ -56,11 +56,12 @@ public:
   int currentPage() const { return pagesLoaded_; }
 
  signals:
-  void statusMessage(const std::string& message);
-  void libraryUpdated(const std::vector<SunoClip>& clips);
-  void clipUpdated(const std::string& clipId);
-  void authenticationRequired();
-  void hasMorePagesChanged();
+   void statusMessage(const std::string& message);
+   void libraryUpdated(const std::vector<SunoClip>& clips);
+   void clipUpdated(const std::string& clipId);
+   void authenticationRequired();
+   void hasMorePagesChanged();
+   void libraryFetchFailed(const QString& reason);
 
 private:
     SunoClient* client_;

@@ -169,22 +169,69 @@ Item {
                     }
                 }
 
+                // Viewport-fill guard: if the grid is not scrollable (20
+                // items in a tall window), atYEnd never fires. Auto-page
+                // until the viewport is filled or the feed is exhausted.
+                onCountChanged: tryFillViewport()
+                onHeightChanged: tryFillViewport()
+                function tryFillViewport() {
+                    if (clipGrid.count > 0 && !SunoBridge.loading && SunoBridge.hasMorePages
+                            && root.query === "" && clipGrid.contentHeight <= clipGrid.height) {
+                        // Defer one frame so hasMorePages/loading settle
+                        Qt.callLater(function() {
+                            if (!SunoBridge.loading && SunoBridge.hasMorePages)
+                                SunoBridge.requestNextLibraryPage()
+                        })
+                    }
+                }
+                Connections {
+                    target: SunoBridge
+                    function onHasMorePagesChanged() { clipGrid.tryFillViewport() }
+                    function onClipsChanged() { clipGrid.tryFillViewport() }
+                }
+
                 add: Transition {
                     NumberAnimation { property: "opacity"; from: 0; to: 1.0; duration: Theme.durationNormal }
                     NumberAnimation { property: "scale"; from: 0.92; to: 1.0; duration: Theme.durationNormal; easing.type: Easing.OutCubic }
                 }
 
                 // ── Empty state ─────────────────────
-                Text {
+                ColumnLayout {
                     anchors.centerIn: parent
                     visible: clipGrid.count === 0 && !SunoBridge.loading
-                    text: root.query.length > 0
-                          ? "No tracks match your search"
-                          : "Library is empty.\nSign in via Settings → Suno AI, then refresh."
-                    color: Theme.textDisabled
-                    font: Theme.fontBody
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
+                    spacing: Theme.spacingSmall
+
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.maximumWidth: clipGrid.width - Theme.spacingLarge * 2
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: {
+                            if (root.query.length > 0) return "No tracks match your search"
+                            if (!SunoBridge.isAuthenticated) return "Not signed in.\nSign in via Settings → Suno AI to load your library."
+                            return "Library is empty.\nGenerate your first track or pull to refresh."
+                        }
+                        color: Theme.textDisabled
+                        font: Theme.fontBody
+                    }
+
+                    AppButton {
+                        visible: root.query.length === 0 && !SunoBridge.isAuthenticated
+                        text: "Open Settings → Suno AI"
+                        Layout.alignment: Qt.AlignHCenter
+                        onClicked: {
+                            if (typeof mainWindow !== "undefined" && mainWindow.navigate)
+                                mainWindow.navigate("settings")
+                        }
+                    }
+
+                    AppButton {
+                        visible: root.query.length === 0 && SunoBridge.isAuthenticated
+                        text: "Refresh"
+                        flat: true
+                        Layout.alignment: Qt.AlignHCenter
+                        onClicked: SunoBridge.refreshLibrary(1)
+                    }
                 }
 
                 // ── Initial load spinner ────────────
@@ -253,5 +300,19 @@ Item {
     Component.onCompleted: {
         if (!SunoBridge.loading && SunoBridge.clips.length === 0)
             SunoBridge.refreshLibrary(1)
+    }
+
+    // 15 s fallback: if Bridge misses a failure edge, clear stuck spinner.
+    Timer {
+        id: libraryWatchdog
+        interval: 15000
+        running: SunoBridge.loading
+        repeat: false
+        onTriggered: {
+            if (SunoBridge.loading) {
+                console.warn("LibraryView: watchdog clearing stuck loading after 15s")
+                SunoBridge.clearLoading()
+            }
+        }
     }
 }

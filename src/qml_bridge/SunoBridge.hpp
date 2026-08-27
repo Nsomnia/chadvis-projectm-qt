@@ -32,6 +32,7 @@ friend class QmlSingletonBridge<SunoBridge, SingletonPolicy::CachedUnparented>;
   Q_PROPERTY(int currentPage READ currentPage NOTIFY currentPageChanged)
   Q_PROPERTY(QVariantList chatHistory READ chatHistory NOTIFY chatHistoryChanged)
   Q_PROPERTY(QString filterText READ filterText WRITE setFilterText NOTIFY filterTextChanged)
+  Q_PROPERTY(bool isAuthenticated READ isAuthenticated NOTIFY authenticationChanged)
 
   // Account snapshot (read-only; populated after auth turns ActiveValid).
   Q_PROPERTY(int credits READ credits NOTIFY billingInfoChanged)
@@ -55,6 +56,7 @@ public:
     int credits() const;
     QString planName() const;
     QString userName() const;
+    bool isAuthenticated() const;
 
 public slots:
     Q_INVOKABLE void generate(const QString& prompt, const QString& tags, bool instrumental, const QString& model);
@@ -65,6 +67,7 @@ public slots:
     Q_INVOKABLE void searchLibrary(const QString& searchText);
     Q_INVOKABLE void sendChatMessage(const QString& message, const QString& workspaceId = {});
     Q_INVOKABLE void fetchChatHistory();
+    Q_INVOKABLE void clearLoading();
 
 signals:
   void loadingChanged();
@@ -76,12 +79,16 @@ signals:
     void filterTextChanged();
     void billingInfoChanged();
     void accountInfoChanged();
+    void authenticationChanged();
 
 private slots:
     void onLibraryUpdated();
+    void onLibraryFetchFailed(const QString& reason);
 
 private:
     void updateFilteredClips();
+    void startLoadingWatchdog();
+    void stopLoadingWatchdog();
 
     static vc::suno::SunoController* s_controller;
     static vc::suno::SunoClient* s_client;
@@ -95,6 +102,7 @@ private:
   int currentPage_{1};
     QTimer searchDebounce_; // 350 ms server-search debounce
     QString searchDebounceText_;
+    QTimer loadingWatchdog_; // 15s fallback to clear stuck spinner
 };
 
 } // namespace qml_bridge
