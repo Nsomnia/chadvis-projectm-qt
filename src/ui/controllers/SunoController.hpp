@@ -75,6 +75,10 @@ signals:
 	void chatMessageReceived(const QString& response, const QString& workspaceId);
 	void chatHistoryFetched(const QVariantList& sessions);
 	void chatError(const QString& error);
+	/// Aggregate download progress feed (forwarded from SunoDownloader's
+	/// DownloadQueue); state values are vc::suno::DownloadState as int.
+	void downloadStateChanged(const QString& clipId, int state, int percent);
+	void downloadQueueIdle();
 
 private:
 	void onTrackChanged();

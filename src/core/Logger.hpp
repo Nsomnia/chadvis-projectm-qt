@@ -14,9 +14,15 @@
  */
 
 #pragma once
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
 #include <memory>
 #include <string_view>
 

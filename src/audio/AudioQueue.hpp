@@ -74,10 +74,10 @@ public:
      * @return true if pushed successfully, false if dropped or empty input
      */
     bool pushAll(const AudioChunk& chunk) {
-        const bool ok = pushInternal(vizQueue_, vizDropCount_, chunk)
-                      & pushInternal(recQueue_, recDropCount_, chunk)
-                      & pushInternal(anaQueue_, anaDropCount_, chunk);
-        return ok;
+        const bool a = pushInternal(vizQueue_, vizDropCount_, chunk);
+        const bool b = pushInternal(recQueue_, recDropCount_, chunk);
+        const bool c = pushInternal(anaQueue_, anaDropCount_, chunk);
+        return a && b && c;
     }
 
     /// Raw-pointer overload retained for callers that have not adopted AudioChunk.
