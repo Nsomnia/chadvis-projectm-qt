@@ -50,7 +50,7 @@ ApplicationWindow {
 
     // ── Active view (persisted via expandedPanel) ────────────────
     property string activeView: "library"
-    onViewChanged: SettingsBridge.expandedPanel = activeView
+    onActiveViewChanged: SettingsBridge.expandedPanel = activeView
 
     function navigate(viewId) {
         if (viewMeta.hasOwnProperty(viewId))
