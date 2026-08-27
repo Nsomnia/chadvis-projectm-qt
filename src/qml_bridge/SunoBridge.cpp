@@ -24,8 +24,17 @@ SunoBridge::SunoBridge(QObject* parent) : QObject(parent) {
         if (!s_controller) return;
         loading_ = true;
         emit loadingChanged();
+        startLoadingWatchdog();
         s_controller->libraryManager()->setSearchText(searchDebounceText_);
         s_controller->libraryManager()->refreshLibrary(1);
+    });
+
+    loadingWatchdog_.setSingleShot(true);
+    loadingWatchdog_.setInterval(15000);
+    connect(&loadingWatchdog_, &QTimer::timeout, this, [this]() {
+        if (loading_) {
+            clearLoading();
+        }
     });
 }
 
@@ -39,6 +48,38 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
     if (auto* bridgeInstance = instance()) {
         connect(s_controller, &vc::suno::SunoController::libraryUpdated,
                 bridgeInstance, &SunoBridge::onLibraryUpdated);
+
+        // Any terminal failure must clear the spinner: auth guards,
+        // 401 exhaustion, and generic network errors all funnel here.
+        connect(s_controller, &vc::suno::SunoController::authenticationRequired,
+                bridgeInstance, &SunoBridge::clearLoading);
+        connect(s_controller, &vc::suno::SunoController::authenticationFailed,
+                bridgeInstance, &SunoBridge::clearLoading);
+        connect(s_controller, &vc::suno::SunoController::libraryFetchFailed,
+                bridgeInstance, &SunoBridge::onLibraryFetchFailed);
+        connect(s_controller, &vc::suno::SunoController::sunoError,
+                bridgeInstance, &SunoBridge::onLibraryFetchFailed);
+
+        if (auto* lm = s_controller->libraryManager()) {
+            connect(lm, &vc::suno::SunoLibraryManager::authenticationRequired,
+                    bridgeInstance, &SunoBridge::clearLoading);
+            connect(lm, &vc::suno::SunoLibraryManager::libraryFetchFailed,
+                    bridgeInstance, &SunoBridge::onLibraryFetchFailed);
+        }
+
+        if (s_client) {
+            connect(s_client, &vc::suno::SunoClient::needsReauth,
+                    bridgeInstance, &SunoBridge::clearLoading);
+            connect(s_client, &vc::suno::SunoClient::authStateChanged,
+                    bridgeInstance, &SunoBridge::authenticationChanged);
+            // Custom Signal<> for generic errors: queued clear so it
+            // arrives on the bridge's thread even if emitted off-thread.
+            s_client->errorOccurred.connect([bridgeInstance](const std::string& err) {
+                QMetaObject::invokeMethod(bridgeInstance,
+                    [bridgeInstance, err]() { bridgeInstance->onLibraryFetchFailed(QString::fromStdString(err)); },
+                    Qt::QueuedConnection);
+            });
+        }
 
         // Account snapshot -> QML properties.
         if (auto* am = s_controller->accountManager()) {
@@ -99,6 +140,7 @@ void SunoBridge::refreshLibrary(int page) {
     if (s_controller) {
         loading_ = true;
         emit loadingChanged();
+        startLoadingWatchdog();
         s_controller->refreshLibrary(page);
     }
 }
@@ -113,6 +155,7 @@ void SunoBridge::requestNextLibraryPage() {
     }
     loading_ = true;
     emit loadingChanged();
+    startLoadingWatchdog();
     lm->requestNextPage();
 }
 
@@ -202,8 +245,62 @@ void SunoBridge::onLibraryUpdated() {
   }
 
   updateFilteredClips();
-  loading_ = false;
-  emit loadingChanged();
+  // Keep spinner active while auto-pagination is still fetching.
+  // Full sync drives multiple feed/v3 pages; loading clears only when
+  // the library manager reports exhaustion.
+  if (!hasMorePages_) {
+    loading_ = false;
+    emit loadingChanged();
+    stopLoadingWatchdog();
+  } else {
+    // Still more pages — keep loading true and refresh watchdog for
+    // the next auto-page (rate-limited ~1 Hz).
+    if (!loading_) {
+      loading_ = true;
+      emit loadingChanged();
+    }
+    startLoadingWatchdog();
+  }
+  emit authenticationChanged();
+}
+
+bool SunoBridge::isAuthenticated() const {
+    if (!s_controller || !s_controller->client()) return false;
+    return s_controller->client()->authState() == vc::suno::auth::AuthState::ActiveValid;
+}
+
+void SunoBridge::clearLoading() {
+    if (!loading_) {
+        stopLoadingWatchdog();
+        return;
+    }
+    loading_ = false;
+    emit loadingChanged();
+    stopLoadingWatchdog();
+    emit authenticationChanged();
+}
+
+void SunoBridge::onLibraryFetchFailed(const QString& reason) {
+    Q_UNUSED(reason);
+    const bool hadMore = hasMorePages_;
+    hasMorePages_ = false;
+    if (hadMore) emit hasMorePagesChanged();
+    if (loading_) {
+        loading_ = false;
+        emit loadingChanged();
+    }
+    stopLoadingWatchdog();
+    emit authenticationChanged();
+    // Keep clips as-is so empty-state can distinguish auth vs. truly empty.
+}
+
+void SunoBridge::startLoadingWatchdog() {
+    if (loadingWatchdog_.isActive()) loadingWatchdog_.stop();
+    loadingWatchdog_.start();
+}
+
+void SunoBridge::stopLoadingWatchdog() {
+    if (loadingWatchdog_.isActive()) loadingWatchdog_.stop();
 }
 
 void SunoBridge::updateFilteredClips() {

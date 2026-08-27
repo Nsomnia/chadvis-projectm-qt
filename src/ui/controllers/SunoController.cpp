@@ -124,6 +124,18 @@ SunoController::SunoController(AudioEngine* audioEngine,
 		});
 	connect(libraryManager_.get(), &SunoLibraryManager::authenticationRequired,
 		this, &SunoController::authenticationRequired);
+	connect(libraryManager_.get(), &SunoLibraryManager::libraryFetchFailed,
+		this, &SunoController::libraryFetchFailed);
+
+	// Forward SunoClient custom errorOccurred to a Qt signal so Bridges
+	// can clear spinners on any terminal network/auth failure.
+	client_->errorOccurred.connect([this](const std::string& err) {
+		// Emit on the Qt thread; queued to avoid re-entrancy with managers.
+		QMetaObject::invokeMethod(this, [this, qmsg = QString::fromStdString(err)]() {
+			emit sunoError(qmsg);
+			emit libraryFetchFailed(qmsg);
+		}, Qt::QueuedConnection);
+	});
 
 	// Lyrics Manager
 	connect(lyricsManager_.get(), &SunoLyricsManager::statusMessage,

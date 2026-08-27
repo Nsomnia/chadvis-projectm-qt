@@ -72,6 +72,8 @@ signals:
 	void authenticationRequired();
 	void authenticationSuccess();
 	void authenticationFailed(const QString& reason);
+	void libraryFetchFailed(const QString& reason);
+	void sunoError(const QString& reason);
 	void chatMessageReceived(const QString& response, const QString& workspaceId);
 	void chatHistoryFetched(const QVariantList& sessions);
 	void chatError(const QString& error);
