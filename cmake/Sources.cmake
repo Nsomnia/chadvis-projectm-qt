@@ -90,6 +90,9 @@ set(SUNO_SOURCES
     src/suno/SunoAuthFailure.hpp
     src/suno/ClipResolver.hpp
     src/suno/ClipResolver.cpp
+    src/suno/SunoEndpoints.hpp
+    src/suno/SunoWorkspace.hpp
+    src/suno/SunoWorkspace.cpp
 )
 
 # Suno auth subsystem - Clerk auth module (Lane A of docs/PIVOT_PLAN.md).
@@ -154,6 +157,8 @@ set(QML_BRIDGE_SOURCES
     src/qml_bridge/SettingsBridge.cpp
     src/qml_bridge/BridgeRegistration.hpp
     src/qml_bridge/BridgeRegistration.cpp
+    src/qml_bridge/SunoWorkspaceBridge.hpp
+    src/qml_bridge/SunoWorkspaceBridge.cpp
 )
 
 # ─────────────────────────────────────────────────────────────

@@ -349,3 +349,126 @@ Bearer JWT required for all endpoints below.
 **Params**: Prompt/context parameters when supported.
 **Response**: Tag recommendation list.
 **Notes**: Useful for prompt enrichment and library classification.
+
+---
+
+## Clip Object Schema
+
+> **Updated 2026-09-21** from HAR capture 2026-06-10 (iOS Orion browser).
+> See [audio_formats.md](audio_formats.md) for full format matrix.
+
+Clips are the core entity returned by feed, homepage, profile, and project endpoints.
+
+### Top-level fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string (UUID) | Required for dedup |
+| `title` | string | |
+| `audio_url` | string | Legacy single MP3 URL. Empty during processing. |
+| `video_url` | string | MP4 video render. May be empty. |
+| `image_url` | string | JPEG cover |
+| `image_large_url` | string | Large JPEG cover |
+| `major_model_version` | string | e.g. "v4", "v5" |
+| `model_name` | string | e.g. "chirp-v4-5" |
+| `mv` | string | Model version short code |
+| `display_name` | string | Artist display name |
+| `handle` | string | Artist handle |
+| `user_id` | string | Creator user ID |
+| `entity_type` | string | "song_schema" on current captures |
+| `status` | string | "submitted" \| "complete" |
+| `created_at` | string | ISO timestamp |
+| `play_count` | int | |
+| `upvote_count` | int | |
+| `batch_index` | int | |
+| `allow_comments` | bool | |
+| `is_verified` | bool | |
+| `has_hook` | bool | |
+| `is_persona_root` | bool | |
+| `is_liked` | bool | |
+| `is_trashed` | bool | |
+| `is_public` | bool | |
+
+### metadata sub-object
+
+| Field | Type | Notes |
+|---|---|---|
+| `prompt` | string | |
+| `tags` | string | Comma-separated |
+| `negative_tags` | string | |
+| `type` | string | "gen_stem", "stem", etc. |
+| `lyrics` | string | |
+| `infillLyrics` | string | |
+| `history` | string | |
+| `error_message` | string | |
+| `duration` | string | |
+| `bpm` | string | |
+| `key` | string | |
+| `refund_credits` | bool | |
+| `stream` | bool | |
+| `weirdness` | double | |
+| `style_weight` | double | |
+| `make_instrumental` | bool | |
+| `model_id` | string | |
+
+### media_urls array (KEY CHANGE from Aug 2026 capture)
+
+Each clip exposes a `media_urls` array of progressive delivery variants.
+This replaces the earlier single `audio_url` MP3-only pattern.
+
+| Field | Type | Notes |
+|---|---|---|
+| `url` | string | Full CDN URL |
+| `content_type` | string | `"m4a-opus"` or `"mp3"` |
+| `delivery` | string | `"progressive"` |
+| `encoding` | string | e.g. `"1.0.0"` (optional) |
+
+**Example:**
+```json
+"media_urls": [
+  {
+    "url": "https://d2lwuy8qc234o3.cloudfront.net/1/clip/{id}.m4a",
+    "content_type": "m4a-opus",
+    "delivery": "progressive",
+    "encoding": "1.0.0"
+  },
+  {
+    "url": "https://cdn1.suno.ai/{id}.mp3",
+    "content_type": "mp3",
+    "delivery": "progressive"
+  }
+]
+```
+
+### Feed envelope (POST /api/feed/v3)
+
+```json
+{
+  "clips": [ ... ],
+  "next_cursor": "abc123",  // absent when exhausted
+  "has_more": true
+}
+```
+
+### Unified homepage envelope (POST /api/unified/homepage)
+
+```json
+{
+  "feeds": [
+    {
+      "items": [
+        {
+          "content_item": { /* clip object */ }
+        }
+      ]
+    }
+  ],
+  "next_cursor": "..."
+}
+```
+
+### See Also
+
+- [audio_formats.md](audio_formats.md) — full format matrix, tagging support
+- [endpoints_new_2026-06-10.md](endpoints_new_2026-06-10.md) — endpoints returning clips
+- [GLOSSARY.md](GLOSSARY.md) — term definitions
