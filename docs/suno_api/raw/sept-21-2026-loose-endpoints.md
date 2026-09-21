@@ -2,6 +2,7 @@ Here is the consolidated and categorized list of all **Suno endpoints** extracte
 
 Sensitive data (such as user tracking hashes, JWT placeholders, and specific UUID identifiers) has been sanitized and replaced with `[SANITIZED_ID]` or `[SANITIZED_TOKEN]`. External domains (e.g., Stripe, Google, Klarna, Datadog) have been excluded to strictly focus on Suno-owned endpoints.
 
+(gnore /marketplace/ leading paths)
 ### 🌐 Core Domains & API Hosts
 *   `https://suno.com`
 *   `https://suno.ai`
