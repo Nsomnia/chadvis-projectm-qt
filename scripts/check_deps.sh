@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Check if all required dependencies are installed
+# Check if all required dependencies are installed (GLEW removed 2026-08-26)
 
 echo "Checking dependencies for chadvis-projectm-qt..."
 
@@ -43,7 +43,7 @@ done
 # Check libraries
 echo ""
 echo "=== Libraries ==="
-for lib in spdlog fmt taglib tomlplusplus glew glm; do
+for lib in spdlog fmt taglib tomlplusplus glm; do
     if pkg-config --exists $lib 2>/dev/null; then
         echo "✓ $lib: $(pkg-config --modversion $lib 2>/dev/null)"
     else
@@ -85,4 +85,4 @@ fi
 echo ""
 echo "=== Summary ==="
 echo "If any dependencies are missing, install them with:"
-echo "sudo pacman -S cmake ninja qt6-base qt6-multimedia qt6-svg spdlog fmt taglib tomlplusplus glew glm ffmpeg libprojectM"
+echo "sudo pacman -S cmake ninja qt6-base qt6-multimedia qt6-svg spdlog fmt taglib tomlplusplus glm ffmpeg libprojectM"

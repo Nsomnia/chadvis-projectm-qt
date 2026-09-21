@@ -135,4 +135,140 @@ struct SunoBillingInfo {
     i64 credit_pack_count{0};
 };
 
+// ── GET /api/billing/eligible-discounts payload ──────────────
+
+struct SunoBonusOffer {
+    std::string plan_key;
+    std::string period;
+    i64 bonus_credits{0};
+};
+
+struct SunoEligibleDiscounts {
+    // eligible_discounts is an object/map on the wire; we keep it as a JSON
+    // string for flexibility and expose structured bonus_offers.
+    std::string raw_json;
+    std::vector<SunoBonusOffer> bonus_offers;
+};
+
+// ── GET /api/cms/nudges/* payload ─────────────────────────────
+
+struct SunoNudge {
+    std::string slug;
+    std::string title;
+    std::string body;
+    std::string cta_label;
+    std::string cta_url;
+    bool is_active{true};
+};
+
+// ── GET /api/notification/v2 payload ──────────────────────────
+
+struct SunoNotificationAuthor {
+    std::string user_id;
+    std::string display_name;
+    std::string handle;
+    std::string avatar_image_url;
+};
+
+struct SunoNotification {
+    std::string id;
+    std::string type;            // e.g. "caption_mention"
+    std::string caption;
+    std::string created_at;
+    bool read{false};
+    SunoNotificationAuthor author;
+    std::string content_type;    // e.g. "clip"
+    std::string content_id;
+};
+
+// ── GET /api/contests/ payload ────────────────────────────────
+
+struct SunoContest {
+    std::string id;
+    std::string title;
+    std::string description;
+    std::string status;          // e.g. "active", "ended"
+    std::string base_clip_id;
+    std::string ends_at;         // ISO date
+    i64 submission_count{0};
+    i64 prize_credits{0};
+};
+
+// ── GET /api/music_player/playbar_state payload ───────────────
+
+struct SunoPlaybarState {
+    std::string state;           // "paused" | "playing"
+    double song_play_time{0.0};
+    std::string repeat_state;    // "no-repeat" | "repeat" | "repeat-all"
+    double volume{100.0};
+    std::string device_id;
+    std::string device_type;     // e.g. "Android"
+};
+
+// ── POST /api/statsig/experiment/ payload (Orpheus flags) ─────
+
+struct SunoOrpheusFlags {
+    bool is_enabled{false};
+    bool is_auto_mode{false};
+    bool is_canvas_enabled{false};
+    bool default_to_chat{false};
+    std::string group;           // "CONTROL" | "TREATMENT" | ...
+};
+
+// ── GET /api/personalization/settings payload ─────────────────
+
+struct SunoPersonalizationSettings {
+    bool styles_augmentation{false};
+};
+
+// ── GET /api/custom-model/pending/ payload ─────────────────────
+
+struct SunoCustomModelPending {
+    bool has_pending{false};
+    std::vector<std::string> pending_models;
+};
+
+// ── GET /api/share/stats payload ───────────────────────────────
+
+struct SunoShareStats {
+    std::string content_type;
+    i64 num_shared{0};
+};
+
+// ── GET /api/modals payload ────────────────────────────────────
+// Returns an array of modal definitions; we keep the raw JSON for flexibility.
+
+// ── GET /api/realtime/discover payload ─────────────────────────
+
+struct SunoRealtimeDiscover {
+    std::string stream_url;      // e.g. "https://main.realtime.ably.net/sse?v=1.2&enveloped=false"
+    std::string credential;      // "embedded_token"
+    std::string jwt_header_param; // "x-ably-token"
+};
+
+// ── GET /api/prompts/ payload ──────────────────────────────────
+// Returns paginated saved prompts (tags + lyrics). Raw JSON kept for flexibility.
+
+// ── GET /api/user/user_config/ payload ─────────────────────────
+
+struct SunoUserConfig {
+    bool shown_creation_tour{false};
+    std::string preferred_tags;
+    std::string notification_preferences;
+    bool publish_remix_default{false};
+};
+
+// ── GET /api/user/tos_acceptance payload ───────────────────────
+
+struct SunoTosAcceptance {
+    bool has_accepted_tos{false};
+    std::string has_accepted_tos_timestamp;
+};
+
+// ── GET /api/user/get_user_session_id/ payload ─────────────────
+
+struct SunoUserSessionId {
+    std::string session_id;
+};
+
 } // namespace vc::suno

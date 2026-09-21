@@ -32,7 +32,7 @@ sudo pacman -S --needed --noconfirm \
     taglib \
     tomlplusplus \
     spdlog fmt \
-    glew glm \
+    glm \
     sdl2 \
     cmake ninja pkg-config \
     ttf-liberation ttf-dejavu \
@@ -61,8 +61,7 @@ log_info "Attempting to install ProjectM from AUR..."
 if $AUR_HELPER -S --needed --noconfirm projectm 2>/dev/null; then
     log_ok "ProjectM installed from AUR"
 else
-    log_warn "AUR ProjectM failed or outdated. Building from source..."
-    ./scripts/build-projectm.sh
+    log_warn "AUR ProjectM failed or outdated. Build manually from https://aur.archlinux.org/packages/projectm"
 fi
 
 # Create config directory
