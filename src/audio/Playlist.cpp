@@ -332,23 +332,37 @@ Result<void> Playlist::loadM3U(const fs::path& path) {
             if (!filePath.is_absolute()) {
                 filePath = path.parent_path() / filePath;
             }
-            
-            if (!fs::exists(filePath)) {
-                LOG_WARN("Playlist: File not found, skipping: {}", filePath.string());
+
+            fs::path baseDir = path.parent_path();
+            fs::path resolved;
+            try {
+                resolved = fs::weakly_canonical(filePath);
+                fs::path rel = fs::relative(resolved, baseDir);
+                if (rel.string().starts_with("..")) {
+                    LOG_WARN("Playlist: Path traversal blocked, skipping: {}", filePath.string());
+                    continue;
+                }
+            } catch (const fs::filesystem_error& e) {
+                LOG_WARN("Playlist: Failed to resolve path, skipping: {} ({})", filePath.string(), e.what());
                 continue;
             }
-            
-            LOG_DEBUG("Playlist: Loading file: {}", filePath.string());
-            item.path = filePath;
-            
-            auto metaResult = MetadataReader::read(filePath);
+
+            if (!fs::exists(resolved)) {
+                LOG_WARN("Playlist: File not found, skipping: {}", resolved.string());
+                continue;
+            }
+
+            LOG_DEBUG("Playlist: Loading file: {}", resolved.string());
+            item.path = resolved;
+
+            auto metaResult = MetadataReader::read(resolved);
             if (metaResult) {
                 item.metadata = std::move(*metaResult);
             } else {
-                item.metadata.title = filePath.stem().string();
+                item.metadata.title = resolved.stem().string();
             }
-            
-            fs::path lrcPath = filePath;
+
+            fs::path lrcPath = resolved;
             lrcPath.replace_extension(".lrc");
             if (fs::exists(lrcPath)) item.lyricsPath = lrcPath.string();
         }
