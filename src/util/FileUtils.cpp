@@ -1,5 +1,6 @@
 #include "FileUtils.hpp"
 #include <algorithm>
+#include <cctype>
 #include <format>
 #include <fstream>
 #include <regex>
@@ -271,16 +272,49 @@ fs::path uniquePath(const fs::path& desired) {
 std::string sanitizeFilename(const std::string& name) {
     std::string safe;
     safe.reserve(name.size());
-    for (const char c : name) {
+    for (unsigned char c : name) {
         // Replace path separators so a crafted title can never escape the
         // intended directory.
         if (c == '/' || c == '\\') {
             safe.push_back('_');
-        } else {
-            safe.push_back(c);
+            continue;
         }
+        // Replace shell-forbidden characters and control characters
+        if (c == '<' || c == '>' || c == ':' || c == '"' || c == '|' || c == '?' || c == '*') {
+            safe.push_back('_');
+            continue;
+        }
+        if (c <= 0x1F) { // control characters
+            safe.push_back('_');
+            continue;
+        }
+        safe.push_back(c);
     }
-    return safe;
+    // Trim trailing spaces and dots
+    while (!safe.empty() && (safe.back() == ' ' || safe.back() == '.')) {
+        safe.pop_back();
+    }
+    if (safe.empty()) {
+        return "_";
+    }
+    // Extract stem (part before the last dot, or whole name if no dot)
+    size_t dotPos = safe.find_last_of('.');
+    std::string stem = (dotPos != std::string::npos) ? safe.substr(0, dotPos) : safe;
+    std::string extension = (dotPos != std::string::npos) ? safe.substr(dotPos) : "";
+    
+    // Windows reserved device names (case-insensitive)
+    static const std::set<std::string> reservedDeviceNames = {
+    "con", "prn", "aux", "nul",
+    "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+    "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9"
+};
+std::string lowerStem = stem;
+std::transform(lowerStem.begin(), lowerStem.end(), lowerStem.begin(),
+               [](unsigned char c) { return std::tolower(c); });
+if (reservedDeviceNames.contains(lowerStem)) {
+    stem = "_" + stem;
+}
+return stem + extension;
 }
 
 std::string humanSize(std::uintmax_t bytes) {
