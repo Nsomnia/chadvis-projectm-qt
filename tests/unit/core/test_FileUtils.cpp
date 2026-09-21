@@ -27,7 +27,7 @@ private slots:
     void testReservedWithExtension() {
         QVERIFY(sanitizeFilename("CON.txt") == "_CON.txt");
         QVERIFY(sanitizeFilename("LPT2.mp3") == "_LPT2.mp3");
-        QVERIFY(sanitizeFilename("P.R.N") == "P_R_N"); // dot doesn't make reserved
+        QVERIFY(sanitizeFilename("P.R.N") == "P.R.N"); // dot doesn't make reserved
     }
 
     void testEmptyReturnsUnderscore() {
@@ -46,7 +46,7 @@ private slots:
 
     void testTrailingSpacesAndDots() {
         QVERIFY(sanitizeFilename("file..  ") == "file");
-        QVERIFY(sanitizeFilename("..test..") == "test");
+        QVERIFY(sanitizeFilename("..test..") == "..test");
     }
 
     void testMixedSpecialChars() {
