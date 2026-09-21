@@ -2,6 +2,7 @@ add_executable(unit_tests
     test_main.cpp
     core/test_Logger.cpp
     core/test_ConfigParsers.cpp
+    core/test_FileUtils.cpp
     visualizer/test_PresetScanner.cpp
     suno/test_AuthModule.cpp
     suno/test_ClipParser.cpp
