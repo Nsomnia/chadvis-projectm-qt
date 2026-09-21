@@ -4,7 +4,7 @@
 pkgname=chadvis-projectm-qt
 pkgver=1.0.0
 pkgrel=1
-pkgdesc="Qt6 projectM v4 visualizer with modern C++20 and video recording"
+pkgdesc="Qt6 projectM v4 visualizer with modern C++23 and video recording"
 arch=('x86_64')
 url="https://github.com/Nsomnia/chadvis-projectm-qt"
 license=('MIT')
@@ -18,7 +18,6 @@ depends=(
     'tomlplusplus'
     'spdlog'
     'fmt'
-    'glew'
     'glm'
     'projectm'
 )
