@@ -21,15 +21,17 @@ docs/SUNO_API_CPP_QT6_INTEGRATION_GUIDE.md
 
 
 # Agent internal notes
-#.agent/
 .agent/notes/
-#.backup_graveyard/
+.backup_graveyard/
 logs/
 scratch/
 *.tmp
 *.log
-# prevent uploading logs
-logs/
+*.bak
+*.orig
+*.swp
+*.swo
+*~
 
 # Prerequisites
 *.d
@@ -100,19 +102,15 @@ compile_commands.json
 *~
 
 # Backup files and scratch
-#*.backup
-#*.bak
 *.tmp
 scratch/
 temp/
-# Backup graveyard
-#.backup_graveyard/
+
 # Logs
 logs/
 logs/*.log
+
 # Debug/development files
-#*_debug.cpp
-#*_debug.hpp
 CMakeLists_new.txt
 
 # OS
