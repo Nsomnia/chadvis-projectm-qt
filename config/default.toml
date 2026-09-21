@@ -4,7 +4,7 @@ device = 'default'
 sample_rate = 44100
 
 [general]
-debug = true
+debug = false
 
 [keyboard]
 next_preset = 'Right'
