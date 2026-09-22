@@ -16,6 +16,7 @@
 #include "util/Signal.hpp"
 #include "util/Types.hpp"
 
+#include <QCursor>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QObject>
