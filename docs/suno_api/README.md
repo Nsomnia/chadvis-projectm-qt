@@ -93,3 +93,4 @@ Authentication is two-tier:
 - [Recon Archive](RECON-ARCHIVE.md) - Consolidated early reconnaissance notes (supersedes the former `SUNO_API_NOTES.md` and `SUNO_B_SIDE_DISCOVERY.md`)
 - [Suno Integration Deep Dive](../integration/SUNO.md)
 - [Endpoint Inventory](ENDPOINT-INVENTORY.md)
+- [OAuth Redirect Analysis](OAUTH_REDIRECT_ANALYSIS.md) - Analysis of OAuth redirect routes (BLOCKED — requires Chrome extension)

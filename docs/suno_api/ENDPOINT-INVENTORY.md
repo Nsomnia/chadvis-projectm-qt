@@ -322,3 +322,7 @@ JWT Claims:
 - Credits are deducted per generation based on plan
 
 Generated from reference repo scan and web research.
+
+## OAuth Redirect Analysis
+
+See [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) for analysis of OAuth redirect routes (`/oauth-redirect`, `/oauth-redirect-custom`, `/oauth-redirect-staff`, `/oauth-redirect-v2`, `/sso-callback`, `/link-account`). **Status: BLOCKED** — the endpoint scan is insufficient for OAuth redirect logging integration. A Chrome extension is needed to capture OAuth provider endpoints, redirect parameters, and the actual OAuth redirect flow.
