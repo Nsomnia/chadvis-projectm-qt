@@ -47,10 +47,10 @@ SunoWorkspaceBridge::SunoWorkspaceBridge(QObject* parent)
 
 void SunoWorkspaceBridge::startGeneration(const QString& prompt, const QString& tags,
                                             bool instrumental, const QString& model) {
-    workspace_->startGeneration(prompt.toUtf8().toChar(),
-                                tags.toUtf8().toChar(),
+    workspace_->startGeneration(prompt.toStdString(),
+                                tags.toStdString(),
                                 instrumental,
-                                model.toUtf8().toChar());
+                                model.toStdString());
 }
 
 void SunoWorkspaceBridge::cancelGeneration() {
@@ -70,8 +70,8 @@ QVariantList SunoWorkspaceBridge::generatedClips() const {
 
 void SunoWorkspaceBridge::addRegion(const QString& clipId, double startS, double endS,
                                      const QString& label) {
-    workspace_->addRegion(clipId.toUtf8().toChar(), startS, endS,
-                           label.toUtf8().toChar());
+    workspace_->addRegion(clipId.toStdString(), startS, endS,
+                           label.toStdString());
 }
 
 void SunoWorkspaceBridge::removeRegion(int index) {
@@ -96,7 +96,7 @@ QVariantList SunoWorkspaceBridge::regions() const {
 }
 
 void SunoWorkspaceBridge::requestStems(const QString& clipId) {
-    workspace_->requestStems(clipId.toUtf8().toChar());
+    workspace_->requestStems(clipId.toStdString());
 }
 
 QVariantList SunoWorkspaceBridge::stems() const {
@@ -111,7 +111,7 @@ QVariantList SunoWorkspaceBridge::stems() const {
 }
 
 void SunoWorkspaceBridge::setLyricsText(const QString& text) {
-    workspace_->setLyricsText(text.toUtf8().toChar());
+    workspace_->setLyricsText(text.toStdString());
 }
 
 bool SunoWorkspaceBridge::lyricsAvailable() const {
@@ -185,7 +185,7 @@ void SunoWorkspaceBridge::onRenderStarted(vc::suno::RenderMode mode) {
     emit renderStartedChanged(true);
 }
 
-void SunoWorkspaceBridge::onRenderProgress(f32 percent, const std::string& stage) {
+void SunoWorkspaceBridge::onRenderProgress(vc::f32 percent, const std::string& stage) {
     renderProgress_ = percent;
     emit renderProgressChanged(percent, QString::fromUtf8(stage));
 }

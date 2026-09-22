@@ -55,12 +55,12 @@ public:
 
     // Rendering
     Q_PROPERTY(bool rendering READ rendering NOTIFY renderStartedChanged)
-    Q_PROPERTY(f32 renderProgress READ renderProgress NOTIFY renderProgressChanged)
+    Q_PROPERTY(vc::f32 renderProgress READ renderProgress NOTIFY renderProgressChanged)
     Q_INVOKABLE void startRender(int mode, double durationS, bool includeVideo,
-                                  bool includeKaraoke);
+                                   bool includeKaraoke);
     Q_INVOKABLE void cancelRender();
     bool rendering() const { return workspace_ ? workspace_->isRendering() : false; }
-    f32 renderProgress() const { return renderProgress_; }
+    vc::f32 renderProgress() const { return renderProgress_; }
 
     // Workspace persistence
     Q_INVOKABLE bool saveWorkspace(const QString& path);
@@ -73,7 +73,7 @@ signals:
     void stemsChanged(const QVariantList& stems);
     void lyricsChanged();
     void renderStartedChanged(bool rendering);
-    void renderProgressChanged(f32 progress, const QString& stage);
+    void renderProgressChanged(vc::f32 progress, const QString& stage);
 
 private slots:
     void onGenerationStarted();
@@ -85,14 +85,14 @@ private slots:
     void onStemsReady(const std::vector<vc::suno::StemTrack>& stems);
     void onLyricsChanged(const std::string& text);
     void onRenderStarted(vc::suno::RenderMode mode);
-    void onRenderProgress(f32 percent, const std::string& stage);
+    void onRenderProgress(vc::f32 percent, const std::string& stage);
     void onRenderCompleted(const std::filesystem::path& outputPath);
     void onRenderFailed(const std::string& error);
     void onErrorOccurred(const std::string& message);
 
 private:
     vc::suno::SunoWorkspace* workspace_{nullptr};
-    f32 renderProgress_{0.0f};
+    vc::f32 renderProgress_{0.0f};
 };
 
 } // namespace qml_bridge

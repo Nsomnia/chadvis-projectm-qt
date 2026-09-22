@@ -28,7 +28,7 @@ SunoWorkspace::SunoWorkspace(QObject* parent)
     : QObject(parent) {
     workspaceId_ = QCryptographicHash::hash(
         QString("%1%2").arg(QDateTime::currentDateTime().toString(Qt::ISODate))
-        .toUtf8(), QCryptographicHash::Md5).toHex().mid(0, 16).toUtf8().toChar();
+        .toUtf8(), QCryptographicHash::Md5).toHex().mid(0, 16).toStdString();
     LOG_INFO("SunoWorkspace: created workspace {}", workspaceId_);
 }
 
@@ -147,7 +147,7 @@ Result<void> SunoWorkspace::saveWorkspace(const fs::path& path) {
     QString jsonStr = doc.toJson(QJsonDocument::Compact);
     std::ofstream f(path, std::ios::binary | std::ios::trunc);
     if (!f) {
-        return std::unexpected(std::format("cannot open {} for writing", path.string()));
+        return Result<void>::err(std::format("cannot open {} for writing", path.string()));
     }
     f.write(jsonStr.toUtf8().constData(), static_cast<std::streamsize>(jsonStr.size()));
     f.close();
@@ -158,21 +158,21 @@ Result<void> SunoWorkspace::saveWorkspace(const fs::path& path) {
 Result<void> SunoWorkspace::loadWorkspace(const fs::path& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) {
-        return std::unexpected(std::format("cannot open {} for reading", path.string()));
+        return Result<void>::err(std::format("cannot open {} for reading", path.string()));
     }
     std::string content((std::istreambuf_iterator<char>(f)),
                          std::istreambuf_iterator<char>());
-    auto doc = QJsonDocument::fromJson(QByteArray::fromUtf8(content));
+    auto doc = QJsonDocument::fromJson(QString::fromUtf8(content).toUtf8());
     if (doc.isNull()) {
-        return std::unexpected(std::format("invalid JSON in {}", path.string()));
+        return Result<void>::err(std::format("invalid JSON in {}", path.string()));
     }
     auto root = doc.object();
-    workspaceId_ = root["workspace_id"].toString().toUtf8().toChar();
-    state_.currentPrompt = root["prompt"].toString().toUtf8().toChar();
-    state_.currentTags = root["tags"].toString().toUtf8().toChar();
-    state_.currentModel = root["model"].toString().toUtf8().toChar();
+    workspaceId_ = root["workspace_id"].toString().toStdString();
+    state_.currentPrompt = root["prompt"].toString().toStdString();
+    state_.currentTags = root["tags"].toString().toStdString();
+    state_.currentModel = root["model"].toString().toStdString();
     state_.makeInstrumental = root["make_instrumental"].toBool(false);
-    state_.lyricsText = root["lyrics"].toString().toUtf8().toChar();
+    state_.lyricsText = root["lyrics"].toString().toStdString();
     state_.renderMode = static_cast<RenderMode>(root["render_mode"].toInt(0));
     state_.renderDuration = root["render_duration"].toDouble(120.0);
     state_.renderIncludeVideo = root["render_include_video"].toBool(false);
