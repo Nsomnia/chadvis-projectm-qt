@@ -217,3 +217,46 @@
 **Body**: None or confirmation payload if required.
 **Response**: Deletion acknowledgment or queued deletion result.
 **Notes**: High-risk destructive action; generally requires re-auth or confirmation.
+
+## OAuth Redirect Routes (Frontend)
+
+The following routes are observed in the endpoint scan but **require a Chrome extension to capture OAuth redirect parameters**:
+
+| Route | Purpose |
+|-------|---------|
+| `/oauth-redirect` | Generic OAuth redirect handler |
+| `/oauth-redirect-custom` | Custom OAuth redirect |
+| `/oauth-redirect-staff` | Staff OAuth redirect |
+| `/oauth-redirect-v2` | OAuth redirect v2 |
+| `/sso-callback` | SSO callback handler |
+| `/link-account` | Account linking |
+
+**Status: BLOCKED** — See [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) for full analysis. The endpoint scan is insufficient for OAuth redirect logging integration.
+
+## OAuth Redirect Routes (Frontend)
+
+The following routes are observed in the endpoint scan and **recon recording** (2026-09-22):
+
+| Route | Purpose |
+|-------|---------|
+| `/oauth-redirect` | Generic OAuth redirect handler |
+| `/oauth-redirect-custom` | Custom OAuth redirect |
+| `/oauth-redirect-staff` | Staff OAuth redirect |
+| `/oauth-redirect-v2` | OAuth redirect v2 |
+| `/sso-callback` | SSO callback handler |
+| `/link-account` | Account linking |
+| `/auth/session-recovery` | Session recovery |
+| `/auth/birthday` | Birthday auth flow |
+| `/auth/error` | Auth error handler |
+| `/auth/verify` | Auth verification |
+
+### Google OAuth Flow (from recon recording 2026-09-22)
+
+The complete Google OAuth login flow was captured:
+
+1. **Initiate**: `GET https://auth.suno.com/social/login/google-oauth2/?next=...`
+2. **Authorize**: `GET https://accounts.google.com/o/oauth2/auth?client_id=...&redirect_uri=https://auth.suno.com/social/complete/google-oauth2/&state=...&response_type=code&scope=openid+email+profile&prompt=select_account`
+3. **Callback**: `GET https://auth.suno.com/social/complete/google-oauth2/?state=...&iss=https://accounts.google.com&code=...&scope=...&authuser=0&prompt=none`
+4. **Redirect**: `GET https://suno.com/create?signup_source=splashpage&...&redirected_from=signin`
+
+**Status:** COMPLETE — See [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) for full analysis. The recon recording has been sanitized and saved to `raw/sanitized-recon-2026-09-22.json`.
