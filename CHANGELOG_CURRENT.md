@@ -8,6 +8,9 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Documentation
+- **OAuth Redirect Analysis (BLOCKED)** *(2026-09-22)* — New `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` documents the OAuth redirect routes (`/oauth-redirect`, `/oauth-redirect-custom`, `/oauth-redirect-staff`, `/oauth-redirect-v2`, `/sso-callback`, `/link-account`) found in the 2026-09-22 endpoint scan. **Status: BLOCKED** — the endpoint scan is insufficient for OAuth redirect logging integration. A Chrome extension is needed to capture OAuth provider endpoints, redirect parameters (`client_id`, `redirect_uri`, `scope`, `state`), and the actual OAuth redirect flow. `ENDPOINT-INVENTORY.md` and `auth.md` cross-linked to the analysis.
+
 ### Security
 - **JWT scrubbing from git history** *(2026-09-21)* — 1,215 Clerk handshake JWTs and 2 GitHub CDN JWTs were discovered in committed log files (`docs/suno_api/raw/`). All were expired (April 2026) and single-purpose, but `git filter-branch --tree-filter` rewrote the full history to replace them with `[REDACTED-JWT]`. Backup refs deleted, reflog expired, garbage collected. Working tree is clean — nothing pushed to remote.
 - **SQL injection fixed in search_db.sh** *(2026-09-21)* — User input was concatenated directly into SQLite queries. Replaced with `.param` bound parameters plus single-quote escaping. Hardcoded `/home/nsomnia/` path replaced with XDG-aware `${XDG_DATA_HOME:-$HOME/.local/share}`.
@@ -110,3 +113,6 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 ### 🐣 Added
 - **Initial Release**: The birth of a legend.
 - **ProjectM + Suno + FFmpeg**: The unholy trinity of audio visualization.
+
+### Documentation
+- **OAuth Redirect Analysis (COMPLETE)** *(2026-09-22)* — The recon recording `~/Downloads/7752c544-ebc6-4f2b-98d1-f1dbb657dff4.json` was analyzed and found to contain sufficient OAuth redirect details. The complete Google OAuth login flow through Suno's auth system was captured. The recording was sanitized (64 redactions applied for emails, tokens, API keys, session IDs, etc.) and saved to `docs/suno_api/raw/sanitized-recon-2026-09-22.json` (79 entries). `OAUTH_REDIRECT_ANALYSIS.md` updated from BLOCKED to COMPLETE with full OAuth flow documentation. `auth.md` updated with OAuth redirect routes and Google OAuth flow details.
