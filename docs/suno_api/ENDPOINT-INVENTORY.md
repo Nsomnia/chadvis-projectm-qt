@@ -1,15 +1,19 @@
 # Suno API Endpoint Inventory
 
-Complete catalog of all known Suno API endpoints discovered from reverse-engineering.
+> **Provenance:** Mixed inventory, not a pure capture transcript. T1 rows and
+> behavior below are supported by the 2026-08-25 Burp exports
+> (`~/Documents/suno-burp-exports/`) and 2026-09-23 browser HAR
+> (`~/Documents/suno-master-utility-browser-extension-kilo/scratchpad/suno.com.har`).
+> Other routes are recon/research leads from
+> `docs/suno_api/raw/endpoints_sniffed.list`, JS/HTML scans, or external
+> research. A listed route is not proof that it was captured or currently live.
 
 ## Auth & Session (Clerk)
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/v1/client` | Clerk cookie | Get Clerk client session |
-| POST | `/v1/client/sessions/{sid}/tokens` | Clerk cookie | Exchange session for JWT |
-| POST | `/v1/client/sessions/{sid}/tokens/api` | Clerk cookie | Token exchange variant |
-| POST | `/v1/client/sessions/{sid}/touch` | Clerk cookie | Keep session alive |
+| GET | `/v1/client` | Clerk cookie | Get client/session state and `sessions[].last_active_token.jwt` |
+| POST | `/v1/client/sessions/{sid}/touch` | Clerk cookie | Refresh session and obtain a fresh bearer |
 | POST | `/v1/client/verify` | Clerk cookie | Clerk verification |
 | GET | `/v1/client/sync` | Clerk cookie | Sync client state |
 | GET/POST | `/v1/event` | Clerk cookie | Event tracking |
@@ -48,7 +52,8 @@ Base URL: `https://auth.suno.com/v1`
 | POST | `/api/billing/set-default-payment-method/` | Set payment method |
 | GET | `/api/billing/clips/{clip_id}/download/` | Download clip |
 | GET | `/api/billing/purchase-info/{purchase_id}/` | Purchase info |
-| POST | `/api/billing/conversion-tracking` | Conversion tracking |
+| GET | `/api/billing/conversion-tracking` | Conversion tracking |
+| POST | `/api/billing/auto-reload/nudge-check` | Auto-reload nudge check |
 | GET | `/api/billing/change-plan/preview/` | Plan change preview |
 
 Base URL: `https://studio-api-prod.suno.com`
@@ -59,7 +64,7 @@ Base URL: `https://studio-api-prod.suno.com`
 |--------|----------|-------------|
 | GET | `/api/user/me` | Current user info |
 | GET | `/api/user/get_user_session_id/` | Session ID |
-| GET | `/api/user/user_config/` | User configuration |
+| POST | `/api/user/user_config/` | User configuration |
 | POST | `/api/user/update_user_config/` | Update config |
 | GET | `/api/user/tos_acceptance` | TOS status |
 | POST | `/api/user/reset_onboarding/` | Reset onboarding |
@@ -176,8 +181,8 @@ Base URL: `https://studio-api-prod.suno.com`
 | GET | `/api/feed/v2` | Feed (v2) |
 | POST | `/api/feed/v3` | Feed (v3, cursor-based) |
 | GET | `/api/feed/v3/offset` | Feed offset-based |
-| GET | `/api/unified/feed` | Unified feed |
-| GET | `/api/unified/homepage` | Homepage feed |
+| POST | `/api/unified/feed` | Unified feed |
+| POST | `/api/unified/homepage` | Homepage feed |
 | GET | `/api/unified/homepage/explore` | Explore feed |
 | GET | `/api/search/` | Search |
 | GET | `/api/search/users` | Search users |
@@ -258,7 +263,7 @@ Base URL: `https://studio-api-prod.suno.com`
 | GET | `/api/modals` | Get modals |
 | POST | `/api/statsig/experiment/` | Statsig experiment |
 | GET | `/api/statsig/experiment/forked-onboarding` | Forked onboarding |
-| GET | `/api/mango/rights` | Mango rights |
+| POST | `/api/mango/rights` | Mango rights |
 | POST | `/api/moderation/ack-copyright-warning` | Ack copyright |
 | GET | `/api/music_player/playbar_state` | Playbar state |
 | GET | `/api/discover/shortcuts_songs` | Shortcut songs |
@@ -297,12 +302,13 @@ Models: `orpheus-0.1`, `orpheus-0.2`, `orpheus-0.3`, `orpheus-0.4`, `orpheus-0.5
 
 ## Authentication Flow
 
-1. Extract `__session` cookie from browser
-2. GET `https://auth.suno.com/v1/client?_is_native=true` with cookie
-3. Parse `last_active_session_id` or `sessions[0].id`
-4. POST `https://auth.suno.com/v1/client/sessions/{sid}/tokens`
-5. Extract `jwt` from response
-6. Use `Authorization: Bearer {jwt}` for API calls
+1. GET `https://auth.suno.com/v1/client` with the Clerk cookie.
+2. Parse `last_active_session_id` and `sessions[].last_active_token.jwt`.
+3. Use `Authorization: Bearer {jwt}` for studio API calls.
+4. On refresh, POST `https://auth.suno.com/v1/client/sessions/{sid}/touch` and read the fresh JWT from `sessions[].last_active_token.jwt` in its response.
+
+The `/sessions/{sid}/tokens` and `/sessions/{sid}/tokens/api` paths were not
+observed in the T1 captures and are not part of the documented flow.
 
 JWT Claims:
 - `user_id`: Suno user ID
@@ -321,8 +327,12 @@ JWT Claims:
 - Rate limiting applies to generation endpoints
 - Credits are deducted per generation based on plan
 
-Generated from reference repo scan and web research.
-
 ## OAuth Redirect Analysis
 
-See [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) for analysis of OAuth redirect routes (`/oauth-redirect`, `/oauth-redirect-custom`, `/oauth-redirect-staff`, `/oauth-redirect-v2`, `/sso-callback`, `/link-account`). **Status: BLOCKED** — the endpoint scan is insufficient for OAuth redirect logging integration. A Chrome extension is needed to capture OAuth provider endpoints, redirect parameters, and the actual OAuth redirect flow.
+See [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) and `auth.md`
+for the reconstructed Google web flow. **Status: COMPLETE for the observed web
+flow; desktop callback remains capture-gated.** No reviewed capture uses a
+loopback or custom-scheme redirect target; every capture-supplied callback and
+final redirect target is Suno-owned HTTPS (the authorization hop is Google).
+A fresh capture is required before implementing native loopback or custom-scheme
+login.
