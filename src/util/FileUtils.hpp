@@ -52,10 +52,11 @@ inline const std::set<std::string> presetExtensions = {
 // Generate unique filename (avoids overwriting)
 fs::path uniquePath(const fs::path& desired);
 
-// Sanitize a string for use as a filename: replaces path separators ('/' '\\'),
-// shell-forbidden characters ('<', '>', ':', '"', '|', '?', '*'), and control
-// characters with '_'; trims trailing spaces/dots; and prefixes Windows
-// reserved device names (CON, PRN, AUX, NUL, COM1-COM9, LPT1-LPT9) with '_'.
+// Sanitize a filename by replacing each path separator, shell-forbidden
+// character, C0/DEL control, or standalone multi-dot path-component character
+// with '_'. Preserve ordinary internal dots and the extension, trim trailing
+// spaces/dots, return "_" for an empty result, and prefix bare Windows reserved
+// device names (CON, PRN, AUX, NUL, COM1-COM9, LPT1-LPT9) with '_'.
 std::string sanitizeFilename(const std::string& name);
 
 // Human-readable file size
