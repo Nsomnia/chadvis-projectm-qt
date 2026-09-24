@@ -5,6 +5,7 @@ add_executable(unit_tests
     core/test_FileUtils.cpp
     visualizer/test_PresetScanner.cpp
     suno/test_AuthModule.cpp
+    suno/test_CredentialRestoreWorker.cpp
     suno/test_AuthCoordinator.cpp
     suno/test_LoopbackListener.cpp
     suno/test_OAuthLoginService.cpp

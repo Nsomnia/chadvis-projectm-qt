@@ -173,17 +173,20 @@ public:
         const void* updateVals[] = {data.get()};
         CFDictionaryRef updateDict = cfDict(updateKeys, updateVals, 1);
 
-        const void* searchKeys[] = {kSecClass, kSecAttrService, kSecAttrAccount};
-        const void* searchVals[] = {kSecClassGenericPassword, service.get(), account.get()};
-        CFDictionaryRef searchDict = cfDict(searchKeys, searchVals, 3);
+        const void* searchKeys[] = {kSecClass, kSecAttrService, kSecAttrAccount,
+                                    kSecUseDataProtectionKeychain};
+        const void* searchVals[] = {kSecClassGenericPassword, service.get(), account.get(),
+                                    kCFBooleanTrue};
+        CFDictionaryRef searchDict = cfDict(searchKeys, searchVals, 4);
 
         OSStatus status =
                 SecItemUpdate(searchDict, updateDict);
         if (status == errSecItemNotFound) {
-            const void* addKeys[] = {kSecClass, kSecAttrService, kSecAttrAccount, kSecValueData};
+            const void* addKeys[] = {kSecClass, kSecAttrService, kSecAttrAccount, kSecValueData,
+                                     kSecUseDataProtectionKeychain};
             const void* addVals[] = {kSecClassGenericPassword, service.get(), account.get(),
-                                     data.get()};
-            CFDictionaryRef addDict = cfDict(addKeys, addVals, 4);
+                                     data.get(), kCFBooleanTrue};
+            CFDictionaryRef addDict = cfDict(addKeys, addVals, 5);
             status = SecItemAdd(addDict, nullptr);
             CFRelease(addDict);
         }
@@ -202,14 +205,17 @@ public:
         if (!account || !service)
             return Result<QString>::err(std::string("Failed to allocate keychain strings"));
 
-        // Never allow a GUI authentication prompt to block application startup.
+        // Use the data-protection keychain explicitly; legacy CSSM items can
+        // enter a blocking SecurityServer decrypt path before ACL/UI policy is
+        // evaluated. Never allow a GUI authentication prompt to block startup.
         // A denied read remains a keychain failure; it never falls back to file.
         const void* keys[] = {kSecClass,         kSecAttrService,   kSecAttrAccount,
-                              kSecReturnData,    kSecMatchLimit,     kSecUseAuthenticationUI};
+                              kSecReturnData,    kSecMatchLimit,     kSecUseAuthenticationUI,
+                              kSecUseDataProtectionKeychain};
         const void* vals[] = {kSecClassGenericPassword, service.get(), account.get(),
                               kCFBooleanTrue,           kSecMatchLimitOne,
-                              kSecUseAuthenticationUIFail};
-        CFDictionaryRef query = cfDict(keys, vals, 6);
+                              kSecUseAuthenticationUIFail, kCFBooleanTrue};
+        CFDictionaryRef query = cfDict(keys, vals, 7);
 
         CFTypeRef found = nullptr;
         const OSStatus status = SecItemCopyMatching(query, &found);
@@ -243,9 +249,11 @@ public:
         if (!account || !service)
             return Result<void>::err(std::string("Failed to allocate keychain strings"));
 
-        const void* keys[] = {kSecClass, kSecAttrService, kSecAttrAccount};
-        const void* vals[] = {kSecClassGenericPassword, service.get(), account.get()};
-        CFDictionaryRef query = cfDict(keys, vals, 3);
+        const void* keys[] = {kSecClass, kSecAttrService, kSecAttrAccount,
+                              kSecUseDataProtectionKeychain};
+        const void* vals[] = {kSecClassGenericPassword, service.get(), account.get(),
+                              kCFBooleanTrue};
+        CFDictionaryRef query = cfDict(keys, vals, 4);
         const OSStatus status = SecItemDelete(query);
         CFRelease(query);
 
@@ -338,7 +346,11 @@ Result<void> CredentialStore::remove(const QString& key) {
 }
 
 bool CredentialStore::isSecureBackend() const {
-    return dynamic_cast<const FileBackend*>(backend_.get()) == nullptr;
+#ifdef CHADVIS_HAS_KEYCHAIN
+    return dynamic_cast<const KeychainBackend*>(backend_.get()) != nullptr;
+#else
+    return false;
+#endif
 }
 
 QString CredentialStore::redact(const QString& secret) {

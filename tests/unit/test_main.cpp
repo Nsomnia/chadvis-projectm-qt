@@ -5,6 +5,7 @@ int runTestLogger(int argc, char** argv);
 int runTestConfigParsers(int argc, char** argv);
 int runTestFileUtils(int argc, char** argv);
 int runTestAuthModule(int argc, char** argv);
+int runTestCredentialRestoreWorker(int argc, char** argv);
 int runTestAuthCoordinator(int argc, char** argv);
 int runTestLoopbackListener(int argc, char** argv);
 int runTestOAuthLoginService(int argc, char** argv);
@@ -19,6 +20,7 @@ int main(int argc, char* argv[]) {
     status |= runTestConfigParsers(argc, argv);
     status |= runTestFileUtils(argc, argv);
     status |= runTestAuthModule(argc, argv);
+    status |= runTestCredentialRestoreWorker(argc, argv);
     status |= runTestAuthCoordinator(argc, argv);
     status |= runTestLoopbackListener(argc, argv);
     status |= runTestOAuthLoginService(argc, argv);
