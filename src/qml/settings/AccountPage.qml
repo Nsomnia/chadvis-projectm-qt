@@ -125,13 +125,13 @@ Flickable {
             Layout.fillWidth: true
             Layout.topMargin: root.visibleFeedback.length > 0 ? Theme.spacingSmall : 0
             text: root.manualExpanded
-                  ? "▾ Paste session cookie or token instead"
-                  : "▸ Paste session cookie or token instead"
+                  ? "▾ Paste session cookie header instead"
+                  : "▸ Paste session cookie header instead"
             flat: true
             implicitHeight: Theme.buttonHeightLarge
             buttonRadius: Theme.radiusMedium
             onClicked: root.manualExpanded = !root.manualExpanded
-            Accessible.name: "Paste session cookie or token instead"
+            Accessible.name: "Paste session cookie header instead"
         }
 
         Rectangle {
@@ -148,14 +148,6 @@ Flickable {
                 anchors.fill: parent
                 anchors.margins: Theme.spacingMedium
                 spacing: Theme.spacingSmall
-
-                Text {
-                    Layout.fillWidth: true
-                    text: "Use a Suno session cookie or bearer token when browser sign-in is unavailable."
-                    color: Theme.textSecondary
-                    font: Theme.fontCaption
-                    wrapMode: Text.WordWrap
-                }
 
                 SunoSettings {
                     Layout.fillWidth: true
