@@ -9,7 +9,7 @@ The test tree is wired through CMake. The GUI smoke checklist below targets the 
 ctest --test-dir build --output-on-failure
 ```
 
-`build.sh` configures and builds `build/chadvis-projectm-qt`; it does not accept a `run` argument.
+`build.sh` performs an incremental build by default and preserves the existing CMake configuration. Use `./build.sh --rebuild` for a clean rebuild; `--debug` and `--release` explicitly select a configuration. The script does not accept a `run` argument.
 
 ## Automated Test Inventory
 

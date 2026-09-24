@@ -25,13 +25,15 @@ sudo pacman -S cmake qt6-base qt6-multimedia qt6-svg spdlog fmt taglib \
 
 ## 🏗️ The Build Process
 
-We use a custom Zsh build script because it's faster and cooler.
+We use a portable Bash build wrapper that keeps normal invocations incremental.
 
 ```bash
 git clone https://github.com/Nsomnia/chadvis-projectm-qt.git
 cd chadvis-projectm-qt
-./build.sh build
+./build.sh
 ```
+
+Use `./build.sh --rebuild` when a clean rebuild is required, or `./build.sh --debug` / `./build.sh --release` to select a configuration. Run `./build.sh --help` for the compact option list.
 
 **Linus (The Senior Dev):** "If you get a CMake error about `projectM-4`, it means you didn't install the v4 dev headers. Check your `/usr/include/projectM-4/` or stop complaining."
 
