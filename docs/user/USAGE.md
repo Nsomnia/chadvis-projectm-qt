@@ -1,47 +1,74 @@
-# 🕹️ Master the ChadVis Experience
+# Using ChadVis
 
-So you've built it, you've configured it, now how do you actually *use* it?
+ChadVis is a Suno-first desktop client with a separate projectM video workspace. The main window opens on Library by default and keeps a navigation rail for Library, Create, Listen, Video, and Settings.
 
----
+## Main Window
 
-## 📺 The Interface
+### Library
 
-*   **The Main Stage:** That's where the projectM magic happens. If it's black, you probably haven't started playing music or you're missing presets.
-*   **The Sidebar:** Your mission control. Library, Presets, Recording, and the Suno Browser.
-*   **The Tools:** Dockable panels for things like the Karaoke viewer and the Overlay editor.
+Library is the default landing surface for the Suno collection. It provides:
 
----
+- A searchable clip grid backed by `SunoBridge`.
+- Refresh and cursor-based loading for additional pages.
+- Clip details with artwork, model, style, prompt, lyrics, and an audio link that can be opened in the system browser.
 
-## ⌨️ Hotkeys (For the CLI Warriors)
+When no Suno session is available, the empty state directs you to Settings. The refresh control requests the library again after credentials are supplied.
 
-| Action | Key |
+### Create
+
+Create contains the generation form and the `B-Side Chat` tab.
+
+The generation form accepts a prompt, style/tags, and a model choice, then sends the request through `SunoBridge`. The chat tab displays local message history and sends messages through the Suno orchestrator bridge.
+
+### Listen
+
+Listen is the playback surface. It contains the current-track summary, queue, lyrics panel, and transport bar. Use the transport bar or queue controls to play, pause, stop, seek, change tracks, adjust volume, or open local audio files. Files can also be added to the queue from the queue toolbar.
+
+The projectM canvas is not part of Listen; it lives in Video.
+
+### Video
+
+Video hosts the native projectM surface. The side dock has three tool tabs:
+
+- **FX**: text overlays managed by `OverlayBridge`.
+- **Presets**: projectM preset search, selection, favorites, blacklist, ratings, and random selection through `PresetBridge`.
+- **Record**: recording output selection, start/stop, and live recorder statistics through `RecordingBridge`.
+
+Karaoke is also composed into this view. When `Settings > Karaoke` enables it, `KaraokeMaster` displays the synchronized metadata and lyrics supplied by `LyricsBridge` over the Video surface.
+
+The Video view remains alive while the main window is open. Navigating away only hides it, which avoids tearing down and recreating the native visualizer window and its OpenGL context.
+
+## Settings Window
+
+Selecting Settings opens a separate application-modal window. Its page rail contains Account, Audio, Visualizer, Recording, Karaoke, Appearance, Performance, Shortcuts, and Profiles pages.
+
+Configuration-backed `SettingsBridge` values are saved after two seconds of inactivity. The Save action writes the configuration immediately, the window's close action saves again, and closing the main window also calls `SettingsBridge.save()`.
+
+## Suno Account and Sign-In
+
+Open `Settings > Account` to manage the Suno session. The page includes a `Sign in with Google` card, but browser sign-in is not enabled in the current build. The captured Suno/Clerk flow has not demonstrated a desktop callback that ChadVis can safely receive, so the Google action must not start an unverified native sign-in handshake.
+
+Use the manual path instead:
+
+1. Expand `Paste session cookie or token instead`.
+2. Enter a Suno session cookie or bearer token in the masked `Session Token` field.
+3. Return to Library and refresh, or perform another authenticated action, so `SunoClient` reloads the stored credential.
+
+`SettingsBridge` sends this value to `CredentialStore`; it is not written to `config.toml`. When the session becomes valid, the Account page and main-window account chip can display the user name, plan, and credit balance from `SunoAccountManager`.
+
+## Shell Keyboard Controls
+
+The default bindings in `config/default.toml` are wired by `main.qml`:
+
+| Action | Default key |
 | :--- | :--- |
-| **Play/Pause** | `Space` |
-| **Next Preset** | `N` |
-| **Previous Preset** | `P` |
-| **Random Preset** | `R` |
-| **Toggle Fullscreen** | `F11` |
-| **Start/Stop Record** | `Ctrl + R` |
-| **Show/Hide Sidebar** | `Ctrl + B` |
+| Play/pause | `Space` |
+| Next track | `N` |
+| Previous track | `P` |
+| Start/stop recording and reveal Video | `R` |
+| Previous projectM preset and reveal Video | `Left` |
+| Next projectM preset and reveal Video | `Right` |
+| Expand/collapse the navigation rail | `M` |
+| Close Settings | `Esc` |
 
----
-
-## 🤖 Suno AI & Karaoke
-
-1.  **Login**: Go to the Suno tab, enter your credentials. We use the system browser for authentication so you only have to do this once.
-2.  **Sync**: Hit "Sync Library". Go grab a coffee. If you have 2500 songs, it'll take a minute.
-3.  **Karaoke**: If the song has aligned lyrics, they'll automatically appear. If not, our heuristic aligner will try its best. It's like magic, but with more C++ math.
-
----
-
-## 🗣️ Support & Feedback
-
-**Senior Dev:** "If you find a bug, open an issue on GitHub. If you just want to complain about the UI colors, learn CSS (well, QSS) and send a PR."
-
-**Richard Stallman:** "I refuse to use the Suno integration. It communicates with proprietary servers! I will only visualize music generated by a purely libre algorithm running on a Librebooted laptop!"
-
-**Linus (LTT):** "I tried to run this on a 8K display with a GT 710 and it lagged. 0/10. Just kidding, on a 3080 it's incredibly smooth. The recording feature is great for making background visuals for my videos."
-
----
-
-> "Don't just listen to your music. See it. Record it. ChadVis it." — *The Marketing Dept (probably just a script)*
+The configured values can be reviewed in `Settings > Shortcuts`.
