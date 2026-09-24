@@ -18,7 +18,7 @@ So you want to help make ChadVis even more elite? We welcome your PRs, but we ha
 
 1.  **Fork & Clone**: You know the drill.
 2.  **Branch**: `feature/your-awesome-thing` or `fix/that-annoying-bug`.
-3.  **Build**: Ensure it builds with `./build.sh build`.
+3.  **Build**: Ensure it builds with `./build.sh` (use `./build.sh --rebuild` only for a clean rebuild).
 4.  **Test**: We have a `tests/` directory. Use it. If you add a core logic piece, add a unit test.
 5.  **PR**: Write a descriptive PR message.
 

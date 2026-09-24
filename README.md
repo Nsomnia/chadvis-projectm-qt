@@ -33,10 +33,10 @@ We build from source because we respect our hardware. Full prerequisites and pla
 ```bash
 git clone https://github.com/Nsomnia/chadvis-projectm-qt.git
 cd chadvis-projectm-qt
-./build.sh build
+./build.sh
 ```
 
-(Arch users: `./build.sh` will nag you about missing pacman packages if you skip reading INSTALL.md. Don't skip it.)
+`./build.sh` performs an incremental build and preserves the existing CMake configuration. Use `./build.sh --rebuild` only when a clean rebuild is required; `./build.sh --help` shows the compact option list.
 
 ## 📖 Documentation
 
