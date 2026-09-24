@@ -15,6 +15,9 @@ vc::suno::SunoClient* SunoBridge::s_client = nullptr;
 
 SunoBridge::SunoBridge(QObject* parent) : QObject(parent) {
     setInstance(this);
+    if (s_controller) {
+        wireControllerSignals();
+    }
 
     // 350 ms debounce for server-side library search (QML may fire per
     // keystroke; we coalesce before hitting feed/v3).
@@ -39,69 +42,97 @@ SunoBridge::SunoBridge(QObject* parent) : QObject(parent) {
 }
 
 void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
+    auto* bridgeInstance = instance();
+    if (bridgeInstance && bridgeInstance->controllerSignalsWired_) {
+        auto* previousController = bridgeInstance->s_controller;
+        if (previousController && previousController != controller) {
+            QObject::disconnect(previousController, nullptr, bridgeInstance, nullptr);
+            if (auto* lm = previousController->libraryManager()) {
+                QObject::disconnect(lm, nullptr, bridgeInstance, nullptr);
+            }
+            if (auto* oldClient = bridgeInstance->s_client) {
+                QObject::disconnect(oldClient, nullptr, bridgeInstance, nullptr);
+                oldClient->errorOccurred.disconnect(bridgeInstance->clientErrorConnectionId_);
+            }
+            if (auto* am = previousController->accountManager()) {
+                QObject::disconnect(am, nullptr, bridgeInstance, nullptr);
+            }
+            bridgeInstance->controllerSignalsWired_ = false;
+        }
+    }
+
     s_controller = controller;
-    if (!s_controller) {
+    s_client = s_controller ? s_controller->client() : nullptr;
+    if (bridgeInstance) {
+        bridgeInstance->wireControllerSignals();
+    }
+}
+
+void SunoBridge::wireControllerSignals() {
+    if (controllerSignalsWired_ || !s_controller) {
         return;
     }
 
     s_client = s_controller->client();
-    if (auto* bridgeInstance = instance()) {
-        connect(s_controller, &vc::suno::SunoController::libraryUpdated,
-                bridgeInstance, &SunoBridge::onLibraryUpdated);
+    auto* bridgeInstance = this;
 
-        // Any terminal failure must clear the spinner: auth guards,
-        // 401 exhaustion, and generic network errors all funnel here.
-        connect(s_controller, &vc::suno::SunoController::authenticationRequired,
+    connect(s_controller, &vc::suno::SunoController::libraryUpdated,
+            bridgeInstance, &SunoBridge::onLibraryUpdated);
+
+    // Any terminal failure must clear the spinner: auth guards,
+    // 401 exhaustion, and generic network errors all funnel here.
+    connect(s_controller, &vc::suno::SunoController::authenticationRequired,
+            bridgeInstance, &SunoBridge::clearLoading);
+    connect(s_controller, &vc::suno::SunoController::authenticationFailed,
+            bridgeInstance, &SunoBridge::clearLoading);
+    connect(s_controller, &vc::suno::SunoController::libraryFetchFailed,
+            bridgeInstance, &SunoBridge::onLibraryFetchFailed);
+    connect(s_controller, &vc::suno::SunoController::sunoError,
+            bridgeInstance, &SunoBridge::onLibraryFetchFailed);
+
+    if (auto* lm = s_controller->libraryManager()) {
+        connect(lm, &vc::suno::SunoLibraryManager::authenticationRequired,
                 bridgeInstance, &SunoBridge::clearLoading);
-        connect(s_controller, &vc::suno::SunoController::authenticationFailed,
+        connect(lm, &vc::suno::SunoLibraryManager::libraryFetchFailed,
+                bridgeInstance, &SunoBridge::onLibraryFetchFailed);
+    }
+
+    if (s_client) {
+        connect(s_client, &vc::suno::SunoClient::needsReauth,
                 bridgeInstance, &SunoBridge::clearLoading);
-        connect(s_controller, &vc::suno::SunoController::libraryFetchFailed,
-                bridgeInstance, &SunoBridge::onLibraryFetchFailed);
-        connect(s_controller, &vc::suno::SunoController::sunoError,
-                bridgeInstance, &SunoBridge::onLibraryFetchFailed);
-
-        if (auto* lm = s_controller->libraryManager()) {
-            connect(lm, &vc::suno::SunoLibraryManager::authenticationRequired,
-                    bridgeInstance, &SunoBridge::clearLoading);
-            connect(lm, &vc::suno::SunoLibraryManager::libraryFetchFailed,
-                    bridgeInstance, &SunoBridge::onLibraryFetchFailed);
-        }
-
-        if (s_client) {
-            connect(s_client, &vc::suno::SunoClient::needsReauth,
-                    bridgeInstance, &SunoBridge::clearLoading);
-            connect(s_client, &vc::suno::SunoClient::authStateChanged,
-                    bridgeInstance, &SunoBridge::authenticationChanged);
-            // Custom Signal<> for generic errors: queued clear so it
-            // arrives on the bridge's thread even if emitted off-thread.
-            s_client->errorOccurred.connect([bridgeInstance](const std::string& err) {
-                QMetaObject::invokeMethod(bridgeInstance,
-                    [bridgeInstance, err]() { bridgeInstance->onLibraryFetchFailed(QString::fromStdString(err)); },
-                    Qt::QueuedConnection);
-            });
-        }
-
-        // Account snapshot -> QML properties.
-        if (auto* am = s_controller->accountManager()) {
-            connect(am, &vc::suno::SunoAccountManager::billingInfoReady,
-                    bridgeInstance, &SunoBridge::billingInfoChanged);
-            connect(am, &vc::suno::SunoAccountManager::accountInfoReady,
-                    bridgeInstance, &SunoBridge::accountInfoChanged);
-        }
-        connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance, [bridge = bridgeInstance](const QString& response, const QString& workspaceId) {
-            QVariantMap assistantMsg;
-            assistantMsg["role"] = "assistant";
-            assistantMsg["content"] = response;
-            assistantMsg["workspaceId"] = workspaceId;
-            bridge->chatHistory_.append(assistantMsg);
-            emit bridge->chatHistoryChanged();
-        });
-
-        connect(s_controller, &vc::suno::SunoController::chatHistoryFetched, bridgeInstance, [bridge = bridgeInstance](const QVariantList& sessions) {
-            bridge->chatHistory_ = sessions;
-            emit bridge->chatHistoryChanged();
+        connect(s_client, &vc::suno::SunoClient::authStateChanged,
+                bridgeInstance, &SunoBridge::authenticationChanged);
+        // Custom Signal<> for generic errors: queued clear so it
+        // arrives on the bridge's thread even if emitted off-thread.
+        clientErrorConnectionId_ = s_client->errorOccurred.connect([bridgeInstance](const std::string& err) {
+            QMetaObject::invokeMethod(bridgeInstance,
+                [bridgeInstance, err]() { bridgeInstance->onLibraryFetchFailed(QString::fromStdString(err)); },
+                Qt::QueuedConnection);
         });
     }
+
+    // Account snapshot -> QML properties.
+    if (auto* am = s_controller->accountManager()) {
+        connect(am, &vc::suno::SunoAccountManager::billingInfoReady,
+                bridgeInstance, &SunoBridge::billingInfoChanged);
+        connect(am, &vc::suno::SunoAccountManager::accountInfoReady,
+                bridgeInstance, &SunoBridge::accountInfoChanged);
+    }
+    connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance, [bridge = bridgeInstance](const QString& response, const QString& workspaceId) {
+        QVariantMap assistantMsg;
+        assistantMsg["role"] = "assistant";
+        assistantMsg["content"] = response;
+        assistantMsg["workspaceId"] = workspaceId;
+        bridge->chatHistory_.append(assistantMsg);
+        emit bridge->chatHistoryChanged();
+    });
+
+    connect(s_controller, &vc::suno::SunoController::chatHistoryFetched, bridgeInstance, [bridge = bridgeInstance](const QVariantList& sessions) {
+        bridge->chatHistory_ = sessions;
+        emit bridge->chatHistoryChanged();
+    });
+
+    controllerSignalsWired_ = true;
 }
 
 bool SunoBridge::loading() const { return loading_; }
