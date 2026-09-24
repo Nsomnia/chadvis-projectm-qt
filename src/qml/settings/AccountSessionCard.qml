@@ -7,9 +7,14 @@ import "../components"
 Rectangle {
     id: root
 
-    required property bool signedIn
-    required property bool authenticating
+    required property string loginState
+    required property bool googleLoginAvailable
+    required property bool cancelAvailable
     required property bool signingOut
+
+    readonly property bool authenticated: loginState === "authenticated"
+    readonly property bool browserOpen: loginState === "browserOpen"
+    readonly property bool callbackReceived: loginState === "callbackReceived"
 
     signal signInRequested()
     signal cancelRequested()
@@ -25,12 +30,14 @@ Rectangle {
     color: Theme.backgroundAlt
     radius: Theme.radiusXL
     border.width: 1
-    border.color: signedIn ? Theme.successDim : Theme.border
+    border.color: root.authenticated ? Theme.successDim : Theme.border
 
     StackLayout {
         anchors.fill: parent
         anchors.margins: Theme.spacingLarge
-        currentIndex: root.signedIn ? 2 : (root.authenticating ? 1 : 0)
+        currentIndex: root.authenticated
+                     ? 2
+                     : (root.browserOpen || root.callbackReceived ? 1 : 0)
 
         ColumnLayout {
             spacing: Theme.spacingMedium
@@ -59,8 +66,12 @@ Rectangle {
                 Layout.preferredHeight: Theme.buttonHeightLarge
                 text: "Sign in with Google"
                 highlighted: true
+                enabled: root.googleLoginAvailable
                 buttonRadius: Theme.radiusMedium
                 onClicked: root.signInRequested()
+                ToolTip.visible: hovered && !enabled
+                ToolTip.text: "Desktop Google sign-in is not enabled in this build. Import a session cookie or bearer token below."
+                ToolTip.delay: 350
                 Accessible.name: "Sign in with Google"
             }
 
@@ -86,12 +97,14 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 implicitWidth: 48
                 implicitHeight: 48
-                running: root.authenticating
+                running: root.browserOpen || root.callbackReceived
             }
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: "Waiting for your browser…"
+                text: root.callbackReceived
+                      ? "Finishing sign-in…"
+                      : "Waiting for your browser…"
                 color: Theme.textPrimary
                 font: Theme.fontSubtitle
             }
@@ -108,6 +121,8 @@ Rectangle {
 
             AppButton {
                 Layout.alignment: Qt.AlignHCenter
+                visible: root.browserOpen
+                enabled: root.cancelAvailable
                 text: "Cancel"
                 flat: true
                 onClicked: root.cancelRequested()
