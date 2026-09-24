@@ -89,9 +89,10 @@ target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
 # QML MODULE - Modern UI components
 # ─────────────────────────────────────────────────────────────
 
-qt_policy(SET QTP0001 NEW)
+    qt_policy(SET QTP0001 NEW)
+    qt_policy(SET QTP0004 NEW)
 
-# Mark QML singletons before qt_add_qml_module
+    # Mark QML singletons before qt_add_qml_module
 set_source_files_properties(src/qml/styles/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(project_lib
