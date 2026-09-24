@@ -1,51 +1,88 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
 import ChadVis
 
 ColumnLayout {
     id: root
-    spacing: Theme.spacingMedium
 
     property bool showGlow: true
-    property real verticalPos: 0.8
+    readonly property real verticalPosition: SettingsBridge.karaokeYPosition
 
-    Label {
+    Layout.fillWidth: true
+    spacing: Theme.spacingMedium
+
+    Text {
         text: "Karaoke Aesthetics"
-        font.bold: true
         color: Theme.accent
+        font: Theme.fontSubtitle
     }
 
     RowLayout {
-        Label { text: "Glow Effects"; Layout.fillWidth: true }
-        Switch {
+        Layout.fillWidth: true
+
+        Text {
+            Layout.fillWidth: true
+            text: "Glow effects"
+            color: Theme.textPrimary
+            font: Theme.fontBody
+        }
+
+        AppSwitch {
             checked: root.showGlow
             onToggled: root.showGlow = checked
         }
     }
 
     ColumnLayout {
-        spacing: 2
-        Label { text: "Vertical Alignment" }
-        Slider {
+        Layout.fillWidth: true
+        spacing: Theme.spacingTiny
+
+        Text {
+            text: "Vertical alignment"
+            color: Theme.textPrimary
+            font: Theme.fontBody
+        }
+
+        AppSlider {
             Layout.fillWidth: true
             from: 0.1
             to: 0.9
-            value: root.verticalPos
-            onValueChanged: root.verticalPos = value
+            stepSize: 0.01
+            value: root.verticalPosition
+            onMoved: SettingsBridge.karaokeYPosition = value
         }
     }
 
     RowLayout {
-        Label { text: "Accent Color"; Layout.fillWidth: true }
-        Rectangle {
-            width: 24; height: 24; radius: 4
-            color: Theme.accent
-            border.color: Theme.textPrimary
-            MouseArea {
-                anchors.fill: parent
-                onClicked: console.log("Color picker TODO")
+        Layout.fillWidth: true
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingTiny
+
+            Text {
+                text: "Accent color"
+                color: Theme.textPrimary
+                font: Theme.fontBody
             }
+
+            Text {
+                text: "Follows the current Appearance accent"
+                color: Theme.textSecondary
+                font: Theme.fontCaption
+            }
+        }
+
+        Rectangle {
+            Layout.preferredWidth: Theme.iconMedium
+            Layout.preferredHeight: Theme.iconMedium
+            radius: Theme.radiusSmall
+            color: Theme.accent
+            border.width: 1
+            border.color: Theme.accentLight
+
+            Accessible.role: Accessible.StaticText
+            Accessible.name: "Current accent color"
         }
     }
 }
