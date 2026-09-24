@@ -26,13 +26,11 @@ Source-verified documentation hub for ChadVis, a Suno-first desktop client with 
 
 The material in this section is unofficial and capture-based; Suno does not publish a public API contract for this client.
 
-- [API index and disclaimer](suno_api/README.md) — scope and documentation map.
-- [Endpoint inventory](suno_api/ENDPOINT-INVENTORY.md) — observed and researched endpoints.
-- [Authentication notes](suno_api/auth.md) — captured Clerk/session behavior.
-- [Desktop callback analysis](suno_api/OAUTH_REDIRECT_ANALYSIS.md) — redirect evidence and the desktop sign-in constraint.
+- [API index and disclaimer](suno_api/README.md) — scope and research boundaries.
+- [Endpoint inventory](suno_api/ENDPOINT-INVENTORY.md) — sole API-spec master for observed endpoints and evidence status.
+- [Desktop callback analysis](suno_api/OAUTH_REDIRECT_ANALYSIS.md) — captured web flow and the native sign-in gate.
 - [Endpoint implementation map](../src/suno/SunoEndpoints.hpp) — centralized constants and `[T1]`/`[LEAD]` tiers.
-- [Recon archive](suno_api/RECON-ARCHIVE.md) — consolidated historical notes.
-- [Raw scan data](suno_api/raw/endpoints_sniffed.list) and [provenance](suno_api/raw/README.md).
+- [Retained raw provenance](suno_api/raw/README.md), including the [endpoint scan](suno_api/raw/endpoints_sniffed.list) and [sanitized OAuth recon](suno_api/raw/sanitized-recon-2026-09-22.json).
 
 ## Integration Notes
 

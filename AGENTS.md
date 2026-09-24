@@ -9,7 +9,8 @@
 - **Binding gates:** native Google sign-in stays DISABLED until a human capture proves Clerk accepts a loopback or
   custom-scheme desktop callback (no capture on this machine uses one — every observed redirect is Suno-owned HTTPS).
   Never enable it, never hand-roll a Clerk handshake, and never put a Google ID token into `SunoClient`.
-- **Authority:** `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` + `docs/suno_api/auth.md` for the auth verdict;
+- **Authority:** `docs/suno_api/ENDPOINT-INVENTORY.md` is the sole API-spec master;
+  `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` is the web-flow and native-callback analysis.
   `src/suno/SunoEndpoints.hpp` tiers `[T1]`/`[LEAD]` for every endpoint. Do not promote a `[LEAD]` without a capture.
 - **Sprint state:** `.slim/deepwork/suno-client-shell-sprint.md`. Free model budget was ~6 days at kickoff — prefer
   parallel bounded lanes, decisive commits, no gold-plating.

@@ -1,7 +1,7 @@
 # OAuth Redirect Analysis for Suno Remote Logging
 
 **Date:** 2026-09-22
-**Status:** COMPLETE — Recon recording analyzed, sanitized, and saved
+**Status:** COMPLETE for the observed web flow — sanitized evidence saved; native desktop callback remains capture-gated
 
 ## Request
 
@@ -13,6 +13,11 @@ The recon recording (`~/Downloads/7752c544-ebc6-4f2b-98d1-f1dbb657dff4.json`) wa
 
 The recording has been sanitized and saved to:
 - `docs/suno_api/raw/sanitized-recon-2026-09-22.json` (79 entries, 64 redactions)
+
+This reconstruction covers Suno's web flow only. It does not validate a native
+desktop callback: no reviewed capture uses a loopback or custom-scheme redirect
+target. Native Google sign-in must remain disabled until a human capture proves
+Clerk accepts one.
 
 ## OAuth Redirect Flow Discovered
 
@@ -112,7 +117,7 @@ The recording has been sanitized and saved to:
 
 The following sensitive data was redacted from the recon recording:
 
-- Email addresses (`sderek02@gmail.com` → `[REDACTED-EMAIL]`)
+- Email addresses (`[REDACTED-EMAIL]`)
 - Google OAuth client ID
 - Datadog API keys
 - Stripe API keys
@@ -136,8 +141,7 @@ The following sensitive data was redacted from the recon recording:
 
 ## Related Files
 
-- `ENDPOINT-INVENTORY.md` — Complete endpoint catalog
-- `auth.md` — Auth & session API documentation
-- `raw/endpoints_sniffed.list` — Raw endpoint scan data
-- `raw/sept-21-2026-loose-endpoints.md` — Consolidated endpoint list
-- `raw/sanitized-recon-2026-09-22.json` — Sanitized recon recording (79 entries, 64 redactions)
+- [`ENDPOINT-INVENTORY.md`](ENDPOINT-INVENTORY.md) — sole API-spec master, including captured auth and session facts
+- [`raw/README.md`](raw/README.md) — retained raw-evidence provenance and limitations
+- [`raw/endpoints_sniffed.list`](raw/endpoints_sniffed.list) — raw endpoint scan data
+- [`raw/sanitized-recon-2026-09-22.json`](raw/sanitized-recon-2026-09-22.json) — sanitized recon recording supporting this analysis
