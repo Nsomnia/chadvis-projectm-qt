@@ -26,10 +26,11 @@ Welcome to the central brain of ChadVis — the canonical table of contents for 
 ## 🤖 Suno API Reference
 *Reverse-engineered documentation of the remote Suno service — the heart of the frontend.*
 
-*   [**API Index & Disclaimer**](suno_api/README.md) - Base URLs, auth flow, model versions.
-*   [**Endpoint Inventory**](suno_api/ENDPOINT-INVENTORY.md) - Complete catalog of 150+ endpoints.
-*   [**Recon Archive**](suno_api/RECON-ARCHIVE.md) - Consolidated early recon notes and probe results.
-*   [**Raw Scan Data**](suno_api/raw/endpoints_sniffed.list) - Unfiltered endpoint sniff dump (see [provenance](suno_api/raw/README.md)).
+*   [**API Index & Disclaimer**](suno_api/README.md) - scope and research boundaries.
+*   [**Endpoint Inventory**](suno_api/ENDPOINT-INVENTORY.md) - sole API-spec master for observed endpoints and evidence status.
+*   [**Desktop Callback Analysis**](suno_api/OAUTH_REDIRECT_ANALYSIS.md) - captured web flow and the native sign-in gate.
+*   [**Endpoint Implementation Map**](../src/suno/SunoEndpoints.hpp) - centralized constants and `[T1]`/`[LEAD]` tiers.
+*   [**Retained Raw Provenance**](suno_api/raw/README.md), including the [endpoint scan](suno_api/raw/endpoints_sniffed.list) and [sanitized OAuth recon](suno_api/raw/sanitized-recon-2026-09-22.json).
 
 ---
 

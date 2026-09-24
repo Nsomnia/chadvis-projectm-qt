@@ -3,6 +3,18 @@
 > **Product pivot ADOPTED 2026-08-26** — this repo is now the shipping **Suno.com desktop frontend** (library, generation, downloads, playlists, account) with **projectM as secondary** visualizer / music-video engine (keyframe scene composition, karaoke, batch automation, future lightweight DAW). See `docs/PIVOT_PLAN.md` phases P0–P7. The authoritative spec corpus lives in `~/Documents/suno-media-station-glm5.2/docs` (charter 00, contracts 06, storage 07, visuals 09/10); do not invent Suno API shapes — capture-driven (T1/T2/T3).
 > Live state tracker: `TODO.md`. Deepwork state: `.slim/deepwork/suno-frontend-pivot.md`.
 
+## Active sprint (2026-09-24 →): branch `feat/suno-client-shell-refactor`
+- **Scope:** standalone paged Settings window, Suno-first shell re-home (Library / Create / Listen / Video / Settings),
+  projectM+recording delegated to the Video page, native sign-in scaffold.
+- **Binding gates:** native Google sign-in stays DISABLED until a human capture proves Clerk accepts a loopback or
+  custom-scheme desktop callback (no capture on this machine uses one — every observed redirect is Suno-owned HTTPS).
+  Never enable it, never hand-roll a Clerk handshake, and never put a Google ID token into `SunoClient`.
+- **Authority:** `docs/suno_api/ENDPOINT-INVENTORY.md` is the sole API-spec master;
+  `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` is the web-flow and native-callback analysis.
+  `src/suno/SunoEndpoints.hpp` tiers `[T1]`/`[LEAD]` for every endpoint. Do not promote a `[LEAD]` without a capture.
+- **Sprint state:** `.slim/deepwork/suno-client-shell-sprint.md`. Free model budget was ~6 days at kickoff — prefer
+  parallel bounded lanes, decisive commits, no gold-plating.
+
 - Lint: using cline though clangd is available as well.
 
 ## Sys Instructions & Requirements
