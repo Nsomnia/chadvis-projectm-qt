@@ -5,6 +5,7 @@
 #include "lyrics/LyricsData.hpp"
 
 #include "suno/ClipResolver.hpp"
+#include "suno/auth/AuthCoordinator.hpp"
 #include "suno/SunoAccountManager.hpp"
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoDownloader.hpp"
@@ -45,7 +46,10 @@ SunoController::SunoController(AudioEngine* audioEngine,
 	QObject* parent)
 : QObject(parent),
 	audioEngine_(audioEngine),
-	client_(std::make_unique<SunoClient>(resolveOrCreateDeviceId())) {
+	client_(std::make_unique<SunoClient>(resolveOrCreateDeviceId())),
+	// The controller is created on the GUI thread; parent the coordinator
+	// there so its loopback/QTimer children share that thread and lifetime.
+	authCoordinator_(std::make_unique<auth::AuthCoordinator>(client_.get(), this)) {
     
     // Initialize Database
     fs::path dataDir = file::dataDir();
@@ -90,8 +94,10 @@ SunoController::SunoController(AudioEngine* audioEngine,
 			}
 			break;
 		case auth::AuthState::NeedsReauth:
-			emit authenticationFailed(
-					"Suno session expired — paste a fresh cookie or token in settings");
+			// The concrete, secret-free reason is forwarded from the
+			// errorOccurred path below.  NeedsReauth alone is not proof
+			// that the session expired: parser/protocol failures use the
+			// same state.
 			break;
 		case auth::AuthState::Disconnected:
 			break;
@@ -130,11 +136,22 @@ SunoController::SunoController(AudioEngine* audioEngine,
 	// Forward SunoClient custom errorOccurred to a Qt signal so Bridges
 	// can clear spinners on any terminal network/auth failure.
 	client_->errorOccurred.connect([this](const std::string& err) {
+		// ClerkAuthClient's AuthFailureKind is not exposed by the
+		// public SunoClient API.  SunoClient has already sanitized the
+		// failure text, so preserve that reason instead of relabeling
+		// every NeedsReauth transition as an expired session.
+		const bool authFailure =
+			client_->authState() == auth::AuthState::NeedsReauth;
 		// Emit on the Qt thread; queued to avoid re-entrancy with managers.
-		QMetaObject::invokeMethod(this, [this, qmsg = QString::fromStdString(err)]() {
-			emit sunoError(qmsg);
-			emit libraryFetchFailed(qmsg);
-		}, Qt::QueuedConnection);
+		QMetaObject::invokeMethod(this,
+			[this, qmsg = QString::fromStdString(err), authFailure]() {
+				emit sunoError(qmsg);
+				emit libraryFetchFailed(qmsg);
+				if (authFailure) {
+					emit authenticationFailed(qmsg);
+				}
+			},
+			Qt::QueuedConnection);
 	});
 
 	// Lyrics Manager
