@@ -4,6 +4,7 @@
 #include <QTimer>
 #include <QVariantList>
 #include <QString>
+#include <cstddef>
 #include "QmlSingletonBridge.hpp"
 
 namespace vc {
@@ -86,6 +87,7 @@ private slots:
     void onLibraryFetchFailed(const QString& reason);
 
 private:
+    void wireControllerSignals();
     void updateFilteredClips();
     void startLoadingWatchdog();
     void stopLoadingWatchdog();
@@ -99,7 +101,9 @@ private:
   QString filterText_;
   bool loading_{false};
   bool hasMorePages_{false};
+  bool controllerSignalsWired_{false};
   int currentPage_{1};
+  std::size_t clientErrorConnectionId_{0};
     QTimer searchDebounce_; // 350 ms server-search debounce
     QString searchDebounceText_;
     QTimer loadingWatchdog_; // 15s fallback to clear stuck spinner
