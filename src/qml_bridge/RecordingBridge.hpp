@@ -6,6 +6,7 @@
 
 namespace vc {
 class VideoRecorder;
+class VisualizerWindow;
 }
 
 namespace qml_bridge {
@@ -27,10 +28,15 @@ friend class QmlSingletonBridge<RecordingBridge>;
     Q_PROPERTY(QString fileSize READ fileSize NOTIFY statsChanged)
     Q_PROPERTY(QString encodeFps READ encodeFps NOTIFY statsChanged)
     Q_PROPERTY(int bufferHealth READ bufferHealth NOTIFY statsChanged)
+    // Video codec has no SettingsBridge equivalent; keep this recording-owned
+    // control config-backed so the RecordingPanel can bind it without adding
+    // another settings surface.
+    Q_PROPERTY(QString videoCodec READ videoCodec WRITE setVideoCodec NOTIFY videoCodecChanged)
 
 public:
     explicit RecordingBridge(QObject* parent = nullptr);
     static void setRecorder(vc::VideoRecorder* recorder);
+    static void setVisualizer(vc::VisualizerWindow* visualizer);
 
     bool isRecording() const;
     QString currentFile() const;
@@ -39,6 +45,8 @@ public:
     QString fileSize() const;
     QString encodeFps() const;
     int bufferHealth() const;
+    QString videoCodec() const;
+    void setVideoCodec(const QString& codec);
 
 public slots:
     Q_INVOKABLE void startRecording(const QString& outputPath = {});
@@ -47,6 +55,7 @@ public slots:
 signals:
     void recordingStateChanged();
     void statsChanged();
+    void videoCodecChanged();
     void recordingError(const QString& message);
 
 private:
@@ -56,6 +65,7 @@ private:
     void onError(const std::string& msg);
 
     static vc::VideoRecorder* s_recorder;
+    static vc::VisualizerWindow* s_visualizer;
     vc::RecordingStats cachedStats_;
 };
 

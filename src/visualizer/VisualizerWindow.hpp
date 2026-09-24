@@ -103,6 +103,10 @@ private:
     u32 frameCount_{0};
     f32 actualFps_{0.0f};
     bool initialized_{false};
+    // A recording request can arrive before the native QWindow has been
+    // exposed (for example, the Video shortcut navigates and starts in the
+    // same QML turn).  Keep the request until the GL context is initialized.
+    bool recordingRequested_{false};
     bool fullscreen_{false};
     QRect normalGeometry_;
 };

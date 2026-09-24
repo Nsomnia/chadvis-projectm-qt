@@ -3,6 +3,7 @@ add_executable(unit_tests
     core/test_Logger.cpp
     core/test_ConfigParsers.cpp
     core/test_FileUtils.cpp
+    recorder/test_RecordingPipeline.cpp
     visualizer/test_PresetScanner.cpp
     suno/test_AuthModule.cpp
     suno/test_CredentialRestoreWorker.cpp

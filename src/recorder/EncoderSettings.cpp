@@ -1,8 +1,120 @@
 #include "EncoderSettings.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
+#include "util/FileUtils.hpp"
+#include <algorithm>
+#include <cctype>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
 namespace vc {
+
+namespace {
+
+VideoCodec parseVideoCodec(std::string_view codec) {
+    if (codec == "libx264" || codec == "h264")
+        return VideoCodec::H264;
+    if (codec == "libx265" || codec == "h265" || codec == "hevc")
+        return VideoCodec::H265;
+    if (codec == "libvpx-vp9" || codec == "vp9")
+        return VideoCodec::VP9;
+    if (codec == "libaom-av1" || codec == "av1")
+        return VideoCodec::AV1;
+    if (codec == "prores_ks" || codec == "prores")
+        return VideoCodec::ProRes;
+    if (codec == "ffv1")
+        return VideoCodec::FFV1;
+    if (codec == "h264_nvenc")
+        return VideoCodec::H264_NVENC;
+    if (codec == "hevc_nvenc" || codec == "h265_nvenc")
+        return VideoCodec::H265_NVENC;
+    if (codec == "h264_vaapi")
+        return VideoCodec::H264_VAAPI;
+    if (codec == "hevc_vaapi" || codec == "h265_vaapi")
+        return VideoCodec::H265_VAAPI;
+    return VideoCodec::H264;
+}
+
+AudioCodec parseAudioCodec(std::string_view codec) {
+    if (codec == "aac")
+        return AudioCodec::AAC;
+    if (codec == "libopus" || codec == "opus")
+        return AudioCodec::Opus;
+    if (codec == "flac")
+        return AudioCodec::FLAC;
+    if (codec == "libmp3lame" || codec == "mp3")
+        return AudioCodec::MP3;
+    if (codec == "pcm_s16le" || codec == "pcm")
+        return AudioCodec::PCM;
+    return AudioCodec::AAC;
+}
+
+EncoderPreset parseEncoderPreset(std::string_view preset) {
+    if (preset == "ultrafast") return EncoderPreset::Ultrafast;
+    if (preset == "superfast") return EncoderPreset::Superfast;
+    if (preset == "veryfast") return EncoderPreset::Veryfast;
+    if (preset == "faster") return EncoderPreset::Faster;
+    if (preset == "fast") return EncoderPreset::Fast;
+    if (preset == "slow") return EncoderPreset::Slow;
+    if (preset == "slower") return EncoderPreset::Slower;
+    if (preset == "veryslow") return EncoderPreset::Veryslow;
+    if (preset == "placebo") return EncoderPreset::Placebo;
+    return EncoderPreset::Medium;
+}
+
+std::string formatDefaultFilename(std::string pattern) {
+    if (pattern.empty())
+        pattern = "chadvis-projectm-qt_{date}_{time}";
+
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t time = std::chrono::system_clock::to_time_t(now);
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &time);
+#else
+    localtime_r(&time, &local);
+#endif
+
+    std::ostringstream date;
+    std::ostringstream clock;
+    date << std::put_time(&local, "%Y-%m-%d");
+    clock << std::put_time(&local, "%H-%M-%S");
+
+    const auto replaceAll = [](std::string& value,
+                              std::string_view token,
+                              std::string_view replacement) {
+        std::size_t pos = 0;
+        while ((pos = value.find(token, pos)) != std::string::npos) {
+            value.replace(pos, token.size(), replacement);
+            pos += replacement.size();
+        }
+    };
+    replaceAll(pattern, "{date}", date.str());
+    replaceAll(pattern, "{time}", clock.str());
+    return pattern;
+}
+
+std::string lowercase(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+std::string extensionFor(Container container) {
+    switch (container) {
+    case Container::MP4: return ".mp4";
+    case Container::MKV: return ".mkv";
+    case Container::WebM: return ".webm";
+    case Container::MOV: return ".mov";
+    case Container::AVI: return ".avi";
+    }
+    return ".mp4";
+}
+
+} // namespace
 
 std::string VideoSettings::codecName() const {
     switch (codec) {
@@ -98,19 +210,27 @@ std::string AudioSettings::codecName() const {
 }
 
 std::string EncoderSettings::containerExtension() const {
-    switch (container) {
-    case Container::MP4:
-        return ".mp4";
-    case Container::MKV:
-        return ".mkv";
-    case Container::WebM:
-        return ".webm";
-    case Container::MOV:
-        return ".mov";
-    case Container::AVI:
-        return ".avi";
-    }
-    return ".mp4";
+    return extensionFor(container);
+}
+
+std::optional<Container> EncoderSettings::containerFromPath(const fs::path& path) {
+    const auto extension = lowercase(path.extension().string());
+    if (extension == ".mp4") return Container::MP4;
+    if (extension == ".mkv") return Container::MKV;
+    if (extension == ".webm") return Container::WebM;
+    if (extension == ".mov") return Container::MOV;
+    if (extension == ".avi") return Container::AVI;
+    return std::nullopt;
+}
+
+fs::path EncoderSettings::outputPathForContainer(const fs::path& path,
+                                                 Container container) {
+    if (path.empty())
+        return path;
+
+    auto result = path;
+    result.replace_extension(extensionFor(container));
+    return result;
 }
 
 Result<void> EncoderSettings::validate() const {
@@ -152,55 +272,51 @@ EncoderSettings EncoderSettings::fromConfig() {
     const auto& recCfg = CONFIG.recording();
 
     // Video
-    if (recCfg.video.codec == "libx264" || recCfg.video.codec == "h264") {
-        settings.video.codec = VideoCodec::H264;
-    } else if (recCfg.video.codec == "libx265" ||
-               recCfg.video.codec == "h265") {
-        settings.video.codec = VideoCodec::H265;
-    } else if (recCfg.video.codec == "libvpx-vp9" ||
-               recCfg.video.codec == "vp9") {
-        settings.video.codec = VideoCodec::VP9;
-    }
-
+    settings.video.codec = parseVideoCodec(recCfg.video.codec);
     settings.video.width = recCfg.video.width;
     settings.video.height = recCfg.video.height;
     settings.video.fps = recCfg.video.fps;
-    settings.video.crf = 23; // Default to 23 for better performance on N4500
-
-    // Parse preset
-    std::string preset = recCfg.video.preset;
-    if (preset == "ultrafast")
-        settings.video.preset = EncoderPreset::Ultrafast;
-    else if (preset == "superfast")
-        settings.video.preset = EncoderPreset::Superfast;
-    else if (preset == "veryfast")
-        settings.video.preset = EncoderPreset::Veryfast;
-    else if (preset == "faster")
-        settings.video.preset = EncoderPreset::Faster;
-    else if (preset == "fast")
-        settings.video.preset = EncoderPreset::Fast;
-    else if (preset == "medium")
-        settings.video.preset = EncoderPreset::Medium;
-    else if (preset == "slow")
-        settings.video.preset = EncoderPreset::Slow;
-    else if (preset == "slower")
-        settings.video.preset = EncoderPreset::Slower;
-    else if (preset == "veryslow")
-        settings.video.preset = EncoderPreset::Veryslow;
+    settings.video.crf = recCfg.video.crf;
+    settings.video.preset = parseEncoderPreset(recCfg.video.preset);
 
     // Audio
-    settings.audio.codec = AudioCodec::AAC;
+    settings.audio.codec = parseAudioCodec(recCfg.audio.codec);
     settings.audio.bitrate = recCfg.audio.bitrate;
+    settings.audio.sampleRate = recCfg.audio.sampleRate;
+    settings.audio.channels = recCfg.audio.channels;
 
     // Container
-    if (recCfg.container == "mp4")
-        settings.container = Container::MP4;
-    else if (recCfg.container == "mkv")
+    const auto container = lowercase(recCfg.container);
+    if (container == "mkv")
         settings.container = Container::MKV;
-    else if (recCfg.container == "webm")
+    else if (container == "webm")
         settings.container = Container::WebM;
-    else if (recCfg.container == "mov")
+    else if (container == "mov")
         settings.container = Container::MOV;
+    else if (container == "avi")
+        settings.container = Container::AVI;
+    else
+        settings.container = Container::MP4;
+
+    // An empty path means "use the configured output directory".  Build the
+    // name here (rather than only in the dialog) so the encoder receives the
+    // same concrete path that the UI will display after start.  Keep filename
+    // sanitization centralized in FileUtils.
+    const auto outputDirectory = recCfg.outputDirectory.empty()
+        ? file::dataDir() / "recordings"
+        : recCfg.outputDirectory;
+    auto safeName = file::sanitizeFilename(
+        formatDefaultFilename(recCfg.defaultFilename));
+    fs::path safePath(safeName);
+    // Replace only a recognized existing container suffix.  Ordinary dots in
+    // a configured basename are part of the sanitized filename and must not
+    // be mistaken for an extension to discard.
+    if (containerFromPath(safePath)) {
+        safeName = safePath.replace_extension("").string();
+    }
+    if (safeName.empty())
+        safeName = "_";
+    settings.outputPath = outputDirectory / (safeName + settings.containerExtension());
 
     return settings;
 }

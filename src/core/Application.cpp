@@ -14,6 +14,7 @@
 #include "ui/controllers/SunoController.hpp"
 #include "suno/SunoModels.hpp"
 #include "qml_bridge/BridgeRegistration.hpp"
+#include "qml_bridge/RecordingBridge.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -24,6 +25,7 @@
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
 #include <iostream>
+#include <utility>
 #include <cstdlib>
 #include <csignal>
 
@@ -53,6 +55,7 @@ Application::Application(int& argc, char** argv) : argc_(argc), argv_(argv) {
 Application::~Application() {
 	// Cleanup order: QML engine first, then visualizer, then Qt app
 	qmlEngine_.reset();
+	qml_bridge::RecordingBridge::setVisualizer(nullptr);
 	visualizerWindow_.reset();
 
 	videoRecorder_.reset();
@@ -386,6 +389,22 @@ Result<void> Application::init(const AppOptions& opts) {
 		// Renderer owns the visualizer PCM consumer; wire it to the engine queue.
 		visualizerWindow_->renderer().setAudioQueue(&audioEngine_->audioQueue());
 
+		// Composition root: this is the single frame hand-off into recording.
+		// The lambda only moves the frame into VideoRecorder's bounded queue;
+		// encoding and audio work stay owned by the recorder worker, so the
+		// render thread never performs codec work or waits for the encoder.
+		QObject::connect(
+			visualizerWindow_.get(),
+			&VisualizerWindow::frameCaptured,
+			[recorder = videoRecorder_.get()](std::vector<u8> data,
+				u32 width, u32 height, i64 timestamp) {
+				recorder->submitVideoFrame(std::move(data), width, height, timestamp);
+			});
+
+		// The bridge needs the sibling visualizer to coordinate capture with
+		// the encoder; this is the same native window registered with QML.
+		qml_bridge::RecordingBridge::setVisualizer(visualizerWindow_.get());
+
 		LOG_DEBUG("Initializing lyrics sync for QML...");
 		lyricsSync_ = std::make_unique<LyricsSync>(audioEngine_.get());
 
@@ -455,9 +474,12 @@ int Application::exec() {
 void Application::quit() {
 	LOG_INFO("Shutting down...");
 
-	// Stop recording if active
+	// Stop both recording halves before finalizing the encoder.
+	if (visualizerWindow_) {
+		visualizerWindow_->stopRecording();
+	}
 	if (videoRecorder_ && videoRecorder_->isRecording()) {
-		videoRecorder_->stop();
+		(void)videoRecorder_->stop();
 	}
 
 	// Stop audio
