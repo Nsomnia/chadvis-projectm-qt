@@ -106,6 +106,13 @@ set(SUNO_AUTH_SOURCES
     src/suno/auth/ClerkAuthClient.cpp
     src/suno/auth/AuthHeaders.hpp
     src/suno/auth/AuthHeaders.cpp
+    src/suno/auth/oauth/OAuthTransaction.hpp
+    src/suno/auth/oauth/LoopbackListener.hpp
+    src/suno/auth/oauth/LoopbackListener.cpp
+    src/suno/auth/oauth/OAuthLoginService.hpp
+    src/suno/auth/oauth/OAuthLoginService.cpp
+    src/suno/auth/AuthCoordinator.hpp
+    src/suno/auth/AuthCoordinator.cpp
 )
 
 set(RECORDER_SOURCES

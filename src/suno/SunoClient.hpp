@@ -55,6 +55,10 @@ public:
     /// replaced them) and apply. No-op when nothing changed.
     void reloadStoredCredentials();
 
+    /// Local-only sign-out: clear both persisted credential records and stop
+    /// refresh work. This never claims or performs a remote Suno logout.
+    void clearLocalCredentials();
+
     // ── API Methods ─────────────────────────────────────────────────────
     /// POST /api/feed/v3 (captured contract): cursor-based library page.
     /// nullopt cursor = first page. Truth about exhaustion lands in
