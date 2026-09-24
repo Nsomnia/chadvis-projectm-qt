@@ -7,6 +7,7 @@ add_executable(unit_tests
     suno/test_AuthModule.cpp
     suno/test_ClipParser.cpp
     suno/test_DownloadQueue.cpp
+    suno/test_SunoEndpoints.cpp
 )
 
 set_target_properties(unit_tests PROPERTIES

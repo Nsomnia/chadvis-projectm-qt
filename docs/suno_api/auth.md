@@ -40,37 +40,21 @@
 
 ## Clerk Auth (`auth.suno.com/v1`)
 
-### `GET /v1/client?_is_native=true&_clerk_js_version={ver}`
+### `GET /v1/client?__clerk_api_version={ver}&_clerk_js_version={ver}`
 **Purpose**: Fetch Clerk client config and current browser/session state.
 **Auth**: Cookie
 **Headers**: `Cookie: __session=...; __client=...`, browser-like `User-Agent`, `Origin`, `Referer`
 **Body**: None.
-**Response**: JSON client config; includes `last_active_session_id` and session metadata.
-**Notes**: Native flag and Clerk JS version must match the web app’s expectation; used to discover the active session before token exchange.
-
-### `POST /v1/client/sessions/{sid}/tokens`
-**Purpose**: Exchange a Clerk session for a Suno JWT.
-**Auth**: Cookie
-**Headers**: `Cookie`, `Origin`, `Referer`, `User-Agent`
-**Body**: None.
-**Response**: JWT payload/metadata for the session.
-**Notes**: Primary session-to-bearer exchange path; token is typically the `__session`-backed access token used against `studio-api-prod.suno.com`.
-
-### `POST /v1/client/sessions/{sid}/tokens/api`
-**Purpose**: Alternative API-oriented session-to-JWT exchange.
-**Auth**: Cookie
-**Headers**: `Cookie`, `Origin`, `Referer`, `User-Agent`
-**Body**: None.
-**Response**: JWT payload/metadata.
-**Notes**: Alternate exchange path observed in the Clerk client; behavior is effectively the same class of output as `/tokens`.
+**Response**: JSON client config; includes `last_active_session_id`, session metadata, and the bearer at `sessions[].last_active_token.jwt`.
+**Notes**: T1-verified initial bearer-delivery path in the 2026-08-25 capture. The observed browser request used `__clerk_api_version` and `_clerk_js_version`; `_is_native=true` belongs to unverified native-flow research.
 
 ### `POST /v1/client/sessions/{sid}/touch`
-**Purpose**: Refresh session activity and keep the Clerk session alive.
+**Purpose**: Refresh the active Clerk session and obtain a fresh Suno bearer.
 **Auth**: Cookie
 **Headers**: `Cookie`, `Origin`, `Referer`, `User-Agent`
 **Body**: None.
-**Response**: Session touch acknowledgment.
-**Notes**: Heartbeat-style call; helps maintain `last_active_session_id` and avoids session staleness.
+**Response**: The captured response embeds `sessions[].last_active_token.jwt` in the same client/session envelope shape as `GET /v1/client`.
+**Notes**: T1-verified refresh path in the 2026-08-25 capture. The former `/tokens` and `/tokens/api` claims were not observed; they are unverified folklore, not documented behavior.
 
 ### `GET /v1/client/sync`
 **Purpose**: Sync client state between browser, Clerk, and Suno.
@@ -170,7 +154,7 @@
 **Response**: Session ID payload.
 **Notes**: Distinct from Clerk session IDs; this is the Suno backend/session mapping.
 
-### `GET /api/user/user_config/`
+### `POST /api/user/user_config/`
 **Purpose**: Get persisted user configuration.
 **Auth**: Bearer
 **Headers**: `Authorization`, `Device-Id`, `Browser-Token`, `Origin`, `Referer`, `User-Agent`
@@ -220,22 +204,7 @@
 
 ## OAuth Redirect Routes (Frontend)
 
-The following routes are observed in the endpoint scan but **require a Chrome extension to capture OAuth redirect parameters**:
-
-| Route | Purpose |
-|-------|---------|
-| `/oauth-redirect` | Generic OAuth redirect handler |
-| `/oauth-redirect-custom` | Custom OAuth redirect |
-| `/oauth-redirect-staff` | Staff OAuth redirect |
-| `/oauth-redirect-v2` | OAuth redirect v2 |
-| `/sso-callback` | SSO callback handler |
-| `/link-account` | Account linking |
-
-**Status: BLOCKED** — See [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) for full analysis. The endpoint scan is insufficient for OAuth redirect logging integration.
-
-## OAuth Redirect Routes (Frontend)
-
-The following routes are observed in the endpoint scan and **recon recording** (2026-09-22):
+The following routes appear in the endpoint scan and **recon recording** (2026-09-22):
 
 | Route | Purpose |
 |-------|---------|
@@ -259,4 +228,6 @@ The complete Google OAuth login flow was captured:
 3. **Callback**: `GET https://auth.suno.com/social/complete/google-oauth2/?state=...&iss=https://accounts.google.com&code=...&scope=...&authuser=0&prompt=none`
 4. **Redirect**: `GET https://suno.com/create?signup_source=splashpage&...&redirected_from=signin`
 
-**Status:** COMPLETE — See [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) for full analysis. The recon recording has been sanitized and saved to `raw/sanitized-recon-2026-09-22.json`.
+**Status:** COMPLETE reconstruction of the observed web flow — see [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md). The sanitized recording is `raw/sanitized-recon-2026-09-22.json`.
+
+**Capture verdict:** The 2026-08-25 Burp capture and 2026-09-22 recon contain no loopback or custom-scheme redirect target. Every capture-supplied callback/final redirect target is Suno-owned HTTPS; the separate authorization hop is `accounts.google.com`. Therefore this evidence does **not** validate a native desktop callback mechanism. A fresh capture is required before implementing loopback or custom-scheme login; see [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) for the remaining desktop-login question.

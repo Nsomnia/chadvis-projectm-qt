@@ -21,18 +21,18 @@ Bearer JWT required for all endpoints below.
 ### `POST /api/feed/v3`
 **Purpose**: Latest feed endpoint.
 **Auth**: Bearer JWT
-**Params**: Cursor-based request body; commonly includes `next_cursor` or an initial cursor selector plus filter fields.
-**Response**: `{ items, next_cursor, has_more }`-style paginated payload.
-**Notes**: Cursor pagination replaces page numbers; this is the preferred feed API for modern clients.
+**Request**: Cursor-based JSON. The request key is `cursor`; use `null` for the first page or pass the opaque UUID returned as `next_cursor`. Captured variants also carry `limit` and `filters`.
+**Response**: `{ clips, next_cursor, has_more }`. `next_cursor` is absent on the last page.
+**Notes**: Cursor pagination replaces page numbers. T1 evidence: 20 captured calls in the 2026-08-25 Burp export, summarized in `~/Documents/suno-media-station-glm5.2/docs/captures/raw/burp-session-2026-08/feed-v3-library-listing.md`.
 
-### `GET /api/unified/feed`
+### `POST /api/unified/feed`
 **Purpose**: Unified feed across library and related surfaces.
 **Auth**: Bearer JWT
 **Params**: Standard feed filters and pagination parameters as supported by the backend.
 **Response**: Unified list payload with feed items and paging metadata.
 **Notes**: Backend may merge multiple content sources into one normalized response.
 
-### `GET /api/unified/homepage`
+### `POST /api/unified/homepage`
 **Purpose**: Homepage feed data.
 **Auth**: Bearer JWT
 **Params**: Homepage filter and personalization parameters, if accepted by the client.
@@ -354,8 +354,9 @@ Bearer JWT required for all endpoints below.
 
 ## Clip Object Schema
 
-> **Updated 2026-09-21** from HAR capture 2026-06-10 (iOS Orion browser).
-> See [audio_formats.md](audio_formats.md) for full format matrix.
+> Capture provenance: clip and feed schema are T1 from the 2026-08-25 Burp
+> export; progressive media variants are T1 from the 2026-09-23 browser HAR.
+> See [audio_formats.md](audio_formats.md) for the format matrix.
 
 Clips are the core entity returned by feed, homepage, profile, and project endpoints.
 
@@ -445,10 +446,15 @@ This replaces the earlier single `audio_url` MP3-only pattern.
 ```json
 {
   "clips": [ ... ],
-  "next_cursor": "abc123",  // absent when exhausted
+  "next_cursor": "c6c3215f-195d-4b31-b594-c5c0192535e9",
   "has_more": true
 }
 ```
+
+The next request sends that opaque UUID under `cursor` (not `next_cursor`).
+When exhausted, `next_cursor` is absent and `has_more` is `false`. T1 capture:
+`~/Documents/suno-media-station-glm5.2/docs/captures/raw/burp-session-2026-08/feed-v3-library-listing.md`
+(2026-08-25).
 
 ### Unified homepage envelope (POST /api/unified/homepage)
 
