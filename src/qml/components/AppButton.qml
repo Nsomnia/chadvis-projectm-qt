@@ -3,6 +3,8 @@
  * @brief Modern button with glassmorphism and glow effects
  */
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
@@ -27,6 +29,14 @@ Rectangle {
     implicitWidth: Math.max(buttonLayout.implicitWidth + Theme.spacingMedium * 2, Theme.buttonHeight)
     implicitHeight: Theme.buttonHeight
     radius: buttonRadius
+    activeFocusOnTab: true
+
+    Accessible.role: Accessible.Button
+    Accessible.name: text
+    Accessible.onPressAction: {
+        if (root.enabled)
+            root.clicked()
+    }
 
     color: root.flat ? "transparent" : (root.highlighted ? Theme.accent : Theme.surfaceRaised)
     border.width: root.flat ? 0 : 1
@@ -34,7 +44,7 @@ Rectangle {
 
     Rectangle {
         anchors.fill: parent
-        radius: buttonRadius
+        radius: root.buttonRadius
         color: Theme.glassBackground
         opacity: root.flat ? 0 : (root.highlighted ? 0.3 : 0.85)
     }
@@ -42,7 +52,7 @@ Rectangle {
     Rectangle {
         anchors.fill: parent
         anchors.margins: -2
-        radius: buttonRadius + 2
+        radius: root.buttonRadius + 2
         color: "transparent"
         border.color: Theme.accent
         border.width: 2
@@ -55,6 +65,16 @@ Rectangle {
             loops: Animation.Infinite
             from: 0.3; to: 0.6; duration: 1500; easing.type: Easing.InOutSine
         }
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -3
+        radius: root.buttonRadius + 3
+        color: Theme.withAlpha(Theme.background, 0)
+        border.width: 2
+        border.color: Theme.borderFocus
+        visible: root.activeFocus
     }
 
     scale: mouseArea.pressed ? 0.97 : 1.0
@@ -95,8 +115,21 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: root.enabled ? Qt.PointingHandCursor : Qt.ForbiddenCursor
-        onClicked: { if (root.enabled) root.clicked() }
+        onClicked: {
+            root.forceActiveFocus()
+            if (root.enabled) root.clicked()
+        }
         onPressAndHold: { if (root.enabled) root.pressAndHold() }
         onReleased: { if (root.enabled) root.released() }
+    }
+
+    Keys.onReturnPressed: {
+        if (root.enabled)
+            root.clicked()
+    }
+
+    Keys.onSpacePressed: {
+        if (root.enabled)
+            root.clicked()
     }
 }

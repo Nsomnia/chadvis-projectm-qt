@@ -18,6 +18,8 @@ import ChadVis
 Rectangle {
     id: root
 
+    property bool compact: false
+
     // QML's url value type has no toLocalFile(); replicate QUrl::toLocalFile
     // (strip scheme, percent-decode, drop slash before Windows drive letter).
     function toLocalFilePath(url) {
@@ -82,8 +84,9 @@ Rectangle {
         }
 
         Rectangle {
-            width: 1
-            height: parent.height - 20
+            visible: !root.compact
+            Layout.preferredWidth: 1
+            Layout.preferredHeight: parent.height - 20
             color: Theme.border
         }
 
@@ -95,6 +98,7 @@ Rectangle {
             AppSlider {
                 id: seekSlider
                 Layout.fillWidth: true
+                Layout.minimumWidth: 90
                 from: 0
                 to: AudioBridge.duration || 1
                 value: AudioBridge.position
@@ -114,10 +118,12 @@ Rectangle {
                 Item { Layout.fillWidth: true }
 
                 Text {
+                    visible: !root.compact
                     text: AudioBridge.currentTrack.title || "No Track Selected"
                     color: Theme.textPrimaryVariant
                     font: Theme.fontCaptionStrong
                     elide: Text.ElideRight
+                    Layout.preferredWidth: 180
                     Layout.maximumWidth: 260
                 }
 
@@ -132,8 +138,9 @@ Rectangle {
         }
 
         Rectangle {
-            width: 1
-            height: parent.height - 20
+            visible: !root.compact
+            Layout.preferredWidth: 1
+            Layout.preferredHeight: parent.height - 20
             color: Theme.border
         }
 
@@ -151,6 +158,7 @@ Rectangle {
             }
 
             AppSlider {
+                visible: !root.compact
                 Layout.preferredWidth: 110
                 from: 0
                 to: 100
