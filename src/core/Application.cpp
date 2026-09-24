@@ -19,6 +19,7 @@
 #include <QFile>
 #include <QFontDatabase>
 #include <QQmlEngine>
+#include <QtQuickControls2/QQuickStyle>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
@@ -391,6 +392,12 @@ Result<void> Application::init(const AppOptions& opts) {
 		LOG_DEBUG("Initializing Suno controller for QML...");
 		sunoController_ = std::make_unique<suno::SunoController>(
 			audioEngine_.get(), nullptr);
+
+		// Pin a non-native Quick Controls style BEFORE the engine exists. The
+		// macOS native style silently discards the custom `background` /
+		// `contentItem` on every control, so the themed Settings window and
+		// panels would not render as designed — and each one logs a warning.
+		QQuickStyle::setStyle("Fusion");
 
 		qmlEngine_ = std::make_unique<QQmlApplicationEngine>();
 
