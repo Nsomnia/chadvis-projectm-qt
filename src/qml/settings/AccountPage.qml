@@ -4,7 +4,6 @@ import QtQuick.Layouts
 import ChadVis
 import "../components"
 import "../panels/settings"
-import "./AccountSessionCard.qml" as AccountSessionCardModule
 
 Flickable {
     id: root
@@ -102,7 +101,7 @@ Flickable {
             wrapMode: Text.WordWrap
         }
 
-        AccountSessionCardModule {
+        AccountSessionCard {
             loginState: root.googleLoginState
             googleLoginAvailable: root.googleLoginAvailable
             cancelAvailable: root.cancelGoogleLoginAvailable
