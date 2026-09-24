@@ -4,19 +4,42 @@ import QtQuick.Layouts
 import ChadVis
 import "../components"
 import "../panels/settings"
+import "./AccountSessionCard.qml" as AccountSessionCardModule
 
 Flickable {
     id: root
 
-    property bool authenticationPending: false
     property bool signingOut: false
     property bool manualExpanded: false
     property string feedbackMessage: ""
     property bool feedbackIsError: false
 
-    readonly property bool signedIn: SunoBridge.isAuthenticated
-    readonly property bool authenticating: authenticationPending && !signedIn
     readonly property var bridgeApi: SunoBridge
+    readonly property string googleLoginState: {
+        const state = bridgeApi["googleLoginState"]
+        return typeof state === "string" ? state : "signedOut"
+    }
+    readonly property string googleLoginError: {
+        const error = bridgeApi["googleLoginError"]
+        return typeof error === "string" ? error : ""
+    }
+    readonly property bool googleLoginAvailable:
+        typeof bridgeApi["googleLoginAvailable"] === "boolean"
+        && bridgeApi["googleLoginAvailable"] === true
+    readonly property bool cancelGoogleLoginAvailable:
+        bridgeSupports("cancelGoogleSignIn")
+    readonly property string visibleFeedback: {
+        if (googleLoginState === "cancelled")
+            return ""
+        if (googleLoginState === "error") {
+            return googleLoginError.length > 0
+                    ? googleLoginError
+                    : "Suno sign-in could not be completed."
+        }
+        return feedbackMessage
+    }
+    readonly property bool visibleFeedbackIsError:
+        googleLoginState === "error" || feedbackIsError
 
     contentHeight: pageLayout.implicitHeight + Theme.spacingXL * 2
     clip: true
@@ -32,28 +55,19 @@ Flickable {
 
     function beginGoogleSignIn() {
         feedbackMessage = ""
-        if (!bridgeSupports("beginGoogleSignIn")) {
-            manualExpanded = true
-            showFeedback("Browser sign-in is unavailable in this build. Paste a session token below.", true)
-            return
-        }
-
-        authenticationPending = true
-        authenticationWatchdog.restart()
-        bridgeApi["beginGoogleSignIn"]()
+        feedbackIsError = false
+        if (googleLoginAvailable && bridgeSupports("beginGoogleSignIn"))
+            bridgeApi["beginGoogleSignIn"]()
     }
 
     function cancelGoogleSignIn() {
-        if (bridgeSupports("cancelGoogleSignIn"))
+        if (googleLoginState === "browserOpen" && cancelGoogleLoginAvailable)
             bridgeApi["cancelGoogleSignIn"]()
-
-        authenticationPending = false
-        authenticationWatchdog.stop()
-        showFeedback("Browser sign-in cancelled.", false)
     }
 
     function signOutSuno() {
         feedbackMessage = ""
+        feedbackIsError = false
         if (!bridgeSupports("signOutSuno")) {
             showFeedback("Sign out is unavailable in this build.", true)
             return
@@ -61,10 +75,6 @@ Flickable {
 
         signingOut = true
         bridgeApi["signOutSuno"]()
-    }
-
-    function stopAuthenticationWatchdog() {
-        authenticationWatchdog.stop()
     }
 
     ScrollBar.vertical: ScrollBar {
@@ -92,9 +102,10 @@ Flickable {
             wrapMode: Text.WordWrap
         }
 
-        AccountSessionCard {
-            signedIn: root.signedIn
-            authenticating: root.authenticating
+        AccountSessionCardModule {
+            loginState: root.googleLoginState
+            googleLoginAvailable: root.googleLoginAvailable
+            cancelAvailable: root.cancelGoogleLoginAvailable
             signingOut: root.signingOut
             onSignInRequested: root.beginGoogleSignIn()
             onCancelRequested: root.cancelGoogleSignIn()
@@ -103,16 +114,16 @@ Flickable {
 
         Text {
             Layout.fillWidth: true
-            visible: root.feedbackMessage.length > 0
-            text: root.feedbackMessage
-            color: root.feedbackIsError ? Theme.error : Theme.success
+            visible: root.visibleFeedback.length > 0
+            text: root.visibleFeedback
+            color: root.visibleFeedbackIsError ? Theme.error : Theme.success
             font: Theme.fontCaption
             wrapMode: Text.WordWrap
         }
 
         AppButton {
             Layout.fillWidth: true
-            Layout.topMargin: root.feedbackMessage.length > 0 ? Theme.spacingSmall : 0
+            Layout.topMargin: root.visibleFeedback.length > 0 ? Theme.spacingSmall : 0
             text: root.manualExpanded
                   ? "▾ Paste session cookie or token instead"
                   : "▸ Paste session cookie or token instead"
@@ -159,31 +170,15 @@ Flickable {
 
         function onAuthenticationChanged() {
             if (SunoBridge.isAuthenticated) {
-                root.authenticationPending = false
                 root.signingOut = false
-                root.stopAuthenticationWatchdog()
-                root.showFeedback("Suno session connected.", false)
             } else if (root.signingOut) {
                 root.signingOut = false
                 root.showFeedback("Suno session signed out.", false)
             }
         }
 
-        function onAuthenticationFailed(message) {
-            root.authenticationPending = false
+        function onAuthenticationFailed() {
             root.signingOut = false
-            root.stopAuthenticationWatchdog()
-            root.showFeedback(message || "Suno sign-in could not be completed.", true)
-        }
-    }
-
-    Timer {
-        id: authenticationWatchdog
-        interval: 120000
-        repeat: false
-        onTriggered: {
-            root.authenticationPending = false
-            root.showFeedback("Browser sign-in timed out. Retry or paste a session token below.", true)
         }
     }
 }
