@@ -57,11 +57,15 @@ Branch `feat/suno-client-shell-refactor`. Latest runtime evidence: window create
 - [ ] Library polish: sort + tag filter chips on top of the live debounced search; local↔remote parity columns.
 - [ ] Downloads: verify HTTP-range resume; expose queue state/pause/resume.
 - [ ] Playback parity: one transport over remote preview vs local file, buffer-ahead, device-disconnect recovery.
-- [ ] Typify the credential slot (exp-3 ranked fix #2): classify JWT vs cookie header at load instead of labelling
-      whatever is stored a "cookie".
-- [ ] Make `AuthFailureKind` reachable from `SunoController` (today only the sanitized `SunoClient::errorOccurred`
-      string is forwarded, because `SunoClient::clerk_` is private).
-- [ ] Replace the missing-font-family notice (`Inter, "Noto Sans", Sans-serif` costs ~175 ms at startup).
+- [x] Typify the credential slot (exp-3 ranked fix #2): the stored value is now classified as a JWT bearer, a Clerk
+      cookie header, unsupported, or empty. An unsupported value is never sent as cookies and never silently deleted;
+      the log names the detected shape and what is required, and the outcome surfaces as `noSession` — so the live
+      failure mode can no longer masquerade as a server problem.
+- [x] Make `AuthFailureKind` reachable from `SunoController` — now published thread-safely and exposed to QML as a
+      stable string (`none|noSession|rejected|protocol|malformed`) with a safe synthesized message, so the UI can say
+      "credential rejected" vs "no session" vs "our parser broke" instead of guessing.
+- [x] Replace the missing-font-family notice — Theme's stack leads with a present family and degrades across
+      macOS/Linux/Windows; the ~175–311 ms per-launch alias cost is gone.
 - [ ] Per-directory `qmldir` files before ever re-enabling QTP0004 (the policy is currently reverted as a precaution).
 
 ### Blocked / needs you
