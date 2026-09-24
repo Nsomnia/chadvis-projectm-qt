@@ -28,6 +28,15 @@ class QUrl;
 
 namespace vc::suno::auth {
 
+/// Secret-free classification of the most recently completed auth request.
+enum class AuthFailureKind {
+    None,
+    NoActiveSession,
+    RejectedCredential,
+    ProtocolMismatch,
+    MalformedResponse,
+};
+
 class ClerkAuthClient : public QObject {
     Q_OBJECT
 
@@ -50,17 +59,25 @@ public:
     /// POST a touch for `sessionId` to mint a fresh bearer token.
     void touch(const Credentials& creds, const QString& sessionId);
 
+    /// Classification of the most recently completed request. Reset to None
+    /// when a request starts and after a successful bearer exchange.
+    [[nodiscard]] AuthFailureKind failureKind() const noexcept { return failureKind_; }
+
 signals:
     void bearerReady(const vc::suno::auth::BearerToken& token);
     void authFailed(const QString& reason);
 
 private:
+    friend class ClerkAuthClientTestAccess;
+
     /// Everything a reply handler needs to continue (or fall back) for one
     /// logical request.
     struct CallContext {
         Credentials creds;
         QString sessionId; ///< Empty for fetchBearer.
         bool allowFallback = true;
+        AuthFailureKind primaryFailureKind = AuthFailureKind::None;
+        QString primaryFailureReason;
     };
 
     void startClientFetch(CallContext ctx);
@@ -69,7 +86,12 @@ private:
 
     void handleReply(QNetworkReply* reply, CallContext ctx);
     void handleEnvelopeBody(const QByteArray& body, const CallContext& ctx);
-    void handleLegacyBody(const QByteArray& body);
+    void handleLegacyBody(const QByteArray& body, AuthFailureKind primaryFailureKind,
+                          const QString& primaryFailureReason);
+
+    [[nodiscard]] static AuthFailureKind classifyHttpFailure(int status) noexcept;
+    [[nodiscard]] static QString httpFailureReason(int status);
+    void emitFailure(AuthFailureKind kind, const QString& reason);
 
     /// Abort every in-flight reply; called from the destructor so QNAM never
     /// touches a dead owner.
@@ -86,6 +108,8 @@ private:
     /// Session id from the most recent successful envelope; lets fetchBearer
     /// use the legacy fallback even before touch() has ever been called.
     QString lastKnownSessionId_;
+
+    AuthFailureKind failureKind_ = AuthFailureKind::None;
 };
 
 } // namespace vc::suno::auth
