@@ -6,6 +6,7 @@ add_executable(unit_tests
     recorder/test_RecordingPipeline.cpp
     visualizer/test_PresetScanner.cpp
     suno/test_AuthModule.cpp
+    suno/test_StoredCredentialClassification.cpp
     suno/test_CredentialRestoreWorker.cpp
     suno/test_AuthCoordinator.cpp
     suno/test_LoopbackListener.cpp

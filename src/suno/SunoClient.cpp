@@ -202,7 +202,9 @@ SunoClient::SunoClient(QString deviceId, QObject* parent)
     connect(clerk_, &auth::ClerkAuthClient::bearerReady, this,
             [this](const auth::BearerToken& token) { onBearerReadyInternal(token); });
     connect(clerk_, &auth::ClerkAuthClient::authFailed, this,
-            [this](const QString& reason) { onClerkAuthFailedInternal(reason); });
+            [this](const QString& reason) {
+                onClerkAuthFailedInternal(reason, clerk_->failureKind());
+            });
 
     // Constructing this worker performs no keychain I/O. restoreSession() below
     // only snapshots legacy config and posts work to its private QThread.
@@ -262,21 +264,52 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
         return;
     }
 
+    bool rejectedStoredCredential = false;
     if (result.cookie.has_value() && !result.cookie->isEmpty()) {
         const QString value = *result.cookie;
-        // A pasted value may be either a raw JWT or a cookie header.
-        if (auth::JwtUtils::claims(value).has_value()) {
+        const auto classification = auth::classifyStoredCredential(value);
+        switch (classification.shape) {
+        case auth::StoredCredentialShape::BearerToken:
+            credentials_.cookieHeader.clear();
+            lastActiveSessionId_.clear();
             if (value != bearer_.jwt) {
                 applyBearer(auth::JwtUtils::fromJwt(value));
+            } else {
+                setAuthFailureKind(auth::AuthFailureKind::None);
             }
-        } else if (value != credentials_.cookieHeader) {
-            credentials_ = auth::Credentials{value};
-            lastActiveSessionId_.clear();
+            break;
+        case auth::StoredCredentialShape::ClerkCookieHeader:
+            setAuthFailureKind(auth::AuthFailureKind::None);
+            if (value != credentials_.cookieHeader) {
+                credentials_ = auth::Credentials{value};
+                lastActiveSessionId_.clear();
+                bearer_ = auth::BearerToken{};
+                setState(auth::AuthState::NeedsReauth);
+                if (mode == RestoreMode::Reload) {
+                    emit tokenChanged(std::string());
+                }
+            }
+            break;
+        case auth::StoredCredentialShape::Unsupported:
+            // Never reinterpret an unknown opaque value as a Cookie header.
+            // Keep the persisted value for correction, but remove any older
+            // in-memory credential so it cannot be sent on a later request.
+            credentials_ = auth::Credentials{};
             bearer_ = auth::BearerToken{};
+            lastActiveSessionId_.clear();
+            touchInFlight_ = false;
+            dropPendingAuthWork(QStringLiteral("unsupported stored credential shape"));
+            setAuthFailureKind(classification.failureKind);
             setState(auth::AuthState::NeedsReauth);
+            LOG_ERROR("SunoClient: {} (stored value preserved)",
+                      classification.safeDiagnostic.toStdString());
             if (mode == RestoreMode::Reload) {
                 emit tokenChanged(std::string());
             }
+            rejectedStoredCredential = true;
+            break;
+        case auth::StoredCredentialShape::Empty:
+            break;
         }
     }
 
@@ -289,6 +322,10 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
             flushAuthWaiters();
             return;
         }
+    }
+
+    if (rejectedStoredCredential) {
+        return;
     }
 
     if (!credentials_.cookieHeader.isEmpty()) {
@@ -379,11 +416,14 @@ void SunoClient::clearLocalCredentials() {
     connect(clerk_, &auth::ClerkAuthClient::bearerReady, this,
             [this](const auth::BearerToken& token) { onBearerReadyInternal(token); });
     connect(clerk_, &auth::ClerkAuthClient::authFailed, this,
-            [this](const QString& reason) { onClerkAuthFailedInternal(reason); });
+            [this](const QString& reason) {
+                onClerkAuthFailedInternal(reason, clerk_->failureKind());
+            });
 
     credentials_ = auth::Credentials{};
     bearer_ = auth::BearerToken{};
     lastActiveSessionId_.clear();
+    setAuthFailureKind(auth::AuthFailureKind::None);
 
     for (const QString& key : {QStringLiteral("suno/default"), QStringLiteral("suno/bearer")}) {
         credentialStoreWorker_->remove(key);
@@ -409,8 +449,17 @@ void SunoClient::setState(auth::AuthState state) {
     emit authStateChanged();
 }
 
+void SunoClient::setAuthFailureKind(auth::AuthFailureKind kind) {
+    Q_ASSERT(QThread::currentThread() == thread());
+    if (authFailureKind_.exchange(kind, std::memory_order_acq_rel) == kind) {
+        return;
+    }
+    emit authFailureKindChanged();
+}
+
 void SunoClient::applyBearer(const auth::BearerToken& token) {
     bearer_ = token;
+    setAuthFailureKind(auth::AuthFailureKind::None);
 
     // Session id rides in the standard Clerk "sid" claim.
     if (auto claims = auth::JwtUtils::claims(token.jwt)) {
@@ -446,6 +495,7 @@ void SunoClient::ensureFreshBearer(bool force) {
         return;
     }
     touchInFlight_ = true;
+    setAuthFailureKind(auth::AuthFailureKind::None);
     if (!lastActiveSessionId_.isEmpty()) {
         clerk_->touch(credentials_, lastActiveSessionId_);
     } else {
@@ -470,8 +520,10 @@ void SunoClient::onBearerReadyInternal(const auth::BearerToken& token) {
     flushAuthWaiters();
 }
 
-void SunoClient::onClerkAuthFailedInternal(const QString& reason) {
+void SunoClient::onClerkAuthFailedInternal(const QString& reason,
+                                           auth::AuthFailureKind kind) {
     touchInFlight_ = false;
+    setAuthFailureKind(kind);
     LOG_ERROR("SunoClient: clerk auth exchange failed: {}", reason.toStdString());
     dropPendingAuthWork(reason);
     setState(auth::AuthState::NeedsReauth);
@@ -606,6 +658,7 @@ void SunoClient::handleNetworkError(QNetworkReply* reply) {
     if (isAuthFailure(httpStatus, reply->errorString())) {
         err = "Unauthorized: Token expired";
         bearer_.jwt.clear();
+        setAuthFailureKind(auth::AuthFailureKind::RejectedCredential);
         setState(auth::AuthState::NeedsReauth);
         emit needsReauth();
     }

@@ -83,6 +83,8 @@ SunoController::SunoController(AudioEngine* audioEngine,
 	connect(client_.get(), &SunoClient::needsReauth, this, [this]() {
 		emit authenticationRequired();
 	});
+	connect(client_.get(), &SunoClient::authFailureKindChanged,
+	        this, &SunoController::authFailureKindChanged);
 	connect(client_.get(), &SunoClient::authStateChanged, this, [this]() {
 		switch (client_->authState()) {
 		case auth::AuthState::ActiveValid:

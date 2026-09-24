@@ -150,58 +150,68 @@ QtObject {
     // TYPOGRAPHY
     // ═══════════════════════════════════════════════════════════
 
-    readonly property string fontFamily: "Inter, \"Noto Sans\", sans-serif"
+    // QFont takes a real family list; passing a comma-delimited string to
+    // font.family makes Qt search for that entire (missing) family name.
+    // Helvetica Neue is the macOS primary; concrete platform fonts follow.
+    readonly property string fontFamily: "Helvetica Neue"
+    readonly property var fontFamilies: [
+        "Helvetica Neue",
+        "Segoe UI",
+        "Noto Sans",
+        "DejaVu Sans",
+        "Arial"
+    ]
 
     readonly property font fontTiny: Qt.font({
-        family: fontFamily,
+        families: fontFamilies,
         pixelSize: 10,
         weight: Font.Normal
     })
 
     readonly property font fontCaption: Qt.font({
-        family: fontFamily,
+        families: fontFamilies,
         pixelSize: 12,
         weight: Font.Normal
     })
 
     readonly property font fontCaptionStrong: Qt.font({
-        family: fontFamily,
+        families: fontFamilies,
         pixelSize: 12,
         weight: Font.DemiBold
     })
 
     readonly property font fontBody: Qt.font({
-        family: fontFamily,
+        families: fontFamilies,
         pixelSize: 14,
         weight: Font.Normal
     })
 
     readonly property font fontBodyStrong: Qt.font({
-        family: fontFamily,
+        families: fontFamilies,
         pixelSize: 14,
         weight: Font.DemiBold
     })
 
     readonly property font fontSubtitle: Qt.font({
-        family: fontFamily,
+        families: fontFamilies,
         pixelSize: 16,
         weight: Font.DemiBold
     })
 
     readonly property font fontTitle: Qt.font({
-        family: fontFamily,
+        families: fontFamilies,
         pixelSize: 18,
         weight: Font.Bold
     })
 
     readonly property font fontHeading: Qt.font({
-        family: fontFamily,
+        families: fontFamilies,
         pixelSize: 24,
         weight: Font.Bold
     })
 
     readonly property font fontDisplay: Qt.font({
-        family: fontFamily,
+        families: fontFamilies,
         pixelSize: 32,
         weight: Font.Bold
     })

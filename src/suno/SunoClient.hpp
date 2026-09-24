@@ -23,6 +23,7 @@
 #include <QSet>
 #include <QString>
 #include <QTimer>
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -219,6 +220,12 @@ public:
 
     // ── Auth state (see auth::AuthState) ────────────────────────────────
     auth::AuthState authState() const { return authState_; }
+    /// Last Clerk/storage failure classification, published on this QObject's
+    /// thread. The atomic keeps diagnostic reads safe without exposing enum
+    /// internals through the QML bridge.
+    [[nodiscard]] auth::AuthFailureKind authFailureKind() const noexcept {
+        return authFailureKind_.load(std::memory_order_acquire);
+    }
     const QString& deviceId() const { return deviceId_; }
 
     // Custom signals for non-QObject consumers (managers use these).
@@ -261,6 +268,9 @@ signals:
     /// Touch/retry chain exhausted; user must supply fresh credentials.
     void needsReauth();
     void authStateChanged();
+    /// Emitted when the last auth failure changes or clears. The value is
+    /// intentionally not an enum argument; consumers map it to a stable string.
+    void authFailureKindChanged();
 
 private:
     struct PendingRequest {
@@ -281,13 +291,15 @@ private:
 
     // Auth orchestration
     void setState(auth::AuthState state);
+    void setAuthFailureKind(auth::AuthFailureKind kind);
     void applyBearer(const auth::BearerToken& token);
     void scheduleProactiveRefresh();
     void ensureFreshBearer(bool force = false);
     void flushAuthWaiters();
     void dropPendingAuthWork(const QString& reason);
     void onBearerReadyInternal(const auth::BearerToken& token);
-    void onClerkAuthFailedInternal(const QString& reason);
+    void onClerkAuthFailedInternal(const QString& reason,
+                                  auth::AuthFailureKind kind);
     bool hasCredentials() const;
 
     // Request plumbing
@@ -318,6 +330,7 @@ private:
     auth::Credentials credentials_;
     auth::BearerToken bearer_;
     auth::AuthState authState_ = auth::AuthState::Disconnected;
+    std::atomic<auth::AuthFailureKind> authFailureKind_{auth::AuthFailureKind::None};
     QString lastActiveSessionId_;
     QString deviceId_;
     QTimer* refreshTimer_;       ///< Proactive touch at expiry-minus-margin.

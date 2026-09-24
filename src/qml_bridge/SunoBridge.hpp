@@ -36,6 +36,7 @@ friend class QmlSingletonBridge<SunoBridge, SingletonPolicy::CachedUnparented>;
   Q_PROPERTY(bool isAuthenticated READ isAuthenticated NOTIFY authenticationChanged)
   Q_PROPERTY(QString googleLoginState READ googleLoginState NOTIFY googleLoginStateChanged)
   Q_PROPERTY(QString googleLoginError READ googleLoginError NOTIFY googleLoginErrorChanged)
+  Q_PROPERTY(QString authFailureKind READ authFailureKind NOTIFY authFailureKindChanged)
   Q_PROPERTY(bool googleLoginAvailable READ googleLoginAvailable NOTIFY googleLoginAvailableChanged)
 
   // Account snapshot (read-only; populated after auth turns ActiveValid).
@@ -63,6 +64,7 @@ public:
     bool isAuthenticated() const;
     QString googleLoginState() const;
     QString googleLoginError() const;
+    QString authFailureKind() const;
     bool googleLoginAvailable() const;
 
 public slots:
@@ -96,6 +98,7 @@ signals:
     void authenticationChanged();
     void googleLoginStateChanged();
     void googleLoginErrorChanged();
+    void authFailureKindChanged();
     void googleLoginAvailableChanged();
     void googleLoginCallbackReceived();
     void authenticationFailed(const QString& reason);
