@@ -46,9 +46,14 @@ Branch `feat/suno-client-shell-refactor`. Latest runtime evidence: window create
 ### Next
 - [ ] Verify Library end to end with a >20-track account (pagination, search, detail sheet) and confirm the Video page
       keeps its GL context across navigation.
-- [ ] **Recorder correctness** (not functional end to end today): renderer `frameCaptured` → `VideoRecorder::
-      submitVideoFrame`; `RecordingBridge::startRecording()` must also start the visualizer-side capture; fix
-      `setAudioQueue` ordering; assign `outputPath` from config; make codec/CRF controls real.
+- [x] **Recorder correctness** — frame signal now connected exactly once in the composition root; a single
+      `startRecording()` starts encoder + renderer capture and stops capture before finalization; the audio queue
+      attaches correctly regardless of worker-creation order; the encoder gets a sanitized timestamped output path
+      whose extension matches the chosen container; codec/CRF controls drive the config. The missing
+      `avcodec_alloc_context3` null check (a P0 crash) was added while in the path. Verified by
+      `test_RecordingPipeline.cpp`, where frame submissions reach a real libx264 encoder. **Still needs a human
+      with the GUI and real audio** to confirm an actual recording plays back. Deterministic/headless export,
+      encoder probing, and the projectM `master` pin remain P4.
 - [ ] Library polish: sort + tag filter chips on top of the live debounced search; local↔remote parity columns.
 - [ ] Downloads: verify HTTP-range resume; expose queue state/pause/resume.
 - [ ] Playback parity: one transport over remote preview vs local file, buffer-ahead, device-disconnect recovery.
