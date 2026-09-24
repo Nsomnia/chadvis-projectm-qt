@@ -21,6 +21,10 @@ class AudioEngine;
 
 namespace suno {
 class SunoAccountManager;
+
+namespace auth {
+class AuthCoordinator;
+}
 class SunoLibraryManager;
 class SunoDownloader;
 class SunoLyricsManager;
@@ -38,6 +42,7 @@ public:
 	~SunoController() override;
 
   SunoClient* client() { return client_.get(); }
+  auth::AuthCoordinator* authCoordinator() { return authCoordinator_.get(); }
   SunoLibraryManager* libraryManager() { return libraryManager_.get(); }
   SunoAccountManager* accountManager() { return accountManager_.get(); }
 
@@ -96,6 +101,7 @@ private:
 	AudioEngine* audioEngine_;
 
 	std::unique_ptr<SunoClient> client_;
+	std::unique_ptr<auth::AuthCoordinator> authCoordinator_;
 	std::unique_ptr<vc::SunoOrchestrator> orchestrator_;
 	SunoDatabase db_;
 	
