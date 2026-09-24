@@ -84,7 +84,11 @@ ColumnLayout {
             id: codecCombo
             Layout.fillWidth: true
             model: ["libx264", "libx265", "libvpx-vp9", "h264_nvenc", "hevc_nvenc"]
-            currentIndex: 0
+            currentIndex: {
+                const index = model.indexOf(RecordingBridge.videoCodec)
+                return index >= 0 ? index : 0
+            }
+            onActivated: RecordingBridge.videoCodec = currentText
             contentFont: Theme.fontBody
         }
 
@@ -101,7 +105,8 @@ ColumnLayout {
                 Layout.fillWidth: true
                 from: 0
                 to: 51
-                value: 23
+                value: SettingsBridge.recorderCrf
+                onMoved: (val) => SettingsBridge.recorderCrf = Math.round(val)
             }
             Label {
                 text: Math.round(qualitySlider.value)

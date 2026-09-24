@@ -41,7 +41,9 @@ public:
     void pushVideoFrame(GrabbedFrame frame);
 
     // Set audio queue for lock-free consumption
-    void setAudioQueue(AudioQueue* queue) { audioQueue_ = queue; }
+    void setAudioQueue(AudioQueue* queue) {
+        audioQueue_.store(queue, std::memory_order_release);
+    }
 
     // Thread-safe stats access
     RecordingStats getStats() const;
@@ -66,8 +68,10 @@ private:
     FrameGrabber frameGrabber_;
     VideoRecorderFFmpeg ffmpeg_;
 
-    // Lock-free audio queue (replaces mutex-protected buffer)
-    AudioQueue* audioQueue_{nullptr};
+    // Lock-free audio queue (replaces mutex-protected buffer).  The pointer is
+    // atomic because the recorder may be attached before the worker starts or
+    // while its encoding thread is already running.
+    std::atomic<AudioQueue*> audioQueue_{nullptr};
 
     // Thread-safe stats
     mutable std::mutex statsMutex_;

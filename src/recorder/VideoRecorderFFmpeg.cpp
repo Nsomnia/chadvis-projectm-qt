@@ -432,6 +432,8 @@ Result<void> VideoRecorderFFmpeg::initAudioStream(
         return Result<void>::err("Failed to create audio stream");
 
     audioCodecCtx_.reset(avcodec_alloc_context3(codec));
+    if (!audioCodecCtx_)
+        return Result<void>::err("Failed to allocate audio codec context");
 
     audioCodecCtx_->sample_rate = settings.audio.sampleRate;
     audioCodecCtx_->bit_rate = settings.audio.bitrate * 1000;
