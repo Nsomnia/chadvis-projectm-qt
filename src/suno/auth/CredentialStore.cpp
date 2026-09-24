@@ -22,6 +22,12 @@ constexpr auto kKeyNamespace = QUtf8StringView("chadvis");
 /// Keychain service name / namespace prefix (macOS generic-password items).
 constexpr auto kServiceName = QUtf8StringView("chadvis-projectm-qt");
 
+// Security.framework status values are stable API constants. Keep the public
+// classification seam buildable on non-Apple test hosts as well.
+constexpr int kErrSecAuthFailed = -25293;
+constexpr int kErrSecItemNotFound = -25300;
+constexpr int kErrSecInteractionNotAllowed = -25308;
+
 /// Full internal key: "<service>/<namespace>/<user-key>", e.g.
 /// "chadvis-projectm-qt/chadvis/suno/default".
 QString namespacedKey(const QString& key) {
@@ -167,17 +173,20 @@ public:
         const void* updateVals[] = {data.get()};
         CFDictionaryRef updateDict = cfDict(updateKeys, updateVals, 1);
 
-        const void* searchKeys[] = {kSecClass, kSecAttrService, kSecAttrAccount};
-        const void* searchVals[] = {kSecClassGenericPassword, service.get(), account.get()};
-        CFDictionaryRef searchDict = cfDict(searchKeys, searchVals, 3);
+        const void* searchKeys[] = {kSecClass, kSecAttrService, kSecAttrAccount,
+                                    kSecUseDataProtectionKeychain};
+        const void* searchVals[] = {kSecClassGenericPassword, service.get(), account.get(),
+                                    kCFBooleanTrue};
+        CFDictionaryRef searchDict = cfDict(searchKeys, searchVals, 4);
 
         OSStatus status =
                 SecItemUpdate(searchDict, updateDict);
         if (status == errSecItemNotFound) {
-            const void* addKeys[] = {kSecClass, kSecAttrService, kSecAttrAccount, kSecValueData};
+            const void* addKeys[] = {kSecClass, kSecAttrService, kSecAttrAccount, kSecValueData,
+                                     kSecUseDataProtectionKeychain};
             const void* addVals[] = {kSecClassGenericPassword, service.get(), account.get(),
-                                     data.get()};
-            CFDictionaryRef addDict = cfDict(addKeys, addVals, 4);
+                                     data.get(), kCFBooleanTrue};
+            CFDictionaryRef addDict = cfDict(addKeys, addVals, 5);
             status = SecItemAdd(addDict, nullptr);
             CFRelease(addDict);
         }
@@ -196,18 +205,32 @@ public:
         if (!account || !service)
             return Result<QString>::err(std::string("Failed to allocate keychain strings"));
 
-        const void* keys[] = {kSecClass,       kSecAttrService,   kSecAttrAccount,
-                              kSecReturnData,  kSecMatchLimit};
+        // Use the data-protection keychain explicitly; legacy CSSM items can
+        // enter a blocking SecurityServer decrypt path before ACL/UI policy is
+        // evaluated. Never allow a GUI authentication prompt to block startup.
+        // A denied read remains a keychain failure; it never falls back to file.
+        const void* keys[] = {kSecClass,         kSecAttrService,   kSecAttrAccount,
+                              kSecReturnData,    kSecMatchLimit,     kSecUseAuthenticationUI,
+                              kSecUseDataProtectionKeychain};
         const void* vals[] = {kSecClassGenericPassword, service.get(), account.get(),
-                              kCFBooleanTrue,           kSecMatchLimitOne};
-        CFDictionaryRef query = cfDict(keys, vals, 5);
+                              kCFBooleanTrue,           kSecMatchLimitOne,
+                              kSecUseAuthenticationUIFail, kCFBooleanTrue};
+        CFDictionaryRef query = cfDict(keys, vals, 7);
 
         CFTypeRef found = nullptr;
         const OSStatus status = SecItemCopyMatching(query, &found);
         CFRelease(query);
         if (status == errSecItemNotFound) {
-            return Result<QString>::err(
-                    QStringLiteral("No secret stored under '%1'").arg(nsKey).toStdString());
+            return Result<QString>::err(Error(
+                    QStringLiteral("No secret stored under '%1'").arg(nsKey).toStdString(),
+                    static_cast<int>(status)));
+        }
+        if (status == errSecInteractionNotAllowed || status == errSecAuthFailed) {
+            LOG_WARN("CredentialStore: macOS Keychain denied non-interactive read for service "
+                     "'{}'; unlock the login keychain, allow this build in Keychain Access, then "
+                     "restart (no plaintext fallback)",
+                     kServiceName.toString().toStdString());
+            return Result<QString>::err(keychainFailure("read", status));
         }
         if (status != errSecSuccess) {
             return Result<QString>::err(keychainFailure("load", status));
@@ -226,9 +249,11 @@ public:
         if (!account || !service)
             return Result<void>::err(std::string("Failed to allocate keychain strings"));
 
-        const void* keys[] = {kSecClass, kSecAttrService, kSecAttrAccount};
-        const void* vals[] = {kSecClassGenericPassword, service.get(), account.get()};
-        CFDictionaryRef query = cfDict(keys, vals, 3);
+        const void* keys[] = {kSecClass, kSecAttrService, kSecAttrAccount,
+                              kSecUseDataProtectionKeychain};
+        const void* vals[] = {kSecClassGenericPassword, service.get(), account.get(),
+                              kCFBooleanTrue};
+        CFDictionaryRef query = cfDict(keys, vals, 4);
         const OSStatus status = SecItemDelete(query);
         CFRelease(query);
 
@@ -249,11 +274,12 @@ private:
                                   &kCFTypeDictionaryValueCallBacks);
     }
 
-    static std::string keychainFailure(const char* op, OSStatus status) {
-        return QStringLiteral("CredentialStore keychain %1 failed (OSStatus %2)")
-                .arg(QLatin1String(op))
-                .arg(static_cast<int>(status))
-                .toStdString();
+    static Error keychainFailure(const char* op, OSStatus status) {
+        return Error(QStringLiteral("CredentialStore keychain %1 failed (OSStatus %2)")
+                             .arg(QLatin1String(op))
+                             .arg(static_cast<int>(status))
+                             .toStdString(),
+                     static_cast<int>(status));
     }
 };
 
@@ -294,6 +320,16 @@ CredentialStore::CredentialStore(Backend backend, QString fileRoot)
 
 CredentialStore::~CredentialStore() = default;
 
+CredentialStore::KeychainReadStatus
+CredentialStore::classifyKeychainReadStatus(int osStatus) {
+    if (osStatus == 0) return KeychainReadStatus::Success;
+    if (osStatus == kErrSecItemNotFound) return KeychainReadStatus::NotFound;
+    if (osStatus == kErrSecInteractionNotAllowed || osStatus == kErrSecAuthFailed) {
+        return KeychainReadStatus::AccessDenied;
+    }
+    return KeychainReadStatus::Failed;
+}
+
 Result<void> CredentialStore::store(const QString& key, const QString& secret) {
     if (key.isEmpty()) return Result<void>::err(std::string("CredentialStore: empty key"));
     return backend_->store(namespacedKey(key), secret);
@@ -307,6 +343,14 @@ Result<QString> CredentialStore::load(const QString& key) {
 Result<void> CredentialStore::remove(const QString& key) {
     if (key.isEmpty()) return Result<void>::err(std::string("CredentialStore: empty key"));
     return backend_->remove(namespacedKey(key));
+}
+
+bool CredentialStore::isSecureBackend() const {
+#ifdef CHADVIS_HAS_KEYCHAIN
+    return dynamic_cast<const KeychainBackend*>(backend_.get()) != nullptr;
+#else
+    return false;
+#endif
 }
 
 QString CredentialStore::redact(const QString& secret) {

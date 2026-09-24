@@ -90,6 +90,12 @@ void VisualizerWindow::initialize() {
     fpsTimer_.start();
 
     initialized_ = true;
+    if (recordingRequested_) {
+        // The QML shortcut can request recording before the native window
+        // receives its first expose event.  Capture starts as soon as this
+        // deferred request becomes runnable.
+        renderer_->startRecording();
+    }
     context_->doneCurrent();
 }
 
@@ -160,6 +166,10 @@ void VisualizerWindow::setRecordingSize(u32 width, u32 height) {
 }
 
 void VisualizerWindow::startRecording() {
+    recordingRequested_ = true;
+    if (!initialized_)
+        return;
+
     if (context_ && context_->makeCurrent(this)) {
         renderer_->startRecording();
         context_->doneCurrent();
@@ -167,6 +177,10 @@ void VisualizerWindow::startRecording() {
 }
 
 void VisualizerWindow::stopRecording() {
+    recordingRequested_ = false;
+    if (!initialized_)
+        return;
+
     if (context_ && context_->makeCurrent(this)) {
         renderer_->stopRecording();
         context_->doneCurrent();

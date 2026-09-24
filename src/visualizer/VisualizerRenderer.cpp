@@ -49,9 +49,11 @@ void VisualizerRenderer::initialize(u32 width, u32 height) {
 }
 
 void VisualizerRenderer::cleanup() {
+    recording_ = false;
     destroyPBOs();
     projectM_.shutdown();
     renderTarget_.destroy();
+    initialized_ = false;
 }
 
 void VisualizerRenderer::render(u32 width, u32 height, bool isExposed) {
@@ -253,9 +255,18 @@ void VisualizerRenderer::setRecordingSize(u32 width, u32 height) {
 }
 
 void VisualizerRenderer::startRecording() {
-    recording_ = true;
-    renderTarget_.resize(recordWidth_, recordHeight_);
+    if (!initialized_ || !projectM_.isInitialized() || !renderTarget_.isValid()) {
+        LOG_WARN("VisualizerRenderer: Cannot start recording before initialization");
+        return;
+    }
+
+    if (auto result = renderTarget_.resize(recordWidth_, recordHeight_); !result) {
+        LOG_ERROR("VisualizerRenderer: Failed to resize recording target: {}",
+            result.error().message);
+        return;
+    }
     projectM_.engine().resize(recordWidth_, recordHeight_);
+    recording_ = true;
     setupPBOs();
 }
 

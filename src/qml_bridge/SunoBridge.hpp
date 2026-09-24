@@ -4,6 +4,7 @@
 #include <QTimer>
 #include <QVariantList>
 #include <QString>
+#include <cstddef>
 #include "QmlSingletonBridge.hpp"
 
 namespace vc {
@@ -33,6 +34,10 @@ friend class QmlSingletonBridge<SunoBridge, SingletonPolicy::CachedUnparented>;
   Q_PROPERTY(QVariantList chatHistory READ chatHistory NOTIFY chatHistoryChanged)
   Q_PROPERTY(QString filterText READ filterText WRITE setFilterText NOTIFY filterTextChanged)
   Q_PROPERTY(bool isAuthenticated READ isAuthenticated NOTIFY authenticationChanged)
+  Q_PROPERTY(QString googleLoginState READ googleLoginState NOTIFY googleLoginStateChanged)
+  Q_PROPERTY(QString googleLoginError READ googleLoginError NOTIFY googleLoginErrorChanged)
+  Q_PROPERTY(QString authFailureKind READ authFailureKind NOTIFY authFailureKindChanged)
+  Q_PROPERTY(bool googleLoginAvailable READ googleLoginAvailable NOTIFY googleLoginAvailableChanged)
 
   // Account snapshot (read-only; populated after auth turns ActiveValid).
   Q_PROPERTY(int credits READ credits NOTIFY billingInfoChanged)
@@ -57,6 +62,10 @@ public:
     QString planName() const;
     QString userName() const;
     bool isAuthenticated() const;
+    QString googleLoginState() const;
+    QString googleLoginError() const;
+    QString authFailureKind() const;
+    bool googleLoginAvailable() const;
 
 public slots:
     Q_INVOKABLE void generate(const QString& prompt, const QString& tags, bool instrumental, const QString& model);
@@ -69,6 +78,13 @@ public slots:
     Q_INVOKABLE void fetchChatHistory();
     Q_INVOKABLE void clearLoading();
 
+    // Capture-gated Google flow. The coordinator is the sole owner of the
+    // OAuth state machine; this bridge only forwards its QML contract.
+    Q_INVOKABLE void beginGoogleSignIn();
+    Q_INVOKABLE void cancelGoogleSignIn();
+    /// Local credential/device cleanup only; no remote Suno logout is claimed.
+    Q_INVOKABLE void signOutSuno();
+
 signals:
   void loadingChanged();
   void clipsChanged();
@@ -80,12 +96,20 @@ signals:
     void billingInfoChanged();
     void accountInfoChanged();
     void authenticationChanged();
+    void googleLoginStateChanged();
+    void googleLoginErrorChanged();
+    void authFailureKindChanged();
+    void googleLoginAvailableChanged();
+    void googleLoginCallbackReceived();
+    void authenticationFailed(const QString& reason);
 
 private slots:
     void onLibraryUpdated();
     void onLibraryFetchFailed(const QString& reason);
+    void onAuthenticationFailed(const QString& reason);
 
 private:
+    void wireControllerSignals();
     void updateFilteredClips();
     void startLoadingWatchdog();
     void stopLoadingWatchdog();
@@ -99,7 +123,9 @@ private:
   QString filterText_;
   bool loading_{false};
   bool hasMorePages_{false};
+  bool controllerSignalsWired_{false};
   int currentPage_{1};
+  std::size_t clientErrorConnectionId_{0};
     QTimer searchDebounce_; // 350 ms server-search debounce
     QString searchDebounceText_;
     QTimer loadingWatchdog_; // 15s fallback to clear stuck spinner

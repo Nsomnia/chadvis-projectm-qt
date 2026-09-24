@@ -106,6 +106,13 @@ set(SUNO_AUTH_SOURCES
     src/suno/auth/ClerkAuthClient.cpp
     src/suno/auth/AuthHeaders.hpp
     src/suno/auth/AuthHeaders.cpp
+    src/suno/auth/oauth/OAuthTransaction.hpp
+    src/suno/auth/oauth/LoopbackListener.hpp
+    src/suno/auth/oauth/LoopbackListener.cpp
+    src/suno/auth/oauth/OAuthLoginService.hpp
+    src/suno/auth/oauth/OAuthLoginService.cpp
+    src/suno/auth/AuthCoordinator.hpp
+    src/suno/auth/AuthCoordinator.cpp
 )
 
 set(RECORDER_SOURCES
@@ -213,4 +220,20 @@ set(QML_SOURCES
     src/qml/panels/OverlayPanel.qml
     src/qml/panels/RecordingPanel.qml
     src/qml/panels/SettingsPanel.qml
+    src/qml/SettingsWindow.qml
+    src/qml/settings/AccountPage.qml
+    src/qml/settings/AccountSessionCard.qml
+    src/qml/settings/AudioPage.qml
+    src/qml/settings/VisualizerPage.qml
+    src/qml/settings/RecordingPage.qml
+    src/qml/settings/KaraokePage.qml
+    src/qml/settings/AppearancePage.qml
+    src/qml/settings/PerformancePage.qml
+    src/qml/settings/ShortcutsPage.qml
+    src/qml/settings/ProfilesPage.qml
+    src/qml/views/CreateView.qml
+    src/qml/views/VideoView.qml
+    src/qml/settings/SettingsWindowHeader.qml
+    src/qml/settings/SettingsWindowFooter.qml
+    src/qml/settings/SettingsPageRail.qml
 )

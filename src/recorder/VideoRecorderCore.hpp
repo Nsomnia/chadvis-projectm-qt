@@ -52,6 +52,9 @@ private:
   friend class VideoRecorderThread;
 
   std::atomic<RecordingState> state_{RecordingState::Stopped};
+  // Keep the configured queue even before a worker exists; start() forwards it
+  // to the newly-created worker.  This makes attachment order irrelevant.
+  std::atomic<AudioQueue*> audioQueue_{nullptr};
   EncoderSettings settings_;
   RecordingStats stats_;
   std::unique_ptr<VideoRecorderThread> worker_;

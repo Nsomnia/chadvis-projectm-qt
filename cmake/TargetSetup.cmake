@@ -90,7 +90,12 @@ target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
 # ─────────────────────────────────────────────────────────────
 
     qt_policy(SET QTP0001 NEW)
-    qt_policy(SET QTP0004 NEW)
+    # NOTE: QTP0004 is deliberately NOT enabled. It requires a qmldir file for
+    # every directory containing QML and remaps the resource layout, which
+    # breaks relative sibling imports (e.g. settings/AccountPage.qml importing
+    # "./AccountSessionCard.qml" resolved to "no such directory" at runtime).
+    # The configure-time author warning is the correct trade here; revisit only
+    # together with real per-directory qmldir files.
 
     # Mark QML singletons before qt_add_qml_module
 set_source_files_properties(src/qml/styles/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)

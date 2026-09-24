@@ -1,22 +1,16 @@
 /**
  * @file main.qml
- * @brief ChadVis app shell — persistent nav rail over a paged view host
+ * @brief Suno-first desktop shell with a persistent projectM Video surface
  *
- * P2 navigation re-home (docs/PIVOT_PLAN.md): Suno.com frontend first,
- * projectM second.
+ * Navigation is Library → Create → Listen → Video → Settings. Settings is
+ * a second ApplicationWindow owned by this file and opened on the same
+ * QQmlApplicationEngine. The Video view remains instantiated for the whole
+ * process lifetime so its native projectM QWindow and GL context are never
+ * recreated while switching pages.
  *
- *   NavRail │ Library (default landing) · Listen (player+visualizer) ·
- *           │ Canvas† · Studio† · Automation† (roadmap stubs) · Settings
- *
- * Persistence rides existing SettingsBridge UI-state keys (no C++ changes):
- *   - expandedPanel → active view id ("library"/"listen"/…)
- *   - sidebarWidth  → rail state (>100 = expanded, else collapsed icons-only)
- *
- * The Listen view stays instantiated for the app's whole lifetime so the
- * embedded native visualizer window is never re-created; all other views
- * load/unload through Loaders.
- *
- * @version 3.0.0 — Nav Rail App Shell
+ * Persistence continues to use the existing SettingsBridge UI keys:
+ *   - expandedPanel → active content view
+ *   - sidebarWidth  → expanded or collapsed navigation rail
  */
 
 import QtQuick
@@ -36,28 +30,42 @@ ApplicationWindow {
     minimumWidth: 800
     minimumHeight: 600
 
-    // Flush any pending auto-save on close
-    onClosing: SettingsBridge.save()
-
     readonly property var viewMeta: {
-        "library":    { label: "Library" },
-        "listen":     { label: "Listen" },
-        "canvas":     { label: "Canvas" },
-        "studio":     { label: "Studio" },
-        "automation": { label: "Automation" },
-        "settings":   { label: "Settings" }
+        "library":  { label: "Library" },
+        "create":   { label: "Create" },
+        "listen":   { label: "Listen" },
+        "video":    { label: "Video" },
+        "settings": { label: "Settings" }
     }
 
-    // ── Active view (persisted via expandedPanel) ────────────────
     property string activeView: "library"
-    onActiveViewChanged: SettingsBridge.expandedPanel = activeView
+    property string returnView: "library"
+    readonly property var settingsWindowApi: settingsWindow
+
+    onActiveViewChanged: {
+        if (activeView !== "settings")
+            SettingsBridge.expandedPanel = activeView
+    }
 
     function navigate(viewId) {
-        if (viewMeta.hasOwnProperty(viewId))
-            activeView = viewId
+        if (!viewMeta.hasOwnProperty(viewId))
+            return
+
+        if (viewId === "settings") {
+            if (activeView !== "settings")
+                returnView = activeView
+            activeView = "settings"
+            settingsWindowApi["open"]()
+            settingsWindow.raise()
+            settingsWindow.requestActivate()
+            return
+        }
+
+        activeView = viewId
+        if (settingsWindow.visible)
+            settingsWindow.close()
     }
 
-    // ── Rail expansion (persisted via sidebarWidth; >100 = expanded) ──
     property bool railUserExpanded: true
     readonly property bool railEffectiveExpanded:
         railUserExpanded && width >= Theme.navRailAutoCollapseBelow
@@ -69,33 +77,58 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        const savedView = SettingsBridge.expandedPanel
-        activeView = viewMeta.hasOwnProperty(savedView) ? savedView : "library"
+        const savedView = String(SettingsBridge.expandedPanel)
+        const contentViews = ["library", "create", "listen", "video"]
+        activeView = contentViews.indexOf(savedView) >= 0 ? savedView : "library"
+        returnView = activeView
         railUserExpanded = SettingsBridge.sidebarWidth > 100
     }
 
+    onClosing: SettingsBridge.save()
+
     title: {
-        var t = "ChadVis"
+        var result = "ChadVis"
         if (AudioBridge.currentTrack.title)
-            t = AudioBridge.currentTrack.artist + " - " + AudioBridge.currentTrack.title + " | " + t
+            result = AudioBridge.currentTrack.artist + " — " + AudioBridge.currentTrack.title + " | " + result
         if (RecordingBridge.isRecording)
-            t = "⏺ " + t
-        return t
+            result = "REC — " + result
+        return result
     }
 
-    background: Rectangle { color: Theme.background }
+    background: Rectangle {
+        color: Theme.background
+    }
 
-    // ══════════════════════════════════════════════
-    // TOP BAR
-    // ══════════════════════════════════════════════
+    palette.window: Theme.background
+    palette.windowText: Theme.textPrimary
+    palette.base: Theme.surfaceRaised
+    palette.alternateBase: Theme.backgroundAlt
+    palette.text: Theme.textPrimary
+    palette.button: Theme.surfaceRaised
+    palette.buttonText: Theme.textPrimary
+    palette.brightText: Theme.textPrimary
+    palette.light: Theme.surfaceOverlay
+    palette.midlight: Theme.borderLight
+    palette.mid: Theme.border
+    palette.dark: Theme.backgroundAlt
+    palette.shadow: Theme.withAlpha(Theme.background, 0.65)
+    palette.highlight: Theme.accent
+    palette.highlightedText: Theme.textOnAccent
+    palette.link: Theme.textLink
+    palette.linkVisited: Theme.accentLight
+    palette.toolTipBase: Theme.surfaceOverlay
+    palette.toolTipText: Theme.textPrimary
+
     header: ToolBar {
         implicitHeight: Theme.topBarHeight
+
         background: Rectangle {
             color: Theme.surface
+
             Rectangle {
-                anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
+                anchors.bottom: parent.bottom
                 height: 1
                 color: Theme.border
             }
@@ -114,15 +147,14 @@ ApplicationWindow {
             }
 
             Rectangle {
-                width: 1
-                height: Theme.topBarHeight - 16
+                Layout.preferredWidth: 1
+                Layout.preferredHeight: Theme.topBarHeight - 16
                 color: Theme.border
             }
 
-            // Now playing (compact ticker)
             RowLayout {
-                spacing: Theme.spacingSmall
                 Layout.fillWidth: true
+                spacing: Theme.spacingSmall
 
                 PulseIndicator {
                     Layout.preferredWidth: Theme.iconSmall
@@ -145,7 +177,9 @@ ApplicationWindow {
 
                 Text {
                     visible: AudioBridge.currentTrack.artist !== ""
-                    text: AudioBridge.currentTrack.artist ? "• " + AudioBridge.currentTrack.artist : ""
+                    text: AudioBridge.currentTrack.artist
+                        ? "— " + AudioBridge.currentTrack.artist
+                        : ""
                     color: Theme.textSecondary
                     font: Theme.fontBody
                     elide: Text.ElideRight
@@ -153,7 +187,6 @@ ApplicationWindow {
                 }
             }
 
-            // Recording chip
             Rectangle {
                 visible: RecordingBridge.isRecording
                 implicitWidth: recRow.implicitWidth + Theme.spacingMedium
@@ -167,8 +200,8 @@ ApplicationWindow {
                     spacing: Theme.spacingSmall
 
                     PulseIndicator {
-                        width: 7
-                        height: 7
+                        Layout.preferredWidth: 7
+                        Layout.preferredHeight: 7
                         active: true
                         baseColor: Theme.textPrimary
                     }
@@ -187,17 +220,16 @@ ApplicationWindow {
         }
     }
 
-    // ══════════════════════════════════════════════
-    // FOOTER STATUS BAR
-    // ══════════════════════════════════════════════
     footer: ToolBar {
         implicitHeight: Theme.statusBarHeight
+
         background: Rectangle {
             color: Theme.surface
+
             Rectangle {
-                anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
+                anchors.top: parent.top
                 height: 1
                 color: Theme.border
             }
@@ -209,7 +241,7 @@ ApplicationWindow {
             anchors.rightMargin: Theme.spacingSmall
 
             Text {
-                text: AudioBridge.isPlaying ? "▶ Playing" : "⏹ Stopped"
+                text: AudioBridge.isPlaying ? "Playing" : "Stopped"
                 color: Theme.textSecondary
                 font: Theme.fontCaption
             }
@@ -217,7 +249,9 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
 
             Text {
-                text: (PresetBridge.currentPreset && PresetBridge.currentPreset.name) ? PresetBridge.currentPreset.name : "No Preset"
+                text: PresetBridge.currentPreset && PresetBridge.currentPreset.name
+                      ? PresetBridge.currentPreset.name
+                      : "No Preset"
                 color: Theme.textSecondary
                 font: Theme.fontCaption
                 elide: Text.ElideRight
@@ -225,22 +259,19 @@ ApplicationWindow {
             }
 
             Rectangle {
-                width: 1
-                height: Theme.statusBarHeight - 8
+                Layout.preferredWidth: 1
+                Layout.preferredHeight: Theme.statusBarHeight - 8
                 color: Theme.border
             }
 
             Text {
-                text: "v2.0.0 • Refactor Edition"
+                text: "v2.0.0 · Suno Desktop"
                 color: Theme.textSecondary
                 font: Theme.fontCaption
             }
         }
     }
 
-    // ══════════════════════════════════════════════
-    // SHELL BODY: NAV RAIL + VIEW HOST
-    // ══════════════════════════════════════════════
     Item {
         anchors.fill: parent
 
@@ -254,12 +285,12 @@ ApplicationWindow {
             activeView: mainWindow.activeView
             expanded: mainWindow.railEffectiveExpanded
 
-            onNavigate: function(viewId) { mainWindow.navigate(viewId) }
+            onNavigate: function(viewId) {
+                mainWindow.navigate(viewId)
+            }
             onExpandToggled: mainWindow.setRailExpanded(!mainWindow.railUserExpanded)
         }
 
-        // View host — everything to the right of the rail.
-        // Every surface fades in via an explicit opacity Behavior.
         Item {
             id: viewHost
             anchors.top: parent.top
@@ -268,163 +299,133 @@ ApplicationWindow {
             anchors.left: navRail.right
             clip: true
 
-            // ── LISTEN: lives forever (owns the native visualizer window) ──
+            LibraryView {
+                anchors.fill: parent
+                visible: mainWindow.activeView === "library"
+                opacity: visible ? 1 : 0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Theme.durationNormal
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
+
+            CreateView {
+                anchors.fill: parent
+                visible: mainWindow.activeView === "create"
+                opacity: visible ? 1 : 0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Theme.durationNormal
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
+
             ListenView {
                 anchors.fill: parent
                 visible: mainWindow.activeView === "listen"
-                opacity: visible ? 1.0 : 0.0
+                opacity: visible ? 1 : 0
                 Behavior on opacity {
-                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
+                    NumberAnimation {
+                        duration: Theme.durationNormal
+                        easing.type: Easing.OutCubic
+                    }
                 }
             }
 
-            // ── LIBRARY: default landing view ──
-            Loader {
+            // Persistent for the process lifetime: WindowContainer owns the
+            // native projectM QWindow, so this view must never be unloaded.
+            VideoView {
                 anchors.fill: parent
-                active: mainWindow.activeView === "library"
-                visible: active
-                opacity: visible ? 1.0 : 0.0
+                visible: mainWindow.activeView === "video"
+                opacity: visible ? 1 : 0
                 Behavior on opacity {
-                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
+                    NumberAnimation {
+                        duration: Theme.durationNormal
+                        easing.type: Easing.OutCubic
+                    }
                 }
-                sourceComponent: LibraryView {}
-            }
-
-            // ── Roadmap stubs ──
-            Loader {
-                anchors.fill: parent
-                active: mainWindow.activeView === "canvas"
-                visible: active
-                opacity: visible ? 1.0 : 0.0
-                Behavior on opacity {
-                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
-                }
-                sourceComponent: ComingSoonPage {
-                    pageTitle: "Canvas"
-                    glyph: "◫"
-                    blurb: "Brand every frame: layer text, imagery and karaoke captions over the live projectM texture, then keyframe the lot."
-                    milestones: [
-                        "Scene model with element stack & render-time binding",
-                        "Keyframe timeline with easing curves",
-                        "One compositing path shared by preview and export"
-                    ]
-                }
-            }
-
-            Loader {
-                anchors.fill: parent
-                active: mainWindow.activeView === "studio"
-                visible: active
-                opacity: visible ? 1.0 : 0.0
-                Behavior on opacity {
-                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
-                }
-                sourceComponent: ComingSoonPage {
-                    pageTitle: "Studio"
-                    glyph: "♫"
-                    blurb: "The creation suite: prompt, style and seed control with full client-side overrides over the captured v2-web endpoint."
-                    milestones: [
-                        "Generation surface with persona presets",
-                        "B-side orchestrator workspaces",
-                        "Lyrics assist & cover-art adapters"
-                    ]
-                }
-            }
-
-            Loader {
-                anchors.fill: parent
-                active: mainWindow.activeView === "automation"
-                visible: active
-                opacity: visible ? 1.0 : 0.0
-                Behavior on opacity {
-                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
-                }
-                sourceComponent: ComingSoonPage {
-                    pageTitle: "Automation"
-                    glyph: "⌁"
-                    blurb: "Batch music-video rendering at scale: durable runs, crash-safe resume and per-item failure isolation."
-                    milestones: [
-                        "Durable run queue with input snapshots",
-                        "Resume interrupted runs",
-                        "Named encoder presets (youtube1080p60, discord8mb…)"
-                    ]
-                }
-            }
-
-            // ── SETTINGS ──
-            Loader {
-                anchors.fill: parent
-                active: mainWindow.activeView === "settings"
-                visible: active
-                opacity: visible ? 1.0 : 0.0
-                Behavior on opacity {
-                    NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.InOutQuad }
-                }
-                sourceComponent: SettingsView {}
             }
         }
     }
 
-    // ══════════════════════════════════════════════
-    // KEYBOARD SHORTCUTS
-    // Sequences are bound to the KeyboardConfig values exposed by
-    // SettingsBridge so the config file remains the single source of truth.
-    // NOTE: the native VisualizerWindow also honors nextPreset/prevPreset/
-    // toggleFullscreen keys when the visualizer itself has input focus;
-    // these QML shortcuts cover the case where the main window has focus.
-    // ══════════════════════════════════════════════
+    SettingsWindow {
+        id: settingsWindow
+        transientParent: mainWindow
+        modality: Qt.ApplicationModal
+        onClosing: {
+            if (mainWindow.activeView === "settings") {
+                Qt.callLater(function() {
+                    mainWindow.activeView = mainWindow.returnView
+                })
+            }
+        }
+    }
 
     Shortcut {
         sequence: SettingsBridge.keyboardPlayPause
+        enabled: !settingsWindow.visible
         onActivated: AudioBridge.togglePlayPause()
     }
 
     Shortcut {
         sequence: SettingsBridge.keyboardNextTrack
+        enabled: !settingsWindow.visible
         onActivated: AudioBridge.next()
     }
 
     Shortcut {
         sequence: SettingsBridge.keyboardPrevTrack
+        enabled: !settingsWindow.visible
         onActivated: AudioBridge.previous()
     }
 
-    // TODO(fullscreen): no QML-invokable fullscreen toggle exists yet.
-    // VisualizerWindow::toggleFullscreen() is not Q_INVOKABLE and
-    // VisualizerBridge exposes no fullscreen slot, so this handler cannot
-    // be wired without a C++ change (e.g. add Q_INVOKABLE toggleFullscreen()
-    // to VisualizerBridge forwarding to the window).
+    // Fullscreen remains a QML placeholder until VisualizerBridge exposes
+    // a toggle; the action now reveals the surface it belongs to.
     Shortcut {
         sequence: SettingsBridge.keyboardToggleFullscreen
-        onActivated: console.log("Fullscreen toggle (TODO)")
+        enabled: !settingsWindow.visible
+        onActivated: {
+            mainWindow.navigate("video")
+            console.log("Fullscreen toggle (TODO)")
+        }
     }
 
     Shortcut {
         sequence: SettingsBridge.keyboardToggleRecord
+        enabled: !settingsWindow.visible
         onActivated: {
-            if (RecordingBridge.isRecording) {
+            mainWindow.navigate("video")
+            if (RecordingBridge.isRecording)
                 RecordingBridge.stopRecording()
-            } else {
+            else
                 RecordingBridge.startRecording()
-            }
         }
     }
 
     Shortcut {
         sequence: SettingsBridge.keyboardNextPreset
-        onActivated: VisualizerBridge.nextPreset()
+        enabled: !settingsWindow.visible
+        onActivated: {
+            mainWindow.navigate("video")
+            VisualizerBridge.nextPreset()
+        }
     }
 
     Shortcut {
         sequence: SettingsBridge.keyboardPrevPreset
-        onActivated: VisualizerBridge.previousPreset()
+        enabled: !settingsWindow.visible
+        onActivated: {
+            mainWindow.navigate("video")
+            VisualizerBridge.previousPreset()
+        }
     }
 
-    // Toggles the nav rail between icons-only and icon+label widths.
-    // No dedicated KeyboardConfig key yet; hardcoded like the old drawer
-    // toggle until one is added.
     Shortcut {
         sequence: "M"
+        enabled: !settingsWindow.visible
         onActivated: mainWindow.setRailExpanded(!mainWindow.railUserExpanded)
     }
 }
