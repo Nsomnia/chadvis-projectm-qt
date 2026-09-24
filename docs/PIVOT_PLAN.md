@@ -75,6 +75,30 @@ pipeline — only captured REST surfaces.
       buffer-ahead next track; graceful device-disconnect handling.
 - [ ] Playlist management once mutation captures land (listing endpoint is T1 today).
 
+### P2b — Desktop Client Shell & Native Sign-in (branch `feat/suno-client-shell-refactor`, 2026-09-24)
+- [x] Re-home the shell on the Suno client: nav = Library / Create / Listen / Video / Settings; Library is the default
+      landing; the previously-uninstantiated `SunoPanel` Create surface is now hosted by `CreateView`.
+- [x] Move projectM + karaoke/overlays + presets + recorder out of `ListenView` into `VideoView`, kept instantiated for
+      the process lifetime so the native GL context is never recreated; `ListenView` is playback-focused.
+- [x] Settings becomes its own window (`SettingsWindow.qml`) with a page rail over the existing per-category panels —
+      no duplicated bridge property — plus Save / Reset / Esc-to-close.
+- [x] Endpoint map correctness: `API_BASE`-relative normalization removed ~21 latent `/api/api/...` 404s, aligned-lyrics
+      trailing slash fixed, 34 capture-proven surfaces added, false HAR provenance replaced, all constants tiered
+      `[T1]`/`[LEAD]`, regression test locks the invariant.
+- [x] Bridge wiring bug fixed: `SunoBridge` signals were never connected because it is a lazy singleton created after
+      `setSunoController()` ran — clips never rendered and `loading` only cleared via the watchdog.
+- [ ] Sign-in UX: standalone paged `AccountPage` + session card, Google action disabled-with-tooltip until capture-proven,
+      manual cookie/token paste remains the working path.
+- [ ] Integrate the native sign-in scaffold (loopback listener + transaction/CSRF/PKCE security + coordinator) behind a
+      disabled flag; offline tests only — no speculative Clerk handshake.
+- [ ] Pin `QQuickStyle::setStyle("Fusion")` before engine creation to stop the macOS native-style customization warnings
+      (the components' custom `background`/`contentItem` are currently ignored by the native style).
+- [ ] Keychain read must fail instead of prompting (`kSecUseAuthenticationUIFail`): an unanswered macOS keychain ACL
+      prompt after each rebuild currently hangs startup before the QML engine loads.
+- [ ] Recorder correctness (currently non-functional end-to-end): renderer `frameCaptured` → `VideoRecorder::
+      submitVideoFrame`; `RecordingBridge::startRecording()` must also start the visualizer-side capture; fix
+      `setAudioQueue` ordering; assign `outputPath` from config; make the encoder/codec controls real.
+
 ### P3 — Lyrics & Karaoke Data
 - [ ] Aligned lyrics v2 (`start_s/end_s` word timing) as PRIMARY source; Whisper fallback
       only when absent/low-confidence. Waveform aggregates + downbeats where useful.
