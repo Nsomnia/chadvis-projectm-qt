@@ -93,11 +93,12 @@ void VideoRecorderThread::threadLoop(StopToken stopToken) {
         }
     }
 
-    // Pop audio from lock-free queue (no mutex)
-    if (audioQueue_) {
+    // Pop audio from lock-free queue (no mutex).  Load the pointer once so an
+    // attach-before/after-worker transition is race-free for this iteration.
+    if (AudioQueue* queue = audioQueue_.load(std::memory_order_acquire)) {
         static constexpr usize AUDIO_BATCH_SIZE = 4096;
         alignas(64) float audioBatch[AUDIO_BATCH_SIZE * 2];
-        u32 popped = audioQueue_->popRecBatch(audioBatch, AUDIO_BATCH_SIZE);
+        u32 popped = queue->popRecBatch(audioBatch, AUDIO_BATCH_SIZE);
         if (popped > 0) {
             std::vector<f32> audioBuffer(audioBatch, audioBatch + popped * 2);
             if (!ffmpeg_.encodeAudio(audioBuffer, 2, bytesWritten)) {

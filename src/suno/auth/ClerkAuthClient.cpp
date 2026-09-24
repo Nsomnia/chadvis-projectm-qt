@@ -7,55 +7,216 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <QTimeZone>
 #include <QUrl>
 #include <expected>
+#include <optional>
 
 namespace vc::suno::auth {
 namespace {
 
-std::expected<ClerkClientInfo, QString> parseClientEnvelope(const QByteArray& body) {
-    const QJsonDocument doc = QJsonDocument::fromJson(body);
-    const QJsonObject resp = doc.object()["response"].toObject();
-    if (resp.isEmpty()) {
-        return std::unexpected(QStringLiteral("Clerk envelope has no 'response' object"));
-    }
+struct EnvelopeParseError {
+    AuthFailureKind kind;
+    QString reason;
+};
 
-    ClerkClientInfo info;
-    info.clientId = resp["id"].toString();
-    info.lastActiveSessionId = resp["last_active_session_id"].toString();
+struct ParsedEnvelope {
+    BearerToken bearer;
+    QString sessionId;
+};
 
-    const QJsonArray sessions = resp["sessions"].toArray();
-    for (const auto& entry : sessions) {
-        const QJsonObject sessionObj = entry.toObject();
-        ClerkSession session;
-        session.sessionId = sessionObj["id"].toString();
-        session.lastActiveToken =
-                JwtUtils::fromJwt(sessionObj["last_active_token"].toObject()["jwt"].toString());
-        if (!session.sessionId.isEmpty()) {
-            info.sessions.push_back(session);
+struct TokenCandidate {
+    QString jwt;
+    QString sessionId;
+};
+
+QString noActiveSessionReason() {
+    return QStringLiteral("no active session; stored credential is incomplete or signed out");
+}
+
+QString rejectedCredentialReason() {
+    return QStringLiteral("stored credential was rejected by Clerk");
+}
+
+QString unexpectedResponseShapeReason() {
+    return QStringLiteral("unexpected Clerk response shape");
+}
+
+QString expiredBearerReason() {
+    return QStringLiteral("Clerk returned an expired bearer token");
+}
+
+QString undecodableBearerReason() {
+    return QStringLiteral("Clerk returned a bearer token that could not be decoded");
+}
+
+EnvelopeParseError malformedResponse() {
+    return {AuthFailureKind::MalformedResponse, unexpectedResponseShapeReason()};
+}
+
+/// Find a token in one capture-proven `sessions` array. If Clerk supplied a
+/// last-active selector, that session wins; otherwise array order is retained.
+std::optional<TokenCandidate> tokenFromSessions(const QJsonArray& sessions,
+                                                 const QString& fallbackSessionId) {
+    std::optional<TokenCandidate> first;
+    std::optional<TokenCandidate> selected;
+
+    for (const QJsonValue& entry : sessions) {
+        if (!entry.isObject()) {
+            continue;
+        }
+
+        const QJsonObject session = entry.toObject();
+        const QString jwt = session["last_active_token"].toObject()["jwt"].toString();
+        if (jwt.isEmpty()) {
+            continue;
+        }
+
+        const QString objectSessionId = session["id"].toString();
+        TokenCandidate candidate{
+                jwt,
+                objectSessionId.isEmpty() ? fallbackSessionId : objectSessionId,
+        };
+
+        if (!first.has_value()) {
+            first = candidate;
+        }
+        if (!selected.has_value() && candidate.sessionId == fallbackSessionId) {
+            selected = candidate;
         }
     }
 
-    if (info.sessions.isEmpty()) {
-        return std::unexpected(QStringLiteral("Clerk envelope contained no usable sessions"));
-    }
-    return info;
+    return selected.has_value() ? selected : first;
 }
 
-/// Token of the last-active session (falling back to the first one).
-std::expected<BearerToken, QString> bearerFromClientInfo(const ClerkClientInfo& info) {
-    const ClerkSession* preferred = info.preferredSession();
-    if (preferred == nullptr || preferred->lastActiveToken.isEmpty()) {
-        return std::unexpected(QStringLiteral("No active bearer token in Clerk client envelope"));
+std::expected<BearerToken, EnvelopeParseError> decodeUsableBearer(const QString& jwt) {
+    const auto claims = JwtUtils::claims(jwt);
+    if (!claims) {
+        return std::unexpected(EnvelopeParseError{
+                AuthFailureKind::ProtocolMismatch,
+                undecodableBearerReason(),
+        });
     }
-    return preferred->lastActiveToken;
+    if (JwtUtils::isExpired(*claims)) {
+        return std::unexpected(EnvelopeParseError{
+                AuthFailureKind::ProtocolMismatch,
+                expiredBearerReason(),
+        });
+    }
+    return JwtUtils::fromJwt(jwt);
+}
+
+/// Parse only locations present in the Aug 2026 captures. Precedence is:
+///   1. response.sessions[*].last_active_token.jwt
+///   2. response.last_active_token.jwt
+///   3. client.sessions[*].last_active_token.jwt
+/// Within either sessions array, response.last_active_session_id selects a
+/// session before the first token-bearing session is considered.
+std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByteArray& body) {
+    QJsonParseError parseError{};
+    const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return std::unexpected(malformedResponse());
+    }
+
+    const QJsonObject root = doc.object();
+    const QJsonValue responseValue = root["response"];
+    const QJsonValue clientValue = root["client"];
+    if (!responseValue.isObject() && !clientValue.isObject()) {
+        return std::unexpected(malformedResponse());
+    }
+
+    const QJsonObject response = responseValue.toObject();
+    const QJsonObject client = clientValue.toObject();
+    const QString lastActiveSessionId =
+            response["last_active_session_id"].toString();
+
+    std::optional<TokenCandidate> candidate =
+            tokenFromSessions(response["sessions"].toArray(), lastActiveSessionId);
+    if (!candidate.has_value()) {
+        const QString directJwt =
+                response["last_active_token"].toObject()["jwt"].toString();
+        if (!directJwt.isEmpty()) {
+            candidate = TokenCandidate{directJwt, lastActiveSessionId};
+        }
+    }
+    if (!candidate.has_value()) {
+        candidate = tokenFromSessions(client["sessions"].toArray(), lastActiveSessionId);
+    }
+
+    if (!candidate.has_value()) {
+        return std::unexpected(EnvelopeParseError{
+                AuthFailureKind::NoActiveSession,
+                noActiveSessionReason(),
+        });
+    }
+
+    auto bearer = decodeUsableBearer(candidate->jwt);
+    if (!bearer) {
+        return std::unexpected(bearer.error());
+    }
+
+    return ParsedEnvelope{*bearer, candidate->sessionId};
 }
 
 } // namespace
+
+StoredCredentialClassification classifyStoredCredential(const QString& value) {
+    const QString normalized = value.trimmed();
+    if (normalized.isEmpty()) {
+        return {StoredCredentialShape::Empty,
+                AuthFailureKind::None,
+                QStringLiteral("stored credential shape: empty value; no active session")};
+    }
+
+    QString cookieHeader = normalized;
+    if (cookieHeader.startsWith(QStringLiteral("Cookie:"), Qt::CaseInsensitive)) {
+        cookieHeader = cookieHeader.mid(7).trimmed();
+    }
+
+    bool hasNameValuePair = false;
+    bool hasClerkCookie = false;
+    const QStringList parts = cookieHeader.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+    for (const QString& part : parts) {
+        const QString pair = part.trimmed();
+        const qsizetype separator = pair.indexOf(QLatin1Char('='));
+        if (separator <= 0) {
+            continue;
+        }
+
+        hasNameValuePair = true;
+        const QString name = pair.left(separator).trimmed();
+        if (name == QLatin1String("__client") ||
+            name == QLatin1String("__client_uat")) {
+            hasClerkCookie = true;
+        }
+    }
+
+    if (hasNameValuePair && hasClerkCookie) {
+        return {StoredCredentialShape::ClerkCookieHeader,
+                AuthFailureKind::None,
+                QStringLiteral("stored credential shape: Clerk cookie header; accepted")};
+    }
+    if (!hasNameValuePair) {
+        // Use exactly the same syntactic JWT acceptance as token restoration.
+        if (JwtUtils::claims(normalized).has_value()) {
+            return {StoredCredentialShape::BearerToken,
+                    AuthFailureKind::None,
+                    QStringLiteral("stored credential shape: JWT bearer token; accepted")};
+        }
+    }
+
+    const QString detectedShape = hasNameValuePair
+            ? QStringLiteral("cookie-pair header without __client or __client_uat")
+            : QStringLiteral("unrecognized non-cookie value");
+    return {StoredCredentialShape::Unsupported,
+            AuthFailureKind::NoActiveSession,
+            QStringLiteral("stored credential shape: %1; no active session; expected a JWT bearer token or a Cookie header containing __client or __client_uat")
+                    .arg(detectedShape)};
+}
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -83,12 +244,15 @@ void ClerkAuthClient::abortInflight() {
 // ---------------------------------------------------------------------------
 
 void ClerkAuthClient::fetchBearer(const Credentials& creds) {
+    failureKind_ = AuthFailureKind::None;
     startClientFetch(CallContext{creds, /*sessionId=*/{}, /*allowFallback=*/true});
 }
 
 void ClerkAuthClient::touch(const Credentials& creds, const QString& sessionId) {
+    failureKind_ = AuthFailureKind::None;
     if (sessionId.isEmpty()) {
-        emit authFailed(QStringLiteral("touch requires a session id"));
+        emitFailure(AuthFailureKind::ProtocolMismatch,
+                    QStringLiteral("touch request requires a session id"));
         return;
     }
     startTouch(CallContext{creds, sessionId, /*allowFallback=*/true});
@@ -150,16 +314,51 @@ void ClerkAuthClient::startLegacyFallback(CallContext ctx) {
             nam_->post(makeRequest(QUrl(url), ctx.creds, /*isPost=*/true), QByteArray());
 
     inflight_.push_back(reply);
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        reply->deleteLater();
-        inflight_.removeOne(reply);
-        handleLegacyBody(reply->readAll());
-    });
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, ctx = std::move(ctx)]() mutable {
+                reply->deleteLater();
+                inflight_.removeOne(reply);
+                handleLegacyBody(reply->readAll(), ctx.primaryFailureKind,
+                                 ctx.primaryFailureReason);
+            });
 }
 
 // ---------------------------------------------------------------------------
 // Reply handling
 // ---------------------------------------------------------------------------
+
+AuthFailureKind ClerkAuthClient::classifyHttpFailure(int status) noexcept {
+    return status == 401 || status == 403 ? AuthFailureKind::RejectedCredential
+                                           : AuthFailureKind::ProtocolMismatch;
+}
+
+QString ClerkAuthClient::httpFailureReason(int status) {
+    return classifyHttpFailure(status) == AuthFailureKind::RejectedCredential
+                   ? rejectedCredentialReason()
+                   : QStringLiteral("Clerk request failed with an unexpected HTTP status");
+}
+
+void ClerkAuthClient::emitFailure(AuthFailureKind kind, const QString& reason) {
+    failureKind_ = kind;
+    switch (kind) {
+    case AuthFailureKind::NoActiveSession:
+        LOG_ERROR("ClerkAuthClient: no active session; stored credential is incomplete or signed out");
+        break;
+    case AuthFailureKind::RejectedCredential:
+        LOG_ERROR("ClerkAuthClient: stored credential was rejected by Clerk");
+        break;
+    case AuthFailureKind::ProtocolMismatch:
+        LOG_ERROR("ClerkAuthClient: {}", reason.toStdString());
+        break;
+    case AuthFailureKind::MalformedResponse:
+        LOG_ERROR("ClerkAuthClient: unexpected Clerk response shape");
+        break;
+    case AuthFailureKind::None:
+        Q_ASSERT(false);
+        break;
+    }
+    emit authFailed(reason);
+}
 
 void ClerkAuthClient::handleReply(QNetworkReply* reply, CallContext ctx) {
     reply->deleteLater();
@@ -174,10 +373,8 @@ void ClerkAuthClient::handleReply(QNetworkReply* reply, CallContext ctx) {
         return;
     }
 
-    const QString reason = QStringLiteral("HTTP %1: %2")
-                                   .arg(status)
-                                   .arg(reply->errorString());
-    LOG_ERROR("ClerkAuthClient: primary request failed ({})", reason.toStdString());
+    ctx.primaryFailureKind = classifyHttpFailure(status);
+    ctx.primaryFailureReason = httpFailureReason(status);
 
     // At most ONE fallback attempt per request; only when we know a session id.
     const QString sid = !ctx.sessionId.isEmpty() ? ctx.sessionId : lastKnownSessionId_;
@@ -186,45 +383,52 @@ void ClerkAuthClient::handleReply(QNetworkReply* reply, CallContext ctx) {
         startLegacyFallback(std::move(ctx));
         return;
     }
-    emit authFailed(reason);
+    emitFailure(ctx.primaryFailureKind, ctx.primaryFailureReason);
 }
 
-void ClerkAuthClient::handleEnvelopeBody(const QByteArray& body, const CallContext& ctx) {
+void ClerkAuthClient::handleEnvelopeBody(const QByteArray& body, const CallContext&) {
     auto envelope = parseClientEnvelope(body);
     if (!envelope) {
-        LOG_ERROR("ClerkAuthClient: envelope parse failed: {}",
-                  envelope.error().toStdString());
-        emit authFailed(envelope.error());
+        emitFailure(envelope.error().kind, envelope.error().reason);
         return;
     }
 
-    lastKnownSessionId_ = envelope->lastActiveSessionId.isEmpty()
-                                  ? envelope->sessions.first().sessionId
-                                  : envelope->lastActiveSessionId;
-
-    auto bearer = bearerFromClientInfo(*envelope);
-    if (!bearer) {
-        emit authFailed(bearer.error());
-        return;
+    if (!envelope->sessionId.isEmpty()) {
+        lastKnownSessionId_ = envelope->sessionId;
     }
-    emit bearerReady(*bearer);
+    failureKind_ = AuthFailureKind::None;
+    emit bearerReady(envelope->bearer);
 }
 
-void ClerkAuthClient::handleLegacyBody(const QByteArray& body) {
+void ClerkAuthClient::handleLegacyBody(const QByteArray& body, AuthFailureKind primaryFailureKind,
+                                       const QString& primaryFailureReason) {
     // Legacy shape: fresh JWT at response.jwt, sometimes at top-level "jwt".
-    const QJsonDocument doc = QJsonDocument::fromJson(body);
-    const QJsonObject root = doc.object();
+    QJsonParseError parseError{};
+    const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
+    const QJsonObject root = parseError.error == QJsonParseError::NoError ? doc.object()
+                                                                         : QJsonObject{};
     QString jwt = root["response"].toObject()["jwt"].toString();
     if (jwt.isEmpty()) {
         jwt = root["jwt"].toString();
     }
     if (jwt.isEmpty()) {
-        LOG_ERROR("ClerkAuthClient: legacy fallback returned no jwt");
-        emit authFailed(QStringLiteral("legacy fallback returned no jwt"));
+        if (primaryFailureKind == AuthFailureKind::RejectedCredential) {
+            emitFailure(primaryFailureKind, primaryFailureReason);
+        } else {
+            emitFailure(AuthFailureKind::ProtocolMismatch,
+                        QStringLiteral("legacy fallback returned an unexpected response shape"));
+        }
+        return;
+    }
+
+    auto bearer = decodeUsableBearer(jwt);
+    if (!bearer) {
+        emitFailure(bearer.error().kind, bearer.error().reason);
         return;
     }
     LOG_INFO("ClerkAuthClient: legacy fallback produced a bearer token");
-    emit bearerReady(JwtUtils::fromJwt(jwt));
+    failureKind_ = AuthFailureKind::None;
+    emit bearerReady(*bearer);
 }
 
 } // namespace vc::suno::auth

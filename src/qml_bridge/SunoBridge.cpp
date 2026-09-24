@@ -2,6 +2,7 @@
 #include "ui/controllers/SunoController.hpp"
 #include "suno/SunoAccountManager.hpp"
 #include "suno/SunoClient.hpp"
+#include "suno/auth/AuthCoordinator.hpp"
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoModels.hpp"
 #include <QVariantMap>
@@ -13,8 +14,50 @@ namespace qml_bridge {
 vc::suno::SunoController* SunoBridge::s_controller = nullptr;
 vc::suno::SunoClient* SunoBridge::s_client = nullptr;
 
+namespace {
+
+QString authFailureKindString(vc::suno::auth::AuthFailureKind kind) {
+    using Kind = vc::suno::auth::AuthFailureKind;
+    switch (kind) {
+    case Kind::None:
+        return QStringLiteral("none");
+    case Kind::NoActiveSession:
+        return QStringLiteral("noSession");
+    case Kind::RejectedCredential:
+        return QStringLiteral("rejected");
+    case Kind::ProtocolMismatch:
+        return QStringLiteral("protocol");
+    case Kind::MalformedResponse:
+        return QStringLiteral("malformed");
+    }
+    return QStringLiteral("none");
+}
+
+QString synthesizedAuthFailureError(
+        vc::suno::auth::AuthFailureKind kind) {
+    using Kind = vc::suno::auth::AuthFailureKind;
+    switch (kind) {
+    case Kind::NoActiveSession:
+        return QStringLiteral("No active Suno session was found. Paste a valid bearer token or the complete Clerk cookie header in Account settings.");
+    case Kind::RejectedCredential:
+        return QStringLiteral("Suno rejected the stored credential. Paste a fresh bearer token or complete Clerk cookie header in Account settings.");
+    case Kind::ProtocolMismatch:
+        return QStringLiteral("Suno sign-in hit an unexpected authentication response. Try again; if it persists, refresh the captured sign-in flow.");
+    case Kind::MalformedResponse:
+        return QStringLiteral("Suno sign-in returned an unreadable authentication response. Try again; if it persists, refresh the captured sign-in flow.");
+    case Kind::None:
+        break;
+    }
+    return {};
+}
+
+} // namespace
+
 SunoBridge::SunoBridge(QObject* parent) : QObject(parent) {
     setInstance(this);
+    if (s_controller) {
+        wireControllerSignals();
+    }
 
     // 350 ms debounce for server-side library search (QML may fire per
     // keystroke; we coalesce before hitting feed/v3).
@@ -39,69 +82,137 @@ SunoBridge::SunoBridge(QObject* parent) : QObject(parent) {
 }
 
 void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
+    auto* bridgeInstance = instance();
+    if (bridgeInstance && bridgeInstance->controllerSignalsWired_) {
+        auto* previousController = bridgeInstance->s_controller;
+        if (previousController && previousController != controller) {
+            QObject::disconnect(previousController, nullptr, bridgeInstance, nullptr);
+            if (auto* lm = previousController->libraryManager()) {
+                QObject::disconnect(lm, nullptr, bridgeInstance, nullptr);
+            }
+            if (auto* oldClient = bridgeInstance->s_client) {
+                QObject::disconnect(oldClient, nullptr, bridgeInstance, nullptr);
+                oldClient->errorOccurred.disconnect(bridgeInstance->clientErrorConnectionId_);
+            }
+            if (auto* am = previousController->accountManager()) {
+                QObject::disconnect(am, nullptr, bridgeInstance, nullptr);
+            }
+            if (auto* coordinator = previousController->authCoordinator()) {
+                QObject::disconnect(coordinator, nullptr, bridgeInstance, nullptr);
+            }
+            bridgeInstance->controllerSignalsWired_ = false;
+        }
+    }
+
     s_controller = controller;
-    if (!s_controller) {
+    s_client = s_controller ? s_controller->client() : nullptr;
+    if (bridgeInstance) {
+        if (s_controller) {
+            bridgeInstance->wireControllerSignals();
+        } else {
+            emit bridgeInstance->googleLoginStateChanged();
+            emit bridgeInstance->googleLoginErrorChanged();
+            emit bridgeInstance->authFailureKindChanged();
+            emit bridgeInstance->googleLoginAvailableChanged();
+        }
+    }
+}
+
+void SunoBridge::wireControllerSignals() {
+    if (controllerSignalsWired_ || !s_controller) {
         return;
     }
 
     s_client = s_controller->client();
-    if (auto* bridgeInstance = instance()) {
-        connect(s_controller, &vc::suno::SunoController::libraryUpdated,
-                bridgeInstance, &SunoBridge::onLibraryUpdated);
+    auto* bridgeInstance = this;
 
-        // Any terminal failure must clear the spinner: auth guards,
-        // 401 exhaustion, and generic network errors all funnel here.
-        connect(s_controller, &vc::suno::SunoController::authenticationRequired,
-                bridgeInstance, &SunoBridge::clearLoading);
-        connect(s_controller, &vc::suno::SunoController::authenticationFailed,
-                bridgeInstance, &SunoBridge::clearLoading);
-        connect(s_controller, &vc::suno::SunoController::libraryFetchFailed,
-                bridgeInstance, &SunoBridge::onLibraryFetchFailed);
-        connect(s_controller, &vc::suno::SunoController::sunoError,
-                bridgeInstance, &SunoBridge::onLibraryFetchFailed);
+    connect(s_controller, &vc::suno::SunoController::libraryUpdated,
+            bridgeInstance, &SunoBridge::onLibraryUpdated);
 
-        if (auto* lm = s_controller->libraryManager()) {
-            connect(lm, &vc::suno::SunoLibraryManager::authenticationRequired,
-                    bridgeInstance, &SunoBridge::clearLoading);
-            connect(lm, &vc::suno::SunoLibraryManager::libraryFetchFailed,
-                    bridgeInstance, &SunoBridge::onLibraryFetchFailed);
-        }
-
-        if (s_client) {
-            connect(s_client, &vc::suno::SunoClient::needsReauth,
-                    bridgeInstance, &SunoBridge::clearLoading);
-            connect(s_client, &vc::suno::SunoClient::authStateChanged,
-                    bridgeInstance, &SunoBridge::authenticationChanged);
-            // Custom Signal<> for generic errors: queued clear so it
-            // arrives on the bridge's thread even if emitted off-thread.
-            s_client->errorOccurred.connect([bridgeInstance](const std::string& err) {
-                QMetaObject::invokeMethod(bridgeInstance,
-                    [bridgeInstance, err]() { bridgeInstance->onLibraryFetchFailed(QString::fromStdString(err)); },
-                    Qt::QueuedConnection);
+    // Any terminal failure must clear the spinner: auth guards,
+    // 401 exhaustion, and generic network errors all funnel here.
+    connect(s_controller, &vc::suno::SunoController::authenticationRequired,
+            bridgeInstance, &SunoBridge::clearLoading);
+    connect(s_controller, &vc::suno::SunoController::authenticationFailed,
+            bridgeInstance, &SunoBridge::onAuthenticationFailed);
+    connect(s_controller, &vc::suno::SunoController::authFailureKindChanged,
+            bridgeInstance, [bridgeInstance]() {
+                emit bridgeInstance->authFailureKindChanged();
+                // googleLoginError falls back to the same classification only
+                // when the coordinator has no more specific safe error.
+                emit bridgeInstance->googleLoginErrorChanged();
             });
-        }
+    connect(s_controller, &vc::suno::SunoController::libraryFetchFailed,
+            bridgeInstance, &SunoBridge::onLibraryFetchFailed);
+    connect(s_controller, &vc::suno::SunoController::sunoError,
+            bridgeInstance, &SunoBridge::onLibraryFetchFailed);
 
-        // Account snapshot -> QML properties.
-        if (auto* am = s_controller->accountManager()) {
-            connect(am, &vc::suno::SunoAccountManager::billingInfoReady,
-                    bridgeInstance, &SunoBridge::billingInfoChanged);
-            connect(am, &vc::suno::SunoAccountManager::accountInfoReady,
-                    bridgeInstance, &SunoBridge::accountInfoChanged);
-        }
-        connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance, [bridge = bridgeInstance](const QString& response, const QString& workspaceId) {
-            QVariantMap assistantMsg;
-            assistantMsg["role"] = "assistant";
-            assistantMsg["content"] = response;
-            assistantMsg["workspaceId"] = workspaceId;
-            bridge->chatHistory_.append(assistantMsg);
-            emit bridge->chatHistoryChanged();
-        });
+    if (auto* lm = s_controller->libraryManager()) {
+        connect(lm, &vc::suno::SunoLibraryManager::authenticationRequired,
+                bridgeInstance, &SunoBridge::clearLoading);
+        connect(lm, &vc::suno::SunoLibraryManager::libraryFetchFailed,
+                bridgeInstance, &SunoBridge::onLibraryFetchFailed);
+    }
 
-        connect(s_controller, &vc::suno::SunoController::chatHistoryFetched, bridgeInstance, [bridge = bridgeInstance](const QVariantList& sessions) {
-            bridge->chatHistory_ = sessions;
-            emit bridge->chatHistoryChanged();
+    if (s_client) {
+        connect(s_client, &vc::suno::SunoClient::needsReauth,
+                bridgeInstance, &SunoBridge::clearLoading);
+        connect(s_client, &vc::suno::SunoClient::authStateChanged,
+                bridgeInstance, &SunoBridge::authenticationChanged);
+        // Custom Signal<> for generic errors: queued clear so it
+        // arrives on the bridge's thread even if emitted off-thread.
+        clientErrorConnectionId_ = s_client->errorOccurred.connect([bridgeInstance](const std::string& err) {
+            QMetaObject::invokeMethod(bridgeInstance,
+                [bridgeInstance, err]() { bridgeInstance->onLibraryFetchFailed(QString::fromStdString(err)); },
+                Qt::QueuedConnection);
         });
     }
+
+    if (auto* coordinator = s_controller->authCoordinator()) {
+        // AuthCoordinator owns the canonical state strings.  The bridge
+        // mirrors its signals without introducing a second auth state machine.
+        connect(coordinator, &vc::suno::auth::AuthCoordinator::stateChanged,
+                bridgeInstance, [bridgeInstance](const QString&) {
+                    emit bridgeInstance->googleLoginStateChanged();
+                });
+        connect(coordinator, &vc::suno::auth::AuthCoordinator::errorChanged,
+                bridgeInstance, [bridgeInstance](const QString&) {
+                    emit bridgeInstance->googleLoginErrorChanged();
+                });
+        connect(coordinator, &vc::suno::auth::AuthCoordinator::callbackReceived,
+                bridgeInstance, &SunoBridge::googleLoginCallbackReceived);
+    }
+
+    // Account snapshot -> QML properties.
+    if (auto* am = s_controller->accountManager()) {
+        connect(am, &vc::suno::SunoAccountManager::billingInfoReady,
+                bridgeInstance, &SunoBridge::billingInfoChanged);
+        connect(am, &vc::suno::SunoAccountManager::accountInfoReady,
+                bridgeInstance, &SunoBridge::accountInfoChanged);
+    }
+    connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance, [bridge = bridgeInstance](const QString& response, const QString& workspaceId) {
+        QVariantMap assistantMsg;
+        assistantMsg["role"] = "assistant";
+        assistantMsg["content"] = response;
+        assistantMsg["workspaceId"] = workspaceId;
+        bridge->chatHistory_.append(assistantMsg);
+        emit bridge->chatHistoryChanged();
+    });
+
+    connect(s_controller, &vc::suno::SunoController::chatHistoryFetched, bridgeInstance, [bridge = bridgeInstance](const QVariantList& sessions) {
+        bridge->chatHistory_ = sessions;
+        emit bridge->chatHistoryChanged();
+    });
+
+    controllerSignalsWired_ = true;
+
+    // The singleton may be created before or after setSunoController().
+    // Notify bound QML properties in both cases; getters still read the
+    // controller-owned coordinator as the single source of truth.
+    emit googleLoginStateChanged();
+    emit googleLoginErrorChanged();
+    emit authFailureKindChanged();
+    emit googleLoginAvailableChanged();
 }
 
 bool SunoBridge::loading() const { return loading_; }
@@ -267,6 +378,67 @@ void SunoBridge::onLibraryUpdated() {
 bool SunoBridge::isAuthenticated() const {
     if (!s_controller || !s_controller->client()) return false;
     return s_controller->client()->authState() == vc::suno::auth::AuthState::ActiveValid;
+}
+
+QString SunoBridge::googleLoginState() const {
+    if (!s_controller || !s_controller->authCoordinator()) {
+        return QStringLiteral("signedOut");
+    }
+    return s_controller->authCoordinator()->googleLoginState();
+}
+
+QString SunoBridge::googleLoginError() const {
+    if (!s_controller) return {};
+    if (auto* coordinator = s_controller->authCoordinator()) {
+        const QString coordinatorError = coordinator->googleLoginError();
+        if (!coordinatorError.isEmpty()) {
+            return coordinatorError;
+        }
+    }
+    return synthesizedAuthFailureError(s_controller->authFailureKind());
+}
+
+QString SunoBridge::authFailureKind() const {
+    if (!s_controller) return QStringLiteral("none");
+    return authFailureKindString(s_controller->authFailureKind());
+}
+
+bool SunoBridge::googleLoginAvailable() const {
+    return s_controller && s_controller->authCoordinator() &&
+           s_controller->authCoordinator()->googleLoginAvailable();
+}
+
+void SunoBridge::beginGoogleSignIn() {
+    if (!s_controller) return;
+    if (auto* coordinator = s_controller->authCoordinator()) {
+        QString safeError;
+        // With no capture-approved launch, the coordinator takes its
+        // policy-error path and never calls QDesktopServices.
+        (void)coordinator->beginGoogleSignIn(&safeError);
+    }
+}
+
+void SunoBridge::cancelGoogleSignIn() {
+    if (s_controller) {
+        if (auto* coordinator = s_controller->authCoordinator()) {
+            coordinator->cancelGoogleSignIn();
+        }
+    }
+}
+
+void SunoBridge::signOutSuno() {
+    // LOCAL ONLY: no capture-proven remote Suno logout endpoint exists.
+    // This clears local credentials and stops local refresh work only.
+    if (s_controller) {
+        if (auto* coordinator = s_controller->authCoordinator()) {
+            coordinator->signOutSuno();
+        }
+    }
+}
+
+void SunoBridge::onAuthenticationFailed(const QString& reason) {
+    clearLoading();
+    emit authenticationFailed(reason);
 }
 
 void SunoBridge::clearLoading() {

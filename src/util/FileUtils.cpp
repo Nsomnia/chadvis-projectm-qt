@@ -272,31 +272,56 @@ fs::path uniquePath(const fs::path& desired) {
 std::string sanitizeFilename(const std::string& name) {
     std::string safe;
     safe.reserve(name.size());
-    for (unsigned char c : name) {
-        // Replace path separators so a crafted title can never escape the
-        // intended directory.
+
+    // Replace every path separator, shell-forbidden character, C0/DEL control,
+    // and dot in a standalone multi-dot path component with one underscore.
+    // Dots inside names and a final extension are preserved; neutralizing the
+    // complete dot component prevents ".." and "...." traversal semantics.
+    for (std::size_t i = 0; i < name.size();) {
+        const unsigned char c = static_cast<unsigned char>(name[i]);
+
         if (c == '/' || c == '\\') {
             safe.push_back('_');
+            ++i;
             continue;
         }
-        // Replace shell-forbidden characters and control characters
-        if (c == '<' || c == '>' || c == ':' || c == '"' || c == '|' || c == '?' || c == '*') {
+
+        if (c == '.') {
+            std::size_t end = i + 1;
+            while (end < name.size() && name[end] == '.') {
+                ++end;
+            }
+            const bool componentStart =
+                i == 0 || name[i - 1] == '/' || name[i - 1] == '\\';
+            const bool componentEnd =
+                end == name.size() || name[end] == '/' || name[end] == '\\';
+            if (end - i >= 2 && componentStart && componentEnd) {
+                safe.append(end - i, '_');
+            } else {
+                safe.append(name, i, end - i);
+            }
+            i = end;
+            continue;
+        }
+
+        if (c <= 0x1F || c == 0x7F || c == '*' || c == '?' || c == '"' ||
+            c == '<' || c == '>' || c == '|' || c == ':') {
             safe.push_back('_');
-            continue;
+        } else {
+            safe.push_back(static_cast<char>(c));
         }
-        if (c <= 0x1F) { // control characters
-            safe.push_back('_');
-            continue;
-        }
-        safe.push_back(c);
+        ++i;
     }
-    // Trim trailing spaces and dots
+
+    // Windows rejects trailing spaces and dots; trimming also handles inputs
+    // made entirely of otherwise-allowed characters.
     while (!safe.empty() && (safe.back() == ' ' || safe.back() == '.')) {
         safe.pop_back();
     }
     if (safe.empty()) {
         return "_";
     }
+
     // Extract stem (part before the last dot, or whole name if no dot)
     size_t dotPos = safe.find_last_of('.');
     std::string stem = (dotPos != std::string::npos) ? safe.substr(0, dotPos) : safe;

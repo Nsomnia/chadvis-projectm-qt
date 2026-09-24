@@ -4,6 +4,8 @@
 
 #include "util/Types.hpp"
 #include "util/Result.hpp"
+#include <optional>
+#include <string_view>
 #include <vector>
 
 namespace vc {
@@ -127,9 +129,18 @@ struct EncoderSettings {
     // Validate settings compatibility
     Result<void> validate() const;
     
-    // Create from config
+    // Create from config, including a sanitized default output filename.
     static EncoderSettings fromConfig();
-    
+
+    // Infer the container selected by a save dialog from its extension.
+    static std::optional<Container> containerFromPath(const fs::path& path);
+
+    // Keep the selected filename but force the extension for the chosen
+    // container.  This is used for both dialog paths and generated paths.
+    static fs::path outputPathForContainer(const fs::path& path,
+                                            Container container);
+
+
     // Presets
     static EncoderSettings youtube1080p60();
     static EncoderSettings youtube4k60();

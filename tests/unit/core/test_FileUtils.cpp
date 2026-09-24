@@ -12,7 +12,9 @@ private slots:
     }
 
     void testControlChars() {
-        QVERIFY(sanitizeFilename(std::string{"test\x01\x02file"}) == "test__file");
+        // Adjacent literals stop the C++ \x escape before the 'f' in "file".
+        QVERIFY(sanitizeFilename(std::string{"test\x01\x02" "file"}) == "test__file");
+        QVERIFY(sanitizeFilename(std::string{"test\x7F\x7F" "file"}) == "test__file");
     }
 
     void testReservedName() {
@@ -50,7 +52,14 @@ private slots:
     }
 
     void testMixedSpecialChars() {
-        QVERIFY(sanitizeFilename("C:/Users/Test\\Documents/..../song*title?.mp3") == "C__Users_Test_Documents____song_title_.mp3");
+        // The "/..../" component contains six unsafe characters: two
+        // separators and four traversal dots, each mapped to one underscore.
+        QVERIFY(sanitizeFilename("C:/Users/Test\\Documents/..../song*title?.mp3") == "C__Users_Test_Documents______song_title_.mp3");
+    }
+
+    void testTraversalSafety() {
+        QVERIFY(sanitizeFilename("/\\*?") == "____");
+        QVERIFY(sanitizeFilename("../../etc/passwd") == "______etc_passwd");
     }
 
     void testPreserveExtension() {

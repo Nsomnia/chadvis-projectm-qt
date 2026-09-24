@@ -9,7 +9,8 @@ namespace vc {
 VideoRecorder::VideoRecorder() = default;
 
 VideoRecorder::~VideoRecorder() {
-  stop();
+  (void)stop();
+  audioQueue_.store(nullptr, std::memory_order_release);
 }
 
 Result<void> VideoRecorder::start(const EncoderSettings& settings) {
@@ -32,6 +33,9 @@ Result<void> VideoRecorder::start(const EncoderSettings& settings) {
   statsUpdated.emitSignal(stats_);
 
   worker_ = std::make_unique<VideoRecorderThread>(*this, settings_);
+  if (AudioQueue* queue = audioQueue_.load(std::memory_order_acquire)) {
+    worker_->setAudioQueue(queue);
+  }
   worker_->start();
 
   state_ = RecordingState::Recording;
@@ -46,7 +50,11 @@ Result<void> VideoRecorder::start(const EncoderSettings& settings) {
 
 Result<void> VideoRecorder::start(const fs::path& outputPath) {
   auto settings = EncoderSettings::fromConfig();
-  settings.outputPath = outputPath;
+  if (auto container = EncoderSettings::containerFromPath(outputPath)) {
+    settings.container = *container;
+  }
+  settings.outputPath = EncoderSettings::outputPathForContainer(
+    outputPath, settings.container);
   return start(settings);
 }
 
@@ -64,6 +72,10 @@ Result<void> VideoRecorder::stop() {
 
   if (worker_) {
     worker_->stop();
+    // Preserve the worker's final counters before releasing it.  The bridge
+    // reads these after the Stopped transition, so final frame/file stats must
+    // not fall back to the zeroed parent snapshot.
+    stats_ = worker_->getStats();
     worker_.reset();
   }
 
@@ -112,6 +124,7 @@ RecordingStats VideoRecorder::getCurrentStats() const {
 }
 
 void VideoRecorder::setAudioQueue(AudioQueue* queue) {
+  audioQueue_.store(queue, std::memory_order_release);
   if (worker_) {
     worker_->setAudioQueue(queue);
   }

@@ -23,6 +23,7 @@
 #include <QSet>
 #include <QString>
 #include <QTimer>
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -33,6 +34,78 @@ namespace vc::suno {
 namespace auth {
 class CredentialStore;
 }
+
+/// Serializes potentially-blocking credential-store operations on one private
+/// QThread owned by SunoClient. Restore requests are coalesced and every
+/// completion is explicitly hopped back to the caller's QObject thread.
+///
+/// This class is public as a narrow, injectable test seam: tests can prove the
+/// backend runs off-thread, the GUI hop is queued, and concurrent restores do
+/// not double-read without touching the real macOS keychain.
+class CredentialStoreWorker final {
+public:
+    enum class Operation {
+        Restore,
+        Store,
+        Remove,
+    };
+
+    struct Request {
+        Operation operation = Operation::Restore;
+        QString key;
+        QString secret;
+
+        bool loadBearer = false;
+        bool migrateLegacy = false;
+        QString legacyCredential;
+        bool legacyWasCookie = true;
+    };
+
+    struct Outcome {
+        std::optional<QString> cookie;
+        std::optional<QString> bearer;
+        bool migratedLegacy = false;
+        bool legacyMigrationFailed = false;
+        bool legacyWasCookie = true;
+    };
+
+    using Backend = std::function<Outcome(Request)>;
+    using Completion = std::function<void(Outcome)>;
+
+    CredentialStoreWorker(QObject* guiReceiver, Backend backend);
+    ~CredentialStoreWorker();
+    CredentialStoreWorker(const CredentialStoreWorker&) = delete;
+    CredentialStoreWorker& operator=(const CredentialStoreWorker&) = delete;
+
+    /// Returns true only when this call started the sole in-flight restore.
+    /// Concurrent requests return false and reuse that restore.
+    [[nodiscard]] bool requestRestore(Request request, Completion completion);
+
+    /// Asynchronously upsert / remove a record. Operations are serialized with
+    /// restore reads and never execute on guiReceiver's thread.
+    void store(QString key, QString secret);
+    void remove(QString key);
+
+    [[nodiscard]] bool isRestoreInFlight() const { return restoreInFlight_; }
+    void discardPendingRestore();
+
+    [[nodiscard]] static Qt::ConnectionType completionConnectionType() {
+        return kCompletionConnectionType;
+    }
+
+private:
+    void enqueue(Request request);
+
+    QObject* guiReceiver_;
+    Backend backend_;
+    std::unique_ptr<QThread> workerThread_;
+    QObject* worker_ = nullptr;
+    bool restoreInFlight_ = false;
+    bool restoreDiscarded_ = false;
+    quint64 restoreGeneration_ = 0;
+
+    static constexpr Qt::ConnectionType kCompletionConnectionType = Qt::QueuedConnection;
+};
 
 class SunoClient : public QObject {
     Q_OBJECT
@@ -54,6 +127,10 @@ public:
     /// Re-read secrets from CredentialStore (the settings panel may have
     /// replaced them) and apply. No-op when nothing changed.
     void reloadStoredCredentials();
+
+    /// Local-only sign-out: clear both persisted credential records and stop
+    /// refresh work. This never claims or performs a remote Suno logout.
+    void clearLocalCredentials();
 
     // ── API Methods ─────────────────────────────────────────────────────
     /// POST /api/feed/v3 (captured contract): cursor-based library page.
@@ -143,6 +220,12 @@ public:
 
     // ── Auth state (see auth::AuthState) ────────────────────────────────
     auth::AuthState authState() const { return authState_; }
+    /// Last Clerk/storage failure classification, published on this QObject's
+    /// thread. The atomic keeps diagnostic reads safe without exposing enum
+    /// internals through the QML bridge.
+    [[nodiscard]] auth::AuthFailureKind authFailureKind() const noexcept {
+        return authFailureKind_.load(std::memory_order_acquire);
+    }
     const QString& deviceId() const { return deviceId_; }
 
     // Custom signals for non-QObject consumers (managers use these).
@@ -185,6 +268,9 @@ signals:
     /// Touch/retry chain exhausted; user must supply fresh credentials.
     void needsReauth();
     void authStateChanged();
+    /// Emitted when the last auth failure changes or clears. The value is
+    /// intentionally not an enum argument; consumers map it to a stable string.
+    void authFailureKindChanged();
 
 private:
     struct PendingRequest {
@@ -196,18 +282,24 @@ private:
     };
 
     // Startup
-    void restoreSession();
-    void migrateLegacyConfigCredentials(auth::CredentialStore& store);
+    enum class RestoreMode {
+        Startup,
+        Reload,
+    };
+    void restoreSession(RestoreMode mode);
+    void applyRestoreResult(RestoreMode mode, CredentialStoreWorker::Outcome result);
 
     // Auth orchestration
     void setState(auth::AuthState state);
+    void setAuthFailureKind(auth::AuthFailureKind kind);
     void applyBearer(const auth::BearerToken& token);
     void scheduleProactiveRefresh();
     void ensureFreshBearer(bool force = false);
     void flushAuthWaiters();
     void dropPendingAuthWork(const QString& reason);
     void onBearerReadyInternal(const auth::BearerToken& token);
-    void onClerkAuthFailedInternal(const QString& reason);
+    void onClerkAuthFailedInternal(const QString& reason,
+                                  auth::AuthFailureKind kind);
     bool hasCredentials() const;
 
     // Request plumbing
@@ -234,9 +326,11 @@ private:
 
     // Auth subsystem
     auth::ClerkAuthClient* clerk_;
+    std::unique_ptr<CredentialStoreWorker> credentialStoreWorker_;
     auth::Credentials credentials_;
     auth::BearerToken bearer_;
     auth::AuthState authState_ = auth::AuthState::Disconnected;
+    std::atomic<auth::AuthFailureKind> authFailureKind_{auth::AuthFailureKind::None};
     QString lastActiveSessionId_;
     QString deviceId_;
     QTimer* refreshTimer_;       ///< Proactive touch at expiry-minus-margin.

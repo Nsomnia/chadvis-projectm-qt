@@ -1,59 +1,45 @@
-# 🗺️ The ChadVis Documentation Hub
+# ChadVis Documentation
 
-Welcome to the central brain of ChadVis — the canonical table of contents for all project documentation. We've split it into bite-sized pieces so you don't get lost in a monolith of text. Pick your path based on your clearance level.
+Source-verified documentation hub for ChadVis, a Suno-first desktop client with a native projectM video workspace.
 
----
+## Using ChadVis
 
-## 🧑‍💻 User Space
-*Everything you need to get the app running and looking dope.*
+- [Installation](user/INSTALL.md) — build and installation notes.
+- [Configuration](user/CONFIG.md) — configuration-file reference.
+- [Usage](user/USAGE.md) — current Library, Create, Listen, Video, Settings, and account flow.
+- [Testing](dev/TESTING.md) — automated test inventory and current-shell smoke checklist.
 
-*   [**Installation Guide**](user/INSTALL.md) - How to build and install (Arch BTW).
-*   [**Configuration Pro-Tips**](user/CONFIG.md) - Tweak your `config.toml` like a pro.
-*   [**Usage & Hotkeys**](user/USAGE.md) - Master the UI and the shortcuts.
-*   [**Testing Overview**](dev/TESTING.md) - Unit test map and manual GUI checks.
+## Current Client Surfaces
 
----
+- [Main shell](../src/qml/main.qml) — persistent navigation and primary window.
+- [Settings window](../src/qml/SettingsWindow.qml) — standalone paged settings surface.
+- [Video page](../src/qml/views/VideoView.qml) — projectM, overlays, karaoke, presets, and recording UI.
+- [Account page](../src/qml/settings/AccountPage.qml) — Suno session and manual credential path.
 
-## 🛠️ Developer Sanctum
-*For those who want to see the C++23 gears turning.*
+## Development
 
-*   [**System Architecture**](dev/ARCHITECTURE.md) - The Singleton-Engine-Controller lore, plus the QML/UI layer.
-*   [**Contributing Standards**](dev/CONTRIBUTING.md) - Don't use `new`, use `std::unique_ptr`.
-*   [**Testing Overview**](dev/TESTING.md) - Unit/integration/manual test inventory.
+- [Architecture](dev/ARCHITECTURE.md) — process ownership, QML shell, native visualizer embedding, bridges, and Suno data flow.
+- [Contributing](dev/CONTRIBUTING.md) — repository contribution notes.
+- [Testing](dev/TESTING.md) — unit sources, integration harness, and manual GUI checks.
 
----
+## Suno API Research
 
-## 🤖 Suno API Reference
-*Reverse-engineered documentation of the remote Suno service — the heart of the frontend.*
+The material in this section is unofficial and capture-based; Suno does not publish a public API contract for this client.
 
-*   [**API Index & Disclaimer**](suno_api/README.md) - scope and research boundaries.
-*   [**Endpoint Inventory**](suno_api/ENDPOINT-INVENTORY.md) - sole API-spec master for observed endpoints and evidence status.
-*   [**Desktop Callback Analysis**](suno_api/OAUTH_REDIRECT_ANALYSIS.md) - captured web flow and the native sign-in gate.
-*   [**Endpoint Implementation Map**](../src/suno/SunoEndpoints.hpp) - centralized constants and `[T1]`/`[LEAD]` tiers.
-*   [**Retained Raw Provenance**](suno_api/raw/README.md), including the [endpoint scan](suno_api/raw/endpoints_sniffed.list) and [sanitized OAuth recon](suno_api/raw/sanitized-recon-2026-09-22.json).
+- [API index and disclaimer](suno_api/README.md) — scope and research boundaries.
+- [Endpoint inventory](suno_api/ENDPOINT-INVENTORY.md) — sole API-spec master for observed endpoints and evidence status.
+- [Desktop callback analysis](suno_api/OAUTH_REDIRECT_ANALYSIS.md) — captured web flow and the native sign-in gate.
+- [Endpoint implementation map](../src/suno/SunoEndpoints.hpp) — centralized constants and `[T1]`/`[LEAD]` tiers.
+- [Retained raw provenance](suno_api/raw/README.md), including the [endpoint scan](suno_api/raw/endpoints_sniffed.list) and [sanitized OAuth recon](suno_api/raw/sanitized-recon-2026-09-22.json).
 
----
+## Integration Notes
 
-## 📊 Integration Specs
-*Technical details for the integrations.*
+- [Integration hub](integration/INDEX.md).
+- [Suno integration](integration/SUNO.md).
+- [projectM integration](integration/PROJECTM.md).
 
-*   [**Integration Hub**](integration/INDEX.md) - How we talk to Suno and projectM.
-*   [**Suno AI Integration**](integration/SUNO.md) - Authentication, DB, and Karaoke.
-*   [**projectM v4 Bridge**](integration/PROJECTM.md) - OpenGL, Presets, and FBOs.
+## Project Updates and Lore
 
----
-
-## 📜 The Sacred Lore
-*The philosophy, the bickering, and the "why".*
-
-*   [**The Manifesto**](lore/MANIFESTO.md) - Linus vs Richard vs The Senior Dev.
-*   [**Project History**](lore/HISTORY.md) - From a dream to a visual powerhouse.
-
----
-
-## 🔄 Project Updates
-*   [**Changelog**](../CHANGELOG_CURRENT.md) - What's new and what's broken.
-
----
-
-> "Documentation is like a UI: if you have to explain it, it's not good enough. But we wrote it anyway because some of you are still using Ubuntu." — *Management*
+- [Current changelog](../CHANGELOG_CURRENT.md).
+- [Project history](lore/HISTORY.md).
+- [Manifesto](lore/MANIFESTO.md).
