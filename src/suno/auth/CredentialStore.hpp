@@ -27,6 +27,18 @@ public:
         File,     ///< Force the plaintext-file backend (tests / CHADVIS_NO_KEYCHAIN).
     };
 
+    /// Platform-neutral classification of a macOS Security.framework status.
+    enum class KeychainReadStatus {
+        Success,
+        NotFound,
+        AccessDenied,
+        Failed,
+    };
+
+    /// Unit-testable mapping; `load()` also preserves the raw OSStatus in
+    /// vc::Error::code for keychain reads.
+    [[nodiscard]] static KeychainReadStatus classifyKeychainReadStatus(int osStatus);
+
     /// @param backend   storage backend selection (see enum).
     /// @param fileRoot  override for the file backend's root directory; empty
     ///                  uses AppDataLocation/"secrets". Used by unit tests to
@@ -46,6 +58,10 @@ public:
 
     /// Delete the secret under `key`. Removing an absent key is not an error.
     [[nodiscard]] Result<void> remove(const QString& key);
+
+    /// True only when this instance is backed by the OS keychain, not the
+    /// plaintext 0600-file fallback.
+    [[nodiscard]] bool isSecureBackend() const;
 
     /// Log-safe representation of any secret: "****(len N)".
     [[nodiscard]] static QString redact(const QString& secret);

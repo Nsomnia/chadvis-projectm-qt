@@ -173,6 +173,38 @@ void SunoClient::reloadStoredCredentials() {
     }
 }
 
+void SunoClient::clearLocalCredentials() {
+    refreshTimer_->stop();
+    touchInFlight_ = false;
+    retryQueue_.clear();
+    authWaiters_.clear();
+
+    // Disconnect and retire the old client so a late network reply cannot
+    // reinstall a bearer after local sign-out.
+    QObject::disconnect(clerk_, nullptr, this, nullptr);
+    clerk_->deleteLater();
+    clerk_ = new auth::ClerkAuthClient(this);
+    connect(clerk_, &auth::ClerkAuthClient::bearerReady, this,
+            [this](const auth::BearerToken& token) { onBearerReadyInternal(token); });
+    connect(clerk_, &auth::ClerkAuthClient::authFailed, this,
+            [this](const QString& reason) { onClerkAuthFailedInternal(reason); });
+
+    credentials_ = auth::Credentials{};
+    bearer_ = auth::BearerToken{};
+    lastActiveSessionId_.clear();
+
+    auth::CredentialStore store;
+    for (const QString key : {QStringLiteral("suno/default"), QStringLiteral("suno/bearer")}) {
+        if (auto removed = store.remove(key); removed.isErr()) {
+            LOG_WARN("SunoClient: failed to remove local credential record '{}': {}",
+                     key.toStdString(), removed.error().message);
+        }
+    }
+
+    setState(auth::AuthState::Disconnected);
+    tokenChanged.emitSignal(std::string());
+}
+
 // ─────────────────────────────────────────────────────────────
 // Auth state machine
 // ─────────────────────────────────────────────────────────────
