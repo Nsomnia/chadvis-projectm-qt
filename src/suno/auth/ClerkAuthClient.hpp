@@ -37,6 +37,28 @@ enum class AuthFailureKind {
     MalformedResponse,
 };
 
+/// Type of value found in the single persisted `suno/default` slot. This is
+/// an internal auth-module classification and is never exposed to QML.
+enum class StoredCredentialShape {
+    Empty,
+    BearerToken,
+    ClerkCookieHeader,
+    Unsupported,
+};
+
+struct StoredCredentialClassification {
+    StoredCredentialShape shape = StoredCredentialShape::Empty;
+    AuthFailureKind failureKind = AuthFailureKind::None;
+    /// Secret-free diagnostic suitable for logs and the local auth UI.
+    QString safeDiagnostic;
+};
+
+/// Classifies a credential by shape only. JWTs use the same decoder acceptance
+/// as the rest of the auth module; cookie headers must contain name=value pairs
+/// and at least one capture-proven Clerk cookie (`__client` / `__client_uat`).
+[[nodiscard]] StoredCredentialClassification classifyStoredCredential(
+        const QString& value);
+
 class ClerkAuthClient : public QObject {
     Q_OBJECT
 

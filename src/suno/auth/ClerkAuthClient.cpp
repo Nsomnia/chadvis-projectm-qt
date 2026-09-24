@@ -164,6 +164,60 @@ std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByt
 
 } // namespace
 
+StoredCredentialClassification classifyStoredCredential(const QString& value) {
+    const QString normalized = value.trimmed();
+    if (normalized.isEmpty()) {
+        return {StoredCredentialShape::Empty,
+                AuthFailureKind::None,
+                QStringLiteral("stored credential shape: empty value; no active session")};
+    }
+
+    QString cookieHeader = normalized;
+    if (cookieHeader.startsWith(QStringLiteral("Cookie:"), Qt::CaseInsensitive)) {
+        cookieHeader = cookieHeader.mid(7).trimmed();
+    }
+
+    bool hasNameValuePair = false;
+    bool hasClerkCookie = false;
+    const QStringList parts = cookieHeader.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+    for (const QString& part : parts) {
+        const QString pair = part.trimmed();
+        const qsizetype separator = pair.indexOf(QLatin1Char('='));
+        if (separator <= 0) {
+            continue;
+        }
+
+        hasNameValuePair = true;
+        const QString name = pair.left(separator).trimmed();
+        if (name == QLatin1String("__client") ||
+            name == QLatin1String("__client_uat")) {
+            hasClerkCookie = true;
+        }
+    }
+
+    if (hasNameValuePair && hasClerkCookie) {
+        return {StoredCredentialShape::ClerkCookieHeader,
+                AuthFailureKind::None,
+                QStringLiteral("stored credential shape: Clerk cookie header; accepted")};
+    }
+    if (!hasNameValuePair) {
+        // Use exactly the same syntactic JWT acceptance as token restoration.
+        if (JwtUtils::claims(normalized).has_value()) {
+            return {StoredCredentialShape::BearerToken,
+                    AuthFailureKind::None,
+                    QStringLiteral("stored credential shape: JWT bearer token; accepted")};
+        }
+    }
+
+    const QString detectedShape = hasNameValuePair
+            ? QStringLiteral("cookie-pair header without __client or __client_uat")
+            : QStringLiteral("unrecognized non-cookie value");
+    return {StoredCredentialShape::Unsupported,
+            AuthFailureKind::NoActiveSession,
+            QStringLiteral("stored credential shape: %1; no active session; expected a JWT bearer token or a Cookie header containing __client or __client_uat")
+                    .arg(detectedShape)};
+}
+
 // ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------

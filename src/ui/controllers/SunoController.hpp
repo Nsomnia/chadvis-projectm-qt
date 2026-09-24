@@ -68,6 +68,10 @@ public:
 		return client_ && client_->isAuthenticated();
 	}
 
+	[[nodiscard]] auth::AuthFailureKind authFailureKind() const {
+		return client_ ? client_->authFailureKind() : auth::AuthFailureKind::None;
+	}
+
 	void setDebugLyrics(const AlignedLyrics& lyrics);
 
 signals:
@@ -77,6 +81,7 @@ signals:
 	void authenticationRequired();
 	void authenticationSuccess();
 	void authenticationFailed(const QString& reason);
+	void authFailureKindChanged();
 	void libraryFetchFailed(const QString& reason);
 	void sunoError(const QString& reason);
 	void chatMessageReceived(const QString& response, const QString& workspaceId);

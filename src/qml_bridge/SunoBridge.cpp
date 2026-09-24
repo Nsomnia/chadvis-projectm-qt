@@ -14,6 +14,45 @@ namespace qml_bridge {
 vc::suno::SunoController* SunoBridge::s_controller = nullptr;
 vc::suno::SunoClient* SunoBridge::s_client = nullptr;
 
+namespace {
+
+QString authFailureKindString(vc::suno::auth::AuthFailureKind kind) {
+    using Kind = vc::suno::auth::AuthFailureKind;
+    switch (kind) {
+    case Kind::None:
+        return QStringLiteral("none");
+    case Kind::NoActiveSession:
+        return QStringLiteral("noSession");
+    case Kind::RejectedCredential:
+        return QStringLiteral("rejected");
+    case Kind::ProtocolMismatch:
+        return QStringLiteral("protocol");
+    case Kind::MalformedResponse:
+        return QStringLiteral("malformed");
+    }
+    return QStringLiteral("none");
+}
+
+QString synthesizedAuthFailureError(
+        vc::suno::auth::AuthFailureKind kind) {
+    using Kind = vc::suno::auth::AuthFailureKind;
+    switch (kind) {
+    case Kind::NoActiveSession:
+        return QStringLiteral("No active Suno session was found. Paste a valid bearer token or the complete Clerk cookie header in Account settings.");
+    case Kind::RejectedCredential:
+        return QStringLiteral("Suno rejected the stored credential. Paste a fresh bearer token or complete Clerk cookie header in Account settings.");
+    case Kind::ProtocolMismatch:
+        return QStringLiteral("Suno sign-in hit an unexpected authentication response. Try again; if it persists, refresh the captured sign-in flow.");
+    case Kind::MalformedResponse:
+        return QStringLiteral("Suno sign-in returned an unreadable authentication response. Try again; if it persists, refresh the captured sign-in flow.");
+    case Kind::None:
+        break;
+    }
+    return {};
+}
+
+} // namespace
+
 SunoBridge::SunoBridge(QObject* parent) : QObject(parent) {
     setInstance(this);
     if (s_controller) {
@@ -73,6 +112,7 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
         } else {
             emit bridgeInstance->googleLoginStateChanged();
             emit bridgeInstance->googleLoginErrorChanged();
+            emit bridgeInstance->authFailureKindChanged();
             emit bridgeInstance->googleLoginAvailableChanged();
         }
     }
@@ -95,6 +135,13 @@ void SunoBridge::wireControllerSignals() {
             bridgeInstance, &SunoBridge::clearLoading);
     connect(s_controller, &vc::suno::SunoController::authenticationFailed,
             bridgeInstance, &SunoBridge::onAuthenticationFailed);
+    connect(s_controller, &vc::suno::SunoController::authFailureKindChanged,
+            bridgeInstance, [bridgeInstance]() {
+                emit bridgeInstance->authFailureKindChanged();
+                // googleLoginError falls back to the same classification only
+                // when the coordinator has no more specific safe error.
+                emit bridgeInstance->googleLoginErrorChanged();
+            });
     connect(s_controller, &vc::suno::SunoController::libraryFetchFailed,
             bridgeInstance, &SunoBridge::onLibraryFetchFailed);
     connect(s_controller, &vc::suno::SunoController::sunoError,
@@ -164,6 +211,7 @@ void SunoBridge::wireControllerSignals() {
     // controller-owned coordinator as the single source of truth.
     emit googleLoginStateChanged();
     emit googleLoginErrorChanged();
+    emit authFailureKindChanged();
     emit googleLoginAvailableChanged();
 }
 
@@ -340,8 +388,19 @@ QString SunoBridge::googleLoginState() const {
 }
 
 QString SunoBridge::googleLoginError() const {
-    if (!s_controller || !s_controller->authCoordinator()) return {};
-    return s_controller->authCoordinator()->googleLoginError();
+    if (!s_controller) return {};
+    if (auto* coordinator = s_controller->authCoordinator()) {
+        const QString coordinatorError = coordinator->googleLoginError();
+        if (!coordinatorError.isEmpty()) {
+            return coordinatorError;
+        }
+    }
+    return synthesizedAuthFailureError(s_controller->authFailureKind());
+}
+
+QString SunoBridge::authFailureKind() const {
+    if (!s_controller) return QStringLiteral("none");
+    return authFailureKindString(s_controller->authFailureKind());
 }
 
 bool SunoBridge::googleLoginAvailable() const {

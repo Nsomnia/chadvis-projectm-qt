@@ -6,6 +6,7 @@ int runTestConfigParsers(int argc, char** argv);
 int runTestFileUtils(int argc, char** argv);
 int runTestRecorder(int argc, char** argv);
 int runTestAuthModule(int argc, char** argv);
+int runTestStoredCredentialClassification(int argc, char** argv);
 int runTestCredentialRestoreWorker(int argc, char** argv);
 int runTestAuthCoordinator(int argc, char** argv);
 int runTestLoopbackListener(int argc, char** argv);
@@ -22,6 +23,7 @@ int main(int argc, char* argv[]) {
     status |= runTestFileUtils(argc, argv);
     status |= runTestRecorder(argc, argv);
     status |= runTestAuthModule(argc, argv);
+    status |= runTestStoredCredentialClassification(argc, argv);
     status |= runTestCredentialRestoreWorker(argc, argv);
     status |= runTestAuthCoordinator(argc, argv);
     status |= runTestLoopbackListener(argc, argv);
