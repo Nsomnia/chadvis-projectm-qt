@@ -12,6 +12,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMetaObject>
+#include <QThread>
 #include <QTimer>
 
 #include <deque>
@@ -27,7 +29,161 @@ namespace {
 /// Cap on the proactive-refresh delay: even for long-lived tokens, re-touch at
 /// most every 55 minutes (per Aug-2026 capture guidance).
 constexpr qint64 kMaxRefreshDelaySecs = 55 * 60;
+
+CredentialStoreWorker::Outcome runCredentialStoreRequest(
+        CredentialStoreWorker::Request request) {
+    CredentialStoreWorker::Outcome outcome;
+    outcome.legacyWasCookie = request.legacyWasCookie;
+    auth::CredentialStore store;
+
+    switch (request.operation) {
+    case CredentialStoreWorker::Operation::Store: {
+        if (auto stored = store.store(request.key, request.secret); stored.isErr()) {
+            LOG_WARN("SunoClient: failed to persist credential record '{}' on worker: {}",
+                     request.key.toStdString(), stored.error().message);
+        }
+        return outcome;
+    }
+    case CredentialStoreWorker::Operation::Remove:
+        if (auto removed = store.remove(request.key); removed.isErr()) {
+            LOG_WARN("SunoClient: failed to remove credential record '{}' on worker: {}",
+                     request.key.toStdString(), removed.error().message);
+        }
+        return outcome;
+    case CredentialStoreWorker::Operation::Restore:
+        break;
+    }
+
+    LOG_INFO("CredentialStore: credential restore started on dedicated worker thread");
+    if (auto stored = store.load(QStringLiteral("suno/default")); stored.isOk()) {
+        outcome.cookie = stored.value();
+    } else if (request.migrateLegacy && !request.legacyCredential.isEmpty()) {
+        if (auto migrated = store.store(QStringLiteral("suno/default"),
+                                        request.legacyCredential);
+            migrated.isOk()) {
+            outcome.cookie = request.legacyCredential;
+            outcome.migratedLegacy = true;
+            LOG_INFO("SunoClient: migrated legacy config.toml {} into secret storage",
+                     request.legacyWasCookie ? "cookie" : "token");
+        } else {
+            outcome.legacyMigrationFailed = true;
+            LOG_ERROR("SunoClient: credential migration to keychain failed ({}) - keeping "
+                      "legacy TOML values in place",
+                      auth::CredentialStore::redact(request.legacyCredential).toStdString());
+        }
+    }
+
+    if (request.loadBearer) {
+        if (auto stored = store.load(QStringLiteral("suno/bearer")); stored.isOk()) {
+            outcome.bearer = stored.value();
+        }
+    }
+    return outcome;
+}
 } // namespace
+
+CredentialStoreWorker::CredentialStoreWorker(QObject* guiReceiver, Backend backend)
+    : guiReceiver_(guiReceiver), backend_(std::move(backend)),
+      workerThread_(std::make_unique<QThread>()) {
+    Q_ASSERT(guiReceiver_ != nullptr);
+    Q_ASSERT(static_cast<bool>(backend_));
+
+    workerThread_->setObjectName(QStringLiteral("chadvis-credential-store"));
+    worker_ = new QObject;
+    worker_->moveToThread(workerThread_.get());
+    QObject::connect(workerThread_.get(), &QThread::finished, worker_, &QObject::deleteLater);
+    workerThread_->start();
+    Q_ASSERT(workerThread_->isRunning());
+}
+
+CredentialStoreWorker::~CredentialStoreWorker() {
+    if (!workerThread_) {
+        return;
+    }
+
+    // A Security.framework call cannot be force-cancelled safely. The GUI can
+    // remain responsive while it runs, but destruction owns and joins the
+    // thread before any captured SunoClient state can disappear.
+    workerThread_->requestInterruption();
+    workerThread_->quit();
+    if (!workerThread_->wait()) {
+        LOG_ERROR("SunoClient: credential worker did not stop during shutdown");
+    }
+    worker_ = nullptr;
+}
+
+bool CredentialStoreWorker::requestRestore(Request request, Completion completion) {
+    Q_ASSERT(guiReceiver_->thread() == QThread::currentThread());
+    if (restoreInFlight_) {
+        return false;
+    }
+
+    restoreInFlight_ = true;
+    restoreDiscarded_ = false;
+    const quint64 generation = ++restoreGeneration_;
+
+    const bool queued = QMetaObject::invokeMethod(
+            worker_,
+            [this, request = std::move(request), completion = std::move(completion),
+             generation]() mutable {
+                Outcome outcome = backend_(request);
+                QMetaObject::invokeMethod(
+                        guiReceiver_,
+                        [this, outcome = std::move(outcome), completion = std::move(completion),
+                         generation]() mutable {
+                            if (!restoreInFlight_ || generation != restoreGeneration_) {
+                                return;
+                            }
+                            const bool apply = !restoreDiscarded_;
+                            restoreInFlight_ = false;
+                            restoreDiscarded_ = false;
+                            if (apply && completion) {
+                                completion(std::move(outcome));
+                            }
+                        },
+                        completionConnectionType());
+            },
+            Qt::QueuedConnection);
+
+    if (!queued) {
+        restoreInFlight_ = false;
+        restoreDiscarded_ = false;
+        LOG_ERROR("SunoClient: could not queue credential restore on its worker");
+    }
+    return queued;
+}
+
+void CredentialStoreWorker::store(QString key, QString secret) {
+    Request request;
+    request.operation = Operation::Store;
+    request.key = std::move(key);
+    request.secret = std::move(secret);
+    enqueue(std::move(request));
+}
+
+void CredentialStoreWorker::remove(QString key) {
+    Request request;
+    request.operation = Operation::Remove;
+    request.key = std::move(key);
+    enqueue(std::move(request));
+}
+
+void CredentialStoreWorker::discardPendingRestore() {
+    if (restoreInFlight_) {
+        restoreDiscarded_ = true;
+    }
+}
+
+void CredentialStoreWorker::enqueue(Request request) {
+    const bool queued = QMetaObject::invokeMethod(
+            worker_, [backend = backend_, request = std::move(request)]() mutable {
+                (void)backend(request);
+            },
+            Qt::QueuedConnection);
+    if (!queued) {
+        LOG_ERROR("SunoClient: could not queue credential operation on its worker");
+    }
+}
 
 SunoClient::SunoClient(QString deviceId, QObject* parent)
     : QObject(parent),
@@ -48,30 +204,89 @@ SunoClient::SunoClient(QString deviceId, QObject* parent)
     connect(clerk_, &auth::ClerkAuthClient::authFailed, this,
             [this](const QString& reason) { onClerkAuthFailedInternal(reason); });
 
-    restoreSession();
+    // Constructing this worker performs no keychain I/O. restoreSession() below
+    // only snapshots legacy config and posts work to its private QThread.
+    credentialStoreWorker_ = std::make_unique<CredentialStoreWorker>(
+            this, [](CredentialStoreWorker::Request request) {
+                return runCredentialStoreRequest(std::move(request));
+            });
+    restoreSession(RestoreMode::Startup);
 }
 
-SunoClient::~SunoClient() = default;
+SunoClient::~SunoClient() {
+    // Join before dependent QObject/timer members are destroyed.
+    credentialStoreWorker_.reset();
+}
 
 // ─────────────────────────────────────────────────────────────
 // Startup: restore + migrate credentials
 // ─────────────────────────────────────────────────────────────
 
-void SunoClient::restoreSession() {
-    auth::CredentialStore store;
+void SunoClient::restoreSession(RestoreMode mode) {
+    CredentialStoreWorker::Request request;
+    request.operation = CredentialStoreWorker::Operation::Restore;
+    request.loadBearer = mode == RestoreMode::Startup;
 
-    if (auto stored = store.load("suno/default"); stored.isOk()) {
-        credentials_.cookieHeader = stored.value();
-    } else {
-        migrateLegacyConfigCredentials(store); // may fill credentials_
+    if (mode == RestoreMode::Startup) {
+        request.migrateLegacy = true;
+        const auto& cfg = CONFIG.suno();
+        request.legacyWasCookie = !cfg.cookie.empty();
+        request.legacyCredential = QString::fromStdString(
+                cfg.cookie.empty() ? cfg.token : cfg.cookie);
+    }
+
+    LOG_INFO("SunoClient: credential restore queued on dedicated worker thread");
+    const bool started = credentialStoreWorker_->requestRestore(
+            std::move(request),
+            [this, mode](CredentialStoreWorker::Outcome result) mutable {
+                applyRestoreResult(mode, std::move(result));
+            });
+    if (!started && credentialStoreWorker_->isRestoreInFlight()) {
+        LOG_INFO("SunoClient: credential restore request coalesced with in-flight read");
+    }
+}
+
+void SunoClient::applyRestoreResult(RestoreMode mode,
+                                    CredentialStoreWorker::Outcome result) {
+    if (result.migratedLegacy) {
+        auto& cfg = CONFIG.suno();
+        cfg.cookie.clear();
+        cfg.token.clear();
+        std::ignore = CONFIG.save(CONFIG.configPath());
+    }
+    if (result.legacyMigrationFailed) {
+        // The worker already logged the actionable, secret-free failure. Keep
+        // the legacy values untouched and continue in signed-out state.
+        setState(auth::AuthState::Disconnected);
+        authWaiters_.clear();
+        return;
+    }
+
+    if (result.cookie.has_value() && !result.cookie->isEmpty()) {
+        const QString value = *result.cookie;
+        // A pasted value may be either a raw JWT or a cookie header.
+        if (auth::JwtUtils::claims(value).has_value()) {
+            if (value != bearer_.jwt) {
+                applyBearer(auth::JwtUtils::fromJwt(value));
+            }
+        } else if (value != credentials_.cookieHeader) {
+            credentials_ = auth::Credentials{value};
+            lastActiveSessionId_.clear();
+            bearer_ = auth::BearerToken{};
+            setState(auth::AuthState::NeedsReauth);
+            if (mode == RestoreMode::Reload) {
+                emit tokenChanged(std::string());
+            }
+        }
     }
 
     // Fast path: a persisted bearer that is still genuinely unexpired.
-    if (auto storedBearer = store.load("suno/bearer"); storedBearer.isOk()) {
-        const auto& jwt = storedBearer.value();
+    if (result.bearer.has_value()) {
+        const QString& jwt = *result.bearer;
         auto claims = auth::JwtUtils::claims(jwt);
         if (claims && !auth::JwtUtils::isExpired(*claims, /*graceSecs=*/0)) {
             applyBearer(auth::JwtUtils::fromJwt(jwt));
+            flushAuthWaiters();
             return;
         }
     }
@@ -79,34 +294,14 @@ void SunoClient::restoreSession() {
     if (!credentials_.cookieHeader.isEmpty()) {
         LOG_INFO("SunoClient: cookie restored from secret storage; fetching bearer");
         ensureFreshBearer(/*force=*/true);
-    } else {
+        return;
+    }
+
+    if (mode == RestoreMode::Startup) {
+        LOG_INFO("SunoClient: credential restore completed; no active session (signed out)");
         setState(auth::AuthState::Disconnected);
+        authWaiters_.clear();
     }
-}
-
-void SunoClient::migrateLegacyConfigCredentials(auth::CredentialStore& store) {
-    auto& cfg = CONFIG.suno();
-    const bool hasCookie = !cfg.cookie.empty();
-    const bool hasToken = !cfg.token.empty();
-    if (!hasCookie && !hasToken) {
-        return;
-    }
-
-    const QString legacy = QString::fromStdString(hasCookie ? cfg.cookie : cfg.token);
-    auto result = store.store("suno/default", legacy);
-    if (result.isErr()) {
-        LOG_ERROR("SunoClient: credential migration to keychain failed ({}) - keeping "
-                  "legacy TOML values in place",
-                  auth::CredentialStore::redact(legacy).toStdString());
-        return;
-    }
-
-    LOG_INFO("SunoClient: migrated legacy config.toml {} into secret storage",
-             hasCookie ? "cookie" : "token");
-    cfg.cookie.clear();
-    cfg.token.clear();
-    std::ignore = CONFIG.save(CONFIG.configPath());
-    credentials_.cookieHeader = legacy;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -114,7 +309,14 @@ void SunoClient::migrateLegacyConfigCredentials(auth::CredentialStore& store) {
 // ─────────────────────────────────────────────────────────────
 
 bool SunoClient::isAuthenticated() const {
-    return !bearer_.jwt.isEmpty() || !credentials_.cookieHeader.isEmpty();
+    if (!bearer_.jwt.isEmpty()) {
+        return true;
+    }
+    // An unresolved restore is unknown, never a claim of authentication.
+    if (credentialStoreWorker_ && credentialStoreWorker_->isRestoreInFlight()) {
+        return false;
+    }
+    return !credentials_.cookieHeader.isEmpty();
 }
 
 bool SunoClient::hasCredentials() const {
@@ -126,18 +328,18 @@ void SunoClient::setCookie(const std::string& cookie) {
     if (value == credentials_.cookieHeader) {
         return;
     }
+
+    credentialStoreWorker_->discardPendingRestore();
     credentials_ = auth::Credentials{value};
     lastActiveSessionId_.clear();
     bearer_ = auth::BearerToken{};
     setState(value.isEmpty() ? auth::AuthState::Disconnected
                              : auth::AuthState::NeedsReauth);
 
-    auth::CredentialStore store;
     if (value.isEmpty()) {
-        std::ignore = store.remove("suno/default");
-    } else if (auto result = store.store("suno/default", value); result.isErr()) {
-        LOG_ERROR("SunoClient: failed to persist cookie ({})",
-                  auth::CredentialStore::redact(value).toStdString());
+        credentialStoreWorker_->remove(QStringLiteral("suno/default"));
+    } else {
+        credentialStoreWorker_->store(QStringLiteral("suno/default"), value);
     }
     emit tokenChanged(std::string());
 
@@ -152,25 +354,14 @@ void SunoClient::setToken(const std::string& token) {
         LOG_WARN("SunoClient: rejected malformed token input");
         return;
     }
+    credentialStoreWorker_->discardPendingRestore();
     applyBearer(auth::JwtUtils::fromJwt(jwt));
 }
 
 void SunoClient::reloadStoredCredentials() {
-    auth::CredentialStore store;
-    auto stored = store.load("suno/default");
-    if (stored.isErr() || stored.value().isEmpty()) {
-        return;
-    }
-    const QString& value = stored.value();
-    if (value == credentials_.cookieHeader || value == bearer_.jwt) {
-        return; // nothing changed
-    }
-    // A pasted value may be either a raw JWT or a cookie header.
-    if (auth::JwtUtils::claims(value).has_value()) {
-        applyBearer(auth::JwtUtils::fromJwt(value));
-    } else {
-        setCookie(value.toStdString());
-    }
+    // This method is called on the GUI thread by SunoLibraryManager. Queue the
+    // read; a concurrent startup/reload is deliberately coalesced.
+    restoreSession(RestoreMode::Reload);
 }
 
 void SunoClient::clearLocalCredentials() {
@@ -178,6 +369,7 @@ void SunoClient::clearLocalCredentials() {
     touchInFlight_ = false;
     retryQueue_.clear();
     authWaiters_.clear();
+    credentialStoreWorker_->discardPendingRestore();
 
     // Disconnect and retire the old client so a late network reply cannot
     // reinstall a bearer after local sign-out.
@@ -193,12 +385,8 @@ void SunoClient::clearLocalCredentials() {
     bearer_ = auth::BearerToken{};
     lastActiveSessionId_.clear();
 
-    auth::CredentialStore store;
-    for (const QString key : {QStringLiteral("suno/default"), QStringLiteral("suno/bearer")}) {
-        if (auto removed = store.remove(key); removed.isErr()) {
-            LOG_WARN("SunoClient: failed to remove local credential record '{}': {}",
-                     key.toStdString(), removed.error().message);
-        }
+    for (const QString& key : {QStringLiteral("suno/default"), QStringLiteral("suno/bearer")}) {
+        credentialStoreWorker_->remove(key);
     }
 
     setState(auth::AuthState::Disconnected);
@@ -229,11 +417,7 @@ void SunoClient::applyBearer(const auth::BearerToken& token) {
         lastActiveSessionId_ = auth::JwtUtils::claimString(*claims, "sid");
     }
 
-    auth::CredentialStore store;
-    if (auto result = store.store("suno/bearer", token.jwt); result.isErr()) {
-        LOG_WARN("SunoClient: could not persist bearer token ({})",
-                 auth::CredentialStore::redact(token.jwt).toStdString());
-    }
+    credentialStoreWorker_->store(QStringLiteral("suno/bearer"), token.jwt);
 
     scheduleProactiveRefresh();
     setState(auth::AuthState::ActiveValid);
@@ -252,6 +436,9 @@ void SunoClient::scheduleProactiveRefresh() {
 }
 
 void SunoClient::ensureFreshBearer(bool force) {
+    if (credentialStoreWorker_->isRestoreInFlight()) {
+        return; // the queued GUI completion owns the next auth transition
+    }
     if (!force && !bearer_.jwt.isEmpty()) {
         return; // have something usable; the 401 path handles staleness
     }
@@ -311,7 +498,15 @@ void SunoClient::dropPendingAuthWork(const QString& reason) {
 // ─────────────────────────────────────────────────────────────
 
 void SunoClient::withValidToken(std::function<void()> proceed) {
-    if (!bearer_.jwt.isEmpty() || !hasCredentials()) {
+    if (!bearer_.jwt.isEmpty()) {
+        proceed();
+        return;
+    }
+    if (credentialStoreWorker_->isRestoreInFlight()) {
+        authWaiters_.push_back(std::move(proceed));
+        return;
+    }
+    if (!hasCredentials()) {
         proceed();
         return;
     }
