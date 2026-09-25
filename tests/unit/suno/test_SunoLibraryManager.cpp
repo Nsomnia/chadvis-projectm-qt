@@ -5,6 +5,8 @@
 #include "suno/SunoExploreService.hpp"
 #include "suno/SunoLibraryManager.hpp"
 
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSemaphore>
 #include <QSignalSpy>
 
@@ -15,6 +17,28 @@ using vc::suno::SunoClient;
 using vc::suno::SunoDatabase;
 using vc::suno::SunoExploreService;
 using vc::suno::SunoLibraryManager;
+
+namespace
+{
+
+QString base64Url(const QJsonObject& object)
+{
+    return QString::fromLatin1(
+        QJsonDocument(object).toJson(QJsonDocument::Compact).toBase64(
+            QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+}
+
+QString fakeBearer()
+{
+    const QString header = base64Url({{QStringLiteral("alg"), QStringLiteral("NONE")},
+                                       {QStringLiteral("typ"), QStringLiteral("JWT")}});
+    const QString payload = base64Url(
+        {{QStringLiteral("exp"), static_cast<qint64>(4102444800)},
+         {QStringLiteral("test"), QStringLiteral("credential-clear")}});
+    return header + QLatin1Char('.') + payload + QStringLiteral(".signature");
+}
+
+}
 
 class TestSunoLibraryManager : public QObject
 {
@@ -81,6 +105,18 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(exploreFailed.count(), 1, 2000);
         QVERIFY(!explore.isLoading());
         QCOMPARE(backendCalls.load(), 3);
+
+        const QString bearer = fakeBearer();
+        client.setToken(bearer.toStdString());
+        QVERIFY(client.isAuthenticated());
+        QCOMPARE(client.configuredCredential(), bearer);
+
+        QSignalSpy credentialChanged(&client, &SunoClient::credentialChanged);
+        client.clearLocalCredentials();
+        QCOMPARE(credentialChanged.count(), 1);
+        QVERIFY(!client.isAuthenticated());
+        QVERIFY(client.configuredCredential().isEmpty());
+        QCOMPARE(client.authState(), vc::suno::auth::AuthState::Disconnected);
     }
 };
 

@@ -51,6 +51,7 @@ void registerBridges(QQmlApplicationEngine* engine,
 
     // Suno integration
     if (sunoController) {
+        SettingsBridge::setSunoClient(sunoController->client());
         SunoBridge::setSunoController(sunoController);
     }
 }

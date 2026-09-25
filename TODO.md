@@ -23,7 +23,8 @@
 
 ## Suno client work remaining
 - [x] **Credential readiness** — the dedicated restore worker coalesces reads without dropping callers; Library and Explore wait for definitive readiness instead of rejecting an in-flight keychain read as signed out.
-- [~] **Authentication** — same-host `tokens` fallback, captured `touch`/`client` shapes, credential-prefix normalization, and fail-closed host policy are implemented; route preference, Settings credential ownership, and sign-out evidence remain open.
+- [x] **Settings credential ownership** — `SunoClient` is now the sole durable credential writer; Settings edits are debounced off the GUI thread, cache from the client rather than querying the keychain, and clear live plus persisted credentials together.
+- [~] **Authentication** — same-host `tokens` fallback, captured `touch`/`client` shapes, credential-prefix normalization, and fail-closed host policy are implemented; route preference and sign-out evidence remain open.
 - [x] **Remote artwork policy** — clip image fields are sanitized at parse and bridge boundaries; QML receives only HTTPS URLs on the exact captured `cdn1.suno.ai`/`cdn2.suno.ai` origins, with no userinfo, fragment, nondefault port, or local/relative scheme.
 - [~] **Fail-closed requests** — active Orpheus/Modal, WAV conversion, constructed-media, and user-reachable lead routes are disabled; declaration-only fetch methods, session selection/route policy, and authorized runtime validation remain to be retired or completed.
 - [~] **Library** — cursor pagination, local filtering, DB merge, and error states are wired; authorized-account pagination and range playback still need runtime verification.

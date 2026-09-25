@@ -277,6 +277,7 @@ void SunoClient::restoreSession(RestoreMode mode) {
                 if (!result.restoreDiscarded && !result.reusedResult) {
                     applyRestoreResult(mode, std::move(result));
                 }
+                emit credentialChanged();
                 emit credentialRestoreCompleted();
             });
     if (!started && credentialStoreWorker_->isRestoreInFlight()) {
@@ -305,6 +306,7 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
     if (result.cookie.has_value() && !result.cookie->isEmpty()) {
         const QString storedValue = *result.cookie;
         const QString value = auth::normalizeCookieHeader(storedValue);
+        configuredCredential_ = value;
         const auto classification = auth::classifyStoredCredential(value);
         if (value != storedValue &&
             (classification.shape == auth::StoredCredentialShape::BearerToken ||
@@ -406,6 +408,7 @@ bool SunoClient::hasCredentials() const {
 
 void SunoClient::setCookie(const std::string& cookie) {
     const QString value = auth::normalizeCookieHeader(QString::fromStdString(cookie));
+    configuredCredential_ = value;
     if (value == credentials_.cookieHeader) {
         return;
     }
@@ -424,6 +427,7 @@ void SunoClient::setCookie(const std::string& cookie) {
         credentialStoreWorker_->store(QStringLiteral("suno/default"), value);
     }
     emit tokenChanged(std::string());
+    emit credentialChanged();
 
     if (!value.isEmpty()) {
         ensureFreshBearer(/*force=*/true);
@@ -437,7 +441,9 @@ void SunoClient::setToken(const std::string& token) {
         return;
     }
     credentialStoreWorker_->discardPendingRestore();
+    configuredCredential_ = jwt;
     applyBearer(auth::JwtUtils::fromJwt(jwt));
+    emit credentialChanged();
 }
 
 void SunoClient::reloadStoredCredentials() {
@@ -466,6 +472,7 @@ void SunoClient::clearLocalCredentials() {
             });
 
     credentials_ = auth::Credentials{};
+    configuredCredential_.clear();
     bearer_ = auth::BearerToken{};
     lastActiveSessionId_.clear();
     setAuthFailureKind(auth::AuthFailureKind::None);
@@ -476,6 +483,7 @@ void SunoClient::clearLocalCredentials() {
 
     setState(auth::AuthState::Disconnected);
     tokenChanged.emitSignal(std::string());
+    emit credentialChanged();
 }
 
 // ─────────────────────────────────────────────────────────────

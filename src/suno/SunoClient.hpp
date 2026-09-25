@@ -129,6 +129,7 @@ public:
     /// Set a raw bearer JWT directly (e.g. pasted into settings).
     void setToken(const std::string& token);
     std::string getCookie() const { return credentials_.cookieHeader.toStdString(); }
+    QString configuredCredential() const { return configuredCredential_; }
     QString token() const { return bearer_.jwt; }
     bool isAuthenticated() const;
 
@@ -278,6 +279,7 @@ signals:
     /// Emitted when the last auth failure changes or clears. The value is
     /// intentionally not an enum argument; consumers map it to a stable string.
     void authFailureKindChanged();
+    void credentialChanged();
     void credentialRestoreCompleted();
 
 private:
@@ -339,6 +341,7 @@ private:
     auth::ClerkAuthClient* clerk_;
     std::unique_ptr<CredentialStoreWorker> credentialStoreWorker_;
     auth::Credentials credentials_;
+    QString configuredCredential_;
     auth::BearerToken bearer_;
     auth::AuthState authState_ = auth::AuthState::Disconnected;
     std::atomic<auth::AuthFailureKind> authFailureKind_{auth::AuthFailureKind::None};
