@@ -20,6 +20,7 @@ AudioEngine::~AudioEngine() {
 }
 
 Result<void> AudioEngine::init() {
+    scratchBuffer_.resize(kMaxScratchSamples);
     audioOutput_ = std::make_unique<QAudioOutput>();
     audioOutput_->setVolume(volume_);
 
@@ -198,7 +199,9 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     const usize channels = static_cast<usize>(format.channelCount());
     const usize totalSamples = frameCount * channels;
 
-    if (scratchBuffer_.size() < totalSamples) scratchBuffer_.resize(totalSamples);
+    if (totalSamples > scratchBuffer_.size()) {
+        return;
+    }
 
     if (format.sampleFormat() == QAudioFormat::Float) {
         std::copy(buffer.constData<f32>(), buffer.constData<f32>() + totalSamples, scratchBuffer_.begin());

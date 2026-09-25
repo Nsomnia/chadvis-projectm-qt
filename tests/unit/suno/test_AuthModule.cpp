@@ -38,9 +38,9 @@ constexpr qint64 kFutureExp = 4102444800; // 2100-01-01, safely unexpired
 class DummySingleton : public QObject,
                        public qml_bridge::QmlSingletonBridge<
                                DummySingleton,
-                               qml_bridge::CachedQmlParented> {
+                               qml_bridge::SingletonPolicy::CachedQmlParented> {
     friend class qml_bridge::QmlSingletonBridge<
-            DummySingleton, qml_bridge::CachedQmlParented>;
+            DummySingleton, qml_bridge::SingletonPolicy::CachedQmlParented>;
 
     explicit DummySingleton(QObject* parent) : QObject(parent) {
         setInstance(this);

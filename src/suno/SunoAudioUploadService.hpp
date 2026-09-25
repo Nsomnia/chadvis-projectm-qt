@@ -9,8 +9,10 @@
 #include <QString>
 #include <QUrl>
 #include <expected>
+#include <functional>
 #include <optional>
 
+class QHttpMultiPart;
 class QNetworkAccessManager;
 class QNetworkReply;
 
@@ -23,6 +25,9 @@ class SunoAudioUploadService final : public QObject
     Q_OBJECT
 
 public:
+    using DirectReplyFactory = std::function<QNetworkReply*(
+            const QNetworkRequest&, QHttpMultiPart*)>;
+
     struct InitializeResponse
     {
         QString id;
@@ -33,7 +38,8 @@ public:
 
     explicit SunoAudioUploadService(SunoClient* client,
                                    QNetworkAccessManager* directNetworkManager,
-                                   QObject* parent = nullptr);
+                                   QObject* parent = nullptr,
+                                   DirectReplyFactory directReplyFactory = {});
     ~SunoAudioUploadService() override;
 
     [[nodiscard]] static QJsonObject initializeBody();
@@ -67,6 +73,7 @@ private:
     void handleDirectReply(QNetworkReply* reply, quint64 generation);
     void startFinish(quint64 generation);
     void handleFinishReply(QNetworkReply* reply, quint64 generation);
+    void cancelForAuthLoss();
     void fail(const QString& message);
     void finish();
     void setUploading(bool uploading);
@@ -76,6 +83,7 @@ private:
 
     SunoClient* client_{nullptr};
     QPointer<QNetworkAccessManager> directNetworkManager_;
+    DirectReplyFactory directReplyFactory_;
     QNetworkReply* directReply_{nullptr};
     std::optional<InitializeResponse> ticket_;
     QString filePath_;

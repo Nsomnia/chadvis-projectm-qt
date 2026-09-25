@@ -47,6 +47,23 @@ target_link_libraries(test_SunoAudioUploadService PRIVATE
 
 add_test(NAME test_SunoAudioUploadService COMMAND test_SunoAudioUploadService)
 
+add_executable(test_SunoRequestEpoch
+    suno/test_SunoRequestEpoch.cpp
+)
+
+set_target_properties(test_SunoRequestEpoch PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoRequestEpoch PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_SunoRequestEpoch COMMAND test_SunoRequestEpoch)
+
 add_executable(test_SunoExploreService
     suno/test_SunoExploreService.cpp
 )

@@ -55,19 +55,19 @@
 
 ### Memory & Thread Safety
 - [x] **PFFFT static locals thread-unsafe** — `AudioAnalyzer` now uses a shared immutable RAII setup, 16-byte-aligned per-call FFT scratch, mutex-protected analyze/reset/PCM state, deterministic zero-on-setup-failure behavior, and focused normal plus ThreadSanitizer concurrency tests.
-- [ ] **SunoClient use-after-free** — Network replies can outlive client; dangling pointer on delayed responses. Lifetime audit needed.
+- [x] **SunoClient use-after-free** — request epochs fence queued retries/waiters, tracked replies are disconnected and aborted, and stale restore/upload callbacks cannot publish after credential invalidation; focused epoch and upload cancellation tests pass.
 - [x] **QML cached singleton lifetime** — cached QML bridge pointers reset when their parented/unparented singleton is destroyed, preventing stale pointers across engine restarts.
 - [x] **VideoRecorderFFmpeg nullptr deref** — both video and audio `avcodec_alloc_context3()` results are checked before dereference.
 - [x] **VideoRecorderThread brace mismatch** — Root cause found (2026-08-25): `VideoRecorder::setAudioQueue` was never wired, so the rec queue was always null. Wired in `Application::init()`; braces were actually balanced.
 - [ ] **LyricsOverlayRenderer OOB access** — Out-of-bounds array access in renderer; crash on edge-case lyric data.
-- [ ] **AudioEngine scratch buffer resize in audio callback** — Allocation in RT path = undefined behavior under SCHED_FIFO. Pre-allocate or use lock-free ring.
-- [ ] **Application destructor destruction order** — Members destroyed before dependent subsystems; potential use-after-destroy on shutdown.
+- [x] **AudioEngine scratch buffer resize in audio callback** — scratch storage is preallocated during `init()` and oversized callback buffers are dropped without allocation.
+- [x] **Application destructor destruction order** — QML, controller, lyrics, preset, recorder, audio, and Qt application lifetimes are explicitly torn down in dependency order.
 - [x] **Playlist::loadM3U path traversal** — relative playlist entries are weakly canonicalized and rejected when they resolve outside the playlist directory.
 
 ### Security & Credentials
 - [x] **SunoPersistentAuth/SystemBrowserAuth credential storage audit** — Tokens now in OS keychain via `CredentialStore` (macOS Security.framework, atomic 0600 file fallback); TOML→keychain migration on first init; secrets never written to TOML/logs (2026-08-26, P1 Lane B).
 - [~] **Native OAuth security remains gated** — the offline scaffold covers state/nonce/PKCE/transaction ownership, but no reviewed capture proves Clerk accepts a loopback or custom-scheme callback. Keep live Google sign-in disabled and finish capture-backed callback/sign-out evidence before integration.
-- [ ] **SQL injection risk in search_db.sh** — User input concatenated into SQL; parameterize queries.
+- [x] **SQL injection risk in search_db.sh** — queries use SQLite `.param` binding for the search term; no user input is interpolated into SQL text.
 
 ### Stubs & No-Ops (Functional Dead Code)
 - [x] **submitAudioSamples() complete no-op** — Empty method + its only dead caller removed (2026-08-25); recorder now fed via real audio-queue wiring.
@@ -114,7 +114,7 @@
 - [x] **Remove ~20 stale cmake modules** — Already resolved in earlier housekeeping; cmake/ holds only CPM.cmake + FindProjectM4.cmake.
 
 ### Suno Integration
-- [~] **P1: Suno Core Correctness** — secure credential storage, lossless asynchronous restore readiness for Library/Explore, debounced Settings ownership through `SunoClient`, queued authenticated requests, feed/clip/account parsing, exact Clerk active-session selection, and method-specific Studio headers are implemented. Route preference/fallback order, sign-out, and authorized runtime behavior remain `[VERIFY]`.
+- [~] **P1: Suno Core Correctness** — secure credential storage, lossless asynchronous restore readiness for Library/Explore, debounced Settings ownership through `SunoClient`, credential/request epochs with reply aborts, queued authenticated requests, feed/clip/account parsing, exact Clerk active-session selection, and method-specific Studio headers are implemented. Route preference/fallback order, sign-out, and authorized runtime behavior remain `[VERIFY]`.
 - [x] **2026-09-24 documentation/capture audit** — live Suno authority reduced to index + canonical inventory + OAuth gate + raw provenance; dated source map and SHA-256 hashes added. Only directly observed tokens, notification read, following feed, explore, audio init/finish, direct multipart storage upload, feed filter shape, numeric account/model types, and forbidden-media sentinel were promoted.
 - [~] **Fail closed on unverified routes and hosts** — active Orpheus/Modal, WAV conversion, legacy Clerk-host fallback, constructed-media, and user-reachable lead routes are disabled; QML artwork is restricted to exact captured Suno CDN origins, and the undocumented synthetic Browser-Token is removed. Declaration-only fetch methods still need retirement; no unverified header may be reintroduced without fresh capture. Never send cookies/bearers or automatic remote image requests to unverified absolute hosts.
 - [ ] **Complete the generation surface** — bind typed model/catalog/limit data and the captured captcha decision to the request; add fake-request contract tests and durable queued/processing/failed UI state. Current generation remains disabled until a supported CAPTCHA token flow exists.

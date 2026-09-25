@@ -15,6 +15,7 @@
 #include <QStringList>
 
 #include <algorithm>
+#include <utility>
 
 namespace vc::suno {
 
@@ -55,21 +56,40 @@ QString multipartDisposition(const QString& name, const QString& filename = {})
 
 SunoAudioUploadService::SunoAudioUploadService(SunoClient* client,
                                                QNetworkAccessManager* directNetworkManager,
-                                               QObject* parent)
+                                               QObject* parent,
+                                               DirectReplyFactory directReplyFactory)
     : QObject(parent)
     , client_(client)
     , directNetworkManager_(directNetworkManager)
+    , directReplyFactory_(std::move(directReplyFactory))
     , status_(QStringLiteral("Choose an audio file to upload."))
 {
+    if (client_)
+    {
+        connect(client_, &SunoClient::authStateChanged, this,
+                [this]() {
+                    if (client_ && client_->authState() != auth::AuthState::ActiveValid) {
+                        cancelForAuthLoss();
+                    }
+                });
+        connect(client_, &SunoClient::needsReauth, this,
+                [this]() { cancelForAuthLoss(); });
+        connect(client_, &SunoClient::credentialInvalidated, this,
+                [this]() { cancelForAuthLoss(); });
+    }
 }
 
 SunoAudioUploadService::~SunoAudioUploadService()
 {
     if (directReply_) {
-        disconnect(directReply_, nullptr, this, nullptr);
-        directReply_->abort();
-        directReply_->deleteLater();
+        QNetworkReply* reply = directReply_;
+        QPointer<QNetworkReply> guard(reply);
         directReply_ = nullptr;
+        disconnect(reply, nullptr, this, nullptr);
+        reply->abort();
+        if (guard) {
+            reply->deleteLater();
+        }
     }
     ticket_.reset();
 }
@@ -169,7 +189,8 @@ void SunoAudioUploadService::start(const QString& localFilePath)
         setError(QStringLiteral("An audio upload is already in progress."));
         return;
     }
-    if (!client_ || !client_->isAuthenticated() || !directNetworkManager_) {
+    if (!client_ || !client_->isAuthenticated() ||
+        (!directNetworkManager_ && !directReplyFactory_)) {
         fail(QStringLiteral("Sign in to Suno before uploading audio."));
         return;
     }
@@ -249,7 +270,8 @@ void SunoAudioUploadService::handleInitializeReply(QNetworkReply* reply, quint64
 
 void SunoAudioUploadService::startDirectUpload(quint64 generation)
 {
-    if (!ticket_ || generation != generation_ || !directNetworkManager_) {
+    if (!ticket_ || generation != generation_ ||
+        (!directNetworkManager_ && !directReplyFactory_)) {
         fail(QStringLiteral("Audio upload could not start."));
         return;
     }
@@ -287,10 +309,17 @@ void SunoAudioUploadService::startDirectUpload(quint64 generation)
         fail(request.error());
         return;
     }
-    QNetworkReply* reply = directNetworkManager_->post(*request, multipart);
+    QNetworkReply* reply = directReplyFactory_
+                                   ? directReplyFactory_(*request, multipart)
+                                   : directNetworkManager_->post(*request, multipart);
     if (!reply) {
         multipart->deleteLater();
         fail(QStringLiteral("The audio upload could not be started."));
+        return;
+    }
+    if (generation != generation_ || !uploading_) {
+        reply->deleteLater();
+        multipart->deleteLater();
         return;
     }
     multipart->setParent(reply);
@@ -391,15 +420,26 @@ void SunoAudioUploadService::handleFinishReply(QNetworkReply* reply, quint64 gen
     emit completed(completedId);
 }
 
+void SunoAudioUploadService::cancelForAuthLoss()
+{
+    if (uploading_)
+    {
+        fail(QStringLiteral("Not authenticated"));
+    }
+}
+
 void SunoAudioUploadService::fail(const QString& message)
 {
     ++generation_;
     if (directReply_) {
         QNetworkReply* reply = directReply_;
+        QPointer<QNetworkReply> guard(reply);
         directReply_ = nullptr;
         disconnect(reply, nullptr, this, nullptr);
         reply->abort();
-        reply->deleteLater();
+        if (guard) {
+            reply->deleteLater();
+        }
     }
     ticket_.reset();
     filePath_.clear();

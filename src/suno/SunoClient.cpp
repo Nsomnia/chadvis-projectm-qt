@@ -17,7 +17,9 @@
 #include <QTimer>
 #include <QUrl>
 
+#include <algorithm>
 #include <deque>
+#include <utility>
 
 namespace vc::suno {
 
@@ -214,9 +216,11 @@ void CredentialStoreWorker::enqueue(Request request) {
 
 SunoClient::SunoClient(QString deviceId,
                      QObject* parent,
-                     CredentialStoreWorker::Backend credentialStoreBackend)
+                     CredentialStoreWorker::Backend credentialStoreBackend,
+                     ReplyFactory replyFactory)
     : QObject(parent),
       manager_(new QNetworkAccessManager(this)),
+      replyFactory_(std::move(replyFactory)),
       queueTimer_(new QTimer(this)),
       clerk_(new auth::ClerkAuthClient(this)),
       deviceId_(std::move(deviceId)),
@@ -249,7 +253,10 @@ SunoClient::SunoClient(QString deviceId,
 }
 
 SunoClient::~SunoClient() {
-    // Join before dependent QObject/timer members are destroyed.
+    requestQueue_.clear();
+    retryQueue_.clear();
+    authWaiters_.clear();
+    abortTrackedReplies();
     credentialStoreWorker_.reset();
 }
 
@@ -270,10 +277,20 @@ void SunoClient::restoreSession(RestoreMode mode) {
                 cfg.cookie.empty() ? cfg.token : cfg.cookie);
     }
 
+    const quint64 restoreEpoch = requestEpoch_;
     LOG_INFO("SunoClient: credential restore queued on dedicated worker thread");
     const bool started = credentialStoreWorker_->requestRestore(
             std::move(request),
-            [this, mode](CredentialStoreWorker::Outcome result) mutable {
+            [this, mode, restoreEpoch](CredentialStoreWorker::Outcome result) mutable {
+                if (restoreEpoch != requestEpoch_) {
+                    if (refreshAfterRestore_ && hasCredentials() &&
+                        authState_ == auth::AuthState::NeedsReauth) {
+                        refreshAfterRestore_ = false;
+                        ensureFreshBearer(/*force=*/true);
+                    }
+                    emit credentialRestoreCompleted();
+                    return;
+                }
                 if (!result.restoreDiscarded && !result.reusedResult) {
                     applyRestoreResult(mode, std::move(result));
                 }
@@ -294,20 +311,45 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
         std::ignore = CONFIG.save(CONFIG.configPath());
     }
     if (result.legacyMigrationFailed) {
-        // The worker already logged the actionable, secret-free failure. Keep
-        // the legacy values untouched and continue in signed-out state.
+        dropPendingAuthWork(QStringLiteral("credential migration failed"));
         setState(auth::AuthState::Disconnected);
-        authWaiters_.clear();
         return;
     }
 
     bool rejectedStoredCredential = false;
     bool storedCookieChanged = false;
+    const bool storedCookieCleared =
+            !result.cookie.has_value() || result.cookie->isEmpty();
+    bool credentialChanged = false;
+    std::vector<AuthWaiter> restoreWaiters;
+    const auto invalidateForRestore = [&](const QString& reason, bool preserve) {
+        if (preserve) {
+            restoreWaiters.swap(authWaiters_);
+        }
+        const quint64 epochBefore = requestEpoch_;
+        dropPendingAuthWork(reason);
+        credentialChanged = true;
+        const quint64 expectedEpoch =
+                epochBefore == std::numeric_limits<quint64>::max() ? 1 : epochBefore + 1;
+        if (preserve && requestEpoch_ == expectedEpoch) {
+            for (AuthWaiter& waiter : restoreWaiters) {
+                waiter.epoch = requestEpoch_;
+                authWaiters_.push_back(std::move(waiter));
+            }
+            restoreWaiters.clear();
+        }
+    };
     if (result.cookie.has_value() && !result.cookie->isEmpty()) {
         const QString storedValue = *result.cookie;
         const QString value = auth::normalizeCookieHeader(storedValue);
-        configuredCredential_ = value;
         const auto classification = auth::classifyStoredCredential(value);
+        credentialChanged = value != configuredCredential_;
+        if (credentialChanged) {
+            invalidateForRestore(
+                    QStringLiteral("stored credential changed"),
+                    classification.shape != auth::StoredCredentialShape::Unsupported);
+        }
+        configuredCredential_ = value;
         if (value != storedValue &&
             (classification.shape == auth::StoredCredentialShape::BearerToken ||
              classification.shape == auth::StoredCredentialShape::ClerkCookieHeader)) {
@@ -318,6 +360,9 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
             credentials_.cookieHeader.clear();
             lastActiveSessionId_.clear();
             if (value != bearer_.jwt) {
+                if (!credentialChanged) {
+                    invalidateForRestore(QStringLiteral("stored bearer changed"), true);
+                }
                 applyBearer(auth::JwtUtils::fromJwt(value));
             } else {
                 setAuthFailureKind(auth::AuthFailureKind::None);
@@ -326,8 +371,11 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
         case auth::StoredCredentialShape::ClerkCookieHeader:
             setAuthFailureKind(auth::AuthFailureKind::None);
             if (value != credentials_.cookieHeader) {
-                credentials_ = auth::Credentials{value};
+                if (!credentialChanged) {
+                    invalidateForRestore(QStringLiteral("stored cookie changed"), true);
+                }
                 storedCookieChanged = true;
+                credentials_ = auth::Credentials{value};
                 lastActiveSessionId_.clear();
                 bearer_ = auth::BearerToken{};
                 setState(auth::AuthState::NeedsReauth);
@@ -337,14 +385,12 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
             }
             break;
         case auth::StoredCredentialShape::Unsupported:
-            // Never reinterpret an unknown opaque value as a Cookie header.
-            // Keep the persisted value for correction, but remove any older
-            // in-memory credential so it cannot be sent on a later request.
+            if (!credentialChanged) {
+                invalidateForRestore(QStringLiteral("unsupported stored credential shape"), false);
+            }
             credentials_ = auth::Credentials{};
             bearer_ = auth::BearerToken{};
             lastActiveSessionId_.clear();
-            touchInFlight_ = false;
-            dropPendingAuthWork(QStringLiteral("unsupported stored credential shape"));
             setAuthFailureKind(classification.failureKind);
             setState(auth::AuthState::NeedsReauth);
             LOG_ERROR("SunoClient: {} (stored value preserved)",
@@ -359,15 +405,43 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
         }
     }
 
-    // Fast path: a persisted bearer that is still genuinely unexpired.
     if (!storedCookieChanged && result.bearer.has_value()) {
         const QString jwt = auth::normalizeCookieHeader(*result.bearer);
         auto claims = auth::JwtUtils::claims(jwt);
         if (claims && !auth::JwtUtils::isExpired(*claims, /*graceSecs=*/0)) {
+            if (storedCookieCleared) {
+                if (!credentialChanged &&
+                    (configuredCredential_ != jwt || !credentials_.cookieHeader.isEmpty() ||
+                     jwt != bearer_.jwt)) {
+                    invalidateForRestore(QStringLiteral("stored credential changed"), true);
+                }
+                configuredCredential_ = jwt;
+                credentials_.cookieHeader.clear();
+                lastActiveSessionId_.clear();
+            } else if (!credentialChanged && jwt != bearer_.jwt) {
+                invalidateForRestore(QStringLiteral("stored bearer changed"), true);
+            }
             applyBearer(auth::JwtUtils::fromJwt(jwt));
             flushAuthWaiters();
             return;
         }
+    }
+
+    if (storedCookieCleared &&
+        (!credentials_.cookieHeader.isEmpty() || !bearer_.jwt.isEmpty() ||
+         !configuredCredential_.isEmpty())) {
+        if (!credentialChanged) {
+            dropPendingAuthWork(QStringLiteral("stored credential cleared"));
+        }
+        configuredCredential_.clear();
+        credentials_ = auth::Credentials{};
+        bearer_ = auth::BearerToken{};
+        lastActiveSessionId_.clear();
+        setState(auth::AuthState::Disconnected);
+        if (mode == RestoreMode::Reload) {
+            emit tokenChanged(std::string());
+        }
+        return;
     }
 
     if (rejectedStoredCredential) {
@@ -380,11 +454,13 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
         return;
     }
 
+    if (bearer_.jwt.isEmpty()) {
+        dropPendingAuthWork(QStringLiteral("no active credential"));
+    }
     if (mode == RestoreMode::Startup) {
         LOG_INFO("SunoClient: credential restore completed; no active session (signed out)");
         setState(auth::AuthState::Disconnected);
     }
-    authWaiters_.clear();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -392,14 +468,14 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
 // ─────────────────────────────────────────────────────────────
 
 bool SunoClient::isAuthenticated() const {
-    if (!bearer_.jwt.isEmpty()) {
+    if (authState_ == auth::AuthState::ActiveValid && !bearer_.jwt.isEmpty()) {
         return true;
     }
-    // An unresolved restore is unknown, never a claim of authentication.
-    if (credentialStoreWorker_ && credentialStoreWorker_->isRestoreInFlight()) {
-        return false;
+    if (authState_ == auth::AuthState::NeedsReauth && touchInFlight_ &&
+        !credentials_.cookieHeader.isEmpty()) {
+        return true;
     }
-    return !credentials_.cookieHeader.isEmpty();
+    return false;
 }
 
 bool SunoClient::hasCredentials() const {
@@ -408,12 +484,16 @@ bool SunoClient::hasCredentials() const {
 
 void SunoClient::setCookie(const std::string& cookie) {
     const QString value = auth::normalizeCookieHeader(QString::fromStdString(cookie));
-    configuredCredential_ = value;
-    if (value == credentials_.cookieHeader) {
+    if (value == credentials_.cookieHeader && value == configuredCredential_) {
         return;
     }
 
     credentialStoreWorker_->discardPendingRestore();
+    const bool restoreInFlight = credentialStoreWorker_->isRestoreInFlight();
+    dropPendingAuthWork(value.isEmpty() ? QStringLiteral("credential cleared")
+                                        : QStringLiteral("credential replaced"));
+    refreshAfterRestore_ = restoreInFlight && !value.isEmpty();
+    configuredCredential_ = value;
     credentials_ = auth::Credentials{value};
     lastActiveSessionId_.clear();
     bearer_ = auth::BearerToken{};
@@ -421,13 +501,15 @@ void SunoClient::setCookie(const std::string& cookie) {
                              : auth::AuthState::NeedsReauth);
 
     if (value.isEmpty()) {
-        dropPendingAuthWork(QStringLiteral("credential cleared"));
         credentialStoreWorker_->remove(QStringLiteral("suno/default"));
     } else {
         credentialStoreWorker_->store(QStringLiteral("suno/default"), value);
     }
     emit tokenChanged(std::string());
     emit credentialChanged();
+    if (!refreshAfterRestore_) {
+        emit credentialRestoreCompleted();
+    }
 
     if (!value.isEmpty()) {
         ensureFreshBearer(/*force=*/true);
@@ -440,10 +522,17 @@ void SunoClient::setToken(const std::string& token) {
         LOG_WARN("SunoClient: rejected malformed token input");
         return;
     }
+    const bool restoreInFlight = credentialStoreWorker_->isRestoreInFlight();
     credentialStoreWorker_->discardPendingRestore();
+    if (jwt != bearer_.jwt || jwt != configuredCredential_) {
+        dropPendingAuthWork(QStringLiteral("credential replaced"));
+    }
     configuredCredential_ = jwt;
     applyBearer(auth::JwtUtils::fromJwt(jwt));
     emit credentialChanged();
+    if (!restoreInFlight) {
+        emit credentialRestoreCompleted();
+    }
 }
 
 void SunoClient::reloadStoredCredentials() {
@@ -454,22 +543,8 @@ void SunoClient::reloadStoredCredentials() {
 
 void SunoClient::clearLocalCredentials() {
     refreshTimer_->stop();
-    touchInFlight_ = false;
-    retryQueue_.clear();
-    authWaiters_.clear();
     credentialStoreWorker_->discardPendingRestore();
-
-    // Disconnect and retire the old client so a late network reply cannot
-    // reinstall a bearer after local sign-out.
-    QObject::disconnect(clerk_, nullptr, this, nullptr);
-    clerk_->deleteLater();
-    clerk_ = new auth::ClerkAuthClient(this);
-    connect(clerk_, &auth::ClerkAuthClient::bearerReady, this,
-            [this](const auth::BearerToken& token) { onBearerReadyInternal(token); });
-    connect(clerk_, &auth::ClerkAuthClient::authFailed, this,
-            [this](const QString& reason) {
-                onClerkAuthFailedInternal(reason, clerk_->failureKind());
-            });
+    dropPendingAuthWork(QStringLiteral("local sign-out"));
 
     credentials_ = auth::Credentials{};
     configuredCredential_.clear();
@@ -484,6 +559,7 @@ void SunoClient::clearLocalCredentials() {
     setState(auth::AuthState::Disconnected);
     tokenChanged.emitSignal(std::string());
     emit credentialChanged();
+    emit credentialRestoreCompleted();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -508,6 +584,73 @@ void SunoClient::setAuthFailureKind(auth::AuthFailureKind kind) {
         return;
     }
     emit authFailureKindChanged();
+}
+
+void SunoClient::invalidateRequestEpoch(const QString& reason) {
+    requestEpoch_ = requestEpoch_ == std::numeric_limits<quint64>::max() ? 1
+                                                                       : requestEpoch_ + 1;
+    queueTimer_->stop();
+    requestQueue_.clear();
+    retryQueue_.clear();
+    authWaiters_.clear();
+    refreshAfterRestore_ = false;
+    abortTrackedReplies();
+    emit credentialInvalidated();
+    std::ignore = reason;
+}
+
+void SunoClient::resetClerkClient() {
+    touchInFlight_ = false;
+    authExchangeEpoch_ = 0;
+    if (clerk_) {
+        QObject::disconnect(clerk_, nullptr, this, nullptr);
+        clerk_->deleteLater();
+    }
+    clerk_ = new auth::ClerkAuthClient(this);
+    connect(clerk_, &auth::ClerkAuthClient::bearerReady, this,
+            [this](const auth::BearerToken& token) { onBearerReadyInternal(token); });
+    connect(clerk_, &auth::ClerkAuthClient::authFailed, this,
+            [this](const QString& reason) {
+                onClerkAuthFailedInternal(reason, clerk_->failureKind());
+            });
+}
+
+bool SunoClient::isTrackedReply(const QNetworkReply* reply) const {
+    return std::any_of(activeReplies_.cbegin(), activeReplies_.cend(),
+                       [reply](const QPointer<QNetworkReply>& tracked) {
+                           return tracked.data() == reply;
+                       });
+}
+
+void SunoClient::trackReply(QNetworkReply* reply) {
+    if (reply) {
+        activeReplies_.push_back(QPointer<QNetworkReply>(reply));
+    }
+}
+
+void SunoClient::removeTrackedReply(QNetworkReply* reply) {
+    activeReplies_.erase(
+            std::remove_if(activeReplies_.begin(), activeReplies_.end(),
+                           [reply](const QPointer<QNetworkReply>& tracked) {
+                               return tracked.data() == reply || tracked.isNull();
+                           }),
+            activeReplies_.end());
+}
+
+void SunoClient::abortTrackedReplies() {
+    std::vector<QPointer<QNetworkReply>> replies;
+    replies.swap(activeReplies_);
+    for (const QPointer<QNetworkReply>& weak : replies) {
+        QNetworkReply* reply = weak.data();
+        if (!reply) {
+            continue;
+        }
+        QObject::disconnect(reply, nullptr, this, nullptr);
+        reply->abort();
+        if (!weak.isNull()) {
+            reply->deleteLater();
+        }
+    }
 }
 
 void SunoClient::applyBearer(const auth::BearerToken& token) {
@@ -548,6 +691,7 @@ void SunoClient::ensureFreshBearer(bool force) {
         return;
     }
     touchInFlight_ = true;
+    authExchangeEpoch_ = requestEpoch_;
     setAuthFailureKind(auth::AuthFailureKind::None);
     if (!lastActiveSessionId_.isEmpty()) {
         clerk_->touch(credentials_, lastActiveSessionId_);
@@ -557,47 +701,61 @@ void SunoClient::ensureFreshBearer(bool force) {
 }
 
 void SunoClient::onBearerReadyInternal(const auth::BearerToken& token) {
+    if (authExchangeEpoch_ == 0 || authExchangeEpoch_ != requestEpoch_) {
+        return;
+    }
     touchInFlight_ = false;
+    authExchangeEpoch_ = 0;
     applyBearer(token);
 
-    // Replay requests intercepted by the uniform 401 handler...
     std::deque<PendingRequest> retries;
     retries.swap(retryQueue_);
     while (!retries.empty()) {
         PendingRequest pending = std::move(retries.front());
         retries.pop_front();
+        if (pending.epoch != requestEpoch_) {
+            continue;
+        }
         auth::makeStudioApiHeaders(bearer_.jwt, deviceId_, pending.method, pending.data)
                 .apply(pending.request);
         enqueueRequest(std::move(pending.request), std::move(pending.method),
                        std::move(pending.data), std::move(pending.callback),
-                       /*retriedAuth=*/true);
+                       /*retriedAuth=*/true, pending.epoch);
     }
     flushAuthWaiters();
 }
 
 void SunoClient::onClerkAuthFailedInternal(const QString& reason,
                                            auth::AuthFailureKind kind) {
+    bearer_ = auth::BearerToken{};
     touchInFlight_ = false;
     setAuthFailureKind(kind);
     LOG_ERROR("SunoClient: clerk auth exchange failed: {}", reason.toStdString());
     dropPendingAuthWork(reason);
     setState(auth::AuthState::NeedsReauth);
     emit errorOccurred(reason.toStdString());
-    emit needsReauth(); // user keeps their cookies; they just need fresh ones
+    emit needsReauth();
 }
 
 void SunoClient::flushAuthWaiters() {
-    std::vector<std::function<void()>> waiters;
+    std::vector<AuthWaiter> waiters;
     waiters.swap(authWaiters_);
-    for (auto& proceed : waiters) {
-        proceed();
+    for (AuthWaiter& waiter : waiters) {
+        if (waiter.epoch == requestEpoch_ && waiter.proceed) {
+            waiter.proceed();
+        }
     }
 }
 
 void SunoClient::dropPendingAuthWork(const QString& reason) {
-    retryQueue_.clear();
-    authWaiters_.clear();
-    std::ignore = reason;
+    refreshTimer_->stop();
+    const quint64 epochBefore = requestEpoch_;
+    invalidateRequestEpoch(reason);
+    const quint64 expectedEpoch =
+            epochBefore == std::numeric_limits<quint64>::max() ? 1 : epochBefore + 1;
+    if (requestEpoch_ == expectedEpoch) {
+        resetClerkClient();
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -605,21 +763,25 @@ void SunoClient::dropPendingAuthWork(const QString& reason) {
 // ─────────────────────────────────────────────────────────────
 
 void SunoClient::withValidToken(std::function<void()> proceed) {
-    if (!bearer_.jwt.isEmpty()) {
+    const quint64 epoch = requestEpoch_;
+    if (authState_ == auth::AuthState::ActiveValid && !bearer_.jwt.isEmpty()) {
         proceed();
         return;
     }
     if (credentialStoreWorker_->isRestoreInFlight()) {
-        authWaiters_.push_back(std::move(proceed));
+        authWaiters_.push_back({epoch, std::move(proceed)});
         return;
     }
-    if (!hasCredentials()) {
-        setState(auth::AuthState::Disconnected);
+    if (!hasCredentials() || authState_ == auth::AuthState::Disconnected ||
+        (authState_ == auth::AuthState::NeedsReauth && !touchInFlight_)) {
+        if (!hasCredentials()) {
+            setState(auth::AuthState::Disconnected);
+        }
         LOG_WARN("SunoClient: blocked authenticated request without a credential");
         errorOccurred.emitSignal("Not authenticated");
         return;
     }
-    authWaiters_.push_back(std::move(proceed));
+    authWaiters_.push_back({epoch, std::move(proceed)});
     ensureFreshBearer();
 }
 
@@ -647,7 +809,7 @@ void SunoClient::enqueueAuthenticatedRequest(const QString& endpoint,
             return;
         }
         enqueueRequest(std::move(*request), method, std::move(data),
-                       std::move(callback));
+                       std::move(callback), false, requestEpoch_);
     });
 }
 
@@ -668,7 +830,8 @@ std::optional<QUrl> SunoClient::resolveStudioApiUrl(const QString& endpoint) con
 
 std::optional<QNetworkRequest> SunoClient::createAuthenticatedRequest(
         const QUrl& url, const std::string& method, const QByteArray& data) {
-    if (bearer_.jwt.isEmpty() || !auth::isAllowedStudioApiUrl(url)) {
+    if (authState_ != auth::AuthState::ActiveValid || bearer_.jwt.isEmpty() ||
+        !auth::isAllowedStudioApiUrl(url)) {
         return std::nullopt;
     }
     QNetworkRequest request(url);
@@ -684,20 +847,27 @@ void SunoClient::rejectAuthenticatedRequest(const QString& reason) {
 void SunoClient::enqueueRequest(QNetworkRequest req, const std::string& method,
                                 QByteArray data,
                                 std::function<void(QNetworkReply*)> callback,
-                                bool retriedAuth) {
-    if (bearer_.jwt.isEmpty() || !auth::isAllowedStudioApiUrl(req.url()) ||
+                                bool retriedAuth,
+                                quint64 epoch) {
+    const quint64 pendingEpoch = epoch == 0 ? requestEpoch_ : epoch;
+    if (pendingEpoch != requestEpoch_ ||
+        authState_ != auth::AuthState::ActiveValid || bearer_.jwt.isEmpty() ||
+        !auth::isAllowedStudioApiUrl(req.url()) ||
         (method != "GET" && method != "POST")) {
         rejectAuthenticatedRequest(QStringLiteral("authenticated request blocked before send"));
         return;
     }
     requestQueue_.push_back({std::move(req), method, std::move(data),
-                             std::move(callback), retriedAuth});
+                             std::move(callback), retriedAuth, pendingEpoch});
     if (!queueTimer_->isActive()) {
         queueTimer_->start();
     }
 }
 
 void SunoClient::processQueue() {
+    while (!requestQueue_.empty() && requestQueue_.front().epoch != requestEpoch_) {
+        requestQueue_.pop_front();
+    }
     if (requestQueue_.empty()) {
         queueTimer_->stop();
         return;
@@ -705,15 +875,40 @@ void SunoClient::processQueue() {
 
     PendingRequest pending = std::move(requestQueue_.front());
     requestQueue_.pop_front();
+    if (pending.epoch != requestEpoch_ ||
+        authState_ != auth::AuthState::ActiveValid || bearer_.jwt.isEmpty()) {
+        if (requestQueue_.empty()) {
+            queueTimer_->stop();
+        }
+        return;
+    }
 
-    QNetworkReply* reply;
-    if (pending.method == "POST") {
+    QNetworkReply* reply = nullptr;
+    if (replyFactory_) {
+        reply = replyFactory_(pending.request, pending.method, pending.data);
+    } else if (pending.method == "POST") {
         reply = manager_->post(pending.request, pending.data);
     } else {
         reply = manager_->get(pending.request);
     }
 
-    // Route through a member handler so 401 interception happens uniformly.
+    if (!reply) {
+        rejectAuthenticatedRequest(QStringLiteral("authenticated request could not be started"));
+        if (requestQueue_.empty()) {
+            queueTimer_->stop();
+        }
+        return;
+    }
+    if (pending.epoch != requestEpoch_ ||
+        authState_ != auth::AuthState::ActiveValid || bearer_.jwt.isEmpty()) {
+        reply->deleteLater();
+        if (requestQueue_.empty()) {
+            queueTimer_->stop();
+        }
+        return;
+    }
+
+    trackReply(reply);
     connect(reply, &QNetworkReply::finished, this,
             [this, reply, pending = std::move(pending)]() mutable {
                 handleReplyFinished(reply, std::move(pending));
@@ -725,26 +920,47 @@ void SunoClient::processQueue() {
 }
 
 void SunoClient::handleReplyFinished(QNetworkReply* reply, PendingRequest&& pending) {
-    const int status =
-            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-
-    // UNIFORM 401 handling: exactly one silent refresh+retry per request.
-    if (status == 401 && !pending.retriedAuth && hasCredentials()) {
-        LOG_WARN("SunoClient: 401 on {} - refreshing bearer, retrying once",
-                 pending.request.url().toString().toStdString());
+    if (!reply) {
+        return;
+    }
+    const bool tracked = isTrackedReply(reply);
+    removeTrackedReply(reply);
+    if (!tracked || pending.epoch != requestEpoch_ ||
+        authState_ != auth::AuthState::ActiveValid) {
         reply->deleteLater();
-        bearer_ = auth::BearerToken{}; // force touch over fetch
-        pending.retriedAuth = true;
-        retryQueue_.push_back(std::move(pending));
-        ensureFreshBearer(/*force=*/true);
         return;
     }
 
+    const int status =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (status == 401) {
+        if (!pending.retriedAuth && hasCredentials()) {
+            LOG_WARN("SunoClient: 401 on {} - refreshing bearer, retrying once",
+                     pending.request.url().toString().toStdString());
+            reply->deleteLater();
+            bearer_ = auth::BearerToken{};
+            pending.retriedAuth = true;
+            retryQueue_.push_back(std::move(pending));
+            ensureFreshBearer(/*force=*/true);
+            return;
+        }
+        handleNetworkError(reply);
+        reply->deleteLater();
+        return;
+    }
+
+    if (!pending.callback) {
+        reply->deleteLater();
+        return;
+    }
     pending.callback(reply);
 }
 
 void SunoClient::handleJsonReply(QNetworkReply* reply,
-                                 std::function<void(const QJsonDocument&)> handler) {
+                                  std::function<void(const QJsonDocument&)> handler) {
+    if (!reply) {
+        return;
+    }
     if (reply->error() != QNetworkReply::NoError) {
         handleNetworkError(reply);
         reply->deleteLater();
@@ -756,11 +972,15 @@ void SunoClient::handleJsonReply(QNetworkReply* reply,
 }
 
 void SunoClient::handleNetworkError(QNetworkReply* reply) {
+    if (!reply) {
+        return;
+    }
     int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     std::string err = reply->errorString().toStdString();
     if (isAuthFailure(httpStatus, reply->errorString())) {
         err = "Unauthorized: Token expired";
-        bearer_.jwt.clear();
+        bearer_ = auth::BearerToken{};
+        dropPendingAuthWork(QStringLiteral("Studio authentication lost"));
         setAuthFailureKind(auth::AuthFailureKind::RejectedCredential);
         setState(auth::AuthState::NeedsReauth);
         emit needsReauth();

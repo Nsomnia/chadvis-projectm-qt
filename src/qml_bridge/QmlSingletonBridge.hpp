@@ -63,7 +63,7 @@ public:
     static Derived* instance() { return instance_; }
 
 protected:
-    ~QmlSingletonBridge() { setInstance(static_cast<Derived*>(this)); }
+    ~QmlSingletonBridge() { setInstance(nullptr); }
 
     /// Derived constructors record themselves here (replaces `s_instance = this`).
     static void setInstance(Derived* d) { instance_ = d; }

@@ -15,11 +15,14 @@
 
 ### Fresh verification required
 - [x] Reconfigure and build the current merged tree; the desktop app and focused Suno test targets link successfully.
-- [x] Run `ctest --test-dir build/tests --output-on-failure` plus the standalone auth executable; all 6 registered suites pass.
+- [x] Run `ctest --test-dir build/tests --output-on-failure` plus the standalone auth executable; all 8 registered suites pass.
 - [x] Run QML lint on the current QML module; it completes with existing layout/unqualified-access warnings and the corrected SunoBridge properties.
 - [x] Close the asynchronous credential-readiness regression — coalesced keychain restores now notify every caller, and Library/Explore defer authentication decisions until the shared read completes.
+- [x] Fence authenticated work by request epoch — sign-out/replacement/auth loss clears queues, retries, and waiters; aborts tracked replies; rebases restore waiters; and cancels direct uploads.
 - [x] Close the PFFFT/analyzer race — immutable shared setup, aligned per-call scratch, synchronized state, deterministic setup-failure silence, and normal plus TSan concurrency tests are in place.
+- [x] Close the audio callback allocation risk — preallocate the PCM scratch during `AudioEngine::init()` and drop oversized buffers instead of resizing on the callback path.
 - [x] Close cached QML singleton lifetime risk — parented/unparented bridge singletons clear their static instance pointer on destruction, with a destruction regression.
+- [x] Close the shutdown-order risk — `Application` explicitly resets QML, controller/lyrics/preset, recorder, audio, and Qt application lifetimes in dependency order.
 - [x] Verify the current shell reaches a rendered window — the integration target loads the real QML module under Qt's offscreen platform, requires a visible/exposed `QQuickWindow` root, and verifies a non-null grabbed frame.
 - [ ] Run an authorized-account Library/Create/Listen/Explore/Notifications/Video/Settings smoke.
 
@@ -29,7 +32,7 @@
 - [~] **Authentication** — exact `last_active_session_id` matching, captured `touch`/`client` envelope shapes, credential-prefix normalization, and fail-closed host policy are implemented; automatic `/tokens` fallback, route preference, and sign-out evidence remain open.
 - [x] **Remote artwork policy** — clip image fields are sanitized at parse and bridge boundaries; QML receives only HTTPS URLs on the exact captured `cdn1.suno.ai`/`cdn2.suno.ai` origins, with no userinfo, fragment, nondefault port, or local/relative scheme.
 - [x] **Fail-closed requests** — active Orpheus/Modal, WAV conversion, constructed-media, user-reachable lead routes, automatic unverified `/tokens` fallback, noncanonical session selection, and the undocumented synthetic Browser-Token are disabled; declaration-only fetch methods remain to be retired.
-- [~] **Library** — cursor pagination, local filtering, DB merge, and error states are wired; authorized-account pagination and range playback still need runtime verification.
+- [~] **Library** — cursor pagination, local filtering, DB merge, and error states are wired; authorized-account pagination and captured-host playback still need runtime verification. Range resume is intentionally disabled.
 - [~] **Account/models** — runtime model catalog and numeric account/model fields are wired; account/billing contract fixtures and limit behavior still need capture-backed tests.
 - [ ] **Generation** — bind captcha decision and runtime model/catalog/limit data; add fake-request contract tests and durable queued/processing/failed UI state. The current UI intentionally refuses generation without a supported CAPTCHA token flow.
 - [~] **Media/download** — playback requires HTTPS on the exact captured `audiopipe.suno.ai` origin, ignores legacy `audio_url` and image hosts, rejects userinfo/fragments/nondefault ports/forbidden sentinels, and uses manual redirects. Unpromoted Range resume is disabled and retries restart from byte zero.
