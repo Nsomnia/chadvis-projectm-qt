@@ -180,7 +180,10 @@ private slots:
         DownloadPathGuard pathGuard(CONFIG.suno().downloadPath);
         CONFIG.suno().downloadPath = directory.path().toStdString();
 
-        AudioEngine audio;
+        QTemporaryDir sessionDirectory;
+        QVERIFY(sessionDirectory.isValid());
+        AudioEngine audio(
+            fs::path(sessionDirectory.path().toStdString()) / "last_session.m3u");
         QVERIFY(audio.init());
         SunoDatabase database;
         QVERIFY(database.init(":memory:"));

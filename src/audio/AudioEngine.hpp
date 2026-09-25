@@ -28,7 +28,7 @@ class AudioEngine : public QObject {
     Q_OBJECT
 
 public:
-    AudioEngine();
+    explicit AudioEngine(fs::path sessionPath = {});
     ~AudioEngine() override;
 
     Result<void> init();
@@ -95,6 +95,7 @@ private:
     std::atomic<bool> stopAnalyzer_{false};
 
     Playlist playlist_;
+    fs::path sessionPath_;
     AudioAnalyzer analyzer_;
     AudioSpectrum currentSpectrum_;
     AudioQueue audioQueue_;

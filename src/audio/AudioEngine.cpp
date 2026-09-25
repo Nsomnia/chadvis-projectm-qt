@@ -9,7 +9,8 @@
 
 namespace vc {
 
-AudioEngine::AudioEngine() : QObject(nullptr) {}
+AudioEngine::AudioEngine(fs::path sessionPath)
+    : QObject(nullptr), sessionPath_(std::move(sessionPath)) {}
 
 AudioEngine::~AudioEngine() {
     stop();
@@ -169,7 +170,9 @@ void AudioEngine::prepareNextTrack() {
 }
 
 void AudioEngine::loadLastPlaylist() {
-    auto path = file::configDir() / "last_session.m3u";
+    const auto path = sessionPath_.empty()
+            ? file::configDir() / "last_session.m3u"
+            : sessionPath_;
     if (fs::exists(path)) {
         if (auto result = playlist_.loadM3U(path); !result) {
             LOG_WARN("AudioEngine: Failed to load last playlist: {}", result.error().message);
@@ -178,7 +181,9 @@ void AudioEngine::loadLastPlaylist() {
 }
 
 void AudioEngine::saveLastPlaylist() {
-    auto path = file::configDir() / "last_session.m3u";
+    const auto path = sessionPath_.empty()
+            ? file::configDir() / "last_session.m3u"
+            : sessionPath_;
     if (auto result = file::ensureDir(path.parent_path()); !result) {
         LOG_WARN("AudioEngine: Failed to create playlist directory: {}", result.error().message);
         return;
