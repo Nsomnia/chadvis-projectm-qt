@@ -38,6 +38,7 @@ SettingsBridge::~SettingsBridge()
     if (s_sunoClient == m_sunoClient) {
         s_sunoClient = nullptr;
     }
+    setInstance(nullptr);
 }
 
 void SettingsBridge::setSunoClient(vc::suno::SunoClient* client)
