@@ -312,6 +312,35 @@ private slots:
         QCOMPARE(client.authState(), vc::suno::auth::AuthState::NeedsReauth);
     }
 
+    void mutationRequestDoesNotRetryAfter401()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request,
+                                  const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        QSignalSpy restored(&client, &SunoClient::credentialRestoreCompleted);
+        QTRY_COMPARE_WITH_TIMEOUT(restored.count(), 1, 2000);
+        client.setToken(fakeBearer(QStringLiteral("mutation")).toStdString());
+
+        int callbackCount = 0;
+        client.enqueueAuthenticatedRequest(
+            QStringLiteral("/notification/v2/read/"), "POST", {},
+            [&callbackCount](QNetworkReply*) { ++callbackCount; },
+            false);
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() == 1, 2500);
+
+        QSignalSpy needsReauth(&client, &SunoClient::needsReauth);
+        replies.front()->succeed(QByteArrayLiteral("unauthorized"), 401);
+        QTRY_COMPARE_WITH_TIMEOUT(needsReauth.count(), 1, 1000);
+        QCOMPARE(replies.size(), std::size_t(1));
+        QCOMPARE(callbackCount, 0);
+    }
+
     void uploadCancelsOnCredentialReplacement()
     {
         QTemporaryDir directory;

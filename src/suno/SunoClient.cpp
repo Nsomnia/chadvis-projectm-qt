@@ -788,7 +788,8 @@ void SunoClient::withValidToken(std::function<void()> proceed) {
 void SunoClient::enqueueAuthenticatedRequest(const QString& endpoint,
                                              const std::string& method,
                                              const QByteArray& data,
-                                             std::function<void(QNetworkReply*)> callback) {
+                                             std::function<void(QNetworkReply*)> callback,
+                                             bool retryOnUnauthorized) {
     if (method != "GET" && method != "POST") {
         rejectAuthenticatedRequest(QStringLiteral("unsupported authenticated HTTP method"));
         return;
@@ -802,14 +803,14 @@ void SunoClient::enqueueAuthenticatedRequest(const QString& endpoint,
     }
 
     withValidToken([this, url = *url, method, data,
-                    callback = std::move(callback)]() mutable {
+                    callback = std::move(callback), retryOnUnauthorized]() mutable {
         auto request = createAuthenticatedRequest(url, method, data);
         if (!request) {
             rejectAuthenticatedRequest(QStringLiteral("authenticated request has no bearer"));
             return;
         }
         enqueueRequest(std::move(*request), method, std::move(data),
-                       std::move(callback), false, requestEpoch_);
+                       std::move(callback), false, requestEpoch_, retryOnUnauthorized);
     });
 }
 
@@ -848,7 +849,8 @@ void SunoClient::enqueueRequest(QNetworkRequest req, const std::string& method,
                                 QByteArray data,
                                 std::function<void(QNetworkReply*)> callback,
                                 bool retriedAuth,
-                                quint64 epoch) {
+                                quint64 epoch,
+                                bool retryOnUnauthorized) {
     const quint64 pendingEpoch = epoch == 0 ? requestEpoch_ : epoch;
     if (pendingEpoch != requestEpoch_ ||
         authState_ != auth::AuthState::ActiveValid || bearer_.jwt.isEmpty() ||
@@ -858,7 +860,8 @@ void SunoClient::enqueueRequest(QNetworkRequest req, const std::string& method,
         return;
     }
     requestQueue_.push_back({std::move(req), method, std::move(data),
-                             std::move(callback), retriedAuth, pendingEpoch});
+                             std::move(callback), retriedAuth,
+                             retryOnUnauthorized, pendingEpoch});
     if (!queueTimer_->isActive()) {
         queueTimer_->start();
     }
@@ -934,7 +937,7 @@ void SunoClient::handleReplyFinished(QNetworkReply* reply, PendingRequest&& pend
     const int status =
             reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     if (status == 401) {
-        if (!pending.retriedAuth && hasCredentials()) {
+        if (pending.retryOnUnauthorized && !pending.retriedAuth && hasCredentials()) {
             LOG_WARN("SunoClient: 401 on {} - refreshing bearer, retrying once",
                      pending.request.url().toString().toStdString());
             reply->deleteLater();
