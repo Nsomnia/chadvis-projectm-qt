@@ -4,6 +4,7 @@
 #include "suno/auth/AuthTypes.hpp"
 #include "suno/auth/CredentialStore.hpp"
 #include "suno/auth/JwtUtils.hpp"
+#include "qml_bridge/QmlSingletonBridge.hpp"
 
 #include <QDir>
 #include <QJsonDocument>
@@ -34,6 +35,18 @@ constexpr qint64 kFutureExp = 4102444800; // 2100-01-01, safely unexpired
 
 } // namespace
 
+class DummySingleton : public QObject,
+                       public qml_bridge::QmlSingletonBridge<
+                               DummySingleton,
+                               qml_bridge::CachedQmlParented> {
+    friend class qml_bridge::QmlSingletonBridge<
+            DummySingleton, qml_bridge::CachedQmlParented>;
+
+    explicit DummySingleton(QObject* parent) : QObject(parent) {
+        setInstance(this);
+    }
+};
+
 class TestAuthModule : public QObject {
     Q_OBJECT
 
@@ -44,6 +57,14 @@ private slots:
         vc::Logger::init("test_auth_module", false);
         tempRoot_ = std::make_unique<QTemporaryDir>();
         QVERIFY(tempRoot_->isValid());
+    }
+
+    void cachedSingletonClearsOnDestruction() {
+        auto* singleton = DummySingleton::create(nullptr, nullptr);
+        QVERIFY(singleton);
+        QCOMPARE(DummySingleton::instance(), singleton);
+        delete singleton;
+        QVERIFY(!DummySingleton::instance());
     }
 
     // ------------------------------------------------------------------
