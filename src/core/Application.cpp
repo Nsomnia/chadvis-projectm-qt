@@ -383,7 +383,9 @@ Result<void> Application::init(const AppOptions& opts) {
 		LOG_DEBUG("Initializing preset manager for QML...");
 		presetManager_ = std::make_unique<PresetManager>();
 		if (auto presetDir = CONFIG.visualizer().presetPath; !presetDir.empty()) {
-			presetManager_->scan(presetDir, true);
+			if (auto result = presetManager_->scan(presetDir, true); !result) {
+				LOG_WARN("Failed to scan presets: {}", result.error().message);
+			}
 		}
 
 		LOG_DEBUG("Creating VisualizerWindow for QML embedding...");
@@ -502,8 +504,12 @@ void Application::quit() {
 	if (audioEngine_) {
 		// Save last session playlist
 		auto lastSession = file::configDir() / "last_session.m3u";
-		audioEngine_->playlist().saveM3U(lastSession);
-		LOG_DEBUG("Saved session playlist to {}", lastSession.string());
+		if (auto result = audioEngine_->playlist().saveM3U(lastSession); !result) {
+			LOG_WARN("Failed to save session playlist to {}: {}",
+			         lastSession.string(), result.error().message);
+		} else {
+			LOG_DEBUG("Saved session playlist to {}", lastSession.string());
+		}
 
 		audioEngine_->stop();
 	}

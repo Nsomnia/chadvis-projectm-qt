@@ -102,7 +102,7 @@
 - [ ] **Application god object** — 150+ line `init()`, owns everything. Split into subsystem managers (AudioSubsystem, UISubsystem, etc.).
 - [ ] **Application singleton via raw pointer** — `g_app` raw pointer; should be `unique_ptr` or stack-allocated. Risk of double-delete or leak.
 - [x] **Config parser defaults don't match struct defaults** — Fixed (2026-08-25): parser fallbacks now derive from default-constructed ConfigData structs (single source of truth).
-- [ ] **Config::save() errors ignored** — Save failures silently swallowed; user loses settings without warning.
+- [x] **Config::save() errors ignored** — settings, playlist, preset-state, database, FBO, and theme persistence failures now log actionable errors at their call sites.
 - [ ] **CLI X-macro pattern fragile** — CliArgs.inc X-macros: easy to break, poor IDE support. Consider codegen or reflection-based approach.
 - [ ] **TRY macro shadows std::expected** — Custom TRY conflicts with C++23 idiom; migrate to `std::expected` monadic chain.
 

@@ -55,7 +55,10 @@ fs::path SunoDownloader::getDownloadDir() const {
     if (musicLoc.isEmpty()) musicLoc = QDir::homePath() + "/Music";
     dir = fs::path(musicLoc.toStdString());
   }
-  vc::file::ensureDir(dir);
+  if (auto result = vc::file::ensureDir(dir); !result) {
+    LOG_WARN("SunoDownloader: Failed to create download directory: {}",
+             result.error().message);
+  }
   return dir;
 }
 

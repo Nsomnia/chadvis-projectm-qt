@@ -1,5 +1,6 @@
 #include "ThemeBridge.hpp"
 #include "core/Config.hpp"
+#include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
 
 namespace qml_bridge {
@@ -17,7 +18,10 @@ void ThemeBridge::setAccent(const QColor& color) {
     auto hex = color.name().toStdString();
     if (vc::Config::instance().ui().accentColor.toHex() != hex) {
         vc::Config::instance().ui().accentColor = vc::Color::fromHex(hex);
-        vc::Config::instance().save(vc::Config::instance().configPath());
+        if (auto result = vc::Config::instance().save(vc::Config::instance().configPath()); !result) {
+            LOG_ERROR("ThemeBridge: Failed to save accent color: {}",
+                      result.error().message);
+        }
         emit accentChanged();
     }
 }
@@ -30,7 +34,10 @@ void ThemeBridge::setBackground(const QColor& color) {
     auto hex = color.name().toStdString();
     if (vc::Config::instance().ui().backgroundColor.toHex() != hex) {
         vc::Config::instance().ui().backgroundColor = vc::Color::fromHex(hex);
-        vc::Config::instance().save(vc::Config::instance().configPath());
+        if (auto result = vc::Config::instance().save(vc::Config::instance().configPath()); !result) {
+            LOG_ERROR("ThemeBridge: Failed to save background color: {}",
+                      result.error().message);
+        }
         emit backgroundChanged();
     }
 }
