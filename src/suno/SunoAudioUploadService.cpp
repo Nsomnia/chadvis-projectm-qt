@@ -36,13 +36,6 @@ QStringList supportedAudioSuffixes()
     return {QStringLiteral("m4a")};
 }
 
-bool isValidTemporaryUrl(const QUrl& url)
-{
-    return url.isValid() && !url.isRelative() &&
-           url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0 &&
-           !url.host().isEmpty() && url.userInfo().isEmpty();
-}
-
 QString multipartDisposition(const QString& name, const QString& filename = {})
 {
     QString escapedName = name;
@@ -121,7 +114,7 @@ SunoAudioUploadService::parseInitializeResponse(const QByteArray& payload)
     response.id = idValue.toString();
     response.url = QUrl(urlValue.toString());
     response.isFileUploaded = uploadedValue.toBool();
-    if (!isValidTemporaryUrl(response.url)) {
+    if (!isSupportedTemporaryUrl(response.url)) {
         return std::unexpected(QStringLiteral("Audio upload initialization returned an invalid upload URL."));
     }
 
@@ -141,8 +134,23 @@ SunoAudioUploadService::parseInitializeResponse(const QByteArray& payload)
     return response;
 }
 
-QNetworkRequest SunoAudioUploadService::directRequest(const QUrl& url)
+bool SunoAudioUploadService::isSupportedTemporaryUrl(const QUrl& url)
 {
+    const int port = url.port();
+    return url.isValid() && !url.isRelative() &&
+           url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0 &&
+           url.host().compare(qstr(endpoints::AUDIO_UPLOAD_STORAGE_HOST),
+                              Qt::CaseInsensitive) == 0 &&
+           (port == -1 || port == 443) && url.userInfo().isEmpty() &&
+           url.fragment().isEmpty() && !url.path().isEmpty();
+}
+
+std::expected<QNetworkRequest, QString>
+SunoAudioUploadService::directRequest(const QUrl& url)
+{
+    if (!isSupportedTemporaryUrl(url)) {
+        return std::unexpected(QStringLiteral("Audio upload URL is not an allowed storage origin."));
+    }
     QNetworkRequest request(url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
@@ -273,7 +281,13 @@ void SunoAudioUploadService::startDirectUpload(quint64 generation)
     multipart->append(filePart);
     file->setParent(multipart);
 
-    QNetworkReply* reply = directNetworkManager_->post(directRequest(ticket_->url), multipart);
+    auto request = directRequest(ticket_->url);
+    if (!request) {
+        multipart->deleteLater();
+        fail(request.error());
+        return;
+    }
+    QNetworkReply* reply = directNetworkManager_->post(*request, multipart);
     if (!reply) {
         multipart->deleteLater();
         fail(QStringLiteral("The audio upload could not be started."));

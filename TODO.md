@@ -29,7 +29,7 @@
 - [~] **Account/models** — runtime model catalog and numeric account/model fields are wired; account/billing contract fixtures and limit behavior still need capture-backed tests.
 - [ ] **Generation** — bind captcha decision and runtime model/catalog/limit data; add fake-request contract tests and durable queued/processing/failed UI state. The current UI intentionally refuses generation without a supported CAPTCHA token flow.
 - [~] **Media/download** — captured media selection, forbidden-sentinel rejection, database persistence, and playback handoff are wired; range resume/pause/resume remains to verify.
-- [x] **Audio upload** — the exact captured initialize → returned direct multipart URL → finish sequence is implemented for `.m4a`; `initialize-clip`, processing, generation linkage, limits/errors, and full validation remain gated.
+- [x] **Audio upload** — the exact captured initialize → returned direct multipart URL → finish sequence is implemented for `.m4a`; the direct leg now permits only HTTPS on the exact captured `suno-uploads.s3.amazonaws.com` origin with default/443, no userinfo/fragment, and manual redirects. `initialize-clip`, processing, generation linkage, limits/errors, and full validation remain gated.
 - [x] **Explore and notifications** — read-only Explore, notification badge/list, and explicit mark-all-read surfaces are wired; following-feed pagination remains unverified.
 - [ ] **Lyrics/karaoke** — load aligned lyrics into the active sync pipeline and finish versioned edits, LRC/SRT export, search, context, and upcoming-line behavior.
 - [ ] **Header drift** — capture route-specific Authorization/Browser-Token/Device-Id requirements before changing shared header policy.

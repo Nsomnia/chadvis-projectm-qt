@@ -8,6 +8,26 @@
 
 using namespace vc::suno;
 
+namespace {
+
+QJsonObject initializerPayload(const QString& url)
+{
+    return {
+        {QStringLiteral("id"), QStringLiteral("upload-123")},
+        {QStringLiteral("url"), url},
+        {QStringLiteral("is_file_uploaded"), false},
+        {QStringLiteral("fields"), QJsonObject{
+             {QStringLiteral("AWSAccessKeyId"), QStringLiteral("access")},
+             {QStringLiteral("Content-Type"), QStringLiteral("audio/mp4")},
+             {QStringLiteral("key"), QStringLiteral("key-123")},
+             {QStringLiteral("policy"), QStringLiteral("policy-123")},
+             {QStringLiteral("signature"), QStringLiteral("signature-123")},
+         }},
+    };
+}
+
+}
+
 class TestSunoAudioUploadService : public QObject
 {
     Q_OBJECT
@@ -36,25 +56,22 @@ private slots:
 
     void parsesCapturedInitializerAndKeepsAllReturnedFields()
     {
-        const QJsonObject payload{
-            {QStringLiteral("id"), QStringLiteral("upload-123")},
-            {QStringLiteral("url"), QStringLiteral("https://storage.example.test/upload?signature=opaque")},
-            {QStringLiteral("is_file_uploaded"), false},
-            {QStringLiteral("fields"), QJsonObject{
-                 {QStringLiteral("AWSAccessKeyId"), QStringLiteral("access")},
-                 {QStringLiteral("Content-Type"), QStringLiteral("audio/mp4")},
-                 {QStringLiteral("key"), QStringLiteral("key-123")},
-                 {QStringLiteral("policy"), QStringLiteral("policy-123")},
-                 {QStringLiteral("signature"), QStringLiteral("signature-123")},
-                 {QStringLiteral("extra"), QStringLiteral("retained")},
-             }},
+        QJsonObject payload = initializerPayload(
+                QStringLiteral("https://suno-uploads.s3.amazonaws.com/upload?signature=opaque"));
+        payload[QStringLiteral("fields")] = QJsonObject{
+            {QStringLiteral("AWSAccessKeyId"), QStringLiteral("access")},
+            {QStringLiteral("Content-Type"), QStringLiteral("audio/mp4")},
+            {QStringLiteral("key"), QStringLiteral("key-123")},
+            {QStringLiteral("policy"), QStringLiteral("policy-123")},
+            {QStringLiteral("signature"), QStringLiteral("signature-123")},
+            {QStringLiteral("extra"), QStringLiteral("retained")},
         };
 
         auto parsed = SunoAudioUploadService::parseInitializeResponse(
                 QJsonDocument(payload).toJson(QJsonDocument::Compact));
         QVERIFY(parsed.has_value());
         QCOMPARE(parsed->id, QStringLiteral("upload-123"));
-        QCOMPARE(parsed->url.host(), QStringLiteral("storage.example.test"));
+        QCOMPARE(parsed->url.host(), QStringLiteral("suno-uploads.s3.amazonaws.com"));
         QVERIFY(!parsed->isFileUploaded);
         QCOMPARE(parsed->fields.size(), 6);
         QCOMPARE(parsed->fields.value(QStringLiteral("signature")),
@@ -76,7 +93,7 @@ private slots:
         const auto missingField = SunoAudioUploadService::parseInitializeResponse(
                 QJsonDocument(QJsonObject{
                     {QStringLiteral("id"), QStringLiteral("upload-123")},
-                    {QStringLiteral("url"), QStringLiteral("https://storage.example.test/upload")},
+                    {QStringLiteral("url"), QStringLiteral("https://suno-uploads.s3.amazonaws.com/upload")},
                     {QStringLiteral("is_file_uploaded"), false},
                     {QStringLiteral("fields"), QJsonObject{
                          {QStringLiteral("AWSAccessKeyId"), QStringLiteral("access")},
@@ -87,7 +104,7 @@ private slots:
         const auto invalidUrl = SunoAudioUploadService::parseInitializeResponse(
                 QJsonDocument(QJsonObject{
                     {QStringLiteral("id"), QStringLiteral("upload-123")},
-                    {QStringLiteral("url"), QStringLiteral("http://storage.example.test/upload")},
+                    {QStringLiteral("url"), QStringLiteral("http://suno-uploads.s3.amazonaws.com/upload")},
                     {QStringLiteral("is_file_uploaded"), false},
                     {QStringLiteral("fields"), validFields},
                 }).toJson(QJsonDocument::Compact));
@@ -96,7 +113,7 @@ private slots:
         const auto nonStringField = SunoAudioUploadService::parseInitializeResponse(
                 QJsonDocument(QJsonObject{
                     {QStringLiteral("id"), QStringLiteral("upload-123")},
-                    {QStringLiteral("url"), QStringLiteral("https://storage.example.test/upload")},
+                    {QStringLiteral("url"), QStringLiteral("https://suno-uploads.s3.amazonaws.com/upload")},
                     {QStringLiteral("is_file_uploaded"), false},
                     {QStringLiteral("fields"), QJsonObject{
                          {QStringLiteral("AWSAccessKeyId"), QStringLiteral("access")},
@@ -109,12 +126,66 @@ private slots:
         QVERIFY(!nonStringField.has_value());
     }
 
+    void temporaryUrlPolicy_data()
+    {
+        QTest::addColumn<QString>("url");
+        QTest::addColumn<bool>("allowed");
+
+        QTest::newRow("captured-host")
+                << QStringLiteral("https://suno-uploads.s3.amazonaws.com/upload?signature=opaque")
+                << true;
+        QTest::newRow("explicit-https-port")
+                << QStringLiteral("https://suno-uploads.s3.amazonaws.com:443/upload")
+                << true;
+        QTest::newRow("cleartext")
+                << QStringLiteral("http://suno-uploads.s3.amazonaws.com/upload")
+                << false;
+        QTest::newRow("alternate-host")
+                << QStringLiteral("https://storage.example.test/upload")
+                << false;
+        QTest::newRow("suffix-confusion")
+                << QStringLiteral("https://suno-uploads.s3.amazonaws.com.evil.test/upload")
+                << false;
+        QTest::newRow("userinfo")
+                << QStringLiteral("https://user@suno-uploads.s3.amazonaws.com/upload")
+                << false;
+        QTest::newRow("nondefault-port")
+                << QStringLiteral("https://suno-uploads.s3.amazonaws.com:444/upload")
+                << false;
+        QTest::newRow("fragment")
+                << QStringLiteral("https://suno-uploads.s3.amazonaws.com/upload#fragment")
+                << false;
+        QTest::newRow("empty-path")
+                << QStringLiteral("https://suno-uploads.s3.amazonaws.com")
+                << false;
+        QTest::newRow("relative")
+                << QStringLiteral("/upload")
+                << false;
+        QTest::newRow("file-scheme")
+                << QStringLiteral("file:///tmp/upload")
+                << false;
+    }
+
+    void temporaryUrlPolicy()
+    {
+        QFETCH(QString, url);
+        QFETCH(bool, allowed);
+
+        const QUrl parsed(url);
+        QCOMPARE(SunoAudioUploadService::isSupportedTemporaryUrl(parsed), allowed);
+        QCOMPARE(SunoAudioUploadService::directRequest(parsed).has_value(), allowed);
+        const auto initialized = SunoAudioUploadService::parseInitializeResponse(
+                QJsonDocument(initializerPayload(url)).toJson(QJsonDocument::Compact));
+        QCOMPARE(initialized.has_value(), allowed);
+    }
+
     void directRequestHasNoBearerAndNoRedirect()
     {
-        const QUrl url(QStringLiteral("https://storage.example.test/upload?signature=opaque"));
-        const QNetworkRequest request = SunoAudioUploadService::directRequest(url);
-        QVERIFY(request.rawHeader("Authorization").isEmpty());
-        QCOMPARE(request.attribute(QNetworkRequest::RedirectPolicyAttribute).toInt(),
+        const QUrl url(QStringLiteral("https://suno-uploads.s3.amazonaws.com/upload?signature=opaque"));
+        const auto request = SunoAudioUploadService::directRequest(url);
+        QVERIFY(request.has_value());
+        QVERIFY(request->rawHeader("Authorization").isEmpty());
+        QCOMPARE(request->attribute(QNetworkRequest::RedirectPolicyAttribute).toInt(),
                  static_cast<int>(QNetworkRequest::ManualRedirectPolicy));
     }
 

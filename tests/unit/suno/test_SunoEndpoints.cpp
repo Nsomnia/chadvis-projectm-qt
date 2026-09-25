@@ -144,6 +144,8 @@ private slots:
         QCOMPARE(std::string(GENERATE), std::string("/generate/v2-web/"));
         QVERIFY(std::string(ALIGNED_LYRICS).ends_with('/'));
         QVERIFY(std::string(API_BASE).ends_with("/api"));
+        QCOMPARE(std::string(AUDIO_UPLOAD_STORAGE_HOST),
+                 std::string("suno-uploads.s3.amazonaws.com"));
     }
 
     void studioApiPathsDoNotDuplicateApiPrefix() {
