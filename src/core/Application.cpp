@@ -450,6 +450,19 @@ Result<void> Application::init(const AppOptions& opts) {
 		});
 
 		qmlEngine_->load(url);
+		const QList<QObject*> roots = qmlEngine_->rootObjects();
+		if (roots.isEmpty()) {
+			LOG_ERROR("QML root load returned no objects");
+			return Result<void>::err("QML root load returned no objects");
+		}
+		auto* window = qobject_cast<QQuickWindow*>(roots.first());
+		if (!window) {
+			LOG_ERROR("QML root is not a QQuickWindow");
+			return Result<void>::err("QML root is not a QQuickWindow");
+		}
+		if (!window->isVisible()) {
+			window->show();
+		}
 	}
 
 	// Connect quit signal

@@ -19,7 +19,7 @@
 - [x] Run QML lint on the current QML module; it completes with existing layout/unqualified-access warnings and the corrected SunoBridge properties.
 - [x] Close the asynchronous credential-readiness regression — coalesced keychain restores now notify every caller, and Library/Explore defer authentication decisions until the shared read completes.
 - [x] Close the PFFFT/analyzer race — immutable shared setup, aligned per-call scratch, synchronized state, deterministic setup-failure silence, and normal plus TSan concurrency tests are in place.
-- [~] Verify the current shell reaches a rendered window — the exact current binary reaches `QML window created successfully` and `Initialization complete`; an internal exposed/frame-rendered assertion is still required because macOS denied the external Accessibility check.
+- [x] Verify the current shell reaches a rendered window — the integration target loads the real QML module under Qt's offscreen platform, requires a visible/exposed `QQuickWindow` root, and verifies a non-null grabbed frame.
 - [ ] Run an authorized-account Library/Create/Listen/Explore/Notifications/Video/Settings smoke.
 
 ## Suno client work remaining
