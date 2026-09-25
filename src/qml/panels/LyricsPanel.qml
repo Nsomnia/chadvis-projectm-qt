@@ -49,7 +49,10 @@ ColumnLayout {
         visible: root.showSearch && LyricsBridge.hasLyrics
         placeholderText: "Search lyrics..."
         text: root.searchQuery
-        onTextChanged: root.searchQuery = text
+        onTextChanged: {
+            root.searchQuery = text
+            LyricsBridge.setSearchQuery(text)
+        }
 
         background: Rectangle {
             radius: Theme.radiusSmall

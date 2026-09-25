@@ -73,6 +73,8 @@ signals:
     void positionChanged();
     void searchQueryChanged();
     void searchResultsChanged();
+    void exportFinished(const QString& path);
+    void exportFailed(const QString& message);
 
 private slots:
     void onPositionChanged(vc::LyricsSyncPosition pos);
