@@ -26,6 +26,8 @@ SunoBridge::~SunoBridge() {
     notificationService_ = nullptr;
     delete exploreService_;
     exploreService_ = nullptr;
+    s_controller = nullptr;
+    s_client = nullptr;
 }
 
 namespace {

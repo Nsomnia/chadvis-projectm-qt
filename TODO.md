@@ -19,6 +19,7 @@
 - [x] Run QML lint on the current QML module; it completes with existing layout/unqualified-access warnings and the corrected SunoBridge properties.
 - [x] Close the asynchronous credential-readiness regression — coalesced keychain restores now notify every caller, and Library/Explore defer authentication decisions until the shared read completes.
 - [x] Close the PFFFT/analyzer race — immutable shared setup, aligned per-call scratch, synchronized state, deterministic setup-failure silence, and normal plus TSan concurrency tests are in place.
+- [x] Close cached QML singleton lifetime risk — parented/unparented bridge singletons clear their static instance pointer on destruction, with a destruction regression.
 - [x] Verify the current shell reaches a rendered window — the integration target loads the real QML module under Qt's offscreen platform, requires a visible/exposed `QQuickWindow` root, and verifies a non-null grabbed frame.
 - [ ] Run an authorized-account Library/Create/Listen/Explore/Notifications/Video/Settings smoke.
 

@@ -59,6 +59,9 @@ Application::~Application() {
 	visualizerWindow_.reset();
 
 	videoRecorder_.reset();
+	sunoController_.reset();
+	lyricsSync_.reset();
+	presetManager_.reset();
 	audioEngine_.reset();
 	qapp_.reset();
 

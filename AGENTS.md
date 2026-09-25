@@ -56,6 +56,7 @@
 ### Memory & Thread Safety
 - [x] **PFFFT static locals thread-unsafe** — `AudioAnalyzer` now uses a shared immutable RAII setup, 16-byte-aligned per-call FFT scratch, mutex-protected analyze/reset/PCM state, deterministic zero-on-setup-failure behavior, and focused normal plus ThreadSanitizer concurrency tests.
 - [ ] **SunoClient use-after-free** — Network replies can outlive client; dangling pointer on delayed responses. Lifetime audit needed.
+- [x] **QML cached singleton lifetime** — cached QML bridge pointers reset when their parented/unparented singleton is destroyed, preventing stale pointers across engine restarts.
 - [x] **VideoRecorderFFmpeg nullptr deref** — both video and audio `avcodec_alloc_context3()` results are checked before dereference.
 - [x] **VideoRecorderThread brace mismatch** — Root cause found (2026-08-25): `VideoRecorder::setAudioQueue` was never wired, so the rec queue was always null. Wired in `Application::init()`; braces were actually balanced.
 - [ ] **LyricsOverlayRenderer OOB access** — Out-of-bounds array access in renderer; crash on edge-case lyric data.
