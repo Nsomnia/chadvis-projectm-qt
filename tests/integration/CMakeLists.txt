@@ -10,8 +10,13 @@ target_include_directories(integration_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 target_link_libraries(integration_tests PRIVATE
     Qt6::Core
+    Qt6::Gui
+    Qt6::Quick
     Qt6::Test
     project_lib
 )
 
 add_test(NAME integration_tests COMMAND integration_tests)
+set_tests_properties(integration_tests PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
