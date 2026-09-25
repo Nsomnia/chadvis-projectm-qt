@@ -16,7 +16,6 @@
 #include "util/Signal.hpp"
 #include "util/Types.hpp"
 
-#include <QCursor>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QObject>
@@ -167,62 +166,6 @@ public:
                   bool makeInstrumental = false,
                   const std::string& model = "chirp-v3.5");
 
-    // ── Capture-gated declarations ──────────────────────────────────────
-    /// POST /api/unified/homepage — homepage feed with nested content items.
-    void fetchHomepageFeed(std::optional<QCursor> cursor = std::nullopt);
-    /// GET /api/notification/v2 — notifications list.
-    void fetchNotifications();
-    /// GET /api/notification/v2/badge-count — unread badge count.
-    void fetchNotificationBadgeCount();
-    /// GET /api/contests/ — active/remix contests.
-    void fetchContests();
-    /// GET /api/music_player/playbar_state — cross-device playback state.
-    void fetchPlaybarState();
-    /// GET /api/realtime/discover — Ably SSE stream URL for live discover updates.
-    void fetchRealtimeDiscover();
-    /// GET /api/personalization/settings — user personalization settings.
-    void fetchPersonalizationSettings();
-    /// GET /api/custom-model/pending/ — pending custom model generations.
-    void fetchCustomModelPending();
-    /// GET /api/prompts/?filter_prompt_type=tags — saved prompt tags.
-    void fetchSavedPromptTags();
-    /// GET /api/prompts/?filter_prompt_type=lyrics — saved lyrics.
-    void fetchSavedLyrics();
-    /// GET /api/user/user_config/ — user configuration (tour, tags, notifications).
-    void fetchUserConfig();
-    /// GET /api/user/tos_acceptance — TOS acceptance status.
-    void fetchTosAcceptance();
-    /// GET /api/user/get_user_session_id/ — current session ID.
-    void fetchUserSessionId();
-    /// GET /api/profiles/{handle}/info — public profile info.
-    void fetchProfileInfo(const QString& handle);
-    /// GET /api/profiles/pinned-clips — user's pinned clips.
-    void fetchPinnedClips();
-    /// GET /api/project/default/pinned-clips — project-level pinned clips.
-    void fetchProjectPinnedClips();
-    /// GET /api/billing/eligible-discounts — discount + bonus offers.
-    void fetchEligibleDiscounts();
-    /// GET /api/billing/usage-plan-web-table-comparison/ — plan comparison matrix.
-    void fetchPlanComparison();
-    /// GET /api/billing/usage-plan-faq/ — billing FAQ entries.
-    void fetchBillingFaq();
-    /// GET /api/billing/usage-plan-descriptions/ — plan descriptions with CTAs.
-    void fetchPlanDescriptions();
-    /// GET /api/cms/nudges/publish-nudge — publish nudge config.
-    void fetchPublishNudge();
-    /// GET /api/cms/nudges/share-nudge — share nudge config.
-    void fetchShareNudge();
-    /// GET /api/share/stats?content_type=song — share statistics.
-    void fetchShareStats(const QString& contentType = "song");
-    /// GET /api/modals — modal definitions.
-    void fetchModals();
-    /// POST /api/video_gen/pending_batches — pending video generation batches.
-    void fetchPendingVideoBatches();
-    /// POST /api/statsig/experiment/ — query Orpheus feature flag values.
-    void fetchOrpheusExperimentFlags(const QString& layerName);
-    /// GET /api/session/ — full session data (user + models catalog).
-    void fetchSessionCatalog();
-
     /// Run an authenticated request through the rate-limiting queue.
     /// Waits for a bearer when only a cookie is available; a 401 response is
     /// retried exactly once behind the scenes. The callback owns the reply.
@@ -250,34 +193,6 @@ public:
     Signal<std::string, std::string> wavConversionReady;
     Signal<std::string> tokenChanged;
     Signal<std::string> errorOccurred;
-
-    // ── New endpoint signals (HAR 2026-06-10) ──────────────────────────
-    Signal<const std::vector<SunoClip>&> homepageFetched;
-    Signal<const std::vector<SunoNotification>&> notificationsFetched;
-    Signal<i64> notificationBadgeCountFetched;
-    Signal<const std::vector<SunoContest>&> contestsFetched;
-    Signal<const SunoPlaybarState&> playbarStateFetched;
-    Signal<const SunoRealtimeDiscover&> realtimeDiscoverFetched;
-    Signal<const SunoPersonalizationSettings&> personalizationSettingsFetched;
-    Signal<const SunoCustomModelPending&> customModelPendingFetched;
-    Signal<const std::vector<std::string>&> savedPromptTagsFetched;
-    Signal<const std::vector<std::string>&> savedLyricsFetched;
-    Signal<const SunoUserConfig&> userConfigFetched;
-    Signal<const SunoTosAcceptance&> tosAcceptanceFetched;
-    Signal<const std::string&> userSessionIdFetched;
-    Signal<const std::vector<SunoClip>&> pinnedClipsFetched;
-    Signal<const std::vector<SunoClip>&> projectPinnedClipsFetched;
-    Signal<const SunoEligibleDiscounts&> eligibleDiscountsFetched;
-    Signal<const QJsonObject&> planComparisonFetched;
-    Signal<const QJsonObject&> billingFaqFetched;
-    Signal<const QJsonObject&> planDescriptionsFetched;
-    Signal<const SunoNudge&> publishNudgeFetched;
-    Signal<const SunoNudge&> shareNudgeFetched;
-    Signal<const SunoShareStats&> shareStatsFetched;
-    Signal<const QJsonArray&> modalsFetched;
-    Signal<const QJsonArray&> pendingVideoBatchesFetched;
-    Signal<const SunoOrpheusFlags&> orpheusExperimentFetched;
-    Signal<const SunoUserSummary&, const std::vector<SunoModelInfo>&> sessionCatalogFetched;
 
 signals:
     /// Touch/retry chain exhausted; user must supply fresh credentials.

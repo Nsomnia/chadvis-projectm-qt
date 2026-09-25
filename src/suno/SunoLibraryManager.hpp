@@ -45,8 +45,8 @@ public:
   /// Fetch the next feed page using the client's next_cursor (no-op when
   /// the current page reports exhaustion or a fetch is in flight).
   void requestNextPage();
-  /// Server-side search: fresh feed with searchText filter.
-  void setSearchText(const QString& text);
+    /// Set the local filter used by the bridge; it is not sent to the feed.
+    void setSearchText(const QString& text);
   void syncDatabase(bool forceAuth);
 
   // Accessors
@@ -73,7 +73,7 @@ private:
   int pendingPage_ = 1;
   int pagesLoaded_ = 0;      ///< Number of feed pages pulled this sync session
   bool hasMorePages_ = false;
-  QString searchText_;       ///< Server-side searchText filter for feed/v3
+    QString searchText_;       ///< Local filter text; never sent to the feed
 
     void onCredentialsRestored();
     void onLibraryFetched(const std::vector<SunoClip>& clips);
