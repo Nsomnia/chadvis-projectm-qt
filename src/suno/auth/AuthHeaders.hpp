@@ -25,7 +25,6 @@ inline constexpr const char* kStudioApiHost = "studio-api-prod.suno.com";
 /// QNetworkRequest in one shot.
 struct StudioApiHeaders {
     QByteArray authorization; // "Bearer <jwt>" (empty when unauthenticated)
-    QByteArray browserToken;
     QByteArray deviceId;
     QByteArray origin;
     QByteArray referer;

@@ -1,29 +1,9 @@
 #include "AuthHeaders.hpp"
 
-#include <QDateTime>
 #include <QHttpHeaders>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QUrl>
 
 namespace vc::suno::auth {
-namespace {
-
-/// Build the Browser-Token payload value.
-///
-/// LEAD-CAPTURE-NOTE: exact inner recipe undocumented, replace after fresh
-/// capture. Current best knowledge: base64 of compact JSON containing the
-/// request timestamp in epoch milliseconds, wrapped as {"token":"<b64>"}.
-QByteArray buildBrowserToken() {
-    const QJsonObject inner{{"timestamp",
-                             static_cast<qint64>(QDateTime::currentMSecsSinceEpoch())}};
-    const QByteArray b64 =
-            QJsonDocument(inner).toJson(QJsonDocument::Compact).toBase64();
-    const QJsonObject outer{{"token", QString::fromLatin1(b64)}};
-    return QJsonDocument(outer).toJson(QJsonDocument::Compact);
-}
-
-} // namespace
 
 void StudioApiHeaders::apply(QNetworkRequest& request) const {
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
@@ -38,11 +18,6 @@ void StudioApiHeaders::apply(QNetworkRequest& request) const {
         headers.removeAll("Device-Id");
     } else {
         headers.replaceOrAppend("Device-Id", deviceId);
-    }
-    if (browserToken.isEmpty()) {
-        headers.removeAll("Browser-Token");
-    } else {
-        headers.replaceOrAppend("Browser-Token", browserToken);
     }
     headers.replaceOrAppend("Origin", origin);
     headers.replaceOrAppend("Referer", referer);
@@ -81,7 +56,6 @@ StudioApiHeaders makeStudioApiHeaders(const QString& bearerJwt,
     h.authorization = bearerJwt.isEmpty()
                               ? QByteArray()
                               : QByteArray("Bearer ") + bearerJwt.toUtf8();
-    h.browserToken = buildBrowserToken();
     h.deviceId = persistedDeviceId.toUtf8();
     h.origin = QByteArrayLiteral("https://suno.com");
     h.referer = QByteArrayLiteral("https://suno.com/");
