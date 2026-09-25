@@ -45,8 +45,11 @@ void VisualizerBridge::previousPreset() {
 }
 
 void VisualizerBridge::toggleActive() {
-	// Toggle visualizer on/off — for now just a no-op placeholder
-	// until pause/resume is implemented in VisualizerWindow
+	if (!s_engine) {
+		return;
+	}
+	s_engine->setVisible(!s_engine->isVisible());
+	emit visualizerWindowChanged();
 }
 
 } // namespace qml_bridge

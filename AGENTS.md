@@ -310,7 +310,7 @@ Full audit of 19,294 LOC across 10 modules. 24 issues found, 18 fixed across 5 p
 
 ### Remaining (Phase 5+)
 - [ ] **#14** OverlayBridge uses separate JSON persistence instead of Config — documented, left alone (JSON appropriate for list data; future: add debouncing)
-- [ ] **#25** VisualizerBridge::toggleActive() still no-op (no pause/resume in VisualizerWindow)
+- [x] **#25** VisualizerBridge::toggleActive() now toggles the native visualizer window visibility
 - [x] **#26** LyricsBridge exports SRT/LRC, filters local search, and returns owned context/upcoming line maps
 
 ### Net Impact
