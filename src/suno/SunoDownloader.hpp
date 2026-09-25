@@ -42,6 +42,7 @@ public:
     ~SunoDownloader() override;
 
     void downloadAndPlay(const SunoClip& clip);
+    [[nodiscard]] static bool isSupportedMediaUrl(const QString& url);
     [[nodiscard]] static std::optional<std::string>
     selectDownloadUrl(const SunoClip& clip, vc::SunoDownloadFormat format);
     void saveLyricsSidecar(const std::string& clipId,

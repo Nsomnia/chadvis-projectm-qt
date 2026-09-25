@@ -170,8 +170,54 @@ private slots:
         clip.audio_url = "https://audiopipe.suno.ai/legacy.mp3?token=legacy";
         selected = SunoDownloader::selectDownloadUrl(
             clip, vc::SunoDownloadFormat::MP3);
-        QVERIFY(selected.has_value());
-        QCOMPARE(*selected, std::string("https://audiopipe.suno.ai/legacy.mp3?token=legacy"));
+        QVERIFY(!selected.has_value());
+    }
+
+    void mediaUrlPolicy_data()
+    {
+        QTest::addColumn<QString>("url");
+        QTest::addColumn<bool>("allowed");
+
+        QTest::newRow("captured-host")
+                << QStringLiteral("https://audiopipe.suno.ai/stream.mp3?token=a%2Fb")
+                << true;
+        QTest::newRow("explicit-https-port")
+                << QStringLiteral("https://audiopipe.suno.ai:443/stream.mp3")
+                << true;
+        QTest::newRow("cleartext")
+                << QStringLiteral("http://audiopipe.suno.ai/stream.mp3")
+                << false;
+        QTest::newRow("alternate-host")
+                << QStringLiteral("https://cdn1.suno.ai/stream.mp3")
+                << false;
+        QTest::newRow("suffix-confusion")
+                << QStringLiteral("https://audiopipe.suno.ai.evil.test/stream.mp3")
+                << false;
+        QTest::newRow("userinfo")
+                << QStringLiteral("https://user@audiopipe.suno.ai/stream.mp3")
+                << false;
+        QTest::newRow("nondefault-port")
+                << QStringLiteral("https://audiopipe.suno.ai:444/stream.mp3")
+                << false;
+        QTest::newRow("fragment")
+                << QStringLiteral("https://audiopipe.suno.ai/stream.mp3#fragment")
+                << false;
+        QTest::newRow("relative")
+                << QStringLiteral("/stream.mp3")
+                << false;
+        QTest::newRow("file-scheme")
+                << QStringLiteral("file:///tmp/stream.mp3")
+                << false;
+        QTest::newRow("forbidden-sentinel")
+                << QStringLiteral("https://audiopipe.suno.ai/api/forbidden")
+                << false;
+    }
+
+    void mediaUrlPolicy()
+    {
+        QFETCH(QString, url);
+        QFETCH(bool, allowed);
+        QCOMPARE(SunoDownloader::isSupportedMediaUrl(url), allowed);
     }
 
     void mediaUrlSelectionFailsClosed() {

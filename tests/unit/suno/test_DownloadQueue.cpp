@@ -127,7 +127,9 @@ private slots:
         // ...except auth/permission denials.
         QCOMPARE(classifyFailure(NE::AuthenticationRequiredError, 0),
                  FailureKind::Permanent);
-        QCOMPARE(classifyFailure(NE::ContentAccessDenied, 0), FailureKind::Permanent);
+        QCOMPARE(classifyFailure(NE::ContentAccessDenied, 0),
+                 FailureKind::Permanent);
+        QCOMPARE(classifyFailure(NE::NoError, 302), FailureKind::Permanent);
     }
 
     void backoffLadderAndJitter() {
@@ -169,6 +171,22 @@ private slots:
         QCOMPARE(out.readAll(), body);
         QVERIFY(!QFile::exists(dir.filePath("song.mp3.part")));  // .part renamed away
         QCOMPARE(idle.count(), 1);
+    }
+
+    void redirectsAreNotFollowed() {
+        FakeServer server;
+        DownloadQueue queue(server.factory());
+        QTemporaryDir dir;
+
+        QVERIFY(queue.enqueue("clip-redirect", "https://fake.cdn/redirect.mp3",
+                              dir.filePath("redirect.mp3").toStdString()));
+        QCOMPARE(server.requests[0].attribute(QNetworkRequest::RedirectPolicyAttribute).toInt(),
+                 static_cast<int>(QNetworkRequest::ManualRedirectPolicy));
+
+        server.replies[0]->succeed({}, 302);
+        QTest::qWait(50);
+        QCOMPARE(static_cast<int>(server.requests.size()), 1);
+        QVERIFY(queue.isEmpty());
     }
 
     void retryableFailureRetriesWithBackoff() {
@@ -235,32 +253,28 @@ private slots:
         QVERIFY(queue.isEmpty());
     }
 
-    void resumeSendsRangeHeaderAndSplicesParts() {
+    void retryRestartsWithoutRange() {
         FakeServer server;
         DownloadQueue queue(server.factory());
         QTemporaryDir dir;
 
         const QByteArray first = "halfway";
-        const QByteArray rest = "-and-done";
-        QVERIFY(queue.enqueue("clip-resume", "https://fake.cdn/res.mp3",
-                              dir.filePath("res.mp3").toStdString()));
+        const QByteArray full = first + "-and-done";
+        QVERIFY(queue.enqueue("clip-retry", "https://fake.cdn/retry.mp3",
+                              dir.filePath("retry.mp3").toStdString()));
 
-        // Attempt 1: partial data lands in .part, then the stream dies.
         server.replies[0]->openStream(first, /*acceptRanges*/ true);
         server.replies[0]->fail(QNetworkReply::TimeoutError);
-        QVERIFY(QFile::exists(dir.filePath("res.mp3.part")));
+        QVERIFY(!QFile::exists(dir.filePath("retry.mp3.part")));
 
-        // Attempt 2 (after ~1s backoff): must carry Range from the offset.
         QTRY_COMPARE(static_cast<int>(server.requests.size()), 2);
-        const QByteArray range = server.requests[1].rawHeader("Range");
-        QCOMPARE(range, QByteArray("bytes=" + QByteArray::number(
-                                        static_cast<qint64>(first.size())) + '-'));
-        server.replies[1]->succeed(rest, /*httpStatus*/ 206);
+        QVERIFY(server.requests[1].rawHeader("Range").isEmpty());
+        server.replies[1]->succeed(full);
         QTest::qWait(10);
 
-        QFile out(dir.filePath("res.mp3"));
+        QFile out(dir.filePath("retry.mp3"));
         QVERIFY(out.open(QIODevice::ReadOnly));
-        QCOMPARE(out.readAll(), first + rest);  // spliced seamlessly
+        QCOMPARE(out.readAll(), full);
     }
 
     void concurrencyIsBoundedFifo() {

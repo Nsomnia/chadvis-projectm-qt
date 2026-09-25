@@ -11,14 +11,17 @@ namespace vc::suno {
 
 FailureKind classifyFailure(const QNetworkReply::NetworkError err, const int httpStatus) {
     using NE = QNetworkReply::NetworkError;
-    if (err == NE::NoError) return FailureKind::None;
     if (err == NE::OperationCanceledError) return FailureKind::Cancelled;
 
+    if (httpStatus >= 300 && httpStatus < 400) {
+        return FailureKind::Permanent;
+    }
     if (httpStatus >= 400) {
         if (httpStatus >= 500) return FailureKind::Retryable;
         return (httpStatus == 408 || httpStatus == 429) ? FailureKind::Retryable
                                                         : FailureKind::Permanent;
     }
+    if (err == NE::NoError) return FailureKind::None;
 
     switch (err) {
         case NE::AuthenticationRequiredError:
@@ -153,31 +156,13 @@ void DownloadQueue::startItem(Item& item) {
     item.cancelRequested = false;
     setState(item, DownloadState::Downloading);
 
-    qint64 offset = 0;
-    if (item.resumable) {
-        std::error_code ec;
-        offset = static_cast<qint64>(fs::file_size(partPathFor(item.destPath), ec));
-        if (ec || offset <= 0) {
-            offset = 0;
-            item.resumable = false;  // lost partial data: clean restart
-        }
-    }
-
     QNetworkRequest request{QUrl(QString::fromStdString(item.url))};
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                         QNetworkRequest::NoLessSafeRedirectPolicy);
-    if (offset > 0) {
-        request.setRawHeader("Range", "bytes=" + QByteArray::number(offset) + '-');
-        LOG_INFO("DownloadQueue: resuming {} at {} bytes", item.clipId, offset);
-    }
-
-    item.rangeOffset = offset;
-    item.awaitingStatusCheck = offset > 0;
+                         QNetworkRequest::ManualRedirectPolicy);
     item.progressPercent = -1;
 
     item.partFile.setFileName(QString::fromStdString(partPathFor(item.destPath).string()));
-    if (!item.partFile.open(offset > 0 ? QIODevice::Append
-                                       : QIODevice::WriteOnly | QIODevice::Truncate)) {
+    if (!item.partFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         LOG_WARN("DownloadQueue: cannot open part file for {}: {}", item.clipId,
                  item.partFile.errorString().toStdString());
         setState(item, DownloadState::FailedPermanent);
@@ -199,35 +184,14 @@ void DownloadQueue::onData(Item& item) {
     auto* reply = item.reply.data();
     if (!reply || item.finishing) return;
 
-    if (item.awaitingStatusCheck) {
-        const int status =
-            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        item.awaitingStatusCheck = false;
-        if (status == 206) {
-            // Proper Partial Content: keep appending.
-        } else if (status == 200) {
-            // Server ignored our Range and restarted from zero: mirror it.
-            item.partFile.close();
-            if (!item.partFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-                LOG_WARN("DownloadQueue: cannot truncate part for {}: {}", item.clipId,
-                         item.partFile.errorString().toStdString());
-            }
-            item.rangeOffset = 0;
-        } else {
-            // Misbehaving CDN on a ranged request: silent full restart.
-            restartFromScratch(item, *reply);
-            return;
-        }
-    }
-
     const QByteArray chunk = reply->readAll();
     if (!chunk.isEmpty()) item.partFile.write(chunk);
 }
 
 void DownloadQueue::onProgress(Item& item, const qint64 received, const qint64 total) {
     if (total <= 0) return;
-    const qint64 absolute = item.rangeOffset + received;
-    const qint64 grand = item.rangeOffset + total;
+    const qint64 absolute = received;
+    const qint64 grand = total;
     const int percent = static_cast<int>(std::clamp<qint64>(absolute * 100 / grand, 0, 100));
     if (percent != item.progressPercent) {
         item.progressPercent = percent;
@@ -272,7 +236,6 @@ void DownloadQueue::finalizeSuccess(Item& item, QNetworkReply& reply) {
         return;
     }
 
-    item.resumable = false;
     item.progressPercent = 100;
     LOG_INFO("DownloadQueue: completed {}", item.clipId);
     setState(item, DownloadState::Completed);
@@ -295,18 +258,8 @@ void DownloadQueue::finishCancelled(Item& item, QNetworkReply& reply) {
 void DownloadQueue::handleFailure(Item& item, QNetworkReply* reply, const FailureKind kind) {
     if (item.partFile.isOpen()) item.partFile.close();
 
-    // Learn resume capability only when the server advertised range support
-    // AND usable partial data is actually on disk.
     std::error_code ec;
-    const auto part = partPathFor(item.destPath);
-    if (reply && reply->hasRawHeader("Accept-Ranges") && fs::exists(part, ec) &&
-        fs::file_size(part, ec) > 0) {
-        item.resumable = true;
-    } else {
-        item.resumable = false;
-        fs::remove(part, ec);
-    }
-
+    fs::remove(partPathFor(item.destPath), ec);
     item.finishing = true;
     if (reply) {
         reply->deleteLater();
@@ -329,17 +282,6 @@ void DownloadQueue::handleFailure(Item& item, QNetworkReply* reply, const Failur
     setState(item, kind == FailureKind::Permanent ? DownloadState::FailedPermanent
                                                   : DownloadState::FailedRetryable);
     retire(item.clipId);
-}
-
-void DownloadQueue::restartFromScratch(Item& item, QNetworkReply& reply) {
-    // Misbehaving CDN on a ranged request: silent full restart.
-    item.finishing = true;  // swallow further callbacks from this reply
-    if (item.partFile.isOpen()) item.partFile.close();
-    std::error_code ec;
-    fs::remove(partPathFor(item.destPath), ec);
-    reply.deleteLater();
-    item.reply.clear();
-    handleFailure(item, nullptr, FailureKind::Retryable);
 }
 
 void DownloadQueue::resumeWaiting(const std::string& clipId) {

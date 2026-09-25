@@ -78,22 +78,30 @@ bool isUsableCapturedUrl(const std::string& value) {
     if (!url.isValid() || url.isRelative()) return false;
 
     const QString scheme = url.scheme().toLower();
-    if (scheme != QStringLiteral("http") && scheme != QStringLiteral("https")) {
+    if (scheme != QStringLiteral("https")) {
         return false;
     }
-    if (url.host().isEmpty()) return false;
 
-    const QString host = url.host().toLower();
-    const bool capturedHost = host == QStringLiteral("cdn1.suno.ai") ||
-                              host == QStringLiteral("cdn2.suno.ai") ||
-                              host == QStringLiteral("audiopipe.suno.ai") ||
-                              host == QStringLiteral("d2lwuy8qc234o3.cloudfront.net");
-    if (!capturedHost) return false;
+    const int port = url.port();
+    if (port != -1 && port != 443) return false;
+    if (!url.userInfo().isEmpty() || !url.fragment().isEmpty() ||
+        url.path().isEmpty()) {
+        return false;
+    }
+    if (url.host().compare(QStringLiteral("audiopipe.suno.ai"),
+                           Qt::CaseInsensitive) != 0) {
+        return false;
+    }
 
     return !url.path().contains(QStringLiteral("api/forbidden"),
                                 Qt::CaseInsensitive);
 }
 
+}
+
+bool SunoDownloader::isSupportedMediaUrl(const QString& url)
+{
+    return isUsableCapturedUrl(url.toStdString());
 }
 
 std::optional<std::string>
@@ -109,7 +117,6 @@ SunoDownloader::selectDownloadUrl(const SunoClip& clip,
         }
     }
 
-    if (isUsableCapturedUrl(clip.audio_url)) return clip.audio_url;
     return std::nullopt;
 }
 
