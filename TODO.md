@@ -39,7 +39,7 @@
 - [~] **Media/download** — playback requires HTTPS on the exact captured `audiopipe.suno.ai` origin, ignores legacy `audio_url` and image hosts, rejects userinfo/fragments/nondefault ports/forbidden sentinels, and uses manual redirects. Unpromoted Range resume is disabled and retries restart from byte zero.
 - [x] **Audio upload** — the exact captured initialize → returned direct multipart URL → finish sequence is implemented for `.m4a`; the direct leg now permits only HTTPS on the exact captured `suno-uploads.s3.amazonaws.com` origin with default/443, no userinfo/fragment, and manual redirects. `initialize-clip`, processing, generation linkage, limits/errors, and full validation remain gated.
 - [x] **Explore and notifications** — read-only Explore, notification badge/list, and explicit mark-all-read surfaces are wired; following-feed pagination remains unverified.
-- [~] **Lyrics/karaoke** — Library Download & Play now hands an authoritative clip ID into the active sync pipeline; captured aligned payloads load into Listen/Video without pause/play, stale responses are ignored, and lazy bridge wiring is covered. Versioned edits, LRC/SRT export, search, context, and upcoming-line behavior remain.
+- [x] **Lyrics/karaoke** — Library Download & Play hands an authoritative clip ID into the active sync pipeline; captured aligned payloads load into Listen/Video without pause/play, stale responses are ignored, lazy bridge wiring is covered, and SRT/LRC export plus search/context/upcoming queries are implemented.
 - [ ] **Header drift** — capture route-specific Authorization/Browser-Token/Device-Id requirements before changing shared header policy.
 
 ## Capture-gated / blocked

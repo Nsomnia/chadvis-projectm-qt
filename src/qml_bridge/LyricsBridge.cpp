@@ -1,8 +1,59 @@
 #include "LyricsBridge.hpp"
 #include "audio/AudioEngine.hpp"
+#include "core/Logger.hpp"
+
+#include <QSaveFile>
+
+#include <algorithm>
+#include <cmath>
 #include "lyrics/LyricsSync.hpp"
 
 namespace qml_bridge {
+
+namespace {
+
+QString formatSrtTime(const vc::f32 seconds) {
+    const qint64 totalMs = std::max<qint64>(0, std::llround(seconds * 1000.0f));
+    const qint64 hours = totalMs / 3600000;
+    const qint64 minutes = (totalMs / 60000) % 60;
+    const qint64 secs = (totalMs / 1000) % 60;
+    const qint64 millis = totalMs % 1000;
+    return QStringLiteral("%1:%2:%3,%4")
+            .arg(hours, 2, 10, QLatin1Char('0'))
+            .arg(minutes, 2, 10, QLatin1Char('0'))
+            .arg(secs, 2, 10, QLatin1Char('0'))
+            .arg(millis, 3, 10, QLatin1Char('0'));
+}
+
+QString formatLrcTime(const vc::f32 seconds) {
+    const qint64 totalCentiseconds = std::max<qint64>(0, std::llround(seconds * 100.0f));
+    const qint64 minutes = totalCentiseconds / 6000;
+    const qint64 secs = (totalCentiseconds / 100) % 60;
+    const qint64 centis = totalCentiseconds % 100;
+    return QStringLiteral("[%1:%2.%3]")
+            .arg(minutes, 2, 10, QLatin1Char('0'))
+            .arg(secs, 2, 10, QLatin1Char('0'))
+            .arg(centis, 2, 10, QLatin1Char('0'));
+}
+
+bool writeExportFile(const QString& path, const QByteArray& contents, QString& error) {
+    if (path.trimmed().isEmpty()) {
+        error = QStringLiteral("An export path is required.");
+        return false;
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        error = file.errorString();
+        return false;
+    }
+    if (file.write(contents) != contents.size() || !file.commit()) {
+        error = file.errorString();
+        return false;
+    }
+    return true;
+}
+
+}
 
 vc::LyricsSync* LyricsBridge::s_sync = nullptr;
 vc::AudioEngine* LyricsBridge::s_engine = nullptr;
@@ -149,19 +200,129 @@ void LyricsBridge::onStateChanged(vc::LyricsSyncState state) {
         emit positionChanged();
     }
     emit lyricsChanged();
+    updateSearchResults();
 }
 
 void LyricsBridge::seekToLine(int lineIndex) {
     if (s_sync) s_sync->jumpToLine(static_cast<size_t>(lineIndex));
 }
 
-void LyricsBridge::exportToSrt(const QString&) {}
-void LyricsBridge::exportToLrc(const QString&) {}
-void LyricsBridge::setSearchQuery(const QString&) {}
-QString LyricsBridge::searchQuery() const { return ""; }
-QVariantList LyricsBridge::searchResults() const { return QVariantList(); }
-void LyricsBridge::updateSearchResults() {}
-QVariantList LyricsBridge::getUpcomingLines(int) const { return QVariantList(); }
-QVariantList LyricsBridge::getContextLines(int, int) const { return QVariantList(); }
+void LyricsBridge::exportToSrt(const QString& path) {
+    if (!s_sync || !s_sync->hasLyrics()) {
+        emit exportFailed(QStringLiteral("No lyrics are loaded."));
+        return;
+    }
+
+    QString output;
+    int index = 1;
+    for (const auto& line : s_sync->getLyrics().lines) {
+        if (line.text.empty()) {
+            continue;
+        }
+        const auto end = line.endTime > line.startTime ? line.endTime : line.startTime + 1.0f;
+        output += QStringLiteral("%1\n%2 --> %3\n%4\n\n")
+                .arg(index++)
+                .arg(formatSrtTime(line.startTime), formatSrtTime(end),
+                     QString::fromStdString(line.text));
+    }
+
+    QString error;
+    if (!writeExportFile(path, output.toUtf8(), error)) {
+        emit exportFailed(error);
+        return;
+    }
+    emit exportFinished(path);
+}
+
+void LyricsBridge::exportToLrc(const QString& path) {
+    if (!s_sync || !s_sync->hasLyrics()) {
+        emit exportFailed(QStringLiteral("No lyrics are loaded."));
+        return;
+    }
+
+    QString output;
+    const auto& lyrics = s_sync->getLyrics();
+    if (!lyrics.title.empty()) {
+        output += QStringLiteral("[ti:%1]\n")
+                .arg(QString::fromStdString(lyrics.title));
+    }
+    if (!lyrics.artist.empty()) {
+        output += QStringLiteral("[ar:%1]\n")
+                .arg(QString::fromStdString(lyrics.artist));
+    }
+    for (const auto& line : lyrics.lines) {
+        if (line.text.empty()) {
+            continue;
+        }
+        output += formatLrcTime(line.startTime) +
+                  QString::fromStdString(line.text) + QLatin1Char('\n');
+    }
+
+    QString error;
+    if (!writeExportFile(path, output.toUtf8(), error)) {
+        emit exportFailed(error);
+        return;
+    }
+    emit exportFinished(path);
+}
+
+void LyricsBridge::setSearchQuery(const QString& query) {
+    if (searchQuery_ == query) {
+        return;
+    }
+    searchQuery_ = query;
+    emit searchQueryChanged();
+    updateSearchResults();
+}
+
+QString LyricsBridge::searchQuery() const { return searchQuery_; }
+QVariantList LyricsBridge::searchResults() const { return searchResults_; }
+
+void LyricsBridge::updateSearchResults() {
+    QVariantList results;
+    if (s_sync && !searchQuery_.trimmed().isEmpty()) {
+        const auto& lines = s_sync->getLyrics().lines;
+        for (int index = 0; index < static_cast<int>(lines.size()); ++index) {
+            if (QString::fromStdString(lines[static_cast<std::size_t>(index)].text)
+                    .contains(searchQuery_, Qt::CaseInsensitive)) {
+                results.append(lineToVariant(lines[static_cast<std::size_t>(index)], index));
+            }
+        }
+    }
+    searchResults_ = results;
+    emit searchResultsChanged();
+}
+
+QVariantList LyricsBridge::getUpcomingLines(int count) const {
+    QVariantList result;
+    if (!s_sync || count <= 0) {
+        return result;
+    }
+    const auto& lines = s_sync->getLyrics().lines;
+    const int start = std::max(currentLineIndex_ + 1, 0);
+    const int end = std::min(start + count, static_cast<int>(lines.size()));
+    for (int index = start; index < end; ++index) {
+        result.append(lineToVariant(lines[static_cast<std::size_t>(index)], index));
+    }
+    return result;
+}
+
+QVariantList LyricsBridge::getContextLines(int before, int after) const {
+    QVariantList result;
+    if (!s_sync || (before < 0 && after < 0)) {
+        return result;
+    }
+    const auto& lines = s_sync->getLyrics().lines;
+    if (lines.empty()) {
+        return result;
+    }
+    const int center = std::clamp(currentLineIndex_, 0, static_cast<int>(lines.size()) - 1);
+    const int start = std::max(0, center - std::max(0, before));
+    const int end = std::min(static_cast<int>(lines.size()), center + std::max(0, after) + 1);
+    for (int index = start; index < end; ++index) {
+        result.append(lineToVariant(lines[static_cast<std::size_t>(index)], index));
+    }
+    return result;
+}
 
 } // namespace qml_bridge

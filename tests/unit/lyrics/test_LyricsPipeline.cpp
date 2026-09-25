@@ -52,6 +52,8 @@ LyricsData makeLyrics()
 {
     LyricsData data;
     data.source = "suno";
+    data.title = "Test";
+    data.artist = "Artist";
     data.isSynced = true;
 
     LyricsLine first;
@@ -203,6 +205,50 @@ private slots:
         QCOMPARE(ready.count(), 1);
         QVERIFY(currentAtReady);
         QCOMPARE(ready.takeFirst().at(0).toString(), QStringLiteral("clip-ready"));
+    }
+
+    void searchAndExportsOwnedLyrics()
+    {
+        LyricsSync sync(nullptr);
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+        qml_bridge::LyricsBridge bridge;
+        sync.loadLyrics(makeLyrics());
+        sync.seek(0.5f);
+
+        bridge.setSearchQuery(QStringLiteral("hello"));
+        QCOMPARE(bridge.searchResults().size(), 1);
+        QCOMPARE(bridge.getUpcomingLines(1).size(), 1);
+        QCOMPARE(bridge.getContextLines(1, 1).size(), 2);
+        QCOMPARE(bridge.getLine(0).value(QStringLiteral("text")).toString(),
+                 QStringLiteral("hello"));
+
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString srtPath = directory.filePath(QStringLiteral("lyrics.srt"));
+        const QString lrcPath = directory.filePath(QStringLiteral("lyrics.lrc"));
+        QSignalSpy finished(&bridge, &qml_bridge::LyricsBridge::exportFinished);
+        QSignalSpy failed(&bridge, &qml_bridge::LyricsBridge::exportFailed);
+
+        bridge.exportToSrt(srtPath);
+        bridge.exportToLrc(lrcPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 2000);
+        QCOMPARE(failed.count(), 0);
+
+        QFile srt(srtPath);
+        QVERIFY(srt.open(QIODevice::ReadOnly));
+        const QByteArray srtContents = srt.readAll();
+        QVERIFY(srtContents.contains("00:00:00,000 --> 00:00:01,000"));
+        QVERIFY(srtContents.contains("hello"));
+
+        QFile lrc(lrcPath);
+        QVERIFY(lrc.open(QIODevice::ReadOnly));
+        const QByteArray lrcContents = lrc.readAll();
+        QVERIFY(lrcContents.contains("[ti:Test]"));
+        QVERIFY(lrcContents.contains("[00:00.00]hello"));
+
+        bridge.exportToSrt(QString());
+        QCOMPARE(finished.count(), 2);
+        QCOMPARE(failed.count(), 1);
     }
 
     void lazyBridgeReceivesUpdates()

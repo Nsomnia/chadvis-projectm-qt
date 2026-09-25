@@ -54,6 +54,7 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 - **Runtime Consolidations** *(2026-08-25)* — CRTP `QmlSingletonBridge` base replacing 10× singleton boilerplate, `PlaylistItemPresenter`, `AudioChunk` value type, `ProjectMConfig::fromVisualizer` single-source converter, `FileUtils::sanitizeFilename`, `FileUtils::srtTimecode`, monadic `Result::orElse`.
 
 ### Fixed
+- **LyricsBridge export/search completion** *(2026-09-25)* — Implemented atomic SRT/LRC export with success/failure signals, case-insensitive local line search, and owned upcoming/context query maps; wired the LyricsPanel search field to the bridge and added export/search coverage.
 - **Actionable persistence errors** *(2026-09-25)* — Preset scanning/state, playlist persistence, FBO resize, Suno database writes, and theme/config saves now log `Result` failures instead of silently discarding them.
 - **Application shutdown ordering** *(2026-09-25)* — Explicitly destroy QML/engine and dependent controller, lyrics, preset, recorder, audio, and Qt application lifetimes in dependency order.
 - **Audio callback allocation safety** *(2026-09-25)* — `AudioEngine` preallocates its PCM scratch during `init()` and drops oversized callback buffers rather than resizing from the audio callback.
