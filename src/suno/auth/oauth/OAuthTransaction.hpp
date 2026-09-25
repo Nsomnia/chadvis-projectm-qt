@@ -22,7 +22,6 @@ struct OAuthTransaction {
 
     [[nodiscard]] static std::expected<OAuthTransaction, QString>
     make(const QString& expectedPath, quint16 boundPort, QDateTime deadlineUtc) {
-        using Result = std::expected<OAuthTransaction, QString>;
         if (expectedPath.isEmpty() || !expectedPath.startsWith(QLatin1Char('/')) ||
             expectedPath.size() > 2048) {
             return std::unexpected(QStringLiteral("OAuth transaction path is invalid"));

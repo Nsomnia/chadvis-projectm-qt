@@ -72,7 +72,7 @@ void LoopbackListener::acceptPendingConnections() {
         requestBuffers_.insert(socket, {});
         completedSockets_.remove(socket);
         connect(socket, &QTcpSocket::readyRead, this,
-                [this, socket] { readFromSocket(); });
+                [this] { readFromSocket(); });
         connect(socket, &QTcpSocket::disconnected, this,
                 [this, socket] { finishSocket(socket); });
     }
