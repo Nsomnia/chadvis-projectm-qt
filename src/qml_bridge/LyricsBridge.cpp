@@ -6,13 +6,36 @@ namespace qml_bridge {
 
 vc::LyricsSync* LyricsBridge::s_sync = nullptr;
 vc::AudioEngine* LyricsBridge::s_engine = nullptr;
+vc::LyricsSync* LyricsBridge::s_connectedSync = nullptr;
+std::optional<std::size_t> LyricsBridge::s_positionConnection;
+std::optional<std::size_t> LyricsBridge::s_stateConnection;
 
 LyricsBridge::LyricsBridge(QObject* parent) : QObject(parent) {
     setInstance(this);
+    connectSignals();
+}
+
+LyricsBridge::~LyricsBridge() {
+    if (instance() != this) {
+        return;
+    }
+    if (s_connectedSync && s_positionConnection) {
+        s_connectedSync->positionChanged.disconnect(*s_positionConnection);
+    }
+    if (s_connectedSync && s_stateConnection) {
+        s_connectedSync->stateChanged.disconnect(*s_stateConnection);
+    }
+    s_connectedSync = nullptr;
+    s_positionConnection.reset();
+    s_stateConnection.reset();
+    s_sync = nullptr;
+    s_engine = nullptr;
+    setInstance(nullptr);
 }
 
 void LyricsBridge::setLyricsSync(vc::LyricsSync* sync) {
     s_sync = sync;
+    connectSignals();
 }
 
 void LyricsBridge::setAudioEngine(vc::AudioEngine* engine) {
@@ -20,15 +43,33 @@ void LyricsBridge::setAudioEngine(vc::AudioEngine* engine) {
 }
 
 void LyricsBridge::connectSignals() {
-    if (s_sync && instance()) {
-        s_sync->positionChanged.connect([](vc::LyricsSyncPosition pos) {
-            if (auto* b = instance()) b->onPositionChanged(pos);
-        });
-        s_sync->stateChanged.connect([](vc::LyricsSyncState state) {
-            if (auto* b = instance()) b->onStateChanged(state);
-        });
-        // Note: LyricsSync doesn't have a lyricsChanged Signal, using state transitions
+    auto* bridge = instance();
+    if (!bridge || !s_sync) {
+        return;
     }
+
+    if (s_connectedSync == s_sync && s_positionConnection && s_stateConnection) {
+        return;
+    }
+
+    if (s_connectedSync && s_positionConnection) {
+        s_connectedSync->positionChanged.disconnect(*s_positionConnection);
+    }
+    if (s_connectedSync && s_stateConnection) {
+        s_connectedSync->stateChanged.disconnect(*s_stateConnection);
+    }
+
+    s_connectedSync = s_sync;
+    s_positionConnection = s_sync->positionChanged.connect([](vc::LyricsSyncPosition pos) {
+        if (auto* current = instance()) {
+            current->onPositionChanged(pos);
+        }
+    });
+    s_stateConnection = s_sync->stateChanged.connect([](vc::LyricsSyncState state) {
+        if (auto* current = instance()) {
+            current->onStateChanged(state);
+        }
+    });
 }
 
 bool LyricsBridge::hasLyrics() const {
@@ -96,7 +137,17 @@ void LyricsBridge::onWordChanged(int lineIndex, int wordIndex) {
     emit positionChanged();
 }
 
-void LyricsBridge::onStateChanged(vc::LyricsSyncState) {
+void LyricsBridge::onStateChanged(vc::LyricsSyncState state) {
+    if (state == vc::LyricsSyncState::Loading ||
+        state == vc::LyricsSyncState::Idle ||
+        state == vc::LyricsSyncState::Error) {
+        currentLineIndex_ = -1;
+        currentWordIndex_ = -1;
+        lineProgress_ = 0.0;
+        wordProgress_ = 0.0;
+        isInstrumental_ = false;
+        emit positionChanged();
+    }
     emit lyricsChanged();
 }
 

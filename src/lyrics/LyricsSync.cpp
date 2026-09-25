@@ -22,11 +22,6 @@ LyricsSync::LyricsSync(AudioEngine* audio, QObject* parent)
     });
     
 	if (audio_) {
-		connect(audio_, &AudioEngine::positionChanged,
-			this, [this](Duration pos) {
-				updatePosition(static_cast<f32>(pos.count()) / 1000.0f);
-			}, Qt::DirectConnection);
-
 		connect(audio_, &AudioEngine::stateChanged,
 			this, [this](PlaybackState state) {
 				onAudioStateChanged(state);
@@ -35,7 +30,7 @@ LyricsSync::LyricsSync(AudioEngine* audio, QObject* parent)
 		connect(audio_, &AudioEngine::trackChanged,
 			this, [this]() {
 				onAudioTrackChanged();
-			}, Qt::QueuedConnection);
+			}, Qt::DirectConnection);
 	}
 }
 
@@ -46,22 +41,31 @@ void LyricsSync::loadLyrics(const LyricsData& lyrics) {
     lyrics_ = lyrics;
     currentPos_ = LyricsSyncPosition();
     smoothedTime_ = 0.0f;
-    
-    if (!lyrics.empty()) {
-        setState(LyricsSyncState::Ready);
-        LOG_INFO("LyricsSync: Loaded {} lines", lyrics.lineCount());
-    } else {
+
+    if (lyrics_.empty()) {
+        updateTimer_->stop();
         setState(LyricsSyncState::Error);
         LOG_WARN("LyricsSync: Loaded empty lyrics");
+        return;
+    }
+
+    setState(LyricsSyncState::Ready);
+    LOG_INFO("LyricsSync: Loaded {} lines", lyrics_.lineCount());
+
+    if (audio_ && audio_->isPlaying()) {
+        smoothedTime_ = std::max(
+            0.0f, static_cast<f32>(audio_->position().count()) / 1000.0f);
+        updatePosition(smoothedTime_);
+        start();
     }
 }
 
 void LyricsSync::clear() {
+    updateTimer_->stop();
     lyrics_ = LyricsData();
     currentPos_ = LyricsSyncPosition();
     smoothedTime_ = 0.0f;
     setState(LyricsSyncState::Idle);
-    updateTimer_->stop();
 }
 
 void LyricsSync::start() {
@@ -74,7 +78,9 @@ void LyricsSync::start() {
 
 void LyricsSync::stop() {
     updateTimer_->stop();
-    setState(LyricsSyncState::Ready);
+    if (hasLyrics()) {
+        setState(LyricsSyncState::Ready);
+    }
     LOG_DEBUG("LyricsSync: Stopped");
 }
 
@@ -95,9 +101,14 @@ void LyricsSync::resume() {
 }
 
 void LyricsSync::seek(f32 time) {
+    if (lyrics_.empty()) {
+        setState(LyricsSyncState::Error);
+        return;
+    }
+
     setState(LyricsSyncState::Seeking);
-    smoothedTime_ = time;
-    updatePosition(time);
+    smoothedTime_ = std::max(0.0f, time);
+    updatePosition(smoothedTime_);
     
     // Return to appropriate state
     if (audio_ && audio_->isPlaying()) {
@@ -115,40 +126,40 @@ LyricsSyncPosition LyricsSync::getPosition() const {
 
 void LyricsSync::updatePosition(f32 time) {
     if (lyrics_.empty()) return;
-    
-    // Apply smoothing
-	smoothedTime_ = vc::lerp(smoothedTime_, time, config_.smoothingFactor);
-    
+
+    time = std::max(0.0f, time);
+    smoothedTime_ = vc::lerp(smoothedTime_, time, config_.smoothingFactor);
+
     LyricsSyncPosition newPos;
     newPos.time = smoothedTime_;
-    
-    // Find active line
+
     int lineIdx = lyrics_.findLineIndex(smoothedTime_);
     newPos.lineIndex = lineIdx;
-    
+
     if (lineIdx >= 0 && lineIdx < static_cast<int>(lyrics_.lines.size())) {
         const auto& line = lyrics_.lines[lineIdx];
         newPos.isInstrumental = line.isInstrumental;
-        
+
         if (line.isSynced && line.endTime > line.startTime) {
-            newPos.lineProgress = (smoothedTime_ - line.startTime) / (line.endTime - line.startTime);
+            newPos.lineProgress = std::clamp(
+                (smoothedTime_ - line.startTime) / (line.endTime - line.startTime),
+                0.0f, 1.0f);
         }
-        
-        // Find active word
+
         if (config_.emitWordChanges && !line.words.empty()) {
             int wordIdx = line.getActiveWordIndex(smoothedTime_);
             newPos.wordIndex = wordIdx;
-            
+
             if (wordIdx >= 0 && wordIdx < static_cast<int>(line.words.size())) {
                 const auto& word = line.words[wordIdx];
-                newPos.wordProgress = word.getProgress(smoothedTime_);
+                newPos.wordProgress = std::clamp(word.getProgress(smoothedTime_),
+                                                0.0f, 1.0f);
             }
         }
     }
-    
-    // Detect and emit changes
+
     detectChanges(currentPos_, newPos);
-    
+
     currentPos_ = newPos;
     positionChanged.emitSignal(currentPos_);
 }
@@ -253,10 +264,6 @@ std::vector<const LyricsLine*> LyricsSync::getContextLines(size_t before,
     return result;
 }
 
-void LyricsSync::onAudioPositionChanged(Duration pos) {
-    // Handled by timer for consistent updates
-}
-
 void LyricsSync::onAudioStateChanged(PlaybackState state) {
     switch (state) {
     case PlaybackState::Playing:
@@ -283,6 +290,7 @@ void LyricsSync::onAudioTrackChanged() {
 LyricsSyncPosition LyricsSyncInterpolator::lerp(const LyricsSyncPosition& a,
                                                const LyricsSyncPosition& b,
                                                f32 t) {
+    t = std::clamp(t, 0.0f, 1.0f);
     LyricsSyncPosition result;
     result.time = a.time + (b.time - a.time) * t;
     result.lineProgress = a.lineProgress + (b.lineProgress - a.lineProgress) * t;
@@ -325,8 +333,10 @@ LyricsSyncPosition LyricsSyncInterpolator::predict(const LyricsSyncPosition& cur
         predicted.isInstrumental = line.isInstrumental;
         
         if (line.isSynced && line.endTime > line.startTime) {
-            predicted.lineProgress = (predicted.time - line.startTime) / 
-                                     (line.endTime - line.startTime);
+            predicted.lineProgress = std::clamp(
+                (predicted.time - line.startTime) /
+                    (line.endTime - line.startTime),
+                0.0f, 1.0f);
         }
         
         // Predict word
@@ -335,7 +345,8 @@ LyricsSyncPosition LyricsSyncInterpolator::predict(const LyricsSyncPosition& cur
         
         if (wordIdx >= 0 && wordIdx < static_cast<int>(line.words.size())) {
             const auto& word = line.words[wordIdx];
-            predicted.wordProgress = word.getProgress(predicted.time);
+            predicted.wordProgress = std::clamp(word.getProgress(predicted.time),
+                                                0.0f, 1.0f);
         }
     }
     

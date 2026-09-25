@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QObject>
+#include <cstddef>
+#include <optional>
 #include <QtQml/qqml.h>
 #include <QVariantList>
 #include <QVariantMap>
@@ -38,7 +40,7 @@ friend class QmlSingletonBridge<LyricsBridge>;
 
 public:
     explicit LyricsBridge(QObject* parent = nullptr);
-    ~LyricsBridge() override = default;
+    ~LyricsBridge() override;
 
     static void setLyricsSync(vc::LyricsSync* sync);
     static void setAudioEngine(vc::AudioEngine* engine);
@@ -84,6 +86,9 @@ private:
 
     static vc::LyricsSync* s_sync;
     static vc::AudioEngine* s_engine;
+    static vc::LyricsSync* s_connectedSync;
+    static std::optional<std::size_t> s_positionConnection;
+    static std::optional<std::size_t> s_stateConnection;
 
     int currentLineIndex_{-1};
     int currentWordIndex_{-1};

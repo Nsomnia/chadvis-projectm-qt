@@ -18,6 +18,7 @@
 // Forward declarations
 namespace vc {
 class AudioEngine;
+class LyricsSync;
 
 namespace suno {
 class SunoAccountManager;
@@ -38,6 +39,7 @@ Q_OBJECT
 
 public:
 	explicit SunoController(AudioEngine* audioEngine,
+		LyricsSync* lyricsSync,
 		QObject* parent = nullptr);
 	~SunoController() override;
 
@@ -96,16 +98,13 @@ signals:
 
 private:
 	void onTrackChanged();
-	bool isCurrentlyPlaying(const std::string& clipId) const;
-	std::string extractClipIdFromTrack() const;
-	
-    // Helper: Parse lyrics and immediately display to overlay
-	std::optional<AlignedLyrics> parseAndDisplayLyrics(
-		const std::string& clipId,
-		const std::string& json,
-		const QJsonDocument& doc);
+	void activateClipLyrics(const std::string& clipId);
+	void publishLyrics(const std::string& clipId, LyricsData lyrics);
+	std::optional<LyricsData> parseLyricsForClip(
+		const std::string& clipId, const std::string& json);
 
 	AudioEngine* audioEngine_;
+	LyricsSync* lyricsSync_;
 
 	std::unique_ptr<SunoClient> client_;
 	std::unique_ptr<auth::AuthCoordinator> authCoordinator_;
@@ -118,11 +117,8 @@ private:
     std::unique_ptr<SunoDownloader> downloader_;
     std::unique_ptr<SunoLyricsManager> lyricsManager_;
 
-	// Direct mapping cache for recently fetched lyrics (survives track restarts)
-	std::unordered_map<std::string, AlignedLyrics> directLyricsCache_;
-
-	// Track the last requested ID for fallback mapping during transitions
-	mutable std::string lastRequestedClipId_;
+	std::unordered_map<std::string, LyricsData> directLyricsCache_;
+	std::string activeClipId_;
 };
 
 } // namespace vc::suno

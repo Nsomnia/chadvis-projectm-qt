@@ -178,7 +178,6 @@ public:
                                                     size_t after = 2) const;
 
 private slots:
-    void onAudioPositionChanged(Duration pos);
     void onAudioStateChanged(PlaybackState state);
     void onAudioTrackChanged();
     

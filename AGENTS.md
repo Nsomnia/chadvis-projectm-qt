@@ -121,7 +121,7 @@
 - [x] **Audio upload lifecycle** — implement only the captured initialize → returned multipart storage URL → finish sequence for `.m4a`; the returned direct URL is restricted to the exact capture-proven HTTPS S3 origin, default/443, no userinfo/fragment, and manual redirects. `initialize-clip`, processing status, upload-to-generation linkage, limits/errors, and full validation remain gated.
 - [~] **Library search/filtering** — local filtering is wired and the feed no longer sends unobserved `searchText`; authorized pagination/DB merge validation remains.
 - [x] **Explore and notification surfaces** — read-only Explore and notification list/badge/mark-all-read are wired from direct captures; following-feed pagination remains `[VERIFY]`.
-- [ ] **Wire aligned lyrics into the active sync pipeline** — fetching/caching is not end-to-end karaoke; export/search/context/upcoming methods remain unfinished.
+- [~] **Wire aligned lyrics into the active sync pipeline** — captured aligned payloads now flow from authoritative playback handoff/cache/DB/request into `LyricsSync` and lazy `LyricsBridge` for Listen and Video, including late-response gating; export/search/context/upcoming methods remain unfinished.
 - [ ] **Header drift capture** — reconcile route-specific Authorization/Browser-Token/Device-Id requirements from a fresh sanitized capture before changing shared header policy.
 - [ ] **Capture-gated feature work** — implement directly observed `[T1]` surfaces only; keep B-Side, VIP, hidden, Orpheus, bundle-only, and method-conflicted routes disabled.
 
