@@ -60,6 +60,7 @@ private:
     void enqueueRequest(std::optional<QString> cursor, bool append);
     void handleReply(QNetworkReply* reply, bool append, quint64 requestId);
     void handleAuthenticationLost();
+    void onCredentialsRestored();
     void setLoading(bool loading);
     void fail(const QString& message);
 
@@ -67,6 +68,7 @@ private:
     QList<Feed> feeds_;
     QString nextCursor_;
     quint64 activeRequest_ = 0;
+    bool credentialRefreshPending_{false};
     bool loading_{false};
 };
 
