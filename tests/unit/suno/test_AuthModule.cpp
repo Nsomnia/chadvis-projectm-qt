@@ -138,7 +138,7 @@ private slots:
         QCOMPARE(request.rawHeader("Accept"), QByteArray("*/*"));
         QCOMPARE(request.rawHeader("Content-Type"), QByteArray("application/json"));
         QCOMPARE(request.rawHeader("Device-Id"), QByteArray("uuid-1234"));
-        QVERIFY(!request.rawHeader("Browser-Token").isEmpty());
+        QVERIFY(request.rawHeader("Browser-Token").isEmpty());
         QVERIFY(request.attribute(QNetworkRequest::RedirectPolicyAttribute)
                         .value<QNetworkRequest::RedirectPolicy>() ==
                 QNetworkRequest::ManualRedirectPolicy);
@@ -176,24 +176,14 @@ private slots:
         QVERIFY(request.rawHeader("Authorization").isEmpty());
     }
 
-    void authHeadersBrowserTokenShape() {
+    void authHeadersDoNotSynthesizeBrowserToken() {
         const StudioApiHeaders headers = makeStudioApiHeaders(
                 QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"), "POST",
                 QByteArrayLiteral("{}"));
-
-        // Outer shape: {"token":"<base64>"}.
-        const QJsonDocument outer = QJsonDocument::fromJson(headers.browserToken);
-        QVERIFY(outer.isObject());
-        const QString b64 = outer.object().value("token").toString();
-        QVERIFY(!b64.isEmpty());
-
-        // Inner shape: {"timestamp":<epoch-ms>} - LEAD-CAPTURE-NOTE recipe.
-        const QByteArray innerRaw = QByteArray::fromBase64(b64.toLatin1());
-        const QJsonDocument inner = QJsonDocument::fromJson(innerRaw);
-        QVERIFY(inner.isObject());
-        const qint64 timestamp = inner.object().value("timestamp").toInteger(0);
-        QVERIFY(timestamp > 0);
-        QVERIFY(qAbs(timestamp - QDateTime::currentMSecsSinceEpoch()) < 60'000);
+        QNetworkRequest request(
+                QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/feed/v3")));
+        headers.apply(request);
+        QVERIFY(request.rawHeader("Browser-Token").isEmpty());
     }
 
     void studioApiHostPolicy_data() {
