@@ -1,7 +1,7 @@
-#include <QtTest>
 #include "suno/auth/AuthHeaders.hpp"
 #include "suno/auth/ClerkAuthClient.hpp"
 #include "suno/auth/JwtUtils.hpp"
+#include <QtTest>
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -16,30 +16,32 @@ namespace vc::suno::auth {
 
 /// Non-public test seam: exercises the same synchronous body handler used by
 /// GET and touch without adding parser methods to the production API.
-class ClerkAuthClientTestAccess {
+class ClerkAuthClientTestAccess
+{
 public:
-    static void processEnvelope(ClerkAuthClient& client, const QByteArray& body) {
+    static void processEnvelope(ClerkAuthClient& client, const QByteArray& body)
+    {
         client.handleEnvelopeBody(body, ClerkAuthClient::CallContext{});
     }
 
-    static void processTokenFallback(ClerkAuthClient& client, const QByteArray& body) {
-        client.handleTokenFallbackBody(body);
-    }
-
     static QNetworkRequest makeRequest(const QUrl& url, const Credentials& credentials,
-                                       bool isPost) {
+                                       bool isPost)
+    {
         return ClerkAuthClient::makeRequest(url, credentials, isPost);
     }
 
-    static QString lastSessionId(const ClerkAuthClient& client) {
-        return client.lastKnownSessionId_;
+    static QString lastObservedSessionId(const ClerkAuthClient& client)
+    {
+        return client.lastObservedSessionId_;
     }
 
-    static AuthFailureKind classifyHttpFailure(int status) {
+    static AuthFailureKind classifyHttpFailure(int status)
+    {
         return ClerkAuthClient::classifyHttpFailure(status);
     }
 
-    static QString httpFailureReason(int status) {
+    static QString httpFailureReason(int status)
+    {
         return ClerkAuthClient::httpFailureReason(status);
     }
 };
@@ -48,31 +50,35 @@ public:
 
 namespace {
 
-QString b64url(const QJsonObject& object) {
-    const QByteArray encoded = QJsonDocument(object).toJson(QJsonDocument::Compact)
-                                       .toBase64(QByteArray::Base64UrlEncoding |
-                                                 QByteArray::OmitTrailingEquals);
+QString b64url(const QJsonObject& object)
+{
+    const QByteArray encoded = QJsonDocument(object).toJson(QJsonDocument::Compact).toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
     return QString::fromLatin1(encoded);
 }
 
 /// Sanitized, unsigned fixture token. No captured or real credential is used.
-QString fakeJwt(const QString& marker, qint64 expiryEpochSecs) {
+QString fakeJwt(const QString& marker, qint64 expiryEpochSecs)
+{
     const QString header = b64url({{"alg", "NONE"}, {"typ", "JWT"}});
     const QString payload = b64url({{"exp", expiryEpochSecs}, {"test_marker", marker}});
     return header + "." + payload + ".ZmFrZQ";
 }
 
-QByteArray jsonBody(const QJsonObject& object) {
+QByteArray jsonBody(const QJsonObject& object)
+{
     return QJsonDocument(object).toJson(QJsonDocument::Compact);
 }
 
-QJsonObject token(const QString& jwt) {
+QJsonObject token(const QString& jwt)
+{
     return QJsonObject{{"jwt", jwt}};
 }
 
-QJsonObject session(const QString& id, const QString& jwt) {
+QJsonObject session(const QString& id, const QString& jwt)
+{
     QJsonObject object{{"last_active_token", token(jwt)}};
-    if (!id.isEmpty()) {
+    if (!id.isEmpty())
+    {
         object["id"] = id;
     }
     return object;
@@ -87,7 +93,8 @@ struct ParseOutcome {
     AuthFailureKind failureKind = AuthFailureKind::None;
 };
 
-ParseOutcome parseBody(const QByteArray& body) {
+ParseOutcome parseBody(const QByteArray& body)
+{
     ClerkAuthClient client;
     ParseOutcome outcome;
     QObject::connect(&client, &ClerkAuthClient::bearerReady, &client,
@@ -102,31 +109,13 @@ ParseOutcome parseBody(const QByteArray& body) {
                      });
 
     ClerkAuthClientTestAccess::processEnvelope(client, body);
-    outcome.sessionId = ClerkAuthClientTestAccess::lastSessionId(client);
+    outcome.sessionId = ClerkAuthClientTestAccess::lastObservedSessionId(client);
     outcome.failureKind = client.failureKind();
     return outcome;
 }
 
-ParseOutcome parseTokenFallbackBody(const QByteArray& body) {
-    ClerkAuthClient client;
-    ParseOutcome outcome;
-    QObject::connect(&client, &ClerkAuthClient::bearerReady, &client,
-                     [&outcome](const BearerToken& bearer) {
-                         ++outcome.bearerCount;
-                         outcome.bearer = bearer;
-                     });
-    QObject::connect(&client, &ClerkAuthClient::authFailed, &client,
-                     [&outcome](const QString& reason) {
-                         ++outcome.failureCount;
-                         outcome.error = reason;
-                     });
-
-    ClerkAuthClientTestAccess::processTokenFallback(client, body);
-    outcome.failureKind = client.failureKind();
-    return outcome;
-}
-
-void verifySuccess(const ParseOutcome& outcome, const QString& marker, qint64 expiry) {
+void verifySuccess(const ParseOutcome& outcome, const QString& marker, qint64 expiry)
+{
     QCOMPARE(outcome.bearerCount, 1);
     QCOMPARE(outcome.failureCount, 0);
     QCOMPARE(outcome.failureKind, AuthFailureKind::None);
@@ -141,19 +130,21 @@ void verifySuccess(const ParseOutcome& outcome, const QString& marker, qint64 ex
 
 } // namespace
 
-class TestClerkAuthClient : public QObject {
+class TestClerkAuthClient : public QObject
+{
     Q_OBJECT
 
 private slots:
-    void getStyleEnvelopeParses() {
+    void getStyleEnvelopeParses()
+    {
         const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
         const QString jwt = fakeJwt(QStringLiteral("get-session"), expiry);
         const QByteArray body = jsonBody({
-                {"response", QJsonObject{
-                        {"id", "client_get"},
-                        {"last_active_session_id", "sess_get"},
-                        {"sessions", QJsonArray{session("sess_get", jwt)}},
-                }},
+            {"response", QJsonObject{
+                             {"id", "client_get"},
+                             {"last_active_session_id", "sess_get"},
+                             {"sessions", QJsonArray{session("sess_get", jwt)}},
+                         }},
         });
 
         const ParseOutcome outcome = parseBody(body);
@@ -161,32 +152,35 @@ private slots:
         QCOMPARE(outcome.sessionId, QStringLiteral("sess_get"));
     }
 
-    void touchStyleResponseTokenParsesRegression() {
+    void touchStyleResponseTokenParsesRegression()
+    {
         const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
         const QString responseJwt = fakeJwt(QStringLiteral("touch-response"), expiry);
         const QString clientJwt = fakeJwt(QStringLiteral("touch-client"), expiry);
         const QByteArray body = jsonBody({
-                {"response", QJsonObject{
-                        {"last_active_session_id", "sess_touch"},
-                        {"last_active_token", token(responseJwt)},
-                }},
-                {"client", QJsonObject{
-                        {"sessions", QJsonArray{session("sess_touch", clientJwt)}},
-                }},
+            {"response", QJsonObject{
+                             {"last_active_session_id", "sess_touch"},
+                             {"last_active_token", token(responseJwt)},
+                         }},
+            {"client", QJsonObject{
+                           {"sessions", QJsonArray{session("sess_touch", clientJwt)}},
+                       }},
         });
 
         const ParseOutcome outcome = parseBody(body);
-        verifySuccess(outcome, QStringLiteral("touch-response"), expiry);
+        verifySuccess(outcome, QStringLiteral("touch-client"), expiry);
         QCOMPARE(outcome.sessionId, QStringLiteral("sess_touch"));
     }
 
-    void touchStyleClientTokenParses() {
+    void touchStyleClientTokenParses()
+    {
         const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
         const QString jwt = fakeJwt(QStringLiteral("touch-client-only"), expiry);
         const QByteArray body = jsonBody({
-                {"client", QJsonObject{
-                        {"sessions", QJsonArray{session("sess_client", jwt)}},
-                }},
+            {"client", QJsonObject{
+                           {"last_active_session_id", "sess_client"},
+                           {"sessions", QJsonArray{session("sess_client", jwt)}},
+                       }},
         });
 
         const ParseOutcome outcome = parseBody(body);
@@ -194,42 +188,16 @@ private slots:
         QCOMPARE(outcome.sessionId, QStringLiteral("sess_client"));
     }
 
-    void tokenFallbackTopLevelJwtParses() {
-        const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
-        const QString jwt = fakeJwt(QStringLiteral("token-fallback"), expiry);
-        const ParseOutcome outcome = parseTokenFallbackBody(jsonBody({{"jwt", jwt}}));
-
-        verifySuccess(outcome, QStringLiteral("token-fallback"), expiry);
-    }
-
-    void tokenFallbackRejectsNonCapturedShapes_data() {
-        QTest::addColumn<QByteArray>("body");
-        QTest::newRow("empty") << QByteArray();
-        QTest::newRow("malformed") << QByteArray(R"({"jwt":)");
-        QTest::newRow("array") << QByteArray(R"([{"jwt":"value"}])");
-        QTest::newRow("nested") << QByteArray(R"({"response":{"jwt":"value"}})");
-        QTest::newRow("non-string") << QByteArray(R"({"jwt":42})");
-    }
-
-    void tokenFallbackRejectsNonCapturedShapes() {
-        QFETCH(QByteArray, body);
-        const ParseOutcome outcome = parseTokenFallbackBody(body);
-        QCOMPARE(outcome.bearerCount, 0);
-        QCOMPARE(outcome.failureCount, 1);
-        QCOMPARE(outcome.failureKind, AuthFailureKind::ProtocolMismatch);
-        QCOMPARE(outcome.error,
-                 QStringLiteral("Clerk token fallback returned an unexpected response shape"));
-    }
-
-    void authRequestNormalizesCookieAndUsesCapturedHeaders() {
+    void authRequestNormalizesCookieAndUsesCapturedHeaders()
+    {
         const QUrl url(QStringLiteral("https://auth.suno.com/v1/client"));
         const Credentials credentials{
-                QStringLiteral("  cOoKiE:  __client=OPAQUE==; __session=Keep-Case  "),
+            QStringLiteral("  cOoKiE:  __client=OPAQUE==; __session=Keep-Case  "),
         };
         const QNetworkRequest get =
-                ClerkAuthClientTestAccess::makeRequest(url, credentials, false);
+            ClerkAuthClientTestAccess::makeRequest(url, credentials, false);
         const QNetworkRequest post =
-                ClerkAuthClientTestAccess::makeRequest(url, credentials, true);
+            ClerkAuthClientTestAccess::makeRequest(url, credentials, true);
 
         const QByteArray expectedCookie("__client=OPAQUE==; __session=Keep-Case");
         QCOMPARE(get.rawHeader("Cookie"), expectedCookie);
@@ -242,11 +210,27 @@ private slots:
                  QByteArray("application/x-www-form-urlencoded"));
         QCOMPARE(get.rawHeader("User-Agent"), QByteArray(kBrowserUserAgent));
         QVERIFY(get.attribute(QNetworkRequest::RedirectPolicyAttribute)
-                        .value<QNetworkRequest::RedirectPolicy>() ==
+                    .value<QNetworkRequest::RedirectPolicy>() ==
                 QNetworkRequest::ManualRedirectPolicy);
     }
 
-    void emptyCredentialFailsBeforeNetworkRequest() {
+    void preferredSessionRequiresExactSelector()
+    {
+        ClerkClientInfo info;
+        info.sessions = {{QStringLiteral("first"), {}},
+                         {QStringLiteral("selected"), {}}};
+        QVERIFY(!info.preferredSession());
+
+        info.lastActiveSessionId = QStringLiteral("selected");
+        QVERIFY(info.preferredSession());
+        QCOMPARE(info.preferredSession()->sessionId, QStringLiteral("selected"));
+
+        info.lastActiveSessionId = QStringLiteral("missing");
+        QVERIFY(!info.preferredSession());
+    }
+
+    void emptyCredentialFailsBeforeNetworkRequest()
+    {
         ClerkAuthClient client;
         QSignalSpy failures(&client, &ClerkAuthClient::authFailed);
         client.fetchBearer(Credentials{});
@@ -255,24 +239,24 @@ private slots:
         QCOMPARE(client.failureKind(), AuthFailureKind::NoActiveSession);
     }
 
-    void tokenLocationsUseDocumentedPrecedence() {
+    void tokenLocationsUseDocumentedPrecedence()
+    {
         const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
         const QByteArray body = jsonBody({
-                {"response", QJsonObject{
-                        {"last_active_session_id", "sess_primary"},
-                        {"last_active_token",
-                         token(fakeJwt(QStringLiteral("response-direct"), expiry))},
-                        {"sessions", QJsonArray{
-                                session("sess_primary",
-                                        fakeJwt(QStringLiteral("response-session"), expiry)),
-                        }},
-                }},
-                {"client", QJsonObject{
-                        {"sessions", QJsonArray{
-                                session("sess_client",
-                                        fakeJwt(QStringLiteral("client-session"), expiry)),
-                        }},
-                }},
+            {"response", QJsonObject{
+                             {"last_active_session_id", "sess_primary"},
+                             {"last_active_token",
+                              token(fakeJwt(QStringLiteral("response-direct"), expiry))},
+                             {"sessions", QJsonArray{
+                                              session("sess_primary",
+                                                      fakeJwt(QStringLiteral("response-session"), expiry)),
+                                          }},
+                         }},
+            {"client", QJsonObject{
+                           {"sessions", QJsonArray{
+                                            session("sess_client", fakeJwt(QStringLiteral("client-session"), expiry)),
+                                        }},
+                       }},
         });
 
         const ParseOutcome outcome = parseBody(body);
@@ -280,33 +264,59 @@ private slots:
         QCOMPARE(outcome.sessionId, QStringLiteral("sess_primary"));
     }
 
-    void responseSessionSelectorSuppliesMissingId() {
+    void responseSessionRequiresMatchingId()
+    {
         const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
         const QByteArray body = jsonBody({
-                {"response", QJsonObject{
-                        {"last_active_session_id", "sess_from_selector"},
-                        {"sessions", QJsonArray{
-                                session(QString(), fakeJwt(QStringLiteral("selected"), expiry)),
-                        }},
-                }},
+            {"response", QJsonObject{
+                             {"last_active_session_id", "sess_from_selector"},
+                             {"sessions", QJsonArray{
+                                              session(QString(), fakeJwt(QStringLiteral("selected"), expiry)),
+                                          }},
+                         }},
         });
 
         const ParseOutcome outcome = parseBody(body);
-        verifySuccess(outcome, QStringLiteral("selected"), expiry);
-        QCOMPARE(outcome.sessionId, QStringLiteral("sess_from_selector"));
+        QCOMPARE(outcome.bearerCount, 0);
+        QCOMPARE(outcome.failureCount, 1);
+        QCOMPARE(outcome.failureKind, AuthFailureKind::NoActiveSession);
     }
 
-    void noActiveSession_data() {
+    void sessionSelectorRequired_data()
+    {
+        QTest::addColumn<QByteArray>("body");
+        QTest::newRow("missing-selector")
+            << QByteArray(R"({"response":{"sessions":[{"id":"a","last_active_token":{"jwt":"token-a"}}]}})");
+        QTest::newRow("unmatched-selector")
+            << QByteArray(R"({"response":{"last_active_session_id":"b","sessions":[{"id":"a","last_active_token":{"jwt":"token-a"}}]}})");
+        QTest::newRow("client-selector-missing")
+            << QByteArray(R"({"client":{"sessions":[{"id":"a","last_active_token":{"jwt":"token-a"}}]}})");
+        QTest::newRow("direct-token-is-not-envelope")
+            << QByteArray(R"({"response":{"last_active_session_id":"a","last_active_token":{"jwt":"token-a"}}})");
+    }
+
+    void sessionSelectorRequired()
+    {
+        QFETCH(QByteArray, body);
+        const ParseOutcome outcome = parseBody(body);
+        QCOMPARE(outcome.bearerCount, 0);
+        QCOMPARE(outcome.failureCount, 1);
+        QCOMPARE(outcome.failureKind, AuthFailureKind::NoActiveSession);
+    }
+
+    void noActiveSession_data()
+    {
         QTest::addColumn<QByteArray>("body");
         QTest::newRow("empty-response") << QByteArray(R"({"response":{}})");
         QTest::newRow("empty-response-sessions")
-                << QByteArray(R"({"response":{"sessions":[]}})");
+            << QByteArray(R"({"response":{"sessions":[]}})");
         QTest::newRow("all-session-arrays-empty")
-                << QByteArray(
-                        R"({"response":{"sessions":[]},"client":{"sessions":[]}})");
+            << QByteArray(
+                   R"({"response":{"sessions":[]},"client":{"sessions":[]}})");
     }
 
-    void noActiveSession() {
+    void noActiveSession()
+    {
         QFETCH(QByteArray, body);
         const ParseOutcome outcome = parseBody(body);
         QCOMPARE(outcome.bearerCount, 0);
@@ -317,7 +327,8 @@ private slots:
         QVERIFY(!outcome.error.contains(QStringLiteral("expired"), Qt::CaseInsensitive));
     }
 
-    void malformedResponse_data() {
+    void malformedResponse_data()
+    {
         QTest::addColumn<QByteArray>("body");
         QTest::newRow("empty") << QByteArray();
         QTest::newRow("malformed-json") << QByteArray(R"({"response":)");
@@ -327,7 +338,8 @@ private slots:
         QTest::newRow("no-envelope") << QByteArray(R"({"unexpected":true})");
     }
 
-    void malformedResponse() {
+    void malformedResponse()
+    {
         QFETCH(QByteArray, body);
         const ParseOutcome outcome = parseBody(body);
         QCOMPARE(outcome.bearerCount, 0);
@@ -336,14 +348,15 @@ private slots:
         QCOMPARE(outcome.error, QStringLiteral("unexpected Clerk response shape"));
     }
 
-    void expiredAlternateTokenReportsExpiry() {
+    void expiredAlternateTokenReportsExpiry()
+    {
         const QString jwt = fakeJwt(QStringLiteral("expired"),
                                     QDateTime::currentSecsSinceEpoch() - 60);
         const QByteArray body = jsonBody({
-                {"response", QJsonObject{
-                        {"last_active_session_id", "sess_expired"},
-                        {"last_active_token", token(jwt)},
-                }},
+            {"response", QJsonObject{
+                             {"last_active_session_id", "sess_expired"},
+                             {"sessions", QJsonArray{session("sess_expired", jwt)}},
+                         }},
         });
 
         const ParseOutcome outcome = parseBody(body);
@@ -355,12 +368,14 @@ private slots:
         QVERIFY(!outcome.error.contains(jwt));
     }
 
-    void malformedTokenReportsUndecodable() {
+    void malformedTokenReportsUndecodable()
+    {
         const QString jwt = QStringLiteral("not-a-jwt-CANARY");
         const QByteArray body = jsonBody({
-                {"client", QJsonObject{
-                        {"sessions", QJsonArray{session("sess_bad", jwt)}},
-                }},
+            {"client", QJsonObject{
+                           {"last_active_session_id", "sess_bad"},
+                           {"sessions", QJsonArray{session("sess_bad", jwt)}},
+                       }},
         });
 
         const ParseOutcome outcome = parseBody(body);
@@ -370,8 +385,10 @@ private slots:
         QVERIFY(!outcome.error.contains(jwt));
     }
 
-    void httpRejectionIsClassifiedWithoutResponseData() {
-        for (const int status : {401, 403}) {
+    void httpRejectionIsClassifiedWithoutResponseData()
+    {
+        for (const int status : {401, 403})
+        {
             QCOMPARE(ClerkAuthClientTestAccess::classifyHttpFailure(status),
                      AuthFailureKind::RejectedCredential);
             QCOMPARE(ClerkAuthClientTestAccess::httpFailureReason(status),
@@ -383,13 +400,14 @@ private slots:
                  QStringLiteral("Clerk request failed with an unexpected HTTP status"));
     }
 
-    void errorStringsNeverContainSecrets() {
+    void errorStringsNeverContainSecrets()
+    {
         const QString cookieCanary = QStringLiteral("__client=COOKIE_CANARY");
         const QString queryCanary = QStringLiteral("state=QUERY_CANARY");
         const QByteArray body = jsonBody({
-                {"unexpected", true},
-                {"cookie", cookieCanary},
-                {"query", queryCanary},
+            {"unexpected", true},
+            {"cookie", cookieCanary},
+            {"query", queryCanary},
         });
 
         const ParseOutcome outcome = parseBody(body);
@@ -400,7 +418,8 @@ private slots:
     }
 };
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
     QCoreApplication app(argc, argv);
     TestClerkAuthClient test;
     return QTest::qExec(&test, argc, argv);

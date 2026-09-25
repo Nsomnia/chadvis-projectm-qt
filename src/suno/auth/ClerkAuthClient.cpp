@@ -58,12 +58,11 @@ EnvelopeParseError malformedResponse() {
     return {AuthFailureKind::MalformedResponse, unexpectedResponseShapeReason()};
 }
 
-/// Find a token in one capture-proven `sessions` array. If Clerk supplied a
-/// last-active selector, that session wins; otherwise array order is retained.
 std::optional<TokenCandidate> tokenFromSessions(const QJsonArray& sessions,
-                                                 const QString& fallbackSessionId) {
-    std::optional<TokenCandidate> first;
-    std::optional<TokenCandidate> selected;
+                                                 const QString& activeSessionId) {
+    if (activeSessionId.isEmpty()) {
+        return std::nullopt;
+    }
 
     for (const QJsonValue& entry : sessions) {
         if (!entry.isObject()) {
@@ -71,26 +70,16 @@ std::optional<TokenCandidate> tokenFromSessions(const QJsonArray& sessions,
         }
 
         const QJsonObject session = entry.toObject();
-        const QString jwt = session["last_active_token"].toObject()["jwt"].toString();
-        if (jwt.isEmpty()) {
+        if (session["id"].toString() != activeSessionId) {
             continue;
         }
-
-        const QString objectSessionId = session["id"].toString();
-        TokenCandidate candidate{
-                jwt,
-                objectSessionId.isEmpty() ? fallbackSessionId : objectSessionId,
-        };
-
-        if (!first.has_value()) {
-            first = candidate;
-        }
-        if (!selected.has_value() && candidate.sessionId == fallbackSessionId) {
-            selected = candidate;
+        const QString jwt = session["last_active_token"].toObject()["jwt"].toString();
+        if (!jwt.isEmpty()) {
+            return TokenCandidate{jwt, activeSessionId};
         }
     }
 
-    return selected.has_value() ? selected : first;
+    return std::nullopt;
 }
 
 std::expected<BearerToken, EnvelopeParseError> decodeUsableBearer(const QString& jwt) {
@@ -110,12 +99,8 @@ std::expected<BearerToken, EnvelopeParseError> decodeUsableBearer(const QString&
     return JwtUtils::fromJwt(jwt);
 }
 
-/// Parse only locations present in the Aug 2026 captures. Precedence is:
-///   1. response.sessions[*].last_active_token.jwt
-///   2. response.last_active_token.jwt
-///   3. client.sessions[*].last_active_token.jwt
-/// Within either sessions array, response.last_active_session_id selects a
-/// session before the first token-bearing session is considered.
+/// Parse the captured session envelopes and require an exact active-session
+/// selector match before accepting any bearer token.
 std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByteArray& body) {
     QJsonParseError parseError{};
     const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
@@ -132,20 +117,17 @@ std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByt
 
     const QJsonObject response = responseValue.toObject();
     const QJsonObject client = clientValue.toObject();
-    const QString lastActiveSessionId =
+    const QString responseSessionId =
             response["last_active_session_id"].toString();
+    const QString clientSessionId = client["last_active_session_id"].toString();
+    const QString activeSessionId = !responseSessionId.isEmpty()
+            ? responseSessionId
+            : clientSessionId;
 
     std::optional<TokenCandidate> candidate =
-            tokenFromSessions(response["sessions"].toArray(), lastActiveSessionId);
+            tokenFromSessions(response["sessions"].toArray(), activeSessionId);
     if (!candidate.has_value()) {
-        const QString directJwt =
-                response["last_active_token"].toObject()["jwt"].toString();
-        if (!directJwt.isEmpty()) {
-            candidate = TokenCandidate{directJwt, lastActiveSessionId};
-        }
-    }
-    if (!candidate.has_value()) {
-        candidate = tokenFromSessions(client["sessions"].toArray(), lastActiveSessionId);
+        candidate = tokenFromSessions(client["sessions"].toArray(), activeSessionId);
     }
 
     if (!candidate.has_value()) {
@@ -247,7 +229,7 @@ void ClerkAuthClient::fetchBearer(const Credentials& creds) {
         emitFailure(AuthFailureKind::NoActiveSession, noActiveSessionReason());
         return;
     }
-    startClientFetch(CallContext{std::move(normalized), {}, true});
+    startClientFetch(CallContext{std::move(normalized), {}});
 }
 
 void ClerkAuthClient::touch(const Credentials& creds, const QString& sessionId) {
@@ -262,7 +244,7 @@ void ClerkAuthClient::touch(const Credentials& creds, const QString& sessionId) 
                     QStringLiteral("touch request requires a session id"));
         return;
     }
-    startTouch(CallContext{std::move(normalized), sessionId, true});
+    startTouch(CallContext{std::move(normalized), sessionId});
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +283,7 @@ void ClerkAuthClient::startClientFetch(CallContext ctx) {
 
     inflight_.push_back(reply);
     connect(reply, &QNetworkReply::finished, this,
-            [this, reply, ctx = std::move(ctx)]() mutable { handleReply(reply, std::move(ctx)); });
+            [this, reply]() { handleReply(reply); });
 }
 
 void ClerkAuthClient::startTouch(CallContext ctx) {
@@ -311,30 +293,7 @@ void ClerkAuthClient::startTouch(CallContext ctx) {
 
     inflight_.push_back(reply);
     connect(reply, &QNetworkReply::finished, this,
-            [this, reply, ctx = std::move(ctx)]() mutable { handleReply(reply, std::move(ctx)); });
-}
-
-void ClerkAuthClient::startTokenFallback(CallContext ctx) {
-    const QString url = sessionUrl(ctx.sessionId, QStringLiteral("tokens"));
-    QNetworkReply* reply =
-            nam_->post(makeRequest(QUrl(url), ctx.creds, true), QByteArray());
-
-    inflight_.push_back(reply);
-    connect(reply, &QNetworkReply::finished, this,
-            [this, reply]() {
-                const int status =
-                        reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-                const bool ok = reply->error() == QNetworkReply::NoError && status >= 200 &&
-                                status < 300;
-                const QByteArray body = reply->readAll();
-                reply->deleteLater();
-                inflight_.removeOne(reply);
-                if (!ok) {
-                    emitFailure(classifyHttpFailure(status), httpFailureReason(status));
-                    return;
-                }
-                handleTokenFallbackBody(body);
-            });
+            [this, reply]() { handleReply(reply); });
 }
 
 // ---------------------------------------------------------------------------
@@ -374,7 +333,7 @@ void ClerkAuthClient::emitFailure(AuthFailureKind kind, const QString& reason) {
     emit authFailed(reason);
 }
 
-void ClerkAuthClient::handleReply(QNetworkReply* reply, CallContext ctx) {
+void ClerkAuthClient::handleReply(QNetworkReply* reply) {
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const bool ok = reply->error() == QNetworkReply::NoError && status >= 200 && status < 300;
     const QByteArray body = reply->readAll();
@@ -382,17 +341,10 @@ void ClerkAuthClient::handleReply(QNetworkReply* reply, CallContext ctx) {
     inflight_.removeOne(reply);
 
     if (ok) {
-        handleEnvelopeBody(body, ctx);
+        handleEnvelopeBody(body, {});
         return;
     }
 
-    const QString sid = !ctx.sessionId.isEmpty() ? ctx.sessionId : lastKnownSessionId_;
-    if (ctx.allowFallback && !sid.isEmpty()) {
-        ctx.allowFallback = false;
-        ctx.sessionId = sid;
-        startTokenFallback(std::move(ctx));
-        return;
-    }
     emitFailure(classifyHttpFailure(status), httpFailureReason(status));
 }
 
@@ -403,36 +355,9 @@ void ClerkAuthClient::handleEnvelopeBody(const QByteArray& body, const CallConte
         return;
     }
 
-    if (!envelope->sessionId.isEmpty()) {
-        lastKnownSessionId_ = envelope->sessionId;
-    }
+    lastObservedSessionId_ = envelope->sessionId;
     failureKind_ = AuthFailureKind::None;
     emit bearerReady(envelope->bearer);
-}
-
-void ClerkAuthClient::handleTokenFallbackBody(const QByteArray& body) {
-    QJsonParseError parseError{};
-    const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
-    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        emitFailure(AuthFailureKind::ProtocolMismatch,
-                    QStringLiteral("Clerk token fallback returned an unexpected response shape"));
-        return;
-    }
-
-    const QJsonValue jwtValue = doc.object().value(QStringLiteral("jwt"));
-    if (!jwtValue.isString() || jwtValue.toString().isEmpty()) {
-        emitFailure(AuthFailureKind::ProtocolMismatch,
-                    QStringLiteral("Clerk token fallback returned an unexpected response shape"));
-        return;
-    }
-
-    auto bearer = decodeUsableBearer(jwtValue.toString());
-    if (!bearer) {
-        emitFailure(bearer.error().kind, bearer.error().reason);
-        return;
-    }
-    failureKind_ = AuthFailureKind::None;
-    emit bearerReady(*bearer);
 }
 
 } // namespace vc::suno::auth
