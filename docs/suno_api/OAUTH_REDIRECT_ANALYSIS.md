@@ -1,147 +1,73 @@
-# OAuth Redirect Analysis for Suno Remote Logging
+# OAuth Redirect Gate
 
-**Date:** 2026-09-22
-**Status:** COMPLETE for the observed web flow — sanitized evidence saved; native desktop callback remains capture-gated
+**Evidence reviewed:** 2026-09-22 sanitized request recon; 2026-09-24 Burp export
+**Status:** Suno-owned web flow observed; native Google sign-in remains disabled
 
-## Request
+## Scope
 
-Integrate logging into Suno remote using OAuth redirect. If the endpoint scan does not provide sufficient details about OAuth redirect parameters, stop and inform the user that a Chrome extension is needed.
+This file is not an endpoint catalog and does not define a desktop OAuth
+implementation. Its only live responsibility is to record the observed web
+redirect shape and the binding gate for any future native callback.
 
-## Outcome
+The canonical API facts live in
+[`ENDPOINT-INVENTORY.md`](ENDPOINT-INVENTORY.md). Evidence provenance and hashes
+live in [`raw/README.md`](raw/README.md).
 
-The recon recording (`~/Downloads/7752c544-ebc6-4f2b-98d1-f1dbb657dff4.json`) was found to contain **sufficient OAuth redirect details**. A Chrome extension was NOT needed — the recording captured the complete Google OAuth login flow through Suno's auth system.
+## Evidence and limitations
 
-The recording has been sanitized and saved to:
-- `docs/suno_api/raw/sanitized-recon-2026-09-22.json` (79 entries, 64 redactions)
+The retained
+[`sanitized-recon-2026-09-22.json`](raw/sanitized-recon-2026-09-22.json) is a
+sanitized **request-only** recording with 79 entries and 64 redactions. It shows
+the sequence below but contains no response statuses, response bodies,
+redirect-status assertions, or cookie-setting proof.
 
-This reconstruction covers Suno's web flow only. It does not validate a native
-desktop callback: no reviewed capture uses a loopback or custom-scheme redirect
-target. Native Google sign-in must remain disabled until a human capture proves
-Clerk accepts one.
+The 2026-09-24 Burp export did not exercise Google sign-in or a provider
+callback. It captured Clerk session-token traffic and a Suno web request that
+entered session recovery; that is not OAuth callback evidence.
 
-## OAuth Redirect Flow Discovered
+## Observed Suno web sequence
 
-### Complete Google OAuth Login Flow
+Only method, host/path, and query-key names are reproduced. OAuth client IDs,
+state, codes, tokens, account values, and other identifiers are intentionally
+omitted.
 
-1. **Suno Social Login Initiation**
-   ```
-   GET https://auth.suno.com/social/login/google-oauth2/?next=https%3A%2F%2Fsuno.com%2Fcreate%3F...
-   ```
+| Order | Method | Host and path | Captured query-key names |
+|---:|---|---|---|
+| 1 | POST | `auth.suno.com/v1/client/sign_ins` | None in this request record |
+| 2 | GET | `auth.suno.com/social/login/google-oauth2/` | `next`, `__client` |
+| 3 | GET | Google authorization endpoint | `client_id`, `redirect_uri`, `state`, `response_type`, `scope`, `prompt` |
+| 4 | GET | Google account chooser | The authorization keys plus Google-internal keys |
+| 5 | GET | Google consent endpoint | `authuser`, `client_id`, `state`, plus Google-internal keys |
+| 6 | GET | `auth.suno.com/social/complete/google-oauth2/` | `state`, `iss`, `code`, `scope`, `authuser`, `prompt` |
+| 7 | GET | `suno.com/create` | Signup/referrer/origin and `redirected_from` keys |
 
-2. **Google OAuth Authorization Request**
-   ```
-   GET https://accounts.google.com/o/oauth2/auth?
-     client_id=[REDACTED-GOOGLE-CLIENT-ID]
-     &redirect_uri=https://auth.suno.com/social/complete/google-oauth2/
-     &state=[REDACTED-OAUTH-STATE]
-     &response_type=code
-     &scope=openid+email+profile
-     &prompt=select_account
-   ```
+The observed provider completion target is Suno-owned HTTPS. A Google-owned
+authorization hop followed by a Suno callback is still a web flow, not proof of
+a native redirect.
 
-3. **Google Account Chooser**
-   ```
-   GET https://accounts.google.com/v3/signin/accountchooser?
-     client_id=[REDACTED-GOOGLE-CLIENT-ID]
-     &prompt=select_account
-     &redirect_uri=https%3A%2F%2Fauth.suno.com%2Fsocial%2Fcomplete%2Fgoogle-oauth2%2F
-     &response_type=code
-     &scope=openid+email+profile
-     &state=[REDACTED-OAUTH-STATE]
-   ```
+## Native callback gate
 
-4. **Google OAuth Consent**
-   ```
-   GET https://accounts.google.com/signin/oauth/consent?
-     authuser=0
-     &client_id=[REDACTED-GOOGLE-CLIENT-ID]
-     &scope=openid+email+profile
-     &state=[REDACTED-OAUTH-STATE]
-   ```
+Native Google sign-in stays disabled. Before any implementation can be enabled,
+a human capture must prove all of the following:
 
-5. **OAuth Callback Completion**
-   ```
-   GET https://auth.suno.com/social/complete/google-oauth2/?
-     state=[REDACTED-OAUTH-STATE]
-     &iss=https://accounts.google.com
-     &code=[REDACTED-GOOGLE-AUTH-CODE]
-     &scope=email+profile+https://www.googleapis.com/auth/userinfo.profile+https://www.googleapis.com/auth/userinfo.email+openid
-     &authuser=0
-     &prompt=none
-   ```
+1. Clerk accepts the proposed app-owned callback registration.
+2. Google sends the callback to a loopback or custom-scheme target rather than
+   only the observed Suno-owned HTTPS completion route.
+3. State, transaction binding, PKCE, redirect ownership, and callback replay
+   protections are enforceable end to end.
+4. The resulting session can be persisted without scraping an unrelated browser
+   cookie jar and refreshed through a directly captured Clerk route.
+5. Sign-out, failure, timeout, and concurrent-transaction behavior are captured
+   and sanitized.
 
-6. **Final Redirect to Suno Create**
-   ```
-   GET https://suno.com/create?signup_source=splashpage&referrer=%2F&...
-     &redirected_from=signin
-   ```
+Do not infer loopback support from local code, a generic OAuth client, or a
+Suno-owned HTTPS redirect. Never hand-roll a Clerk handshake, guess a callback
+URI, or place a Google ID token in `SunoClient`.
 
-## Key OAuth Parameters
+## Evidence handling
 
-| Parameter | Value | Purpose |
-|-----------|-------|---------|
-| `client_id` | [REDACTED-GOOGLE-CLIENT-ID] | Google OAuth client ID |
-| `redirect_uri` | `https://auth.suno.com/social/complete/google-oauth2/` | OAuth callback URL |
-| `response_type` | `code` | OAuth response type |
-| `scope` | `openid email profile` | OAuth scopes requested |
-| `state` | [REDACTED-OAUTH-STATE] | CSRF protection token |
-| `prompt` | `select_account` | Google account selection prompt |
-
-## Suno Auth Endpoints Discovered
-
-| Endpoint | Purpose |
-|----------|---------|
-| `https://auth.suno.com/social/login/google-oauth2/` | Initiate Google OAuth login |
-| `https://auth.suno.com/social/complete/google-oauth2/` | OAuth callback completion |
-| `https://auth.suno.com/v1/client/sign_ins` | Clerk sign-in tracking |
-| `https://auth.suno.com/auth/session-recovery` | Session recovery page |
-
-## Other Endpoints Discovered in Recon
-
-| Domain | Endpoint | Purpose |
-|--------|----------|---------|
-| `suno.com` | `/9i3s/td` | Google Tag Manager tracking |
-| `suno.com` | `/9i3s/g` | Google Analytics |
-| `suno.com` | `/9i3s/as` | AdSense |
-| `suno.com` | `/9i3s/gs` | Google Services |
-| `s.prod.suno.com` | `/v1/rgstr` | Registration tracking |
-| `m-stratovibe.prod.suno.com` | `/agg-receiver-service/v1/events/t` | Stratovibe event tracking |
-| `analytics.tiktok.com` | `/api/v2/pixel/act` | TikTok pixel |
-| `analytics.twitter.com` | `/i/adsct` | Twitter ads tracking |
-| `www.facebook.com` | `/tr` | Facebook pixel |
-| `js.stripe.com` | `/v3/...` | Stripe JS |
-| `api.hcaptcha.com` | `/getcaptcha/...` | hCaptcha |
-| `api.stripe.com` | `/v1/radar/session` | Stripe Radar |
-
-## Sanitization Applied
-
-The following sensitive data was redacted from the recon recording:
-
-- Email addresses (`[REDACTED-EMAIL]`)
-- Google OAuth client ID
-- Datadog API keys
-- Stripe API keys
-- hCaptcha pixel codes and IDs
-- Google Tag Manager IDs
-- Clerk JWT tokens
-- Google session tokens
-- OAuth authorization codes
-- OAuth state tokens
-- User IDs, session IDs, anonymous IDs
-- IP addresses
-- Timezone and country information
-
-## Current Auth Implementation
-
-- `src/suno/auth/ClerkAuthClient.hpp` — Clerk auth client
-- `src/suno/auth/CredentialStore.hpp` — Credential storage
-- `src/suno/auth/AuthHeaders.hpp` — API header builder
-- `src/suno/SunoClient.hpp` — Suno API client
-- `src/suno/SunoEndpoints.hpp` — Centralized endpoint map
-
-## Related Files
-
-- [`ENDPOINT-INVENTORY.md`](ENDPOINT-INVENTORY.md) — sole API-spec master, including captured auth and session facts
-- [`raw/README.md`](raw/README.md) — retained raw-evidence provenance and limitations
-- [`raw/endpoints_sniffed.list`](raw/endpoints_sniffed.list) — raw endpoint scan data
-- [`raw/sanitized-recon-2026-09-22.json`](raw/sanitized-recon-2026-09-22.json) — sanitized recon recording supporting this analysis
+Never retain or log OAuth codes/state, client identifiers, session cookies,
+JWTs, email addresses, user/session identifiers, or complete redirect query
+strings in live documentation. Future evidence should preserve only the method,
+host/path, query-key names, status when available, and a redacted structural
+sample.

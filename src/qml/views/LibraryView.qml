@@ -1,17 +1,3 @@
-/**
- * @file LibraryView.qml
- * @brief Default landing surface: the remote Suno library
- *
- * Browsing-first grid of clip cards over feed/v3 data:
- * - Server-side debounced search wired to SunoBridge.searchLibrary()
- *   (the bridge coalesces keystrokes at 350 ms)
- * - Infinite scroll via requestNextLibraryPage(), suspended while a
- *   search is active
- * - Card click opens ClipDetailSheet for full metadata
- *
- * @version 1.0.0
- */
-
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
@@ -68,8 +54,6 @@ Item {
                 font: Theme.fontBody
                 text: root.query
 
-                // Bridge debounces 350 ms before hitting feed/v3; an empty
-                // string resets back to the unfiltered first page.
                 onTextChanged: {
                     root.query = text
                     SunoBridge.searchLibrary(text)
@@ -118,7 +102,7 @@ Item {
 
         Rectangle {
             Layout.fillWidth: true
-            height: 1
+            Layout.preferredHeight: 1
             color: Theme.border
         }
 
@@ -160,13 +144,9 @@ Item {
                     }
                 }
 
-                // Infinite scroll — suspended during active search so results
-                // stay scoped to the query's pages.
                 onAtYEndChanged: {
-                    if (atYEnd && SunoBridge.hasMorePages && !SunoBridge.loading
-                            && root.query === "") {
+                    if (atYEnd && SunoBridge.hasMorePages && !SunoBridge.loading)
                         SunoBridge.requestNextLibraryPage()
-                    }
                 }
 
                 // Viewport-fill guard: if the grid is not scrollable (20
@@ -176,8 +156,7 @@ Item {
                 onHeightChanged: tryFillViewport()
                 function tryFillViewport() {
                     if (clipGrid.count > 0 && !SunoBridge.loading && SunoBridge.hasMorePages
-                            && root.query === "" && clipGrid.contentHeight <= clipGrid.height) {
-                        // Defer one frame so hasMorePages/loading settle
+                            && clipGrid.contentHeight <= clipGrid.height) {
                         Qt.callLater(function() {
                             if (!SunoBridge.loading && SunoBridge.hasMorePages)
                                 SunoBridge.requestNextLibraryPage()
@@ -273,11 +252,20 @@ Item {
                 anchors.rightMargin: Theme.spacingLarge
 
                 Text {
-                    text: SunoBridge.loading ? "Loading…" :
-                          (SunoBridge.hasMorePages ? "Scroll for more · page " + SunoBridge.currentPage
-                                                   : "End of library")
-                    color: Theme.textDisabled
+                    text: {
+                        if (SunoBridge.errorMessage.length > 0) return SunoBridge.errorMessage
+                        if (SunoBridge.downloadStatus.length > 0) return SunoBridge.downloadStatus
+                        if (SunoBridge.statusMessage.length > 0) return SunoBridge.statusMessage
+                        if (SunoBridge.loading) return "Loading…"
+                        return SunoBridge.hasMorePages
+                                ? "Scroll for more · page " + SunoBridge.currentPage
+                                : "End of library"
+                    }
+                    color: SunoBridge.errorMessage.length > 0
+                           ? Theme.error : Theme.textDisabled
                     font: Theme.fontCaption
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: parent.width - Theme.spacingLarge * 2 - 40
                 }
 
                 Item { Layout.fillWidth: true }

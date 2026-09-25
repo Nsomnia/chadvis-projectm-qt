@@ -12,7 +12,7 @@ Rectangle {
     required property bool cancelAvailable
     required property bool signingOut
 
-    readonly property bool authenticated: loginState === "authenticated"
+    readonly property bool authenticated: SunoBridge.isAuthenticated
     readonly property bool browserOpen: loginState === "browserOpen"
     readonly property bool callbackReceived: loginState === "callbackReceived"
 
@@ -222,4 +222,19 @@ Rectangle {
             Item { Layout.fillHeight: true }
         }
     }
+
+    Timer {
+        id: credentialReloadDebounce
+        interval: 500
+        onTriggered: SunoBridge.refreshAccount()
+    }
+
+    Connections {
+        target: SettingsBridge
+        function onSunoTokenChanged() {
+            credentialReloadDebounce.restart()
+        }
+    }
+
+    Component.onCompleted: SunoBridge.refreshAccount()
 }

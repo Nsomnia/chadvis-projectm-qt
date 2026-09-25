@@ -1,11 +1,14 @@
 #include <QtTest>
+#include "suno/auth/AuthHeaders.hpp"
 #include "suno/auth/ClerkAuthClient.hpp"
 #include "suno/auth/JwtUtils.hpp"
 
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkRequest>
 #include <QTimeZone>
+#include <QUrl>
 
 using namespace vc::suno::auth;
 
@@ -17,6 +20,15 @@ class ClerkAuthClientTestAccess {
 public:
     static void processEnvelope(ClerkAuthClient& client, const QByteArray& body) {
         client.handleEnvelopeBody(body, ClerkAuthClient::CallContext{});
+    }
+
+    static void processTokenFallback(ClerkAuthClient& client, const QByteArray& body) {
+        client.handleTokenFallbackBody(body);
+    }
+
+    static QNetworkRequest makeRequest(const QUrl& url, const Credentials& credentials,
+                                       bool isPost) {
+        return ClerkAuthClient::makeRequest(url, credentials, isPost);
     }
 
     static QString lastSessionId(const ClerkAuthClient& client) {
@@ -95,6 +107,25 @@ ParseOutcome parseBody(const QByteArray& body) {
     return outcome;
 }
 
+ParseOutcome parseTokenFallbackBody(const QByteArray& body) {
+    ClerkAuthClient client;
+    ParseOutcome outcome;
+    QObject::connect(&client, &ClerkAuthClient::bearerReady, &client,
+                     [&outcome](const BearerToken& bearer) {
+                         ++outcome.bearerCount;
+                         outcome.bearer = bearer;
+                     });
+    QObject::connect(&client, &ClerkAuthClient::authFailed, &client,
+                     [&outcome](const QString& reason) {
+                         ++outcome.failureCount;
+                         outcome.error = reason;
+                     });
+
+    ClerkAuthClientTestAccess::processTokenFallback(client, body);
+    outcome.failureKind = client.failureKind();
+    return outcome;
+}
+
 void verifySuccess(const ParseOutcome& outcome, const QString& marker, qint64 expiry) {
     QCOMPARE(outcome.bearerCount, 1);
     QCOMPARE(outcome.failureCount, 0);
@@ -161,6 +192,67 @@ private slots:
         const ParseOutcome outcome = parseBody(body);
         verifySuccess(outcome, QStringLiteral("touch-client-only"), expiry);
         QCOMPARE(outcome.sessionId, QStringLiteral("sess_client"));
+    }
+
+    void tokenFallbackTopLevelJwtParses() {
+        const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
+        const QString jwt = fakeJwt(QStringLiteral("token-fallback"), expiry);
+        const ParseOutcome outcome = parseTokenFallbackBody(jsonBody({{"jwt", jwt}}));
+
+        verifySuccess(outcome, QStringLiteral("token-fallback"), expiry);
+    }
+
+    void tokenFallbackRejectsNonCapturedShapes_data() {
+        QTest::addColumn<QByteArray>("body");
+        QTest::newRow("empty") << QByteArray();
+        QTest::newRow("malformed") << QByteArray(R"({"jwt":)");
+        QTest::newRow("array") << QByteArray(R"([{"jwt":"value"}])");
+        QTest::newRow("nested") << QByteArray(R"({"response":{"jwt":"value"}})");
+        QTest::newRow("non-string") << QByteArray(R"({"jwt":42})");
+    }
+
+    void tokenFallbackRejectsNonCapturedShapes() {
+        QFETCH(QByteArray, body);
+        const ParseOutcome outcome = parseTokenFallbackBody(body);
+        QCOMPARE(outcome.bearerCount, 0);
+        QCOMPARE(outcome.failureCount, 1);
+        QCOMPARE(outcome.failureKind, AuthFailureKind::ProtocolMismatch);
+        QCOMPARE(outcome.error,
+                 QStringLiteral("Clerk token fallback returned an unexpected response shape"));
+    }
+
+    void authRequestNormalizesCookieAndUsesCapturedHeaders() {
+        const QUrl url(QStringLiteral("https://auth.suno.com/v1/client"));
+        const Credentials credentials{
+                QStringLiteral("  cOoKiE:  __client=OPAQUE==; __session=Keep-Case  "),
+        };
+        const QNetworkRequest get =
+                ClerkAuthClientTestAccess::makeRequest(url, credentials, false);
+        const QNetworkRequest post =
+                ClerkAuthClientTestAccess::makeRequest(url, credentials, true);
+
+        const QByteArray expectedCookie("__client=OPAQUE==; __session=Keep-Case");
+        QCOMPARE(get.rawHeader("Cookie"), expectedCookie);
+        QCOMPARE(post.rawHeader("Cookie"), expectedCookie);
+        QVERIFY(!get.rawHeader("Cookie").contains("Cookie:"));
+        QCOMPARE(get.rawHeader("Accept"), QByteArray("*/*"));
+        QCOMPARE(post.rawHeader("Accept"), QByteArray("*/*"));
+        QVERIFY(get.rawHeader("Content-Type").isEmpty());
+        QCOMPARE(post.rawHeader("Content-Type"),
+                 QByteArray("application/x-www-form-urlencoded"));
+        QCOMPARE(get.rawHeader("User-Agent"), QByteArray(kBrowserUserAgent));
+        QVERIFY(get.attribute(QNetworkRequest::RedirectPolicyAttribute)
+                        .value<QNetworkRequest::RedirectPolicy>() ==
+                QNetworkRequest::ManualRedirectPolicy);
+    }
+
+    void emptyCredentialFailsBeforeNetworkRequest() {
+        ClerkAuthClient client;
+        QSignalSpy failures(&client, &ClerkAuthClient::authFailed);
+        client.fetchBearer(Credentials{});
+
+        QCOMPARE(failures.size(), 1);
+        QCOMPARE(client.failureKind(), AuthFailureKind::NoActiveSession);
     }
 
     void tokenLocationsUseDocumentedPrecedence() {

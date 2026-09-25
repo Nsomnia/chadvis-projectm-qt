@@ -1,17 +1,3 @@
-/**
- * @file ClipDetailSheet.qml
- * @brief Modal detail sheet for a Suno clip
- *
- * Rich browsing surface: large art, title/model/status/dates, prompt,
- * style tags and lyrics preview. Actions are honest about P2 scope:
- * remote streaming lands with playback parity, so "Open in browser"
- * delegates the audio URL to the OS until PlaylistBridge grows addUrl().
- *
- * Usage: set clipId(clip), call open(). Closes on Escape / outside click.
- *
- * @version 1.0.0
- */
-
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
@@ -21,6 +7,27 @@ Popup {
     id: root
 
     property var clipData: null
+
+    function formatDuration(raw) {
+        if (raw === undefined || raw === null || raw === "")
+            return "0:00"
+
+        const parts = String(raw).split(":")
+        let seconds = 0
+        if (parts.length === 2)
+            seconds = Number(parts[0]) * 60 + Number(parts[1])
+        else if (parts.length >= 3)
+            seconds = Number(parts[parts.length - 3]) * 3600
+                    + Number(parts[parts.length - 2]) * 60
+                    + Number(parts[parts.length - 1])
+        else
+            seconds = Number(raw)
+
+        if (!Number.isFinite(seconds) || seconds < 0)
+            return "0:00"
+        const whole = Math.floor(seconds)
+        return Math.floor(whole / 60) + ":" + (whole % 60 < 10 ? "0" : "") + (whole % 60)
+    }
 
     width: Math.min(560, parent ? parent.width - Theme.spacingXL * 2 : 560)
     height: Math.min(620, parent ? parent.height - Theme.spacingXL * 2 : 620)
@@ -108,11 +115,7 @@ Popup {
                     }
 
                     Text {
-                        text: {
-                            if (!root.clipData) return ""
-                            const s = parseInt(root.clipData.duration) || 0
-                            return Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60)
-                        }
+                        text: root.clipData ? root.formatDuration(root.clipData.duration) : ""
                         color: Theme.textSecondary
                         font: Theme.fontCaption
                     }
@@ -245,7 +248,7 @@ Popup {
         // ── Actions ─────────────────────────────────
         Rectangle {
             Layout.fillWidth: true
-            height: 1
+            Layout.preferredHeight: 1
             color: Theme.border
         }
 
@@ -255,18 +258,25 @@ Popup {
             spacing: Theme.spacingSmall
 
             Text {
-                text: "Streaming lands with playback parity (P2)"
-                color: Theme.textDisabled
+                text: SunoBridge.errorMessage.length > 0
+                      ? SunoBridge.errorMessage
+                      : (SunoBridge.downloadStatus.length > 0
+                         ? SunoBridge.downloadStatus
+                         : "ChadVis selects captured clip media and plays it through the local audio engine.")
+                visible: text.length > 0
+                color: SunoBridge.errorMessage.length > 0
+                       ? Theme.error : Theme.textDisabled
                 font: Theme.fontCaption
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
 
             AppButton {
-                text: "Open in Browser"
-                icon: "qrc:/qt/qml/ChadVis/resources/icons/expand.svg"
-                enabled: !!root.clipData && !!root.clipData.audio_url
-                onClicked: Qt.openUrlExternally(root.clipData.audio_url)
+                text: "Download & Play"
+                enabled: !!root.clipData
+                         && root.clipData.status === "complete"
+                         && root.clipData.has_media !== false
+                onClicked: SunoBridge.playClip(root.clipData.id)
             }
         }
     }

@@ -8,230 +8,189 @@ ColumnLayout {
     id: root
     spacing: Theme.spacingMedium
 
-    // ═══════════════════════════════════════════════════════════
-    // NAVIGATION TABS (B-SIDE TOGGLE)
-    // ═══════════════════════════════════════════════════════════
+    Text {
+        text: "Create Magic"
+        color: Theme.accent
+        font: Theme.fontSubtitle
+    }
+
+    AppTextField {
+        id: promptInput
+        Layout.fillWidth: true
+        placeholderText: "Describe your vibe..."
+    }
+
     RowLayout {
         Layout.fillWidth: true
-        spacing: 0
-        
-        AppButton {
-            text: "Create"
+
+        AppTextField {
+            id: styleInput
             Layout.fillWidth: true
-            highlighted: modeStack.currentIndex === 0
-            onClicked: modeStack.currentIndex = 0
+            placeholderText: "Style/Tags..."
         }
-        AppButton {
-            text: "B-Side Chat"
-            Layout.fillWidth: true
-            highlighted: modeStack.currentIndex === 1
-            onClicked: modeStack.currentIndex = 1
+
+        AppComboBox {
+            id: modelSelector
+            Layout.preferredWidth: 190
+            model: SunoBridge.models
+            textRole: "name"
+            valueRole: "external_key"
+            enabled: SunoBridge.isAuthenticated && count > 0
         }
     }
 
-    StackLayout {
-        id: modeStack
+    Text {
+        Layout.fillWidth: true
+        visible: SunoBridge.models.length === 0
+        text: SunoBridge.isAuthenticated
+              ? "Loading available models from your Suno session…"
+              : "Sign in with a bearer token or session cookie to load available models."
+        color: Theme.textSecondary
+        font: Theme.fontCaption
+        wrapMode: Text.WordWrap
+    }
+
+    Text {
+        Layout.fillWidth: true
+        visible: SunoBridge.generationStatus.length > 0
+        text: SunoBridge.generationStatus
+        color: Theme.warning
+        font: Theme.fontCaption
+        wrapMode: Text.WordWrap
+    }
+
+    AppButton {
+        Layout.fillWidth: true
+        text: SunoBridge.generationAvailable ? "Generate Song" : "Generation unavailable"
+        enabled: SunoBridge.generationAvailable
+                 && SunoBridge.isAuthenticated
+                 && SunoBridge.models.length > 0
+                 && promptInput.text.trim().length > 0
+        onClicked: SunoBridge.generate(
+                      promptInput.text,
+                      styleInput.text,
+                      false,
+                      modelSelector.currentValue)
+        ToolTip.visible: hovered
+        ToolTip.text: SunoBridge.generationStatus
+        ToolTip.delay: 300
+    }
+
+    Text {
+        Layout.fillWidth: true
+        visible: SunoBridge.errorMessage.length > 0
+        text: SunoBridge.errorMessage
+        color: Theme.error
+        font: Theme.fontCaption
+        wrapMode: Text.WordWrap
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.topMargin: Theme.spacingMedium
+
+        Text {
+            text: "Your Library"
+            color: Theme.accent
+            font: Theme.fontSubtitle
+            Layout.fillWidth: true
+        }
+
+        AppTextField {
+            id: searchBar
+            placeholderText: "Search library..."
+            Layout.preferredWidth: 170
+            font: Theme.fontCaption
+            color: Theme.textPrimary
+            text: SunoBridge.filterText
+            onTextChanged: {
+                if (text !== SunoBridge.filterText)
+                    SunoBridge.searchLibrary(text)
+            }
+        }
+    }
+
+    ListView {
+        id: libraryList
         Layout.fillWidth: true
         Layout.fillHeight: true
-        currentIndex: 0
+        clip: true
+        model: SunoBridge.clips
 
-        // ═══════════════════════════════════════════════════════════
-        // TAB 1: GENERATION & LIBRARY
-        // ═══════════════════════════════════════════════════════════
-        ColumnLayout {
-            spacing: Theme.spacingMedium
-            
-            Text {
-                text: "Create Magic"
-                color: Theme.accent
-                font: Theme.fontSubtitle
-            }
+        delegate: ItemDelegate {
+            Layout.fillWidth: true
+            height: 60
 
-            AppTextField {
-                id: promptInput
-                Layout.fillWidth: true
-                placeholderText: "Describe your vibe..."
-            }
+            contentItem: RowLayout {
+                spacing: Theme.spacingMedium
 
-            RowLayout {
-                Layout.fillWidth: true
-                AppTextField {
-                    id: styleInput
-                    Layout.fillWidth: true
-                    placeholderText: "Style/Tags..."
-                }
+                Rectangle {
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    radius: Theme.radiusSmall
+                    color: Theme.surfaceRaised
 
-                // NOTE: kept as a plain ComboBox — unlike the settings/recording
-                // combos, this one has no themed contentItem override in the
-                // original design, so AppComboBox would alter its visuals.
-                ComboBox {
-                    id: modelSelector
-                    model: ["v4 (Advanced)", "v3.5 (Classic)", "v3.0 (Legacy)"]
-                    background: Rectangle { color: Theme.surfaceRaised; radius: Theme.radiusSmall; border.color: Theme.border }
-                }
-            }
-
-            AppButton {
-                text: "Generate Song"
-                Layout.fillWidth: true
-                onClicked: {
-                    SunoBridge.generate(promptInput.text, styleInput.text, false, modelSelector.currentText)
-                    promptInput.text = ""
-                    console.log("SunoBridge: Generating with model: " + modelSelector.currentText)
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.topMargin: Theme.spacingMedium
-                
-                Text {
-                    text: "Your Library"
-                    color: Theme.accent
-                    font: Theme.fontSubtitle
-                    Layout.fillWidth: true
-                }
-
-                AppTextField {
-                    id: searchBar
-                    placeholderText: "Search library..."
-                    Layout.preferredWidth: 150
-                    font: Theme.fontCaption
-                    color: Theme.textPrimary
-                    onTextChanged: SunoBridge.filterText = text
-                }
-            }
-
-            ListView {
-                id: libraryList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: SunoBridge.clips
-                
-                delegate: ItemDelegate {
-                    width: libraryList.width
-                    height: 60
-                    
-                    contentItem: RowLayout {
-                        spacing: Theme.spacingMedium
-                        
-                        Rectangle {
-                            width: 48; height: 48
-                            radius: Theme.radiusSmall
-                            color: Theme.surfaceRaised
-                            Image {
-                                anchors.fill: parent
-                                source: modelData.image_url || ""
-                                sourceSize: Qt.size(48, 48)
-                                fillMode: Image.PreserveAspectCrop
-                            }
-                        }
-                        
-                        Column {
-                            Layout.fillWidth: true
-                            Text { text: modelData.title || "Untitled"; color: Theme.textPrimary; font: Theme.fontBody }
-                            Text {
-                                text: [modelData.model_name, modelData.duration].filter(Boolean).join(" · ")
-                                color: Theme.textSecondary
-                                font: Theme.fontCaption
-                                visible: text.length > 0
-                            }
-                            Text { text: modelData.metadata.tags || ""; color: Theme.textSecondary; font: Theme.fontCaption }
-                        }
-
-                        Text {
-                            text: modelData.status === "complete" ? "Ready" : "Creating..."
-                            color: modelData.status === "complete" ? Theme.accent : Theme.textSecondary
-                            font: Theme.fontCaption
-                        }
+                    Image {
+                        anchors.fill: parent
+                        source: modelData.image_url || ""
+                        sourceSize: Qt.size(48, 48)
+                        fillMode: Image.PreserveAspectCrop
                     }
                 }
 
-  onAtYEndChanged: {
-    if (atYEnd && SunoBridge.hasMorePages && !SunoBridge.loading && searchBar.text === "") {
-      SunoBridge.requestNextLibraryPage()
-    }
-  }
+                Column {
+                    Layout.fillWidth: true
 
-  footer: Item {
-    width: libraryList.width
-    height: SunoBridge.loading ? 36 : 0
-    visible: SunoBridge.loading
+                    Text {
+                        width: parent.width
+                        text: modelData.title || "Untitled"
+                        color: Theme.textPrimary
+                        font: Theme.fontBody
+                        elide: Text.ElideRight
+                    }
 
-    RowLayout {
-      anchors.horizontalCenter: parent.horizontalCenter
-      anchors.verticalCenter: parent.verticalCenter
-      BusyIndicator { running: SunoBridge.loading; Layout.preferredHeight: 20; Layout.preferredWidth: 20 }
-      Text { text: "Loading more..."; color: Theme.textSecondary; font: Theme.fontCaption }
-    }
-  }
-  }
+                    Text {
+                        width: parent.width
+                        text: [modelData.model_name, modelData.duration].filter(Boolean).join(" · ")
+                        color: Theme.textSecondary
+                        font: Theme.fontCaption
+                        elide: Text.ElideRight
+                        visible: text.length > 0
+                    }
+                }
+
+                Text {
+                    text: modelData.status === "complete" ? "Ready" : "Creating…"
+                    color: modelData.status === "complete" ? Theme.accent : Theme.textSecondary
+                    font: Theme.fontCaption
+                }
+            }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        // TAB 2: B-SIDE CHAD ORCHESTRATOR
-        // ═══════════════════════════════════════════════════════════
-        ColumnLayout {
-            spacing: Theme.spacingSmall
+        onAtYEndChanged: {
+            if (atYEnd && SunoBridge.hasMorePages && !SunoBridge.loading)
+                SunoBridge.requestNextLibraryPage()
+        }
 
-            Text {
-                text: "B-Side Orchestrator (Experimental)"
-                color: Theme.accent
-                font: Theme.fontSubtitle
-            }
-
-            ListView {
-                id: chatList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: SunoBridge.chatHistory
-                spacing: Theme.spacingSmall
-                
-                delegate: ColumnLayout {
-                    width: chatList.width
-                    spacing: 2
-                    
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: chatText.implicitHeight + 16
-                        color: modelData.role === "user" ? Theme.surfaceRaised : Theme.surface
-                        radius: Theme.radiusSmall
-                        border.color: modelData.role === "user" ? Theme.accent : "transparent"
-                        opacity: modelData.role === "user" ? 1.0 : 0.8
-
-                        Text {
-                            id: chatText
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            text: modelData.content
-                            color: Theme.textPrimary
-                            wrapMode: Text.WordWrap
-                            font: Theme.fontBody
-                        }
-                    }
-                }
-            }
+        footer: Item {
+            width: libraryList.width
+            height: SunoBridge.loading ? 36 : 0
+            visible: SunoBridge.loading
 
             RowLayout {
-                Layout.fillWidth: true
-                AppTextField {
-                    id: chatInput
-                    Layout.fillWidth: true
-                    placeholderText: "Command the orchestrator..."
-                    onAccepted: sendBtn.clicked()
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+
+                BusyIndicator {
+                    running: SunoBridge.loading
+                    Layout.preferredWidth: 20
+                    Layout.preferredHeight: 20
                 }
-                
-                AppButton {
-                    id: sendBtn
-                    text: "Send"
-                    onClicked: {
-                        if (chatInput.text.trim() !== "") {
-                            SunoBridge.sendChatMessage(chatInput.text)
-                            chatInput.text = ""
-                        }
-                    }
+
+                Text {
+                    text: "Loading more…"
+                    color: Theme.textSecondary
+                    font: Theme.fontCaption
                 }
             }
         }

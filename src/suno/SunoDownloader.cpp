@@ -2,7 +2,6 @@
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "suno/ClipResolver.hpp"
-#include "suno/SunoEndpoints.hpp"
 #include "suno/SunoLyrics.hpp"
 #include "util/FileUtils.hpp"
 
@@ -25,22 +24,17 @@
 
 namespace vc::suno {
 
-SunoDownloader::SunoDownloader(SunoClient* client,
+SunoDownloader::SunoDownloader(SunoClient*,
                                SunoDatabase& db,
                                AudioEngine* audioEngine,
                                QNetworkAccessManager* networkManager,
                                QObject* parent)
     : QObject(parent),
-      client_(client),
       db_(db),
+      audioEngine_(audioEngine),
       // The queue adopts the controller-provided manager; this is the one
       // QNetworkAccessManager for clip downloads (no ad-hoc managers here).
       queue_(std::make_unique<DownloadQueue>(networkManager, this)) {
-
-    client_->wavConversionReady.connect(
-        [this](const auto& id, const auto& url) {
-            onWavConversionReady(id, url);
-        });
 
     connect(queue_.get(), &DownloadQueue::itemStateChanged, this,
             [this](const QString& clipId, int state, int progressPercent) {
@@ -70,42 +64,85 @@ std::string SunoDownloader::safeStem(std::string_view title, const std::string& 
   return safe.empty() ? clipId : safe;
 }
 
+namespace {
+
+bool isUsableCapturedUrl(const std::string& value) {
+    if (value.empty()) return false;
+
+    const QString text = QString::fromStdString(value);
+    if (text.contains(QStringLiteral("/api/forbidden"), Qt::CaseInsensitive)) {
+        return false;
+    }
+
+    const QUrl url(text);
+    if (!url.isValid() || url.isRelative()) return false;
+
+    const QString scheme = url.scheme().toLower();
+    if (scheme != QStringLiteral("http") && scheme != QStringLiteral("https")) {
+        return false;
+    }
+    if (url.host().isEmpty()) return false;
+
+    const QString host = url.host().toLower();
+    const bool capturedHost = host == QStringLiteral("cdn1.suno.ai") ||
+                              host == QStringLiteral("cdn2.suno.ai") ||
+                              host == QStringLiteral("audiopipe.suno.ai") ||
+                              host == QStringLiteral("d2lwuy8qc234o3.cloudfront.net");
+    if (!capturedHost) return false;
+
+    return !url.path().contains(QStringLiteral("api/forbidden"),
+                                Qt::CaseInsensitive);
+}
+
+}
+
+std::optional<std::string>
+SunoDownloader::selectDownloadUrl(const SunoClip& clip,
+                                  const vc::SunoDownloadFormat format) {
+    if (format != vc::SunoDownloadFormat::MP3 || clip.status != "complete") {
+        return std::nullopt;
+    }
+
+    for (const auto& media : clip.media_urls) {
+        if (media.content_type == "mp3" && isUsableCapturedUrl(media.url)) {
+            return media.url;
+        }
+    }
+
+    if (isUsableCapturedUrl(clip.audio_url)) return clip.audio_url;
+    return std::nullopt;
+}
+
 void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
     if (clip.id.empty()) return;
 
-    std::string extension = ".mp3";
-    bool useWav = (CONFIG.suno().downloadFormat == vc::SunoDownloadFormat::WAV);
-    if (useWav) extension = ".wav";
-
-    if (clip.audio_url.empty()) {
-        SunoClip resolvedClip = clip;
-        resolvedClip.audio_url =
-            std::string(vc::suno::endpoints::CDN_BASE) + "/" + clip.id + ".mp3";
-        if (useWav) {
-            client_->initiateWavConversion(clip.id);
-        } else {
-            enqueueAudio(resolvedClip, resolvedClip.audio_url, extension);
-        }
+    const auto format = CONFIG.suno().downloadFormat;
+    if (format == vc::SunoDownloadFormat::WAV) {
+        LOG_WARN("SunoDownloader: WAV download rejected for clip {}: conversion route is LEAD-only",
+                 clip.id);
         return;
     }
 
-  std::string safeTitle = safeStem(clip.title, clip.id);
+    const auto selectedUrl = selectDownloadUrl(clip, format);
+    if (!selectedUrl) {
+        LOG_WARN("SunoDownloader: no usable captured MP3 URL for clip {} (status {})",
+                 clip.id, clip.status);
+        return;
+    }
 
-  fs::path downloadDir = getDownloadDir();
-
-  fs::path targetPath = downloadDir / (safeTitle + extension);
+    const std::string safeTitle = safeStem(clip.title, clip.id);
+    const fs::path targetPath =
+        getDownloadDir() / (safeTitle + ".mp3");
 
     if (fs::exists(targetPath)) {
         audioEngine_->playlist().addFile(targetPath);
         audioEngine_->playlist().jumpTo(audioEngine_->playlist().size() - 1);
+        emit downloadStateChanged(QString::fromStdString(clip.id),
+                                  static_cast<int>(DownloadState::Completed), 100);
         return;
     }
 
-    if (useWav) {
-        client_->initiateWavConversion(clip.id);
-    } else {
-        enqueueAudio(clip, clip.audio_url, extension);
-    }
+    enqueueAudio(clip, *selectedUrl, ".mp3");
 }
 
 /// Route one transfer through the shared DownloadQueue; tagging/sidecars run
@@ -201,20 +238,6 @@ void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
 void SunoDownloader::processDownloadedFile(const SunoClip& clip, const fs::path& path) {
     audioEngine_->playlist().addFile(path);
     audioEngine_->playlist().jumpTo(audioEngine_->playlist().size() - 1);
-}
-
-void SunoDownloader::onWavConversionReady(const std::string& clipId, const std::string& wavUrl) {
-    // Resolve the clip up front so the completion hook has full metadata.
-    auto clipOpt = resolveClip({}, db_, clipId);
-    if (clipOpt) {
-        enqueueAudio(*clipOpt, wavUrl, ".wav");
-        return;
-    }
-
-    SunoClip stub;
-    stub.id = clipId;
-    stub.title = clipId;
-    enqueueAudio(stub, wavUrl, ".wav");
 }
 
 void SunoDownloader::saveLyricsSidecar(const std::string& clipId, const std::string& json, const QJsonDocument& doc, const std::vector<SunoClip>& clips) {

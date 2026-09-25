@@ -75,6 +75,12 @@ set(SUNO_SOURCES
     src/suno/SunoAccountManager.cpp
     src/suno/SunoClient.hpp
     src/suno/SunoClient.cpp
+    src/suno/SunoAudioUploadService.hpp
+    src/suno/SunoAudioUploadService.cpp
+    src/suno/SunoExploreService.hpp
+    src/suno/SunoExploreService.cpp
+    src/suno/SunoNotificationService.hpp
+    src/suno/SunoNotificationService.cpp
     src/suno/SunoOrchestrator.hpp
     src/suno/SunoOrchestrator.cpp
     src/suno/SunoDatabase.hpp
@@ -202,6 +208,8 @@ set(QML_SOURCES
     src/qml/components/ClipDetailSheet.qml
     src/qml/components/ComingSoonPage.qml
     src/qml/views/LibraryView.qml
+    src/qml/views/DiscoverView.qml
+    src/qml/views/NotificationsView.qml
     src/qml/views/ListenView.qml
     src/qml/views/SettingsView.qml
     src/qml/panels/settings/PerformanceSettings.qml

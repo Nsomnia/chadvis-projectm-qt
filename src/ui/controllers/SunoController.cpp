@@ -96,12 +96,14 @@ SunoController::SunoController(AudioEngine* audioEngine,
 			}
 			break;
 		case auth::AuthState::NeedsReauth:
-			// The concrete, secret-free reason is forwarded from the
-			// errorOccurred path below.  NeedsReauth alone is not proof
-			// that the session expired: parser/protocol failures use the
-			// same state.
+			if (accountManager_) {
+				accountManager_->clearSnapshots();
+			}
 			break;
 		case auth::AuthState::Disconnected:
+			if (accountManager_) {
+				accountManager_->clearSnapshots();
+			}
 			break;
 		}
 	});
@@ -189,6 +191,7 @@ SunoController::SunoController(AudioEngine* audioEngine,
     
     // Initial Library Refresh if authenticated
     if (client_->isAuthenticated()) {
+        accountManager_->refreshAll();
         QTimer::singleShot(2000, this, [this]() {
             refreshLibrary(1);
         });
@@ -233,6 +236,24 @@ void SunoController::downloadAndPlay(const SunoClip& clip) {
     downloader_->downloadAndPlay(clip);
 }
 
+bool SunoController::playClipById(const std::string& clipId) {
+    if (clipId.empty()) {
+        return false;
+    }
+
+    auto clip = resolveClip(libraryManager_->accumulatedClips(), db_, clipId);
+    if (!clip) {
+        return false;
+    }
+
+    if (!SunoDownloader::selectDownloadUrl(*clip, CONFIG.suno().downloadFormat)) {
+        return false;
+    }
+
+    downloader_->downloadAndPlay(*clip);
+    return true;
+}
+
 Result<AlignedLyrics> SunoController::getLyrics(const std::string& clipId) {
     // Check DB
     auto jsonRes = db_.getAlignedLyrics(clipId);
@@ -275,6 +296,10 @@ void SunoController::requestAuthentication() {
     // No system-browser flow anymore: surface the requirement to QML, which
     // points users at the settings panel to paste fresh credentials.
     emit authenticationRequired();
+}
+
+void SunoController::refreshAccount() {
+    client_->reloadStoredCredentials();
 }
 
 void SunoController::sendChatMessage(const QString& message, const QString& workspaceId) {

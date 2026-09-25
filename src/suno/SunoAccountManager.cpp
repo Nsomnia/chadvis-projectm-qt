@@ -3,6 +3,9 @@
 #include "ClipParser.hpp"
 #include "core/Logger.hpp"
 
+#include <QtGlobal>
+#include <cmath>
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -11,6 +14,17 @@
 namespace vc::suno {
 
 namespace {
+
+QString stringOrNumber(const QJsonObject& object, const QString& key) {
+    const QJsonValue value = object.value(key);
+    if (value.isString()) return value.toString();
+    if (!value.isDouble()) return {};
+    const double number = value.toDouble();
+    if (std::floor(number) == number) {
+        return QString::number(static_cast<qint64>(number));
+    }
+    return QString::number(number, 'g', 15);
+}
 
 /// Tolerant string-list read for capabilities/features/badges arrays.
 std::vector<std::string> optStringList(const QJsonObject& obj, const QString& key) {
@@ -30,6 +44,14 @@ std::vector<std::string> optStringList(const QJsonObject& obj, const QString& ke
 std::optional<SunoUserSummary> parseUser(const QJsonObject& root) {
     // Session envelope: { user: {...}, models: [...] } — tolerate nesting.
     QJsonObject userObj = root.value(QStringLiteral("user")).toObject();
+    if (userObj.isEmpty()) {
+        userObj = root.value(QStringLiteral("session")).toObject()
+                          .value(QStringLiteral("user")).toObject();
+    }
+    if (userObj.isEmpty()) {
+        userObj = root.value(QStringLiteral("data")).toObject()
+                          .value(QStringLiteral("user")).toObject();
+    }
     if (userObj.isEmpty() && root.contains(QStringLiteral("id"))) {
         userObj = root; // flat fallback
     }
@@ -53,7 +75,15 @@ std::optional<SunoUserSummary> parseUser(const QJsonObject& root) {
 
 QList<SunoModelInfo> parseModels(const QJsonObject& root) {
     QList<SunoModelInfo> models;
-    const QJsonValue modelsValue = root.value(QStringLiteral("models"));
+    QJsonValue modelsValue = root.value(QStringLiteral("models"));
+    if (!modelsValue.isArray()) {
+        modelsValue = root.value(QStringLiteral("session")).toObject()
+                             .value(QStringLiteral("models"));
+    }
+    if (!modelsValue.isArray()) {
+        modelsValue = root.value(QStringLiteral("data")).toObject()
+                             .value(QStringLiteral("models"));
+    }
     if (!modelsValue.isArray()) {
         return models;
     }
@@ -65,7 +95,7 @@ QList<SunoModelInfo> parseModels(const QJsonObject& root) {
         SunoModelInfo model;
         model.name = P::optString(m, "name").toStdString();
         model.external_key = P::optString(m, "external_key").toStdString();
-        model.major_version = P::optString(m, "major_version").toStdString();
+        model.major_version = stringOrNumber(m, QStringLiteral("major_version")).toStdString();
         model.description = P::optString(m, "description").toStdString();
         model.can_use = P::optBool(m, "can_use", false);
         model.is_default_model = P::optBool(m, "is_default_model", false);
@@ -107,7 +137,7 @@ std::optional<SunoBillingInfo> parseBilling(const QJsonObject& root) {
     const QJsonObject plan = root.value(QStringLiteral("plan")).toObject();
     info.plan.plan_key = P::optString(plan, "plan_key").toStdString();
     info.plan.name = P::optString(plan, "name").toStdString();
-    info.plan.level = P::optString(plan, "level").toStdString();
+    info.plan.level = stringOrNumber(plan, QStringLiteral("level")).toStdString();
     info.plan.monthly_price_usd = P::optDouble(plan, "monthly_price_usd", 0.0);
 
     const QJsonValue packs = root.value(QStringLiteral("credit_packs"));
@@ -124,6 +154,11 @@ SunoAccountManager::SunoAccountManager(SunoClient* client, QObject* parent)
 SunoAccountManager::~SunoAccountManager() = default;
 
 void SunoAccountManager::refreshAll() {
+    if (!client_ || !client_->isAuthenticated()) {
+        clearSnapshots();
+        return;
+    }
+
     client_->enqueueAuthenticatedRequest(
             qstr(vc::suno::endpoints::SESSION), "GET", {},
             [this](QNetworkReply* reply) { handleSessionReply(reply); });
@@ -132,21 +167,45 @@ void SunoAccountManager::refreshAll() {
 }
 
 void SunoAccountManager::refreshBilling() {
+    if (!client_ || !client_->isAuthenticated()) {
+        return;
+    }
+
     client_->enqueueAuthenticatedRequest(
             qstr(vc::suno::endpoints::BILLING_INFO), "GET", {},
             [this](QNetworkReply* reply) { handleBillingReply(reply); });
 }
 
+void SunoAccountManager::clearSnapshots() {
+    const bool hadSnapshot = user_.has_value() || !models_.isEmpty() ||
+                             billing_.has_value();
+    user_.reset();
+    models_.clear();
+    billing_.reset();
+    if (hadSnapshot) {
+        emit accountInfoReady();
+        emit billingInfoReady();
+    }
+}
+
 void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
+    const bool authenticated = client_ && client_->isAuthenticated();
+    const QNetworkReply::NetworkError error = reply->error();
+    const QString errorString = reply->errorString();
+    const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
     reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError) {
+
+    if (!authenticated) {
+        clearSnapshots();
+        return;
+    }
+    if (error != QNetworkReply::NoError) {
         LOG_WARN("SunoAccountManager: session fetch failed: {}",
-                 reply->errorString().toStdString());
-        emit accountError(reply->errorString());
+                 errorString.toStdString());
+        emit accountError(errorString);
         return;
     }
 
-    const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
     auto user = parseUser(root);
     if (!user) {
         LOG_WARN("SunoAccountManager: session envelope had no usable user object");
@@ -161,15 +220,23 @@ void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
 }
 
 void SunoAccountManager::handleBillingReply(QNetworkReply* reply) {
+    const bool authenticated = client_ && client_->isAuthenticated();
+    const QNetworkReply::NetworkError error = reply->error();
+    const QString errorString = reply->errorString();
+    const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
     reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError) {
+
+    if (!authenticated) {
+        return;
+    }
+    if (error != QNetworkReply::NoError) {
         LOG_WARN("SunoAccountManager: billing fetch failed: {}",
-                 reply->errorString().toStdString());
-        emit accountError(reply->errorString());
+                 errorString.toStdString());
+        emit accountError(errorString);
         return;
     }
 
-    auto info = parseBilling(QJsonDocument::fromJson(reply->readAll()).object());
+    auto info = parseBilling(root);
     if (!info) {
         emit accountError(QStringLiteral("billing envelope was empty"));
         return;

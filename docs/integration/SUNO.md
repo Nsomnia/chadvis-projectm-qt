@@ -1,45 +1,102 @@
-# 🤖 Suno AI Integration: The Deep Dive
+# Suno Integration Runbook
 
-ChadVis is arguably the most advanced desktop client for Suno AI. Here's how we bridge the gap between AI generation and real-time visualization.
+This document describes the user-facing integration workflow and its operating
+gates. It is not an API specification. Route, schema, and evidence status belong
+solely in [`../suno_api/ENDPOINT-INVENTORY.md`](../suno_api/ENDPOINT-INVENTORY.md).
 
----
+## Current supported path
 
-## 🔐 Authentication Lore
+1. Open **Settings → Account**.
+2. Supply a credential only through the current Account UI. Credentials are
+   stored through the platform secure store; never paste them into logs, docs,
+   tests, or issue reports.
+3. Wait for the client to validate the session and refresh account/billing state.
+4. Open **Library** and allow cursor pagination to settle. Use **Explore** for the captured explore feed and **Notifications** for the captured notification list.
+5. Play or download only from a playable captured media entry. Do not use a
+   legacy forbidden sentinel or a constructed CDN path.
+6. Use **Create** for the captured `.m4a` upload transport and only for generation
+   request shapes implemented and verified by the current client. A visible form
+   is not proof of a complete generation flow.
+7. Use **Video** for projectM, karaoke, overlays, presets, and recording. These
+   remain secondary to the Suno client workflow.
 
-Suno uses a complex Clerk-based auth system. We've mastered it so you don't have to.
+## Authentication boundary
 
-1.  **Session Cookies**: We take your `__client` and `__session` cookies.
-2.  **JWT Extraction**: We pull the Bearer token from the session.
-3.  **Persistence**: We store these using secure storage. No more logging in every time you restart the app.
-4.  **Auto-Refresh**: Our `SunoClient` knows how to talk to the Clerk API to refresh tokens when they expire.
+- Manual session establishment is the implemented path.
+- Google sign-in is disabled. No reviewed capture proves that Clerk accepts a
+  loopback or custom-scheme desktop callback; follow
+  [`OAUTH_REDIRECT_ANALYSIS.md`](../suno_api/OAUTH_REDIRECT_ANALYSIS.md).
+- Both captured Clerk session-token routes must be handled defensively. Their
+  fallback order and universal requiredness remain capture-gated.
+- A Google ID token is not a Suno Studio bearer and must never be placed in
+  `SunoClient`.
+- Disconnect must clear client/account state and must not silently discard the
+  stored credential without user-visible state.
 
----
+## Library behavior
 
-## 🗄️ Persistence (SQLite)
+- Feed pagination is cursor-based. Preserve the opaque response cursor and stop
+  when the captured terminal condition is reached.
+- Search is local until a direct request/response capture proves a server-side
+  search field. UI state must not be described as remote search.
+- SQLite is a local cache, not the source of remote truth. Refresh, merge, and
+  error states must make stale or partial data visible.
+- Model names, numeric limits, credits, and entitlements are runtime account
+  data. Parse by JSON field type and do not hardcode historical values.
 
-We don't just stream; we cache.
-- **`SunoDatabase`**: A local SQLite DB that stores all your clip metadata.
-- **Migration System**: We have an auto-migration system that updates your schema without nuking your data.
-- **Synced Lyrics**: We store the word-level aligned JSON in the DB for that perfect karaoke experience.
+## Media and downloads
 
----
+- Prefer the captured media array and its content type/delivery metadata.
+- A non-empty legacy audio field can still be a forbidden sentinel; test for
+  unplayable values before transport.
+- The download queue exists, but range resume, pause/resume, local/remote parity,
+  and playback handoff require end-to-end verification.
+- Never synthesize a media URL from an account, clip, or session identifier.
+- Never log or document complete private media URLs.
 
-## 🎤 Karaoke & Alignment
+## Generation and uploads
 
-1.  **The Good Stuff**: If Suno provides aligned lyrics, we use them.
-2.  **The Heuristic Fallback**: If there's no alignment, our `SunoLyrics::align` algorithm attempts to map the text to the audio duration using frequency analysis and black magic.
-3.  **Rendering**: The `OverlayEngine` takes these timestamps and renders them with sub-pixel precision.
+- Generation requires the captured captcha decision and runtime model catalog.
+  Missing fields must block submission rather than be replaced with guesses.
+- A submitted batch is not complete until a directly observed read surface shows
+  playable output.
+- The captured audio-upload transport is initialize → direct multipart storage
+  upload → finish. Processing, clip initialization, and generation linkage are
+  separate gates.
+- Temporary upload URLs and policy fields are secrets. Use them once, do not log
+  or persist them, and never hard-code the storage host as a substitute for the
+  returned URL.
 
----
+## Lyrics and karaoke
 
-## 🗣️ The Tech Talk
+- Aligned lyrics must flow from the client into the active lyrics/sync pipeline;
+  fetching and caching alone do not make karaoke work.
+- Preserve source lyrics and store edits as versions.
+- Export, search, context, and upcoming-line UI remain unfinished until their
+  bridge methods have real implementations and tests.
+- A `complete` media/video status without a playable URL is not success.
 
-**Senior Dev:** "The sync queue is rate-limited and includes jitter. We're not trying to DDOS Suno. We're being polite Chads. We fetch about 1.8 clips per second."
+## Failure handling
 
-**Richard Stallman:** "Wait, 'Suno' is a proprietary service! You are encouraging people to sacrifice their computational sovereignty for a collection of machine-generated sounds! This integration is a Trojan horse for the cloud-based surveillance state!"
+- Separate authentication, protocol/parser, rate/quota, network, and
+  feature-unsupported failures. Do not label every 401 response “expired.”
+- Do not assign stable meanings to 429/430 or other statuses without a direct
+  capture of headers and redacted body.
+- Clear per-request loading state on every terminal path and keep a queued
+  request from becoming permanently pending.
+- Lead-only or declaration-only routes must fail closed and must never receive
+  a bearer or user cookie.
 
-**Linus (LTT):** "Richard, it's just cool music. And look at the UI! The progress bars are so smooth. I can sync my 3,000 song library in about 20 minutes. That's faster than I can cable manage a PC! **Speaking of cable management... LTT Store dot com!**"
+## Verification checklist
 
----
-
-> "AI music isn't the future. It's the present. And ChadVis is the best way to see it." — *The Senior Dev*
+- Configure and build the current tree; do not rely on stale binaries.
+- Run the correct unit/CTest targets and standalone auth tests.
+- Exercise manual session restore/reauth/disconnect with an authorized account.
+- Verify feed pagination, local search, account/model parsing, media selection,
+  and download resume.
+- Verify generation submission only after its current request contract is
+  implemented and covered by fake-request tests.
+- Confirm the Google action remains disabled with the native-callback gate.
+- Perform a GUI smoke across Library, Explore, Create, Listen, Notifications, Video, and Settings.
+- Update [`../PIVOT_PLAN.md`](../PIVOT_PLAN.md), `TODO.md`, and
+  `CHANGELOG_CURRENT.md` to match observed behavior.

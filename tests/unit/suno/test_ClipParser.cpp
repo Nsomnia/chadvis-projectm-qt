@@ -1,5 +1,6 @@
 #include <QtTest>
 #include "suno/ClipParser.hpp"
+#include "suno/SunoDownloader.hpp"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -65,6 +66,61 @@ private slots:
         QVERIFY(clip.metadata.error_message.empty());
 
         // Unknown fields ignored liberally - no crash is the contract.
+    }
+
+    void mediaUrlSelectionPrefersCapturedMp3() {
+        SunoClip clip;
+        clip.status = "complete";
+        clip.audio_url = "https://studio-api.prod.suno.com/api/forbidden";
+        clip.media_urls = {
+            {"https://audiopipe.suno.ai/stream.m4a", "m4a-opus", "progressive", ""},
+            {"https://audiopipe.suno.ai/stream.mp3?token=a%2Fb", "mp3",
+             "streaming", ""},
+        };
+
+        auto selected = SunoDownloader::selectDownloadUrl(
+            clip, vc::SunoDownloadFormat::MP3);
+        QVERIFY(selected.has_value());
+        QCOMPARE(*selected,
+                 std::string("https://audiopipe.suno.ai/stream.mp3?token=a%2Fb"));
+
+        clip.media_urls = {
+            {"https://studio-api.prod.suno.com/api/forbidden", "mp3", "progressive", ""},
+        };
+        clip.audio_url = "https://audiopipe.suno.ai/legacy.mp3?token=legacy";
+        selected = SunoDownloader::selectDownloadUrl(
+            clip, vc::SunoDownloadFormat::MP3);
+        QVERIFY(selected.has_value());
+        QCOMPARE(*selected, std::string("https://audiopipe.suno.ai/legacy.mp3?token=legacy"));
+    }
+
+    void mediaUrlSelectionFailsClosed() {
+        SunoClip clip;
+        clip.status = "complete";
+        clip.media_urls = {
+            {"https://audiopipe.suno.ai/stream.mp3", "mp3", "streaming", ""},
+        };
+
+        QVERIFY(!SunoDownloader::selectDownloadUrl(
+                     clip, vc::SunoDownloadFormat::WAV)
+                     .has_value());
+
+        clip.status = "processing";
+        QVERIFY(!SunoDownloader::selectDownloadUrl(
+                     clip, vc::SunoDownloadFormat::MP3)
+                     .has_value());
+
+        clip.status = "complete";
+        clip.media_urls.clear();
+        clip.audio_url = "not a URL";
+        QVERIFY(!SunoDownloader::selectDownloadUrl(
+                     clip, vc::SunoDownloadFormat::MP3)
+                     .has_value());
+
+        clip.audio_url = "https://studio-api.prod.suno.com/api/forbidden";
+        QVERIFY(!SunoDownloader::selectDownloadUrl(
+                     clip, vc::SunoDownloadFormat::MP3)
+                     .has_value());
     }
 
     void minimalClipDefaults() {

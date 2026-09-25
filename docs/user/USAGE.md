@@ -1,6 +1,6 @@
 # Using ChadVis
 
-ChadVis is a Suno-first desktop client with a separate projectM video workspace. The main window opens on Library by default and keeps a navigation rail for Library, Create, Listen, Video, and Settings.
+ChadVis is a Suno-first desktop client with a separate projectM video workspace. The main window opens on Library by default and keeps a navigation rail for Library, Explore, Notifications, Create, Listen, Video, and Settings.
 
 ## Main Window
 
@@ -10,15 +10,17 @@ Library is the default landing surface for the Suno collection. It provides:
 
 - A searchable clip grid backed by `SunoBridge`.
 - Refresh and cursor-based loading for additional pages.
-- Clip details with artwork, model, style, prompt, lyrics, and an audio link that can be opened in the system browser.
+- Clip details with artwork, model, style, prompt, lyrics, and a media-backed play/download action. Captured playable media is preferred; forbidden sentinels and guessed CDN URLs are never used.
 
 When no Suno session is available, the empty state directs you to Settings. The refresh control requests the library again after credentials are supplied.
 
+### Explore and Notifications
+
+Explore reads the captured `POST /api/unified/explore` feed and presents its feed labels and clip entries without constructing media URLs. Notifications reads the captured notification envelope, shows the unread badge, and offers the captured mark-all-read operation. Both surfaces fail closed when no authenticated session is available.
+
 ### Create
 
-Create contains the generation form and the `B-Side Chat` tab.
-
-The generation form accepts a prompt, style/tags, and a model choice, then sends the request through `SunoBridge`. The chat tab displays local message history and sends messages through the Suno orchestrator bridge.
+Create contains the runtime model-catalog generation form, the captured `.m4a` upload flow, and the local Create controls. Generation is intentionally disabled until the captured CAPTCHA token request and durable queued/processing/failed contract are implemented. The former B-Side Chat tab is not available because its Modal/Orpheus routes remain `[LEAD]`.
 
 ### Listen
 

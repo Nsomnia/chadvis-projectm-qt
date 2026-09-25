@@ -1,17 +1,20 @@
 # ChadVis — Suno.com Frontend First, projectM Second: AGENTS.md
 
-> **Product pivot ADOPTED 2026-08-26** — this repo is now the shipping **Suno.com desktop frontend** (library, generation, downloads, playlists, account) with **projectM as secondary** visualizer / music-video engine (keyframe scene composition, karaoke, batch automation, future lightweight DAW). See `docs/PIVOT_PLAN.md` phases P0–P7. The authoritative spec corpus lives in `~/Documents/suno-media-station-glm5.2/docs` (charter 00, contracts 06, storage 07, visuals 09/10); do not invent Suno API shapes — capture-driven (T1/T2/T3).
+> **Product pivot ADOPTED 2026-08-26** — this repo is the shipping **Suno.com desktop frontend** (library, generation, downloads, playlists, account) with **projectM as secondary** visualizer / music-video engine (keyframe scene composition, karaoke, batch automation, future lightweight DAW). See `docs/PIVOT_PLAN.md` phases P0–P7. Suno API facts are capture-driven and use only the repository's `[T1]`/`[LEAD]`/`[VERIFY]` labels; do not import API shapes from external rewrite repositories or historical topic prose.
 > Live state tracker: `TODO.md`. Deepwork state: `.slim/deepwork/suno-frontend-pivot.md`.
 
 ## Active sprint (2026-09-24 →): branch `feat/suno-client-shell-refactor`
-- **Scope:** standalone paged Settings window, Suno-first shell re-home (Library / Create / Listen / Video / Settings),
-  projectM+recording delegated to the Video page, native sign-in scaffold.
+- **Scope:** standalone paged Settings window, Suno-first shell re-home (Library / Explore / Notifications / Create / Listen / Video / Settings),
+  projectM+recording delegated to the Video page, native sign-in scaffold, and capture-backed upload/library surfaces.
 - **Binding gates:** native Google sign-in stays DISABLED until a human capture proves Clerk accepts a loopback or
   custom-scheme desktop callback (no capture on this machine uses one — every observed redirect is Suno-owned HTTPS).
   Never enable it, never hand-roll a Clerk handshake, and never put a Google ID token into `SunoClient`.
 - **Authority:** `docs/suno_api/ENDPOINT-INVENTORY.md` is the sole API-spec master;
-  `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` is the web-flow and native-callback analysis.
-  `src/suno/SunoEndpoints.hpp` tiers `[T1]`/`[LEAD]` for every endpoint. Do not promote a `[LEAD]` without a capture.
+  `docs/suno_api/README.md` is the navigation boundary, `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` is the native
+  callback gate, and `docs/suno_api/raw/README.md` is provenance only. `src/suno/SunoEndpoints.hpp` is an implementation
+  mirror, not evidence. Do not implement `[LEAD]`/`[VERIFY]` routes as stable contracts or promote them without a direct capture.
+- **Capture/docs audit:** complete for the external directory labeled `sept-09-2026`; Burp item timestamps are 2026-09-24.
+  The raw XML is not sanitized, stays outside the repository, and is hash-indexed in the raw provenance document.
 - **Sprint state:** `.slim/deepwork/suno-client-shell-sprint.md`. Free model budget was ~6 days at kickoff — prefer
   parallel bounded lanes, decisive commits, no gold-plating.
 
@@ -62,7 +65,7 @@
 
 ### Security & Credentials
 - [x] **SunoPersistentAuth/SystemBrowserAuth credential storage audit** — Tokens now in OS keychain via `CredentialStore` (macOS Security.framework, atomic 0600 file fallback); TOML→keychain migration on first init; secrets never written to TOML/logs (2026-08-26, P1 Lane B).
-- [ ] **CSRF state not validated in SystemBrowserAuth** — OAuth state parameter not verified; open redirect vulnerability.
+- [~] **Native OAuth security remains gated** — the offline scaffold covers state/nonce/PKCE/transaction ownership, but no reviewed capture proves Clerk accepts a loopback or custom-scheme callback. Keep live Google sign-in disabled and finish capture-backed callback/sign-out evidence before integration.
 - [ ] **SQL injection risk in search_db.sh** — User input concatenated into SQL; parameterize queries.
 
 ### Stubs & No-Ops (Functional Dead Code)
@@ -110,16 +113,17 @@
 - [x] **Remove ~20 stale cmake modules** — Already resolved in earlier housekeeping; cmake/ holds only CPM.cmake + FindProjectM4.cmake.
 
 ### Suno Integration
-- [x] **P1: Suno Core Correctness** (see docs/PIVOT_PLAN.md) — DONE 2026-08-26. Lane A [x]: `src/suno/auth/` module (AuthTypes, JwtUtils, CredentialStore keychain, ClerkAuthClient touch-refresh, AuthHeaders). Lane B [x]: SunoClient rewired onto auth module; proactive refresh (expiry −5 min, cap 55); uniform 401→touch→retry-once→needsReauth; studio-api headers via AuthHeaders (Device-Id persisted in config); TOML→keychain migration on first init; SystemBrowserAuth + SunoAuthManager archived. Lane C [x]: canonical ClipParser (full captured clip schema), feed/v3 cursor pagination, SunoAccountManager (session catalog + billing → credits/planName/userName on SunoBridge), DB migration v1→2, Orchestrator null-safety, 33/33 unit tests. Commits a578e1a, 8a2b898, 86ae631.
-- [~] **B-Side feature set** — Orchestrator wired into controller/bridge; endpoint map centralized; feature gates still unused
-- [ ] **Implement Generation Surface** — Full creation suite (prompt, style, seeds) with client-side overrides
-- [~] **B-Side Chat/Orchestrator** — Orchestrator wired, chat flows through bridge; workspace/session persistence still TODO
-- [x] **SunoOrchestrator bypasses request queue** — Orchestrator now routes through `SunoClient::enqueueAuthenticatedRequest` (rate limiter + auth refresh).
-- [ ] **SunoOrchestrator JSON parsing no null checks** — `.value()` calls on potentially missing keys; crash on unexpected API response.
-- [x] **SunoClient pollWavFile not cancellable** — Polling routed through authenticated queue with `cancelPoll()` + cancelled-set (2026-08-26, Lane B).
-- [x] **Inconsistent 401 handling** — Uniform 401→clear-bearer→touch→retry-once→needsReauth in SunoClient; SunoLyricsManager duplicate refresh path deleted (2026-08-26, Lane B).
-- [ ] **Refine Suno Library search/filtering** — Local + remote; local should stay in-sync with remote if within default file structure. Downloading optional.
-- [ ] **API feature parity audit** — Verify all public Suno website abilities available in package, plus b-side/testing/VIP/hidden features. Expand with local logic, advanced sorting, Suno library database.
+- [~] **P1: Suno Core Correctness** — secure credential storage, queued authenticated requests, feed/clip/account parsing, same-host `tokens` fallback, and method-specific Studio headers are implemented. Route preference/fallback order, sign-out, and authorized runtime behavior remain `[VERIFY]`.
+- [x] **2026-09-24 documentation/capture audit** — live Suno authority reduced to index + canonical inventory + OAuth gate + raw provenance; dated source map and SHA-256 hashes added. Only directly observed tokens, notification read, following feed, explore, audio init/finish, direct multipart storage upload, feed filter shape, numeric account/model types, and forbidden-media sentinel were promoted.
+- [~] **Fail closed on unverified routes and hosts** — active Orpheus/Modal, WAV conversion, legacy Clerk-host fallback, constructed-media, and user-reachable lead routes are disabled; declaration-only fetch methods still need retirement or implementation. Never send cookies/bearers to unverified absolute hosts.
+- [ ] **Complete the generation surface** — bind typed model/catalog/limit data and the captured captcha decision to the request; add fake-request contract tests and durable queued/processing/failed UI state. Current generation remains disabled until a supported CAPTCHA token flow exists.
+- [~] **Media/download correctness** — select only playable entries from captured media arrays, reject the `/api/forbidden` sentinel, persist media URLs, remove construct-from-ID fallbacks, and wire playback handoff; range resume/pause/resume remains to verify.
+- [x] **Audio upload lifecycle** — implement only the captured initialize → returned multipart storage URL → finish sequence for `.m4a`. `initialize-clip`, processing status, upload-to-generation linkage, limits/errors, and full validation remain gated.
+- [~] **Library search/filtering** — local filtering is wired and the feed no longer sends unobserved `searchText`; authorized pagination/DB merge validation remains.
+- [x] **Explore and notification surfaces** — read-only Explore and notification list/badge/mark-all-read are wired from direct captures; following-feed pagination remains `[VERIFY]`.
+- [ ] **Wire aligned lyrics into the active sync pipeline** — fetching/caching is not end-to-end karaoke; export/search/context/upcoming methods remain unfinished.
+- [ ] **Header drift capture** — reconcile route-specific Authorization/Browser-Token/Device-Id requirements from a fresh sanitized capture before changing shared header policy.
+- [ ] **Capture-gated feature work** — implement directly observed `[T1]` surfaces only; keep B-Side, VIP, hidden, Orpheus, bundle-only, and method-conflicted routes disabled.
 
 ### Namespace & Type Issues
 - [ ] **Controllers in wrong namespace** — Some use `vc` instead of `vc::ui`; inconsistent with project convention.
@@ -223,7 +227,7 @@
 - [ ] **Missing include guards in .inc files** — CliArgs.inc etc. have no guards; multiple-include risk.
 - [ ] **Inconsistent namespace usage** — Some files `vc::ui`, others `vc`, some top-level; standardize on `vc::ui`.
 - [ ] **README humor over documentation** — More memes than useful info; add proper build/run/contribute sections.
-- [ ] **docs/suno_api/README.md reverse-engineered API** — Legal gray area; add disclaimer about unofficial API usage.
+- [x] **docs/suno_api/README.md reverse-engineered API** — explicit unofficial/support disclaimer, authority boundary, evidence labels, and secret-handling rules added (2026-09-24).
 
 ### C++23 Modernization
 - [ ] **g_app raw pointer → unique_ptr** — Global app pointer should use smart pointer for ownership clarity.

@@ -6,7 +6,7 @@ Source-verified documentation hub for ChadVis, a Suno-first desktop client with 
 
 - [Installation](user/INSTALL.md) — build and installation notes.
 - [Configuration](user/CONFIG.md) — configuration-file reference.
-- [Usage](user/USAGE.md) — current Library, Create, Listen, Video, Settings, and account flow.
+- [Usage](user/USAGE.md) — current Library, Explore, Create, Listen, Video, Notifications, Settings, and account flow.
 - [Testing](dev/TESTING.md) — automated test inventory and current-shell smoke checklist.
 
 ## Current Client Surfaces
@@ -24,13 +24,15 @@ Source-verified documentation hub for ChadVis, a Suno-first desktop client with 
 
 ## Suno API Research
 
-The material in this section is unofficial and capture-based; Suno does not publish a public API contract for this client.
+The material in this section is unofficial and capture-based; Suno does not publish a supported API contract for this client. The live authority is intentionally limited to an index, the canonical inventory, the OAuth gate, and raw provenance.
 
-- [API index and disclaimer](suno_api/README.md) — scope and research boundaries.
-- [Endpoint inventory](suno_api/ENDPOINT-INVENTORY.md) — sole API-spec master for observed endpoints and evidence status.
-- [Desktop callback analysis](suno_api/OAUTH_REDIRECT_ANALYSIS.md) — captured web flow and the native sign-in gate.
-- [Endpoint implementation map](../src/suno/SunoEndpoints.hpp) — centralized constants and `[T1]`/`[LEAD]` tiers.
-- [Retained raw provenance](suno_api/raw/README.md), including the [endpoint scan](suno_api/raw/endpoints_sniffed.list) and [sanitized OAuth recon](suno_api/raw/sanitized-recon-2026-09-22.json).
+- [API index and disclaimer](suno_api/README.md) — authority boundary and research rules.
+- [Endpoint inventory](suno_api/ENDPOINT-INVENTORY.md) — sole API-spec master, including the dated 2026-09-24 evidence-source map and `[T1]`/`[LEAD]`/`[VERIFY]` status.
+- [OAuth redirect gate](suno_api/OAUTH_REDIRECT_ANALYSIS.md) — observed web flow and the disabled native sign-in gate.
+- [Endpoint implementation map](../src/suno/SunoEndpoints.hpp) — implementation mirror, not evidence authority.
+- [Raw evidence provenance and hashes](suno_api/raw/README.md), including the [endpoint scan](suno_api/raw/endpoints_sniffed.list) and [sanitized OAuth recon](suno_api/raw/sanitized-recon-2026-09-22.json).
+
+The external directory labeled `sept-09-2026` contains a Burp export whose item timestamps are 2026-09-24. Its raw XML is not sanitized and is intentionally not retained in the repository.
 
 ## Integration Notes
 

@@ -2,7 +2,7 @@
  * @file main.qml
  * @brief Suno-first desktop shell with a persistent projectM Video surface
  *
- * Navigation is Library → Create → Listen → Video → Settings. Settings is
+ * Navigation is Library → Explore → Create → Listen → Video → Settings. Settings is
  * a second ApplicationWindow owned by this file and opened on the same
  * QQmlApplicationEngine. The Video view remains instantiated for the whole
  * process lifetime so its native projectM QWindow and GL context are never
@@ -32,6 +32,8 @@ ApplicationWindow {
 
     readonly property var viewMeta: {
         "library":  { label: "Library" },
+        "notifications": { label: "Notifications" },
+        "discover": { label: "Explore" },
         "create":   { label: "Create" },
         "listen":   { label: "Listen" },
         "video":    { label: "Video" },
@@ -78,7 +80,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         const savedView = String(SettingsBridge.expandedPanel)
-        const contentViews = ["library", "create", "listen", "video"]
+        const contentViews = ["library", "notifications", "discover", "create", "listen", "video"]
         activeView = contentViews.indexOf(savedView) >= 0 ? savedView : "library"
         returnView = activeView
         railUserExpanded = SettingsBridge.sidebarWidth > 100
@@ -303,6 +305,36 @@ ApplicationWindow {
                 anchors.fill: parent
                 visible: mainWindow.activeView === "library"
                 opacity: visible ? 1 : 0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Theme.durationNormal
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
+
+            NotificationsView {
+                anchors.fill: parent
+                visible: mainWindow.activeView === "notifications"
+                opacity: visible ? 1 : 0
+                onNavigateRequested: function(viewId) {
+                    mainWindow.navigate(viewId)
+                }
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Theme.durationNormal
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
+
+            DiscoverView {
+                anchors.fill: parent
+                visible: mainWindow.activeView === "discover"
+                opacity: visible ? 1 : 0
+                onNavigateRequested: function(viewId) {
+                    mainWindow.navigate(viewId)
+                }
                 Behavior on opacity {
                     NumberAnimation {
                         duration: Theme.durationNormal

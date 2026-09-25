@@ -1,21 +1,5 @@
-/**
- * @file ClipCard.qml
- * @brief Suno clip tile for the Library grid
- *
- * Large cover art with gradient scrim, status ribbon for in-progress
- * generations, model badge + duration + play-count meta row. Hover raises
- * the card and reveals the affordance button. Clicking emits opened(clip).
- *
- * Clip schema comes from SunoBridge.clips (see SunoBridge::onLibraryUpdated):
- *   id/title/status/image_url/model_name/duration(string secs)/play_count
- *   metadata{tags,prompt,lyrics}
- *
- * @version 1.0.0
- */
-
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Effects
 import ChadVis
 
 Rectangle {
@@ -26,11 +10,28 @@ Rectangle {
     signal opened(var clip)
 
     readonly property bool isReady: clipData ? clipData.status === "complete" : false
+    readonly property bool canPlay: isReady && clipData && clipData.has_media !== false
     readonly property bool isHovered: cardMouse.containsMouse
 
-    function formatSeconds(raw) {
-        const s = parseInt(raw) || 0
-        return Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60)
+    function formatDuration(raw) {
+        if (raw === undefined || raw === null || raw === "")
+            return "0:00"
+
+        const parts = String(raw).split(":")
+        let seconds = 0
+        if (parts.length === 2)
+            seconds = Number(parts[0]) * 60 + Number(parts[1])
+        else if (parts.length >= 3)
+            seconds = Number(parts[parts.length - 3]) * 3600
+                    + Number(parts[parts.length - 2]) * 60
+                    + Number(parts[parts.length - 1])
+        else
+            seconds = Number(raw)
+
+        if (!Number.isFinite(seconds) || seconds < 0)
+            return "0:00"
+        const whole = Math.floor(seconds)
+        return Math.floor(whole / 60) + ":" + (whole % 60 < 10 ? "0" : "") + (whole % 60)
     }
 
     function formatPlays(n) {
@@ -130,6 +131,7 @@ Rectangle {
 
     // ── Hover affordance ────────────────────────
     Rectangle {
+        visible: root.canPlay
         anchors.centerIn: artClipper
         width: 52
         height: 52
@@ -192,7 +194,7 @@ Rectangle {
             }
 
             Text {
-                text: root.clipData ? root.formatSeconds(root.clipData.duration) : ""
+                text: root.clipData ? root.formatDuration(root.clipData.duration) : ""
                 color: Theme.textSecondary
                 font: Theme.fontCaption
             }
@@ -212,7 +214,15 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.opened(root.clipData)
+        onClicked: function(mouse) {
+            const dx = mouse.x - root.width / 2
+            const dy = mouse.y - artClipper.height / 2
+            if (root.canPlay && dx * dx + dy * dy <= 26 * 26) {
+                SunoBridge.playClip(root.clipData.id)
+                return
+            }
+            root.opened(root.clipData)
+        }
     }
 }
 
