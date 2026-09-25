@@ -2,6 +2,7 @@
 #include "SettingMacros.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
+#include "suno/auth/AuthHeaders.hpp"
 #include "suno/auth/CredentialStore.hpp"
 #include "util/Types.hpp"
 
@@ -69,21 +70,22 @@ QString SettingsBridge::sunoToken() const
 
 void SettingsBridge::setSunoToken(const QString& token)
 {
-    if (token == sunoToken()) {
+    const QString normalizedToken = vc::suno::auth::normalizeCookieHeader(token);
+    if (normalizedToken == sunoToken()) {
         return;
     }
-    m_sunoTokenCache = token;
+    m_sunoTokenCache = normalizedToken;
     m_sunoTokenCacheDirty = false;
 
     vc::suno::auth::CredentialStore store;
-    if (token.isEmpty()) {
+    if (normalizedToken.isEmpty()) {
         std::ignore = store.remove("suno/default");
         std::ignore = store.remove("suno/bearer");
     } else {
-        auto result = store.store("suno/default", token);
+        auto result = store.store("suno/default", normalizedToken);
         if (result.isErr()) {
             LOG_ERROR("SettingsBridge: failed to persist Suno credential ({})",
-                      vc::suno::auth::CredentialStore::redact(token).toStdString());
+                      vc::suno::auth::CredentialStore::redact(normalizedToken).toStdString());
         }
     }
     // No TOML write: nothing in the config changed (secrets never live there).

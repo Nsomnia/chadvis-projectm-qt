@@ -45,8 +45,8 @@ constexpr std::string_view CDN_BASE = "https://cdn1.suno.ai"; // [T1]
 constexpr std::string_view CDN_CLOUDFRONT_BASE = "https://d2lwuy8qc234o3.cloudfront.net"; // [T1]
 constexpr std::string_view WEB_BASE = "https://suno.com"; // [T1]
 
-// NOTE: Clerk auth endpoints/versions live in suno/auth/ClerkAuthClient.hpp
-// (AUTH_BASE, LEGACY_BASE, CLERK_API_VERSION, CLERK_JS_VERSION).
+// Clerk auth endpoints/versions live in suno/auth/ClerkAuthClient.hpp
+// (AUTH_BASE, CLERK_API_VERSION, CLERK_JS_VERSION).
 
 // ── Studio API: Generation ─────────────────────────────────
 // T1: generation-v2-web.md + cowrite-lyrics.md (Burp 2026-08-25).
@@ -76,7 +76,12 @@ constexpr std::string_view LYRICISTS = "/lyricists"; // [T1] GET
 // captured POST /api/unified/homepage.
 constexpr std::string_view LIBRARY_FEED = "/feed/v3"; // [T1] POST
 constexpr std::string_view UNIFIED_FEED = "/unified/feed"; // [T1] POST
-constexpr std::string_view UNIFIED_HOMEPAGE = "/unified/homepage"; // [T1] POST
+constexpr std::string_view UNIFIED_HOMEPAGE = "/unified/homepage";
+constexpr std::string_view UNIFIED_EXPLORE = "/unified/explore";
+constexpr std::string_view SOCIAL_FOLLOWING_FEED = "/social/following-feed";
+constexpr std::string_view NOTIFICATION_V2_READ = "/notification/v2/read";
+constexpr std::string_view UPLOADS_AUDIO = "/uploads/audio/";
+constexpr std::string_view UPLOADS_AUDIO_UPLOAD_FINISH = "/uploads/audio/{}/upload-finish/"; // [T1] POST
 constexpr std::string_view SESSION = "/session/"; // [T1] GET
 constexpr std::string_view SESSION_CATALOG = "/session/"; // [T1] alias for SESSION
 

@@ -29,6 +29,8 @@
 #include <memory>
 #include <optional>
 
+class QUrl;
+
 namespace vc::suno {
 
 namespace auth {
@@ -147,12 +149,11 @@ public:
     /// Stop polling wav-conversion status for clipId (user navigated away).
     void cancelPoll(const std::string& clipId);
 
-    // Generation (v2/v3-web)
     void generate(const std::string& prompt, const std::string& tags,
                   bool makeInstrumental = false,
                   const std::string& model = "chirp-v3.5");
 
-    // ── New endpoints (HAR 2026-06-10) ──────────────────────────────────
+    // ── Capture-gated declarations ──────────────────────────────────────
     /// POST /api/unified/homepage — homepage feed with nested content items.
     void fetchHomepageFeed(std::optional<QCursor> cursor = std::nullopt);
     /// GET /api/notification/v2 — notifications list.
@@ -303,7 +304,10 @@ private:
     bool hasCredentials() const;
 
     // Request plumbing
-    QNetworkRequest createAuthenticatedRequest(const QString& endpoint);
+    std::optional<QUrl> resolveStudioApiUrl(const QString& endpoint) const;
+    std::optional<QNetworkRequest> createAuthenticatedRequest(
+            const QUrl& url, const std::string& method, const QByteArray& data);
+    void rejectAuthenticatedRequest(const QString& reason);
     void enqueueRequest(QNetworkRequest req, const std::string& method,
                         QByteArray data,
                         std::function<void(QNetworkReply*)> callback,

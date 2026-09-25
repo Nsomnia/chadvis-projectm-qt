@@ -14,6 +14,7 @@
 #include <QUrl>
 #include <expected>
 #include <optional>
+#include <utility>
 
 namespace vc::suno::auth {
 namespace {
@@ -165,18 +166,14 @@ std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByt
 } // namespace
 
 StoredCredentialClassification classifyStoredCredential(const QString& value) {
-    const QString normalized = value.trimmed();
+    const QString normalized = normalizeCookieHeader(value);
     if (normalized.isEmpty()) {
         return {StoredCredentialShape::Empty,
                 AuthFailureKind::None,
                 QStringLiteral("stored credential shape: empty value; no active session")};
     }
 
-    QString cookieHeader = normalized;
-    if (cookieHeader.startsWith(QStringLiteral("Cookie:"), Qt::CaseInsensitive)) {
-        cookieHeader = cookieHeader.mid(7).trimmed();
-    }
-
+    const QString cookieHeader = normalized;
     bool hasNameValuePair = false;
     bool hasClerkCookie = false;
     const QStringList parts = cookieHeader.split(QLatin1Char(';'), Qt::SkipEmptyParts);
@@ -245,17 +242,27 @@ void ClerkAuthClient::abortInflight() {
 
 void ClerkAuthClient::fetchBearer(const Credentials& creds) {
     failureKind_ = AuthFailureKind::None;
-    startClientFetch(CallContext{creds, /*sessionId=*/{}, /*allowFallback=*/true});
+    Credentials normalized{normalizeCookieHeader(creds.cookieHeader)};
+    if (normalized.cookieHeader.isEmpty()) {
+        emitFailure(AuthFailureKind::NoActiveSession, noActiveSessionReason());
+        return;
+    }
+    startClientFetch(CallContext{std::move(normalized), {}, true});
 }
 
 void ClerkAuthClient::touch(const Credentials& creds, const QString& sessionId) {
     failureKind_ = AuthFailureKind::None;
+    Credentials normalized{normalizeCookieHeader(creds.cookieHeader)};
+    if (normalized.cookieHeader.isEmpty()) {
+        emitFailure(AuthFailureKind::NoActiveSession, noActiveSessionReason());
+        return;
+    }
     if (sessionId.isEmpty()) {
         emitFailure(AuthFailureKind::ProtocolMismatch,
                     QStringLiteral("touch request requires a session id"));
         return;
     }
-    startTouch(CallContext{creds, sessionId, /*allowFallback=*/true});
+    startTouch(CallContext{std::move(normalized), sessionId, true});
 }
 
 // ---------------------------------------------------------------------------
@@ -265,26 +272,32 @@ void ClerkAuthClient::touch(const Credentials& creds, const QString& sessionId) 
 QNetworkRequest ClerkAuthClient::makeRequest(const QUrl& url, const Credentials& creds,
                                              bool isPost) {
     QNetworkRequest request(url);
-    request.setRawHeader("Cookie", creds.cookieHeader.toUtf8());
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    const QString cookie = normalizeCookieHeader(creds.cookieHeader);
+    if (!cookie.isEmpty()) {
+        request.setRawHeader("Cookie", cookie.toUtf8());
+    }
     request.setRawHeader("Origin", "https://suno.com");
     request.setRawHeader("Referer", "https://suno.com/");
     request.setRawHeader("User-Agent", kBrowserUserAgent);
+    request.setRawHeader("Accept", "*/*");
     if (isPost) {
-        // Clerk expects form-encoded POSTs; an empty body with this content
-        // type is exactly what the browser sends for touch.
         request.setRawHeader("Content-Type", "application/x-www-form-urlencoded");
     }
     return request;
 }
 
-QString clerkQuerySuffix() {
-    return QStringLiteral("__clerk_api_version=%1&_clerk_js_version=%2")
-            .arg(ClerkAuthClient::CLERK_API_VERSION, ClerkAuthClient::CLERK_JS_VERSION);
+static QString sessionUrl(const QString& sessionId, const QString& action) {
+    const QString encodedSessionId =
+            QString::fromUtf8(QUrl::toPercentEncoding(sessionId));
+    return QStringLiteral("%1/client/sessions/%2/%3")
+            .arg(ClerkAuthClient::AUTH_BASE, encodedSessionId, action);
 }
 
 void ClerkAuthClient::startClientFetch(CallContext ctx) {
-    const QString url = QStringLiteral("%1/client?%2").arg(AUTH_BASE, clerkQuerySuffix());
-    QNetworkReply* reply = nam_->get(makeRequest(QUrl(url), ctx.creds, /*isPost=*/false));
+    const QString url = QStringLiteral("%1/client").arg(AUTH_BASE);
+    QNetworkReply* reply = nam_->get(makeRequest(QUrl(url), ctx.creds, false));
 
     inflight_.push_back(reply);
     connect(reply, &QNetworkReply::finished, this,
@@ -292,34 +305,35 @@ void ClerkAuthClient::startClientFetch(CallContext ctx) {
 }
 
 void ClerkAuthClient::startTouch(CallContext ctx) {
-    const QString url = QStringLiteral("%1/client/sessions/%2/touch?%3")
-                                .arg(AUTH_BASE, ctx.sessionId, clerkQuerySuffix());
-    QNetworkReply* reply =
-            nam_->post(makeRequest(QUrl(url), ctx.creds, /*isPost=*/true), QByteArray());
+    const QString url = sessionUrl(ctx.sessionId, QStringLiteral("touch"));
+    QNetworkReply* reply = nam_->post(
+            makeRequest(QUrl(url), ctx.creds, true), QByteArrayLiteral("intent=focus"));
 
     inflight_.push_back(reply);
     connect(reply, &QNetworkReply::finished, this,
             [this, reply, ctx = std::move(ctx)]() mutable { handleReply(reply, std::move(ctx)); });
 }
 
-void ClerkAuthClient::startLegacyFallback(CallContext ctx) {
-    // Legacy prototype path - kept as a logged fallback ONLY. If this fires
-    // regularly the captured contract has drifted and needs re-capture.
-    LOG_WARN("ClerkAuthClient: fallback fired, needs fresh capture");
-
-    const QString url = QStringLiteral("%1/v1/client/sessions/%2/client"
-                                       "?_is_native=true&_clerk_js_version=%3")
-                                .arg(LEGACY_BASE, ctx.sessionId, CLERK_JS_VERSION);
+void ClerkAuthClient::startTokenFallback(CallContext ctx) {
+    const QString url = sessionUrl(ctx.sessionId, QStringLiteral("tokens"));
     QNetworkReply* reply =
-            nam_->post(makeRequest(QUrl(url), ctx.creds, /*isPost=*/true), QByteArray());
+            nam_->post(makeRequest(QUrl(url), ctx.creds, true), QByteArray());
 
     inflight_.push_back(reply);
     connect(reply, &QNetworkReply::finished, this,
-            [this, reply, ctx = std::move(ctx)]() mutable {
+            [this, reply]() {
+                const int status =
+                        reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                const bool ok = reply->error() == QNetworkReply::NoError && status >= 200 &&
+                                status < 300;
+                const QByteArray body = reply->readAll();
                 reply->deleteLater();
                 inflight_.removeOne(reply);
-                handleLegacyBody(reply->readAll(), ctx.primaryFailureKind,
-                                 ctx.primaryFailureReason);
+                if (!ok) {
+                    emitFailure(classifyHttpFailure(status), httpFailureReason(status));
+                    return;
+                }
+                handleTokenFallbackBody(body);
             });
 }
 
@@ -361,29 +375,25 @@ void ClerkAuthClient::emitFailure(AuthFailureKind kind, const QString& reason) {
 }
 
 void ClerkAuthClient::handleReply(QNetworkReply* reply, CallContext ctx) {
-    reply->deleteLater();
-    inflight_.removeOne(reply);
-
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const bool ok = reply->error() == QNetworkReply::NoError && status >= 200 && status < 300;
     const QByteArray body = reply->readAll();
+    reply->deleteLater();
+    inflight_.removeOne(reply);
 
     if (ok) {
         handleEnvelopeBody(body, ctx);
         return;
     }
 
-    ctx.primaryFailureKind = classifyHttpFailure(status);
-    ctx.primaryFailureReason = httpFailureReason(status);
-
-    // At most ONE fallback attempt per request; only when we know a session id.
     const QString sid = !ctx.sessionId.isEmpty() ? ctx.sessionId : lastKnownSessionId_;
     if (ctx.allowFallback && !sid.isEmpty()) {
+        ctx.allowFallback = false;
         ctx.sessionId = sid;
-        startLegacyFallback(std::move(ctx));
+        startTokenFallback(std::move(ctx));
         return;
     }
-    emitFailure(ctx.primaryFailureKind, ctx.primaryFailureReason);
+    emitFailure(classifyHttpFailure(status), httpFailureReason(status));
 }
 
 void ClerkAuthClient::handleEnvelopeBody(const QByteArray& body, const CallContext&) {
@@ -400,33 +410,27 @@ void ClerkAuthClient::handleEnvelopeBody(const QByteArray& body, const CallConte
     emit bearerReady(envelope->bearer);
 }
 
-void ClerkAuthClient::handleLegacyBody(const QByteArray& body, AuthFailureKind primaryFailureKind,
-                                       const QString& primaryFailureReason) {
-    // Legacy shape: fresh JWT at response.jwt, sometimes at top-level "jwt".
+void ClerkAuthClient::handleTokenFallbackBody(const QByteArray& body) {
     QJsonParseError parseError{};
     const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
-    const QJsonObject root = parseError.error == QJsonParseError::NoError ? doc.object()
-                                                                         : QJsonObject{};
-    QString jwt = root["response"].toObject()["jwt"].toString();
-    if (jwt.isEmpty()) {
-        jwt = root["jwt"].toString();
-    }
-    if (jwt.isEmpty()) {
-        if (primaryFailureKind == AuthFailureKind::RejectedCredential) {
-            emitFailure(primaryFailureKind, primaryFailureReason);
-        } else {
-            emitFailure(AuthFailureKind::ProtocolMismatch,
-                        QStringLiteral("legacy fallback returned an unexpected response shape"));
-        }
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        emitFailure(AuthFailureKind::ProtocolMismatch,
+                    QStringLiteral("Clerk token fallback returned an unexpected response shape"));
         return;
     }
 
-    auto bearer = decodeUsableBearer(jwt);
+    const QJsonValue jwtValue = doc.object().value(QStringLiteral("jwt"));
+    if (!jwtValue.isString() || jwtValue.toString().isEmpty()) {
+        emitFailure(AuthFailureKind::ProtocolMismatch,
+                    QStringLiteral("Clerk token fallback returned an unexpected response shape"));
+        return;
+    }
+
+    auto bearer = decodeUsableBearer(jwtValue.toString());
     if (!bearer) {
         emitFailure(bearer.error().kind, bearer.error().reason);
         return;
     }
-    LOG_INFO("ClerkAuthClient: legacy fallback produced a bearer token");
     failureKind_ = AuthFailureKind::None;
     emit bearerReady(*bearer);
 }

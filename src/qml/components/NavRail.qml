@@ -17,6 +17,8 @@ Rectangle {
 
     readonly property var entries: [
         { id: "library",  label: "Library",  icon: iconUrl("playlist") },
+        { id: "notifications", label: "Notifications", icon: iconUrl("suno") },
+        { id: "discover", label: "Explore",  icon: iconUrl("suno") },
         { id: "create",   label: "Create",   icon: iconUrl("suno") },
         { id: "listen",   label: "Listen",   icon: iconUrl("playback") },
         { id: "video",    label: "Video",    icon: iconUrl("overlay") },

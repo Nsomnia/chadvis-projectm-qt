@@ -48,12 +48,14 @@ public:
 
 	// Facade Methods (Delegated to Managers)
 	void downloadAndPlay(const SunoClip& clip);
+	bool playClipById(const std::string& clipId);
 	Result<AlignedLyrics> getLyrics(const std::string& clipId);
 	void refreshLibrary(int page = 1);
 	void syncDatabase(bool forceAuth = false);
 
 	// Auth - triggers signal for QML to handle
 	Q_INVOKABLE void requestAuthentication();
+	Q_INVOKABLE void refreshAccount();
 	Q_INVOKABLE void sendChatMessage(const QString& message, const QString& workspaceId = {});
 	Q_INVOKABLE void fetchChatHistory();
 

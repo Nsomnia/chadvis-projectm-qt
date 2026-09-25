@@ -11,6 +11,7 @@
 #include <QNetworkRequest>
 #include <QTemporaryDir>
 #include <QTimeZone>
+#include <QUrl>
 
 using namespace vc::suno::auth;
 
@@ -122,26 +123,63 @@ private slots:
     // AuthHeaders
     // ------------------------------------------------------------------
 
-    void authHeadersApplyAllFields() {
-        const StudioApiHeaders headers =
-                makeStudioApiHeaders(QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"));
+    void authHeadersApplyPostFields() {
+        const StudioApiHeaders headers = makeStudioApiHeaders(
+                QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"), "POST",
+                QByteArrayLiteral("{}"));
 
-        QNetworkRequest request(QUrl(QStringLiteral("https://studio-api.suno.ai/api/feed/")));
+        QNetworkRequest request(QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/feed/")));
         headers.apply(request);
 
         QCOMPARE(request.rawHeader("Authorization"), QByteArray("Bearer jwt-value"));
         QCOMPARE(request.rawHeader("Origin"), QByteArray("https://suno.com"));
         QCOMPARE(request.rawHeader("Referer"), QByteArray("https://suno.com/"));
         QCOMPARE(request.rawHeader("User-Agent"), QByteArray(kBrowserUserAgent));
-        QCOMPARE(request.rawHeader("Accept"),
-                 QByteArray("application/json,text/plain,*/*"));
+        QCOMPARE(request.rawHeader("Accept"), QByteArray("*/*"));
         QCOMPARE(request.rawHeader("Content-Type"), QByteArray("application/json"));
         QCOMPARE(request.rawHeader("Device-Id"), QByteArray("uuid-1234"));
+        QVERIFY(!request.rawHeader("Browser-Token").isEmpty());
+        QVERIFY(request.attribute(QNetworkRequest::RedirectPolicyAttribute)
+                        .value<QNetworkRequest::RedirectPolicy>() ==
+                QNetworkRequest::ManualRedirectPolicy);
+    }
+
+    void authHeadersGetOmitsJsonContentType() {
+        const StudioApiHeaders headers = makeStudioApiHeaders(
+                QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"), "GET", {});
+        QNetworkRequest request(QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/session/")));
+        request.setRawHeader("Content-Type", QByteArray("application/json"));
+        headers.apply(request);
+
+        QVERIFY(request.rawHeader("Content-Type").isEmpty());
+        QCOMPARE(request.rawHeader("Accept"), QByteArray("*/*"));
+        QCOMPARE(request.rawHeader("Authorization"), QByteArray("Bearer jwt-value"));
+    }
+
+    void authHeadersEmptyPostOmitsContentType() {
+        const StudioApiHeaders headers = makeStudioApiHeaders(
+                QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"), "POST", {});
+        QNetworkRequest request(QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/action")));
+        request.setRawHeader("Content-Type", QByteArray("application/json"));
+        headers.apply(request);
+
+        QVERIFY(request.rawHeader("Content-Type").isEmpty());
+    }
+
+    void authHeadersWithoutBearerFailClosed() {
+        const StudioApiHeaders headers =
+                makeStudioApiHeaders({}, QStringLiteral("uuid-1234"), "GET", {});
+        QNetworkRequest request(QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/session/")));
+        request.setRawHeader("Authorization", QByteArray("Bearer stale"));
+        headers.apply(request);
+
+        QVERIFY(request.rawHeader("Authorization").isEmpty());
     }
 
     void authHeadersBrowserTokenShape() {
-        const StudioApiHeaders headers =
-                makeStudioApiHeaders(QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"));
+        const StudioApiHeaders headers = makeStudioApiHeaders(
+                QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"), "POST",
+                QByteArrayLiteral("{}"));
 
         // Outer shape: {"token":"<base64>"}.
         const QJsonDocument outer = QJsonDocument::fromJson(headers.browserToken);
@@ -156,6 +194,56 @@ private slots:
         const qint64 timestamp = inner.object().value("timestamp").toInteger(0);
         QVERIFY(timestamp > 0);
         QVERIFY(qAbs(timestamp - QDateTime::currentMSecsSinceEpoch()) < 60'000);
+    }
+
+    void studioApiHostPolicy_data() {
+        QTest::addColumn<QString>("url");
+        QTest::addColumn<bool>("allowed");
+
+        QTest::newRow("captured-host")
+                << QStringLiteral("https://studio-api-prod.suno.com/api/feed/v3") << true;
+        QTest::newRow("explicit-default-port")
+                << QStringLiteral("https://studio-api-prod.suno.com:443/api/session/") << true;
+        QTest::newRow("modal") << QStringLiteral(
+                "https://suno-ai--orpheus-prod-web.modal.run/v1/orchestrator/chat") << false;
+        QTest::newRow("auth-host") << QStringLiteral("https://auth.suno.com/v1/client") << false;
+        QTest::newRow("suffix-confusion")
+                << QStringLiteral("https://studio-api-prod.suno.com.evil.test/api") << false;
+        QTest::newRow("cleartext")
+                << QStringLiteral("http://studio-api-prod.suno.com/api") << false;
+        QTest::newRow("user-info")
+                << QStringLiteral("https://user@studio-api-prod.suno.com/api") << false;
+        QTest::newRow("non-default-port")
+                << QStringLiteral("https://studio-api-prod.suno.com:444/api") << false;
+        QTest::newRow("relative") << QStringLiteral("/api/session/") << false;
+    }
+
+    void studioApiHostPolicy() {
+        QFETCH(QString, url);
+        QFETCH(bool, allowed);
+        QCOMPARE(isAllowedStudioApiUrl(QUrl(url)), allowed);
+    }
+
+    void cookieNormalizationPreservesOpaqueRemainder_data() {
+        QTest::addColumn<QString>("input");
+        QTest::addColumn<QString>("expected");
+
+        QTest::newRow("unlabelled")
+                << QStringLiteral(" __client=abc==; __session=Keep-Case ")
+                << QStringLiteral("__client=abc==; __session=Keep-Case");
+        QTest::newRow("mixed-case-label")
+                << QStringLiteral("cOoKiE:__client=abc==; opaque=A%2FB")
+                << QStringLiteral("__client=abc==; opaque=A%2FB");
+        QTest::newRow("embedded-label")
+                << QStringLiteral("Cookie: __client=Cookie:opaque")
+                << QStringLiteral("__client=Cookie:opaque");
+        QTest::newRow("label-only") << QStringLiteral(" Cookie: ") << QString();
+    }
+
+    void cookieNormalizationPreservesOpaqueRemainder() {
+        QFETCH(QString, input);
+        QFETCH(QString, expected);
+        QCOMPARE(normalizeCookieHeader(input), expected);
     }
 
     // ------------------------------------------------------------------

@@ -1,5 +1,7 @@
 #include "SunoDatabase.hpp"
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QSqlRecord>
@@ -10,11 +12,41 @@ namespace vc::suno {
 
 namespace {
 
+std::vector<SunoMediaUrl> mediaUrlsFromJson(const QString& value) {
+    std::vector<SunoMediaUrl> result;
+    const QJsonDocument document = QJsonDocument::fromJson(value.toUtf8());
+    if (!document.isArray()) return result;
+    for (const auto& entry : document.array()) {
+        const QJsonObject object = entry.toObject();
+        SunoMediaUrl media;
+        media.url = object.value(QStringLiteral("url")).toString().toStdString();
+        media.content_type = object.value(QStringLiteral("content_type")).toString().toStdString();
+        media.delivery = object.value(QStringLiteral("delivery")).toString().toStdString();
+        media.encoding = object.value(QStringLiteral("encoding")).toString().toStdString();
+        if (!media.url.empty()) result.push_back(std::move(media));
+    }
+    return result;
+}
+
+QString mediaUrlsToJson(const std::vector<SunoMediaUrl>& mediaUrls) {
+    QJsonArray array;
+    for (const auto& media : mediaUrls) {
+        QJsonObject object;
+        object[QStringLiteral("url")] = QString::fromStdString(media.url);
+        object[QStringLiteral("content_type")] = QString::fromStdString(media.content_type);
+        object[QStringLiteral("delivery")] = QString::fromStdString(media.delivery);
+        object[QStringLiteral("encoding")] = QString::fromStdString(media.encoding);
+        array.push_back(object);
+    }
+    return QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact));
+}
+
 SunoClip clipFromQuery(const QSqlQuery& query) {
     SunoClip clip;
     clip.id = query.value("id").toString().toStdString();
     clip.title = query.value("title").toString().toStdString();
     clip.audio_url = query.value("audio_url").toString().toStdString();
+    clip.media_urls = mediaUrlsFromJson(query.value("media_urls").toString());
     clip.video_url = query.value("video_url").toString().toStdString();
     clip.image_url = query.value("image_url").toString().toStdString();
     clip.image_large_url = query.value("image_large_url").toString().toStdString();
@@ -63,6 +95,7 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
                     "id TEXT PRIMARY KEY, "
                     "title TEXT, "
                     "audio_url TEXT, "
+                    "media_urls TEXT, "
                     "video_url TEXT, "
                     "image_url TEXT, "
                     "image_large_url TEXT, "
@@ -177,6 +210,21 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
         }
     }
 
+    if (schemaVersion < 3) {
+        QSqlRecord record = db_.record("clips");
+        if (record.indexOf("media_urls") == -1) {
+            if (!query.exec("ALTER TABLE clips ADD COLUMN media_urls TEXT")) {
+                LOG_ERROR("SunoDatabase: Failed to add media_urls column: {}",
+                          query.lastError().text().toStdString());
+            }
+        }
+        if (query.exec("PRAGMA user_version = 3")) {
+            LOG_INFO("SunoDatabase: Schema migrated to version 3");
+        } else {
+            LOG_WARN("SunoDatabase: Failed to persist schema version 3");
+        }
+    }
+
     initialized_ = true;
     LOG_INFO("Suno database initialized at {}", dbPath);
     return Result<void>::ok();
@@ -188,19 +236,20 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
 
     QSqlQuery query(db_);
     query.prepare(
-            "INSERT INTO clips (id, title, audio_url, video_url, "
+            "INSERT INTO clips (id, title, audio_url, media_urls, video_url, "
             "image_url, image_large_url, model_name, major_model_version, "
             "display_name, handle, is_liked, is_trashed, is_public, "
             "status, created_at, play_count, upvote_count, "
             "prompt, tags, lyrics, type, duration, error_message) "
-            "VALUES (:id, :title, :audio_url, :video_url, :image_url, "
+            "VALUES (:id, :title, :audio_url, :media_urls, :video_url, :image_url, "
             ":image_large_url, :model_name, :major_model_version, :display_name, "
             ":handle, :is_liked, :is_trashed, :is_public, :status, :created_at, "
             ":play_count, :upvote_count, "
             ":prompt, :tags, :lyrics, :type, :duration, :error_message) "
             "ON CONFLICT(id) DO UPDATE SET "
-            "title=excluded.title, audio_url=excluded.audio_url, video_url=excluded.video_url, "
-            "image_url=excluded.image_url, image_large_url=excluded.image_large_url, "
+            "title=excluded.title, audio_url=excluded.audio_url, media_urls=excluded.media_urls, "
+            "video_url=excluded.video_url, image_url=excluded.image_url, "
+            "image_large_url=excluded.image_large_url, "
             "model_name=excluded.model_name, major_model_version=excluded.major_model_version, "
             "display_name=excluded.display_name, handle=excluded.handle, "
             "is_liked=excluded.is_liked, is_trashed=excluded.is_trashed, is_public=excluded.is_public, "
@@ -212,6 +261,7 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
     query.bindValue(":id", QString::fromStdString(clip.id));
     query.bindValue(":title", QString::fromStdString(clip.title));
     query.bindValue(":audio_url", QString::fromStdString(clip.audio_url));
+    query.bindValue(":media_urls", mediaUrlsToJson(clip.media_urls));
     query.bindValue(":video_url", QString::fromStdString(clip.video_url));
     query.bindValue(":image_url", QString::fromStdString(clip.image_url));
     query.bindValue(":image_large_url", QString::fromStdString(clip.image_large_url));

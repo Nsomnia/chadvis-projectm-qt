@@ -8,14 +8,17 @@
 #include <QObject>
 #include <QString>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 
 #include "audio/AudioEngine.hpp"
+#include "core/ConfigData.hpp"
 #include "suno/DownloadQueue.hpp"
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
+#include "suno/SunoModels.hpp"
 #include "util/Result.hpp"
 
 namespace fs = std::filesystem;
@@ -39,6 +42,8 @@ public:
     ~SunoDownloader() override;
 
     void downloadAndPlay(const SunoClip& clip);
+    [[nodiscard]] static std::optional<std::string>
+    selectDownloadUrl(const SunoClip& clip, vc::SunoDownloadFormat format);
     void saveLyricsSidecar(const std::string& clipId,
                            const std::string& json,
                            const QJsonDocument& doc,
@@ -54,7 +59,6 @@ signals:
     void downloadQueueIdle();
 
 private:
-    SunoClient* client_;
     SunoDatabase& db_;
     AudioEngine* audioEngine_;
     std::unique_ptr<DownloadQueue> queue_;
@@ -72,7 +76,6 @@ private:
 
     void enqueueAudio(const SunoClip& clip, const std::string& url, const std::string& extension);
     void handleItemState(const std::string& clipId, DownloadState state);
-    void onWavConversionReady(const std::string& clipId, const std::string& wavUrl);
     void processDownloadedFile(const SunoClip& clip, const fs::path& path);
 
     [[nodiscard]] fs::path getDownloadDir() const;

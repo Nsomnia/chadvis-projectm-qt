@@ -1,7 +1,7 @@
 # Suno API Canonical Endpoint Inventory
 
-**Status:** Canonical API-spec master, consolidated 2026-09-24  
-**Corrective baseline:** commit `678be76` plus the corrected `ENDPOINT-INVENTORY.md`, `auth.md`, and `library.md` that baseline carried forward  
+**Status:** Canonical API-spec master, consolidated 2026-09-24
+**Current evidence baseline:** the 2026-09-24 Burp export reviewed on 2026-09-24, reconciled with the 2026-08-25 Burp corpus, 2026-09-22 sanitized OAuth recon, and 2026-09-23 browser HAR
 **Scope:** Suno web authentication, Studio API, library/feed, generation leads, media processing, account surfaces, social surfaces, and experimental leads
 
 > **Unofficial and reverse-engineered.** Suno does not publish this API as a
@@ -45,30 +45,34 @@ Additional notation used in the catalog:
 
 ### 1.2 Precedence
 
-1. The direct sanitized request capture
-   `raw/sanitized-recon-2026-09-22.json` is strongest for the **observed Google
-   OAuth web-request sequence**. It contains no response status or response
-   body, so this document assigns no status/body semantics to that sequence.
-2. The 2026-08-25 Burp request/response exports and their sanitized extracts
-   govern captured Clerk, feed, generation, billing, project, media-analysis,
-   and other Studio behavior.
-3. The 2026-09-23 browser HAR governs captured web/Studio traffic and the
+1. The 2026-09-24 Burp request/response export is strongest for every contract
+   it directly contains. Its directory is labeled `sept-09-2026`, but the XML
+   export and item timestamps are dated 2026-09-24; use the timestamps, not the
+   directory label, when dating evidence. The base64 XML is **not sanitized**.
+2. The direct sanitized request capture `raw/sanitized-recon-2026-09-22.json`
+   is strongest for the **observed Google OAuth web-request sequence**. It has
+   no response status or response body, so this document assigns no status/body
+   semantics to that sequence.
+3. The 2026-08-25 Burp request/response exports and their sanitized extracts
+   govern captured feed, generation, billing, project, media-analysis, and
+   other Studio behavior not directly re-observed in the 2026-09-24 export.
+4. The 2026-09-23 browser HAR governs captured web/Studio traffic and the
    progressive `media_urls` observations.
-4. Corrective commit `678be76` and the current endpoint map, `auth.md`, and
-   `library.md` corrections override older endpoint-map and prose claims.
-5. Raw scans and old topic documents supply `[LEAD]` inventory only.
-6. External research, SDK folklore, constructed CDN paths, and client-side flag
-   names cannot promote a route above `[LEAD]`.
+5. Corrective commit `678be76` and the current endpoint map are implementation
+   references, not evidence that can override a newer direct capture.
+6. Raw scans, decoded frontend bundles, and old topic prose supply `[LEAD]`
+   inventory only. External SDK folklore, constructed media paths, and
+   client-side flag names cannot promote a route above `[LEAD]`.
 
 ### 1.3 Explicit conflict register
 
 | Subject | Conflicting claims | Canonical resolution | State |
 |---|---|---|---|
-| Clerk session-token exchange | Older material named `POST /v1/client/sessions/{sid}/tokens` and `/tokens/api`. | Reject both as the documented exchange. Use `GET /v1/client` for initial bearer delivery and `POST /v1/client/sessions/{sid}/touch` for refresh. | **Resolved** |
-| `/v1/client/verify` | `auth.md` said GET; the current inventory said POST. | No reviewed capture selects a method or establishes a generic verification contract. Do not use it as bearer refresh or a generic preflight. | **Unresolved `[VERIFY]`** |
-| `/v1/verify` | `auth.md` said POST; the old inventory said GET. | No reviewed capture establishes either method or response contract. | **Unresolved `[VERIFY]`** |
-| `client?_method=PATCH` | `auth.md` said GET; the old inventory said POST. | `_method=PATCH` suggests an override form, but neither transport method is captured. Do not synthesize a request. | **Unresolved `[VERIFY]`** |
-| `/api/song_copy/send-song` | `social.md`/older inventory said GET; the current inventory says POST. | Route exists only as a lead in the available corpus; method and payload are unproved. | **Unresolved `[VERIFY]`** |
+| Clerk session-token exchange | Older material rejected `/tokens`; the 2026-09-24 export directly captured both `POST /v1/client/sessions/{sid}/tokens` and `POST .../touch`. | Both are `[T1]` observed same-host session routes. `/tokens` returned a top-level `jwt`; `touch` returned client/session envelopes. `/tokens/api` remains unobserved. Which route a client should prefer, and whether either is universally required, remains `[VERIFY]`. | **Resolved coexistence; selection `[VERIFY]`** |
+| `/v1/client/verify` | Older auth material disagreed between GET and POST. | No reviewed capture selects a method or establishes a generic verification contract. Do not use it as bearer refresh or a generic preflight. | **Unresolved `[VERIFY]`** |
+| `/v1/verify` | Older auth material disagreed between POST and GET. | No reviewed capture establishes either method or response contract. | **Unresolved `[VERIFY]`** |
+| `client?_method=PATCH` | Older auth material disagreed between GET and POST. | `_method=PATCH` suggests an override form, but neither transport method is captured. Do not synthesize a request. | **Unresolved `[VERIFY]`** |
+| `/api/song_copy/send-song` | Older social material and inventory disagreed between GET and POST. | Route exists only as a lead in the available corpus; method and payload are unproved. | **Unresolved `[VERIFY]`** |
 | `/api/openai-speech/` | Old material and scans describe a GET surface, but no reviewed request/response capture establishes its method or compatibility contract. | Do not promote the GET claim. Preserve the route only as `[VERIFY]`. | **Unresolved `[VERIFY]`** |
 | `/api/user/user_config/` | Older material used GET. | `POST` with an empty JSON object is `[T1]`; the update/patch schema is not established by that read. | **Resolved for read method** |
 | `/api/unified/feed` and `/api/unified/homepage` | Older material used GET. | Both are captured as `POST`. | **Resolved** |
@@ -80,6 +84,17 @@ Additional notation used in the catalog:
 | `/api/generate/lyrics-infill` vs `/api/generate/lyrics-infill/` | Both spellings occur in the raw scan. | Both are `[LEAD]`; neither may be rewritten into the other. | **Unresolved `[VERIFY]` at use time** |
 | Orpheus paths/models | Claims range from `/session-history` to orchestrator paths and OpenAI-compatible `/api/v1/...` paths; model names were listed without a direct contract capture. | All are `[LEAD]` or `[VERIFY]`; no supported Orpheus API is canonical. | **Unresolved** |
 
+### 1.3 Current client implementation boundary
+
+The current client has capture-backed service boundaries for same-host Clerk
+refresh, `/api/feed/v3`, account/billing reads, Explore, notifications,
+media-backed download/playback, and the three-leg `.m4a` upload transport.
+Generation submission remains intentionally disabled because the captured
+CAPTCHA token flow and durable processing contract are not implemented. The
+B-Side/Orpheus, WAV-conversion, constructed-media, and bundle-only routes remain
+disabled regardless of local UI flags. See
+[`../integration/SUNO.md`](../integration/SUNO.md) for the operational runbook.
+
 ## 2. Base URLs and request conventions
 
 ### 2.1 Hosts
@@ -87,13 +102,16 @@ Additional notation used in the catalog:
 | Host | Role | Evidence |
 |---|---|---|
 | `https://suno.com` | Web application and OAuth final destination. | `[T1]` Burp/HAR/recon |
-| `https://auth.suno.com` | Current Clerk host; its versioned base is `https://auth.suno.com/v1`. Catalog auth paths below are relative to the host. | `[T1]` 2026-08-25 Burp and 2026-09-22 recon |
-| `https://studio-api-prod.suno.com` | Primary Studio API host. | `[T1]` 2026-08-25 Burp and 2026-09-23 HAR |
-| `https://cdn1.suno.ai` | Captured media host. | `[T1]` response values in captured clip objects |
+| `https://auth.suno.com` | Current Clerk host; catalog auth paths are host-relative. | `[T1]` 2026-08-25 and 2026-09-24 Burp; 2026-09-22 recon |
+| `https://studio-api-prod.suno.com` | Primary Studio API host. | `[T1]` 2026-08-25 and 2026-09-24 Burp; 2026-09-23 HAR |
+| `https://suno-uploads.s3.amazonaws.com` | Temporary direct multipart upload target returned by the audio-upload initializer. | `[T1]` 2026-09-24 request/response |
+| `https://cdn1.suno.ai`, `https://cdn2.suno.ai` | Captured image asset hosts. | `[T1]` response fields and direct requests, 2026-09-24 |
 | `https://d2lwuy8qc234o3.cloudfront.net` | Captured progressive-media host. | `[T1]` response values in captured clip objects |
+| `https://audiopipe.suno.ai` | Captured streaming-audio host. | `[T1]` response values in 2026-09-24 clip objects |
+| `https://studio-api.prod.suno.com` | Alternate host observed only in returned media fields, including the forbidden sentinel; not an API base. | `[T1]` response value only |
 | `https://suno-ai--orpheus-prod-web.modal.run` | Claimed Orpheus service. | `[LEAD]`; no reviewed Orpheus request/response contract |
 | `https://clerk.suno.com` | Prototype-era/legacy Clerk host. | `[LEAD]`; not the canonical current web host |
-| `https://studio-api.prod.suno.com`, `https://studio-api.sky.suno.com` | Alternate/staging names found in scans. | `[LEAD]`; do not substitute for the captured production host |
+| `https://studio-api.sky.suno.com` | Alternate/staging name found in scans. | `[LEAD]`; do not substitute for the captured production host |
 
 All Studio routes in this document are host-relative paths beginning with
 `/api/`, for example `https://studio-api-prod.suno.com/api/feed/v3`. Raw scan
@@ -112,9 +130,13 @@ comparison, while preserving the remainder of the path and trailing slash.
 - Captured cross-origin Studio request families were preceded by successful
   `OPTIONS` preflights. Native clients do not gain browser CORS behavior, but
   cookie-jar and header handling still need capture-backed testing.
-- JSON, form encoding, and multipart are not interchangeable. The feed uses
-  JSON; Clerk POSTs use form encoding. For all other routes, use only a
-  directly captured content type.
+- JSON, form encoding, and multipart are not interchangeable. The feed and
+  Studio audio-upload initializer/finisher use JSON; Clerk session POSTs use
+  form encoding; the returned storage URL receives a direct multipart upload.
+  For all other routes, use only a directly captured content type.
+- The direct storage upload does not use the Suno bearer. It uses the temporary
+  URL and policy fields returned by the initializer. Treat those fields as
+  short-lived secrets: never log, persist, or construct them independently.
 - IDs are opaque. Do not assume a UUID, numeric ID, or session ID can be
   substituted for another merely because their textual forms differ.
 - Do not automatically add or remove a trailing slash. Both forms can occur in
@@ -135,46 +157,45 @@ comparison, while preserving the remainder of the path and trailing slash.
 
 ### 2.4 Clerk cookies relevant to the observed flow
 
-Only these Clerk-related names are relevant to the captured flow:
+Only these Clerk-related name families are relevant to the captured flow:
 
-- `__session`
-- `__session_Jnxw-muT`
-- `__client`
-- `__client_uat`
-- `__client_uat_Jnxw-muT`
+- `__session` and its instance-key-suffixed variant
+- `__client` and its instance-key-suffixed variant
+- `__client_uat` and its instance-key-suffixed variant
 
-The suffix is an instance-key variant observed in capture. Do not assume a
-fixed Clerk frontend key is universal. Analytics, advertising, payment, and
-RUM cookies seen alongside the flow are not authentication requirements and
-are intentionally omitted.
+The exact instance-key suffix is intentionally omitted. Do not assume a fixed
+Clerk frontend key is universal. Analytics, advertising, payment, and RUM
+cookies seen alongside the flow are not authentication requirements and are
+intentionally omitted.
 
 ## 3. Authentication and OAuth
 
-### 3.1 Canonical bearer acquisition and refresh
+### 3.1 Canonical bearer acquisition and session-token routes
 
-1. Send `GET https://auth.suno.com/v1/client` with the captured Clerk cookie
-   set and the observed `__clerk_api_version` and `_clerk_js_version` query
-   keys. `[T1]`
+1. Send `GET /v1/client` on the Clerk host with the captured cookie context.
+   The 2026-09-24 request had no query keys; the 2026-08-25 request included
+   version query keys. Both are `[T1]` point-in-time variants.
 2. Read the active session identifier from
-   `response.last_active_session_id` and the bearer from
-   `response.sessions[].last_active_token.jwt`. Select the session associated
-   with the active identifier rather than assuming array position. `[T1]`
+   `response.last_active_session_id` and the bearer from the matching
+   `response.sessions[].last_active_token.jwt`. Do not assume array position.
+   `[T1]`
 3. Use that bearer as `Authorization: Bearer {jwt}` for Studio API calls.
    `[T1]`
-4. To refresh, send
-   `POST https://auth.suno.com/v1/client/sessions/{sid}/touch` with the same
-   Clerk cookie context, form content type, and an empty form body. Read the
-   fresh bearer from the returned client/session envelope at
-   `response.sessions[].last_active_token.jwt`. `[T1]`
+4. `POST /v1/client/sessions/{sid}/touch` is directly observed. The 2026-09-24
+   request had no query keys and used form body `intent=focus`; its 200 response
+   contained both `client` and `response` session envelopes. The 2026-08-25
+   capture used version query keys and an empty form body. Both are `[T1]`
+   point-in-time variants; a client must not synthesize a hybrid or assume one
+   variant is universally required.
+5. `POST /v1/client/sessions/{sid}/tokens` is also directly observed. The
+   2026-09-24 request had no query keys and an empty form body; its 200 response
+   was a top-level object containing `jwt`. `[T1]`
 
-The following are explicitly **not** the documented exchange:
-
-- `POST /v1/client/sessions/{sid}/tokens`
-- `POST /v1/client/sessions/{sid}/tokens/api`
-
-They may exist in Clerk deployments, but no reviewed Suno capture exercised
-them. A prototype-era `clerk.suno.com` client-suffix route is also not part of
-the canonical current web flow.
+`POST /v1/client/sessions/{sid}/tokens/api` remains unobserved. Because both
+`tokens` and `touch` are now captured, neither may be described as universally
+replacing the other. Route preference, fallback order, and universal
+requiredness remain `[VERIFY]`. A prototype-era `clerk.suno.com` client-suffix
+route is not part of the current observed flow.
 
 ### 3.2 Captured Google web flow (request evidence only)
 
@@ -192,9 +213,11 @@ It has no response statuses or bodies; none are inferred below.
 | 7 | GET | `suno.com/create` | `signup_source`, `referrer`, `pre_signup_origin`, `pre_signup_external_referrer`, `redirected_from` | `[T1]` request-only recon |
 
 The separate 2026-08-25 Burp auth capture also observed
-`GET /v1/client/handshake`, `GET /v1/client`, and the touch flow. Do not assume
-the handshake appeared in the 2026-09-22 sequence merely because both captures
-describe a Google sign-in.
+`GET /v1/client/handshake`, `GET /v1/client`, and the touch flow. The
+2026-09-24 export re-observed `GET /v1/client`, `tokens`, and `touch`, but did
+not exercise Google sign-in or any callback. Session-token calls do not prove a
+provider redirect contract, and the handshake must not be assumed to have
+appeared in the 2026-09-22 sequence merely because both captures concern auth.
 
 ### 3.3 Native desktop callback gate
 
@@ -210,8 +233,9 @@ Before implementation, a human capture must prove all of the following:
   `https://auth.suno.com/social/complete/google-oauth2/`.
 - The callback and handshake can be completed without scraping browser
   cookies from an unrelated web session.
-- The final session can be persisted securely and refreshed through the
-  captured `GET /v1/client` / `touch` flow.
+- The final session can be persisted securely and refreshed through one of the
+  directly captured `GET /v1/client` + `touch`/`tokens` flows without relying
+  on an unrelated browser cookie jar.
 
 Do not enable native login, hand-roll a Clerk handshake, or guess a
 `localhost`/custom-scheme target. A Suno-owned HTTPS callback in a capture is
@@ -221,8 +245,9 @@ not a loopback/custom-scheme callback.
 
 | Method | Path | Auth | Purpose | Evidence |
 |---|---|---|---|---|
-| GET | `/v1/client` | Clerk cookies | Fetch client/session state and initial bearer | `[T1]` Burp 2026-08-25 |
-| POST | `/v1/client/sessions/{sid}/touch` | Clerk cookies | Refresh active session and obtain fresh bearer | `[T1]` Burp 2026-08-25 |
+| GET | `/v1/client` | Clerk cookies | Fetch client/session state and initial bearer | `[T1]` Burp 2026-08-25 and 2026-09-24 |
+| POST | `/v1/client/sessions/{sid}/touch` | Clerk cookies | Touch active session and obtain a fresh bearer from client/session envelopes | `[T1]` Burp 2026-08-25 and 2026-09-24; request variants coexist |
+| POST | `/v1/client/sessions/{sid}/tokens` | Clerk cookies | Mint/return a session bearer as top-level `jwt` | `[T1]` Burp 2026-09-24 |
 | POST | `/v1/client/sign_ins` | Clerk/browser context | Begin Clerk sign-in attempt | `[T1]` request-only recon 2026-09-22; form flow also in Burp 2026-08-25 |
 | GET | `/social/login/google-oauth2/` | Browser/Clerk context | Provider redirect initiation | `[T1]` request-only recon 2026-09-22 |
 | GET | `/social/complete/google-oauth2/` | Provider callback context | Suno-owned Google callback | `[T1]` request-only recon 2026-09-22 |
@@ -437,7 +462,7 @@ not a loopback/custom-scheme callback.
 | GET? | `/api/feed/` | Bearer? | Legacy feed | `[LEAD]` old library prose |
 | GET? | `/api/feed/v2` | Bearer? | Legacy v2 feed | `[LEAD]` old library prose |
 | GET? | `/api/feed/v3/offset` | Bearer? | Offset feed variant | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/unified/explore` | Bearer? | Explore unified feed | `[LEAD]` loose normalized scan |
+| POST | `/api/unified/explore` | Bearer | Cursor-based explore feed | `[T1]` Burp 2026-09-24 |
 | GET? | `/api/unified/homepage/explore` | Bearer? | Explore homepage feed | `[LEAD]` old library prose |
 | GET? | `/api/unified/homepage/explore/mobile` | Bearer? | Mobile explore feed | `[LEAD]` old library prose |
 | GET? | `/api/unified/search/omnisearch` | Bearer? | Unified search | `[LEAD]` old library/loose scan |
@@ -456,6 +481,11 @@ not a loopback/custom-scheme callback.
 | POST? | `/api/playlist/update_clips/` | Bearer? | Add/remove/reorder playlist clips | `[LEAD]` old inventory/topic prose |
 | GET? | `/api/playlist/{playlist_id}/` | Bearer? | Playlist detail | `[LEAD]` old library/topic prose |
 | GET? | `/api/playlist/{playlist_id}/tracks` | Bearer? | Playlist tracks | `[LEAD]` old library/topic prose |
+
+No reviewed capture establishes server-side search as a `searchText` field on
+`POST /api/feed/v3`. Search claims derived from old prose or client parameters
+remain `[LEAD]`; clients must use local filtering until a direct request/response
+capture proves the remote search contract.
 
 ### 4.6 Clips, media, download, upload, and processing
 
@@ -493,9 +523,10 @@ not a loopback/custom-scheme callback.
 | `?` | `/api/download/clips/zip/prepare` | Bearer? | Prepare clip ZIP download | `[VERIFY]` method/payload not captured |
 | `?` | `/api/openai-speech/` | Bearer? | Claimed speech compatibility surface | `[VERIFY]` GET claim is scan-only; no method/schema contract |
 | GET? | `/api/deepgram-token` | Bearer? | Claimed transcription token | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/uploads/audio/` | Bearer? | Initialize audio upload | `[LEAD]` old upload topic/raw scan; multipart fields unproved |
-| POST? | `/api/uploads/audio/{id}/initialize-clip/` | Bearer? | Initialize clip from uploaded audio | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/uploads/audio/{id}/upload-finish/` | Bearer? | Finalize audio upload | `[LEAD]` old inventory/topic prose |
+| POST | `/api/uploads/audio/` | Bearer | Initialize an audio upload and return a temporary direct-upload URL/policy | `[T1]` Burp 2026-09-24; JSON request/response |
+| POST? | `/api/uploads/audio/{id}/initialize-clip/` | Bearer? | Initialize clip from uploaded audio | `[LEAD]` old inventory/topic prose; not captured in 2026-09-24 export |
+| POST | `/api/uploads/audio/{id}/upload-finish/` | Bearer | Finalize a completed direct audio upload | `[T1]` Burp 2026-09-24; JSON request/empty-object response |
+| POST | Returned URL on `suno-uploads.s3.amazonaws.com` | Temporary signed multipart fields | Direct-upload captured audio bytes | `[T1]` Burp 2026-09-24; 204 response |
 | GET? | `/api/uploads/audio/{id}/` | Bearer? | Audio upload/processing status | `[LEAD]` old inventory/topic prose |
 | POST? | `/api/uploads/audio/{id}/convert_wav/` | Bearer? | Convert uploaded audio to WAV | `[LEAD]` old upload topic prose |
 | POST? | `/api/uploads/image` | Bearer? | Image upload, no trailing slash | `[LEAD]` raw scan; multipart fields unproved |
@@ -547,11 +578,11 @@ availability statement is canonical without a current capture.
 | POST? | `/api/comment/{comment_id}/reaction` | Bearer? | React to comment | `[LEAD]` old inventory/social prose |
 | POST? | `/api/comment/{comment_id}/replies` | Bearer? | Reply to comment | `[LEAD]` old inventory/social prose |
 | POST? | `/api/comment/{comment_id}/report` | Bearer? | Report comment | `[LEAD]` old inventory/social prose |
-| GET? | `/api/notification/v2/read` | Bearer? | Mark/read notification surface | `[LEAD]` old inventory; method conflict with mutation semantics remains |
+| POST | `/api/notification/v2/read` | Bearer | Mark notifications read, optionally before a UTC cutoff | `[T1]` Burp 2026-09-24 |
 | GET? | `/api/share/attribute/` | Bearer? | Share attribution | `[LEAD]` old inventory/social prose |
 | GET? | `/api/share/event` | Bearer? | Share event | `[LEAD]` old inventory/social prose; mutation-by-GET is not trusted |
 | GET? | `/api/share/link` | Bearer? | Share-link surface | `[LEAD]` old inventory/social prose |
-| GET? | `/api/social/following-feed` | Bearer? | Following feed | `[LEAD]` old inventory/social prose |
+| POST | `/api/social/following-feed` | Bearer | Activity feed for followed accounts | `[T1]` Burp 2026-09-24; subsequent-page behavior `[VERIFY]` |
 | `GET?` or `POST?` | `/api/song_copy/send-song` | Bearer? | Send/copy song action | `[VERIFY]` direct method conflict |
 | GET? | `/api/invite/` | Bearer? | Invitation surface | `[LEAD]` old inventory/raw scan |
 | POST? | `/api/survey/survey-responses` | Bearer? | Survey response | `[LEAD]` raw/loose scan |
@@ -640,13 +671,17 @@ a supported API, a verified model catalog, or a client contract.
 
 ## 5. Capture-backed contracts
 
-### 5.1 Clerk client and refresh contract
+### 5.1 Clerk client and session-token contracts
 
 **Initial bearer — `[T1]`**
 
 ```http
-GET /v1/client?__clerk_api_version={captured_version}&_clerk_js_version={captured_version}
+GET /v1/client
 ```
+
+The 2026-08-25 variant appended `__clerk_api_version` and
+`_clerk_js_version` query keys; the 2026-09-24 request did not. Treat query
+requiredness as point-in-time rather than synthesizing one request for both.
 
 Relevant captured response structure, with values omitted:
 
@@ -659,45 +694,127 @@ response.sessions[].last_active_token.jwt
 Select the session matching `last_active_session_id`. A session-array index is
 not a stable selector.
 
-**Refresh — `[T1]`**
+**Session touch — `[T1]`, with point-in-time request variants**
 
 ```http
-POST /v1/client/sessions/{sid}/touch?__clerk_api_version={captured_version}&_clerk_js_version={captured_version}
+POST /v1/client/sessions/{sid}/touch
+Content-Type: application/x-www-form-urlencoded
+
+intent=focus
+```
+
+The 2026-09-24 request had no query keys and the form body above; its 200
+response contained both `client` and `response` session envelopes. The
+2026-08-25 capture used version query keys and an empty form body. Defensive
+parsing may accept both envelope shapes, but requiredness and preference remain
+`[VERIFY]`.
+
+**Session token — `[T1]`**
+
+```http
+POST /v1/client/sessions/{sid}/tokens
 Content-Type: application/x-www-form-urlencoded
 ```
 
-The body is empty. The response uses the same client/session envelope and
-contains the fresh bearer under the active session's
-`last_active_token.jwt`.
+The 2026-09-24 body was empty and the 200 response shape was:
+
+```json
+{
+  "jwt": "<redacted>"
+}
+```
+
+This directly resolves the old “unobserved” claim. It does not prove that
+`tokens` replaces `touch`, and `/tokens/api` remains unobserved.
 
 **Client verification route — `[VERIFY]`**
 
-`/v1/client/verify` is mentioned in older material with conflicting methods and
-purposes. No reviewed in-repository capture establishes its method, body, or
-response. Do not synthesize a Turnstile heartbeat request or repurpose this
-route as a generic “verify bearer” call; capture it before implementation.
+`/v1/client/verify` remains method/contract-conflicted in the reviewed
+consolidated corpus. Do not synthesize a Turnstile heartbeat request or
+repurpose this route as a generic “verify bearer” call; capture it before
+implementation.
 
 ### 5.2 `POST /api/feed/v3` contract
 
-**Request rules — `[T1]`**
+**Request shape — `[T1]`**
 
-- JSON key is exactly `cursor`.
-- First page: `cursor: null`.
-- Later page: put the opaque `next_cursor` value from the prior response under
-  the request key `cursor`.
-- Captured requests also included optional `limit` and `filters` keys.
-- The inner `filters` shape is deliberately not canonicalized here because the
-  correction baseline preserves only the observed key names. Do not invent a
-  filter schema from old topic prose.
+The 2026-09-24 export contains 23 direct calls. The captured top-level request
+keys were `cursor`, `limit`, and `filters`:
 
-**Non-final response — `[T1]`**
+```json
+{
+  "cursor": null,
+  "limit": 20,
+  "filters": {
+    "disliked": "False",
+    "fullSong": "False",
+    "public": "False",
+    "stemComplement": "False",
+    "trashed": "False",
+    "unlocked": "False",
+    "upload": "False",
+    "liked": "False",
+    "cover": {
+      "presence": "<captured-presence-string>"
+    },
+    "fromStudioProject": {
+      "presence": "<captured-presence-string>"
+    },
+    "persona": {
+      "presence": "<captured-presence-string>"
+    },
+    "stem": {
+      "presence": "<captured-presence-string>"
+    },
+    "user": {
+      "presence": "<captured-presence-string>"
+    },
+    "workspace": {
+      "presence": "<captured-presence-string>"
+    },
+    "ids": {
+      "presence": "<captured-presence-string>",
+      "clipIds": ["<redacted-clip-id>"]
+    },
+    "sort": {
+      "sortBy": "created_at",
+      "sortDirection": "desc"
+    }
+  }
+}
+```
+
+Contract rules:
+
+- The eight flag fields are JSON **strings** with observed values `True` or
+  `False`, not JSON booleans.
+- `cover`, `fromStudioProject`, `persona`, `stem`, `user`, and `workspace` use
+  presence objects; captured identifier fields are optional. Do not replace
+  presence semantics with booleans.
+- `ids` carries a presence string and `clipIds[]` when clip identifiers are
+  present. Identifiers remain opaque and are not reproduced here.
+- Captured `sort.sortBy` values included `created_at` and `upvote_count`;
+  captured direction values included `asc` and `desc`. This is an observed set,
+  not an exhaustive enum.
+- First-page cursor is `null`. Later pages put the prior response's opaque
+  `next_cursor` under request key `cursor`; never send `next_cursor` as the
+  request key.
+- **`searchText` was not observed in any reviewed feed request.** Server-side
+  search remains unimplemented/unverified; do not add it from old prose, UI
+  behavior, or a client parameter alone.
+
+**Response shape — `[T1]`**
+
+The response root contains `clips`, `has_more`, and optional `next_cursor`.
+Observed clip status values included `complete` and `streaming`; this is not an
+exhaustive status vocabulary.
 
 ```json
 {
   "clips": [
     {
       "id": "<opaque-clip-id>",
-      "status": "submitted"
+      "status": "streaming"
     }
   ],
   "next_cursor": "<opaque-cursor>",
@@ -705,22 +822,9 @@ route as a generic “verify bearer” call; capture it before implementation.
 }
 ```
 
-**Final response — `[T1]`**
-
-```json
-{
-  "clips": [
-    {
-      "id": "<opaque-clip-id>",
-      "status": "complete"
-    }
-  ],
-  "has_more": false
-}
-```
-
-On the final page, `next_cursor` is omitted. Do not send `next_cursor` as the
-request key, and do not synthesize a cursor when `has_more` is false.
+Every observed non-final page carried a cursor. Every observed
+`has_more: false` page omitted `next_cursor`. Do not synthesize a cursor after
+the final page.
 
 ### 5.3 Clip and progressive-media schema
 
@@ -731,29 +835,34 @@ field. `[T1]` evidence comes from feed, generation, project, and HAR captures.
 |---|---|---|
 | Identity | `id`, `entity_type`, `title` | Song captures used `entity_type: "song_schema"`. |
 | Processing | `status` | Observed values included `submitted` and `complete`; this is not an exhaustive status vocabulary. |
-| Legacy media | `audio_url`, `video_url`, `image_url`, `image_large_url` | URLs can be empty while processing or when an asset is unavailable. |
-| Progressive media | `media_urls[]` | Each observed item has `url`, `content_type`, `delivery`; `encoding` was optional. |
-| Observed progressive types | `content_type: "m4a-opus"` or `"mp3"`, `delivery: "progressive"` | Prefer the actual array; do not synthesize CDN paths. |
+| Legacy media | `audio_url`, `video_url`, `image_url`, `image_large_url` | Values may be empty while processing. A non-empty value may still be a forbidden sentinel; see below. |
+| Progressive media | `media_urls[]` | Each observed audio item has `url`, `content_type`, `delivery`, and `encoding`; this array is the playback/download authority. |
+| Observed media taxonomy | `m4a-opus` / `progressive`, `mp3` / `streaming`, `webm-opus` / `streaming` | The first was returned on the captured CloudFront host; the latter two were returned on `audiopipe.suno.ai`. |
 | Model observation | `major_model_version`, `model_name` | Values are account/time/model-catalog dependent. |
 | Engagement | `play_count`, `upvote_count`, `allow_comments`, `is_verified` | Observed clip metadata/counters. |
 | Ownership | `handle`, `display_name`, `user_id`, `is_public`, `is_trashed`, `is_liked` | Not all generation responses contained every ownership key. |
 | Creation | `created_at`, `batch_index`, `has_hook`, `is_persona_root`, `action_config` | Observed on some clip contexts. |
 | Metadata object | `tags`, `negative_tags`, `prompt`, and other generation/creation fields | `metadata` contents vary by route and generation mode. |
 
-A progressive-media item has this shape:
+A captured media item has this shape:
 
 ```json
 {
-  "url": "<captured-media-url>",
+  "url": "<redacted-complete-media-url>",
   "content_type": "m4a-opus",
   "delivery": "progressive",
-  "encoding": "<optional>"
+  "encoding": "<captured-encoding>"
 }
 ```
 
-Use the returned `url` exactly. The constructed fallbacks
-`cdn1.suno.ai/{clip_id}.mp3` and
-`d2lwuy8qc234o3.cloudfront.net/1/clip/{clip_id}.m4a` are `[LEAD]` and are not
+In the 2026-09-24 feed sample, every clip had a non-empty legacy `audio_url`,
+but every value used the alternate media host's `/api/forbidden` sentinel. That
+sentinel is **non-playable**, not a successful media URL. Select a playable item
+from `media_urls[]` by captured content type/delivery; never use a
+construct-from-ID CDN fallback.
+
+The constructed fallbacks `cdn1.suno.ai/{clip_id}.mp3` and
+`d2lwuy8qc234o3.cloudfront.net/1/clip/{clip_id}.m4a` remain `[LEAD]` and are not
 part of the captured media contract.
 
 ### 5.4 Captured generation and polling behavior
@@ -800,7 +909,59 @@ No fixed polling interval was established. `GET /api/gen/{id}` remains a
 captured response exposed a lyrics request ID, lyrics ID, and edited lyrics.
 No polling was observed for that call.
 
-### 5.5 Other captured analysis contracts
+### 5.5 Notification, following, and explore contracts
+
+**Mark notifications read — `[T1]`**
+
+`POST /api/notification/v2/read` used JSON with `all` (boolean) and
+`before_datetime_utc` (string), and returned a 200 object containing a `status`
+string. The capture does not establish a complete status enum.
+
+**Following feed — `[T1]` route, `[VERIFY]` subsequent-page behavior**
+
+`POST /api/social/following-feed` used JSON with numeric `page_size` plus string
+`ranking_method` and `result_type`. The 200 response contained
+`first_item_timestamp`, `last_item_timestamp`, `page_size`, and `items[]`.
+Observed item variants were clip, comment, and followed-user-profile shapes. No
+next-page token or cursor was captured, so later-page behavior remains
+`[VERIFY]`.
+
+**Explore feed — `[T1]`**
+
+`POST /api/unified/explore` used JSON with `cursor` as a string or `null`. Its
+200 response contained `feeds[]` and `next_cursor`; the captured feed objects
+included identifier/title, metadata, items, presentation, and logging-context
+fields. Exact presentation and logging schemas are intentionally not promoted
+beyond those observed categories.
+
+### 5.6 Three-step audio upload contract
+
+**1. Initialize — `[T1]`**
+
+`POST /api/uploads/audio/` used JSON with string `extension` and `upload_type`.
+The 200 response contained an opaque upload `id`, a temporary `url`,
+`is_file_uploaded`, and a `fields` object with `AWSAccessKeyId`, `Content-Type`,
+`key`, `policy`, and `signature`.
+
+**2. Direct storage upload — `[T1]`**
+
+POST multipart form data to the **returned** storage URL with the returned
+fields plus `file`. The captured leg returned 204. Do not substitute a
+hard-coded bucket URL, synthesize policy fields, attach the Suno bearer, log
+the temporary URL/fields, or retain them beyond the upload operation.
+
+**3. Finish — `[T1]`**
+
+`POST /api/uploads/audio/{id}/upload-finish/` used JSON with boolean
+`agreed_to_vip_upload_terms` and string `upload_filename` and `upload_type`.
+The 200 response was an empty object.
+
+This proves the initialize → direct multipart → finish transport sequence only.
+The export did not capture `initialize-clip`, processing-status, or
+upload-to-generation linkage, so those steps remain `[LEAD]`/`[VERIFY]` rather
+than a complete product workflow.
+
+### 5.7 Other captured analysis contracts
 
 - `GET /api/gen/{id}/aligned_lyrics/v2/` returned `aligned_words[]` with
   `word`, `start_s`, `end_s`, `success`, and `p_align`, plus opaque auxiliary
@@ -818,7 +979,7 @@ No polling was observed for that call.
   `/api/prompts/v2` were captured, but their complete mutation schemas are not
   reproduced here. `[T1] route/method; schema intentionally conservative]`
 
-### 5.6 Documented routes whose detailed schemas remain uncaptured
+### 5.8 Documented routes whose detailed schemas remain uncaptured
 
 The following route families are useful inventory but do **not** have a
 canonical request/response schema in this master:
@@ -828,8 +989,9 @@ canonical request/response schema in this master:
 - Lyrics generation, infill, mashup, pair, concat, merge, extend, and cover
   variants other than the captured v2-web submission
 - Prompt mutation payloads beyond captured route/method evidence
-- Upload initialization, multipart fields, direct-to-storage transfer,
-  initialization/finalization payloads, and processing status
+- Audio-upload `initialize-clip`, processing status, generation linkage,
+  validation/error envelopes, and post-finish lifecycle beyond the captured
+  three-step transport sequence
 - Download preparation, ZIP export, billing-gated clip download, and exact
   `Content-Disposition`/filename behavior
 - Persona/custom-model creation, training, archive, and voice verification
@@ -846,11 +1008,15 @@ For these families, capture the request and response before writing a client.
 
 - The 2026-08-25 Studio/auth session primarily captured successful 200
   responses, several 204 responses, and OAuth/handshake 302 redirects.
+- The 2026-09-24 export contains 74 direct Studio calls: 73 returned 200 and
+  one returned 204. This is route evidence, not a universal success/error
+  envelope.
 - Successful feed, project, generation submission, and media-analysis routes
-  returned JSON. Some telemetry/verification routes returned an empty body.
+  returned JSON. Some telemetry, upload-finish, and direct-upload responses
+  returned an empty body.
 - The 2026-09-22 OAuth recon has no response statuses or bodies and therefore
   adds no status semantics.
-- No reviewed capture in the authoritative baseline provides a canonical Suno
+- No reviewed capture in the consolidated baseline provides a canonical Suno
   error-body schema.
 
 ### 6.2 What is not established
@@ -879,15 +1045,16 @@ authorization.
 
 | Topic | Canonical statement | Evidence |
 |---|---|---|
-| Model catalog | `GET /api/session/` returned a `models[]` catalog with account/runtime fields including availability, external model key, length limits, capabilities, and feature labels. Read this at runtime; do not hardcode an old list. | `[T1]` Burp 2026-08-25 |
-| Generation model key | A generation capture used a model key and returned model metadata. It is an observed example, not proof that the key remains selectable. | `[T1]` generation capture; runtime availability `[T1]` via session |
-| Model duration/stem limits | Do not hardcode values from old V3/V4/V5/V5.5 summaries. The session catalog is the source when present in a capture. | `[LEAD]` older topic prose superseded for canonical use |
-| Prompt/title limits | Do not hardcode old character maxima. The captured session catalog carried per-model length metadata. | `[T1]` session shape; values are runtime data |
+| Model catalog | `GET /api/session/` returned `models[]` plus `user` and runtime configuration. `models[].major_version` and `models[].max_lengths.*` were JSON **integers**, while identifier/name/availability fields remained strings or structured values. Parse numeric fields as numbers with range checks; do not string-coerce them or hardcode an old model list. | `[T1]` Burp 2026-08-25 and 2026-09-24 |
+| Account numeric fields | `user.total_clips` was an integer. Billing fields such as `credits`, `monthly_usage`, `monthly_limit`, and `total_credits_left` were integers, while plan/credit-pack price fields included floating-point numbers. Select the parser by field semantics; do not apply one integer conversion to every JSON number. | `[T1]` Burp 2026-09-24 |
+| Generation model key | A generation capture used a model key and returned model metadata. The session catalog's numeric `major_version` is not, by itself, proof of the request `mv` string. Read the runtime external model key and availability; do not derive or hardcode a generation key from the integer alone. | `[T1]` generation capture; runtime catalog `[T1]` |
+| Model duration/stem limits | Do not hardcode values from old V3/V4/V5/V5.5 summaries. Numeric limits in the session/billing catalog are account- and model-dependent runtime data. | `[T1]` numeric catalog fields; old hardcoded lists superseded |
+| Prompt/title limits | Do not hardcode old character maxima. `models[].max_lengths.title`, `prompt`, `tags`, `negative_tags`, and `gpt_description_prompt` were captured as JSON integers; validate defensively before converting to application integers. | `[T1]` session shape; values are runtime data |
 | Generation status | `submitted` and `complete` were observed. This is not the complete status vocabulary. | `[T1]` feed/generation captures |
 | Polling | Captured completion was observed through feed/get-songs; no interval is canonical. | `[T1]` behavioral capture |
 | Feature gates | Statsig routes are captured. Gate names/defaults/local-storage values from scans are leads, not server authorization. | `[T1]` route; `[LEAD]` values |
-| Billing/plan matrix | Exact plan entitlements, credit deductions, custom-model limits, and voice-clone availability remain account/time dependent and uncaptured in this master. | `[LEAD]` old prose |
-| Upload limits | The old two-minute upload claim is not canonical without a request/response or server-validation capture. | `[LEAD]` |
+| Billing/plan matrix | Billing exposes numeric credit, usage, download, upload, voice, agentic, and custom-model limits. Values remain account/time dependent; parse integer and floating-point fields according to their names, never as booleans or fixed plan constants. | `[T1]` Burp 2026-09-24 shape; entitlement interpretation remains runtime data |
+| Upload limits | Billing returned numeric `audio_upload_limits.min` and `.max`; the old fixed two-minute claim remains non-canonical. Apply account/runtime limits rather than a hardcoded duration. | `[T1]` numeric shape 2026-09-24; fixed duration superseded |
 | Stem counts | The old “12 stems” claim is not canonical without model/catalog or processing capture. | `[LEAD]` |
 | Video status | The captured video-status response exposed `status` and `video_url`, but one observed `complete` value with an empty URL is not a universal success rule. Clip-level media remains distinct. | `[T1]` route; interpretation conservative |
 | Realtime | `GET /api/realtime/discover` returned stream/auth metadata. Do not log the returned token material. | `[T1]` |
@@ -895,90 +1062,53 @@ authorization.
 
 ## 8. Source and provenance map
 
-### 8.1 Authoritative evidence
+### 8.1 2026-09-24 Burp export
+
+The reviewed source is the external directory
+`~/Documents/suno-burp-exports/sept-09-2026/`. Despite its `sept-09` label,
+Burp 2026.8 exported 432 items on **2026-09-24 14:01–14:13 MDT**, and the item
+timestamps are 2026-09-24. The directory remains outside the repository because
+its base64 XML is not sanitized.
+
+| Source file | SHA-256 prefix | Directly observed role | Limitation |
+|---|---|---|---|
+| `auth.suno.com` | `fdf9794b66a94739` | `GET /v1/client`, session `POST .../tokens`, session `POST .../touch` | Point-in-time; no Google callback; raw file contains live auth material. |
+| `studio-api-prod.suno.co` | `e714fe9cf751ed17` | 74 direct Studio calls and 48 matching preflights, including feed, account/billing, notification, social, explore, upload-init/finish, and media/status routes | Filename is truncated/mistyped; actual API host is `studio-api-prod.suno.com`. Raw file contains credentials and private data. |
+| `suno-uploads.s3.amazonaws.com` | `40e256480d15001f` | Direct multipart audio upload leg and 204 response | Temporary URL and policy fields are secret; no Studio bearer is used. |
+| `suno.com` | `7190f66cc7e886da` | Web redirects, static bundles, and web session-recovery evidence | Bundle strings remain leads; this export did not capture Google OAuth. |
+| `cdn1.suno.ai`, `cdn2.suno.ai`, `cdn-o.suno.com` | `a7a4330a4694dfc`, `9452a8461f1ff37a`, `d184605c13754cbc` | Direct image/static asset requests supporting media-host distinctions | Assets do not prove API authorization or return URL stability. |
+| `logger.full.log.txt` | `cdf06c2302598d14` | One static JavaScript request | Not a log of route calls; decoded route strings are `[LEAD]` only. |
+| Remaining telemetry/static/health files | See [`raw/README.md`](raw/README.md) | Supporting provenance and hash manifest | No promoted product API contract. |
+
+Full source hashes and handling rules are in
+[`raw/README.md`](raw/README.md). The source map must not copy raw payloads,
+complete media URLs, identifiers, or personal data into Markdown.
+
+### 8.2 Earlier evidence and implementation references
 
 | Source | Role | Limitation |
 |---|---|---|
-| Commit `678be76` | Corrects `/api` path composition, feed contract, bearer flow, OAuth verdict, and evidence tiers. | Code-path correction, not a fresh live probe. |
-| `src/suno/SunoEndpoints.hpp` | Current implementation endpoint map and `[T1]`/`[LEAD]` decisions. | Covers only routes used or retained by the client; not a complete API. |
-| `src/suno/auth/ClerkAuthClient.hpp` | Current Clerk base, query/version convention, form encoding, and primary touch flow. | Prototype legacy fallback remains unverified. |
-| 2026-08-25 Burp exports | Request/response evidence for auth, feed, generation, billing, projects, clips, lyrics, analysis, video, and app surfaces. | Point-in-time; external to this repository and credential-redacted. |
-| Sanitized 2026-08-25 extracts under `~/Documents/suno-media-station-glm5.2/docs/captures/raw/burp-session-2026-08/` | Reviewable summaries used to resolve route/method/schema evidence. | Summaries, not raw XML. |
-| 2026-09-23 `suno.com.har` | Browser/Studio traffic and progressive media evidence. | External point-in-time capture. |
-| [`raw/sanitized-recon-2026-09-22.json`](raw/sanitized-recon-2026-09-22.json) | Strongest direct evidence for the observed Google OAuth request sequence. | Request-only; no response statuses/bodies. |
-| [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) | Retained OAuth web-flow analysis and native-callback verdict. | Interpret with the request-only limitation above. |
+| 2026-08-25 Burp exports and sanitized extracts | Auth, feed, generation, billing, project, clip, lyrics, analysis, video, and app behavior not re-observed directly on 2026-09-24 | External, point-in-time evidence. |
+| 2026-09-22 [`raw/sanitized-recon-2026-09-22.json`](raw/sanitized-recon-2026-09-22.json) | Strongest direct evidence for the observed Google OAuth request sequence | Request-only; no response status/body. |
+| 2026-09-23 browser HAR | Browser/Studio traffic and progressive-media evidence | External, point-in-time capture. |
+| [`raw/endpoints_sniffed.list`](raw/endpoints_sniffed.list) | Candidate route discovery | `[LEAD]` only; no method, schema, status, or liveness guarantee. |
+| `src/suno/SunoEndpoints.hpp` and commit `678be76` | Implementation mirror and corrective history | Neither is a capture and neither overrides this inventory. |
 
-### 8.2 Lead-only source material
-
-| Source | Role | Limitation |
-|---|---|---|
-| [`raw/README.md`](raw/README.md) | Provenance and handling rules for raw scans. | Describes unfiltered data. |
-| [`raw/endpoints_sniffed.list`](raw/endpoints_sniffed.list) | Broad candidate route discovery from bundles, HTML, and sniffing. | No method, auth, schema, status, or liveness guarantee. |
-| `raw/sept-21-2026-loose-endpoints.md` (archived) | Categorized loose route leads after removing `/marketplace/` artifacts. | Reconstruction; methods often absent; retained only in the timestamped graveyard. |
-| Historical topic documents listed below | Preserve useful route families and prior notes. | Superseded by this master wherever they conflict. |
-
-### 8.3 Historical/superseded documents
-
-The following were read as source corpus and may be moved to the backup
-graveyard by the documentation consolidation. They are intentionally named as
-**code-form historical paths, not live Markdown links**:
-
-- `auth.md`
-- `generation.md`
-- `library.md`
-- `billing.md`
-- `projects.md`
-- `persona.md`
-- `social.md`
-- `upload.md`
-- `feature-flags.md`
-- `b-side.md`
-- `RECON-ARCHIVE.md`
-- `refresh_token_and_platform_switch.md`
-- `cyscan.io_subdomains.md`
-- `tmp_suno/`
-
-Earlier names and documents explicitly superseded by prior reconciliation or
-this consolidation include:
-
-- `SUNO_API_NOTES.md`
-- `SUNO_B_SIDE_DISCOVERY.md`
-- `API_SCRATCH_SUB_AGENT_FINDINGS.md`
-- `MARKETPLACE-INVESTIGATION.md`
-- `audio_formats.md`
-- `endpoints_new_2026-06-10.md`
-- `GLOSSARY.md`
-- Claims that `/tokens` or `/tokens/api` is the bearer exchange
-- Claims that native loopback/custom-scheme Google login is proven
-- Claims that old model limits, exact generation/upload/download schemas,
-  Orpheus models, or 429/430 meanings are stable contracts
-- Literal `/marketplace/api/...` endpoint spellings
-
-Historical documents remain useful for provenance, but they must not override
-this file.
+Superseded topic prose remains in Git history and the timestamped backup
+graveyard. It is not a live authority and must not be linked as current
+documentation.
 
 ## 9. Maintenance rule for future captures
 
-Every future capture entry must record enough evidence to be reproducible and
-sanitized:
+For every future capture:
 
-1. Capture timestamp and host, with any account/plan context generalized.
-2. Exact HTTP method and normalized host-relative path, including trailing
-   slash and meaningful query **key names** (never secret values).
-3. Request content type and captured body field names/types; redact tokens,
-   cookies, OAuth codes/state, emails, user IDs, private text, and media URLs.
-4. Response status, selected headers, and a redacted response schema/sample.
-5. For redirects, every hop and callback target, including proof or absence of
-   loopback/custom-scheme use.
-6. For errors/rate limits, capture status, `Retry-After` or equivalent headers,
-   and a redacted error body before assigning meaning to the code.
-7. A `[VERIFY]` resolution must name the direct request that selected the
-   method; source disagreement alone is not resolution.
-8. A new `[T1]` label means a new direct capture was reviewed. It does not
-   erase older point-in-time contracts; update drift notes explicitly.
-9. Raw scans and prose can add `[LEAD]` rows but cannot promote themselves.
-10. When files are archived, update this source map to point to the retained
-    raw evidence and avoid dead Markdown links.
-
-Until those rules are met, preserve uncertainty rather than inventing fields,
-methods, endpoints, or response semantics.
+1. Record capture timestamp, source filename, SHA-256, exact method, normalized
+   host/path, content type, and only redacted request/response shapes.
+2. Promote to `[T1]` only from a directly reviewed request/response. Scans,
+   bundles, prose, and client constants remain `[LEAD]`.
+3. `[T1]` means observed, not universally required. Keep conflicting variants or
+   unknown fallback/preference behavior `[VERIFY]` until a capture resolves it.
+4. Never record secrets, cookies, OAuth codes/state, personal data, identifiers,
+   private text, temporary upload fields, or complete media URLs.
+5. Update the source map and remove dead live-document links; do not copy raw
+   secret-bearing exports into the repository.

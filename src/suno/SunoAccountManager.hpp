@@ -27,6 +27,7 @@ public:
     void refreshAll();
     /// Fetch only billing (cheap post-generation refresh).
     void refreshBilling();
+    void clearSnapshots();
 
     // Last-known values; empty/nullopt until the first successful reply.
     [[nodiscard]] const std::optional<SunoUserSummary>& user() const { return user_; }

@@ -15,6 +15,7 @@
 #include <QMetaObject>
 #include <QThread>
 #include <QTimer>
+#include <QUrl>
 
 #include <deque>
 
@@ -58,10 +59,14 @@ CredentialStoreWorker::Outcome runCredentialStoreRequest(
     if (auto stored = store.load(QStringLiteral("suno/default")); stored.isOk()) {
         outcome.cookie = stored.value();
     } else if (request.migrateLegacy && !request.legacyCredential.isEmpty()) {
+        const QString migratedCredential =
+                request.legacyWasCookie
+                        ? auth::normalizeCookieHeader(request.legacyCredential)
+                        : request.legacyCredential.trimmed();
         if (auto migrated = store.store(QStringLiteral("suno/default"),
-                                        request.legacyCredential);
+                                        migratedCredential);
             migrated.isOk()) {
-            outcome.cookie = request.legacyCredential;
+            outcome.cookie = migratedCredential;
             outcome.migratedLegacy = true;
             LOG_INFO("SunoClient: migrated legacy config.toml {} into secret storage",
                      request.legacyWasCookie ? "cookie" : "token");
@@ -265,9 +270,16 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
     }
 
     bool rejectedStoredCredential = false;
+    bool storedCookieChanged = false;
     if (result.cookie.has_value() && !result.cookie->isEmpty()) {
-        const QString value = *result.cookie;
+        const QString storedValue = *result.cookie;
+        const QString value = auth::normalizeCookieHeader(storedValue);
         const auto classification = auth::classifyStoredCredential(value);
+        if (value != storedValue &&
+            (classification.shape == auth::StoredCredentialShape::BearerToken ||
+             classification.shape == auth::StoredCredentialShape::ClerkCookieHeader)) {
+            credentialStoreWorker_->store(QStringLiteral("suno/default"), value);
+        }
         switch (classification.shape) {
         case auth::StoredCredentialShape::BearerToken:
             credentials_.cookieHeader.clear();
@@ -282,6 +294,7 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
             setAuthFailureKind(auth::AuthFailureKind::None);
             if (value != credentials_.cookieHeader) {
                 credentials_ = auth::Credentials{value};
+                storedCookieChanged = true;
                 lastActiveSessionId_.clear();
                 bearer_ = auth::BearerToken{};
                 setState(auth::AuthState::NeedsReauth);
@@ -314,8 +327,8 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
     }
 
     // Fast path: a persisted bearer that is still genuinely unexpired.
-    if (result.bearer.has_value()) {
-        const QString& jwt = *result.bearer;
+    if (!storedCookieChanged && result.bearer.has_value()) {
+        const QString jwt = auth::normalizeCookieHeader(*result.bearer);
         auto claims = auth::JwtUtils::claims(jwt);
         if (claims && !auth::JwtUtils::isExpired(*claims, /*graceSecs=*/0)) {
             applyBearer(auth::JwtUtils::fromJwt(jwt));
@@ -337,8 +350,8 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
     if (mode == RestoreMode::Startup) {
         LOG_INFO("SunoClient: credential restore completed; no active session (signed out)");
         setState(auth::AuthState::Disconnected);
-        authWaiters_.clear();
     }
+    authWaiters_.clear();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -361,7 +374,7 @@ bool SunoClient::hasCredentials() const {
 }
 
 void SunoClient::setCookie(const std::string& cookie) {
-    const QString value = QString::fromStdString(cookie);
+    const QString value = auth::normalizeCookieHeader(QString::fromStdString(cookie));
     if (value == credentials_.cookieHeader) {
         return;
     }
@@ -374,6 +387,7 @@ void SunoClient::setCookie(const std::string& cookie) {
                              : auth::AuthState::NeedsReauth);
 
     if (value.isEmpty()) {
+        dropPendingAuthWork(QStringLiteral("credential cleared"));
         credentialStoreWorker_->remove(QStringLiteral("suno/default"));
     } else {
         credentialStoreWorker_->store(QStringLiteral("suno/default"), value);
@@ -386,7 +400,7 @@ void SunoClient::setCookie(const std::string& cookie) {
 }
 
 void SunoClient::setToken(const std::string& token) {
-    const QString jwt = QString::fromStdString(token);
+    const QString jwt = auth::normalizeCookieHeader(QString::fromStdString(token));
     if (!auth::JwtUtils::claims(jwt)) {
         LOG_WARN("SunoClient: rejected malformed token input");
         return;
@@ -513,6 +527,8 @@ void SunoClient::onBearerReadyInternal(const auth::BearerToken& token) {
     while (!retries.empty()) {
         PendingRequest pending = std::move(retries.front());
         retries.pop_front();
+        auth::makeStudioApiHeaders(bearer_.jwt, deviceId_, pending.method, pending.data)
+                .apply(pending.request);
         enqueueRequest(std::move(pending.request), std::move(pending.method),
                        std::move(pending.data), std::move(pending.callback),
                        /*retriedAuth=*/true);
@@ -559,7 +575,9 @@ void SunoClient::withValidToken(std::function<void()> proceed) {
         return;
     }
     if (!hasCredentials()) {
-        proceed();
+        setState(auth::AuthState::Disconnected);
+        LOG_WARN("SunoClient: blocked authenticated request without a credential");
+        errorOccurred.emitSignal("Not authenticated");
         return;
     }
     authWaiters_.push_back(std::move(proceed));
@@ -570,25 +588,69 @@ void SunoClient::enqueueAuthenticatedRequest(const QString& endpoint,
                                              const std::string& method,
                                              const QByteArray& data,
                                              std::function<void(QNetworkReply*)> callback) {
-    withValidToken([this, endpoint, method, data, callback = std::move(callback)]() mutable {
-        enqueueRequest(createAuthenticatedRequest(endpoint), method, data,
+    if (method != "GET" && method != "POST") {
+        rejectAuthenticatedRequest(QStringLiteral("unsupported authenticated HTTP method"));
+        return;
+    }
+
+    const auto url = resolveStudioApiUrl(endpoint);
+    if (!url) {
+        rejectAuthenticatedRequest(
+                QStringLiteral("authenticated request blocked outside the captured Studio host"));
+        return;
+    }
+
+    withValidToken([this, url = *url, method, data,
+                    callback = std::move(callback)]() mutable {
+        auto request = createAuthenticatedRequest(url, method, data);
+        if (!request) {
+            rejectAuthenticatedRequest(QStringLiteral("authenticated request has no bearer"));
+            return;
+        }
+        enqueueRequest(std::move(*request), method, std::move(data),
                        std::move(callback));
     });
 }
 
-QNetworkRequest SunoClient::createAuthenticatedRequest(const QString& endpoint) {
-    QUrl url = endpoint.startsWith(QStringLiteral("http")) ? QUrl(endpoint)
-                                                           : QUrl(API_BASE + endpoint);
+std::optional<QUrl> SunoClient::resolveStudioApiUrl(const QString& endpoint) const {
+    QUrl url(endpoint);
+    if (url.isRelative()) {
+        if (endpoint.startsWith(QStringLiteral("//")) ||
+            !endpoint.startsWith(QStringLiteral("/"))) {
+            return std::nullopt;
+        }
+        url = QUrl(API_BASE + endpoint);
+    }
+    if (!auth::isAllowedStudioApiUrl(url)) {
+        return std::nullopt;
+    }
+    return url;
+}
+
+std::optional<QNetworkRequest> SunoClient::createAuthenticatedRequest(
+        const QUrl& url, const std::string& method, const QByteArray& data) {
+    if (bearer_.jwt.isEmpty() || !auth::isAllowedStudioApiUrl(url)) {
+        return std::nullopt;
+    }
     QNetworkRequest request(url);
-    // Single canonical header recipe for ALL studio-api traffic.
-    auth::makeStudioApiHeaders(bearer_.jwt, deviceId_).apply(request);
+    auth::makeStudioApiHeaders(bearer_.jwt, deviceId_, method, data).apply(request);
     return request;
+}
+
+void SunoClient::rejectAuthenticatedRequest(const QString& reason) {
+    LOG_ERROR("SunoClient: {}", reason.toStdString());
+    errorOccurred.emitSignal(reason.toStdString());
 }
 
 void SunoClient::enqueueRequest(QNetworkRequest req, const std::string& method,
                                 QByteArray data,
                                 std::function<void(QNetworkReply*)> callback,
                                 bool retriedAuth) {
+    if (bearer_.jwt.isEmpty() || !auth::isAllowedStudioApiUrl(req.url()) ||
+        (method != "GET" && method != "POST")) {
+        rejectAuthenticatedRequest(QStringLiteral("authenticated request blocked before send"));
+        return;
+    }
     requestQueue_.push_back({std::move(req), method, std::move(data),
                              std::move(callback), retriedAuth});
     if (!queueTimer_->isActive()) {
@@ -644,12 +706,14 @@ void SunoClient::handleReplyFinished(QNetworkReply* reply, PendingRequest&& pend
 
 void SunoClient::handleJsonReply(QNetworkReply* reply,
                                  std::function<void(const QJsonDocument&)> handler) {
-    reply->deleteLater();
     if (reply->error() != QNetworkReply::NoError) {
         handleNetworkError(reply);
+        reply->deleteLater();
         return;
     }
-    handler(QJsonDocument::fromJson(reply->readAll()));
+    const QJsonDocument document = QJsonDocument::fromJson(reply->readAll());
+    reply->deleteLater();
+    handler(document);
 }
 
 void SunoClient::handleNetworkError(QNetworkReply* reply) {
@@ -676,6 +740,7 @@ void SunoClient::fetchLibraryPage(std::optional<QString> cursor, int limit,
         errorOccurred.emitSignal("Not authenticated");
         return;
     }
+    Q_UNUSED(searchText);
 
     // Request body per the CAPTURED /api/feed/v3 contract (T1, Aug 2026):
     // disliked/trashed are STRING "True"/"False"; presence filters are
@@ -695,20 +760,16 @@ void SunoClient::fetchLibraryPage(std::optional<QString> cursor, int limit,
     filters["stem"] = stem;
     filters["stemComplement"] = QStringLiteral("False");
     filters["workspace"] = workspace;
-    if (!searchText.isEmpty()) {
-        filters["searchText"] = searchText;
-    }
 
     QJsonObject body;
     body["cursor"] = cursor.has_value() ? QJsonValue(*cursor) : QJsonValue::Null;
     body["limit"] = limit;
     body["filters"] = filters;
 
-    withValidToken([this, body = std::move(body)]() {
-        enqueueRequest(createAuthenticatedRequest(qstr(vc::suno::endpoints::LIBRARY_FEED)),
-                       "POST", QJsonDocument(body).toJson(),
-                       [this](QNetworkReply* reply) { onLibraryReply(reply); });
-    });
+    enqueueAuthenticatedRequest(
+            qstr(vc::suno::endpoints::LIBRARY_FEED), "POST",
+            QJsonDocument(body).toJson(),
+            [this](QNetworkReply* reply) { onLibraryReply(reply); });
 }
 
 void SunoClient::onLibraryReply(QNetworkReply* reply) {
@@ -729,28 +790,15 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
     });
 }
 
-void SunoClient::generate(const std::string& prompt, const std::string& tags,
-                          bool makeInstrumental, const std::string& model) {
+void SunoClient::generate(const std::string&, const std::string&,
+                          bool, const std::string&) {
     if (!isAuthenticated()) {
         errorOccurred.emitSignal("Not authenticated");
         return;
     }
 
-    withValidToken([this, prompt, tags, makeInstrumental, model]() {
-        QJsonObject body;
-        body["gpt_description_prompt"] = QString::fromStdString(prompt);
-        body["prompt"] = ""; // Used for custom lyrics
-        body["tags"] = QString::fromStdString(tags);
-        body["mv"] = QString::fromStdString(model);
-        body["make_instrumental"] = makeInstrumental;
-        body["continue_clip_id"] = QJsonValue::Null;
-        body["continue_at"] = QJsonValue::Null;
-
-        QJsonDocument doc(body);
-        enqueueRequest(createAuthenticatedRequest(qstr(vc::suno::endpoints::GENERATE)),
-                       "POST", doc.toJson(),
-                       [this](QNetworkReply* reply) { onGenerateReply(reply); });
-    });
+    errorOccurred.emitSignal(
+            "Generation is unavailable until the captured CAPTCHA token flow is supported");
 }
 
 void SunoClient::onGenerateReply(QNetworkReply* reply) {
@@ -784,69 +832,31 @@ void SunoClient::onGenerateReply(QNetworkReply* reply) {
 
 void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
     if (!isAuthenticated()) return;
-    withValidToken([this, clipId]() {
-        QString url = qstr(vc::suno::endpoints::ALIGNED_LYRICS)
-                              .replace("{}", QString::fromStdString(clipId));
-        enqueueRequest(createAuthenticatedRequest(url), "GET", {},
-                       [this, clipId](QNetworkReply* reply) {
-                           handleJsonReply(reply, [this, clipId](const QJsonDocument& doc) {
-                               // Forward the body as compact JSON; consumers re-parse it.
-                               alignedLyricsFetched.emitSignal(
-                                       clipId, doc.toJson(QJsonDocument::Compact).toStdString());
-                           });
-                       });
-    });
+    const QString url = qstr(vc::suno::endpoints::ALIGNED_LYRICS)
+                                .replace("{}", QString::fromStdString(clipId));
+    enqueueAuthenticatedRequest(
+            url, "GET", {}, [this, clipId](QNetworkReply* reply) {
+                handleJsonReply(reply, [this, clipId](const QJsonDocument& doc) {
+                    alignedLyricsFetched.emitSignal(
+                            clipId, doc.toJson(QJsonDocument::Compact).toStdString());
+                });
+            });
 }
 
-void SunoClient::initiateWavConversion(const std::string& clipId) {
-    if (!isAuthenticated()) return;
-    cancelledPolls_.remove(QString::fromStdString(clipId));
-    withValidToken([this, clipId]() {
-        QString url = qstr(vc::suno::endpoints::CONVERT_WAV)
-                              .replace("{}", QString::fromStdString(clipId));
-        enqueueAuthenticatedRequest(url, "POST", {}, [this, clipId](QNetworkReply* reply) {
-            onWavConversionInitiated(clipId, reply);
-        });
-    });
+void SunoClient::initiateWavConversion(const std::string&) {
+    errorOccurred.emitSignal("WAV conversion is unavailable from capture-backed contracts");
 }
 
-void SunoClient::onWavConversionInitiated(const std::string& clipId, QNetworkReply* reply) {
+void SunoClient::onWavConversionInitiated(const std::string&, QNetworkReply* reply) {
     reply->deleteLater();
-    if (reply->error() == QNetworkReply::NoError) { // 2xx incl. 202 Accepted
-        QTimer::singleShot(2000, this, [this, clipId]() { pollWavFile(clipId, 60); });
-    }
 }
 
 void SunoClient::cancelPoll(const std::string& clipId) {
     cancelledPolls_.insert(QString::fromStdString(clipId));
 }
 
-void SunoClient::pollWavFile(const std::string& clipId, int maxAttempts) {
-    if (!isAuthenticated() || maxAttempts <= 0) return;
-    const QString id = QString::fromStdString(clipId);
-    if (cancelledPolls_.contains(id)) {
-        cancelledPolls_.remove(id);
-        LOG_INFO("SunoClient: wav polling cancelled for {}", clipId);
-        return;
-    }
-    QString url = qstr(vc::suno::endpoints::WAV_FILE).replace("{}", id);
-    enqueueAuthenticatedRequest(url, "GET", {}, [this, id, maxAttempts](QNetworkReply* reply) {
-        reply->deleteLater();
-        if (cancelledPolls_.contains(id)) {
-            cancelledPolls_.remove(id);
-            return;
-        }
-        QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-        if (reply->error() == QNetworkReply::NoError &&
-            doc.object().value("wav_file_url").isString()) {
-            wavConversionReady.emitSignal(
-                    id.toStdString(),
-                    doc.object()["wav_file_url"].toString().toStdString());
-        } else {
-            QTimer::singleShot(2000, this,
-                               [this, id, maxAttempts]() { pollWavFile(id.toStdString(), maxAttempts - 1); });
-        }
-    });
+void SunoClient::pollWavFile(const std::string&, int) {
+    errorOccurred.emitSignal("WAV conversion is unavailable from capture-backed contracts");
 }
 
 } // namespace vc::suno
