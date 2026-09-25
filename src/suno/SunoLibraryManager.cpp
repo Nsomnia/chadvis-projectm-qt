@@ -147,7 +147,10 @@ void SunoLibraryManager::onLibraryFetched(const std::vector<SunoClip>& clips) {
   // Page complete: allow the next requestNextPage() through.
   isSyncing_ = false;
 
-  db_.saveClips(clips);
+  if (auto result = db_.saveClips(clips); !result) {
+    LOG_ERROR("SunoLibraryManager: Failed to persist library page: {}",
+              result.error().message);
+  }
 
   // Pagination truth comes straight from the feed/v3 envelope now.
   const bool hadMore = hasMorePages_;

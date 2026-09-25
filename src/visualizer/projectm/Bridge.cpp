@@ -57,8 +57,12 @@ Result<void> Bridge::init(const ProjectMConfig& config) {
         onPresetManagerChanged(p);
     });
 
-    scanPresets(config.presetPath);
-    presetManager_.loadState(file::configDir() / "preset_state.txt");
+    if (auto result = scanPresets(config.presetPath); !result) {
+        return result;
+    }
+    if (auto result = presetManager_.loadState(file::configDir() / "preset_state.txt"); !result) {
+        LOG_WARN("Bridge: Failed to load preset state: {}", result.error().message);
+    }
 
     if (config.useDefaultPreset) {
         engine_.setPresetDuration(0);
@@ -91,7 +95,9 @@ Result<void> Bridge::scanPresets(const fs::path& path) {
     LOG_INFO("Bridge: Scanning presets in '{}'", path.string());
     
     if (managerEmpty || path != lastPresetPath_) {
-        presetManager_.scan(path);
+        if (auto result = presetManager_.scan(path); !result) {
+            return result;
+        }
     }
 
     if (playlist_.handle() && (playlistEmpty || path != lastPresetPath_)) {

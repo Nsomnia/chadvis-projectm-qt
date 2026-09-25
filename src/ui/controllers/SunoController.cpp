@@ -57,7 +57,10 @@ SunoController::SunoController(AudioEngine* audioEngine,
     fs::path dataDir = file::dataDir();
     (void)file::ensureDir(dataDir);
     fs::path dbPath = dataDir / "suno_library.db";
-    db_.init(dbPath.string());
+    if (auto result = db_.init(dbPath.string()); !result) {
+        LOG_ERROR("SunoController: Failed to initialize Suno database: {}",
+                  result.error().message);
+    }
 
     // Initialize Managers
     accountManager_ = std::make_unique<SunoAccountManager>(client_.get(), this);
@@ -173,7 +176,10 @@ SunoController::SunoController(AudioEngine* audioEngine,
 			QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(json));
 			const auto lyrics = parseLyricsForClip(id, json);
 
-			db_.saveAlignedLyrics(id, json);
+			if (auto result = db_.saveAlignedLyrics(id, json); !result) {
+				LOG_WARN("SunoController: Failed to persist aligned lyrics for {}: {}",
+				         id, result.error().message);
+			}
 			emit clipUpdated(id);
 
 			if (lyrics) {

@@ -94,8 +94,11 @@ bool useFBO = recording_;
 
 if (useFBO) {
 if (renderTarget_.width() != renderW || renderTarget_.height() != renderH) {
-renderTarget_.resize(renderW, renderH);
-projectM_.engine().resize(renderW, renderH);
+    if (auto result = renderTarget_.resize(renderW, renderH); !result) {
+        LOG_ERROR("VisualizerRenderer: FBO resize failed: {}", result.error().message);
+        return;
+    }
+    projectM_.engine().resize(renderW, renderH);
 }
 
 if (presetLoading_) {

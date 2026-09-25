@@ -170,13 +170,22 @@ void AudioEngine::prepareNextTrack() {
 
 void AudioEngine::loadLastPlaylist() {
     auto path = file::configDir() / "last_session.m3u";
-    if (fs::exists(path)) playlist_.loadM3U(path);
+    if (fs::exists(path)) {
+        if (auto result = playlist_.loadM3U(path); !result) {
+            LOG_WARN("AudioEngine: Failed to load last playlist: {}", result.error().message);
+        }
+    }
 }
 
 void AudioEngine::saveLastPlaylist() {
     auto path = file::configDir() / "last_session.m3u";
-    (void)file::ensureDir(path.parent_path());
-    playlist_.saveM3U(path);
+    if (auto result = file::ensureDir(path.parent_path()); !result) {
+        LOG_WARN("AudioEngine: Failed to create playlist directory: {}", result.error().message);
+        return;
+    }
+    if (auto result = playlist_.saveM3U(path); !result) {
+        LOG_WARN("AudioEngine: Failed to save last playlist: {}", result.error().message);
+    }
 }
 
 void AudioEngine::analyzerWorker() {
