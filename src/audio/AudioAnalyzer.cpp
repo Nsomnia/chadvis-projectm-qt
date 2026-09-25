@@ -7,19 +7,46 @@
 
 namespace vc {
 
-static PFFFT_Setup* g_pffft_setup = nullptr;
+namespace {
+
+class PffftSetupOwner {
+public:
+    explicit PffftSetupOwner(int size) : setup_(pffft_new_setup(size, PFFFT_REAL)) {
+        if (!setup_) {
+            LOG_ERROR("Failed to initialize PFFFT setup for FFT_SIZE={}", size);
+        }
+    }
+
+    ~PffftSetupOwner() {
+        if (setup_) {
+            pffft_destroy_setup(setup_);
+        }
+    }
+
+    PffftSetupOwner(const PffftSetupOwner&) = delete;
+    PffftSetupOwner& operator=(const PffftSetupOwner&) = delete;
+
+    PFFFT_Setup* get() const {
+        return setup_;
+    }
+
+private:
+    PFFFT_Setup* setup_ = nullptr;
+};
+
+PffftSetupOwner& pffftSetup() {
+    static PffftSetupOwner setup(FFT_SIZE);
+    return setup;
+}
+
+}
 
 AudioAnalyzer::AudioAnalyzer() {
 	energyHistory_.resize(60, 0.0f);
-	if (!g_pffft_setup) {
-		g_pffft_setup = pffft_new_setup(FFT_SIZE, PFFFT_REAL);
-		if (!g_pffft_setup) {
-			LOG_ERROR("Failed to initialize PFFFT setup for FFT_SIZE={}", FFT_SIZE);
-		}
-	}
 }
 
 void AudioAnalyzer::reset() {
+    std::scoped_lock lock(mutex_);
     pcmBuffer_.clear();
     std::fill(energyHistory_.begin(), energyHistory_.end(), 0.0f);
     energyHistoryPos_ = 0;
@@ -31,9 +58,10 @@ void AudioAnalyzer::reset() {
 AudioSpectrum AudioAnalyzer::analyze(std::span<const vc::f32> samples,
                                      u32 sampleRate,
                                      u32 channels) {
+    std::scoped_lock lock(mutex_);
     AudioSpectrum spectrum;
 
-    if (samples.empty())
+    if (samples.empty() || channels == 0 || sampleRate == 0)
         return spectrum;
 
     // 1. Calculate RMS levels for left/right
@@ -72,7 +100,7 @@ AudioSpectrum AudioAnalyzer::analyze(std::span<const vc::f32> samples,
         return spectrum;
 
     // 3. Perform FFT
-    std::array<f32, SPECTRUM_SIZE> currentMagnitudes;
+    std::array<f32, SPECTRUM_SIZE> currentMagnitudes{};
 	performFFT(pcmBuffer_, currentMagnitudes);
 
     // 4. Smoothing and normalization
@@ -96,25 +124,29 @@ AudioSpectrum AudioAnalyzer::analyze(std::span<const vc::f32> samples,
 
 void AudioAnalyzer::performFFT(const CircularBuffer<vc::f32, FFT_SIZE>& input,
 		std::span<vc::f32> magnitudes) {
-	if (!g_pffft_setup)
-		return;
+    std::fill(magnitudes.begin(), magnitudes.end(), 0.0f);
+    const auto& setup = pffftSetup();
+    auto* pffft = setup.get();
+    if (!pffft)
+        return;
 
-	static std::array<f32, FFT_SIZE> work;
-	static std::array<f32, FFT_SIZE> output;
+    alignas(16) std::array<f32, FFT_SIZE> inputBuffer{};
+    alignas(16) std::array<f32, FFT_SIZE> outputBuffer{};
+    alignas(16) std::array<f32, FFT_SIZE> workBuffer{};
 
-	std::array<f32, FFT_SIZE> contiguous;
-	for (usize i = 0; i < FFT_SIZE; ++i) {
-		contiguous[i] = input[i];
-	}
+    for (usize i = 0; i < FFT_SIZE; ++i) {
+        inputBuffer[i] = input[i];
+    }
 
-	pffft_transform_ordered(g_pffft_setup, contiguous.data(), output.data(), work.data(), PFFFT_FORWARD);
+    pffft_transform_ordered(pffft, inputBuffer.data(), outputBuffer.data(),
+                            workBuffer.data(), PFFFT_FORWARD);
 
-	for (usize i = 0; i < SPECTRUM_SIZE; ++i) {
-		f32 re = output[i * 2];
-		f32 im = output[i * 2 + 1];
-		f32 mag = std::sqrt(re * re + im * im);
-		magnitudes[i] = mag / (FFT_SIZE / 2);
-	}
+    for (usize i = 0; i < SPECTRUM_SIZE; ++i) {
+        f32 re = outputBuffer[i * 2];
+        f32 im = outputBuffer[i * 2 + 1];
+        f32 mag = std::sqrt(re * re + im * im);
+        magnitudes[i] = mag / (FFT_SIZE / 2);
+    }
 }
 
 vc::f32 AudioAnalyzer::detectBeat(vc::f32 currentEnergy) {

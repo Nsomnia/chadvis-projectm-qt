@@ -54,7 +54,7 @@
 ## P0: Critical Bugs & Safety (Data Loss / Crashes / Security)
 
 ### Memory & Thread Safety
-- [ ] **PFFFT static locals thread-unsafe** — `AudioAnalyzer::performFFT()` uses static work/output arrays; concurrent calls = data race. Make thread-local or use per-instance buffers.
+- [x] **PFFFT static locals thread-unsafe** — `AudioAnalyzer` now uses a shared immutable RAII setup, 16-byte-aligned per-call FFT scratch, mutex-protected analyze/reset/PCM state, deterministic zero-on-setup-failure behavior, and focused normal plus ThreadSanitizer concurrency tests.
 - [ ] **SunoClient use-after-free** — Network replies can outlive client; dangling pointer on delayed responses. Lifetime audit needed.
 - [ ] **VideoRecorderFFmpeg nullptr deref** — `avcodec_alloc_context3()` return not checked; null codec ctx = crash.
 - [x] **VideoRecorderThread brace mismatch** — Root cause found (2026-08-25): `VideoRecorder::setAudioQueue` was never wired, so the rec queue was always null. Wired in `Application::init()`; braces were actually balanced.
