@@ -135,10 +135,10 @@ void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
         getDownloadDir() / (safeTitle + ".mp3");
 
     if (fs::exists(targetPath)) {
-        audioEngine_->playlist().addFile(targetPath);
-        audioEngine_->playlist().jumpTo(audioEngine_->playlist().size() - 1);
-        emit downloadStateChanged(QString::fromStdString(clip.id),
-                                  static_cast<int>(DownloadState::Completed), 100);
+        if (addAndPlay(targetPath, clip.id)) {
+            emit downloadStateChanged(QString::fromStdString(clip.id),
+                                      static_cast<int>(DownloadState::Completed), 100);
+        }
         return;
     }
 
@@ -235,50 +235,83 @@ void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
     }
 }
 
-void SunoDownloader::processDownloadedFile(const SunoClip& clip, const fs::path& path) {
-    audioEngine_->playlist().addFile(path);
-    audioEngine_->playlist().jumpTo(audioEngine_->playlist().size() - 1);
+bool SunoDownloader::addAndPlay(const fs::path& path, const std::string& clipId) {
+    if (clipId.empty() || !audioEngine_) {
+        return false;
+    }
+
+    auto& playlist = audioEngine_->playlist();
+    const auto previousSize = playlist.size();
+    playlist.addFile(path);
+    if (playlist.size() == previousSize) {
+        return false;
+    }
+
+    const auto index = playlist.size() - 1;
+    if (!playlist.jumpTo(index)) {
+        return false;
+    }
+
+    if (const auto* current = playlist.currentItem();
+        current == nullptr || current->path != path) {
+        return false;
+    }
+
+    emit playbackReady(QString::fromStdString(clipId));
+    return true;
 }
 
-void SunoDownloader::saveLyricsSidecar(const std::string& clipId, const std::string& json, const QJsonDocument& doc, const std::vector<SunoClip>& clips) {
-  fs::path saveDir = getDownloadDir();
+bool SunoDownloader::processDownloadedFile(const SunoClip& clip, const fs::path& path) {
+    return addAndPlay(path, clip.id);
+}
 
-  // Library cache first, database fallback (shared ClipResolver).
-  std::string prompt;
-  std::string title;
-  if (auto clipOpt = resolveClip(clips, db_, clipId)) {
-    prompt = clipOpt->metadata.prompt;
-    title = clipOpt->title;
-  }
+void SunoDownloader::saveLyricsSidecar(const std::string& clipId,
+                                      const std::string& json,
+                                      const QJsonDocument&,
+                                      const std::vector<SunoClip>& clips) {
+    const auto saveDir = getDownloadDir();
+    auto clip = resolveClip(clips, db_, clipId);
+    if (!clip) {
+        clip = SunoClip{};
+        clip->id = clipId;
+    }
 
-  std::string safeTitle = safeStem(title, clipId);
+    const auto data = LyricsAligner::parseCapturedSunoLyrics(json, *clip);
+    if (!data || data->lines.empty()) {
+        return;
+    }
 
-    fs::path audioPath = saveDir / (safeTitle + ".mp3");
-    if (fs::exists(audioPath)) {
-        fs::path srtPath = saveDir / (safeTitle + ".srt");
-        auto words = LyricsAligner::parseJson(QByteArray::fromStdString(json));
-        if (!words.empty()) {
-            AlignedLyrics lyrics = LyricsAligner::align(prompt, words);
-            if (!lyrics.lines.empty()) {
-                std::ofstream sf(srtPath);
-                if (sf) {
-                    int index = 1;
-                    for (const auto& line : lyrics.lines) {
-                        auto fmtTime = [](double s) {
-                            int ms = (int)((s - (int)s) * 1000);
-                            int totSec = (int)s;
-                            int hr = totSec / 3600;
-                            int mn = (totSec % 3600) / 60;
-                            int sc = totSec % 60;
-                            char buf[32];
-                            snprintf(buf, sizeof(buf), "%02d:%02d:%02d,%03d", hr, mn, sc, ms);
-                            return std::string(buf);
-                        };
-                        sf << index++ << "\n" << fmtTime(line.start_s) << " --> " << fmtTime(line.end_s) << "\n" << line.text << "\n\n";
-                    }
-                }
-            }
+    const auto audioPath = saveDir / (safeStem(clip->title, clipId) + ".mp3");
+    if (!fs::exists(audioPath)) {
+        return;
+    }
+
+    const auto srtPath = saveDir / (safeStem(clip->title, clipId) + ".srt");
+    std::ofstream sf(srtPath);
+    if (!sf) {
+        return;
+    }
+
+    auto formatTime = [](double seconds) {
+        const int totalMs = static_cast<int>(seconds * 1000.0);
+        const int ms = totalMs % 1000;
+        const int totalSec = totalMs / 1000;
+        const int sec = totalSec % 60;
+        const int min = (totalSec / 60) % 60;
+        const int hr = totalSec / 3600;
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%02d:%02d:%02d,%03d", hr, min, sec, ms);
+        return std::string(buf);
+    };
+
+    int index = 1;
+    for (const auto& line : data->lines) {
+        if (line.isInstrumental) {
+            continue;
         }
+        sf << index++ << "\n"
+           << formatTime(line.startTime) << " --> " << formatTime(line.endTime) << "\n"
+           << line.text << "\n\n";
     }
 }
 

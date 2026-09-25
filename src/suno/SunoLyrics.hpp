@@ -6,12 +6,15 @@
 // that delegate parsing to the canonical LyricsFactory (src/lyrics/LyricsData.hpp).
 // Conversion helpers allow interop between the two representations.
 
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
 #include "lyrics/LyricsData.hpp"
+#include "suno/SunoModels.hpp"
 #include "util/Types.hpp"
 
 namespace vc::suno {
@@ -37,6 +40,7 @@ struct AlignedLine {
   f32 start_s;
   f32 end_s;
   std::vector<AlignedWord> words;
+  bool isInstrumental{false};
 
   // Conversion from canonical LyricsLine
   static AlignedLine fromLyricsLine(const vc::LyricsLine& l) {
@@ -44,6 +48,7 @@ struct AlignedLine {
     al.text = l.text;
     al.start_s = l.startTime;
     al.end_s = l.endTime;
+    al.isInstrumental = l.isInstrumental;
     for (const auto& w : l.words) al.words.push_back(AlignedWord::fromLyricsWord(w));
     return al;
   }
@@ -53,6 +58,7 @@ struct AlignedLine {
     l.text = text;
     l.startTime = start_s;
     l.endTime = end_s;
+    l.isInstrumental = isInstrumental;
     l.isSynced = true;
     for (const auto& w : words) l.words.push_back(w.toLyricsWord());
     return l;
@@ -95,6 +101,10 @@ class LyricsAligner {
 public:
   static AlignedLyrics align(const std::string& prompt, const std::vector<AlignedWord>& words);
   static std::vector<AlignedWord> parseJson(const QByteArray& json, f32 duration = 0.0f);
+  static std::optional<LyricsData> parseCapturedSunoLyrics(
+      const std::string& json, const SunoClip& clip);
+  static std::optional<LyricsData> parseCapturedSunoLyrics(
+      const SunoClip& clip, std::string_view json);
   static std::vector<AlignedWord> estimateTimings(const std::string& text, f32 duration);
   static AlignedLyrics parseLrc(const std::string& content);
   static AlignedLyrics parseSrt(const std::string& content);

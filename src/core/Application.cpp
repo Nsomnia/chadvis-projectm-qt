@@ -410,7 +410,7 @@ Result<void> Application::init(const AppOptions& opts) {
 
 		LOG_DEBUG("Initializing Suno controller for QML...");
 		sunoController_ = std::make_unique<suno::SunoController>(
-			audioEngine_.get(), nullptr);
+			audioEngine_.get(), lyricsSync_.get(), nullptr);
 
 		// Pin a non-native Quick Controls style BEFORE the engine exists. The
 		// macOS native style silently discards the custom `background` /

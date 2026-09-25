@@ -14,6 +14,7 @@ int runTestLoopbackListener(int argc, char** argv);
 int runTestOAuthLoginService(int argc, char** argv);
 int runTestClipParser(int argc, char** argv);
 int runTestDownloadQueue(int argc, char** argv);
+int runTestLyricsPipeline(int argc, char** argv);
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
@@ -32,6 +33,7 @@ int main(int argc, char* argv[]) {
     status |= runTestOAuthLoginService(argc, argv);
     status |= runTestClipParser(argc, argv);
     status |= runTestDownloadQueue(argc, argv);
+    status |= runTestLyricsPipeline(argc, argv);
 
     return status;
 }

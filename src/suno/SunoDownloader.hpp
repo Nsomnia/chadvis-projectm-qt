@@ -57,6 +57,7 @@ signals:
     /// Forwarded from the DownloadQueue for controller/bridge progress wiring.
     void downloadStateChanged(const QString& clipId, int state, int progressPercent);
     void downloadQueueIdle();
+    void playbackReady(const QString& clipId);
 
 private:
     SunoDatabase& db_;
@@ -76,7 +77,8 @@ private:
 
     void enqueueAudio(const SunoClip& clip, const std::string& url, const std::string& extension);
     void handleItemState(const std::string& clipId, DownloadState state);
-    void processDownloadedFile(const SunoClip& clip, const fs::path& path);
+    bool processDownloadedFile(const SunoClip& clip, const fs::path& path);
+    bool addAndPlay(const fs::path& path, const std::string& clipId);
 
     [[nodiscard]] fs::path getDownloadDir() const;
 };

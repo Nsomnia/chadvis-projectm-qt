@@ -3,6 +3,7 @@
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "lyrics/LyricsData.hpp"
+#include "lyrics/LyricsSync.hpp"
 
 #include "suno/ClipResolver.hpp"
 #include "suno/auth/AuthCoordinator.hpp"
@@ -20,7 +21,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUuid>
-#include <regex>
 
 namespace vc::suno {
 
@@ -43,9 +43,11 @@ QString resolveOrCreateDeviceId() {
 } // namespace
 
 SunoController::SunoController(AudioEngine* audioEngine,
+	LyricsSync* lyricsSync,
 	QObject* parent)
 : QObject(parent),
 	audioEngine_(audioEngine),
+	lyricsSync_(lyricsSync),
 	client_(std::make_unique<SunoClient>(resolveOrCreateDeviceId())),
 	// The controller is created on the GUI thread; parent the coordinator
 	// there so its loopback/QTimer children share that thread and lifetime.
@@ -69,6 +71,11 @@ SunoController::SunoController(AudioEngine* audioEngine,
             this, &SunoController::downloadStateChanged);
     connect(downloader_.get(), &SunoDownloader::downloadQueueIdle,
             this, &SunoController::downloadQueueIdle);
+    connect(downloader_.get(), &SunoDownloader::playbackReady, this,
+            [this](const QString& clipId) {
+                activeClipId_ = clipId.toStdString();
+                activateClipLyrics(activeClipId_);
+            });
     
     lyricsManager_ = std::make_unique<SunoLyricsManager>(client_.get(), db_, this);
 
@@ -161,23 +168,21 @@ SunoController::SunoController(AudioEngine* audioEngine,
 	// Lyrics Manager
 	connect(lyricsManager_.get(), &SunoLyricsManager::statusMessage,
 		this, &SunoController::statusMessage);
-	connect(lyricsManager_.get(), &SunoLyricsManager::lyricsFetched,
+    connect(lyricsManager_.get(), &SunoLyricsManager::lyricsFetched,
 		this, [this](const std::string& id, const std::string& json) {
-			// Immediate display logic
 			QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(json));
+			const auto lyrics = parseLyricsForClip(id, json);
 
-			bool isCurrent = isCurrentlyPlaying(id);
-			if (isCurrent && !CONFIG.suno().debugLyrics) {
-				auto lyricsOpt = parseAndDisplayLyrics(id, json, doc);
-				if (lyricsOpt) {
-					directLyricsCache_[id] = *lyricsOpt;
+			db_.saveAlignedLyrics(id, json);
+			emit clipUpdated(id);
+
+			if (lyrics) {
+				directLyricsCache_.try_emplace(id, *lyrics);
+				if (id == activeClipId_ && !CONFIG.suno().debugLyrics) {
+					publishLyrics(id, *lyrics);
 					LOG_INFO("SunoController: Immediately displayed lyrics for current track {}", id);
 				}
 			}
-
-			// Background: Save to DB and Sidecar
-			db_.saveAlignedLyrics(id, json);
-			emit clipUpdated(id);
 
 			if (CONFIG.suno().saveLyrics) {
 				downloader_->saveLyricsSidecar(id, json, doc, libraryManager_->accumulatedClips());
@@ -255,33 +260,17 @@ bool SunoController::playClipById(const std::string& clipId) {
 }
 
 Result<AlignedLyrics> SunoController::getLyrics(const std::string& clipId) {
-    // Check DB
-    auto jsonRes = db_.getAlignedLyrics(clipId);
-    if (!jsonRes.isOk()) {
-        return Result<AlignedLyrics>::err("No lyrics found");
-    }
-    
-    std::string json = jsonRes.value();
-    std::string prompt;
-    f32 duration = 0.0f;
-
-    // Resolve clip from library cache, falling back to DB
-    if (auto clipOpt = resolveClip(libraryManager_->accumulatedClips(), db_, clipId)) {
-        prompt = clipOpt->metadata.prompt;
-        auto durOpt = file::parseDuration(clipOpt->metadata.duration);
-        if (durOpt) duration = durOpt->count() / 1000.0f;
+    const auto jsonRes = db_.getAlignedLyrics(clipId);
+    if (jsonRes.isErr() || jsonRes.value().empty()) {
+        return Result<AlignedLyrics>::err("No aligned lyrics found");
     }
 
-    if (prompt.empty()) return Result<AlignedLyrics>::err("Prompt not found");
+    const auto lyrics = parseLyricsForClip(clipId, jsonRes.value());
+    if (!lyrics) {
+        return Result<AlignedLyrics>::err("Invalid aligned lyrics");
+    }
 
-    auto words = LyricsAligner::parseJson(QByteArray::fromStdString(json), duration);
-    if (words.empty()) words = LyricsAligner::estimateTimings(prompt, duration);
-    
-    if (words.empty()) return Result<AlignedLyrics>::err("Failed to parse words");
-
-    AlignedLyrics lyrics = LyricsAligner::align(prompt, words);
-    lyrics.songId = clipId;
-    return Result<AlignedLyrics>::ok(lyrics);
+    return Result<AlignedLyrics>::ok(AlignedLyrics::fromLyricsData(*lyrics));
 }
 
 void SunoController::refreshLibrary(int page) {
@@ -315,121 +304,101 @@ const std::vector<SunoClip>& SunoController::clips() const {
 }
 
 void SunoController::setDebugLyrics(const AlignedLyrics& lyrics) {
-    // overlayEngine_->setAlignedLyrics(lyrics); // Legacy CPU overlay removed
+    if (lyricsSync_) {
+        lyricsSync_->loadLyrics(lyrics.toLyricsData());
+    }
 }
 
 void SunoController::onTrackChanged() {
-    if (CONFIG.suno().debugLyrics) return;
-
-    auto item = audioEngine_->playlist().currentItem();
-    if (!item) {
+    if (CONFIG.suno().debugLyrics) {
         return;
     }
 
-    std::string clipId = extractClipIdFromTrack();
-    if (clipId.empty() && !lastRequestedClipId_.empty()) {
-        clipId = lastRequestedClipId_;
+    activeClipId_.clear();
+    if (lyricsSync_) {
+        lyricsSync_->clear();
     }
-    if (!clipId.empty()) lastRequestedClipId_ = clipId;
+}
 
-    if (clipId.empty()) {
+void SunoController::activateClipLyrics(const std::string& clipId) {
+    if (CONFIG.suno().debugLyrics) {
+        return;
+    }
+    if (clipId.empty() || clipId != activeClipId_) {
         return;
     }
 
-    // 1. Direct Cache
-    auto cacheIt = directLyricsCache_.find(clipId);
+    const auto cacheIt = directLyricsCache_.find(clipId);
     if (cacheIt != directLyricsCache_.end()) {
+        if (lyricsSync_) {
+            lyricsSync_->loadLyrics(cacheIt->second);
+        }
         return;
     }
 
-    // 2. Database
-    auto res = getLyrics(clipId);
-    if (res.isOk()) {
-        directLyricsCache_[clipId] = res.value();
+    const auto clip = resolveClip(libraryManager_->accumulatedClips(), db_, clipId);
+    if (!clip) {
         return;
     }
 
-	// 3. Sidecar Files (.srt then .json share one load path)
-	fs::path trackPath = item->isRemote ? fs::path() : item->path;
-	if (!trackPath.empty()) {
-		fs::path dir = trackPath.parent_path();
-		std::string stem = trackPath.stem().string();
+    const auto jsonRes = db_.getAlignedLyrics(clipId);
+    if (jsonRes.isOk() && !jsonRes.value().empty()) {
+        if (const auto data = parseLyricsForClip(clipId, jsonRes.value())) {
+            publishLyrics(clipId, *data);
+            return;
+        }
+    }
 
-		auto tryLoadSidecar = [&](const std::string& ext, auto&& parser) -> bool {
-			auto content = file::readText(dir / (stem + ext));
-			if (content.isErr()) return false;
-			auto data = parser(content.value());
-			if (data.empty()) return false;
-			AlignedLyrics lyrics = AlignedLyrics::fromLyricsData(data);
-			lyrics.songId = clipId;
-			directLyricsCache_[clipId] = lyrics;
-			return true;
-		};
+    const auto* item = audioEngine_->playlist().currentItem();
+    if (item && !item->isRemote) {
+        const auto directory = item->path.parent_path();
+        const auto stem = item->path.stem().string();
 
-		if (tryLoadSidecar(".srt", [](const std::string& s) { return vc::LyricsFactory::fromSrt(s); })) return;
-		if (tryLoadSidecar(".json", [](const std::string& s) { return vc::LyricsFactory::fromSunoJson(s); })) return;
-	}
+        const auto srt = file::readText(directory / (stem + ".srt"));
+        if (srt.isOk() && !srt.value().empty()) {
+            auto data = LyricsFactory::fromSrt(srt.value());
+            if (!data.empty()) {
+                data.songId = clipId;
+                data.title = clip->title;
+                data.artist = clip->display_name;
+                publishLyrics(clipId, std::move(data));
+                return;
+            }
+        }
 
-    // 4. API
+        const auto json = file::readText(directory / (stem + ".json"));
+        if (json.isOk() && !json.value().empty()) {
+            if (const auto data = LyricsAligner::parseCapturedSunoLyrics(json.value(), *clip)) {
+                publishLyrics(clipId, *data);
+                return;
+            }
+        }
+    }
+
     if (client_->isAuthenticated()) {
         lyricsManager_->queueLyricsFetch(clipId);
     }
 }
 
-std::optional<AlignedLyrics> SunoController::parseAndDisplayLyrics(
-    const std::string& clipId,
-    const std::string& json,
-    const QJsonDocument& doc) {
-    
-    auto words = LyricsAligner::parseJson(QByteArray::fromStdString(json));
-    if (words.empty()) return std::nullopt;
-
-    std::string prompt;
-    if (auto clipOpt = resolveClip(libraryManager_->accumulatedClips(), db_, clipId)) {
-        prompt = clipOpt->metadata.prompt;
+void SunoController::publishLyrics(const std::string& clipId, LyricsData lyrics) {
+    if (CONFIG.suno().debugLyrics || clipId.empty() || clipId != activeClipId_ || lyrics.empty()) {
+        return;
     }
 
-    AlignedLyrics lyrics = LyricsAligner::align(prompt, words);
-    lyrics.songId = clipId;
-    return lyrics;
+    auto it = directLyricsCache_.insert_or_assign(clipId, std::move(lyrics)).first;
+    if (lyricsSync_) {
+        lyricsSync_->loadLyrics(it->second);
+    }
 }
 
-bool SunoController::isCurrentlyPlaying(const std::string& clipId) const {
-    if (auto item = audioEngine_->playlist().currentItem()) {
-        if (item->isRemote) {
-            if (item->url.find(clipId) != std::string::npos) return true;
-        } else {
-            if (item->path.string().find(clipId) != std::string::npos) return true;
-            else if (item->title().find(clipId) != std::string::npos) return true;
-        }
+std::optional<LyricsData> SunoController::parseLyricsForClip(
+    const std::string& clipId, const std::string& json) {
+    auto clip = resolveClip(libraryManager_->accumulatedClips(), db_, clipId);
+    if (!clip) {
+        clip = SunoClip{};
+        clip->id = clipId;
     }
-    return false;
-}
-
-std::string SunoController::extractClipIdFromTrack() const {
-     auto item = audioEngine_->playlist().currentItem();
-    if (!item) return "";
-    if (!item->metadata.sunoClipId.empty()) return item->metadata.sunoClipId;
-    
-    static const std::regex uuidRegex("([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", std::regex::icase);
-    std::smatch match;
-    
-    if (item->isRemote) {
-        if (std::regex_search(item->url, match, uuidRegex)) return match[1].str();
-    } else {
-        std::string filename = item->path.filename().string();
-        if (std::regex_search(filename, match, uuidRegex)) return match[1].str();
-        std::string fullPath = item->path.string();
-        if (std::regex_search(fullPath, match, uuidRegex)) return match[1].str();
-    }
-    
-    std::string currentTitle = item->title();
-    if (!currentTitle.empty()) {
-        for (const auto& clip : libraryManager_->accumulatedClips()) {
-            if (clip.title == currentTitle) return clip.id;
-        }
-    }
-    return "";
+    return LyricsAligner::parseCapturedSunoLyrics(json, *clip);
 }
 
 } // namespace vc::suno
