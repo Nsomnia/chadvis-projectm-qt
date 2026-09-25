@@ -172,7 +172,8 @@ public:
     void enqueueAuthenticatedRequest(const QString& endpoint,
                                      const std::string& method,
                                      const QByteArray& data,
-                                     std::function<void(QNetworkReply*)> callback);
+                                     std::function<void(QNetworkReply*)> callback,
+                                     bool retryOnUnauthorized = true);
 
     QNetworkAccessManager* networkManager() { return manager_; }
 
@@ -212,6 +213,7 @@ private:
         QByteArray data;
         std::function<void(QNetworkReply*)> callback;
         bool retriedAuth = false; ///< Already given its single 401 retry.
+        bool retryOnUnauthorized = true;
         quint64 epoch = 0;
     };
 
@@ -256,7 +258,8 @@ private:
                         QByteArray data,
                         std::function<void(QNetworkReply*)> callback,
                         bool retriedAuth = false,
-                        quint64 epoch = 0);
+                        quint64 epoch = 0,
+                        bool retryOnUnauthorized = true);
     void processQueue();
     void handleReplyFinished(QNetworkReply* reply, PendingRequest&& pending);
     void withValidToken(std::function<void()> proceed);

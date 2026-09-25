@@ -230,7 +230,8 @@ void SunoAudioUploadService::initialize()
                 } else if (reply) {
                     reply->deleteLater();
                 }
-            });
+            },
+            false);
 }
 
 void SunoAudioUploadService::handleInitializeReply(QNetworkReply* reply, quint64 generation)
@@ -394,7 +395,8 @@ void SunoAudioUploadService::startFinish(quint64 generation)
                 } else if (reply) {
                     reply->deleteLater();
                 }
-            });
+            },
+            false);
 }
 
 void SunoAudioUploadService::handleFinishReply(QNetworkReply* reply, quint64 generation)

@@ -372,7 +372,8 @@ void SunoNotificationService::enqueueMarkAllRead(const QDateTime& before)
                 } else if (reply) {
                     reply->deleteLater();
                 }
-            });
+            },
+            false);
 }
 
 void SunoNotificationService::handleMarkReadReply(QNetworkReply* reply, quint64 generation)
