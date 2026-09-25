@@ -94,11 +94,14 @@ SunoExploreService::SunoExploreService(SunoClient* client, QObject* parent)
     if (client_)
     {
         connect(client_, &SunoClient::authStateChanged, this, [this]() {
-            if (loading_ && client_->authState() != auth::AuthState::ActiveValid)
+            if (!credentialRefreshPending_ && loading_ &&
+                client_->authState() != auth::AuthState::ActiveValid)
             {
                 handleAuthenticationLost();
             }
         });
+        connect(client_, &SunoClient::credentialRestoreCompleted,
+                this, &SunoExploreService::onCredentialsRestored);
     }
 }
 
@@ -179,12 +182,13 @@ void SunoExploreService::refresh()
     emit reset();
     setLoading(true);
 
-    if (!client_ || !client_->isAuthenticated())
+    if (!client_)
     {
         fail(QStringLiteral("Not authenticated"));
         return;
     }
-    enqueueRequest(std::nullopt, false);
+    credentialRefreshPending_ = true;
+    client_->reloadStoredCredentials();
 }
 
 void SunoExploreService::loadMore()
@@ -275,8 +279,24 @@ void SunoExploreService::handleReply(QNetworkReply* reply, bool append,
     setLoading(false);
 }
 
+void SunoExploreService::onCredentialsRestored()
+{
+    if (!credentialRefreshPending_)
+    {
+        return;
+    }
+    credentialRefreshPending_ = false;
+    if (!client_ || !client_->isAuthenticated())
+    {
+        fail(QStringLiteral("Not authenticated"));
+        return;
+    }
+    enqueueRequest(std::nullopt, false);
+}
+
 void SunoExploreService::handleAuthenticationLost()
 {
+    credentialRefreshPending_ = false;
     fail(QStringLiteral("Not authenticated"));
 }
 
@@ -292,6 +312,7 @@ void SunoExploreService::setLoading(bool loading)
 
 void SunoExploreService::fail(const QString& message)
 {
+    credentialRefreshPending_ = false;
     activeRequest_ = 0;
     setLoading(false);
     emit failed(message);

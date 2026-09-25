@@ -8,6 +8,7 @@ add_executable(unit_tests
     suno/test_AuthModule.cpp
     suno/test_StoredCredentialClassification.cpp
     suno/test_CredentialRestoreWorker.cpp
+    suno/test_SunoLibraryManager.cpp
     suno/test_AuthCoordinator.cpp
     suno/test_LoopbackListener.cpp
     suno/test_OAuthLoginService.cpp

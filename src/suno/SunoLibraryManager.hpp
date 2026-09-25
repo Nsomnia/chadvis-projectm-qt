@@ -69,10 +69,13 @@ private:
     
   std::vector<SunoClip> accumulatedClips_;
   bool isSyncing_ = false;
+  bool credentialRefreshPending_ = false;
+  int pendingPage_ = 1;
   int pagesLoaded_ = 0;      ///< Number of feed pages pulled this sync session
   bool hasMorePages_ = false;
   QString searchText_;       ///< Server-side searchText filter for feed/v3
 
+    void onCredentialsRestored();
     void onLibraryFetched(const std::vector<SunoClip>& clips);
 };
 

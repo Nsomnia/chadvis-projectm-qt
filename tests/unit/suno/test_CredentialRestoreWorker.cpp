@@ -99,7 +99,7 @@ private slots:
 
         releaseBackend.release();
         QTRY_VERIFY_WITH_TIMEOUT(firstCompleted.load(), 2000);
-        QVERIFY(!duplicateCompleted.load());
+        QTRY_VERIFY_WITH_TIMEOUT(duplicateCompleted.load(), 2000);
         QVERIFY(!worker.isRestoreInFlight());
         QCOMPARE(backendCalls.load(), 1);
     }
@@ -128,6 +128,52 @@ private slots:
             QVERIFY(!worker.isRestoreInFlight());
             QCOMPARE(backendCalls.load(), expectedCall);
         }
+    }
+
+    void discardedRestoreNotifiesEveryCompletion() {
+        QObject guiReceiver;
+        QSemaphore backendEntered(0);
+        QSemaphore releaseBackend(0);
+        std::atomic_int backendCalls{0};
+        bool firstCompleted = false;
+        bool duplicateCompleted = false;
+        bool firstDiscarded = false;
+        bool duplicateDiscarded = false;
+        bool duplicateReused = false;
+
+        CredentialStoreWorker worker(
+                &guiReceiver,
+                [&](CredentialStoreWorker::Request) {
+                    backendCalls.fetch_add(1);
+                    backendEntered.release();
+                    releaseBackend.acquire();
+                    return CredentialStoreWorker::Outcome{};
+                });
+
+        QVERIFY(worker.requestRestore(
+                CredentialStoreWorker::Request{},
+                [&](CredentialStoreWorker::Outcome result) {
+                    firstCompleted = true;
+                    firstDiscarded = result.restoreDiscarded;
+                }));
+        QVERIFY(backendEntered.tryAcquire(1, 2000));
+        QVERIFY(!worker.requestRestore(
+                CredentialStoreWorker::Request{},
+                [&](CredentialStoreWorker::Outcome result) {
+                    duplicateCompleted = true;
+                    duplicateDiscarded = result.restoreDiscarded;
+                    duplicateReused = result.reusedResult;
+                }));
+
+        worker.discardPendingRestore();
+        releaseBackend.release();
+
+        QTRY_VERIFY_WITH_TIMEOUT(firstCompleted, 2000);
+        QTRY_VERIFY_WITH_TIMEOUT(duplicateCompleted, 2000);
+        QVERIFY(firstDiscarded);
+        QVERIFY(duplicateDiscarded);
+        QVERIFY(duplicateReused);
+        QCOMPARE(backendCalls.load(), 1);
     }
 };
 

@@ -8,6 +8,7 @@ int runTestRecorder(int argc, char** argv);
 int runTestAuthModule(int argc, char** argv);
 int runTestStoredCredentialClassification(int argc, char** argv);
 int runTestCredentialRestoreWorker(int argc, char** argv);
+int runTestSunoLibraryManager(int argc, char** argv);
 int runTestAuthCoordinator(int argc, char** argv);
 int runTestLoopbackListener(int argc, char** argv);
 int runTestOAuthLoginService(int argc, char** argv);
@@ -25,6 +26,7 @@ int main(int argc, char* argv[]) {
     status |= runTestAuthModule(argc, argv);
     status |= runTestStoredCredentialClassification(argc, argv);
     status |= runTestCredentialRestoreWorker(argc, argv);
+    status |= runTestSunoLibraryManager(argc, argv);
     status |= runTestAuthCoordinator(argc, argv);
     status |= runTestLoopbackListener(argc, argv);
     status |= runTestOAuthLoginService(argc, argv);

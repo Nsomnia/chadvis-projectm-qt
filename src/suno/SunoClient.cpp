@@ -120,30 +120,42 @@ CredentialStoreWorker::~CredentialStoreWorker() {
 bool CredentialStoreWorker::requestRestore(Request request, Completion completion) {
     Q_ASSERT(guiReceiver_->thread() == QThread::currentThread());
     if (restoreInFlight_) {
+        if (completion) {
+            restoreCompletions_.push_back(std::move(completion));
+        }
         return false;
     }
 
     restoreInFlight_ = true;
     restoreDiscarded_ = false;
     const quint64 generation = ++restoreGeneration_;
+    if (completion) {
+        restoreCompletions_.push_back(std::move(completion));
+    }
 
     const bool queued = QMetaObject::invokeMethod(
             worker_,
-            [this, request = std::move(request), completion = std::move(completion),
-             generation]() mutable {
+            [this, request = std::move(request), generation]() mutable {
                 Outcome outcome = backend_(request);
                 QMetaObject::invokeMethod(
                         guiReceiver_,
-                        [this, outcome = std::move(outcome), completion = std::move(completion),
-                         generation]() mutable {
+                        [this, outcome = std::move(outcome), generation]() mutable {
                             if (!restoreInFlight_ || generation != restoreGeneration_) {
                                 return;
                             }
                             const bool apply = !restoreDiscarded_;
                             restoreInFlight_ = false;
                             restoreDiscarded_ = false;
-                            if (apply && completion) {
-                                completion(std::move(outcome));
+                            auto completions = std::move(restoreCompletions_);
+                            restoreCompletions_.clear();
+                            for (std::size_t index = 0; index < completions.size(); ++index) {
+                                if (!completions[index]) {
+                                    continue;
+                                }
+                                Outcome completionOutcome = outcome;
+                                completionOutcome.restoreDiscarded = !apply;
+                                completionOutcome.reusedResult = index > 0;
+                                completions[index](std::move(completionOutcome));
                             }
                         },
                         completionConnectionType());
@@ -153,7 +165,17 @@ bool CredentialStoreWorker::requestRestore(Request request, Completion completio
     if (!queued) {
         restoreInFlight_ = false;
         restoreDiscarded_ = false;
+        auto completions = std::move(restoreCompletions_);
+        restoreCompletions_.clear();
         LOG_ERROR("SunoClient: could not queue credential restore on its worker");
+        for (auto& completion : completions) {
+            if (!completion) {
+                continue;
+            }
+            Outcome outcome;
+            outcome.restoreDiscarded = true;
+            completion(std::move(outcome));
+        }
     }
     return queued;
 }
@@ -190,7 +212,9 @@ void CredentialStoreWorker::enqueue(Request request) {
     }
 }
 
-SunoClient::SunoClient(QString deviceId, QObject* parent)
+SunoClient::SunoClient(QString deviceId,
+                     QObject* parent,
+                     CredentialStoreWorker::Backend credentialStoreBackend)
     : QObject(parent),
       manager_(new QNetworkAccessManager(this)),
       queueTimer_(new QTimer(this)),
@@ -213,10 +237,14 @@ SunoClient::SunoClient(QString deviceId, QObject* parent)
 
     // Constructing this worker performs no keychain I/O. restoreSession() below
     // only snapshots legacy config and posts work to its private QThread.
+    auto credentialBackend =
+            credentialStoreBackend
+                    ? std::move(credentialStoreBackend)
+                    : [](CredentialStoreWorker::Request request) {
+                          return runCredentialStoreRequest(std::move(request));
+                      };
     credentialStoreWorker_ = std::make_unique<CredentialStoreWorker>(
-            this, [](CredentialStoreWorker::Request request) {
-                return runCredentialStoreRequest(std::move(request));
-            });
+            this, std::move(credentialBackend));
     restoreSession(RestoreMode::Startup);
 }
 
@@ -246,7 +274,10 @@ void SunoClient::restoreSession(RestoreMode mode) {
     const bool started = credentialStoreWorker_->requestRestore(
             std::move(request),
             [this, mode](CredentialStoreWorker::Outcome result) mutable {
-                applyRestoreResult(mode, std::move(result));
+                if (!result.restoreDiscarded && !result.reusedResult) {
+                    applyRestoreResult(mode, std::move(result));
+                }
+                emit credentialRestoreCompleted();
             });
     if (!started && credentialStoreWorker_->isRestoreInFlight()) {
         LOG_INFO("SunoClient: credential restore request coalesced with in-flight read");

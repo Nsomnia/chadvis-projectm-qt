@@ -69,6 +69,8 @@ public:
         bool migratedLegacy = false;
         bool legacyMigrationFailed = false;
         bool legacyWasCookie = true;
+        bool restoreDiscarded = false;
+        bool reusedResult = false;
     };
 
     using Backend = std::function<Outcome(Request)>;
@@ -105,6 +107,7 @@ private:
     bool restoreInFlight_ = false;
     bool restoreDiscarded_ = false;
     quint64 restoreGeneration_ = 0;
+    std::vector<Completion> restoreCompletions_;
 
     static constexpr Qt::ConnectionType kCompletionConnectionType = Qt::QueuedConnection;
 };
@@ -113,7 +116,10 @@ class SunoClient : public QObject {
     Q_OBJECT
 
 public:
-    explicit SunoClient(QString deviceId = {}, QObject* parent = nullptr);
+    explicit SunoClient(
+            QString deviceId = {},
+            QObject* parent = nullptr,
+            CredentialStoreWorker::Backend credentialStoreBackend = {});
     ~SunoClient() override;
 
     // ── Credentials ─────────────────────────────────────────────────────
@@ -272,6 +278,7 @@ signals:
     /// Emitted when the last auth failure changes or clears. The value is
     /// intentionally not an enum argument; consumers map it to a stable string.
     void authFailureKindChanged();
+    void credentialRestoreCompleted();
 
 private:
     struct PendingRequest {

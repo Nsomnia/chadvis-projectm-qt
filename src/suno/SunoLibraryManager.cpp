@@ -14,6 +14,9 @@ SunoLibraryManager::SunoLibraryManager(SunoClient* client, SunoDatabase& db, QOb
         onLibraryFetched(clips); 
     });
 
+    connect(client_, &SunoClient::credentialRestoreCompleted,
+            this, &SunoLibraryManager::onCredentialsRestored);
+
     // Any terminal fetch failure must clear the "syncing" gate and
     // surface a libraryFetchFailed so Bridge can clear its spinner.
     client_->errorOccurred.connect([this](const std::string& err) {
@@ -50,12 +53,25 @@ SunoLibraryManager::SunoLibraryManager(SunoClient* client, SunoDatabase& db, QOb
 SunoLibraryManager::~SunoLibraryManager() = default;
 
 void SunoLibraryManager::refreshLibrary(int page) {
-  // Pick up credentials pasted/changed via settings before each sync.
+  if (isSyncing_ || credentialRefreshPending_) {
+    return;
+  }
+
+  pendingPage_ = page;
+  credentialRefreshPending_ = true;
   client_->reloadStoredCredentials();
+}
+
+void SunoLibraryManager::onCredentialsRestored() {
+  if (!credentialRefreshPending_) {
+    return;
+  }
+
+  credentialRefreshPending_ = false;
+  const int page = pendingPage_;
 
   if (!client_->isAuthenticated()) {
     emit authenticationRequired();
-    // Guarantee Bridge spinner clears: synthesize a terminal failure.
     {
         const bool hadMore = hasMorePages_;
         hasMorePages_ = false;
@@ -66,8 +82,6 @@ void SunoLibraryManager::refreshLibrary(int page) {
     return;
   }
 
-  // Page 1 (or any fresh sync) resets accumulation; higher page numbers are
-  // legacy "load more" calls and now just continue from the cursor.
   if (page <= 1) {
     accumulatedClips_.clear();
     pagesLoaded_ = 0;
@@ -78,7 +92,6 @@ void SunoLibraryManager::refreshLibrary(int page) {
     std::string msg = "Syncing Suno library";
     emit statusMessage(msg);
   } else {
-    // Legacy page-number callers just continue from the cursor.
     requestNextPage();
     return;
   }
