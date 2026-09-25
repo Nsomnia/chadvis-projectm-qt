@@ -14,6 +14,7 @@
 #include <QString>
 #include <QList>
 #include <expected>
+#include <optional>
 
 namespace vc::suno {
 
@@ -38,6 +39,9 @@ public:
     /// Parse the full feed/v3 response envelope (clips + cursor state).
     [[nodiscard]] static std::expected<FeedPage, QString>
     parseFeedEnvelope(const QJsonObject& root);
+
+    [[nodiscard]] static std::optional<QString>
+    selectImageUrl(const QString& primary, const QString& fallback = {});
 
     // ── Shared tolerant accessors (also used by SunoAccountManager) ──────
 
