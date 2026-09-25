@@ -76,7 +76,7 @@ endif()
 CPMAddPackage(
     NAME pffft
     GIT_REPOSITORY https://github.com/marton78/pffft.git
-    GIT_TAG master
+    GIT_TAG e1dbebc9fbf74247d12f094accbbc470aaee8715
     OPTIONS
         "PFFFT_BUILD_TESTS OFF"
         "PFFFT_BUILD_BENCHMARKS OFF"

@@ -18,6 +18,7 @@
 - [x] Run `ctest --test-dir build/tests --output-on-failure` plus the standalone auth executable; all 6 registered suites pass.
 - [x] Run QML lint on the current QML module; it completes with existing layout/unqualified-access warnings and the corrected SunoBridge properties.
 - [x] Close the asynchronous credential-readiness regression — coalesced keychain restores now notify every caller, and Library/Explore defer authentication decisions until the shared read completes.
+- [x] Close the PFFFT/analyzer race — immutable shared setup, aligned per-call scratch, synchronized state, deterministic setup-failure silence, and normal plus TSan concurrency tests are in place.
 - [~] Verify the current shell reaches a rendered window — the exact current binary reaches `QML window created successfully` and `Initialization complete`; an internal exposed/frame-rendered assertion is still required because macOS denied the external Accessibility check.
 - [ ] Run an authorized-account Library/Create/Listen/Explore/Notifications/Video/Settings smoke.
 

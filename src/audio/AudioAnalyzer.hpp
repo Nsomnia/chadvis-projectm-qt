@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <numeric>
+#include <mutex>
 #include "util/Types.hpp"
 
 namespace vc {
@@ -62,6 +63,7 @@ public:
 
     // Get PCM data for external use (returns copy for API compatibility)
     std::vector<vc::f32> pcmData() const {
+        std::scoped_lock lock(mutex_);
         std::vector<vc::f32> result;
         result.reserve(pcmBuffer_.size());
         for (usize i = 0; i < pcmBuffer_.size(); ++i) {
@@ -87,6 +89,7 @@ private:
 
     std::array<vc::f32, SPECTRUM_SIZE> smoothedMagnitudes_{};
     vc::f32 smoothingFactor_{0.3f};
+    mutable std::mutex mutex_;
     
     // Running sum for O(1) beat detection (optimization)
     vc::f32 runningEnergySum_{0.0f};
