@@ -40,7 +40,9 @@ public:
     [[nodiscard]] static QJsonObject finishBody(const QString& uploadFilename);
     [[nodiscard]] static std::expected<InitializeResponse, QString>
     parseInitializeResponse(const QByteArray& payload);
-    [[nodiscard]] static QNetworkRequest directRequest(const QUrl& url);
+    [[nodiscard]] static bool isSupportedTemporaryUrl(const QUrl& url);
+    [[nodiscard]] static std::expected<QNetworkRequest, QString>
+    directRequest(const QUrl& url);
     [[nodiscard]] static bool isSupportedAudioPath(const QString& path);
 
     void start(const QString& localFilePath);

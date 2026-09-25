@@ -81,6 +81,7 @@ constexpr std::string_view UNIFIED_EXPLORE = "/unified/explore";
 constexpr std::string_view SOCIAL_FOLLOWING_FEED = "/social/following-feed";
 constexpr std::string_view NOTIFICATION_V2_READ = "/notification/v2/read";
 constexpr std::string_view UPLOADS_AUDIO = "/uploads/audio/";
+constexpr std::string_view AUDIO_UPLOAD_STORAGE_HOST = "suno-uploads.s3.amazonaws.com";
 constexpr std::string_view UPLOADS_AUDIO_UPLOAD_FINISH = "/uploads/audio/{}/upload-finish/"; // [T1] POST
 constexpr std::string_view SESSION = "/session/"; // [T1] GET
 constexpr std::string_view SESSION_CATALOG = "/session/"; // [T1] alias for SESSION
