@@ -7,6 +7,10 @@
 #include <QTimer>
 #include "QmlSingletonBridge.hpp"
 
+namespace vc::suno {
+class SunoClient;
+}
+
 namespace qml_bridge {
 
 /**
@@ -148,6 +152,7 @@ public:
 
     // Performance Presets
     Q_INVOKABLE void setPerformancePreset(const QString& preset);
+    static void setSunoClient(vc::suno::SunoClient* client);
 
 signals:
     void audioBufferSizeChanged();
@@ -185,13 +190,20 @@ signals:
 
 private:
     explicit SettingsBridge(QObject* parent = nullptr);
+    ~SettingsBridge() override;
     void scheduleAutoSave();
 
-    QTimer m_autoSaveTimer;
+    void attachSunoClient(vc::suno::SunoClient* client);
+    void commitSunoCredential();
+    void syncSunoCredentialFromClient();
 
-    // Secret cache for the sunoToken property (backed by CredentialStore).
-    mutable QString m_sunoTokenCache;
-    mutable bool m_sunoTokenCacheDirty{true};
+    QTimer m_autoSaveTimer;
+    QTimer m_sunoCredentialTimer;
+    vc::suno::SunoClient* m_sunoClient{nullptr};
+    static vc::suno::SunoClient* s_sunoClient;
+
+    QString m_sunoTokenCache;
+    bool m_sunoCredentialDirty{false};
 };
 
 } // namespace qml_bridge

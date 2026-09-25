@@ -2,11 +2,13 @@
 #include "SettingMacros.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
+#include "suno/SunoClient.hpp"
 #include "suno/auth/AuthHeaders.hpp"
-#include "suno/auth/CredentialStore.hpp"
 #include "util/Types.hpp"
 
 namespace qml_bridge {
+
+vc::suno::SunoClient* SettingsBridge::s_sunoClient = nullptr;
 
 SettingsBridge::SettingsBridge(QObject* parent)
     : QObject(parent)
@@ -14,7 +16,7 @@ SettingsBridge::SettingsBridge(QObject* parent)
     // Debounced auto-save: 2s after any setting change, persist to disk
     m_autoSaveTimer.setSingleShot(true);
     m_autoSaveTimer.setInterval(2000);
-    QObject::connect(&m_autoSaveTimer, &QTimer::timeout, this, [this]() {
+    QObject::connect(&m_autoSaveTimer, &QTimer::timeout, this, []() {
         auto path = vc::Config::instance().configPath();
         if (vc::Config::instance().save(path)) {
             LOG_INFO("SettingsBridge: Auto-saved configuration to {}", path.string());
@@ -22,6 +24,50 @@ SettingsBridge::SettingsBridge(QObject* parent)
             LOG_ERROR("SettingsBridge: Auto-save failed to {}", path.string());
         }
     });
+
+    m_sunoCredentialTimer.setSingleShot(true);
+    m_sunoCredentialTimer.setInterval(750);
+    QObject::connect(&m_sunoCredentialTimer, &QTimer::timeout, this,
+                     [this]() { commitSunoCredential(); });
+    attachSunoClient(s_sunoClient);
+}
+
+SettingsBridge::~SettingsBridge()
+{
+    commitSunoCredential();
+    if (s_sunoClient == m_sunoClient) {
+        s_sunoClient = nullptr;
+    }
+}
+
+void SettingsBridge::setSunoClient(vc::suno::SunoClient* client)
+{
+    s_sunoClient = client;
+    if (auto* bridge = instance()) {
+        bridge->attachSunoClient(client);
+    }
+}
+
+void SettingsBridge::attachSunoClient(vc::suno::SunoClient* client)
+{
+    if (m_sunoClient == client) {
+        syncSunoCredentialFromClient();
+        return;
+    }
+
+    if (m_sunoClient) {
+        disconnect(m_sunoClient, nullptr, this, nullptr);
+    }
+    m_sunoClient = client;
+    if (m_sunoClient) {
+        connect(m_sunoClient, &vc::suno::SunoClient::credentialChanged,
+                this, [this]() { syncSunoCredentialFromClient(); });
+    }
+    if (m_sunoCredentialDirty) {
+        m_sunoCredentialTimer.start();
+        return;
+    }
+    syncSunoCredentialFromClient();
 }
 
 void SettingsBridge::scheduleAutoSave()
@@ -49,46 +95,53 @@ void SettingsBridge::setSunoDownloadPath(const QString& path)
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Special: sunoToken is a SECRET — persisted via CredentialStore (OS keychain
-// where available), never written to config.toml. Kept outside the X-macro
-// table because that table reads/writes plain Config fields. The value is
-// picked up by SunoClient::reloadStoredCredentials() on the next sync.
-// ─────────────────────────────────────────────────────────────
-
 QString SettingsBridge::sunoToken() const
 {
-    if (m_sunoTokenCacheDirty) {
-        m_sunoTokenCacheDirty = false;
-        vc::suno::auth::CredentialStore store;
-        if (auto loaded = store.load("suno/default"); loaded.isOk()) {
-            m_sunoTokenCache = loaded.value();
-        }
-    }
     return m_sunoTokenCache;
 }
 
 void SettingsBridge::setSunoToken(const QString& token)
 {
     const QString normalizedToken = vc::suno::auth::normalizeCookieHeader(token);
-    if (normalizedToken == sunoToken()) {
+    if (normalizedToken == m_sunoTokenCache && !m_sunoCredentialDirty) {
         return;
     }
     m_sunoTokenCache = normalizedToken;
-    m_sunoTokenCacheDirty = false;
+    m_sunoCredentialDirty = true;
+    m_sunoCredentialTimer.start();
+    emit sunoTokenChanged();
+}
 
-    vc::suno::auth::CredentialStore store;
-    if (normalizedToken.isEmpty()) {
-        std::ignore = store.remove("suno/default");
-        std::ignore = store.remove("suno/bearer");
-    } else {
-        auto result = store.store("suno/default", normalizedToken);
-        if (result.isErr()) {
-            LOG_ERROR("SettingsBridge: failed to persist Suno credential ({})",
-                      vc::suno::auth::CredentialStore::redact(normalizedToken).toStdString());
-        }
+void SettingsBridge::commitSunoCredential()
+{
+    m_sunoCredentialTimer.stop();
+    if (!m_sunoCredentialDirty) {
+        return;
     }
-    // No TOML write: nothing in the config changed (secrets never live there).
+    if (!m_sunoClient) {
+        LOG_ERROR("SettingsBridge: Suno client unavailable; credential change was not applied");
+        return;
+    }
+    m_sunoCredentialDirty = false;
+    if (m_sunoTokenCache.isEmpty()) {
+        m_sunoClient->clearLocalCredentials();
+    } else {
+        m_sunoClient->setCookie(m_sunoTokenCache.toStdString());
+    }
+}
+
+void SettingsBridge::syncSunoCredentialFromClient()
+{
+    if (m_sunoCredentialDirty) {
+        return;
+    }
+    const QString value = m_sunoClient
+            ? m_sunoClient->configuredCredential()
+            : QString();
+    if (m_sunoTokenCache == value) {
+        return;
+    }
+    m_sunoTokenCache = value;
     emit sunoTokenChanged();
 }
 
@@ -142,12 +195,8 @@ void SettingsBridge::resetToDefaults()
 #undef SETTING_STRING
 #undef SETTING_RO_STRING
 
-    // Also emit the manual ones (sunoDownloadPath) and refresh the secret
-    // property from the store (the stored credential itself is NOT deleted
-    // by a settings reset — that is an explicit user action).
     emit sunoDownloadPathChanged();
-    m_sunoTokenCacheDirty = true;
-    emit sunoTokenChanged();
+    syncSunoCredentialFromClient();
 
     // Save the reset config to disk
     auto path = config.configPath();
