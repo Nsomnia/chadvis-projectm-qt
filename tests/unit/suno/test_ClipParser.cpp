@@ -68,6 +68,86 @@ private slots:
         // Unknown fields ignored liberally - no crash is the contract.
     }
 
+    void imageUrlPolicy_data()
+    {
+        QTest::addColumn<QString>("url");
+        QTest::addColumn<bool>("allowed");
+
+        QTest::newRow("cdn1")
+                << QStringLiteral("https://cdn1.suno.ai/image.jpeg")
+                << true;
+        QTest::newRow("cdn2-query")
+                << QStringLiteral("https://cdn2.suno.ai/image.jpeg?width=1024")
+                << true;
+        QTest::newRow("explicit-https-port")
+                << QStringLiteral("https://cdn1.suno.ai:443/image.jpeg")
+                << true;
+        QTest::newRow("cleartext")
+                << QStringLiteral("http://cdn1.suno.ai/image.jpeg")
+                << false;
+        QTest::newRow("alternate-host")
+                << QStringLiteral("https://images.example.test/image.jpeg")
+                << false;
+        QTest::newRow("suffix-confusion")
+                << QStringLiteral("https://cdn1.suno.ai.evil.test/image.jpeg")
+                << false;
+        QTest::newRow("userinfo")
+                << QStringLiteral("https://user@cdn1.suno.ai/image.jpeg")
+                << false;
+        QTest::newRow("nondefault-port")
+                << QStringLiteral("https://cdn1.suno.ai:444/image.jpeg")
+                << false;
+        QTest::newRow("fragment")
+                << QStringLiteral("https://cdn1.suno.ai/image.jpeg#fragment")
+                << false;
+        QTest::newRow("empty-path")
+                << QStringLiteral("https://cdn1.suno.ai")
+                << false;
+        QTest::newRow("relative")
+                << QStringLiteral("/image.jpeg")
+                << false;
+        QTest::newRow("data-scheme")
+                << QStringLiteral("data:image/jpeg;base64,AA==")
+                << false;
+        QTest::newRow("file-scheme")
+                << QStringLiteral("file:///tmp/image.jpeg")
+                << false;
+    }
+
+    void imageUrlPolicy()
+    {
+        QFETCH(QString, url);
+        QFETCH(bool, allowed);
+        QCOMPARE(ClipParser::selectImageUrl(url).has_value(), allowed);
+    }
+
+    void imageUrlsAreSanitizedAtParseBoundary()
+    {
+        auto primaryInvalid = ClipParser::parseClip(QJsonObject{
+            {"id", "image-1"},
+            {"image_large_url", "https://evil.test/image.jpeg"},
+            {"image_url", "https://cdn2.suno.ai/image.jpeg"},
+        });
+        QVERIFY(primaryInvalid.has_value());
+        QVERIFY(primaryInvalid->image_large_url.empty());
+        QCOMPARE(QString::fromStdString(primaryInvalid->image_url),
+                 QStringLiteral("https://cdn2.suno.ai/image.jpeg"));
+        QCOMPARE(ClipParser::selectImageUrl(
+                         QString::fromStdString(primaryInvalid->image_large_url),
+                         QString::fromStdString(primaryInvalid->image_url))
+                         .value_or(QString()),
+                 QStringLiteral("https://cdn2.suno.ai/image.jpeg"));
+
+        auto bothInvalid = ClipParser::parseClip(QJsonObject{
+            {"id", "image-2"},
+            {"image_large_url", "file:///tmp/image.jpeg"},
+            {"image_url", "http://cdn1.suno.ai/image.jpeg"},
+        });
+        QVERIFY(bothInvalid.has_value());
+        QVERIFY(bothInvalid->image_large_url.empty());
+        QVERIFY(bothInvalid->image_url.empty());
+    }
+
     void mediaUrlSelectionPrefersCapturedMp3() {
         SunoClip clip;
         clip.status = "complete";

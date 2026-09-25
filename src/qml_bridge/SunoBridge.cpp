@@ -1,6 +1,7 @@
 #include "SunoBridge.hpp"
 #include "core/Config.hpp"
 #include "ui/controllers/SunoController.hpp"
+#include "suno/ClipParser.hpp"
 #include "suno/SunoAccountManager.hpp"
 #include "suno/SunoClient.hpp"
 #include "suno/auth/AuthCoordinator.hpp"
@@ -74,8 +75,10 @@ QVariantMap toDiscoverClip(const vc::suno::SunoClip& clip) {
     result[QStringLiteral("id")] = QString::fromStdString(clip.id);
     result[QStringLiteral("title")] = QString::fromStdString(clip.title);
     result[QStringLiteral("status")] = QString::fromStdString(clip.status);
-    result[QStringLiteral("image_url")] = QString::fromStdString(
-            clip.image_large_url.empty() ? clip.image_url : clip.image_large_url);
+    result[QStringLiteral("image_url")] = vc::suno::ClipParser::selectImageUrl(
+            QString::fromStdString(clip.image_large_url),
+            QString::fromStdString(clip.image_url))
+            .value_or(QString());
     result[QStringLiteral("creator")] = QString::fromStdString(
             clip.display_name.empty() ? clip.handle : clip.display_name);
     result[QStringLiteral("created_at")] = QString::fromStdString(clip.created_at);
@@ -551,9 +554,10 @@ void SunoBridge::onLibraryUpdated() {
     map["id"] = QString::fromStdString(clip.id);
     map["title"] = QString::fromStdString(clip.title);
     map["status"] = QString::fromStdString(clip.status);
-    map["image_url"] = QString::fromStdString(
-            !clip.image_large_url.empty() ? clip.image_large_url : clip.image_url);
-    map["audio_url"] = QString::fromStdString(clip.audio_url);
+    map["image_url"] = vc::suno::ClipParser::selectImageUrl(
+            QString::fromStdString(clip.image_large_url),
+            QString::fromStdString(clip.image_url))
+            .value_or(QString());
     map["model_name"] = QString::fromStdString(clip.model_name);
     map["major_model_version"] = QString::fromStdString(clip.major_model_version);
     map["created_at"] = QString::fromStdString(clip.created_at);

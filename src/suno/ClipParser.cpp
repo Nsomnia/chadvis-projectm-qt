@@ -3,6 +3,7 @@
 #include "core/Logger.hpp"
 
 #include <QJsonValue>
+#include <QUrl>
 
 namespace vc::suno {
 
@@ -62,6 +63,20 @@ double ClipParser::optDouble(const QJsonObject& obj, const QString& key, double 
 // ─────────────────────────────────────────────────────────────
 
 namespace {
+
+bool isCapturedImageUrl(const QString& value)
+{
+    const QUrl url(value);
+    const int port = url.port();
+    const bool capturedHost =
+            url.host().compare(QStringLiteral("cdn1.suno.ai"), Qt::CaseInsensitive) == 0 ||
+            url.host().compare(QStringLiteral("cdn2.suno.ai"), Qt::CaseInsensitive) == 0;
+    return url.isValid() && !url.isRelative() &&
+           url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0 &&
+           capturedHost && (port == -1 || port == 443) &&
+           url.userInfo().isEmpty() && url.fragment().isEmpty() &&
+           !url.path().isEmpty();
+}
 
 void parseMediaUrls(const QJsonObject& obj, SunoClip& clip) {
     const QJsonValue v = obj.value(QStringLiteral("media_urls"));
@@ -124,8 +139,12 @@ std::expected<SunoClip, QString> ClipParser::parseClip(const QJsonObject& obj) {
     clip.title = optString(obj, "title").toStdString();
     clip.video_url = optString(obj, "video_url").toStdString();
     clip.audio_url = optString(obj, "audio_url").toStdString();
-    clip.image_url = optString(obj, "image_url").toStdString();
-    clip.image_large_url = optString(obj, "image_large_url").toStdString();
+    clip.image_url = selectImageUrl(optString(obj, "image_url"))
+                             .value_or(QString())
+                             .toStdString();
+    clip.image_large_url = selectImageUrl(optString(obj, "image_large_url"))
+                                   .value_or(QString())
+                                   .toStdString();
     clip.major_model_version = optString(obj, "major_model_version").toStdString();
     clip.model_name = optString(obj, "model_name").toStdString();
     clip.display_name = optString(obj, "display_name").toStdString();
@@ -205,6 +224,18 @@ ClipParser::parseFeedEnvelope(const QJsonObject& root) {
     page.hasMore = moreValue.isBool() ? moreValue.toBool() : !page.nextCursor.isEmpty();
 
     return page;
+}
+
+std::optional<QString> ClipParser::selectImageUrl(const QString& primary,
+                                                 const QString& fallback)
+{
+    if (isCapturedImageUrl(primary)) {
+        return primary;
+    }
+    if (isCapturedImageUrl(fallback)) {
+        return fallback;
+    }
+    return std::nullopt;
 }
 
 } // namespace vc::suno
