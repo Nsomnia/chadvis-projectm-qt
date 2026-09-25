@@ -196,8 +196,8 @@ private slots:
         clip.id = "clip-ready";
         clip.title = "CapturedClip";
         clip.status = "complete";
-        clip.media_urls = {{"https://cdn1.suno.ai/clip-ready.mp3", "mp3",
-                            "progressive", ""}};
+        clip.media_urls = {{"https://audiopipe.suno.ai/clip-ready.mp3", "mp3",
+                             "streaming", ""}};
         downloader.downloadAndPlay(clip);
 
         QCOMPARE(ready.count(), 1);

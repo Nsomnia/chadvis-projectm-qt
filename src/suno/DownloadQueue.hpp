@@ -76,7 +76,7 @@ enum class FailureKind { None, Cancelled, Retryable, Permanent };
 using ReplyFactory = std::function<QNetworkReply*(const QNetworkRequest&)>;
 
 /// Bounded-concurrency FIFO download scheduler with automatic retry,
-/// HTTP-range resume, cancellation, and .part atomic-rename finalization.
+/// cancellation, and .part atomic-rename finalization.
 class DownloadQueue : public QObject {
     Q_OBJECT
 
@@ -128,10 +128,7 @@ private:
         QVariantMap metadata;
         DownloadState state{DownloadState::Queued};
         int attempts{0};          // completed attempts (failures consumed)
-        qint64 rangeOffset{0};    // bytes pre-existing in .part for this attempt
         int progressPercent{-1};
-        bool resumable{false};    // peer advertised Accept-Ranges on a failure
-        bool awaitingStatusCheck{false};  // first bytes of a resumed request
         bool finishing{false};    // swallow further callbacks for this reply
         bool cancelRequested{false};
         QPointer<QNetworkReply> reply;
@@ -149,7 +146,6 @@ private:
     void onProgress(Item& item, qint64 received, qint64 total);
     void onFinished(Item& item, QNetworkReply& reply);
     void handleFailure(Item& item, QNetworkReply* reply, FailureKind kind);
-    void restartFromScratch(Item& item, QNetworkReply& reply);
     void finishCancelled(Item& item, QNetworkReply& reply);
     void finalizeSuccess(Item& item, QNetworkReply& reply);
     void resumeWaiting(const std::string& clipId);
