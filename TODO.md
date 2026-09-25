@@ -21,6 +21,7 @@
 - [x] Fence authenticated work by request epoch — sign-out/replacement/auth loss clears queues, retries, and waiters; aborts tracked replies; rebases restore waiters; and cancels direct uploads.
 - [x] Close the PFFFT/analyzer race — immutable shared setup, aligned per-call scratch, synchronized state, deterministic setup-failure silence, and normal plus TSan concurrency tests are in place.
 - [x] Close the audio callback allocation risk — preallocate the PCM scratch during `AudioEngine::init()` and drop oversized buffers instead of resizing on the callback path.
+- [x] Close the native visualizer no-op — `VisualizerBridge.toggleActive()` now toggles the native visualizer window visibility.
 - [x] Close the compiler-visible persistence error gap — FBO resize, playlist/config/theme/database/preset persistence now logs `Result` failures instead of discarding them.
 - [x] Close cached QML singleton lifetime risk — parented/unparented bridge singletons clear their static instance pointer on destruction, with a destruction regression.
 - [x] Close the shutdown-order risk — `Application` explicitly resets QML, controller/lyrics/preset, recorder, audio, and Qt application lifetimes in dependency order.
