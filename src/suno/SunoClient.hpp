@@ -20,14 +20,17 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QObject>
+#include <QPointer>
 #include <QSet>
 #include <QString>
 #include <QTimer>
 #include <atomic>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
+#include <vector>
 
 class QUrl;
 
@@ -116,10 +119,14 @@ class SunoClient : public QObject {
     Q_OBJECT
 
 public:
+    using ReplyFactory = std::function<QNetworkReply*(
+            const QNetworkRequest&, const std::string&, const QByteArray&)>;
+
     explicit SunoClient(
             QString deviceId = {},
             QObject* parent = nullptr,
-            CredentialStoreWorker::Backend credentialStoreBackend = {});
+            CredentialStoreWorker::Backend credentialStoreBackend = {},
+            ReplyFactory replyFactory = {});
     ~SunoClient() override;
 
     // ── Credentials ─────────────────────────────────────────────────────
@@ -280,6 +287,7 @@ signals:
     /// intentionally not an enum argument; consumers map it to a stable string.
     void authFailureKindChanged();
     void credentialChanged();
+    void credentialInvalidated();
     void credentialRestoreCompleted();
 
 private:
@@ -289,6 +297,12 @@ private:
         QByteArray data;
         std::function<void(QNetworkReply*)> callback;
         bool retriedAuth = false; ///< Already given its single 401 retry.
+        quint64 epoch = 0;
+    };
+
+    struct AuthWaiter {
+        quint64 epoch = 0;
+        std::function<void()> proceed;
     };
 
     // Startup
@@ -306,11 +320,17 @@ private:
     void scheduleProactiveRefresh();
     void ensureFreshBearer(bool force = false);
     void flushAuthWaiters();
+    void invalidateRequestEpoch(const QString& reason = {});
+    void resetClerkClient();
     void dropPendingAuthWork(const QString& reason);
     void onBearerReadyInternal(const auth::BearerToken& token);
     void onClerkAuthFailedInternal(const QString& reason,
                                   auth::AuthFailureKind kind);
     bool hasCredentials() const;
+    bool isTrackedReply(const QNetworkReply* reply) const;
+    void trackReply(QNetworkReply* reply);
+    void removeTrackedReply(QNetworkReply* reply);
+    void abortTrackedReplies();
 
     // Request plumbing
     std::optional<QUrl> resolveStudioApiUrl(const QString& endpoint) const;
@@ -320,7 +340,8 @@ private:
     void enqueueRequest(QNetworkRequest req, const std::string& method,
                         QByteArray data,
                         std::function<void(QNetworkReply*)> callback,
-                        bool retriedAuth = false);
+                        bool retriedAuth = false,
+                        quint64 epoch = 0);
     void processQueue();
     void handleReplyFinished(QNetworkReply* reply, PendingRequest&& pending);
     void withValidToken(std::function<void()> proceed);
@@ -334,8 +355,11 @@ private:
     void onWavConversionInitiated(const std::string& clipId, QNetworkReply* reply);
 
     QNetworkAccessManager* manager_;
+    ReplyFactory replyFactory_;
     std::deque<PendingRequest> requestQueue_;
     QTimer* queueTimer_;
+    quint64 requestEpoch_ = 1;
+    std::vector<QPointer<QNetworkReply>> activeReplies_;
 
     // Auth subsystem
     auth::ClerkAuthClient* clerk_;
@@ -349,10 +373,12 @@ private:
     QString deviceId_;
     QTimer* refreshTimer_;       ///< Proactive touch at expiry-minus-margin.
     bool touchInFlight_ = false; ///< One Clerk exchange at a time.
+    bool refreshAfterRestore_ = false;
+    quint64 authExchangeEpoch_ = 0;
 
     // Uniform 401 handling
-    std::deque<PendingRequest> retryQueue_;              ///< Intercepted on 401.
-    std::vector<std::function<void()>> authWaiters_;     ///< withValidToken gate.
+    std::deque<PendingRequest> retryQueue_;
+    std::vector<AuthWaiter> authWaiters_;
 
     // Cancellable wav polling
     QSet<QString> cancelledPolls_;

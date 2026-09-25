@@ -29,7 +29,9 @@ SunoLibraryManager::SunoLibraryManager(SunoClient* client, SunoDatabase& db, QOb
         }
     });
     connect(client_, &SunoClient::needsReauth, this, [this]() {
-        if (isSyncing_) {
+        if (credentialRefreshPending_) {
+            onCredentialsRestored();
+        } else if (isSyncing_) {
             isSyncing_ = false;
             const bool hadMore = hasMorePages_;
             hasMorePages_ = false;
@@ -38,8 +40,13 @@ SunoLibraryManager::SunoLibraryManager(SunoClient* client, SunoDatabase& db, QOb
         }
     });
     connect(client_, &SunoClient::authStateChanged, this, [this]() {
-        // If we were syncing and auth just went to NeedsReauth/Disconnected,
-        // treat as a failure so the spinner does not stick.
+        if (credentialRefreshPending_) {
+            if (client_->authState() == auth::AuthState::ActiveValid ||
+                client_->authState() == auth::AuthState::Disconnected) {
+                onCredentialsRestored();
+            }
+            return;
+        }
         if (isSyncing_ && client_->authState() != auth::AuthState::ActiveValid) {
             isSyncing_ = false;
             const bool hadMore = hasMorePages_;

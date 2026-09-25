@@ -94,10 +94,24 @@ SunoExploreService::SunoExploreService(SunoClient* client, QObject* parent)
     if (client_)
     {
         connect(client_, &SunoClient::authStateChanged, this, [this]() {
-            if (!credentialRefreshPending_ && loading_ &&
-                client_->authState() != auth::AuthState::ActiveValid)
+            if (credentialRefreshPending_)
+            {
+                if (client_->authState() == auth::AuthState::ActiveValid ||
+                    client_->authState() == auth::AuthState::Disconnected)
+                {
+                    onCredentialsRestored();
+                }
+            }
+            else if (loading_ &&
+                     client_->authState() != auth::AuthState::ActiveValid)
             {
                 handleAuthenticationLost();
+            }
+        });
+        connect(client_, &SunoClient::needsReauth, this, [this]() {
+            if (credentialRefreshPending_)
+            {
+                onCredentialsRestored();
             }
         });
         connect(client_, &SunoClient::credentialRestoreCompleted,

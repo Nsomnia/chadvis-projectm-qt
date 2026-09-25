@@ -73,6 +73,8 @@ private slots:
     void onMediaStatusChanged(QMediaPlayer::MediaStatus status);
 
 private:
+    static constexpr usize kMaxScratchSamples = 16384;
+
     void setupConnections(QMediaPlayer* player, QAudioBufferOutput* bufferOutput);
     void loadCurrentTrack();
     void prepareNextTrack();
