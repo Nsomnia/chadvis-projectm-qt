@@ -74,21 +74,17 @@ signals:
 private:
     friend class ClerkAuthClientTestAccess;
 
-    /// Everything a reply handler needs to continue (or fall back) for one
-    /// logical request.
+    /// Everything a reply handler needs for one logical request.
     struct CallContext {
         Credentials creds;
         QString sessionId; ///< Empty for fetchBearer.
-        bool allowFallback = true;
     };
 
     void startClientFetch(CallContext ctx);
     void startTouch(CallContext ctx);
-    void startTokenFallback(CallContext ctx);
 
-    void handleReply(QNetworkReply* reply, CallContext ctx);
+    void handleReply(QNetworkReply* reply);
     void handleEnvelopeBody(const QByteArray& body, const CallContext& ctx);
-    void handleTokenFallbackBody(const QByteArray& body);
 
     [[nodiscard]] static AuthFailureKind classifyHttpFailure(int status) noexcept;
     [[nodiscard]] static QString httpFailureReason(int status);
@@ -105,8 +101,7 @@ private:
     /// In-flight replies (aborted on destruction). QPointer guards against a
     /// reply that already self-destructed via deleteLater().
     QList<QPointer<QNetworkReply>> inflight_;
-
-    QString lastKnownSessionId_;
+    QString lastObservedSessionId_;
 
     AuthFailureKind failureKind_ = AuthFailureKind::None;
 };

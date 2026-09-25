@@ -46,12 +46,15 @@ struct ClerkClientInfo {
     QString lastActiveSessionId;
     QList<ClerkSession> sessions;
 
-    /// Session matching lastActiveSessionId, else the first session, else null.
+    /// Session matching lastActiveSessionId, or null when the selector is absent.
     [[nodiscard]] const ClerkSession* preferredSession() const {
+        if (lastActiveSessionId.isEmpty()) {
+            return nullptr;
+        }
         for (const auto& s : sessions) {
             if (s.sessionId == lastActiveSessionId) return &s;
         }
-        return sessions.isEmpty() ? nullptr : &sessions.first();
+        return nullptr;
     }
 };
 
