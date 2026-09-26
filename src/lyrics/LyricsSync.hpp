@@ -78,6 +78,15 @@ struct LyricsSyncPosition {
  * - Smooth seeking without jumps
  * - Pre-fetch next lines for transitions
  * - Instrumental section detection
+ *
+ * Threading: this object lives in the thread that created it and every
+ * mutator must be called from that thread. The position state has exactly
+ * one writer, syncNow(), which the update timer calls on every tick; seek()
+ * and loadLyrics() only install a seed that the next tick drains. A lock
+ * would not help: updatePosition() is a read-modify-write over lyrics_ and
+ * the position, and two serialized callers would still double-smooth one
+ * audio instant. Event-loop serialization is the invariant, not mutual
+ * exclusion.
  */
 class LyricsSync : public QObject {
     Q_OBJECT
@@ -118,8 +127,22 @@ public:
     
     /**
      * @brief Seek to specific time
+     *
+     * Installs a seed that the next syncNow() drains; it does not move the
+     * position by itself.
      */
     void seek(f32 time);
+    
+    /**
+     * @brief Apply one position update now
+     *
+     * The single writer for the position state. The update timer calls this
+     * every tick; it is public so a caller can force a synchronous refresh
+     * after a seek, or drive the sync by hand with no AudioEngine attached
+     * (a pending seed is still drained, and with no transport to sample the
+     * call is a no-op).
+     */
+    void syncNow();
     
     /**
      * @brief Get current sync position
@@ -182,6 +205,12 @@ private slots:
     void onAudioTrackChanged();
     
 private:
+    /// Sample the transport in seconds; 0 when there is no engine attached.
+    [[nodiscard]] f32 audioPositionSeconds() const;
+    /// Queue a position for the next syncNow(); last write wins.
+    void seedPendingPosition(f32 time);
+    /// Drop any queued position (track change, new lyrics, clear).
+    void clearPendingPosition() noexcept;
     void updatePosition(f32 time);
     void detectChanges(const LyricsSyncPosition& oldPos, 
                        const LyricsSyncPosition& newPos);
@@ -198,8 +227,13 @@ private:
     
     // Update timer
     QTimer* updateTimer_;
-    
 
+    // Position seed, consumed by the next syncNow(). seek() and loadLyrics()
+    // write here instead of calling updatePosition(), which is what keeps the
+    // timer the only writer and stops a seed from being lerped a second time
+    // on the following tick.
+    f32 pendingTime_{0.0f};
+    bool hasPendingTime_{false};
 };
 
 /**

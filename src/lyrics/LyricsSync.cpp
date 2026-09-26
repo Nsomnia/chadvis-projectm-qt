@@ -6,6 +6,7 @@
 #include "LyricsSync.hpp"
 #include "audio/AudioEngine.hpp"
 #include "core/Logger.hpp"
+#include <QThread>
 #include <QTimer>
 #include <algorithm>
 
@@ -15,11 +16,11 @@ LyricsSync::LyricsSync(AudioEngine* audio, QObject* parent)
     : QObject(parent), audio_(audio), updateTimer_(new QTimer(this)) {
     
     updateTimer_->setInterval(config_.updateIntervalMs);
-    connect(updateTimer_, &QTimer::timeout, this, [this]() {
-        if (audio_) {
-            updatePosition(static_cast<f32>(audio_->position().count()) / 1000.0f);
-        }
-    });
+    // The timer is the only thing that drives the position. syncNow() is the
+    // one place a position is applied, whether it came from a seed or from
+    // the transport, so no caller can update the state behind the timer's
+    // back and have the next tick smooth the same instant a second time.
+    connect(updateTimer_, &QTimer::timeout, this, &LyricsSync::syncNow);
     
 	if (audio_) {
 		connect(audio_, &AudioEngine::stateChanged,
@@ -27,16 +28,21 @@ LyricsSync::LyricsSync(AudioEngine* audio, QObject* parent)
 				onAudioStateChanged(state);
 			}, Qt::QueuedConnection);
 
+		// Queued, like stateChanged: this runs clear(), which replaces lyrics_
+		// and resets the position. A direct call performs that reset in the
+		// middle of the transport's own emission, outside the ordering the
+		// event loop gives everything else in this class.
 		connect(audio_, &AudioEngine::trackChanged,
 			this, [this]() {
 				onAudioTrackChanged();
-			}, Qt::DirectConnection);
+			}, Qt::QueuedConnection);
 	}
 }
 
 LyricsSync::~LyricsSync() = default;
 
 void LyricsSync::loadLyrics(const LyricsData& lyrics) {
+    Q_ASSERT(QThread::currentThread() == thread());
     setState(LyricsSyncState::Loading);
     lyrics_ = lyrics;
     // Invariant: every assignment to lyrics_ resets currentPos_ on the next
@@ -44,6 +50,10 @@ void LyricsSync::loadLyrics(const LyricsData& lyrics) {
     // Any new lyrics_ assignment must repeat this.
     currentPos_ = LyricsSyncPosition();
     smoothedTime_ = 0.0f;
+    // A seed belongs to the song that asked for it. A leftover from the
+    // previous track would otherwise be drained against these lyrics, which
+    // is exactly the clear-then-load ordering the playback handoff uses.
+    clearPendingPosition();
 
     if (lyrics_.empty()) {
         updateTimer_->stop();
@@ -56,20 +66,24 @@ void LyricsSync::loadLyrics(const LyricsData& lyrics) {
     LOG_INFO("LyricsSync: Loaded {} lines", lyrics_.lineCount());
 
     if (audio_ && audio_->isPlaying()) {
-        smoothedTime_ = std::max(
-            0.0f, static_cast<f32>(audio_->position().count()) / 1000.0f);
-        updatePosition(smoothedTime_);
+        // Seeded, not applied: the drain lands on this value exactly and the
+        // tick after it goes back to the transport.
+        seedPendingPosition(audioPositionSeconds());
         start();
     }
 }
 
 void LyricsSync::clear() {
+    Q_ASSERT(QThread::currentThread() == thread());
     updateTimer_->stop();
     lyrics_ = LyricsData();
     // Second and last site that replaces lyrics_; see loadLyrics for why the
     // reset is unconditional and adjacent.
     currentPos_ = LyricsSyncPosition();
     smoothedTime_ = 0.0f;
+    // Third part of that invariant: a seed outliving clear() would be drained
+    // against the next track loaded after it.
+    clearPendingPosition();
     setState(LyricsSyncState::Idle);
 }
 
@@ -106,14 +120,18 @@ void LyricsSync::resume() {
 }
 
 void LyricsSync::seek(f32 time) {
+    Q_ASSERT(QThread::currentThread() == thread());
     if (lyrics_.empty()) {
         setState(LyricsSyncState::Error);
         return;
     }
 
     setState(LyricsSyncState::Seeking);
-    smoothedTime_ = std::max(0.0f, time);
-    updatePosition(smoothedTime_);
+    // Seeded, not applied. Applying here would smooth this instant once for
+    // the caller and again on the next tick, and the tick could win with a
+    // transport position the seek has not reached yet, dragging the highlight
+    // straight back.
+    seedPendingPosition(time);
     
     // Return to appropriate state
     if (audio_ && audio_->isPlaying()) {
@@ -123,6 +141,45 @@ void LyricsSync::seek(f32 time) {
     }
     
     LOG_DEBUG("LyricsSync: Seek to {:.2f}s", time);
+}
+
+void LyricsSync::syncNow() {
+    Q_ASSERT(QThread::currentThread() == thread());
+
+    // One shot: consumed here so the tick after a seek goes back to the
+    // transport instead of re-applying the same target.
+    const bool seeded = hasPendingTime_;
+    const f32 seed = pendingTime_;
+    clearPendingPosition();
+
+    if (lyrics_.empty()) return;
+
+    if (seeded) {
+        // A seed is a position, not a target. Presetting the smoother makes
+        // the lerp in updatePosition a no-op, so one drain lands exactly on
+        // the seeded time -- the snap a seek is supposed to be, without the
+        // second application that used to smooth it again on the next tick.
+        smoothedTime_ = seed;
+    } else if (!audio_) {
+        // Nothing seeded and no transport to sample.
+        return;
+    }
+
+    updatePosition(seeded ? smoothedTime_ : audioPositionSeconds());
+}
+
+f32 LyricsSync::audioPositionSeconds() const {
+    return audio_ ? static_cast<f32>(audio_->position().count()) / 1000.0f : 0.0f;
+}
+
+void LyricsSync::seedPendingPosition(f32 time) {
+    pendingTime_ = std::max(0.0f, time);
+    hasPendingTime_ = true;
+}
+
+void LyricsSync::clearPendingPosition() noexcept {
+    pendingTime_ = 0.0f;
+    hasPendingTime_ = false;
 }
 
 LyricsSyncPosition LyricsSync::getPosition() const {

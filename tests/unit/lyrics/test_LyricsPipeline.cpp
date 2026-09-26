@@ -4,6 +4,7 @@
 #include <QNetworkAccessManager>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QThread>
 #include <QtTest>
 #include <cmath>
 #include <limits>
@@ -170,15 +171,118 @@ private slots:
         sync.loadLyrics(makeLyrics());
         QCOMPARE(sync.getState(), LyricsSyncState::Ready);
 
+        // seek() only seeds the position; syncNow() is the one writer, so the
+        // tests drive it directly instead of waiting on the 16 ms timer.
         sync.seek(0.75f);
+        sync.syncNow();
         QCOMPARE(sync.getPosition().lineIndex, 0);
         QCOMPARE(sync.getPosition().wordIndex, 1);
         QVERIFY(std::abs(sync.getPosition().lineProgress - 0.75f) < 0.001f);
 
         sync.seek(3.0f);
+        sync.syncNow();
         QCOMPARE(sync.getPosition().lineIndex, 1);
         QCOMPARE(sync.getPosition().lineProgress, 1.0f);
         QCOMPARE(sync.getPosition().wordProgress, 0.0f);
+    }
+
+    void seekSeedsAndAppliesExactlyOnce()
+    {
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(makeLyrics());
+
+        sync.seek(0.75f);
+
+        // Nothing has moved yet: the seek installed a seed, it did not apply
+        // a position. This is what a direct updatePosition() call used to do
+        // here, and the following tick would then lerp the same instant a
+        // second time.
+        QCOMPARE(sync.getPosition().time, 0.0f);
+        QCOMPARE(sync.getPosition().lineIndex, -1);
+
+        // One drain lands exactly on the requested time, not part-way there.
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().time, 0.75f);
+        QCOMPARE(sync.getPosition().lineIndex, 0);
+        QCOMPARE(sync.getPosition().wordIndex, 1);
+
+        // The seed is consumed. With no AudioEngine there is nothing left to
+        // sample, so a second drain is a no-op rather than another lerp.
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().time, 0.75f);
+        QCOMPARE(sync.getPosition().lineIndex, 0);
+        QCOMPARE(sync.getPosition().wordIndex, 1);
+    }
+
+    void lastSeedBeforeADrainWins()
+    {
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(makeLyricsOfCount(8));
+
+        sync.seek(7.5f);
+        sync.seek(3.5f);
+        sync.syncNow();
+
+        // The second seek overwrote the first seed rather than being lost
+        // behind it, and neither was applied before the drain.
+        QCOMPARE(sync.getPosition().time, 3.5f);
+        QCOMPARE(sync.getPosition().lineIndex, 3);
+
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().time, 3.5f);
+    }
+
+    void clearDropsAPendingSeed()
+    {
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(makeLyricsOfCount(8));
+        sync.seek(7.5f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 7);
+        QVERIFY(sync.getPosition().time > 7.0f);
+
+        // clear-then-load is the playback handoff ordering; a seed that
+        // outlived clear() would be drained against a song that ends at 2 s.
+        sync.clear();
+        QCOMPARE(sync.getState(), LyricsSyncState::Idle);
+        QCOMPARE(sync.getPosition().time, 0.0f);
+
+        sync.loadLyrics(makeLyrics());
+        QCOMPARE(sync.getState(), LyricsSyncState::Ready);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().time, 0.0f);
+        QCOMPARE(sync.getPosition().lineIndex, -1);
+
+        // The new song still seeks normally.
+        sync.seek(1.5f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 1);
+        QCOMPARE(sync.getPosition().time, 1.5f);
+    }
+
+    void mutatorsRunOnTheObjectsOwnThread()
+    {
+        LyricsSync sync(nullptr);
+        QCOMPARE(QThread::currentThread(), sync.thread());
+
+        // loadLyrics, seek and clear each assert thread affinity, so reaching
+        // the end of this on a debug build is the check: a mutator called from
+        // a worker would abort rather than race the timer silently.
+        sync.loadLyrics(makeLyrics());
+        sync.seek(0.75f);
+        sync.syncNow();
+        sync.clear();
+        sync.loadLyrics(makeLyrics());
+        sync.jumpToLine(1);
+        sync.syncNow();
+
+        QCOMPARE(sync.getState(), LyricsSyncState::Paused);
+        // Line 1 starts at exactly 1.0 s, and line 0's span is inclusive of
+        // its end, so the boundary resolves to line 0. That is pre-existing
+        // findLineIndex behaviour; the seed carrying the request is what this
+        // covers, including a seed that happens to be a boundary value.
+        QCOMPARE(sync.getPosition().time, 1.0f);
+        QCOMPARE(sync.getPosition().lineIndex, 0);
     }
 
     void emptyLoadIsTerminal()
@@ -257,6 +361,7 @@ private slots:
         LyricsSync sync(nullptr);
         sync.loadLyrics(makeLyricsOfCount(8));
         sync.seek(7.5f);
+        sync.syncNow();
         QCOMPARE(sync.getPosition().lineIndex, 7);
         QCOMPARE(sync.getContextLines(2, 2).size(), size_t{3});
         QCOMPARE(sync.getUpcomingLines(2).size(), size_t{0});
@@ -308,6 +413,7 @@ private slots:
         QCOMPARE(sync.getLyrics().lines[0].words.size(), size_t{0});
 
         sync.seek(0.0f);
+        sync.syncNow();
         QCOMPARE(sync.getPosition().lineIndex, 0);
         QCOMPARE(sync.getPosition().wordIndex, -1);
         QCOMPARE(sync.getPosition().wordProgress, 0.0f);
@@ -359,6 +465,7 @@ private slots:
         QCOMPARE(sync.getState(), LyricsSyncState::Ready);
 
         sync.seek(3.5f);
+        sync.syncNow();
         QCOMPARE(sync.getPosition().lineIndex, 1);
         QCOMPARE(sync.getPosition().lineProgress, 0.5f);
         QCOMPARE(sync.getContextLines(1, 1).size(), size_t{2});
@@ -367,6 +474,7 @@ private slots:
         // The inverted line is never reported as the active one, and its
         // zero-width span leaves lineProgress untouched rather than negative.
         sync.seek(2.0f);
+        sync.syncNow();
         QCOMPARE(sync.getPosition().lineIndex, 0);
         QCOMPARE(sync.getPosition().lineProgress, 0.0f);
     }
@@ -420,6 +528,7 @@ private slots:
         qml_bridge::LyricsBridge bridge;
         sync.loadLyrics(makeLyrics());
         sync.seek(0.5f);
+        sync.syncNow();
 
         bridge.setSearchQuery(QStringLiteral("hello"));
         QCOMPARE(bridge.searchResults().size(), 1);
@@ -468,6 +577,7 @@ private slots:
 
             sync.loadLyrics(makeLyrics());
             sync.seek(0.75f);
+            sync.syncNow();
 
             QVERIFY(bridge.hasLyrics());
             QCOMPARE(bridge.currentLineIndex(), 0);
