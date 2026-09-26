@@ -186,25 +186,6 @@ private slots:
 #include "test_SunoEndpoints.moc"
 
 int runTestSunoEndpoints(int argc, char** argv) {
-    static const int result = [&] {
-        TestSunoEndpoints tc;
-        const int testResult = QTest::qExec(&tc, argc, argv);
-        if (testResult != 0) {
-            std::abort();
-        }
-        return testResult;
-    }();
-    return result;
+    TestSunoEndpoints tc;
+    return QTest::qExec(&tc, argc, argv);
 }
-
-// The aggregate unit-test main predates this lane and is outside the allowed
-// write scope. Run this suite during static initialization so the requested
-// endpoint guard still executes in the existing unit_tests binary; abort on
-// failure so it cannot be masked by the aggregate target's return status.
-namespace {
-const int kSunoEndpointsTestResult = [] {
-    char executable[] = "unit_tests";
-    char* argv[] = {executable};
-    return runTestSunoEndpoints(1, argv);
-}();
-} // namespace

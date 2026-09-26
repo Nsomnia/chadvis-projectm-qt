@@ -6,6 +6,8 @@
 #include <QTemporaryDir>
 #include <QtTest>
 #include <cmath>
+#include <limits>
+#include <string>
 #include <utility>
 
 #include "audio/AudioEngine.hpp"
@@ -73,6 +75,26 @@ LyricsData makeLyrics()
 
     data.lines.push_back(first);
     data.lines.push_back(second);
+    return data;
+}
+
+LyricsData makeLyricsOfCount(int lineCount)
+{
+    LyricsData data;
+    data.source = "suno";
+    data.title = "Test";
+    data.artist = "Artist";
+    data.isSynced = true;
+
+    for (int i = 0; i < lineCount; ++i) {
+        LyricsLine line;
+        line.text = "line" + std::to_string(i);
+        line.startTime = static_cast<f32>(i);
+        line.endTime = static_cast<f32>(i) + 1.0f;
+        line.isSynced = true;
+        line.words.push_back({line.text, line.startTime, line.endTime, 1.0f});
+        data.lines.push_back(line);
+    }
     return data;
 }
 
@@ -166,6 +188,187 @@ private slots:
         QCOMPARE(sync.getState(), LyricsSyncState::Error);
         sync.seek(1.0f);
         QCOMPARE(sync.getState(), LyricsSyncState::Error);
+    }
+
+    void getTimeRangeClampsIndexPastEndOfShortSong()
+    {
+        const LyricsData data = makeLyrics();
+        QCOMPARE(data.lineCount(), size_t{2});
+
+        // 99 - 2 is 97, which the old low-end-only clamp handed straight to
+        // lines[] on a two-line song.
+        const auto past = data.getTimeRange(99, 2);
+        QCOMPARE(past.first, 0.0f);
+        QCOMPARE(past.second, 2.0f);
+
+        // A near-SIZE_MAX index used to wrap lineIndex + contextLines + 1 to
+        // zero, which made the `endIdx - 1` subscript SIZE_MAX.
+        const auto wrapped = data.getTimeRange(std::numeric_limits<size_t>::max(), 2);
+        QCOMPARE(wrapped.first, 0.0f);
+        QCOMPARE(wrapped.second, 2.0f);
+
+        // Exactly one past the end is still out of range, and a huge context
+        // must not overflow the inclusive end index either.
+        const auto adjacent = data.getTimeRange(2, 0);
+        QCOMPARE(adjacent.first, 0.0f);
+        QCOMPARE(adjacent.second, 2.0f);
+        const auto wide = data.getTimeRange(0, std::numeric_limits<size_t>::max());
+        QCOMPARE(wide.first, 0.0f);
+        QCOMPARE(wide.second, 2.0f);
+
+        // In-range behaviour is unchanged: line 1 with one line of context is
+        // the whole song.
+        const auto centred = data.getTimeRange(1, 1);
+        QCOMPARE(centred.first, 0.0f);
+        QCOMPARE(centred.second, 2.0f);
+    }
+
+    void getTimeRangeWithZeroContextCoversOnlyTheLine()
+    {
+        const LyricsData data = makeLyrics();
+
+        // contextLines == 0 and lineIndex == 0 is the tightest case for the
+        // inclusive end index: it stays at 0 instead of stepping back one.
+        const auto first = data.getTimeRange(0, 0);
+        QCOMPARE(first.first, 0.0f);
+        QCOMPARE(first.second, 1.0f);
+
+        const auto last = data.getTimeRange(1, 0);
+        QCOMPARE(last.first, 1.0f);
+        QCOMPARE(last.second, 2.0f);
+    }
+
+    void getTimeRangeOnEmptyLyricsIsDegenerate()
+    {
+        const LyricsData data;
+        QVERIFY(data.empty());
+
+        const auto near = data.getTimeRange(0, 0);
+        QCOMPARE(near.first, 0.0f);
+        QCOMPARE(near.second, 0.0f);
+
+        const auto far = data.getTimeRange(99, 2);
+        QCOMPARE(far.first, 0.0f);
+        QCOMPARE(far.second, 0.0f);
+    }
+
+    void contextQueriesStayBoundedAfterShorterSongLoad()
+    {
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(makeLyricsOfCount(8));
+        sync.seek(7.5f);
+        QCOMPARE(sync.getPosition().lineIndex, 7);
+        QCOMPARE(sync.getContextLines(2, 2).size(), size_t{3});
+        QCOMPARE(sync.getUpcomingLines(2).size(), size_t{0});
+
+        // A shorter song replaces lyrics_ underneath the cached lineIndex.
+        sync.loadLyrics(makeLyrics());
+        QCOMPARE(sync.getPosition().lineIndex, -1);
+
+        // Every path that replaces lyrics_ resets currentPos_, so there is no
+        // public way to hold a stale index today; the bounded query is what
+        // must hold if that ever changes. The before/after pointers must come
+        // from the new two-line song, never from the discarded eight-line one.
+        QVERIFY(sync.getContextLines(2, 2).empty());
+        const auto upcoming = sync.getUpcomingLines(3);
+        QCOMPARE(upcoming.size(), size_t{1});
+        QVERIFY(upcoming.front() == &sync.getLyrics().lines[1]);
+        QCOMPARE(upcoming.front()->text, std::string("again"));
+
+        // The QML surface clamps its own cached index into range and reads the
+        // same two lines; with no active line it anchors to the first one.
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+        {
+            qml_bridge::LyricsBridge bridge;
+            QCOMPARE(bridge.currentLineIndex(), -1);
+            QCOMPARE(bridge.getContextLines(2, 2).size(), 2);
+            QCOMPARE(bridge.getUpcomingLines(3).size(), 2);
+        }
+    }
+
+    void unsyncedLinesWithEmptyWordsAreQueryable()
+    {
+        LyricsData data;
+        data.source = "txt";
+        data.isSynced = false;
+
+        // `words` is documented as "may be empty for unsynced"; nothing may
+        // index into it when it is.
+        LyricsLine unsynced;
+        unsynced.text = "no timing here";
+        unsynced.isSynced = false;
+        QCOMPARE(unsynced.words.size(), size_t{0});
+        QCOMPARE(unsynced.getActiveWordIndex(0.0f), -1);
+        QCOMPARE(unsynced.getActiveWordIndex(1.0f), -1);
+        data.lines.push_back(unsynced);
+
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(data);
+        QCOMPARE(sync.getState(), LyricsSyncState::Ready);
+        QCOMPARE(sync.getLyrics().lines[0].words.size(), size_t{0});
+
+        sync.seek(0.0f);
+        QCOMPARE(sync.getPosition().lineIndex, 0);
+        QCOMPARE(sync.getPosition().wordIndex, -1);
+        QCOMPARE(sync.getPosition().wordProgress, 0.0f);
+        QCOMPARE(sync.getContextLines(1, 1).size(), size_t{1});
+        QCOMPARE(sync.getUpcomingLines(2).size(), size_t{0});
+
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+        {
+            qml_bridge::LyricsBridge bridge;
+            QCOMPARE(bridge.getLine(0).value(QStringLiteral("text")).toString(),
+                     QStringLiteral("no timing here"));
+            QVERIFY(bridge.getLine(1).isEmpty());
+        }
+    }
+
+    void malformedInvertedTimingStaysSane()
+    {
+        LyricsData data;
+        data.source = "suno";
+        data.isSynced = true;
+
+        // Remote data with endTime before startTime: reported verbatim, never
+        // used as a divisor and never wrapped into an index.
+        LyricsLine inverted;
+        inverted.text = "inverted";
+        inverted.startTime = 2.0f;
+        inverted.endTime = 1.0f;
+        inverted.isSynced = true;
+        inverted.words.push_back({"skewed", 1.0f, 0.5f, 1.0f});
+        data.lines.push_back(inverted);
+
+        LyricsLine wellFormed;
+        wellFormed.text = "well formed";
+        wellFormed.startTime = 3.0f;
+        wellFormed.endTime = 4.0f;
+        wellFormed.isSynced = true;
+        data.lines.push_back(wellFormed);
+
+        QCOMPARE(inverted.words[0].getProgress(0.75f), 0.0f);
+        const auto own = data.getTimeRange(0, 0);
+        QCOMPARE(own.first, 2.0f);
+        QCOMPARE(own.second, 1.0f);
+        const auto widened = data.getTimeRange(0, 1);
+        QCOMPARE(widened.first, 2.0f);
+        QCOMPARE(widened.second, 4.0f);
+
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(data);
+        QCOMPARE(sync.getState(), LyricsSyncState::Ready);
+
+        sync.seek(3.5f);
+        QCOMPARE(sync.getPosition().lineIndex, 1);
+        QCOMPARE(sync.getPosition().lineProgress, 0.5f);
+        QCOMPARE(sync.getContextLines(1, 1).size(), size_t{2});
+        QCOMPARE(sync.getUpcomingLines(1).size(), size_t{0});
+
+        // The inverted line is never reported as the active one, and its
+        // zero-width span leaves lineProgress untouched rather than negative.
+        sync.seek(2.0f);
+        QCOMPARE(sync.getPosition().lineIndex, 0);
+        QCOMPARE(sync.getPosition().lineProgress, 0.0f);
     }
 
     void downloaderSignalsAfterExistingFileJumps()

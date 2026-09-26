@@ -68,3 +68,8 @@ private:
 };
 
 #include "test_PresetScanner.moc"
+
+int runTestPresetScanner(int argc, char** argv) {
+    TestPresetScanner tc;
+    return QTest::qExec(&tc, argc, argv);
+}

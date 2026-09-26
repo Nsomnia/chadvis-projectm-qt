@@ -12,11 +12,40 @@
  */
 
 #pragma once
+#include <cstddef>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 #include "util/Types.hpp"
 
 namespace vc {
+
+/**
+ * @brief Bounds-checked conversion from a signed index to a subscript
+ *
+ * The QML boundary speaks `int` (Q_INVOKABLE parameters, LyricsSyncPosition)
+ * while every lyrics container is indexed with `size_t`. Mixing the two by hand
+ * is what allowed unguarded subscripts to survive: a negative int becomes a
+ * huge size_t, and a size_t close to SIZE_MAX wraps to a small int. Funnel
+ * every such conversion through here so the check lives in one place.
+ *
+ * @param container Any container with size() and operator[](size_t)
+ * @param index Signed index, typically from the QML bridge
+ * @return The index as a subscript, or std::nullopt when it is negative or
+ *         past the end of the container
+ */
+template <typename Container>
+[[nodiscard]] constexpr std::optional<std::size_t> checkedIndex(const Container& container,
+                                                                int index) noexcept {
+    if (index < 0) {
+        return std::nullopt;
+    }
+    if (static_cast<std::size_t>(index) >= container.size()) {
+        return std::nullopt;
+    }
+    return static_cast<std::size_t>(index);
+}
 
 /**
  * @brief Represents a single word with timing information
