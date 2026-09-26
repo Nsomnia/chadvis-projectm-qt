@@ -27,7 +27,7 @@ This file is the single backlog. Rules live in `AGENTS.md`; do not add work item
 - [x] **AudioEngine scratch buffer resize in the audio callback** — scratch preallocated during `init()`; oversized callback buffers dropped.
 - [x] **Application destruction order** — QML, controller, lyrics, preset, recorder, audio, and Qt application torn down in dependency order.
 - [x] **Playlist::loadM3U path traversal** — relative entries weakly canonicalized and rejected when they resolve outside the playlist directory.
-- [x] **Recording video settings never persist** — `ConfigParsers::serialize` writes `[recording.video]`/`.audio` keys into `[recording]` and emits both nested tables empty, so encoder settings set in the UI are lost on restart.
+- [x] **Recording video/audio settings persist** — re-verified after a false report: `ConfigParsers::serialize` builds the `[recording.video]` and `[recording.audio]` sub-tables from the live struct via `CHADVIS_VIDEO_FIELDS`/`CHADVIS_REC_AUDIO_FIELDS` before flattening the plain recording fields, which is the shape the parser reads and the shape `config/default.toml` ships. No bug.
 
 ### Security & credentials
 - [~] **Native OAuth security** — target architecture is system browser plus an app-owned `127.0.0.1` loopback callback for Google/Facebook social login; the offline scaffold covers state/nonce/PKCE/transaction ownership. Outstanding: capture-backed proof of Clerk's loopback acceptance, plus session persistence/refresh and sign-out behavior, before the live handshake is trusted.
