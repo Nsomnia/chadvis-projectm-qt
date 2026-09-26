@@ -39,6 +39,9 @@ LyricsSync::~LyricsSync() = default;
 void LyricsSync::loadLyrics(const LyricsData& lyrics) {
     setState(LyricsSyncState::Loading);
     lyrics_ = lyrics;
+    // Invariant: every assignment to lyrics_ resets currentPos_ on the next
+    // line, so the cached lineIndex can never outlive the lines it indexes.
+    // Any new lyrics_ assignment must repeat this.
     currentPos_ = LyricsSyncPosition();
     smoothedTime_ = 0.0f;
 
@@ -63,6 +66,8 @@ void LyricsSync::loadLyrics(const LyricsData& lyrics) {
 void LyricsSync::clear() {
     updateTimer_->stop();
     lyrics_ = LyricsData();
+    // Second and last site that replaces lyrics_; see loadLyrics for why the
+    // reset is unconditional and adjacent.
     currentPos_ = LyricsSyncPosition();
     smoothedTime_ = 0.0f;
     setState(LyricsSyncState::Idle);
@@ -239,25 +244,30 @@ std::vector<const LyricsLine*> LyricsSync::getContextLines(size_t before,
                                                            size_t after) const {
     std::vector<const LyricsLine*> result;
     
-    int currentIdx = currentPos_.lineIndex;
-    if (currentIdx < 0) return result;
+    // currentPos_ is a cache, not a view of the live vector: once lyrics_ is
+    // replaced the cached lineIndex can name a line the new song does not have,
+    // so the lower bound below is not enough on its own. Every subscript in
+    // this function goes through checkedIndex, which applies the same upper
+    // bound as the `idx < lyrics_.lines.size()` guard the loop below used to
+    // spell out by hand.
+    const auto current = checkedIndex(lyrics_.lines, currentPos_.lineIndex);
+    if (!current) return result;
+    const int currentIdx = static_cast<int>(*current);
     
     // Add lines before
     for (int i = static_cast<int>(before); i > 0; --i) {
-        int idx = currentIdx - i;
-        if (idx >= 0) {
-            result.push_back(&lyrics_.lines[idx]);
+        if (auto idx = checkedIndex(lyrics_.lines, currentIdx - i)) {
+            result.push_back(&lyrics_.lines[*idx]);
         }
     }
     
     // Add current line
-    result.push_back(&lyrics_.lines[currentIdx]);
+    result.push_back(&lyrics_.lines[*current]);
     
     // Add lines after
     for (size_t i = 1; i <= after; ++i) {
-        size_t idx = currentIdx + i;
-        if (idx < lyrics_.lines.size()) {
-            result.push_back(&lyrics_.lines[idx]);
+        if (auto idx = checkedIndex(lyrics_.lines, currentIdx + static_cast<int>(i))) {
+            result.push_back(&lyrics_.lines[*idx]);
         }
     }
     
