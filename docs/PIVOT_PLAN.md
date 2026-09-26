@@ -129,6 +129,36 @@ This roadmap does not define an API. The sole live API authority is
 - Defer creative-assist adapters, plugins, and lightweight DAW features until the
   client, lyrics, and deterministic export pipelines are stable.
 
+## Considered: JUCE for a future audio mastering workstation
+
+The `origin/experiments/juce-refactor` branch is retained, not because its code
+should be merged — none of it is, as recorded in
+[`TODO.md`](../TODO.md) and verified during the 2026-09-26 branch audit. Its JUCE
+audio spine (`JuceAudioEngine`, `URLAudioSource`, `AnalyserSource`,
+`ProjectMBridge`, `AudioBridge`) is roughly 2,090 LOC written against an
+architecture that no longer exists: it targets `src/audio/juce/`, a QWidget UI
+around a `MainWindow` that has since become `src/qml/main.qml`, and a monolithic
+`CMakeLists.txt` that has since split into `cmake/*.cmake`. JUCE is not currently
+a dependency, and `IconManager` from the same branch would not even link — it
+needs `Qt6::Svg`, which is not in `cmake/Dependencies.cmake`.
+
+It is kept for one reason: **JUCE is under consideration as the audio engine for a
+future mastering workstation pathway.** The ambition in P7 — a lightweight DAW
+with offline, non-realtime export, per-track gain staging, and deterministic
+rendering — needs a mature realtime audio architecture, and JUCE is the obvious
+candidate. A multi-stop AudioFormatReader/writer, a built-in MIDI and VST
+ecosystem, and device-agnostic realtime I/O are all things the project would
+otherwise hand-roll.
+
+This is a **future-pathway note, not a plan and not an endorsement of the branch's
+code.** If the mastering workstation is ever pursued, the correct starting point
+is a clean JUCE integration against the current `vc::pm::Engine` and
+`VideoRecorder` seams — not porting 2026-02 code. Revisit only when P5 and P6 have
+concluded, and re-audit then. In the meantime the branch's most transferable ideas
+are concepts rather than code: streaming remote playback without a full download
+first, and compositing the `QQuickWindow` rather than the raw projectM GL
+framebuffer so lyrics land in the recorded video.
+
 ## Exit criteria
 
 A phase is complete only when the current tree configures/builds cleanly, relevant

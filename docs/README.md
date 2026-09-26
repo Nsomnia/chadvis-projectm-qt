@@ -60,8 +60,9 @@ question by reading it.
 
 | Document | Covers |
 | :--- | :--- |
-| [Roadmap and pivot plan](PIVOT_PLAN.md) | The Suno-first product direction, binding rules, and phase plan. |
+| [Roadmap and pivot plan](PIVOT_PLAN.md) | The Suno-first product direction, binding rules, and phase plan. Includes the considered-pathways note on JUCE. |
 | [Backlog](../TODO.md) | The live work tracker. Single source for task state. |
+| [PII scrub plan](PII_SCRUB_PLAN.md) | **Proposed, not executed.** Review artifact for rewriting account identifiers out of git history. |
 | [Changelog](../CHANGELOG.md) | Released changes. |
 | [Legacy changelog](CHANGELOG_LEGACY.md) | Pre-1.1.0 history. |
 | [History](lore/HISTORY.md) | Project chronology, including the 2026-08-26 product pivot. |
