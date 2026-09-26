@@ -67,7 +67,7 @@ signals:
 
 private slots:
     void onPlaylistChanged();
-    void onPlaylistCurrentChanged(std::size_t index);
+    void onPlaylistCurrentChanged();
 
 private:
 

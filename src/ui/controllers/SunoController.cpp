@@ -195,8 +195,10 @@ SunoController::SunoController(AudioEngine* audioEngine,
 			}
 		});
 
-	// Connect to track changes
-	audioEngine_->playlist().currentChanged.connect([this](size_t) {
+	// Connect to track changes. The payload is an optional index: a nullopt
+	// emission means the selected track was removed or the queue was cleared, and
+	// dropping the lyrics is the correct response to that too.
+	audioEngine_->playlist().currentChanged.connect([this](std::optional<size_t>) {
 		onTrackChanged();
 	});
     
@@ -355,7 +357,7 @@ void SunoController::activateClipLyrics(const std::string& clipId) {
         }
     }
 
-    const auto* item = audioEngine_->playlist().currentItem();
+    const auto item = audioEngine_->playlist().currentItem();
     if (item && !item->isRemote) {
         const auto directory = item->path.parent_path();
         const auto stem = item->path.stem().string();

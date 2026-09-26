@@ -53,32 +53,35 @@ void PlaylistBridge::connectPlaylistSignals() {
         }
     });
 
-    s_currentChangedConnection = s_playlist->currentChanged.connect([](std::size_t index) {
+    s_currentChangedConnection = s_playlist->currentChanged.connect([](std::optional<std::size_t>) {
         auto* bridge = instance();
         if (!bridge || s_suppressPlaylistNotifications) {
             return;
         }
 
-        bridge->onPlaylistCurrentChanged(index);
+        bridge->onPlaylistCurrentChanged();
     });
 }
 
 int PlaylistBridge::rowCount(const QModelIndex&) const {
-    return s_playlist ? static_cast<int>(s_playlist->items().size()) : 0;
+    return s_playlist ? static_cast<int>(s_playlist->size()) : 0;
 }
 
 QVariant PlaylistBridge::data(const QModelIndex& index, int role) const {
     if (!s_playlist || !index.isValid()) return QVariant();
-    const auto& items = s_playlist->items();
-    if (index.row() >= static_cast<int>(items.size())) return QVariant();
-    
-    const auto& item = items[index.row()];
+    // itemAt() copies the one row being painted. The old items() handed out a
+    // reference to the live vector; taking a whole-list Snapshot per cell would
+    // make a repaint O(n^2), so the single-item value accessor is the right one
+    // here.
+    const auto item = s_playlist->itemAt(static_cast<vc::usize>(index.row()));
+    if (!item) return QVariant();
+
     switch (role) {
-        case TitleRole: return PlaylistItemPresenter::title(item);
-        case ArtistRole: return PlaylistItemPresenter::artist(item);
-        case PathRole: return PlaylistItemPresenter::displayPath(item);
+        case TitleRole: return PlaylistItemPresenter::title(*item);
+        case ArtistRole: return PlaylistItemPresenter::artist(*item);
+        case PathRole: return PlaylistItemPresenter::displayPath(*item);
   case DurationFormattedRole:
-    return vc::file::formatDurationQString(item.metadata.duration.count());
+    return vc::file::formatDurationQString(item->metadata.duration.count());
         case IsCurrentRole: return s_playlist->currentIndex() == static_cast<size_t>(index.row());
     }
     return QVariant();
@@ -236,7 +239,7 @@ QString PlaylistBridge::getItemPath(int idx) const {
         return {};
     }
 
-    const auto* item = s_playlist->itemAt(static_cast<vc::usize>(idx));
+    const auto item = s_playlist->itemAt(static_cast<vc::usize>(idx));
     if (!item) {
         return {};
     }
@@ -259,7 +262,7 @@ void PlaylistBridge::onPlaylistChanged() {
     emit bridge->repeatModeChanged();
 }
 
-void PlaylistBridge::onPlaylistCurrentChanged(std::size_t) {
+void PlaylistBridge::onPlaylistCurrentChanged() {
   auto* bridge = instance();
   if (!bridge || s_suppressPlaylistNotifications) {
     return;

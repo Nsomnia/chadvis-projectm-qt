@@ -63,14 +63,15 @@ void AudioBridge::addToPlaylist(const QString& filePath) {
 }
 
 void AudioBridge::clearPlaylist() { if (s_engine) s_engine->playlist().clear(); }
-int AudioBridge::playlistCount() const { return s_engine ? static_cast<int>(s_engine->playlist().items().size()) : 0; }
+int AudioBridge::playlistCount() const { return s_engine ? static_cast<int>(s_engine->playlist().size()) : 0; }
 
 QVariantMap AudioBridge::playlistItem(int index) const {
     QVariantMap result;
     if (!s_engine || index < 0) return result;
-    const auto& items = s_engine->playlist().items();
-    if (static_cast<size_t>(index) < items.size()) {
-        result = PlaylistItemPresenter::toVariantMap(items[index]);
+    // Value accessor: one item copied, not a reference into the live vector and
+    // not a whole-list copy per invocation.
+    if (const auto item = s_engine->playlist().itemAt(static_cast<vc::usize>(index))) {
+        result = PlaylistItemPresenter::toVariantMap(*item);
     }
     return result;
 }
@@ -88,7 +89,7 @@ void AudioBridge::onEngineDurationChanged(std::chrono::milliseconds dur) { durat
 void AudioBridge::onEngineTrackChanged() {
     currentTrack_.clear();
     if (s_engine) {
-        if (auto* item = s_engine->playlist().currentItem()) {
+        if (const auto item = s_engine->playlist().currentItem()) {
             currentTrack_ = PlaylistItemPresenter::toVariantMap(*item);
         }
     }

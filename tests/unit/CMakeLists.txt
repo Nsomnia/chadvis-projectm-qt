@@ -5,6 +5,7 @@ add_executable(unit_tests
     core/test_FileUtils.cpp
     core/test_Version.cpp
     recorder/test_RecordingPipeline.cpp
+    audio/test_Playlist.cpp
     visualizer/test_PresetScanner.cpp
     suno/test_AuthModule.cpp
     suno/test_StoredCredentialClassification.cpp
