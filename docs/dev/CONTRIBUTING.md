@@ -14,7 +14,7 @@ So you want to help make ChadVis even more elite? We welcome your PRs, but we ha
 
 ### On I/O and Logging
 
-Do not restate the logging or console-I/O policy from memory. [`AGENTS.md`](../../AGENTS.md) is the single source of truth for it — see its **C++23 Agent Guidelines** section (`AGENTS.md:337-342`), which prefers `std::println` over `std::cout` and `printf`. The tree is nearly clean on this: there is exactly one `fmt` include left in the entire codebase (`src/recorder/VideoRecorderFFmpeg.cpp:8`), and it is a leftover, not a precedent. Match `AGENTS.md`, and if you find a rule restated *differently* in another document, that is a bug worth a one-line PR.
+Do not restate the logging or console-I/O policy from memory. [`AGENTS.md`](../../AGENTS.md) is the single source of truth for it — see its **Code style** rule, which prefers `std::println` over `std::cout` and `printf`. The tree is nearly clean on this: there is exactly one `fmt` include left in the entire codebase (`src/recorder/VideoRecorderFFmpeg.cpp:8`), and it is a leftover, not a precedent. Match `AGENTS.md`, and if you find a rule restated *differently* in another document, that is a bug worth a one-line PR.
 
 ---
 

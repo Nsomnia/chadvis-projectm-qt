@@ -245,35 +245,33 @@ The credential fields in `src/core/ConfigData.hpp:152-157` sit under a comment t
 
 ---
 
-## ⚠️ Known Round-Trip Caveat
+## ✅ Recorder Settings Round-Trip
 
-Verified against a config written by a running app: **`[recording.video]` and `[recording.audio]` keys do not survive a save/load cycle.**
+**`[recording.video]` and `[recording.audio]` survive a save/load cycle.** The nested form is the *only* supported and *only* written form, and the Settings window round-trips correctly.
 
-The serializer expands the video and audio field tables into the wrong table. It builds a local `videoOut` / `audioOut` table, but the expansion macro writes to the identifier `out` (`src/core/ConfigParsers.cpp:168-176`), which in that scope is the enclosing `[recording]` table. The result on disk is:
+The serializer builds a local `videoOut` / `audioOut` table, expands the video and audio field macros into it, and inserts each as a nested `video` / `audio` table under `recording` before the plain recording fields are flattened in (`src/core/ConfigParsers.cpp:377-395`). A config written by a running app therefore looks like the shipped template:
 
 ```toml
 [recording]
-bitrate = 320
-codec = 'libx264'
-crf = 18
-fps = 60
-height = 1080
-pixel_format = 'yuv420p'
-preset = 'medium'
-width = 1920
+container = 'mp4'
+enabled = true
+output_directory = '~/Videos/ChadVis'
 
     [recording.audio]
+    bitrate = 320
+    codec = 'aac'
+
     [recording.video]
+    codec = 'libx264'
+    crf = 18
+    fps = 60
+    height = 1080
+    pixel_format = 'yuv420p'
+    preset = 'medium'
+    width = 1920
 ```
 
-The nested tables are written **empty**, and the real values are flattened into `[recording]`, where the parser never looks for them. Meanwhile the parser reads the nested form correctly, and the shipped template uses the nested form.
-
-Practical consequences:
-
-1. Hand-write `[recording.video]` and `[recording.audio]` in the **nested** form. That is the only form the loader reads.
-2. If you edit those settings in the Settings window and let the app save, the values will not come back on the next launch.
-
-This is a source bug in `ConfigParsers::serialize`, not a documentation bug, and it is recorded here so this page does not lie to you. As of this writing it is **not** tracked in [`TODO.md`](../../TODO.md) or [`AGENTS.md`](../../AGENTS.md) — if you fix it, that is a genuinely welcome first contribution.
+Historical note: this used to be a live source bug — the field macros wrote to the enclosing `out` identifier, so the nested tables were emitted **empty** while the real values were flattened into `[recording]`, where the parser never looked for them. It was fixed in `ConfigParsers::serialize`; if you hit that description in an older note, it is stale.
 
 ---
 
@@ -284,7 +282,7 @@ The parser falls back to the compiled-in default for **any** key it cannot read.
 1. **Restart the app.** Config is read once at startup; there is no live reload.
 2. **Start from the log.** The loader logs the resolved path on success — `Config loaded from: <path>` — and `Config saved to: <path>` after a write. Both come out at `LOG_INFO`/`LOG_DEBUG`, so you need `debug = true` in `[general]` to see the second one.
 3. **Diff against the template.** The app rewrites the whole file on save, sorted, with its own defaults. Compare your file with [`config/default.toml`](../../config/default.toml) and ask why a key you never touched changed.
-4. **Check for flattened recorder keys.** If you see `crf` or `codec` sitting directly under `[recording]`, you are looking at a broken round-trip, not your edit. See the caveat above.
+4. **Check for flattened recorder keys.** If you see `crf` or `codec` sitting directly under `[recording]` instead of under `[recording.video]`, that is a file written by a build from before the serializer fix, or a hand-edit. The current writer emits the nested form. See [Recorder Settings Round-Trip](#-recorder-settings-round-trip) above.
 5. **Beware the save on close.** `SettingsBridge.save()` runs on window close (`src/qml/main.qml:89`) and `Application` saves on shutdown (`src/core/Application.cpp:523`). Hand edits survive only if they are in a form the app can also write, or if you edit while the app is not running.
 
 ---
