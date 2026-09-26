@@ -21,8 +21,9 @@ This roadmap does not define an API. The sole live API authority is
    supported or guaranteed Suno API.
 2. Do not copy or infer API shapes from historical topic prose, external rewrite
    repositories, frontend bundle strings, or client constants.
-3. Keep native Google sign-in disabled. A loopback or custom-scheme callback
-   remains unproven; follow the gate in
+3. Native sign-in targets the system default browser plus an app-owned
+   `http://127.0.0.1:<port>` loopback callback for Google/Facebook social login.
+   Clerk's loopback acceptance is not yet captured; see
    [`suno_api/OAUTH_REDIRECT_ANALYSIS.md`](suno_api/OAUTH_REDIRECT_ANALYSIS.md).
 4. Never log or document secrets, personal data, identifiers, private text,
    temporary upload fields, or complete media URLs.
@@ -42,8 +43,9 @@ This roadmap does not define an API. The sole live API authority is
   presence is not proof of end-to-end behavior.
 - The 2026-09-24 capture audit is complete. It promoted only directly observed
   contracts and left leads/conflicts explicitly gated.
-- Native Google sign-in is disabled. Manual credential/session handling remains
-  the implemented path.
+- Native sign-in targets the system default browser plus an app-owned
+  `http://127.0.0.1:<port>` loopback callback. Manual credential/session handling
+  remains the implemented path until the loopback handshake is capture-backed.
 - Server-side feed search, direct generation completeness, playlist mutations,
   Orpheus/Modal chat, WAV conversion, and several upload lifecycle steps remain
   capture- or implementation-gated.

@@ -1,8 +1,9 @@
 # Suno API Canonical Endpoint Inventory
 
-**Status:** Canonical API-spec master, consolidated 2026-09-24
+**Status:** Canonical API-spec master, consolidated 2026-09-24; non-contractual
+material extracted 2026-09-26
 **Current evidence baseline:** the 2026-09-24 Burp export reviewed on 2026-09-24, reconciled with the 2026-08-25 Burp corpus, 2026-09-22 sanitized OAuth recon, and 2026-09-23 browser HAR
-**Scope:** Suno web authentication, Studio API, library/feed, generation leads, media processing, account surfaces, social surfaces, and experimental leads
+**Scope:** Suno web authentication, Studio API, library/feed, generation, media processing, account surfaces, social surfaces, and capture-backed contracts
 
 > **Unofficial and reverse-engineered.** Suno does not publish this API as a
 > supported public API. This inventory records behavior observed from the
@@ -14,11 +15,22 @@
 
 > **Canonical-source rule:** this file is the sole API-spec master for this
 > repository. Where it conflicts with older topic prose, scans, implementation
-> comments, or code constants, this file wins. `[T1]` means a behavior was
-> documented from a real historical capture; it does **not** mean the endpoint
-> was independently revalidated against Suno's live service while preparing
-> this document. Do not implement a `[LEAD]` or `[VERIFY]` route as though it
-> were a stable contract.
+> comments, code constants, or any other document, this file wins. It records
+> **directly captured** contracts only. `[LEAD]` and `[VERIFY]` rows are not
+> contracts and do not live here; they are research and capture planning
+> material in [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md).
+
+## Document map
+
+This file owns evidence labels, precedence, hosts, request/response
+conventions, the captured route catalog, capture-backed contracts, status/limit
+semantics, and runtime notes. [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) owns
+every `[LEAD]`/`[VERIFY]` observation.
+[`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) owns the observed
+Google web request sequence, the Clerk cookie families, and the binding
+native-callback gate. [`raw/README.md`](raw/README.md) owns provenance, SHA-256
+hashes, artifact retention, and the maintenance rule for future captures. The
+operational runbook is [`../integration/SUNO.md`](../integration/SUNO.md).
 
 ## 1. Evidence, precedence, and conflicts
 
@@ -30,14 +42,21 @@
 | `[LEAD]` | Found in a JS/HTML scan, raw endpoint dump, old inventory, reconstructed path, or prose without a direct capture. An unlabeled old row is always a lead. | Research and capture planning only. |
 | `[VERIFY]` | Sources conflict, or one part of the route contract is not captured. | Do not call until a new capture resolves it. |
 
+`[LEAD]` and `[VERIFY]` rows are catalogued in
+[`OBSERVED-LEADS.md`](OBSERVED-LEADS.md), which quotes the definitions above
+verbatim as its governing rule. Neither label may be used to justify an
+implementation. Conflicting `[VERIFY]` subjects are additionally tracked in
+[Appendix A](#appendix-a--explicit-conflict-register).
+
 Additional notation used in the catalog:
 
 - A trailing `?` on a method, such as `GET?`, means the method came from prose
   or reconstruction rather than a direct capture.
 - `Bearer?` means a bearer is plausible for a Studio route but the individual
   route's auth requirement was not directly established.
-- `Clerk cookies` means only the Clerk cookie names in section 2.4 are
-  relevant. Analytics and advertising cookies are not authentication inputs.
+- `Clerk cookies` means only the Clerk cookie names listed in
+  [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) are relevant.
+  Analytics and advertising cookies are not authentication inputs.
 - `GET/POST` means both methods were directly captured; it does not mean other
   methods are impossible.
 - Path spellings, trailing slashes, query-key names, and body-field names are
@@ -48,7 +67,8 @@ Additional notation used in the catalog:
 1. The 2026-09-24 Burp request/response export is strongest for every contract
    it directly contains. Its directory is labeled `sept-09-2026`, but the XML
    export and item timestamps are dated 2026-09-24; use the timestamps, not the
-   directory label, when dating evidence. The base64 XML is **not sanitized**.
+   directory label, when dating evidence. The base64 XML is **not sanitized** and
+   stays outside the repository.
 2. The direct sanitized request capture `raw/sanitized-recon-2026-09-22.json`
    is strongest for the **observed Google OAuth web-request sequence**. It has
    no response status or response body, so this document assigns no status/body
@@ -64,27 +84,44 @@ Additional notation used in the catalog:
    inventory only. External SDK folklore, constructed media paths, and
    client-side flag names cannot promote a route above `[LEAD]`.
 
-### 1.3 Explicit conflict register
+### 1.3 Implementation status — a separate axis from evidence
 
-| Subject | Conflicting claims | Canonical resolution | State |
-|---|---|---|---|
-| Clerk session-token exchange | Older material rejected `/tokens`; the 2026-09-24 export directly captured both `POST /v1/client/sessions/{sid}/tokens` and `POST .../touch`. | Both are `[T1]` observed same-host session routes. `/tokens` returned a top-level `jwt`; `touch` returned client/session envelopes. `/tokens/api` remains unobserved. Which route a client should prefer, and whether either is universally required, remains `[VERIFY]`. | **Resolved coexistence; selection `[VERIFY]`** |
-| `/v1/client/verify` | Older auth material disagreed between GET and POST. | No reviewed capture selects a method or establishes a generic verification contract. Do not use it as bearer refresh or a generic preflight. | **Unresolved `[VERIFY]`** |
-| `/v1/verify` | Older auth material disagreed between POST and GET. | No reviewed capture establishes either method or response contract. | **Unresolved `[VERIFY]`** |
-| `client?_method=PATCH` | Older auth material disagreed between GET and POST. | `_method=PATCH` suggests an override form, but neither transport method is captured. Do not synthesize a request. | **Unresolved `[VERIFY]`** |
-| `/api/song_copy/send-song` | Older social material and inventory disagreed between GET and POST. | Route exists only as a lead in the available corpus; method and payload are unproved. | **Unresolved `[VERIFY]`** |
-| `/api/openai-speech/` | Old material and scans describe a GET surface, but no reviewed request/response capture establishes its method or compatibility contract. | Do not promote the GET claim. Preserve the route only as `[VERIFY]`. | **Unresolved `[VERIFY]`** |
-| `/api/user/user_config/` | Older material used GET. | `POST` with an empty JSON object is `[T1]`; the update/patch schema is not established by that read. | **Resolved for read method** |
-| `/api/unified/feed` and `/api/unified/homepage` | Older material used GET. | Both are captured as `POST`. | **Resolved** |
-| `/api/mango/rights` | Older inventory used GET. | `POST` is `[T1]`. | **Resolved** |
-| `/api/billing/conversion-tracking` | Older inventory used POST. | `GET` is `[T1]`. | **Resolved** |
-| `/api/notification/v2/clear-badge` | Older inventory used GET. | The 2026-08-25 capture observed `POST` with an empty 204 response. | **Resolved** |
-| Generation polling | Old prose presented `GET /api/gen/{id}` as the canonical poll. | The captured generation flow observed completion through `POST /api/feed/v3` and `GET /api/clips/get_songs_by_ids`. `/api/gen/{id}` remains a `[LEAD]`. | **Resolved for captured flow** |
-| `/api/uploads/video` vs `/api/uploads/video/` | Both spellings occur in scans/docs. | No reviewed capture selects one. Preserve separate path leads; their methods remain `[VERIFY]`, and clients must not alias the spellings. | **Unresolved `[VERIFY]` at use time** |
-| `/api/generate/lyrics-infill` vs `/api/generate/lyrics-infill/` | Both spellings occur in the raw scan. | Both are `[LEAD]`; neither may be rewritten into the other. | **Unresolved `[VERIFY]` at use time** |
-| Orpheus paths/models | Claims range from `/session-history` to orchestrator paths and OpenAI-compatible `/api/v1/...` paths; model names were listed without a direct contract capture. | All are `[LEAD]` or `[VERIFY]`; no supported Orpheus API is canonical. | **Unresolved** |
+Route catalog tables carry an `Implemented` column with exactly three values:
 
-### 1.3 Current client implementation boundary
+| Value | Meaning |
+|---|---|
+| `wired` | The route constant exists **and** is referenced from `src/`. |
+| `declared-unused` | The constant exists in `src/suno/SunoEndpoints.hpp` but has zero references in `src/`. |
+| `not-in-code` | No constant exists; the row is documented from a capture only. |
+
+> **`[T1]` means "directly captured", not "shipped."** Evidence and
+> implementation are **independent axes**. A route can be `[T1]` and
+> `declared-unused` (captured, constant present, deliberately not called), or
+> `[T1]` and `not-in-code` (captured, nothing in code yet), or `[T1]` and `wired`.
+> Conflating the two axes is the specific error this column exists to prevent:
+> an `[LEAD]` row cannot become a contract by being wired, and a `[T1]` row does
+> not become implemented by being captured. Do not read `declared-unused` as
+> "unsupported," and do not read `wired` as "verified."
+
+Audit method and boundaries, so the column is not over-read:
+
+- The audit surface is the constant set in `src/suno/SunoEndpoints.hpp`
+  (77 constants at the 2026-09-26 audit: 12 referenced from `src/`, 65
+  unreferenced). A reference in a comment does not count; only a use in code.
+- The two implemented Clerk host-relative routes (`GET /v1/client` and
+  `POST /v1/client/sessions/{sid}/touch`) are built in
+  `src/suno/auth/ClerkAuthClient.cpp` from `ClerkAuthClient::AUTH_BASE`, because
+  Clerk constants deliberately live outside `SunoEndpoints.hpp`. A path built
+  and dispatched from a client source file is audited as `wired`. The captured
+  `/tokens` route has no such builder and is `not-in-code`.
+- Host enforcement that compares an inline literal rather than a constant — for
+  example the playback host check in `src/suno/SunoDownloader.cpp` — is not
+  visible to this column. A host row with no constant is `not-in-code` here even
+  when the host is enforced inline.
+- Re-run the audit before trusting these values; they describe this tree on
+  2026-09-26, not the server.
+
+### 1.4 Current client implementation boundary
 
 The current client has capture-backed service boundaries for same-host Clerk
 refresh, `/api/feed/v3`, account/billing reads, Explore, notifications,
@@ -112,6 +149,16 @@ disabled regardless of local UI flags. See
 | `https://suno-ai--orpheus-prod-web.modal.run` | Claimed Orpheus service. | `[LEAD]`; no reviewed Orpheus request/response contract |
 | `https://clerk.suno.com` | Prototype-era/legacy Clerk host. | `[LEAD]`; not the canonical current web host |
 | `https://studio-api.sky.suno.com` | Alternate/staging name found in scans. | `[LEAD]`; do not substitute for the captured production host |
+
+This table is a **contract-host allowlist**, not a log of every host that
+appeared in the corpus. Hosts observed only as static assets, telemetry,
+analytics, or health checks — including `cdn-o.suno.com`, `goto.suno.com`,
+`s.prod.suno.com`, `statusz.suno.ai`, the hCaptcha asset/endpoint hosts, and the
+`telemetry host whose export filename mis-spells the real
+`m-stratovibe.prod.suno.com` — are deliberately **absent** here, because none of
+them carries a promoted contract. Their provenance and SHA-256 hashes are in
+[`raw/README.md`](raw/README.md). Their absence is a fail-closed decision, not an
+oversight: do not add a host here without a captured contract for it.
 
 All Studio routes in this document are host-relative paths beginning with
 `/api/`, for example `https://studio-api-prod.suno.com/api/feed/v3`. Raw scan
@@ -155,20 +202,13 @@ comparison, while preserving the remainder of the path and trailing slash.
 - The 2026-09-22 recon is request-only. It establishes no response status,
   redirect status, response body, or cookie-setting behavior for that run.
 
-### 2.4 Clerk cookies relevant to the observed flow
-
-Only these Clerk-related name families are relevant to the captured flow:
-
-- `__session` and its instance-key-suffixed variant
-- `__client` and its instance-key-suffixed variant
-- `__client_uat` and its instance-key-suffixed variant
-
-The exact instance-key suffix is intentionally omitted. Do not assume a fixed
-Clerk frontend key is universal. Analytics, advertising, payment, and RUM
-cookies seen alongside the flow are not authentication requirements and are
-intentionally omitted.
-
 ## 3. Authentication and OAuth
+
+The Clerk cookie families relevant to the observed flow, the captured Google
+web-flow request table, and the binding native-callback gate are owned by
+[`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md). They are not
+duplicated here. That file is the only place a native-callback requirement may
+be stated.
 
 ### 3.1 Canonical bearer acquisition and session-token routes
 
@@ -197,477 +237,189 @@ replacing the other. Route preference, fallback order, and universal
 requiredness remain `[VERIFY]`. A prototype-era `clerk.suno.com` client-suffix
 route is not part of the current observed flow.
 
-### 3.2 Captured Google web flow (request evidence only)
+### 3.2 Captured auth and OAuth route catalog
 
-The 2026-09-22 sanitized recon directly supports this sequence of **requests**.
-It has no response statuses or bodies; none are inferred below.
+All rows here are `[T1]`. Every `[LEAD]` and `[VERIFY]` auth row is in
+[`OBSERVED-LEADS.md`](OBSERVED-LEADS.md); the method/purpose conflicts among
+them remain recorded in [Appendix A](#appendix-a--explicit-conflict-register).
 
-| Order | Method | Host and path | Captured query-key names | Evidence |
-|---:|---|---|---|---|
-| 1 | POST | `auth.suno.com/v1/client/sign_ins` | None captured in this request record | `[T1]` request-only recon |
-| 2 | GET | `auth.suno.com/social/login/google-oauth2/` | `next`, `__client` | `[T1]` request-only recon |
-| 3 | GET | `accounts.google.com/o/oauth2/auth` | `client_id`, `redirect_uri`, `state`, `response_type`, `scope`, `prompt` | `[T1]` request-only recon |
-| 4 | GET | `accounts.google.com/v3/signin/accountchooser` | `client_id`, `prompt`, `redirect_uri`, `response_type`, `scope`, `state`, plus Google-internal keys | `[T1]` request-only recon |
-| 5 | GET | `accounts.google.com/signin/oauth/consent` | `authuser`, `client_id`, `state`, plus Google-internal keys | `[T1]` request-only recon |
-| 6 | GET | `auth.suno.com/social/complete/google-oauth2/` | `state`, `iss`, `code`, `scope`, `authuser`, `prompt` | `[T1]` request-only recon |
-| 7 | GET | `suno.com/create` | `signup_source`, `referrer`, `pre_signup_origin`, `pre_signup_external_referrer`, `redirected_from` | `[T1]` request-only recon |
+| Method | Path | Auth | Purpose | Evidence | Implemented |
+|---|---|---|---|---|---|
+| GET | `/v1/client` | Clerk cookies | Fetch client/session state and initial bearer | `[T1]` Burp 2026-08-25 and 2026-09-24 | wired |
+| POST | `/v1/client/sessions/{sid}/touch` | Clerk cookies | Touch active session and obtain a fresh bearer from client/session envelopes | `[T1]` Burp 2026-08-25 and 2026-09-24; request variants coexist | wired |
+| POST | `/v1/client/sessions/{sid}/tokens` | Clerk cookies | Mint/return a session bearer as top-level `jwt` | `[T1]` Burp 2026-09-24 | not-in-code |
+| POST | `/v1/client/sign_ins` | Clerk/browser context | Begin Clerk sign-in attempt | `[T1]` request-only recon 2026-09-22; form flow also in Burp 2026-08-25 | not-in-code |
+| GET | `/social/login/google-oauth2/` | Browser/Clerk context | Provider redirect initiation | `[T1]` request-only recon 2026-09-22 | not-in-code |
+| GET | `/social/complete/google-oauth2/` | Provider callback context | Suno-owned Google callback | `[T1]` request-only recon 2026-09-22 | not-in-code |
+| GET | `/v1/client/handshake` | Clerk cookies | Browser cookie/session handshake | `[T1]` Burp 2026-08-25 | not-in-code |
+| GET | `/v1/environment` | Clerk/public instance context | Clerk instance/environment configuration | `[T1]` Burp 2026-08-25 | not-in-code |
 
-The separate 2026-08-25 Burp auth capture also observed
-`GET /v1/client/handshake`, `GET /v1/client`, and the touch flow. The
-2026-09-24 export re-observed `GET /v1/client`, `tokens`, and `touch`, but did
-not exercise Google sign-in or any callback. Session-token calls do not prove a
-provider redirect contract, and the handshake must not be assumed to have
-appeared in the 2026-09-22 sequence merely because both captures concern auth.
+`POST /v1/client/sessions/{sid}/tokens` is `[T1]` and `not-in-code`: captured,
+not implemented. That combination is the intended use of the `Implemented`
+column — see section 1.3.
 
-### 3.3 Native desktop callback gate
+## 4. Captured route catalog
 
-**Native Google sign-in remains disabled and capture-gated.** Every reviewed
-callback and final redirect target is Suno-owned HTTPS. The provider
-authorization hop is Google-owned HTTPS. There is no reviewed proof that Clerk
-accepts a loopback redirect, desktop custom scheme, or other native callback.
-
-Before implementation, a human capture must prove all of the following:
-
-- Clerk is configured to accept the proposed native redirect.
-- The provider sends the callback to that redirect rather than only to
-  `https://auth.suno.com/social/complete/google-oauth2/`.
-- The callback and handshake can be completed without scraping browser
-  cookies from an unrelated web session.
-- The final session can be persisted securely and refreshed through one of the
-  directly captured `GET /v1/client` + `touch`/`tokens` flows without relying
-  on an unrelated browser cookie jar.
-
-Do not enable native login, hand-roll a Clerk handshake, or guess a
-`localhost`/custom-scheme target. A Suno-owned HTTPS callback in a capture is
-not a loopback/custom-scheme callback.
-
-### 3.4 Auth and OAuth route catalog
-
-| Method | Path | Auth | Purpose | Evidence |
-|---|---|---|---|---|
-| GET | `/v1/client` | Clerk cookies | Fetch client/session state and initial bearer | `[T1]` Burp 2026-08-25 and 2026-09-24 |
-| POST | `/v1/client/sessions/{sid}/touch` | Clerk cookies | Touch active session and obtain a fresh bearer from client/session envelopes | `[T1]` Burp 2026-08-25 and 2026-09-24; request variants coexist |
-| POST | `/v1/client/sessions/{sid}/tokens` | Clerk cookies | Mint/return a session bearer as top-level `jwt` | `[T1]` Burp 2026-09-24 |
-| POST | `/v1/client/sign_ins` | Clerk/browser context | Begin Clerk sign-in attempt | `[T1]` request-only recon 2026-09-22; form flow also in Burp 2026-08-25 |
-| GET | `/social/login/google-oauth2/` | Browser/Clerk context | Provider redirect initiation | `[T1]` request-only recon 2026-09-22 |
-| GET | `/social/complete/google-oauth2/` | Provider callback context | Suno-owned Google callback | `[T1]` request-only recon 2026-09-22 |
-| GET | `/v1/client/handshake` | Clerk cookies | Browser cookie/session handshake | `[T1]` Burp 2026-08-25 |
-| `GET?` or `POST?` | `/v1/client/verify` | Clerk cookies? | Method and purpose conflict; do not use as generic session verification | `[VERIFY]` |
-| GET | `/v1/environment` | Clerk/public instance context | Clerk instance/environment configuration | `[T1]` Burp 2026-08-25 |
-| GET? | `/v1/client/sync` | Clerk cookies? | Claimed client-state synchronization | `[LEAD]` old auth prose/scan |
-| GET? or POST? | `/v1/event` | Clerk cookies? | Claimed client telemetry/event surface | `[LEAD]` old auth prose/scan |
-| GET? | `/v1/logs` | Clerk cookies? | Claimed client log retrieval | `[LEAD]` old auth prose/scan |
-| POST? | `/v1/tickets/accept` | Clerk cookies? | Claimed ticket/policy acceptance | `[LEAD]` old auth prose/scan |
-| `GET?` or `POST?` | `/v1/verify` | Clerk cookies? | Method and semantics conflict; not observed | `[VERIFY]` |
-| `GET?` or `POST?` with `?_method=PATCH` | `/v1/client` | Clerk cookies? | Claimed client mutation via method override; transport method not captured | `[VERIFY]` |
-| GET? | `/sso-callback` | Web session | Frontend SSO completion target seen in reconstructed sign-in data | `[LEAD]` |
-| GET? | `/oauth-redirect` | Web session | Generic OAuth redirect page | `[LEAD]` scan |
-| GET? | `/oauth-redirect-custom` | Web session | Custom OAuth redirect page | `[LEAD]` scan |
-| GET? | `/oauth-redirect-staff` | Web session/admin? | Staff OAuth redirect page | `[LEAD]` scan |
-| GET? | `/oauth-redirect-v2` | Web session | OAuth redirect v2 page | `[LEAD]` scan |
-| GET? | `/link-account` | Clerk session | Account-linking page | `[LEAD]` scan |
-| GET? | `/auth/session-recovery` | Clerk context | Session-recovery page | `[LEAD]` scan |
-| GET? | `/auth/birthday` | Clerk session | Birthday/age gate page | `[LEAD]` scan |
-| GET? | `/auth/error` | Clerk context | Auth error page | `[LEAD]` scan |
-| GET? | `/auth/verify` | Clerk context | Auth verification page | `[LEAD]` scan |
-
-## 4. Complete endpoint catalog
+Every row in this section is `[T1]`. All `[LEAD]` and `[VERIFY]` rows were
+extracted to [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) on 2026-09-26 without
+change to their evidence status. `Implemented` is section 1.3's axis and is
+independent of the evidence label.
 
 ### 4.1 Billing and account commerce
 
-| Method | Path | Auth | Purpose | Evidence |
-|---|---|---|---|---|
-| GET | `/api/billing/info/` | Bearer | Current billing/credit/account information | `[T1]` Burp 2026-08-25 |
-| GET | `/api/billing/usage-plans` | Bearer | Available usage-plan list | `[T1]` Burp 2026-08-25 |
-| GET | `/api/billing/usage-plan-descriptions/` | Bearer | Plan descriptions | `[T1]` Burp 2026-08-25 |
-| GET | `/api/billing/usage-plan-faq/` | Bearer | Plan FAQ content | `[T1]` Burp 2026-08-25 |
-| GET | `/api/billing/usage-plan-web-table-comparison/` | Bearer | Web plan-comparison data | `[T1]` Burp 2026-08-25 |
-| GET | `/api/billing/eligible-discounts` | Bearer | Account-eligible discounts | `[T1]` Burp 2026-08-25 |
-| GET | `/api/billing/conversion-tracking` | Bearer | Conversion-tracking surface | `[T1]` Burp 2026-08-25 |
-| POST | `/api/billing/auto-reload/nudge-check` | Bearer | Auto-reload nudge check | `[T1]` Burp 2026-08-25 |
-| GET? | `/api/billing/default-currency` | Bearer? | Default/account currency | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/billing/get-discount-offer` | Bearer? | Personalized discount offer | `[LEAD]` old inventory/scan |
-| GET? | `/api/billing/get-churn-survey-options` | Bearer? | Cancellation survey options | `[LEAD]` old inventory/scan |
-| GET? | `/api/billing/tax-info` | Bearer? | Tax metadata | `[LEAD]` old inventory/scan |
-| GET? | `/api/billing/change-plan/preview/` | Bearer? | Plan-change preview | `[LEAD]` old inventory/scan |
-| GET? | `/api/billing/purchase-info/{purchase_id}/` | Bearer? | Purchase/checkout information | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/billing/create-session/` | Bearer? | Create checkout/subscription session | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/billing/create-portal/` | Bearer? | Open customer billing portal | `[LEAD]` raw scan |
-| POST? | `/api/billing/change-plan/` | Bearer? | Change subscription plan | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/billing/cancel-sub/` | Bearer? | Cancel subscription | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/billing/cancel-sub/undo/` | Bearer? | Undo pending cancellation | `[LEAD]` raw scan |
-| POST? | `/api/billing/pause-sub/` | Bearer? | Pause subscription | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/billing/unpause-sub/` | Bearer? | Resume subscription | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/billing/submit-survey/` | Bearer? | Submit churn/cancellation survey | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/billing/accept-sub-coupon/` | Bearer? | Accept/apply subscription coupon | `[LEAD]` raw scan |
-| POST? | `/api/billing/set-default-payment-method/` | Bearer? | Set default payment method | `[LEAD]` old inventory/topic prose |
-| `?` | `/api/billing/auto-reload` | Bearer? | Auto-reload root surface | `[LEAD]` loose normalized scan |
-| `?` | `/api/billing/auto-reload/enable` | Bearer? | Enable auto-reload | `[LEAD]` loose normalized scan |
-| `?` | `/api/billing/auto-reload/disable` | Bearer? | Disable auto-reload | `[LEAD]` loose normalized scan |
+| Method | Path | Auth | Purpose | Evidence | Implemented |
+|---|---|---|---|---|---|
+| GET | `/api/billing/info/` | Bearer | Current billing/credit/account information | `[T1]` Burp 2026-08-25 | wired |
+| GET | `/api/billing/usage-plans` | Bearer | Available usage-plan list | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/billing/usage-plan-descriptions/` | Bearer | Plan descriptions | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/billing/usage-plan-faq/` | Bearer | Plan FAQ content | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/billing/usage-plan-web-table-comparison/` | Bearer | Web plan-comparison data | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/billing/eligible-discounts` | Bearer | Account-eligible discounts | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/billing/conversion-tracking` | Bearer | Conversion-tracking surface | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/billing/auto-reload/nudge-check` | Bearer | Auto-reload nudge check | `[T1]` Burp 2026-08-25 | declared-unused |
 
-### 4.2 User, backend session, onboarding, and account catalog
+No billing mutation, checkout, portal, coupon, payment-method, or survey route
+is captured. See section 5.8.
 
-| Method | Path | Auth | Purpose | Evidence |
-|---|---|---|---|---|
-| GET | `/api/session/` | Bearer | Bootstrap user/session plus runtime model catalog | `[T1]` Burp 2026-08-25 |
-| GET | `/api/user/metadata` | Bearer | User metadata/plan summary | `[T1]` Burp 2026-08-25 |
-| GET | `/api/user/get_user_session_id/` | Bearer | Suno-side session identifier | `[T1]` Burp 2026-08-25 |
-| GET | `/api/user/tos_acceptance` | Bearer | Terms-acceptance state | `[T1]` Burp 2026-08-25 |
-| POST | `/api/user/user_config/` | Bearer | Read current config using an empty JSON object | `[T1]` Burp 2026-08-25 |
-| GET | `/api/auth/verify-token` | Bearer? | Backend token verification | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/user/me` | Bearer? | Current user profile | `[LEAD]` old inventory/scan |
-| POST? | `/api/user/update_user_config/` | Bearer? | Update user config | `[LEAD]` old inventory/topic prose; mutation schema unproved |
-| POST? | `/api/user/reset_onboarding/` | Bearer? | Reset onboarding | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/user/accept_timbaland_terms/` | Bearer? | Accept feature-specific terms | `[LEAD]` old inventory/topic prose |
-| DELETE? | `/api/user/delete-account/` | Bearer? | Destructive account deletion | `[LEAD]` old inventory/topic prose; do not call accidentally |
-| `?` | `/api/user/vip_program_acceptance` | Bearer? | VIP-program acceptance surface | `[LEAD]` loose normalized scan |
-| `?` | `/api/signout/` | Bearer?/session? | Sign-out surface | `[LEAD]` raw/loose scan |
-| GET | `/api/onboarding/current` | Bearer | Current onboarding state | `[T1]` Burp 2026-08-25 |
-| POST | `/api/onboarding/start` | Bearer | Start onboarding flow | `[T1]` Burp 2026-08-25 |
-| `?` | `/api/onboarding/submit` | Bearer? | Onboarding submission | `[LEAD]` loose normalized scan |
-| `?` | `/api/onboarding/complete` | Bearer? | Onboarding completion | `[LEAD]` loose normalized scan |
-| `?` | `/api/onboarding/skip` | Bearer? | Onboarding skip | `[LEAD]` loose normalized scan |
-| `?` | `/api/onboarding/back` | Bearer? | Onboarding back navigation/state | `[LEAD]` loose normalized scan |
-| `?` | `/api/onboarding/audio-upload/abort` | Bearer? | Abort onboarding upload | `[LEAD]` loose normalized scan |
-| `?` | `/api/onboarding/audio-upload/remove` | Bearer? | Remove onboarding upload | `[LEAD]` loose normalized scan |
-| GET? | `/api/me/` | Bearer? | Profile v1 collection | `[LEAD]` old inventory |
-| GET? | `/api/me/v2` | Bearer? | Profile v2 | `[LEAD]` old inventory |
-| GET? | `/api/me/v2/cover-art` | Bearer? | User cover-art surface | `[LEAD]` old inventory |
-| GET? | `/api/me/v2/history` | Bearer? | User history | `[LEAD]` old inventory |
-| GET? | `/api/me/v2/hooks` | Bearer? | User hooks | `[LEAD]` old inventory |
-| GET? | `/api/me/v2/personas` | Bearer? | User personas v2 | `[LEAD]` old inventory |
-| GET? | `/api/me/v2/playlists` | Bearer? | User playlists v2 | `[LEAD]` old inventory |
-| GET? | `/api/me/v2/studio-projects` | Bearer? | User Studio projects v2 | `[LEAD]` old inventory |
-| GET? | `/api/me/v2/trash` | Bearer? | User trash v2 | `[LEAD]` old inventory |
-| GET? | `/api/me/v2/workspaces` | Bearer? | User workspaces v2 | `[LEAD]` old inventory |
-| GET? | `/api/me/cover-art` | Bearer? | User cover-art v1 | `[LEAD]` old inventory |
-| GET? | `/api/me/external_accounts` | Bearer? | Linked external accounts | `[LEAD]` old inventory |
-| GET? | `/api/me/followers` | Bearer? | Followers | `[LEAD]` old inventory |
-| GET? | `/api/me/following` | Bearer? | Following | `[LEAD]` old inventory |
-| GET? | `/api/me/history` | Bearer? | History v1 | `[LEAD]` old inventory |
-| GET? | `/api/me/hooks` | Bearer? | Hooks v1 | `[LEAD]` old inventory |
-| GET? | `/api/me/liked-hooks` | Bearer? | Liked hooks | `[LEAD]` old inventory |
-| GET? | `/api/me/liked-playlists` | Bearer? | Liked playlists | `[LEAD]` old inventory |
-| GET? | `/api/me/lyrics` | Bearer? | User lyrics | `[LEAD]` old inventory |
-| GET? | `/api/me/organization_invitations` | Bearer? | Organization invitations | `[LEAD]` old inventory |
-| GET? | `/api/me/organization_memberships` | Bearer? | Organization memberships | `[LEAD]` old inventory |
-| GET? | `/api/me/organization_suggestions` | Bearer? | Organization suggestions | `[LEAD]` old inventory |
-| GET? | `/api/me/passkeys` | Bearer? | Passkeys | `[LEAD]` old inventory |
-| GET? | `/api/me/personas` | Bearer? | Personas v1 | `[LEAD]` old inventory |
-| GET? | `/api/me/playlists` | Bearer? | Playlists v1 | `[LEAD]` old inventory |
-| GET? | `/api/me/sessions` | Bearer? | Sessions | `[LEAD]` old inventory |
-| GET? | `/api/me/sessions/active` | Bearer? | Active sessions | `[LEAD]` old inventory |
-| GET? | `/api/me/styles` | Bearer? | User styles | `[LEAD]` old inventory |
-| GET? | `/api/me/totp` | Bearer? | TOTP settings | `[LEAD]` old inventory |
-| GET? | `/api/me/totp/attempt_verification` | Bearer? | TOTP verification attempt | `[LEAD]` old inventory; mutation-by-GET is not trusted |
-| GET? | `/api/me/trash` | Bearer? | Trash v1 | `[LEAD]` old inventory |
-| GET? | `/api/me/workspaces` | Bearer? | Workspaces v1 | `[LEAD]` old inventory |
-| GET? | `/api/me/studio-projects` | Bearer? | Studio projects v1 | `[LEAD]` old inventory |
+### 4.2 User, backend session, and onboarding
+
+| Method | Path | Auth | Purpose | Evidence | Implemented |
+|---|---|---|---|---|---|
+| GET | `/api/session/` | Bearer | Bootstrap user/session plus runtime model catalog | `[T1]` Burp 2026-08-25 | wired |
+| GET | `/api/user/metadata` | Bearer | User metadata/plan summary | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/user/get_user_session_id/` | Bearer | Suno-side session identifier | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/user/tos_acceptance` | Bearer | Terms-acceptance state | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/user/user_config/` | Bearer | Read current config using an empty JSON object | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/onboarding/current` | Bearer | Current onboarding state | `[T1]` Burp 2026-08-25 | not-in-code |
+| POST | `/api/onboarding/start` | Bearer | Start onboarding flow | `[T1]` Burp 2026-08-25 | not-in-code |
+
+The endpoint mirror also carries a `SESSION_CATALOG` alias for the same
+`/api/session/` path; it is `declared-unused` and is not a second route.
 
 ### 4.3 Projects and Studio
 
-| Method | Path | Auth | Purpose | Evidence |
-|---|---|---|---|---|
-| GET | `/api/project/me` | Bearer | Workspace/project listing | `[T1]` Burp 2026-08-25 |
-| GET | `/api/project/default` | Bearer | Default workspace and project clips | `[T1]` Burp 2026-08-25 |
-| GET | `/api/project/{project_id}` | Bearer | Project detail | `[T1]` HAR 2026-09-23 |
-| GET | `/api/project/default/pinned-clips` | Bearer | Pinned default-workspace clips | `[T1]` HAR 2026-09-23 |
-| GET? | `/api/project` | Bearer? | Project listing/creation-family surface | `[LEAD]` old inventory/raw scan |
-| POST? | `/api/project` | Bearer? | Create project | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/project/trash` | Bearer? | Trashed projects | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/project/invites` | Bearer? | Project invitations | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/project/{project_id}/clips` | Bearer? | Project clips | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/project/{project_id}/metadata` | Bearer? | Project metadata | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/project/{project_id}/pinned-clips` | Bearer? | Project pinned clips | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/project/{project_id}/collaborators` | Bearer? | Collaborator list | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/project/{project_id}/collaborators/me` | Bearer? | Current user's collaborator state | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/project/{project_id}/ably-token` | Bearer? | Realtime collaboration token | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/project/{project_id}/ably-client-id` | Bearer? | Realtime client identifier | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/project/{project_id}/invite` | Bearer? | Invite collaborator | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/project/{project_id}/ably-update` | Bearer? | Publish collaboration update | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/project/feed` | Bearer? | Project feed | `[LEAD]` loose normalized scan |
-| GET? | `/api/project/library/images` | Bearer? | Project image library | `[LEAD]` loose normalized scan |
-| GET? | `/api/project/library/videos` | Bearer? | Project video library | `[LEAD]` loose normalized scan |
-| POST? | `/api/studio/create-project` | Bearer?/entitlement? | Create Studio project | `[LEAD]` old inventory/raw scan |
-| POST? | `/api/studio/save-project` | Bearer?/entitlement? | Save Studio project state | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/studio/render-state` | Bearer?/entitlement? | Studio render state | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/studio/render-state-multitrack` | Bearer?/entitlement? | Multitrack render state | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/studio/project-version/{id}` | Bearer?/entitlement? | Studio project version | `[LEAD]` old topic prose |
-| `?` | `/api/studio/` | Web session? | Claimed Studio access/page surface on API host | `[VERIFY]`; may be a page route, not a stable API call |
-| `?` | `/api/studio/{slug}` | Web session? | Claimed Studio-by-slug surface | `[VERIFY]`; colon-form and slash-form scan artifacts are not canonical |
+| Method | Path | Auth | Purpose | Evidence | Implemented |
+|---|---|---|---|---|---|
+| GET | `/api/project/me` | Bearer | Workspace/project listing | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/project/default` | Bearer | Default workspace and project clips | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/project/{project_id}` | Bearer | Project detail | `[T1]` HAR 2026-09-23 | declared-unused |
+| GET | `/api/project/default/pinned-clips` | Bearer | Pinned default-workspace clips | `[T1]` HAR 2026-09-23 | declared-unused |
+
+No project creation, collaboration, or Studio save/render operation is captured.
 
 ### 4.4 Generation, lyrics, prompts, and analysis
 
-| Method | Path | Auth | Purpose | Evidence |
-|---|---|---|---|---|
-| POST | `/api/c/check` | Bearer | Captcha requirement check for generation | `[T1]` Burp 2026-08-25 |
-| POST | `/api/generate/v2-web/` | Bearer | Captured web music-generation submission | `[T1]` Burp 2026-08-25 |
-| POST | `/api/generate/cowrite-lyrics/` | Bearer | Single-shot lyrics co-writing/editing | `[T1]` Burp 2026-08-25 |
-| GET | `/api/lyricists` | Bearer | Lyricist/persona selection list | `[T1]` Burp 2026-08-25 |
-| GET | `/api/lyrics-projects` | Bearer | List/read lyrics projects | `[T1]` Burp 2026-08-25 |
-| POST | `/api/lyrics-projects` | Bearer | Create/update lyrics-project surface | `[T1]` Burp 2026-08-25; exact mutation schema not canonicalized here |
-| POST | `/api/lyrics-projects/{id}/flush` | Bearer | Persist/finalize lyrics-project state | `[T1]` Burp 2026-08-25 |
-| GET | `/api/prompts/v2` | Bearer | Prompt/style data | `[T1]` Burp 2026-08-25 |
-| POST | `/api/prompts/v2` | Bearer | Prompt/style mutation surface | `[T1]` Burp 2026-08-25; exact mutation schema not canonicalized here |
-| GET | `/api/prompts/suggestions` | Bearer | Prompt suggestions | `[T1]` Burp 2026-08-25 |
-| POST | `/api/prompts/upsample` | Bearer | Prompt/tag upsampling | `[T1]` Burp 2026-08-25 |
-| GET | `/api/gen/{id}/aligned_lyrics/v2/` | Bearer | Timed word alignment | `[T1]` Burp 2026-08-25 |
-| POST | `/api/gen/{id}/downbeats_streaming/v2` | Bearer | Complete downbeat analysis response | `[T1]` Burp 2026-08-25 |
-| GET | `/api/gen/{id}/waveform-aggregates` | Bearer | Multi-resolution waveform aggregates | `[T1]` Burp 2026-08-25 |
-| POST | `/api/gen/{id}/increment_play_count/v2` | Bearer | Play-count telemetry | `[T1]` Burp 2026-08-25 |
-| POST | `/api/gen/{id}/listen_milestone` | Bearer | Listen-milestone telemetry | `[T1]` Burp 2026-08-25 |
-| GET | `/api/gen/{id}/comments` | Bearer | Generation/clip comments | `[T1]` Burp 2026-08-25 |
-| POST? | `/api/generate/v2/` | Bearer? | Non-web generation variant | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/generate/cowrite-lyrics/models/` | Bearer? | Co-writing model discovery | `[LEAD]` loose normalized scan |
-| POST? | `/api/generate/lyrics/` | Bearer? | Start lyrics-generation job | `[LEAD]` old topic prose; not exercised in reviewed capture |
-| GET? | `/api/generate/lyrics/{id}` | Bearer? | Poll lyrics-generation job | `[LEAD]` old topic prose; not exercised in reviewed capture |
-| POST? | `/api/generate/lyrics-infill` | Bearer? | Lyrics infill, no trailing slash | `[LEAD]` raw scan |
-| POST? | `/api/generate/lyrics-infill/` | Bearer? | Lyrics infill, trailing slash | `[LEAD]` raw scan; do not alias automatically |
-| POST? | `/api/generate/lyrics-mashup` | Bearer? | Lyrics mashup | `[LEAD]` raw scan/topic prose |
-| POST? | `/api/generate/lyrics-pair` | Bearer? | Paired lyrics | `[LEAD]` raw scan/topic prose |
-| POST? | `/api/generate/lyrics-pair/rate` | Bearer? | Rate lyrics pair | `[LEAD]` raw scan/topic prose |
-| POST? | `/api/generate/concat/v2/` | Bearer? | Concatenate generated segments | `[LEAD]` raw scan; not exercised in reviewed capture |
-| POST? | `/api/generate/merge/` | Bearer? | Merge generated segments | `[LEAD]` raw scan/topic prose |
-| POST? | `/api/extend_audio` | Bearer? | Alternate extension path | `[LEAD]` old topic prose |
-| POST? | `/api/upload-and-cover/` | Bearer? | Upload-and-cover path | `[LEAD]` old topic prose; multipart fields unproved |
-| POST? | `/api/generate/upsample` | Bearer? | Audio upsampling | `[LEAD]` raw scan/topic prose |
-| POST? | `/api/generate/get_recommend_styles` | Bearer? | Style recommendation surface | `[LEAD]` raw scan/topic prose |
-| POST? | `/api/generate/matrix` | Bearer? | Generation matrix | `[LEAD]` raw scan |
-| POST? | `/api/generate/sum/` | Bearer? | Generation sum/session surface | `[LEAD]` raw scan/loose normalized scan |
-| GET? | `/api/gen/{id}` | Bearer? | Claimed generation-status poll | `[LEAD]`; captured generation flow used feed/get-songs instead |
-| GET? | `/api/clip/{id}` | Bearer? | Claimed clip-status/detail poll | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/gen/{id}/convert_wav/` | Bearer? | Convert generation/clip to WAV | `[LEAD]` current endpoint map/topic prose |
-| GET? | `/api/gen/{id}/wav_file/` | Bearer? | WAV artifact retrieval | `[LEAD]` current endpoint map |
-| POST? | `/api/gen/bulk_increment_play_counts/v2` | Bearer? | Bulk play-count telemetry | `[LEAD]` old inventory/raw scan |
-| POST? | `/api/gen/increment_action_counts/` | Bearer? | Bulk action-count telemetry | `[LEAD]` old inventory/raw scan |
-| POST? | `/api/gen/prompt_image/` | Bearer? | Prompt-image job | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/gen/trash` | Bearer? | Trash generated items | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/gen/set_metadata/` | Bearer? | Set generation metadata | `[LEAD]` old inventory |
-| GET? | `/api/prompts/` | Bearer? | Legacy prompt collection | `[LEAD]` old inventory/current endpoint map |
-| POST? | `/api/prompts/delete/` | Bearer? | Delete prompt | `[LEAD]` raw scan |
-| POST? | `/api/generate/stems` | Bearer? | Stem-generation surface | `[LEAD]` old upload topic prose |
-| GET? | `/api/instruments` | Bearer? | Instrument selection surface | `[LEAD]` loose normalized scan |
-| `?` | `/api/instrument/describe-doodle` | Bearer? | Instrument description surface | `[LEAD]` loose normalized scan |
-| POST? | `/api/lyricists` | Bearer? | Lyricist creation surface | `[LEAD]`; only `GET /api/lyricists` is captured |
+| Method | Path | Auth | Purpose | Evidence | Implemented |
+|---|---|---|---|---|---|
+| POST | `/api/c/check` | Bearer | Captcha requirement check for generation | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/generate/v2-web/` | Bearer | Captured web music-generation submission | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/generate/cowrite-lyrics/` | Bearer | Single-shot lyrics co-writing/editing | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/lyricists` | Bearer | Lyricist/persona selection list | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/lyrics-projects` | Bearer | List/read lyrics projects | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/lyrics-projects` | Bearer | Create/update lyrics-project surface | `[T1]` Burp 2026-08-25; exact mutation schema not canonicalized here | declared-unused |
+| POST | `/api/lyrics-projects/{id}/flush` | Bearer | Persist/finalize lyrics-project state | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/prompts/v2` | Bearer | Prompt/style data | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/prompts/v2` | Bearer | Prompt/style mutation surface | `[T1]` Burp 2026-08-25; exact mutation schema not canonicalized here | declared-unused |
+| GET | `/api/prompts/suggestions` | Bearer | Prompt suggestions | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/prompts/upsample` | Bearer | Prompt/tag upsampling | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/gen/{id}/aligned_lyrics/v2/` | Bearer | Timed word alignment | `[T1]` Burp 2026-08-25 | wired |
+| POST | `/api/gen/{id}/downbeats_streaming/v2` | Bearer | Complete downbeat analysis response | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/gen/{id}/waveform-aggregates` | Bearer | Multi-resolution waveform aggregates | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/gen/{id}/increment_play_count/v2` | Bearer | Play-count telemetry | `[T1]` Burp 2026-08-25 | not-in-code |
+| POST | `/api/gen/{id}/listen_milestone` | Bearer | Listen-milestone telemetry | `[T1]` Burp 2026-08-25 | not-in-code |
+| GET | `/api/gen/{id}/comments` | Bearer | Generation/clip comments | `[T1]` Burp 2026-08-25 | declared-unused |
 
-### 4.5 Library, feed, search, and playlists
+Generation submission is captured but intentionally **not** wired: the CAPTCHA
+token flow and durable processing contract are unimplemented (section 1.4).
 
-| Method | Path | Auth | Purpose | Evidence |
-|---|---|---|---|---|
-| POST | `/api/feed/v3` | Bearer | Primary cursor-based library feed | `[T1]` Burp 2026-08-25 |
-| POST | `/api/unified/feed` | Bearer | Profile-style unified feed | `[T1]` Burp 2026-08-25 |
-| POST | `/api/unified/homepage` | Bearer | Homepage/unified feed | `[T1]` corrective endpoint map/Burp evidence |
-| GET | `/api/clips/get_songs_by_ids` | Bearer | Bulk clip/song hydration by repeated `ids` query values | `[T1]` Burp 2026-08-25 |
-| GET | `/api/playlist/me` | Bearer | Current user's playlists | `[T1]` Burp 2026-08-25 |
-| GET? | `/api/feed/` | Bearer? | Legacy feed | `[LEAD]` old library prose |
-| GET? | `/api/feed/v2` | Bearer? | Legacy v2 feed | `[LEAD]` old library prose |
-| GET? | `/api/feed/v3/offset` | Bearer? | Offset feed variant | `[LEAD]` old inventory/raw scan |
-| POST | `/api/unified/explore` | Bearer | Cursor-based explore feed | `[T1]` Burp 2026-09-24 |
-| GET? | `/api/unified/homepage/explore` | Bearer? | Explore homepage feed | `[LEAD]` old library prose |
-| GET? | `/api/unified/homepage/explore/mobile` | Bearer? | Mobile explore feed | `[LEAD]` old library prose |
-| GET? | `/api/unified/search/omnisearch` | Bearer? | Unified search | `[LEAD]` old library/loose scan |
-| GET? | `/api/unified/search/suggest` | Bearer? | Unified search suggestions | `[LEAD]` loose normalized scan |
-| GET? | `/api/unified/search/suggest/history` | Bearer? | Search-suggestion history | `[LEAD]` loose normalized scan |
-| GET? | `/api/search/` | Bearer? | General search | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/search/history` | Bearer? | Search history | `[LEAD]` old library/loose scan |
-| GET? | `/api/search/users` | Bearer? | User search | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/discover/shortcuts_songs` | Bearer? | Discover shortcut songs | `[LEAD]` old inventory |
-| GET? | `/api/trending/metaplaylist/` | Bearer? | Trending metaplaylist | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/tags/recommend` | Bearer? | Recommended tags | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/recommend/hide-creator` | Bearer? | Hide creator from recommendations | `[LEAD]` old inventory/social prose |
-| POST? | `/api/playlist/create/` | Bearer? | Create playlist | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/playlist/set_metadata` | Bearer? | Set playlist metadata | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/playlist/trash/` | Bearer? | Trash playlist | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/playlist/update_clips/` | Bearer? | Add/remove/reorder playlist clips | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/playlist/{playlist_id}/` | Bearer? | Playlist detail | `[LEAD]` old library/topic prose |
-| GET? | `/api/playlist/{playlist_id}/tracks` | Bearer? | Playlist tracks | `[LEAD]` old library/topic prose |
+### 4.5 Library, feed, and playlists
+
+| Method | Path | Auth | Purpose | Evidence | Implemented |
+|---|---|---|---|---|---|
+| POST | `/api/feed/v3` | Bearer | Primary cursor-based library feed | `[T1]` Burp 2026-08-25 | wired |
+| POST | `/api/unified/feed` | Bearer | Profile-style unified feed | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/unified/homepage` | Bearer | Homepage/unified feed | `[T1]` corrective endpoint map/Burp evidence | declared-unused |
+| GET | `/api/clips/get_songs_by_ids` | Bearer | Bulk clip/song hydration by repeated `ids` query values | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/playlist/me` | Bearer | Current user's playlists | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/unified/explore` | Bearer | Cursor-based explore feed | `[T1]` Burp 2026-09-24 | wired |
 
 No reviewed capture establishes server-side search as a `searchText` field on
 `POST /api/feed/v3`. Search claims derived from old prose or client parameters
 remain `[LEAD]`; clients must use local filtering until a direct request/response
-capture proves the remote search contract.
+capture proves the remote search contract. No playlist mutation is captured.
 
-### 4.6 Clips, media, download, upload, and processing
+### 4.6 Clips, media, rights, upload, and processing
 
-| Method | Path | Auth | Purpose | Evidence |
-|---|---|---|---|---|
-| GET | `/api/clips/{clip_id}/attribution` | Bearer | Clip attribution/rights metadata | `[T1]` Burp 2026-08-25 |
-| GET | `/api/clips/parent` | Bearer | Parent clip relation | `[T1]` Burp 2026-08-25 |
-| GET | `/api/clips/remixes` | Bearer | Clip remixes | `[T1]` Burp 2026-08-25 |
-| GET | `/api/clips/remixes/count` | Bearer | Remix count | `[T1]` Burp 2026-08-25 |
-| GET | `/api/clips/get_similar/` | Bearer | Similar clips | `[T1]` Burp 2026-08-25 |
-| POST | `/api/mango/rights` | Bearer | Rights/crypto response surface | `[T1]` Burp 2026-08-25; payload is sensitive and not reproduced here |
-| GET | `/api/video/generate/{clip_id}/status/` | Bearer | Video-render status | `[T1]` Burp 2026-08-25 |
-| POST | `/api/video_gen/pending_batches` | Bearer | Pending video batch identifiers | `[T1]` Burp 2026-08-25 |
-| GET? | `/api/clip/{clip_id}` | Bearer? | Clip detail | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/adjust-speed/` | Bearer? | Adjust playback speed | `[LEAD]` old inventory/topic prose; mutation-by-GET is not trusted |
-| GET? | `/api/clips/aligned_clips` | Bearer? | Aligned clips | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/aligned_clip_siblings` | Bearer? | Aligned sibling clips | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/autoplay/` | Bearer? | Autoplay state/surface | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/delete/` | Bearer? | Delete surface | `[LEAD]` old inventory/topic prose; destructive and method-unproved |
-| GET? | `/api/clips/direct_children` | Bearer? | Direct child clips | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/direct_children_by_user/` | Bearer? | User-scoped direct children | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/direct_children_count` | Bearer? | Direct-child count | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/displayable_remixes` | Bearer? | Displayable remixes | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/displayable_remixes_by_user/` | Bearer? | User-scoped displayable remixes | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/displayable_remixes_count` | Bearer? | Displayable-remix count | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/displayable_user_remixes_for_clip/` | Bearer? | Displayable user remixes for a clip | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/user_remixes_for_clip/` | Bearer? | User remixes for a clip | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clips/clip_roots` | Bearer? | Clip roots | `[LEAD]` loose normalized scan |
-| POST? | `/api/clips/reverse-clip/` | Bearer? | Reverse clip | `[LEAD]` loose normalized scan |
-| GET? | `/api/clip/{clip_id}/stems` | Bearer? | Stem metadata | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/clip/{clip_id}/stems/pages` | Bearer? | Paged stem data | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/edit/crop/{clip_id}/` | Bearer? | Crop clip | `[LEAD]` old library/topic prose |
-| POST? | `/api/edit/stems/{clip_id}/` | Bearer? | Edit stems | `[LEAD]` old library/topic prose |
-| GET? | `/api/billing/clips/{clip_id}/download/` | Bearer? | Billing-gated clip download | `[LEAD]` old inventory/topic prose; no download schema canonicalized |
-| `?` | `/api/download/clips/zip/prepare` | Bearer? | Prepare clip ZIP download | `[VERIFY]` method/payload not captured |
-| `?` | `/api/openai-speech/` | Bearer? | Claimed speech compatibility surface | `[VERIFY]` GET claim is scan-only; no method/schema contract |
-| GET? | `/api/deepgram-token` | Bearer? | Claimed transcription token | `[LEAD]` old inventory/topic prose |
-| POST | `/api/uploads/audio/` | Bearer | Initialize an audio upload and return a temporary direct-upload URL/policy | `[T1]` Burp 2026-09-24; JSON request/response |
-| POST? | `/api/uploads/audio/{id}/initialize-clip/` | Bearer? | Initialize clip from uploaded audio | `[LEAD]` old inventory/topic prose; not captured in 2026-09-24 export |
-| POST | `/api/uploads/audio/{id}/upload-finish/` | Bearer | Finalize a completed direct audio upload | `[T1]` Burp 2026-09-24; JSON request/empty-object response |
-| POST | Returned URL on `suno-uploads.s3.amazonaws.com` | Temporary signed multipart fields | Direct-upload captured audio bytes | `[T1]` Burp 2026-09-24; 204 response |
-| GET? | `/api/uploads/audio/{id}/` | Bearer? | Audio upload/processing status | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/uploads/audio/{id}/convert_wav/` | Bearer? | Convert uploaded audio to WAV | `[LEAD]` old upload topic prose |
-| POST? | `/api/uploads/image` | Bearer? | Image upload, no trailing slash | `[LEAD]` raw scan; multipart fields unproved |
-| POST? | `/api/uploads/image/` | Bearer? | Image upload, trailing slash | `[LEAD]` raw scan; do not alias automatically |
-| GET? | `/api/uploads/video` | Bearer? | Video upload info, no trailing slash | `[VERIFY]` spelling/method not captured |
-| GET? | `/api/uploads/video/` | Bearer? | Video upload info, trailing slash | `[VERIFY]` spelling/method not captured |
-| POST? | `/api/uploads/video/{upload_id}/upload-finish/` | Bearer? | Finalize video upload | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/video/hooks/create` | Bearer? | Create video hook | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/video/hooks/feed` | Bearer? | Video-hook feed | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/video/hooks/{hook_id}/flag` | Bearer? | Flag video hook | `[LEAD]` old inventory/topic prose; mutation-by-GET is not trusted |
-| `?` | `/api/video/hooks/fetch_hook_lyrics` | Bearer? | Fetch hook lyrics | `[LEAD]` raw scan |
-| `?` | `/api/video/hooks/suggested_clips` | Bearer? | Suggested video-hook clips | `[LEAD]` raw scan |
-| `?` | `/api/video_gen/poll_batches` | Bearer? | Poll video batches | `[LEAD]` old inventory/loose scan |
+| Method | Path | Auth | Purpose | Evidence | Implemented |
+|---|---|---|---|---|---|
+| GET | `/api/clips/{clip_id}/attribution` | Bearer | Clip attribution/rights metadata | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/clips/parent` | Bearer | Parent clip relation | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/clips/remixes` | Bearer | Clip remixes | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/clips/remixes/count` | Bearer | Remix count | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/clips/get_similar/` | Bearer | Similar clips | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/mango/rights` | Bearer | Rights/crypto response surface | `[T1]` Burp 2026-08-25; payload is sensitive and not reproduced here | declared-unused |
+| GET | `/api/video/generate/{clip_id}/status/` | Bearer | Video-render status | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/video_gen/pending_batches` | Bearer | Pending video batch identifiers | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/uploads/audio/` | Bearer | Initialize an audio upload and return a temporary direct-upload URL/policy | `[T1]` Burp 2026-09-24; JSON request/response | wired |
+| POST | `/api/uploads/audio/{id}/upload-finish/` | Bearer | Finalize a completed direct audio upload | `[T1]` Burp 2026-09-24; JSON request/empty-object response | wired |
+| POST | Returned URL on `suno-uploads.s3.amazonaws.com` | Temporary signed multipart fields | Direct-upload captured audio bytes | `[T1]` Burp 2026-09-24; 204 response | wired |
 
-### 4.7 Persona, custom models, and voice
+The direct-upload row is the only row in this document whose target is not
+fixed by the catalog: the URL and fields come from the initializer response and
+must never be hard-coded (section 2.2). The three upload rows are the only
+implemented transport sequence; the non-transport upload lifecycle is not
+captured (section 5.6).
 
-| Method | Path | Auth | Purpose | Evidence |
-|---|---|---|---|---|
-| GET | `/api/custom-model/pending/` | Bearer | Pending custom-model state | `[T1]` Burp 2026-08-25 |
-| POST? | `/api/persona/create/` | Bearer?/entitlement? | Create persona | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/persona/get-personas/` | Bearer? | User personas | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/persona/get-followed-personas/` | Bearer? | Followed personas | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/persona/get-loved-personas/` | Bearer? | Loved personas | `[LEAD]` old inventory/topic prose |
-| GET? | `/api/persona/get-persona-paginated/{id}/` | Bearer? | Paginated persona surface | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/custom-model/create/` | Bearer?/entitlement? | Create custom model | `[LEAD]` old inventory/topic prose; training schema unproved |
-| POST? | `/api/custom-model/archive/` | Bearer?/entitlement? | Archive custom model | `[LEAD]` old inventory/topic prose |
-| POST? | `/api/processed_clip/voice-vox-stem` | Bearer? | Voice/stem processing | `[LEAD]` old inventory/topic prose |
+### 4.7 Persona and custom models
+
+| Method | Path | Auth | Purpose | Evidence | Implemented |
+|---|---|---|---|---|---|
+| GET | `/api/custom-model/pending/` | Bearer | Pending custom-model state | `[T1]` Burp 2026-08-25 | declared-unused |
 
 No plan matrix, verification requirement, per-account model limit, or voice-clone
-availability statement is canonical without a current capture.
+availability statement is canonical without a current capture. No persona
+creation, custom-model training, archive, or voice-clone route is captured.
 
-### 4.8 Social, sharing, comments, notifications, and rights
+### 4.8 Social, sharing, notifications, and following
 
-| Method | Path | Auth | Purpose | Evidence |
-|---|---|---|---|---|
-| GET | `/api/profiles/{handle}/info` | Bearer | Public/private profile information | `[T1]` Burp 2026-08-25 |
-| GET | `/api/profiles/pinned-clips` | Bearer | Pinned profile clips | `[T1]` Burp 2026-08-25 |
-| GET | `/api/notification/v2` | Bearer | Notifications | `[T1]` Burp 2026-08-25 |
-| GET | `/api/notification/v2/badge-count` | Bearer | Notification badge count | `[T1]` Burp 2026-08-25 |
-| POST | `/api/notification/v2/clear-badge` | Bearer | Clear notification badge | `[T1]` Burp 2026-08-25 |
-| GET | `/api/share/stats` | Bearer | Share count/statistics | `[T1]` Burp 2026-08-25 |
-| GET? | `/api/profiles/` | Bearer? | Profile listing/search | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/profiles/{handle}` | Bearer? | Profile by handle | `[LEAD]` old inventory/social prose |
-| GET? | `/api/profiles/follow` | Bearer? | Follow action | `[LEAD]` old inventory/social prose; mutation-by-GET is not trusted |
-| GET? | `/api/profiles/mutual-followers` | Bearer? | Mutual followers | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/comment/{comment_id}` | Bearer? | Comment detail | `[LEAD]` old inventory/social prose |
-| POST? | `/api/comment/block-user` | Bearer? | Block user | `[LEAD]` old inventory/social prose |
-| POST? | `/api/comment/unblock-user` | Bearer? | Unblock user | `[LEAD]` old inventory/social prose |
-| POST? | `/api/comment/{comment_id}/reaction` | Bearer? | React to comment | `[LEAD]` old inventory/social prose |
-| POST? | `/api/comment/{comment_id}/replies` | Bearer? | Reply to comment | `[LEAD]` old inventory/social prose |
-| POST? | `/api/comment/{comment_id}/report` | Bearer? | Report comment | `[LEAD]` old inventory/social prose |
-| POST | `/api/notification/v2/read` | Bearer | Mark notifications read, optionally before a UTC cutoff | `[T1]` Burp 2026-09-24 |
-| GET? | `/api/share/attribute/` | Bearer? | Share attribution | `[LEAD]` old inventory/social prose |
-| GET? | `/api/share/event` | Bearer? | Share event | `[LEAD]` old inventory/social prose; mutation-by-GET is not trusted |
-| GET? | `/api/share/link` | Bearer? | Share-link surface | `[LEAD]` old inventory/social prose |
-| POST | `/api/social/following-feed` | Bearer | Activity feed for followed accounts | `[T1]` Burp 2026-09-24; subsequent-page behavior `[VERIFY]` |
-| `GET?` or `POST?` | `/api/song_copy/send-song` | Bearer? | Send/copy song action | `[VERIFY]` direct method conflict |
-| GET? | `/api/invite/` | Bearer? | Invitation surface | `[LEAD]` old inventory/raw scan |
-| POST? | `/api/survey/survey-responses` | Bearer? | Survey response | `[LEAD]` raw/loose scan |
+| Method | Path | Auth | Purpose | Evidence | Implemented |
+|---|---|---|---|---|---|
+| GET | `/api/profiles/{handle}/info` | Bearer | Public/private profile information | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/profiles/pinned-clips` | Bearer | Pinned profile clips | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/notification/v2` | Bearer | Notifications | `[T1]` Burp 2026-08-25 | wired |
+| GET | `/api/notification/v2/badge-count` | Bearer | Notification badge count | `[T1]` Burp 2026-08-25 | wired |
+| POST | `/api/notification/v2/clear-badge` | Bearer | Clear notification badge | `[T1]` Burp 2026-08-25 | not-in-code |
+| POST | `/api/notification/v2/read` | Bearer | Mark notifications read, optionally before a UTC cutoff | `[T1]` Burp 2026-09-24 | wired |
+| GET | `/api/share/stats` | Bearer | Share count/statistics | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/social/following-feed` | Bearer | Activity feed for followed accounts | `[T1]` Burp 2026-09-24; subsequent-page behavior `[VERIFY]` | declared-unused |
 
-### 4.9 Feature gates, telemetry, app chrome, and experimental surfaces
+The following feed's first page is captured; no next-page token or cursor was
+captured, so later-page behavior remains `[VERIFY]` (section 5.5). No follow,
+comment, share-link, or song-copy action is captured.
 
-| Method | Path | Auth | Purpose | Evidence |
-|---|---|---|---|---|
-| POST | `/api/statsig/experiment/` | Bearer | Query experiment parameters | `[T1]` Burp 2026-08-25 |
-| GET | `/api/statsig/experiment/forked-onboarding` | Bearer | Forked-onboarding experiment state | `[T1]` Burp 2026-08-25 |
-| GET | `/api/labs/configs` | Bearer | Labs catalog/configuration | `[T1]` Burp 2026-08-25 |
-| `?` | `/api/labs/marketplace` | Bearer? | Historical Marketplace probe path; availability/method unproved | `[VERIFY]`; do not confuse with `/labs/marketplace` page or Marketplace artifacts |
-| GET | `/api/modals` | Bearer | App modal catalog | `[T1]` Burp 2026-08-25 |
-| GET | `/api/cms/nudges/publish-nudge` | Bearer | Publish nudge state/content | `[T1]` Burp 2026-08-25 |
-| GET | `/api/cms/nudges/share-nudge` | Bearer | Share nudge state/content | `[T1]` Burp 2026-08-25 |
-| GET | `/api/realtime/discover` | Bearer | Realtime/Ably discovery and token metadata | `[T1]` Burp 2026-08-25 |
-| GET | `/api/challenge/progress` | Bearer | Challenge/bonus progress | `[T1]` Burp 2026-08-25 |
-| GET | `/api/contests/` | Bearer | Contest catalog | `[T1]` Burp 2026-08-25 |
-| GET | `/api/music_player/playbar_state` | Bearer | Read playbar state | `[T1]` Burp 2026-08-25 |
-| POST | `/api/music_player/playbar_state` | Bearer | Synchronize playbar state | `[T1]` Burp 2026-08-25 |
-| GET | `/api/personalization/memory` | Bearer | Personalization memory/profile | `[T1]` Burp 2026-08-25 |
-| GET | `/api/personalization/settings` | Bearer | Personalization settings | `[T1]` Burp 2026-08-25 |
-| GET? | `/api/ably/simple-mode-token` | Bearer? | Realtime simple-mode token | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/cms` | Bearer? | CMS content surface | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/cms/paywall/plan-options` | Bearer? | Paywall plan options | `[LEAD]` loose scan after `/marketplace/` normalization |
-| POST? | `/api/moderation/ack-copyright-warning` | Bearer? | Acknowledge copyright warning | `[LEAD]` old inventory/raw scan |
-| GET? | `/api/preferences/clip-review/pending` | Bearer? | Clip-review preference state | `[LEAD]` old inventory/raw scan |
-| POST? | `/api/preferences/clip-review/submit` | Bearer? | Submit clip review | `[LEAD]` old inventory/raw scan |
-| POST? | `/api/preferences/clip-review/opt-out` | Bearer? | Opt out of clip review | `[LEAD]` old inventory/raw scan |
-| POST? | `/api/labs/verse/messages/` | Bearer? | Labs Verse messages | `[LEAD]` raw scan |
+### 4.9 Feature gates, app chrome, and captured analysis surfaces
 
-Observed flag/cache names are not server contracts. The following remain
-`[LEAD]` names from scans, not an authorization mechanism or entitlement
-source:
+| Method | Path | Auth | Purpose | Evidence | Implemented |
+|---|---|---|---|---|---|
+| POST | `/api/statsig/experiment/` | Bearer | Query experiment parameters | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/statsig/experiment/forked-onboarding` | Bearer | Forked-onboarding experiment state | `[T1]` Burp 2026-08-25 | not-in-code |
+| GET | `/api/labs/configs` | Bearer | Labs catalog/configuration | `[T1]` Burp 2026-08-25 | not-in-code |
+| GET | `/api/modals` | Bearer | App modal catalog | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/cms/nudges/publish-nudge` | Bearer | Publish nudge state/content | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/cms/nudges/share-nudge` | Bearer | Share nudge state/content | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/realtime/discover` | Bearer | Realtime/Ably discovery and token metadata | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/challenge/progress` | Bearer | Challenge/bonus progress | `[T1]` Burp 2026-08-25 | not-in-code |
+| GET | `/api/contests/` | Bearer | Contest catalog | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/music_player/playbar_state` | Bearer | Read playbar state | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/music_player/playbar_state` | Bearer | Synchronize playbar state | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/personalization/memory` | Bearer | Personalization memory/profile | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/personalization/settings` | Bearer | Personalization settings | `[T1]` Burp 2026-08-25 | declared-unused |
 
-- `orpheus_is_enabled`, `orpheus_is_auto_mode`,
-  `orpheus_is_canvas_enabled`, `orpheus_default_to_chat`,
-  `orpheus_mobile_web_enabled`, `orpheus_group`
-- `marketplace_enabled`, `marketplace_access`, `labs_marketplace`
-- `gen-video-covers`, `labs_*`
-- `hide-credits-enabled`, `hide-credits-for-subscribers-enabled`,
-  `out-of-credits-banner*`, `free_*`, `can_buy_credit_top_up`
-- `bypass_hook_feed_caches`, `bypass_unified_feed_caches`
-- `statsig.cached.evaluations.*`
-
-Forcing a client-side flag is not proof that the backend has enabled a route,
-plan, model, or entitlement.
-
-#### B-Side and Labs page-route leads
-
-These are frontend page routes found in scans, not proven API contracts. All
-are `[LEAD]`; method is normally browser navigation (`GET`) and access may
-require a web session, entitlement, or internal role. Do not infer an
-underlying `/api/...` path from a page route.
-
-| Family | Paths preserved from the corpus |
-|---|---|
-| B-Side index/exploration | `/b-side`, `/b-side/explore`, `/b-side/nux`, `/b-side/labs-control`, `/b-side/personalization` |
-| Account/moderation/admin | `/b-side/account-moderation`, `/b-side/contests`, `/b-side/impersonate`, `/b-side/song-moderation`, `/b-side/trending-moderation`, `/b-side/user-activity` |
-| Audio/DSP/evaluation | `/b-side/audible-magic`, `/b-side/cover-art-eval`, `/b-side/describe-clip`, `/b-side/dsp-diag`, `/b-side/dsp-engine-talk`, `/b-side/lyrics-eval`, `/b-side/lyrics-eval-reports/{slug*}`, `/b-side/lyrics-eval/{slug*}`, `/b-side/stem-extract-test` |
-| Creation/lyrics | `/b-side/hook-song-gen`, `/b-side/hooks-explorer/{slug*}`, `/b-side/lyrics-gen`, `/b-side/lyrics-viewer`, `/b-side/simple-remix/{slug*}` |
-| Recommendations/search | `/b-side/because-you-like`, `/b-side/isthisus`, `/b-side/search-lens/*`, `/b-side/music-soulmate`, `/b-side/music-soulmate-talk`, `/b-side/user-mix`, `/b-side/user-similarity` |
-| Search-lens subroutes | `/b-side/search-lens/crate`, `/b-side/search-lens/crate/browse`, `/b-side/search-lens/crate/listening-room`, `/b-side/search-lens/crate/listening-room/mock-needle`, `/b-side/search-lens/crate/similar`, `/b-side/search-lens/crate/workbench`, `/b-side/search-lens/playground` |
-| Projects/Studio | `/b-side/agentic-transcript`, `/b-side/agentic-transcript/{clipId}`, `/b-side/playlist-copier`, `/b-side/project-state-tour`, `/b-side/studio-access` |
-| Commerce/account experiments | `/b-side/billing/revcat`, `/b-side/vip` |
-| Visual/video/voice | `/b-side/video-gen`, `/b-side/visual-art`, `/b-side/visual-art/{type}/{id}`, `/b-side/voice-verification` |
-| Misc experiments | `/b-side/api-explorer`, `/b-side/banner`, `/b-side/bucket-viewer`, `/b-side/creators`, `/b-side/feature-flags`, `/b-side/hipster`, `/b-side/milo`, `/b-side/music-video`, `/b-side/onboarding-survey`, `/b-side/on-repeat`, `/b-side/orpheus`, `/b-side/reward-model`, `/b-side/sse-demo`, `/b-side/style-synth`, `/b-side/sunshine-list` |
-| Labs pages | `/labs/canvas`, `/labs/divisi`, `/labs/genre-wheel`, `/labs/listen-and-rank`, `/labs/live-radio`, `/labs/marketplace`, `/labs/milo`, `/labs/pedalboard`, `/labs/splashpad`, `/labs/suno-jr`, `/labs/suno-jr/beats`, `/labs/suno-jr/divvy`, `/labs/suno-jr/lullaby`, `/labs/suno-jr/playlists`, `/labs/suno-jr/visuals`, `/labs/suno-mania`, `/labs/turntable`, `/labs/turntable/{roomId}`, `/labs/verse` |
-
-### 4.10 Orpheus leads
-
-No Orpheus request/response contract is canonical. Every row below is research
-material only.
-
-| Method | Path on claimed Modal host | Auth | Claimed purpose | Evidence |
-|---|---|---|---|---|
-| `?` | `/session-history` | Unconfirmed | Session history | `[LEAD]` old B-Side prose |
-| `?` | `/v1/orchestrator/chat` | Unconfirmed | Orchestrator chat | `[LEAD]` current endpoint constants; no captured method/schema |
-| `?` | `/v1/orchestrator/history` | Unconfirmed | Orchestrator history | `[LEAD]` current endpoint constants; no captured method/schema |
-| POST? | `/api/v1/chat/completions` | Unconfirmed | Claimed OpenAI-compatible completion | `[VERIFY]` old inventory claim only |
-| GET? | `/api/v1/models` | Unconfirmed | Claimed model listing | `[VERIFY]` old inventory claim only |
-
-The names `orpheus-0.1` through `orpheus-0.5`, “OpenAI-compatible,” chat-driven
-generation, auto mode, and canvas semantics are `[LEAD]` claims. They are not
-a supported API, a verified model catalog, or a client contract.
+Observed **client-side** flag and cache names are not here. They are localStorage
+keys with zero capture evidence, and they are listed — clearly marked as flag
+names, never as routes — in
+[`OBSERVED-LEADS.md`](OBSERVED-LEADS.md). Forcing a client-side flag is not proof
+that the backend has enabled a route, plan, model, or entitlement.
 
 ## 5. Capture-backed contracts
 
@@ -1001,6 +753,8 @@ canonical request/response schema in this master:
 - Orpheus chat/history/model contracts
 
 For these families, capture the request and response before writing a client.
+The lead inventory that still claims them is in
+[`OBSERVED-LEADS.md`](OBSERVED-LEADS.md).
 
 ## 6. Errors, statuses, and rate limits
 
@@ -1060,55 +814,37 @@ authorization.
 | Realtime | `GET /api/realtime/discover` returned stream/auth metadata. Do not log the returned token material. | `[T1]` |
 | Cookies/analytics | Clerk cookies establish browser auth; analytics cookies do not grant Studio authorization. | `[T1]` auth request context |
 
-## 8. Source and provenance map
+## 8. Provenance and future-capture maintenance
 
-### 8.1 2026-09-24 Burp export
+Source provenance, SHA-256 hashes, artifact retention rules, the reviewed-source
+inventory, the host-filename misspell reconciliation, and the maintenance rule
+for every future capture are owned by [`raw/README.md`](raw/README.md). They are
+not duplicated here.
 
-The reviewed source is the external directory
-`~/Documents/suno-burp-exports/sept-09-2026/`. Despite its `sept-09` label,
-Burp 2026.8 exported 432 items on **2026-09-24 14:01–14:13 MDT**, and the item
-timestamps are 2026-09-24. The directory remains outside the repository because
-its base64 XML is not sanitized.
+## Appendix A — explicit conflict register
 
-| Source file | SHA-256 prefix | Directly observed role | Limitation |
+Moved out of section 1 on 2026-09-26. This register is the master's
+authoritative record of *unresolved* subjects, so that a `[VERIFY]` row living in
+[`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) is never read as an open question with
+no owner.
+
+| Subject | Conflicting claims | Canonical resolution | State |
 |---|---|---|---|
-| `auth.suno.com` | `fdf9794b66a94739` | `GET /v1/client`, session `POST .../tokens`, session `POST .../touch` | Point-in-time; no Google callback; raw file contains live auth material. |
-| `studio-api-prod.suno.co` | `e714fe9cf751ed17` | 74 direct Studio calls and 48 matching preflights, including feed, account/billing, notification, social, explore, upload-init/finish, and media/status routes | Filename is truncated/mistyped; actual API host is `studio-api-prod.suno.com`. Raw file contains credentials and private data. |
-| `suno-uploads.s3.amazonaws.com` | `40e256480d15001f` | Direct multipart audio upload leg and 204 response | Temporary URL and policy fields are secret; no Studio bearer is used. |
-| `suno.com` | `7190f66cc7e886da` | Web redirects, static bundles, and web session-recovery evidence | Bundle strings remain leads; this export did not capture Google OAuth. |
-| `cdn1.suno.ai`, `cdn2.suno.ai`, `cdn-o.suno.com` | `a7a4330a4694dfc`, `9452a8461f1ff37a`, `d184605c13754cbc` | Direct image/static asset requests supporting media-host distinctions | Assets do not prove API authorization or return URL stability. |
-| `logger.full.log.txt` | `cdf06c2302598d14` | One static JavaScript request | Not a log of route calls; decoded route strings are `[LEAD]` only. |
-| Remaining telemetry/static/health files | See [`raw/README.md`](raw/README.md) | Supporting provenance and hash manifest | No promoted product API contract. |
-
-Full source hashes and handling rules are in
-[`raw/README.md`](raw/README.md). The source map must not copy raw payloads,
-complete media URLs, identifiers, or personal data into Markdown.
-
-### 8.2 Earlier evidence and implementation references
-
-| Source | Role | Limitation |
-|---|---|---|
-| 2026-08-25 Burp exports and sanitized extracts | Auth, feed, generation, billing, project, clip, lyrics, analysis, video, and app behavior not re-observed directly on 2026-09-24 | External, point-in-time evidence. |
-| 2026-09-22 [`raw/sanitized-recon-2026-09-22.json`](raw/sanitized-recon-2026-09-22.json) | Strongest direct evidence for the observed Google OAuth request sequence | Request-only; no response status/body. |
-| 2026-09-23 browser HAR | Browser/Studio traffic and progressive-media evidence | External, point-in-time capture. |
-| [`raw/endpoints_sniffed.list`](raw/endpoints_sniffed.list) | Candidate route discovery | `[LEAD]` only; no method, schema, status, or liveness guarantee. |
-| `src/suno/SunoEndpoints.hpp` and commit `678be76` | Implementation mirror and corrective history | Neither is a capture and neither overrides this inventory. |
-
-Superseded topic prose remains in Git history and the timestamped backup
-graveyard. It is not a live authority and must not be linked as current
-documentation.
-
-## 9. Maintenance rule for future captures
-
-For every future capture:
-
-1. Record capture timestamp, source filename, SHA-256, exact method, normalized
-   host/path, content type, and only redacted request/response shapes.
-2. Promote to `[T1]` only from a directly reviewed request/response. Scans,
-   bundles, prose, and client constants remain `[LEAD]`.
-3. `[T1]` means observed, not universally required. Keep conflicting variants or
-   unknown fallback/preference behavior `[VERIFY]` until a capture resolves it.
-4. Never record secrets, cookies, OAuth codes/state, personal data, identifiers,
-   private text, temporary upload fields, or complete media URLs.
-5. Update the source map and remove dead live-document links; do not copy raw
-   secret-bearing exports into the repository.
+| Clerk session-token exchange | Older material rejected `/tokens`; the 2026-09-24 export directly captured both `POST /v1/client/sessions/{sid}/tokens` and `POST .../touch`. | Both are `[T1]` observed same-host session routes. `/tokens` returned a top-level `jwt`; `touch` returned client/session envelopes. `/tokens/api` remains unobserved. Which route a client should prefer, and whether either is universally required, remains `[VERIFY]`. | **Resolved coexistence; selection `[VERIFY]`** |
+| `/v1/client/verify` | Older auth material disagreed between GET and POST. | No reviewed capture selects a method or establishes a generic verification contract. Do not use it as bearer refresh or a generic preflight. | **Unresolved `[VERIFY]`** |
+| `/v1/verify` | Older auth material disagreed between POST and GET. | No reviewed capture establishes either method or response contract. | **Unresolved `[VERIFY]`** |
+| `client?_method=PATCH` | Older auth material disagreed between GET and POST. | `_method=PATCH` suggests an override form, but neither transport method is captured. Do not synthesize a request. | **Unresolved `[VERIFY]`** |
+| `/api/song_copy/send-song` | Older social material and inventory disagreed between GET and POST. | Route exists only as a lead in the available corpus; method and payload are unproved. | **Unresolved `[VERIFY]`** |
+| `/api/openai-speech/` | Old material and scans describe a GET surface, but no reviewed request/response capture establishes its method or compatibility contract. | Do not promote the GET claim. Preserve the route only as `[VERIFY]`. | **Unresolved `[VERIFY]`** |
+| `/api/user/user_config/` | Older material used GET. | `POST` with an empty JSON object is `[T1]`; the update/patch schema is not established by that read. | **Resolved for read method** |
+| `/api/unified/feed` and `/api/unified/homepage` | Older material used GET. | Both are captured as `POST`. | **Resolved** |
+| `/api/mango/rights` | Older inventory used GET. | `POST` is `[T1]`. | **Resolved** |
+| `/api/billing/conversion-tracking` | Older inventory used POST. | `GET` is `[T1]`. | **Resolved** |
+| `/api/notification/v2/clear-badge` | Older inventory used GET. | The 2026-08-25 capture observed `POST` with an empty 204 response. | **Resolved** |
+| Generation polling | Old prose presented `GET /api/gen/{id}` as the canonical poll. | The captured generation flow observed completion through `POST /api/feed/v3` and `GET /api/clips/get_songs_by_ids`. `/api/gen/{id}` remains a `[LEAD]`. | **Resolved for captured flow** |
+| `/api/uploads/video` vs `/api/uploads/video/` | Both spellings occur in scans/docs. | No reviewed capture selects one. Preserve separate path leads; their methods remain `[VERIFY]`, and clients must not alias the spellings. | **Unresolved `[VERIFY]` at use time** |
+| `/api/generate/lyrics-infill` vs `/api/generate/lyrics-infill/` | Both spellings occur in the raw scan. | Both are `[LEAD]`; neither may be rewritten into the other. | **Unresolved `[VERIFY]` at use time** |
+| Orpheus paths/models | Claims range from `/session-history` to orchestrator paths and OpenAI-compatible `/api/v1/...` paths; model names were listed without a direct contract capture. | All are `[LEAD]` or `[VERIFY]`; no supported Orpheus API is canonical. | **Unresolved** |
+| Following-feed pagination | The first-page request/response is captured; no next-page token or cursor was captured. | First page stays `[T1]`; later-page behavior is `[VERIFY]` and must not be synthesized. | **Unresolved `[VERIFY]`** |
+| Server-side library search | No reviewed request contains `searchText`. | Local filtering only. Any remote-search field is a `[LEAD]`. | **Unresolved** |
+| Route preference across Clerk routes | Both `tokens` and `touch` are captured; neither is proven sufficient alone. | No automatic fallback order; a client must not synthesize a hybrid. | **Unresolved `[VERIFY]`** |

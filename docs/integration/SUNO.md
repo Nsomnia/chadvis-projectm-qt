@@ -23,8 +23,10 @@ solely in [`../suno_api/ENDPOINT-INVENTORY.md`](../suno_api/ENDPOINT-INVENTORY.m
 ## Authentication boundary
 
 - Manual session establishment is the implemented path.
-- Google sign-in is disabled. No reviewed capture proves that Clerk accepts a
-  loopback or custom-scheme desktop callback; follow
+- The intended sign-in path is the system default browser plus an app-owned
+  `http://127.0.0.1:<port>` loopback callback, with the user completing Google or
+  Facebook social login on suno.com and Clerk returning the code to the loopback.
+  Clerk's acceptance of that loopback is not yet captured; see
   [`OAUTH_REDIRECT_ANALYSIS.md`](../suno_api/OAUTH_REDIRECT_ANALYSIS.md).
 - Both captured Clerk session-token routes must be handled defensively. Their
   fallback order and universal requiredness remain capture-gated.
