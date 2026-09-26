@@ -1,8 +1,6 @@
 #include "FrameGrabber.hpp"
-#include <QOpenGLContext>
-#include <QOpenGLFunctions_3_3_Core>
 #include <algorithm>
-#include "core/Logger.hpp"
+#include <cstring>
 
 namespace vc {
 
@@ -12,84 +10,21 @@ FrameGrabber::~FrameGrabber() {
     stop();
 }
 
-void FrameGrabber::setSize(u32 width, u32 height) {
-    width_ = width;
-    height_ = height;
-}
-
-void FrameGrabber::grab(RenderTarget& target, i64 timestamp) {
-    if (!running_)
+void FrameGrabber::flipImage(std::vector<u8>& data, u32 width, u32 height) {
+    if (data.size() < static_cast<usize>(width) * height * 4)
         return;
 
-    if (!this->initializeOpenGLFunctions())
-        return;
+    const usize rowSize = static_cast<usize>(width) * 4;
+    std::vector<u8> temp(rowSize);
 
-    GrabbedFrame frame;
-    frame.width = target.width();
-    frame.height = target.height();
-    frame.timestamp = timestamp;
-    frame.frameNumber = frameNumber_++;
-    frame.data.resize(frame.width * frame.height * 4);
+    for (u32 y = 0; y < height / 2; ++y) {
+        u8* top = data.data() + static_cast<usize>(y) * rowSize;
+        u8* bottom = data.data() + static_cast<usize>(height - 1 - y) * rowSize;
 
-    target.readPixels(frame.data.data(), GL_RGBA, GL_UNSIGNED_BYTE);
-
-    if (flipVertical_) {
-        if (useGPUFlip_) {
-            flipImageGPU(frame.data, frame.width, frame.height);
-        } else {
-            flipImage(frame.data, frame.width, frame.height);
-        }
+        std::memcpy(temp.data(), top, rowSize);
+        std::memcpy(top, bottom, rowSize);
+        std::memcpy(bottom, temp.data(), rowSize);
     }
-
-    {
-        std::lock_guard lock(queueMutex_);
-
-        if (frameQueue_.size() >= MAX_QUEUE_SIZE) {
-            frameQueue_.pop();
-            ++droppedFrames_;
-        }
-
-        frameQueue_.push(std::move(frame));
-    }
-    queueCond_.notify_one();
-}
-
-void FrameGrabber::grabScreen(u32 width, u32 height, i64 timestamp) {
-    if (!running_)
-        return;
-
-    if (!this->initializeOpenGLFunctions())
-        return;
-
-    GrabbedFrame frame;
-    frame.width = width;
-    frame.height = height;
-    frame.timestamp = timestamp;
-    frame.frameNumber = frameNumber_++;
-    frame.data.resize(width * height * 4);
-
-    this->glReadPixels(
-            0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, frame.data.data());
-
-    if (flipVertical_) {
-        if (useGPUFlip_) {
-            flipImageGPU(frame.data, width, height);
-        } else {
-            flipImage(frame.data, width, height);
-        }
-    }
-
-    {
-        std::lock_guard lock(queueMutex_);
-
-        if (frameQueue_.size() >= MAX_QUEUE_SIZE) {
-            frameQueue_.pop();
-            ++droppedFrames_;
-        }
-
-        frameQueue_.push(std::move(frame));
-    }
-    queueCond_.notify_one();
 }
 
 bool FrameGrabber::getNextFrame(GrabbedFrame& frame, u32 timeoutMs) {
@@ -141,90 +76,6 @@ void FrameGrabber::clear() {
     while (!frameQueue_.empty()) {
         frameQueue_.pop();
     }
-}
-
-void FrameGrabber::flipImage(std::vector<u8>& data, u32 width, u32 height) {
-    u32 rowSize = width * 4;
-    std::vector<u8> temp(rowSize);
-
-    for (u32 y = 0; y < height / 2; ++y) {
-        u8* top = data.data() + y * rowSize;
-        u8* bottom = data.data() + (height - 1 - y) * rowSize;
-
-        std::memcpy(temp.data(), top, rowSize);
-        std::memcpy(top, bottom, rowSize);
-        std::memcpy(bottom, temp.data(), rowSize);
-    }
-}
-
-void FrameGrabber::flipImageGPU(std::vector<u8>& data, u32 width, u32 height) {
-    // GPU-optimized flip using OpenGL texture copy with flipped coordinates
-    // This avoids the O(N) CPU row-swapping by using GPU memory operations
-    
-    if (!this->initializeOpenGLFunctions()) {
-        // Fall back to CPU flip if OpenGL not available
-        flipImage(data, width, height);
-        return;
-    }
-    
-    // Create a temporary texture from the pixel data
-    GLuint srcTex, dstTex, fbo;
-    this->glGenTextures(1, &srcTex);
-    this->glGenTextures(1, &dstTex);
-    this->glGenFramebuffers(1, &fbo);
-    
-    // Upload source data to texture
-    this->glBindTexture(GL_TEXTURE_2D, srcTex);
-    this->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
-    this->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    this->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    
-    // Create destination texture
-    this->glBindTexture(GL_TEXTURE_2D, dstTex);
-    this->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    this->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    this->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    
-    // Bind FBO and attach destination texture
-    this->glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    this->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dstTex, 0);
-    
-    // Set up viewport for flipped rendering
-    this->glViewport(0, 0, width, height);
-    
-    // Clear
-    this->glClearColor(0, 0, 0, 0);
-    this->glClear(GL_COLOR_BUFFER_BIT);
-    
-    // Use a simple pass-through approach with flipped Y coordinates
-    // Instead of using a shader, we'll use glCopyTexSubImage2D with flipped coordinates
-    // Actually, let's use a more efficient approach: render quad with flipped texcoords
-    
-    // For now, use the simpler approach: read back with glReadPixels after setting up
-    // a projection matrix flip or use texture coordinate flipping
-    
-    // Simple approach: use glBlitFramebuffer with flipped coordinates
-    this->glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
-    this->glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, srcTex, 0);
-    
-    this->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
-    this->glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dstTex, 0);
-    
-    // Blit with flipped Y coordinates (srcY0 > srcY1 to flip)
-    this->glBlitFramebuffer(0, height, width, 0,  // Source: flip Y (bottom-to-top)
-                           0, 0, width, height,   // Dest: normal orientation
-                           GL_COLOR_BUFFER_BIT, GL_NEAREST);
-    
-    // Read back the flipped data
-    this->glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    this->glReadBuffer(GL_COLOR_ATTACHMENT0);
-    this->glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
-    
-    // Cleanup
-    this->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    this->glDeleteFramebuffers(1, &fbo);
-    this->glDeleteTextures(1, &srcTex);
-    this->glDeleteTextures(1, &dstTex);
 }
 
 } // namespace vc

@@ -4,9 +4,10 @@
 
 #include "VisualizerRenderer.hpp"
 #include "audio/AudioQueue.hpp"
-#include <chrono>
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
+#include "recorder/FrameGrabber.hpp"
+#include <chrono>
 
 
 namespace vc {
@@ -23,9 +24,9 @@ void VisualizerRenderer::initialize(u32 width, u32 height) {
         return;
     }
 
-    initBlitResources();
-
     const auto& vizConfig = CONFIG.visualizer();
+    if (vizConfig.fps > 0)
+        targetFps_ = vizConfig.fps;
     const auto pmConfig = pm::ProjectMConfig::fromVisualizer(vizConfig, width, height);
 
     projectM_.presetLoading.connect(
@@ -37,13 +38,6 @@ void VisualizerRenderer::initialize(u32 width, u32 height) {
         return;
     }
 
-    if (auto result = renderTarget_.create(width, height, true); !result) {
-        LOG_ERROR("VisualizerRenderer: Failed to create render target: {}",
-            result.error().message);
-        return;
-    }
-
-
     LOG_INFO("VisualizerRenderer: Initialized successfully ({}x{})", width, height);
     initialized_ = true;
 }
@@ -52,7 +46,7 @@ void VisualizerRenderer::cleanup() {
     recording_ = false;
     destroyPBOs();
     projectM_.shutdown();
-    renderTarget_.destroy();
+    captureTarget_.destroy();
     initialized_ = false;
 }
 
@@ -70,13 +64,7 @@ void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
     if (w == 0 || h == 0 || !projectM_.isInitialized())
         return;
 
-    if (recording_ && !renderTarget_.isValid())
-        return;
-
     projectM_.syncState();
-
-    u32 renderW = recording_ ? recordWidth_ : w;
-    u32 renderH = recording_ ? recordHeight_ : h;
 
     // Pop audio from lock-free queue (no mutex)
     if (audioQueue_) {
@@ -90,116 +78,35 @@ void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
         }
     }
 
-bool useFBO = recording_;
+    // projectM v4 has exactly one render destination: the default framebuffer.
+    // Its final texture copy is preceded by an unconditional
+    // glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0) carrying the upstream comment
+    // "ToDo: Allow external apps to provide a custom target framebuffer", so an
+    // FBO bound here is never written and holds nothing but its own clear
+    // colour. The picture therefore lands in framebuffer 0, the recorder reads
+    // it back out of that same buffer, and the live view stays untouched.
+    glViewport(x, y, w, h);
+    glScissor(x, y, w, h);
+    glEnable(GL_SCISSOR_TEST);
 
-if (useFBO) {
-if (renderTarget_.width() != renderW || renderTarget_.height() != renderH) {
-    if (auto result = renderTarget_.resize(renderW, renderH); !result) {
-        LOG_ERROR("VisualizerRenderer: FBO resize failed: {}", result.error().message);
-        return;
+    if (presetLoading_) {
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    } else {
+        projectM_.engine().resize(w, h);
+        projectM_.engine().render();
+        // Presets leave alpha undefined; force it opaque so neither the
+        // encoder nor the readback sees garbage in the fourth channel.
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     }
-    projectM_.engine().resize(renderW, renderH);
-}
 
-if (presetLoading_) {
-renderTarget_.bind();
-glClearColor(0, 0, 0, 1);
-glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-renderTarget_.unbind();
-} else {
-projectM_.engine().renderToTarget(renderTarget_);
-}
+    glDisable(GL_SCISSOR_TEST);
 
-if (recording_) {
-renderTarget_.bind();
-captureAsync();
-renderTarget_.unbind();
-}
-
-glViewport(x, y, w, h);
-GLuint tex = renderTarget_.texture();
-if (tex)
-drawTexture(tex, w, h);
-} else {
-glViewport(x, y, w, h);
-glScissor(x, y, w, h);
-glEnable(GL_SCISSOR_TEST);
-
-if (presetLoading_) {
-glClearColor(0, 0, 0, 1);
-glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-} else {
-projectM_.engine().resize(w, h);
-projectM_.engine().render();
-glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
-glClearColor(0, 0, 0, 1);
-glClear(GL_COLOR_BUFFER_BIT);
-glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-}
-glDisable(GL_SCISSOR_TEST);
-}
-}
-
-void VisualizerRenderer::initBlitResources() {
-    if (blitProgram_)
-        return;
-    blitProgram_ = std::make_unique<QOpenGLShaderProgram>();
-    const char* vertSource = R"(
-        #version 330 core
-        layout (location = 0) in vec2 position;
-        layout (location = 1) in vec2 texCoord;
-        out vec2 TexCoord;
-        void main() {
-            gl_Position = vec4(position, 0.0, 1.0);
-            TexCoord = texCoord;
-        }
-    )";
-    const char* fragSource = R"(
-        #version 330 core
-        in vec2 TexCoord;
-        out vec4 color;
-        uniform sampler2D tex;
-        void main() {
-            vec4 c = texture(tex, TexCoord);
-            color = vec4(c.rgb, 1.0);
-        }
-    )";
-    blitProgram_->addShaderFromSourceCode(QOpenGLShader::Vertex, vertSource);
-    blitProgram_->addShaderFromSourceCode(QOpenGLShader::Fragment, fragSource);
-    blitProgram_->link();
-
-    float vertices[] = {-1.0f, 1.0f,  0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f,
-                        1.0f,  -1.0f, 1.0f, 0.0f, -1.0f, 1.0f,  0.0f, 1.0f,
-                        1.0f,  -1.0f, 1.0f, 0.0f, 1.0f,  1.0f,  1.0f, 1.0f};
-
-    blitVao_.create();
-    blitVao_.bind();
-    blitVbo_.create();
-    blitVbo_.bind();
-    blitVbo_.allocate(vertices, sizeof(vertices));
-    blitProgram_->enableAttributeArray(0);
-    blitProgram_->setAttributeBuffer(0, GL_FLOAT, 0, 2, 4 * sizeof(float));
-    blitProgram_->enableAttributeArray(1);
-    blitProgram_->setAttributeBuffer(
-            1, GL_FLOAT, 2 * sizeof(float), 2, 4 * sizeof(float));
-    blitVbo_.release();
-    blitVao_.release();
-}
-
-void VisualizerRenderer::drawTexture(GLuint textureId, u32 w, u32 h) {
-    if (!blitProgram_ || !textureId)
-        return;
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_BLEND);
-    blitProgram_->bind();
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, textureId);
-    blitProgram_->setUniformValue("tex", 0);
-    blitVao_.bind();
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-    blitVao_.release();
-    glBindTexture(GL_TEXTURE_2D, 0);
-    blitProgram_->release();
+    if (recording_)
+        captureDefaultFramebuffer(w, h);
 }
 
 void VisualizerRenderer::setupPBOs() {
@@ -221,9 +128,38 @@ void VisualizerRenderer::destroyPBOs() {
     pbos_[0] = pbos_[1] = 0;
 }
 
-void VisualizerRenderer::captureAsync() {
-    u32 nextIndex = (pboIndex_ + 1) % 2;
-    u32 size = recordWidth_ * recordHeight_ * 4;
+// Reads the recorded frame out of framebuffer 0, where projectM put it. When
+// the recording resolution differs from the window's, the readback is scaled
+// first: projectM cannot render into an FBO, so a size change has to be a copy
+// taken after the fact rather than a different render target.
+void VisualizerRenderer::captureDefaultFramebuffer(u32 width, u32 height) {
+    if (recordWidth_ == 0 || recordHeight_ == 0 || width == 0 || height == 0)
+        return;
+
+    GLuint source = 0;
+    if (recordWidth_ != width || recordHeight_ != height) {
+        if (captureTarget_.width() != recordWidth_ ||
+            captureTarget_.height() != recordHeight_) {
+            const auto created =
+                    captureTarget_.create(recordWidth_, recordHeight_, false);
+            if (!created) {
+                LOG_ERROR("VisualizerRenderer: capture target failed: {}",
+                          created.error().message);
+                return;
+            }
+        }
+        captureTarget_.blitFromDefault(width, height, true);
+        source = captureTarget_.fbo();
+    }
+
+    captureAsync(source);
+}
+
+void VisualizerRenderer::captureAsync(GLuint readFramebuffer) {
+    const u32 nextIndex = (pboIndex_ + 1) % 2;
+    const u32 size = recordWidth_ * recordHeight_ * 4;
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[pboIndex_]);
     glReadPixels(0,
                  0,
@@ -234,10 +170,14 @@ void VisualizerRenderer::captureAsync() {
                  nullptr);
     if (pboAvailable_) {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[nextIndex]);
-        u8* ptr = (u8*)glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+        auto* ptr = static_cast<u8*>(glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY));
         if (ptr) {
             std::vector<u8> buffer(ptr, ptr + size);
             glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+            // glReadPixels hands back rows from the bottom of the framebuffer
+            // up; the encoder uploads them as-is, so the picture would land in
+            // the file upside down without this.
+            FrameGrabber::flipImage(buffer, recordWidth_, recordHeight_);
             frameCaptured.emitSignal(
                     std::move(buffer),
                     recordWidth_,
@@ -248,6 +188,7 @@ void VisualizerRenderer::captureAsync() {
         }
     }
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     pboIndex_ = nextIndex;
     pboAvailable_ = true;
 }
@@ -258,17 +199,33 @@ void VisualizerRenderer::setRecordingSize(u32 width, u32 height) {
 }
 
 void VisualizerRenderer::startRecording() {
-    if (!initialized_ || !projectM_.isInitialized() || !renderTarget_.isValid()) {
+    if (!initialized_ || !projectM_.isInitialized()) {
         LOG_WARN("VisualizerRenderer: Cannot start recording before initialization");
         return;
     }
-
-    if (auto result = renderTarget_.resize(recordWidth_, recordHeight_); !result) {
-        LOG_ERROR("VisualizerRenderer: Failed to resize recording target: {}",
-            result.error().message);
+    if (recordWidth_ == 0 || recordHeight_ == 0) {
+        LOG_ERROR("VisualizerRenderer: Refusing to record at {}x{}", recordWidth_,
+                  recordHeight_);
         return;
     }
-    projectM_.engine().resize(recordWidth_, recordHeight_);
+    if (recordWidth_ % 2 != 0 || recordHeight_ % 2 != 0) {
+        LOG_ERROR("VisualizerRenderer: Refusing to record at odd resolution "
+                  "{}x{}; chroma-subsampled formats need even dimensions",
+                  recordWidth_, recordHeight_);
+        return;
+    }
+
+    // The encoder stamps presentation timestamps from its own frame counter at
+    // record fps, and the renderer produces frames at visualizer fps. Any
+    // disagreement silently retimes the finished file, so say so loudly rather
+    // than writing a video that runs at the wrong speed.
+    const u32 recordFps = CONFIG.recording().video.fps;
+    if (recordFps != targetFps_) {
+        LOG_WARN("VisualizerRenderer: recording {} fps at {}x{} but the visualizer "
+                 "renders {} fps; the encoded file will be retimed",
+                 recordFps, recordWidth_, recordHeight_, targetFps_);
+    }
+
     recording_ = true;
     setupPBOs();
 }
@@ -276,6 +233,7 @@ void VisualizerRenderer::startRecording() {
 void VisualizerRenderer::stopRecording() {
     recording_ = false;
     destroyPBOs();
+    captureTarget_.destroy();
 }
 
 } // namespace vc

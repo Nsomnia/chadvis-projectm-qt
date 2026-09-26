@@ -2,17 +2,20 @@
  * @file VisualizerRenderer.hpp
  * @brief OpenGL rendering logic for projectM.
  * @version 1.1.0
- * @last-edited 2026-03-29 12:00:00
+ * @last-edited 2026-08-26
  *
  * This file defines the VisualizerRenderer class which handles the low-level
- * OpenGL operations, including FBO management, PBO capture for recording,
- * and the bridge to the projectM library. It is decoupled from the Qt Window
- * system to allow for easier testing and potential off-screen rendering.
+ * OpenGL operations, including PBO capture for recording, and the bridge to
+ * the projectM library. It is decoupled from the Qt Window system to allow for
+ * easier testing and potential off-screen rendering.
  *
- * @section Dependencies
- * - projectM (via Bridge)
- * - Qt OpenGL (QOpenGLFunctions_3_3_Core)
- * - AudioQueue (lock-free SPSC)
+ * @section Destination
+ * projectM v4 draws its final image into the default framebuffer and nothing
+ * else: ProjectM.cpp binds framebuffer 0 for the closing texture copy and
+ * carries the upstream "ToDo: Allow external apps to provide a custom target
+ * framebuffer". Everything here therefore reads and writes framebuffer 0. An
+ * FBO exists on this class only to rescale a readback when the recording
+ * resolution differs from the window's.
  *
  * @section Patterns
  * - Renderer: Encapsulates all rendering commands.
@@ -23,21 +26,12 @@
 #include "projectm/Bridge.hpp"
 #include "util/Types.hpp"
 
-#include <QOpenGLBuffer>
 #include <QOpenGLFunctions_3_3_Core>
-#include <QOpenGLShaderProgram>
-#include <QOpenGLVertexArrayObject>
-#include <array>
 #include <memory>
 #include <vector>
 
 namespace vc {
 
-class AudioQueue;
-
-} // namespace vc
-
-namespace vc {
 class AudioQueue;
 
 } // namespace vc
@@ -56,7 +50,11 @@ public:
     void render(u32 x, u32 y, u32 width, u32 height, bool isExposed);
 
     void setAudioQueue(AudioQueue* queue) { audioQueue_ = queue; }
-AudioQueue* audioQueue() const { return audioQueue_; }
+    AudioQueue* audioQueue() const { return audioQueue_; }
+
+    // The rate the caller actually drives render() at. Feeds the per-frame
+    // audio batch size and the recording frame-rate guardrail.
+    void setTargetFps(u32 fps) { targetFps_ = fps; }
 
     // Recording
     void setRecordingSize(u32 width, u32 height);
@@ -74,28 +72,20 @@ AudioQueue* audioQueue() const { return audioQueue_; }
         return projectM_;
     }
 
-    RenderTarget& renderTarget() {
-        return renderTarget_;
-    }
-
-
     // Signals (proxied via parent window or custom)
     Signal<std::vector<u8>, u32, u32, i64> frameCaptured;
 
 private:
     void renderFrame(u32 x, u32 y, u32 w, u32 h);
-    void initBlitResources();
-    void drawTexture(GLuint textureId, u32 w, u32 h);
     void setupPBOs();
     void destroyPBOs();
-    void captureAsync();
+    void captureDefaultFramebuffer(u32 width, u32 height);
+    void captureAsync(GLuint readFramebuffer);
 
     pm::Bridge projectM_;
-    RenderTarget renderTarget_;
-
-    std::unique_ptr<QOpenGLShaderProgram> blitProgram_;
-    QOpenGLVertexArrayObject blitVao_;
-    QOpenGLBuffer blitVbo_;
+    // Readback scaling target only, created lazily when the recording
+    // resolution differs from the window's. projectM never draws into it.
+    RenderTarget captureTarget_;
 
     bool recording_{false};
     u32 recordWidth_{1920};

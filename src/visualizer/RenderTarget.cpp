@@ -153,63 +153,26 @@ void RenderTarget::unbind() {
     this->glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void RenderTarget::bindDefault() {
-    auto* ctx = QOpenGLContext::currentContext();
-    if (ctx && ctx->functions()) {
-        ctx->functions()->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-}
-
-void RenderTarget::readPixels(void* data, GLenum format, GLenum type) {
+void RenderTarget::blitFromDefault(u32 sourceWidth, u32 sourceHeight, bool linear) {
     if (!this->initializeOpenGLFunctions())
         return;
-    this->glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo_);
-    this->glReadPixels(0, 0, width_, height_, format, type, data);
+
     this->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-}
-
-void RenderTarget::blitTo(RenderTarget& other, bool linear) {
-    if (!this->initializeOpenGLFunctions())
-        return;
-    this->glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo_);
-    this->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, other.fbo_);
+    this->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo_);
 
     this->glBlitFramebuffer(0,
                             0,
+                            sourceWidth,
+                            sourceHeight,
+                            0,
+                            0,
                             width_,
                             height_,
-                            0,
-                            0,
-                            other.width_,
-                            other.height_,
                             GL_COLOR_BUFFER_BIT,
                             linear ? GL_LINEAR : GL_NEAREST);
 
     this->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     this->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-}
-
-void RenderTarget::blitToScreen(u32 screenWidth,
-                                u32 screenHeight,
-                                bool linear,
-                                GLuint targetFbo) {
-    if (!this->initializeOpenGLFunctions())
-        return;
-    this->glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo_);
-    this->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, targetFbo);
-
-    this->glBlitFramebuffer(0,
-                            0,
-                            width_,
-                            height_,
-                            0,
-                            0,
-                            screenWidth,
-                            screenHeight,
-                            GL_COLOR_BUFFER_BIT,
-                            linear ? GL_LINEAR : GL_NEAREST);
-
-    this->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 }
 
 } // namespace vc

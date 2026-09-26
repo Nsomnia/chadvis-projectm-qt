@@ -65,14 +65,6 @@ void Engine::render() {
         projectm_opengl_render_frame(handle_);
 }
 
-void Engine::renderToTarget(RenderTarget& target) {
-    if (!handle_)
-        return;
-    target.bind();
-    projectm_opengl_render_frame(handle_);
-    target.unbind();
-}
-
 void Engine::addPCMData(const f32* data, u32 samples, u32 channels) {
     if (handle_)
         projectm_pcm_add_float(handle_,

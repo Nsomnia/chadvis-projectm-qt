@@ -8,6 +8,8 @@
 #include "audio/AudioEngine.hpp"
 #include "qml_bridge/BridgeRegistration.hpp"
 
+int runTestProjectMFramebuffer(int argc, char** argv);
+
 class TestQmlStartup : public QObject
 {
     Q_OBJECT
@@ -44,8 +46,21 @@ private slots:
 int main(int argc, char* argv[])
 {
     QGuiApplication app(argc, argv);
+
+    int status = 0;
+    // Selecting test functions on the command line (as the GL-only ctest entry
+    // does) must not be replayed against a suite that does not have them, or
+    // QTest fails the run with "Function not found" in the other class.
+    if (argc > 1) {
+        status |= runTestProjectMFramebuffer(argc, argv);
+        return status;
+    }
+
+    status |= runTestProjectMFramebuffer(argc, argv);
+
     TestQmlStartup test;
-    return QTest::qExec(&test, argc, argv);
+    status |= QTest::qExec(&test, argc, argv);
+    return status;
 }
 
 #include "test_main.moc"

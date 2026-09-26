@@ -4,6 +4,7 @@
 #include "audio/AudioQueue.hpp"
 #include "core/Config.hpp"
 #include "recorder/EncoderSettings.hpp"
+#include "recorder/FrameGrabber.hpp"
 #include "recorder/VideoRecorderCore.hpp"
 
 #include <array>
@@ -46,6 +47,54 @@ class TestRecorder : public QObject {
     Q_OBJECT
 
 private slots:
+    // glReadPixels hands rows over bottom-up and the encoder uploads them in
+    // the order they arrive, so this row reversal is the whole reason an
+    // encoded frame is not upside down. Pinned here because it is a one-line
+    // routine that is trivially "optimized" into nothing.
+    void flipImageReversesRows() {
+        constexpr u32 width = 3;
+        constexpr u32 height = 4;
+        std::vector<u8> pixels(static_cast<usize>(width) * height * 4);
+        for (u32 y = 0; y < height; ++y) {
+            for (u32 x = 0; x < width; ++x) {
+                pixels[(y * width + x) * 4] = static_cast<u8>(y + 1);
+            }
+        }
+
+        FrameGrabber::flipImage(pixels, width, height);
+
+        for (u32 y = 0; y < height; ++y) {
+            for (u32 x = 0; x < width; ++x) {
+                QCOMPARE(pixels[(y * width + x) * 4],
+                         static_cast<u8>(height - y));
+            }
+        }
+    }
+
+    void flipImageLeavesUndersizedBuffersAlone() {
+        // A short buffer would read past its end; the guard is what keeps a
+        // malformed frame from turning into memory corruption.
+        std::vector<u8> pixels(8, 7);
+        FrameGrabber::flipImage(pixels, 64, 64);
+        QCOMPARE(pixels.size(), static_cast<usize>(8));
+        QCOMPARE(pixels.front(), static_cast<u8>(7));
+        QCOMPARE(pixels.back(), static_cast<u8>(7));
+    }
+
+    void flipImageIsItsOwnInverse() {
+        constexpr u32 width = 5;
+        constexpr u32 height = 7;
+        std::vector<u8> original(static_cast<usize>(width) * height * 4);
+        for (usize i = 0; i < original.size(); ++i)
+            original[i] = static_cast<u8>((i * 31) % 251);
+
+        std::vector<u8> pixels = original;
+        FrameGrabber::flipImage(pixels, width, height);
+        QVERIFY(pixels != original);
+        FrameGrabber::flipImage(pixels, width, height);
+        QCOMPARE(pixels, original);
+    }
+
     void frameSubmissionsReachEncoder() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

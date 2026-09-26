@@ -51,10 +51,6 @@ public:
         return renderer_->projectM();
     }
 
-    RenderTarget& renderTarget() {
-        return renderer_->renderTarget();
-    }
-
     void loadPresetFromManager();
     void updateSettings();
 

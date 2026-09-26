@@ -1,6 +1,9 @@
 #pragma once
-// RenderTarget.hpp - OpenGL framebuffer management
-// Because rendering to a texture shouldn't require a PhD
+// RenderTarget.hpp - OpenGL framebuffer object management
+//
+// projectM v4 cannot draw into a framebuffer object: it binds framebuffer 0 for
+// its closing texture copy, so an FBO is a *readback* destination here, never a
+// render target. The only current user is VisualizerRenderer's capture scaling.
 
 #include <QOpenGLFunctions_3_3_Core>
 #include "util/Result.hpp"
@@ -31,7 +34,6 @@ public:
     // Binding
     void bind();
     void unbind();
-    static void bindDefault();
 
     // Access
     GLuint fbo() const {
@@ -53,17 +55,10 @@ public:
         return fbo_ != 0;
     }
 
-    // Read pixels
-    void readPixels(void* data,
-                    GLenum format = GL_RGBA,
-                    GLenum type = GL_UNSIGNED_BYTE);
-
-    // Blit to another target
-    void blitTo(RenderTarget& other, bool linear = true);
-    void blitToScreen(u32 screenWidth,
-                      u32 screenHeight,
-                      bool linear = true,
-                      GLuint targetFbo = 0);
+    // Scale the default framebuffer's `sourceWidth` x `sourceHeight` region
+    // into this target. Used to resize a framebuffer-0 readback, which is the
+    // only way to change resolution once projectM has drawn.
+    void blitFromDefault(u32 sourceWidth, u32 sourceHeight, bool linear = true);
 
 private:
     GLuint fbo_{0};
@@ -72,20 +67,6 @@ private:
     u32 width_{0};
     u32 height_{0};
     bool hasDepth_{false};
-};
-
-// RAII bind guard
-class RenderTargetGuard {
-public:
-    explicit RenderTargetGuard(RenderTarget& target) : target_(target) {
-        target_.bind();
-    }
-    ~RenderTargetGuard() {
-        target_.unbind();
-    }
-
-private:
-    RenderTarget& target_;
 };
 
 } // namespace vc

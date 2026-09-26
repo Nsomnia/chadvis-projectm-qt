@@ -10,9 +10,7 @@ namespace vc {
 
 VideoRecorderThread::VideoRecorderThread(VideoRecorder& parent,
                                          const EncoderSettings& settings)
-    : parent_(parent), settings_(settings) {
-    frameGrabber_.setSize(settings.video.width, settings.video.height);
-}
+    : parent_(parent), settings_(settings) {}
 
 VideoRecorderThread::~VideoRecorderThread() {
     stop();

@@ -1,16 +1,17 @@
 #pragma once
-// FrameGrabber.hpp - OpenGL frame capture
-// Stealing pixels from the GPU like a pro
+// FrameGrabber.hpp - recorded frame queue
+//
+// The pixels themselves are produced by VisualizerRenderer, which reads them
+// out of framebuffer 0 where projectM draws. This class owns the ownership
+// hand-off to the encoder worker and the row-order convention that the encoder
+// expects, nothing else.
 
-#include <QOpenGLFunctions_3_3_Core>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <queue>
-#include <thread>
 #include <vector>
 #include "util/Types.hpp"
-#include "visualizer/RenderTarget.hpp"
 
 namespace vc {
 
@@ -22,22 +23,16 @@ struct GrabbedFrame {
     u32 frameNumber{0};
 };
 
-class FrameGrabber : protected QOpenGLFunctions_3_3_Core {
+class FrameGrabber {
 public:
     FrameGrabber();
     ~FrameGrabber();
 
-    // Configuration
-    void setSize(u32 width, u32 height);
-    void setFlipVertical(bool flip) {
-        flipVertical_ = flip;
-    }
-
-    // Grab frame from render target
-    void grab(RenderTarget& target, i64 timestamp);
-
-    // Grab from current framebuffer
-    void grabScreen(u32 width, u32 height, i64 timestamp);
+    // glReadPixels returns rows from the bottom of the framebuffer upwards.
+    // Every consumer of a frame here (the RGBA upload into libavcodec, QImage)
+    // wants top-down rows, so this flip is not optional: without it the encoded
+    // file plays upside down.
+    static void flipImage(std::vector<u8>& data, u32 width, u32 height);
 
     // Get next frame (blocking)
     bool getNextFrame(GrabbedFrame& frame, u32 timeoutMs = 100);
@@ -73,14 +68,6 @@ public:
     }
 
 private:
-    void flipImage(std::vector<u8>& data, u32 width, u32 height);
-    void flipImageGPU(std::vector<u8>& data, u32 width, u32 height);
-
-    u32 width_{1920};
-    u32 height_{1080};
-    bool flipVertical_{true}; // OpenGL is bottom-up
-    bool useGPUFlip_{true};   // Use GPU acceleration for flipping
-
     std::queue<GrabbedFrame> frameQueue_;
     mutable std::mutex queueMutex_;
     std::condition_variable queueCond_;

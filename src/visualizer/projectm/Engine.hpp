@@ -10,7 +10,6 @@
 #include <vector>
 #include "util/Result.hpp"
 #include "util/Types.hpp"
-#include "visualizer/RenderTarget.hpp"
 
 namespace fs = std::filesystem;
 
@@ -63,14 +62,13 @@ public:
     }
 
     /**
-     * @brief Render a single frame to the current OpenGL framebuffer.
+     * @brief Render a single frame.
+     *
+     * projectM v4 draws into the default framebuffer and nothing else: it binds
+     * framebuffer 0 for its closing texture copy, so binding a RenderTarget
+     * before this call has no effect on where the picture lands.
      */
     void render();
-
-    /**
-     * @brief Render to a specific RenderTarget.
-     */
-    void renderToTarget(RenderTarget& target);
 
     /**
      * @brief Add PCM audio data.
