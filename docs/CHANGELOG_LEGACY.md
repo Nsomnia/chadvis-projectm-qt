@@ -6,7 +6,13 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 
 ---
 
-## [Unreleased]
+## [1.1.0] - 2026-09-26
+
+> This block previously sat under a `## [Unreleased]` heading, which made it look
+> like pending work when it is the work already published as 1.1.0. The canonical,
+> current entry is [`../CHANGELOG.md`](../CHANGELOG.md); this file retains the
+> per-commit detail and a few older entries that predate the Suno pivot, which
+> the canonical changelog does not repeat.
 
 ### Documentation
 - **Current-tree startup smoke** *(2026-09-25)* — Launched the freshly rebuilt desktop binary; asynchronous restore began on its worker, Library/Explore refreshes coalesced without self-rejecting, and the exact binary reached both `QML window created successfully` and `Initialization complete`. The new offscreen integration test loads the real QML module, requires a visible/exposed `QQuickWindow` root, and verifies a non-null grabbed frame.
@@ -78,7 +84,7 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 - **Portable build wrapper** *(2026-09-24)* — `build.sh` now preserves the existing CMake configuration for no-argument incremental builds; `--rebuild`/`--clean` explicitly archive and rebuild, while `-h`/`--help` and invalid options use concise colored output.
 - **Dead Code Purge** *(2026-08-25)* — ~1,900 LOC of verified-dead code removed (LyricsRenderer module, VisualizerQFBO/VisualizerItem, 3 dead controllers, AsyncFrameGrabber, orphaned qss/icons, stub tests, misc unused members/types); all archived to `.backup_graveyard/deadcode_20260825_180116/`. test_PresetScanner wired into unit_tests.
 - **Documentation hub consolidation** *(2026-08-25; superseded 2026-09-24)* — Established a documentation hub, testing documentation, and the retained endpoint-discovery artifact. The Suno research hierarchy was later reduced to the canonical index/inventory/OAuth-gate/raw-provenance boundary.
-- **Codebase Audit (Phases 1–4)**: Full audit of ~19.3k LOC across 10 modules surfaced 24 issues, of which 18 were fixed across five phases for a net removal of **−894 LOC** (38 files changed). The per-issue checklist (#1–#24) and remaining Phase 5+ items are maintained in [`AGENTS.md`](AGENTS.md) under *Codebase Audit & Refactoring* — that file is the canonical source; consult `git log --oneline` for the corresponding implementation commits.
+- **Codebase Audit (Phases 1–4)**: Full audit of ~19.3k LOC across 10 modules surfaced 24 issues, of which 18 were fixed across five phases for a net removal of **−894 LOC** (38 files changed). The per-issue checklist (#1–#24) and remaining Phase 5+ items are maintained in [`AGENTS.md`](../AGENTS.md) under *Codebase Audit & Refactoring* — that file is the canonical source; consult `git log --oneline` for the corresponding implementation commits.
 
 - **QML Registration** *(2026-04-15)* — Macros added. Modernity intensifies.
 
@@ -96,7 +102,7 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 - **Suno Persistence** *(2026-02-02)* — Persistent cookies. Login once, visualize forever.
 - **Sidebar Navigation** *(2026-02-02)* — Tabs are so 2010. Icons are the future.
 
-### Fixed
+### Fixed (entries predating the Suno pivot)
 - **Visualizer Rendering** *(2026-04-15)* — Fixed a bug where it would clear to red. Red is for errors, not for visuals.
 - **WebEngine Compatibility** *(2026-02-02)* — Fixed some Qt6-specific breakage.
 - **Lyrics Export** *(2026-02-02)* — Now you can actually export your karaoke sessions to SRT/LRC/JSON.
@@ -131,8 +137,46 @@ All notable changes to ChadVis are tracked here. We follow [Keep a Changelog](ht
 - **Automated Suno Login**: No more manual cookie mining.
 - **Zsh-Native Build**: Because we value your time and our hardware.
 
+## [1.0.2-RC1] - 2026-01-11
+
+> Recovered from the abandoned `development` branch (`docs/changelogs/v1.0.x.md`)
+> during the 2026-09-26 branch-retirement review. This release and `[1.0.1]` had
+> no counterpart in the canonical changelog. The dates are the branch's original
+> ones and predate the version renumbering that later moved `[1.0.0]` to
+> 2026-01-27; entries are ordered by version, not by date.
+
+### Fixed
+- **Rendering**: Resolved "Black Screen" issue during recording with shader-based blit
+- **Stability**: Fixed infinite recording loop from `recordEntireSong` flag
+- **Stability**: Fixed `SIGSEGV` during shutdown with `std::jthread` migration
+- **Build**: Fixed `kissfft` fetch failure (git tag versioning)
+- **Build**: Fixed `build.zsh` misreporting valid commands as unknown
+
+### Added
+- **Features**: "Record Entire Song", "Restart Track on Start", "Stop at Track End"
+- **Features**: Multiple `texture_paths` in configuration
+- **Integration**: Native ProjectM v4 callbacks for preset sync
+- **Optimization**: `mold` linker, `sccache`/`ccache`, Unity Builds support
+- **DX**: `build.sh` wrapper and agent-readable logging
+
+## [1.0.1] - 2026-01-08
+
+> Recovered from the abandoned `development` branch alongside `[1.0.2-RC1]`; see
+> that section's note on version renumbering.
+
+### Fixed
+- **Memory Safety**: `SIGSEGV` in `VisualizerWindow::feedAudio` (mono/multi-channel upmixing)
+- **Stability**: Exit crash by reordering component destruction
+- **UI/UX**: "Stuck preset" bug after certain selection events
+- **UI/UX**: `MarqueeLabel` color inheritance and smooth looping
+
+### Added
+- **Navigation**: Preset Navigation History (100-item stack)
+- **Documentation**: Initialized `CHANGELOG.md`
+
 ## [1.0.0] - 2026-01-27
 
 ### 🐣 Added
 - **Initial Release**: The birth of a legend.
+- **Capabilities** *(from the retired branch's 1.0.0 entry, dated 2026-01-01)*: projectM v4 integration with Qt6, real-time audio analysis and visualization, FFmpeg-based video recording, text overlay engine, Suno AI integration.
 - **ProjectM + Suno + FFmpeg**: The unholy trinity of audio visualization.
