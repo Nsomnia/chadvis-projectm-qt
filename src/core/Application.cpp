@@ -29,6 +29,10 @@
 #include <cstdlib>
 #include <csignal>
 
+#ifndef CHADVIS_VERSION
+#define CHADVIS_VERSION "unknown"
+#endif
+
 namespace vc {
 
 Application* Application::instance_ = nullptr;
@@ -351,7 +355,7 @@ Result<void> Application::init(const AppOptions& opts) {
 	// Create Qt application
 	qapp_ = std::make_unique<QGuiApplication>(argc_, argv_);
 	qapp_->setApplicationName("ChadVis");
-	qapp_->setApplicationVersion("1.0.0");
+	qapp_->setApplicationVersion(QStringLiteral(CHADVIS_VERSION));
 	qapp_->setOrganizationName("ChadVis");
 	qapp_->setOrganizationDomain("github.com/chadvis-projectm-qt");
 

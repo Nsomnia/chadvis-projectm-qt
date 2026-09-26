@@ -36,7 +36,8 @@ This release finalizes the `v1.1.0-BLEEDING_EDGE` line and is the first version 
 
 ### Changed
 
-- `version.txt` is the single source of truth for the CMake project and CPack version.
+- `version.txt` is the single source of truth for the CMake project, application version, and CPack version; invalid values fail configuration.
+- Added the MIT `LICENSE` file referenced by the README/PKGBUILD and aligned the Arch package to `v1.1.0`.
 - PFFFT is pinned to the tested revision; declaration-only Suno fetch declarations and stale legacy API surfaces are removed.
 - Library search is explicitly local; the captured feed filter is not extended with unobserved `searchText` behavior.
 - Unpromoted Range resume and redirect following remain disabled until capture-backed.
