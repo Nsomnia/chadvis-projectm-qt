@@ -31,7 +31,7 @@ This file is the single backlog. Rules live in `AGENTS.md`; do not add work item
 
 ### Security & credentials
 - [~] **Native OAuth security** — target architecture is system browser plus an app-owned `127.0.0.1` loopback callback for Google/Facebook social login; the offline scaffold covers state/nonce/PKCE/transaction ownership. Outstanding: capture-backed proof of Clerk's loopback acceptance, plus session persistence/refresh and sign-out behavior, before the live handshake is trusted.
-- [!] **History scrubbing for committed PII** — real account identifiers, a display name, and a clip UUID with copyrighted lyrics were committed and pushed. The live tree is now clean, but 13 commits still carry the material across `main`, `origin/development`, `origin/legacy`, `origin/experiments/juce-refactor`, and tags `v1.0.0-RC1`/`v1.1.0`/`v1.1.0-BLEEDING_EDGE`. Needs an authorized `git filter-repo` pass and a force-push of every ref and tag. Treat the account identifiers as publicly disclosed and rotate the session regardless of token expiry.
+- [!] **History scrubbing for committed PII** — real account identifiers, a display name, and a clip UUID with copyrighted lyrics were committed and pushed. The live tree is now clean, but 13 commits still carry the material across `main`, `origin/legacy`, `origin/experiments/juce-refactor`, and tags `v1.0.0-RC1`/`v1.1.0`/`v1.1.0-BLEEDING_EDGE`. (`origin/development` was deleted once its unique non-PII changelog content was recovered into `docs/CHANGELOG_LEGACY.md`; it no longer carries the material.) Needs an authorized `git filter-repo` pass and a force-push of every ref and tag. Treat the account identifiers as publicly disclosed and rotate the session regardless of token expiry.
 - [x] **Credential storage audit** — tokens in the OS keychain via `CredentialStore` (macOS Security.framework, atomic 0600 fallback); TOML→keychain migration on first init; secrets never written to TOML or logs.
 - [x] **SQL injection risk in `search_db.sh`** — queries use SQLite `.param` binding.
 - [x] **Raw capture removed from the tree** — `docs/suno_api/raw/endpoints_sniffed.list` (721 KB) held DSN keys in userinfo position, a real clip UUID with copyrighted lyrics, and a user upload artifact. Archived out of the repository; the sanitized recon is the only retained raw artifact. The graveyard was purged (546 MB, 0 tracked files).
@@ -67,7 +67,7 @@ This file is the single backlog. Rules live in `AGENTS.md`; do not add work item
 - [x] `UIConfig` expanded with `expandedPanel`, `sidebarWidth`, `drawerOpen`; parsed, wired bidirectionally, and added to `default.toml`
 - [x] Config parser defaults derive from default-constructed `ConfigData` (single source of truth)
 - [x] `Config::save()` errors log actionable failures at their call sites
-- [x] Removed ~20 stale cmake modules; `cmake/` holds only `CPM.cmake` and `FindProjectM4.cmake`
+- [x] Removed ~20 stale cmake modules; `cmake/` now holds 7 modules in active use — `CPM.cmake`, `Compiler.cmake`, `Dependencies.cmake`, `FindProjectM4.cmake`, `Install.cmake`, `Sources.cmake`, `TargetSetup.cmake`. All are included by the top-level `CMakeLists.txt`; do not delete them.
 - [x] `test_PresetScanner` wired into `unit_tests`; `test_projectm_render` stub archived
 
 ### Audio engine
@@ -93,11 +93,11 @@ This file is the single backlog. Rules live in `AGENTS.md`; do not add work item
 - [ ] **Inconsistent namespace usage** — `vc::ui`, `vc`, and top-level all appear; standardize.
 - [ ] **Missing `<cmath>` include in `LyricsRenderer`** — uses `std::sin`/`std::cos` without it.
 - [ ] **Dangling pointers from `getContextLines`/`getUpcomingLines`** — the maps were made owned, so verify no raw-pointer variant survives; the original finding is partly resolved.
-- [ ] **`PlaylistItem::valid` never read** — dead state.
-- [ ] **`PresetBridge::cachedPresets_` never used** — populated but never read.
+- [x] **`PlaylistItem::valid` never read** — field is gone; `struct PlaylistItem` in `src/audio/Playlist.hpp:14-22` carries no `valid` member.
+- [x] **`PresetBridge::cachedPresets_` never used** — removed; `grep -rn cachedPresets_ src/` returns 0 hits.
 - [ ] **`OverlayElementConfig` animation fields unused** — declared, never applied.
 - [ ] **Unused includes** — five or more files include types they never reference.
-- [ ] **`GLIncludes.hpp` empty stub**, `setupStyle()`/`setupQmlStyle()` are no-ops, `CircularBuffer::getSpans()` unused, `AudioEngine.hpp` includes `projectM.h` without using it.
+- [x] **Stale-header and unused-declaration purge** — `GLIncludes.hpp` no longer exists in the tree, `setupStyle()`/`setupQmlStyle()` are gone (0 hits repo-wide), `CircularBuffer::getSpans()` is gone, and `AudioEngine.hpp` carries no `projectM.h` include.
 
 ### Build system
 - [ ] **Default build type is Debug** — should default to `ReleaseWithDebInfo` for distribution.

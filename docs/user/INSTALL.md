@@ -2,7 +2,7 @@
 
 If you're reading this, you've likely already mastered the art of the CLI. But just in case you're having a "Linus Tech Tips" moment where you almost delete your DE, follow these steps.
 
-The build wrapper declares support for **macOS and Linux** (`build.sh:2`) and runs unmodified on both. Linux instructions come first because Arch is the stated primary development target (`AGENTS.md:342`). macOS is not an afterthought bolted on later — it is fully supported, `CHADVIS_QT_PATH` exists specifically for it, and a Mac is where the most recent verified build of this tree lives.
+The build wrapper declares support for **macOS and Linux** (`build.sh:2`) and runs unmodified on both. Linux instructions come first because Arch is the stated primary development target (the **Code style** rule in [`AGENTS.md`](../../AGENTS.md)). macOS is not an afterthought bolted on later — it is fully supported, `CHADVIS_QT_PATH` exists specifically for it, and a Mac is where the most recent verified build of this tree lives.
 
 ---
 
