@@ -53,10 +53,18 @@ bool PresetManager::scanAsync(const fs::path& directory, bool recursive) {
         std::lock_guard lock(mutex_);
         if (stopping_) {
             LOG_WARN("PresetManager: ignoring a preset scan request during shutdown");
-        } else if (scanRequested_ || scanRunning_) {
+        } else if (scanRequested_ || scanRunning_ || scanPublishing_) {
             // Coalesce. Latest request wins and at most ONE follow-up stays
             // queued, so a QML rescan button (or a burst of them) cannot pile up
             // redundant walks or multiply the listChanged notification storm.
+            //
+            // scanPublishing_ belongs in this test, not just in scanInFlight():
+            // between the worker posting its result and the publishing thread
+            // applying it, scanRunning_ is already false, so without this term a
+            // request arriving in that gap would start a second concurrent walk
+            // and break the one-walk-at-a-time guarantee. That window is exactly
+            // where a burst of rescan calls lands, because no event loop has run
+            // to drain the queued hand-off yet.
             pendingScan_ = std::move(request);
             scanRequested_ = true;
         } else {
@@ -83,7 +91,7 @@ bool PresetManager::rescanAsync() {
 
 bool PresetManager::scanInFlight() const {
     std::lock_guard lock(mutex_);
-    return scanRequested_ || scanRunning_;
+    return scanRequested_ || scanRunning_ || scanPublishing_;
 }
 
 void PresetManager::waitForScan() {
@@ -134,6 +142,11 @@ void PresetManager::deliverScanResult(ScanOutcome&& outcome) {
         if (stopping_) {
             // The destructor is joining us. It also stops the result from being
             // posted at a publish context that may be going away.
+            //
+            // Note this leaves scanRunning_ set: the result will never be
+            // applied, so nothing clears it. That is deliberate and safe -- the
+            // manager is being destroyed, scanInFlight() is only queried by live
+            // callers, and stopScanWorker's own predicate uses stopping_ instead.
             return;
         }
         context = publishContext_;
@@ -149,18 +162,37 @@ void PresetManager::deliverScanResult(ScanOutcome&& outcome) {
                        },
                        Qt::QueuedConnection)) {
         LOG_ERROR("PresetManager: could not queue the preset scan result onto its publishing context");
+        // Nothing will ever call applyScanOutcome, so scanPublishing_ must not be
+        // set -- otherwise every later request would coalesce into a no-op and
+        // the manager would look permanently busy.
+        finishPostedScan(/*publishing=*/false);
+    } else {
+        // Cleared only now, after the hand-off exists, so waitForScan() cannot
+        // return before the publishing event has been posted. scanPublishing_
+        // stays set until the publishing thread applies the result, so a request
+        // arriving in the gap coalesces instead of starting a second walk.
+        finishPostedScan(/*publishing=*/true);
     }
+}
 
-    // Cleared only now, after the hand-off exists, so waitForScan() cannot
-    // return before the publishing event has been posted.
+void PresetManager::finishPostedScan(bool publishing) {
     {
         std::lock_guard lock(mutex_);
         scanRunning_ = false;
+        scanPublishing_ = publishing;
     }
     scanSignal_.notify_all();
 }
 
 void PresetManager::applyScanOutcome(ScanOutcome&& outcome) {
+    // The publish window is now over, so the manager is no longer busy. Doing it
+    // here, on the publishing thread, is what makes the coalescing window
+    // airtight: scanInFlight() has been true continuously from the request
+    // through the walk to this point, so no rescan could have started a second
+    // concurrent walk. Releasing before the emits also means a slot that
+    // resyncs during listChanged correctly queues a fresh walk.
+    finishPostedScan(/*publishing=*/false);
+
     if (!outcome.error.empty()) {
         // Keep the previously published generation: a failed walk must not
         // empty a working library.

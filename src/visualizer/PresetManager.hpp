@@ -220,6 +220,7 @@ private:
     void scanWorkerMain(StopToken stopToken);
     void deliverScanResult(ScanOutcome&& outcome);
     void applyScanOutcome(ScanOutcome&& outcome);
+    void finishPostedScan(bool publishing);
     void publishGeneration(PresetList&& scanned);
     void applyPendingSelection();
     void stopScanWorker();
@@ -255,6 +256,19 @@ private:
     bool stopping_{false};
     bool scanRequested_{false};
     bool scanRunning_{false};
+    // True between the worker posting its result to the publish context's event
+    // loop and the publishing thread actually applying it. A two-flag design
+    // (requested/running) leaves a window there in which neither is set, so a
+    // rescan arriving in that window would start a second concurrent walk
+    // instead of coalescing -- silently breaking the "one walk plus one
+    // follow-up" guarantee. This third state spans the window and is cleared by
+    // applyScanOutcome, so coalescing holds from request to publication.
+    //
+    // It deliberately does NOT gate waitForScan(): that returns once the walk is
+    // done and its result is posted, which is what lets a caller block on it and
+    // then spin an event loop to apply the result. Gating the wait on this flag
+    // would deadlock such a caller.
+    bool scanPublishing_{false};
     ScanRequest pendingScan_;
 };
 
