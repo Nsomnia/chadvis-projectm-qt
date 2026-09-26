@@ -179,7 +179,7 @@
 - [ ] **SunoBridge onLibraryUpdated() manual QVariantMap** — Hand-built map should use shared conversion function.
 - [ ] **Duration type unclear definition** — Multiple duration representations; unify to strong typedef.
 - [ ] **Application::printHelp 80+ lines hardcoded** — Hardcoded help text; generate from CLI table or metadata.
-- [ ] **CHANGELOG multiple Unreleased sections** — Duplicate `[Unreleased]` headers; consolidate into single unreleased section.
+- [x] **CHANGELOG multiple Unreleased sections** — canonical root `CHANGELOG.md` now has one current release section and one `[Unreleased]` section; oversized history lives in `docs/CHANGELOG_LEGACY.md`.
 - [ ] **loadM3U appends not replaces** — Should clear playlist before loading; currently accumulates.
 - [ ] **SQLite FTS5 not used** — Full-text search available but not enabled; add FTS5 virtual table for lyrics/search.
 
@@ -281,7 +281,7 @@
 - [ ] **Any tests useful for agentic workflows** — Industry standard or health-check tests for development cycles.
 
 ### Documentation
-- [ ] **CHANGELOG.md maintenance** — Keep root CHANGELOG.md and docs/ CHANGELOGs up-to-date per AGENTS.md guidelines.
+- [x] **CHANGELOG.md maintenance** — canonical release notes, legacy archive, and references are current for the 1.1.0 release.
 
 ---
 

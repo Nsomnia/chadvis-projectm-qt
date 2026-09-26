@@ -61,4 +61,4 @@
 5. Real recording review, deterministic export, scene/keyframes, and batch automation.
 
 ## Verification bar
-A task is not complete from a stale binary, declaration, scan string, or historical commit. Verify the current source with a fresh configure/build, relevant tests, focused lint/format checks, and a real runtime path; update `CHANGELOG_CURRENT.md` with observed results.
+A task is not complete from a stale binary, declaration, scan string, or historical commit. Verify the current source with a fresh configure/build, relevant tests, focused lint/format checks, and a real runtime path; update `CHANGELOG.md` with observed results.
