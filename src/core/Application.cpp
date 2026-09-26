@@ -387,9 +387,23 @@ Result<void> Application::init(const AppOptions& opts) {
 		LOG_DEBUG("Initializing preset manager for QML...");
 		presetManager_ = std::make_unique<PresetManager>();
 		if (auto presetDir = CONFIG.visualizer().presetPath; !presetDir.empty()) {
-			if (auto result = presetManager_->scan(presetDir, true); !result) {
-				LOG_WARN("Failed to scan presets: {}", result.error().message);
-			}
+			// Scanning a real preset library is thousands of stat() calls plus a
+			// parse per file, which is far too slow to run before the window even
+			// exists. scanAsync() walks the tree on the manager's scan worker and
+			// publishes the finished list back on a GUI thread.
+			//
+			// qapp_ (created above) is the publish context: it is a QObject that
+			// already lives in the main thread, and it outlives presetManager_ in
+			// ~Application(), so the worker's queued hand-off can never target a
+			// destroyed receiver. The result is delivered by a queued event, and
+			// init() never spins an event loop, so nothing is published until
+			// exec() starts — long after registerBridges() has attached
+			// PresetBridge and main.qml has read the (empty) list once.
+			presetManager_->setPublishContext(qapp_.get());
+			presetManager_->scanFailed.connect([](const std::string& message) {
+				LOG_WARN("Failed to scan presets: {}", message);
+			});
+			presetManager_->scanAsync(presetDir, true);
 		}
 
 		LOG_DEBUG("Creating VisualizerWindow for QML embedding...");

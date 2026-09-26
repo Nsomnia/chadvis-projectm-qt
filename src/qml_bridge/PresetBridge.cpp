@@ -10,31 +10,57 @@ vc::PresetManager* PresetBridge::s_manager = nullptr;
 PresetBridge::PresetBridge(QObject* parent)
     : QObject(parent)
 {
+    attachManager();
+}
+
+void PresetBridge::attachManager()
+{
+    if (!s_manager || signalsAttached_)
+        return;
+    signalsAttached_ = true;
+
+    // A manager scan publishes its result by queuing onto this bridge, so the
+    // hand-off always lands on the GUI thread QML reads from.
+    s_manager->setPublishContext(this);
+
+    // The manager's vc::Signal connections are made HERE rather than from
+    // registerBridges(): QML instantiates this singleton lazily, so the
+    // registration call happens before there is a bridge to connect to, and
+    // with nothing connected a finished scan never reaches QML — the list would
+    // stay empty, because main.qml binds the list once at load time, long
+    // before the async startup scan publishes. This is also why the wiring
+    // lives in a guard: connecting twice would emit presetsChanged twice per
+    // publication and double the QVariantList rebuilds.
+    auto* self = this;
+    s_manager->presetChanged.connect([self](const vc::PresetInfo* p) {
+        self->onPresetChanged(p);
+    });
+    s_manager->listChanged.connect([self]() {
+        self->onListChanged();
+    });
 }
 
 void PresetBridge::setPresetManager(vc::PresetManager* manager)
 {
     s_manager = manager;
-}
-
-void PresetBridge::connectSignals()
-{
-    if (auto* bridge = instance(); s_manager && bridge) {
-        s_manager->presetChanged.connect([s = bridge](const vc::PresetInfo* p) {
-            s->onPresetChanged(p);
-        });
-        s_manager->listChanged.connect([s = bridge]() {
-            s->onListChanged();
-        });
-    }
+    // The singleton may already exist if something touched it before the
+    // manager was registered; otherwise its constructor attaches on creation.
+    if (auto* bridge = instance(); bridge)
+        bridge->attachManager();
 }
 
 QVariantList PresetBridge::presets() const
 {
     if (!s_manager) return {};
 
+    // One shared handle for the whole loop: it pins the generation the pointers
+    // below point into, so a rescan publishing a new generation mid-build can
+    // never dangle them (and no lock is held while the QVariantMaps are built).
+    const vc::PresetManager::Snapshot generation = s_manager->allPresets();
+
     QVariantList result;
-    for (const auto& preset : s_manager->allPresets()) {
+    result.reserve(static_cast<qsizetype>(generation->size()));
+    for (const auto& preset : *generation) {
         result.append(presetToVariant(preset));
     }
     return result;
@@ -44,22 +70,16 @@ QVariantList PresetBridge::activePresets() const
 {
     if (!s_manager) return {};
 
-    QVariantList result;
-    for (const auto* preset : s_manager->activePresets()) {
-        result.append(presetToVariant(*preset));
-    }
-    return result;
+    const vc::PresetManager::PresetView active = s_manager->activePresets();
+    return toVariantList(active);
 }
 
 QVariantList PresetBridge::favoritePresets() const
 {
     if (!s_manager) return {};
 
-    QVariantList result;
-    for (const auto* preset : s_manager->favoritePresets()) {
-        result.append(presetToVariant(*preset));
-    }
-    return result;
+    const vc::PresetManager::PresetView favorites = s_manager->favoritePresets();
+    return toVariantList(favorites);
 }
 
 QStringList PresetBridge::categories() const
@@ -174,10 +194,12 @@ void PresetBridge::setRating(int index, int rating)
 {
     if (!s_manager || index < 0 || rating < 1 || rating > 5) return;
 
-    const auto& presets = s_manager->allPresets();
-    if (static_cast<size_t>(index) < presets.size()) {
+    // Pin the generation for the duration of the lookup; the index means nothing
+    // without it once a rescan publishes a new list.
+    const vc::PresetManager::Snapshot presets = s_manager->allPresets();
+    if (static_cast<std::size_t>(index) < presets->size()) {
         vc::RatingManager::instance().setRating(
-            presets[index].name, static_cast<int>(rating));
+            (*presets)[index].name, static_cast<int>(rating));
         emit presetsChanged();
     }
 }
@@ -191,24 +213,28 @@ QVariantList PresetBridge::filteredPresets() const
 {
     if (!s_manager) return {};
 
-    std::vector<const vc::PresetInfo*> filtered;
+    // One view, whatever the filter: whichever manager query answers, the
+    // result pins the generation its pointers borrow from.
+    vc::PresetManager::PresetView filtered;
 
     if (!searchQuery_.isEmpty()) {
         filtered = s_manager->search(searchQuery_.toStdString());
     } else if (selectedCategory_ == QLatin1String("__favorites__")) {
-        for (const auto* p : s_manager->favoritePresets()) {
-            filtered.push_back(p);
-        }
+        filtered = s_manager->favoritePresets();
     } else if (!selectedCategory_.isEmpty()) {
         filtered = s_manager->byCategory(selectedCategory_.toStdString());
     } else {
-        for (const auto* p : s_manager->activePresets()) {
-            filtered.push_back(p);
-        }
+        filtered = s_manager->activePresets();
     }
 
+    return toVariantList(filtered);
+}
+
+QVariantList PresetBridge::toVariantList(const vc::PresetManager::PresetView& view) const
+{
     QVariantList result;
-    for (const auto* preset : filtered) {
+    result.reserve(static_cast<qsizetype>(view.items.size()));
+    for (const auto* preset : view.items) {
         result.append(presetToVariant(*preset));
     }
     return result;
@@ -216,9 +242,16 @@ QVariantList PresetBridge::filteredPresets() const
 
 void PresetBridge::rescan()
 {
-    if (s_manager) {
-        s_manager->rescan();
-    }
+    if (!s_manager) return;
+
+    // Off-thread. The directory walk is thousands of stat() calls on a real
+    // library, far too slow for the GUI thread that invoked us, so it runs on
+    // the manager's scan worker and the finished list is published back here as
+    // one listChanged. A request that arrives while a scan is in flight is
+    // coalesced into a single follow-up, so holding down the rescan button
+    // cannot queue a pile of walks or multiply the QVariantList rebuilds that
+    // presetsChanged triggers.
+    s_manager->rescanAsync();
 }
 
 void PresetBridge::onPresetChanged(const vc::PresetInfo* preset)

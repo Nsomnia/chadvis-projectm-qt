@@ -6,11 +6,11 @@
 #include <QVariantMap>
 #include <QStringList>
 #include "visualizer/PresetData.hpp"
+// The full PresetManager definition, not a forward declaration: the private read
+// helpers below name PresetManager::PresetView, the handle that keeps a query
+// result's pointers valid while the QML-facing QVariantMaps are built from them.
+#include "visualizer/PresetManager.hpp"
 #include "QmlSingletonBridge.hpp"
-
-namespace vc {
-class PresetManager;
-}
 
 namespace qml_bridge {
 
@@ -40,7 +40,6 @@ public:
     ~PresetBridge() override = default;
 
     static void setPresetManager(vc::PresetManager* manager);
-    static void connectSignals();
 
     QVariantList presets() const;
     QVariantList activePresets() const;
@@ -80,10 +79,20 @@ private slots:
     void onListChanged();
 
 private:
+    /// Binds this bridge to the registered manager: it becomes the scan-result
+    /// publish context and subscribes to the manager's signals. Idempotent, and
+    /// driven from the constructor because QML creates this singleton lazily.
+    void attachManager();
+
     QVariantMap presetToVariant(const vc::PresetInfo& info) const;
+    /// Copies a manager query result into the value-only form QML consumes.
+    /// QML never sees a `const PresetInfo*`, so nothing on the QML side can
+    /// outlive the generation the view pins.
+    QVariantList toVariantList(const vc::PresetManager::PresetView& view) const;
 
     static vc::PresetManager* s_manager;
 
+    bool signalsAttached_{false};
     QString searchQuery_;
     QString selectedCategory_;
 };
