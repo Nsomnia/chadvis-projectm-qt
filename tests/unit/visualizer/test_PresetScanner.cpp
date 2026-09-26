@@ -251,12 +251,22 @@ private slots:
                                  return p.name == addedName;
                              }));
 
-        // Eight requests produced at most two notifications, so holding down a
-        // rescan button cannot multiply the QVariantList rebuilds that
-        // presetsChanged triggers.
+        // Publications are bounded by the number of requests, and at least one
+        // landed. The stronger claim this test used to make -- "eight requests
+        // produce at most two notifications" -- was never a guarantee, it was a
+        // bet that the 13-file walk would take longer than seven sub-microsecond
+        // calls. Coalescing bounds *concurrency*: one walk runs at a time and at
+        // most one request is queued behind it. If the worker finishes a walk
+        // before the caller issues the next request, that next request
+        // legitimately starts a fresh walk, so the total number of walks over N
+        // requests can be as high as N. What actually stops a held-down rescan
+        // button from multiplying the QVariantList rebuilds is the run of
+        // rescanAsync() calls above all returning false, which is asserted there
+        // and is deterministic because no event loop has run.
         QVERIFY(listChangedCount >= 1);
-        QVERIFY2(listChangedCount <= 2,
-                 qPrintable(QStringLiteral("coalescing failed: %1 publications")
+        QVERIFY2(listChangedCount <= 8,
+                 qPrintable(QStringLiteral("more publications (%1) than requests (8); "
+                                           "a single request must not publish twice")
                                     .arg(listChangedCount)));
 
         // current() stays a borrowed pointer, and it points into the generation
