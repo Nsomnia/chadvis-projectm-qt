@@ -176,7 +176,7 @@ This file is the single backlog. Rules live in `AGENTS.md`; do not add work item
 - [ ] "Modern Visualizer Overlay" with reactive text and graphics.
 - [ ] "Karaoke Master" mode with custom aesthetic overrides.
 - [ ] `std::mdspan` for FFT; concepts/constraints on unconstrained templates; `std::array` for `CircularBuffer`; configurable shuffle seed for deterministic tests; `std::variant` for lyric sources and CLI args.
-- [ ] `Application::printVersion()` hardcodes `1.0.0` while `version.txt` is the source of truth.
+- [x] `Application::printVersion()` hardcoded `1.0.0` while `version.txt` is the source of truth — the banner now consumes the `CHADVIS_VERSION` build definition (forwarded from `version.txt` to `project_lib` and the executable) via `vc::Cli::versionBanner()`, and `tests/unit/core/test_Version.cpp` pins both the banner text and the real binary's `--version` output to `version.txt`.
 - [ ] `PresetScanner` categories default to "Uncategorized" — infer from directory structure.
 - [ ] README humor still displaces information, though Quick Start now carries the real build and test commands.
 - [x] Karaoke settings persistence — `[karaoke]` is parsed and serialized.

@@ -4,6 +4,12 @@ Current release: **1.1.0** — 2026-09-26
 
 This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Pre-pivot, oversized history is retained as [docs/CHANGELOG_LEGACY.md](docs/CHANGELOG_LEGACY.md). That file predates version normalization in its `2.1.0`/`2.0.0`/`1.1.0`/`1.0.0` sections, but it also opens with a post-normalization `[Unreleased]` block that carries most of the work now published here as 1.1.0 — so the legacy file overlaps this one rather than being purely historical.
 
+## [Unreleased]
+
+### Fixed
+
+- `chadvis-projectm-qt --version` reported a hardcoded `1.0.0` while the build was `1.1.0`. The banner is now assembled by `vc::Cli::versionBanner()` from the `CHADVIS_VERSION` definition that `version.txt` feeds, and `tests/unit/core/test_Version.cpp` pins the banner text and the real executable's `--version` output to `version.txt`, so a reintroduced literal fails the suite.
+
 ## [1.1.0] - 2026-09-26
 
 This release finalizes the `v1.1.0-BLEEDING_EDGE` line and is the first version whose source, executable, and release metadata are sourced from the same `version.txt` value.
@@ -36,7 +42,7 @@ This release finalizes the `v1.1.0-BLEEDING_EDGE` line and is the first version 
 
 ### Changed
 
-- `version.txt` is the single source of truth for the CMake project, application version, and CPack version; invalid values fail configuration. The user-facing `--version` banner still hardcodes `1.0.0` in `Application::printVersion()` and is tracked as outstanding.
+- `version.txt` is the single source of truth for the CMake project, application version, and CPack version; invalid values fail configuration.
 - Added the MIT `LICENSE` file referenced by the README/PKGBUILD and aligned the Arch package to `v1.1.0`.
 - PFFFT is pinned to the tested revision; declaration-only Suno fetch declarations and stale legacy API surfaces are removed.
 - Library search is explicitly local; the captured feed filter is not extended with unobserved `searchText` behavior.

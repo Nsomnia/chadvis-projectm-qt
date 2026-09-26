@@ -14,6 +14,7 @@
 #include <unistd.h>
 #endif
 #include <iomanip>
+#include <QtGlobal>
 
 namespace vc {
 
@@ -47,6 +48,42 @@ bool CliColor::shouldUseColor() {
 }
 
 namespace Cli {
+
+// Injected by the build from version.txt; the fallback only matters for
+// IDE/foreign-TU builds that do not carry the compile definition.
+#ifndef CHADVIS_VERSION
+#define CHADVIS_VERSION "unknown"
+#endif
+
+std::string_view version() {
+    return CHADVIS_VERSION;
+}
+
+std::string versionBanner() {
+    using namespace CliColor;
+    std::string banner;
+    banner += '\n';
+    banner += brightCyan();
+    banner += bold();
+    banner += "╔═══════════════════════════════════════════╗\n";
+    banner += "║ ChadVis Audio Player ║\n";
+    banner += "╚═══════════════════════════════════════════╝";
+    banner += reset();
+    banner += "\n Version: ";
+    banner += brightGreen();
+    banner.append(version());
+    banner += reset();
+    banner += "\n Built with Qt: ";
+    banner += brightGreen();
+    banner += qVersion();
+    banner += reset();
+    banner += "\n ";
+    banner += dim();
+    banner += "\"I use Arch btw\"";
+    banner += reset();
+    banner += "\n\n";
+    return banner;
+}
 
 void printError(std::string_view message) {
     std::cerr << CliColor::brightRed() << "Error: " << CliColor::reset()

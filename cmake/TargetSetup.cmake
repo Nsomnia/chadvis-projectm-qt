@@ -85,6 +85,12 @@ set_target_properties(project_lib PROPERTIES
 target_include_directories(project_lib PUBLIC ${COMMON_INCLUDES})
 target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
 
+# The version is a build-time fact: version.txt at the repo root is validated
+# into PROJECT_VERSION by the root CMakeLists. PUBLIC so every consumer of
+# project_lib (the executable, the test lanes) reports the identical value;
+# the user config is deliberately never consulted for it.
+target_compile_definitions(project_lib PUBLIC CHADVIS_VERSION="${PROJECT_VERSION}")
+
 # ─────────────────────────────────────────────────────────────
 # QML MODULE - Modern UI components
 # ─────────────────────────────────────────────────────────────
@@ -139,7 +145,8 @@ qt_add_qml_module(project_lib
 # ---------------------------------------------------------------------------
 
 add_executable(chadvis-projectm-qt src/main.cpp)
-target_compile_definitions(chadvis-projectm-qt PRIVATE CHADVIS_VERSION="${PROJECT_VERSION}")
+# CHADVIS_VERSION arrives via project_lib's PUBLIC definition above; redefining
+# it here would be a second copy of the same value to keep in sync.
 target_link_libraries(chadvis-projectm-qt PRIVATE project_lib)
 
 # ---------------------------------------------------------------------------
