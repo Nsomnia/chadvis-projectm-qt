@@ -42,6 +42,6 @@ The external directory labeled `sept-09-2026` contains a Burp export whose item 
 
 ## Project Updates and Lore
 
-- [Current changelog](../CHANGELOG_CURRENT.md).
+- [Current changelog](../CHANGELOG.md) and [legacy history](CHANGELOG_LEGACY.md).
 - [Project history](lore/HISTORY.md).
 - [Manifesto](lore/MANIFESTO.md).

@@ -99,4 +99,4 @@ solely in [`../suno_api/ENDPOINT-INVENTORY.md`](../suno_api/ENDPOINT-INVENTORY.m
 - Confirm the Google action remains disabled with the native-callback gate.
 - Perform a GUI smoke across Library, Explore, Create, Listen, Notifications, Video, and Settings.
 - Update [`../PIVOT_PLAN.md`](../PIVOT_PLAN.md), `TODO.md`, and
-  `CHANGELOG_CURRENT.md` to match observed behavior.
+  `CHANGELOG.md` to match observed behavior.

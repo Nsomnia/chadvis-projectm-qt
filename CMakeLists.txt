@@ -12,7 +12,9 @@ cmake_minimum_required(VERSION 3.20)
 #   cmake/TargetSetup.cmake  project_lib static library, QML module, executable
 #   cmake/Install.cmake      install rules and CPack configuration
 
-project(chadvis-projectm-qt VERSION 1.0.0 LANGUAGES CXX)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/version.txt" CHADVIS_VERSION)
+string(STRIP "${CHADVIS_VERSION}" CHADVIS_VERSION)
+project(chadvis-projectm-qt VERSION ${CHADVIS_VERSION} LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 

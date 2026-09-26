@@ -49,7 +49,7 @@ The canonical table of contents is **[docs/INDEX.md](docs/INDEX.md)**. Major sec
 | **API** | [docs/suno_api/README.md](docs/suno_api/README.md) | Reverse-engineered Suno API reference (auth, generation, library, billing, B-side…) |
 | **Integration** | [docs/integration/INDEX.md](docs/integration/INDEX.md) | Suno integration deep-dive, projectM v4 bridge internals |
 | **Lore** | [docs/lore/MANIFESTO.md](docs/lore/MANIFESTO.md) | The manifesto, project history, and dev banter |
-| **Changelog** | [CHANGELOG_CURRENT.md](CHANGELOG_CURRENT.md) | What's new and what's broken |
+| **Changelog** | [CHANGELOG.md](CHANGELOG.md) | What's new and what's broken |
 
 ## 🤝 Contributing
 
