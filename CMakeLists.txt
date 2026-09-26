@@ -14,6 +14,9 @@ cmake_minimum_required(VERSION 3.20)
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/version.txt" CHADVIS_VERSION)
 string(STRIP "${CHADVIS_VERSION}" CHADVIS_VERSION)
+if(NOT CHADVIS_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "version.txt must contain a numeric semantic version")
+endif()
 project(chadvis-projectm-qt VERSION ${CHADVIS_VERSION} LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")

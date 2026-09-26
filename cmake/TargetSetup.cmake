@@ -139,6 +139,7 @@ qt_add_qml_module(project_lib
 # ---------------------------------------------------------------------------
 
 add_executable(chadvis-projectm-qt src/main.cpp)
+target_compile_definitions(chadvis-projectm-qt PRIVATE CHADVIS_VERSION="${PROJECT_VERSION}")
 target_link_libraries(chadvis-projectm-qt PRIVATE project_lib)
 
 # ---------------------------------------------------------------------------

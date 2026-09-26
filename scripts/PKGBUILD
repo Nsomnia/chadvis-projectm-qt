@@ -2,7 +2,7 @@
 # Qt6 projectM v4 visualizer
 
 pkgname=chadvis-projectm-qt
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Qt6 projectM v4 visualizer with modern C++23 and video recording"
 arch=('x86_64')
