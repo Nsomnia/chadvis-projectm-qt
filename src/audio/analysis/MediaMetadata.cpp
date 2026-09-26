@@ -5,13 +5,8 @@
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
 #include <taglib/tpropertymap.h>
-#include <taglib/mpegfile.h>
-#include <taglib/id3v2tag.h>
-#include <taglib/attachedpictureframe.h>
-#include <taglib/flacfile.h>
-#include <taglib/flacpicture.h>
 
-#include <QBuffer>
+#include <algorithm>
 
 namespace vc {
 
@@ -95,10 +90,7 @@ Result<MediaMetadata> MetadataReader::read(const fs::path& path) {
     if (meta.title.empty()) {
         meta.title = path.stem().string();
     }
-    
-    // Try to extract album art
-    meta.albumArt = extractAlbumArt(path);
-    
+
     LOG_DEBUG("Read metadata for: {} - {}", meta.artist, meta.title);
     return Result<MediaMetadata>::ok(std::move(meta));
 }
@@ -107,50 +99,6 @@ bool MetadataReader::canRead(const fs::path& path) {
     auto ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     return file::audioExtensions.contains(ext);
-}
-
-std::optional<QPixmap> MetadataReader::extractAlbumArt(const fs::path& path) {
-    auto ext = path.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-    
-    // Try MPEG/ID3v2
-    if (ext == ".mp3") {
-        TagLib::MPEG::File mpegFile(path.c_str());
-        if (mpegFile.isValid() && mpegFile.ID3v2Tag()) {
-            auto* tag = mpegFile.ID3v2Tag();
-            auto frames = tag->frameListMap()["APIC"];
-            if (!frames.isEmpty()) {
-                auto* pic = dynamic_cast<TagLib::ID3v2::AttachedPictureFrame*>(frames.front());
-                if (pic) {
-                    QPixmap pixmap;
-                    if (pixmap.loadFromData(
-                        reinterpret_cast<const uchar*>(pic->picture().data()),
-                        pic->picture().size())) {
-                        return pixmap;
-                    }
-                }
-            }
-        }
-    }
-    
-    // Try FLAC
-    if (ext == ".flac") {
-        TagLib::FLAC::File flacFile(path.c_str());
-        if (flacFile.isValid()) {
-            auto pictures = flacFile.pictureList();
-            if (!pictures.isEmpty()) {
-                auto* pic = pictures.front();
-                QPixmap pixmap;
-                if (pixmap.loadFromData(
-                    reinterpret_cast<const uchar*>(pic->data().data()),
-                    pic->data().size())) {
-                    return pixmap;
-                }
-            }
-        }
-    }
-    
-    return std::nullopt;
 }
 
 } // namespace vc

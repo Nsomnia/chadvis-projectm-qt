@@ -10,9 +10,27 @@
 namespace vc {
 
 AudioEngine::AudioEngine(fs::path sessionPath)
-    : QObject(nullptr), sessionPath_(std::move(sessionPath)) {}
+    : QObject(nullptr), sessionPath_(std::move(sessionPath))
+{
+    // Debounced session-playlist persistence. Playlist::changed fires once per
+    // mutation, so writing on every emission turned "drop 200 files on the
+    // playlist" into 200 full M3U rewrites on the GUI thread. Coalescing to one
+    // write per quiescent burst is the same pattern OverlayBridge uses for its
+    // overlay JSON; the flush in the destructor below is what keeps a normal
+    // quit from losing the session playlist.
+    sessionSaveTimer_.setSingleShot(true);
+    sessionSaveTimer_.setInterval(kSessionSaveDebounceMs);
+    connect(&sessionSaveTimer_, &QTimer::timeout, this, [this] { saveLastPlaylist(); });
+}
 
 AudioEngine::~AudioEngine() {
+    // Explicit flush so the last mutation is never lost on shutdown, matching
+    // OverlayBridge's destructor.
+    if (sessionSaveTimer_.isActive()) {
+        sessionSaveTimer_.stop();
+        saveLastPlaylist();
+    }
+
     stop();
     stopAnalyzer_ = true;
     if (analyzerThread_.joinable()) {
@@ -42,8 +60,8 @@ Result<void> AudioEngine::init() {
     nextPlayer_->setAudioBufferOutput(nextBufferOutput_.get());
 
     // Playlist signals
-    playlist_.currentChanged.connect([this](usize index) { onPlaylistCurrentChanged(index); });
-    playlist_.changed.connect([this] { saveLastPlaylist(); });
+    playlist_.currentChanged.connect([this](std::optional<usize> index) { onPlaylistCurrentChanged(index); });
+    playlist_.changed.connect([this] { sessionSaveTimer_.start(); });
 
     loadLastPlaylist();
 
@@ -64,7 +82,7 @@ void AudioEngine::setupConnections(QMediaPlayer* player, QAudioBufferOutput* buf
 }
 
 void AudioEngine::play() {
-    if (!playlist_.currentItem() && !playlist_.empty()) {
+    if (!playlist_.currentIndex() && !playlist_.empty()) {
         playlist_.jumpTo(0);
     }
     if (player_->source().isEmpty() && playlist_.currentItem()) {
@@ -135,7 +153,18 @@ void AudioEngine::onAudioBufferReceived(const QAudioBuffer& buffer) {
     if (sender() == bufferOutput_.get()) processAudioBuffer(buffer);
 }
 
-void AudioEngine::onPlaylistCurrentChanged(usize index) {
+void AudioEngine::onPlaylistCurrentChanged(std::optional<usize> index) {
+    if (!index) {
+        // The selected track was removed, or the queue was cleared. This is the
+        // case the old `Signal<usize>` could not express at all, which is why
+        // the engine used to keep playing a deleted file with a stale
+        // pre-buffered next track. There is nothing to play now, so say so.
+        nextPlayer_->setSource(QUrl());
+        stop();
+        emit trackChanged();
+        return;
+    }
+
     loadCurrentTrack();
     emit trackChanged();
     play();
@@ -152,7 +181,7 @@ void AudioEngine::swapPlayers() {
 }
 
 void AudioEngine::loadCurrentTrack() {
-    const auto* item = playlist_.currentItem();
+    const auto item = playlist_.currentItem();
     if (!item) return;
     QUrl source = item->isRemote ? QUrl(QString::fromStdString(item->url)) : QUrl::fromLocalFile(QString::fromStdString(item->path.string()));
     if (player_->source() != source) player_->setSource(source);
@@ -160,7 +189,7 @@ void AudioEngine::loadCurrentTrack() {
 }
 
 void AudioEngine::prepareNextTrack() {
-    const auto* nextItem = playlist_.itemAt(playlist_.currentIndex().value_or(0) + 1);
+    const auto nextItem = playlist_.itemAt(playlist_.currentIndex().value_or(0) + 1);
     if (!nextItem) {
         nextPlayer_->setSource(QUrl());
         return;
@@ -169,10 +198,12 @@ void AudioEngine::prepareNextTrack() {
     nextPlayer_->setSource(source);
 }
 
+fs::path AudioEngine::sessionFilePath() const {
+    return sessionPath_.empty() ? file::configDir() / "last_session.m3u" : sessionPath_;
+}
+
 void AudioEngine::loadLastPlaylist() {
-    const auto path = sessionPath_.empty()
-            ? file::configDir() / "last_session.m3u"
-            : sessionPath_;
+    const auto path = sessionFilePath();
     if (fs::exists(path)) {
         if (auto result = playlist_.loadM3U(path); !result) {
             LOG_WARN("AudioEngine: Failed to load last playlist: {}", result.error().message);
@@ -181,9 +212,7 @@ void AudioEngine::loadLastPlaylist() {
 }
 
 void AudioEngine::saveLastPlaylist() {
-    const auto path = sessionPath_.empty()
-            ? file::configDir() / "last_session.m3u"
-            : sessionPath_;
+    const auto path = sessionFilePath();
     if (auto result = file::ensureDir(path.parent_path()); !result) {
         LOG_WARN("AudioEngine: Failed to create playlist directory: {}", result.error().message);
         return;
@@ -230,7 +259,10 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
         .sampleRate = static_cast<u32>(format.sampleRate()),
     };
     audioQueue_.pushAll(chunk);
-    emit pcmReceived(scratchBuffer_, static_cast<u32>(frameCount), static_cast<u32>(channels), chunk.sampleRate);
+    // Deliberately no PCM signal here. The old `pcmReceived` had zero receivers
+    // repo-wide and copied the whole scratch buffer per audio callback for
+    // nobody; consumers that want PCM read it from the AudioQueue, which is
+    // already the single copy.
 }
 
 } // namespace vc

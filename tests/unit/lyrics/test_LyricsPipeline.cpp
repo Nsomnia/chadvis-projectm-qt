@@ -505,7 +505,7 @@ private slots:
         bool currentAtReady = false;
         QObject::connect(&downloader, &SunoDownloader::playbackReady,
                          &downloader, [&currentAtReady, &audio](const QString&) {
-                             currentAtReady = audio.playlist().currentItem() != nullptr;
+                             currentAtReady = audio.playlist().currentItem().has_value();
                          });
 
         SunoClip clip;

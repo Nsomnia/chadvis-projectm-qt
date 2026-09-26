@@ -262,8 +262,8 @@ bool SunoDownloader::addAndPlay(const fs::path& path, const std::string& clipId)
         return false;
     }
 
-    if (const auto* current = playlist.currentItem();
-        current == nullptr || current->path != path) {
+    if (const auto current = playlist.currentItem();
+        !current || current->path != path) {
         return false;
     }
 

@@ -4,21 +4,15 @@
 #include "Playlist.hpp"
 #include "util/Result.hpp"
 #include "util/Types.hpp"
-#include <QAudioBuffer>
-#include <QAudioBufferOutput>
-#include <QAudioOutput>
-#include <QMediaPlayer>
-#include <QTimer>
-#include <memory>
 #include "util/JThread.hpp"
-#include "util/Result.hpp"
-#include "util/Types.hpp"
 #include <QAudioBuffer>
 #include <QAudioBufferOutput>
 #include <QAudioOutput>
 #include <QMediaPlayer>
 #include <QTimer>
 #include <atomic>
+#include <memory>
+#include <optional>
 
 namespace vc {
 
@@ -49,7 +43,6 @@ public:
     Playlist& playlist() { return playlist_; }
     const Playlist& playlist() const { return playlist_; }
 
-    AudioSpectrum currentSpectrum() const { return currentSpectrum_; }
     std::vector<f32> currentPCM() const { return analyzer_.pcmData(); }
     AudioQueue& audioQueue() { return audioQueue_; }
     const AudioQueue& audioQueue() const { return audioQueue_; }
@@ -61,7 +54,6 @@ signals:
     void spectrumUpdated(const AudioSpectrum& spectrum);
     void trackChanged();
     void errorSignal(const std::string& error);
-    void pcmReceived(const std::vector<f32>& data, u32 frames, u32 channels, u32 sampleRate);
 
 private slots:
     void onPlayerStateChanged(QMediaPlayer::PlaybackState state);
@@ -69,11 +61,17 @@ private slots:
     void onDurationChanged(qint64 duration);
     void onErrorOccurred(QMediaPlayer::Error error, const QString& errorString);
     void onAudioBufferReceived(const QAudioBuffer& buffer);
-    void onPlaylistCurrentChanged(usize index);
+    void onPlaylistCurrentChanged(std::optional<usize> index);
     void onMediaStatusChanged(QMediaPlayer::MediaStatus status);
 
 private:
     static constexpr usize kMaxScratchSamples = 16384;
+
+    /// Quiescent period after the last playlist mutation before the session M3U
+    /// is written. Playlist::changed fires once per added file, so writing on
+    /// every emission meant dropping 200 files onto the queue performed 200
+    /// full rewrites of the whole file on the GUI thread.
+    static constexpr int kSessionSaveDebounceMs = 500;
 
     void setupConnections(QMediaPlayer* player, QAudioBufferOutput* bufferOutput);
     void loadCurrentTrack();
@@ -82,7 +80,14 @@ private:
     void processAudioBuffer(const QAudioBuffer& buffer);
     void analyzerWorker();
     void loadLastPlaylist();
+
+    /// Writes the session M3U now. Only called by the debounce timer and by the
+    /// destructor flush.
     void saveLastPlaylist();
+
+    /// sessionPath_, or the default location when the engine was constructed
+    /// without one.
+    [[nodiscard]] fs::path sessionFilePath() const;
 
     std::unique_ptr<QMediaPlayer> player_;
     std::unique_ptr<QAudioOutput> audioOutput_;
@@ -99,6 +104,9 @@ private:
     AudioAnalyzer analyzer_;
     AudioSpectrum currentSpectrum_;
     AudioQueue audioQueue_;
+
+    /// Debounces saveLastPlaylist(); restarted by every playlist change.
+    QTimer sessionSaveTimer_;
 
     PlaybackState state_{PlaybackState::Stopped};
     f32 volume_{1.0f};

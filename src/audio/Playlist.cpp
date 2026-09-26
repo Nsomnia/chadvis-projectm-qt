@@ -2,17 +2,54 @@
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
 #include <algorithm>
+#include <cassert>
 #include <fstream>
 #include <numeric>
+#include <sstream>
 
 namespace vc {
 
+namespace {
+
+/// std::mt19937's sequence-seeded constructor takes its argument by lvalue
+/// reference, so seeding it from a temporary std::random_device fails to
+/// compile on libc++ ("expects an lvalue for $1"). Materializing the seed in
+/// its own function keeps the ctor's member-init list clean.
+std::mt19937::result_type freshSeed() {
+    std::random_device device;
+    return device();
+}
+
+} // namespace
+
 Playlist::Playlist()
-    : rng_(std::random_device{}())
+    : rng_(freshSeed()), ownerThread_(std::this_thread::get_id())
 {
 }
 
+void Playlist::assertOwnerThread(const char* callSite) const {
+    if (onOwnerThread()) {
+        return;
+    }
+    // No lock exists to fail closed on, so say so loudly in every build. The
+    // assert is debug-only (it compiles out under NDEBUG), which is exactly why
+    // the log line comes first and is unconditional. std::thread::id is
+    // streamable but not formattable, hence the ostringstream.
+    std::ostringstream detail;
+    detail << "Playlist: " << callSite << "() called from thread "
+           << std::this_thread::get_id() << " but this Playlist is owned by thread "
+           << ownerThread_ << "; Playlist is single-threaded by contract";
+    LOG_ERROR("{}", detail.str());
+    assert(false && "Playlist: cross-thread access violates the single-thread contract");
+}
+
+bool Playlist::onOwnerThread() const noexcept {
+    return std::this_thread::get_id() == ownerThread_;
+}
+
 void Playlist::addFile(const fs::path& path) {
+    assertOwnerThread(__func__);
+
     if (!fs::exists(path)) {
         LOG_WARN("File not found: {}", path.string());
         return;
@@ -54,6 +91,7 @@ void Playlist::addFile(const fs::path& path) {
         }
     }
     
+    // Appending cannot change the selection, so currentChanged stays silent.
     itemAdded.emitSignal(index);
     changed.emitSignal();
     
@@ -61,6 +99,8 @@ void Playlist::addFile(const fs::path& path) {
 }
 
 void Playlist::addUrl(const std::string& url, const std::string& title) {
+    assertOwnerThread(__func__);
+
     PlaylistItem item;
     item.url = url;
     item.isRemote = true;
@@ -78,14 +118,23 @@ void Playlist::addUrl(const std::string& url, const std::string& title) {
 }
 
 void Playlist::addFiles(const std::vector<fs::path>& paths) {
+    assertOwnerThread(__func__);
+
     for (const auto& path : paths) {
         addFile(path);
     }
 }
 
 void Playlist::removeAt(usize index) {
+    assertOwnerThread(__func__);
+
     if (index >= items_.size()) return;
-    
+
+    // The only case that changes the selection is deleting the selected item.
+    // Captured up front because the index arithmetic below cannot distinguish
+    // "renumbered" from "gone" afterwards.
+    const bool removedCurrent = currentIndex_ && *currentIndex_ == index;
+
     items_.erase(items_.begin() + index);
     
     if (currentIndex_) {
@@ -101,19 +150,36 @@ void Playlist::removeAt(usize index) {
     }
     
     itemRemoved.emitSignal(index);
+    // Mutated fully above, so a re-entrant reader sees the settled state. Renaming
+    // the selection is *not* announced: the same track is still current, and a
+    // listener woken for it would reload the track it is already playing.
+    if (removedCurrent) {
+        currentChanged.emitSignal(currentIndex_);
+    }
     changed.emitSignal();
 }
 
 void Playlist::clear() {
+    assertOwnerThread(__func__);
+
+    // A selection that was already empty did not change, so nothing is emitted;
+    // announcing a transition that did not happen is its own kind of lie.
+    const bool hadCurrent = currentIndex_.has_value();
+
     items_.clear();
     currentIndex_ = std::nullopt;
     shuffleOrder_.clear();
     shufflePosition_ = 0;
-    
+
+    if (hadCurrent) {
+        currentChanged.emitSignal(currentIndex_);
+    }
     changed.emitSignal();
 }
 
 void Playlist::move(usize from, usize to) {
+    assertOwnerThread(__func__);
+
     if (from >= items_.size() || to >= items_.size() || from == to) return;
     
     auto item = std::move(items_[from]);
@@ -134,26 +200,46 @@ void Playlist::move(usize from, usize to) {
         regenerateShuffleOrder();
     }
     
+    // The index adjustments above exist precisely to keep the same item
+    // selected, so move() never changes the selection and never emits.
     changed.emitSignal();
 }
 
-const PlaylistItem* Playlist::currentItem() const {
-    if (!currentIndex_ || *currentIndex_ >= items_.size()) {
-        return nullptr;
-    }
-    return &items_[*currentIndex_];
+std::optional<usize> Playlist::currentIndex() const {
+    assertOwnerThread(__func__);
+    return currentIndex_;
 }
 
-const PlaylistItem* Playlist::itemAt(usize index) const {
-    if (index >= items_.size()) return nullptr;
-    return &items_[index];
+std::optional<PlaylistItem> Playlist::currentItem() const {
+    assertOwnerThread(__func__);
+
+    if (!currentIndex_ || *currentIndex_ >= items_.size()) {
+        return std::nullopt;
+    }
+    return items_[*currentIndex_];
+}
+
+std::optional<PlaylistItem> Playlist::itemAt(usize index) const {
+    assertOwnerThread(__func__);
+
+    if (index >= items_.size()) return std::nullopt;
+    return items_[index];
+}
+
+Playlist::Snapshot Playlist::snapshot() const {
+    assertOwnerThread(__func__);
+    return Snapshot{.items = items_, .currentIndex = currentIndex_};
 }
 
 bool Playlist::next() {
+    assertOwnerThread(__func__);
+
     if (items_.empty()) return false;
     
     if (repeatMode_ == RepeatMode::One && currentIndex_) {
-        currentChanged.emitSignal(*currentIndex_);
+        // Not a transition: the same track, re-emitted because Repeat::One means
+        // "play this one again". Consumers treat it as a replay request.
+        currentChanged.emitSignal(currentIndex_);
         return true;
     }
     
@@ -184,11 +270,13 @@ bool Playlist::next() {
         }
     }
     
-    currentChanged.emitSignal(*currentIndex_);
+    currentChanged.emitSignal(currentIndex_);
     return true;
 }
 
 bool Playlist::previous() {
+    assertOwnerThread(__func__);
+
     if (items_.empty()) return false;
     
     if (shuffle_) {
@@ -214,11 +302,13 @@ bool Playlist::previous() {
         }
     }
     
-    currentChanged.emitSignal(*currentIndex_);
+    currentChanged.emitSignal(currentIndex_);
     return true;
 }
 
 bool Playlist::jumpTo(usize index) {
+    assertOwnerThread(__func__);
+
     if (index >= items_.size()) return false;
     
     currentIndex_ = index;
@@ -230,11 +320,18 @@ bool Playlist::jumpTo(usize index) {
         }
     }
     
-    currentChanged.emitSignal(*currentIndex_);
+    currentChanged.emitSignal(currentIndex_);
     return true;
 }
 
+bool Playlist::shuffle() const {
+    assertOwnerThread(__func__);
+    return shuffle_;
+}
+
 void Playlist::setShuffle(bool enabled) {
+    assertOwnerThread(__func__);
+
     if (shuffle_ == enabled) return;
     
     shuffle_ = enabled;
@@ -246,21 +343,42 @@ void Playlist::setShuffle(bool enabled) {
         }
     }
     
+    // The current track is untouched: enabling shuffle repositions the
+    // traversal order around it, not the selection itself.
     changed.emitSignal();
 }
 
+RepeatMode Playlist::repeatMode() const {
+    assertOwnerThread(__func__);
+    return repeatMode_;
+}
+
 void Playlist::setRepeatMode(RepeatMode mode) {
+    assertOwnerThread(__func__);
+
     repeatMode_ = mode;
     changed.emitSignal();
 }
 
 void Playlist::cycleRepeatMode() {
+    assertOwnerThread(__func__);
+
     switch (repeatMode_) {
         case RepeatMode::Off: repeatMode_ = RepeatMode::All; break;
         case RepeatMode::All: repeatMode_ = RepeatMode::One; break;
         case RepeatMode::One: repeatMode_ = RepeatMode::Off; break;
     }
     changed.emitSignal();
+}
+
+usize Playlist::size() const {
+    assertOwnerThread(__func__);
+    return items_.size();
+}
+
+bool Playlist::empty() const {
+    assertOwnerThread(__func__);
+    return items_.empty();
 }
 
 void Playlist::regenerateShuffleOrder() {
@@ -284,6 +402,8 @@ usize Playlist::realIndexToShuffle(usize realIdx) const {
 }
 
 Result<void> Playlist::saveM3U(const fs::path& path) const {
+    assertOwnerThread(__func__);
+
     std::ofstream file(path);
     if (!file) {
         return Result<void>::err("Failed to open file for writing");
@@ -305,6 +425,8 @@ Result<void> Playlist::saveM3U(const fs::path& path) const {
 }
 
 Result<void> Playlist::loadM3U(const fs::path& path) {
+    assertOwnerThread(__func__);
+
     std::ifstream file(path);
     if (!file) {
         return Result<void>::err("Failed to open file");
@@ -379,6 +501,7 @@ Result<void> Playlist::loadM3U(const fs::path& path) {
             regenerateShuffleOrder();
         }
         
+        // Appending cannot change the selection, so currentChanged stays silent.
         changed.emitSignal();
         LOG_INFO("Playlist: Loaded {} items from M3U", newItems.size());
     }
