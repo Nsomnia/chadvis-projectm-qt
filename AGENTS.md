@@ -143,3 +143,7 @@ token allowance usage.
 - Lint with `cline`; `clangd` is also available, and any other tools mentioned,
   found on the users system, or installable whether from brew, sourfe, or
   otherwise.
+- Some more tools installed with brew and thus available: include-what-you-use
+  shellcheck pre-commit cmake-lint ccache catch2 nlohmann-json yaml-cpp eigen
+  boost (newer version env var set in bash/zsh/fish rc) cli11 flatbuffers
+  msgpack vcpkg glfw samply hyperfine gitui eza zoxide git-delta
