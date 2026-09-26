@@ -68,7 +68,7 @@ This file is the single backlog. Rules live in `AGENTS.md`; do not add work item
 - [x] Config parser defaults derive from default-constructed `ConfigData` (single source of truth)
 - [x] `Config::save()` errors log actionable failures at their call sites
 - [x] Removed ~20 stale cmake modules; `cmake/` now holds 7 modules in active use — `CPM.cmake`, `Compiler.cmake`, `Dependencies.cmake`, `FindProjectM4.cmake`, `Install.cmake`, `Sources.cmake`, `TargetSetup.cmake`. All are included by the top-level `CMakeLists.txt`; do not delete them.
-- [x] `test_PresetScanner` wired into `unit_tests`; `test_projectm_render` stub archived
+- [x] `test_PresetScanner` wired into `unit_tests`; `test_projectm_render` stub archived. *Corrected 2026-09-26: it was compiled into `unit_tests` but had no runner and never executed, so the `[x]` was a declaration, not a verification — the exact failure `AGENTS.md` §3 warns about. `runTestPresetScanner` now exists and is called from `test_main.cpp`.*
 
 ### Audio engine
 - [ ] **Triple queue redundancy** — three queues hold the same PCM data (3× memory). Consolidate to one ring buffer with multiple consumers.
@@ -203,7 +203,7 @@ This file is the single backlog. Rules live in `AGENTS.md`; do not add work item
 - [ ] **Authorized-account smoke** — Library, Create, Listen, Explore, Notifications, Video, and Settings against a real session. The only item from the 2026-09-24 verification pass still open.
 - [ ] **Capture-backed contract fixtures** — fake-request tests for account, billing, and limit behavior.
 - [ ] **Health-check tests for agentic workflows** — fast signal for development cycles.
-- [x] `ctest --test-dir build/tests --output-on-failure` runs all 8 registered suites. Note that `--test-dir build` discovers zero tests and still exits 0.
+- [x] `ctest --test-dir build/tests --output-on-failure` runs all 8 registered suites. Note that `--test-dir build` discovers zero tests and still exits 0. *2026-09-26: found a second, quieter version of the same trap — `test_SunoEndpoints` defined `runTestSunoEndpoints` but `test_main.cpp` never declared or called it, so the fail-closed host-allowlist test compiled and never ran. It had been masked by a static initializer that called `std::abort()` on failure. Both are now called from `main()`. Lesson: a suite being in the CMake source list is not evidence it runs.*
 - [x] Offscreen integration test loads the real QML module, requires a visible/exposed `QQuickWindow`, and verifies a non-null grabbed frame.
 - [x] Config parsing and audio analysis have unit coverage.
 

@@ -9,6 +9,8 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 ### Fixed
 
 - `chadvis-projectm-qt --version` reported a hardcoded `1.0.0` while the build was `1.1.0`. The banner is now assembled by `vc::Cli::versionBanner()` from the `CHADVIS_VERSION` definition that `version.txt` feeds, and `tests/unit/core/test_Version.cpp` pins the banner text and the real executable's `--version` output to `version.txt`, so a reintroduced literal fails the suite.
+- Two out-of-bounds reads in the lyrics path, both reachable from QML. `LyricsData::getTimeRange` clamped only the low end of `startIdx` and let a caller-supplied `size_t` near `SIZE_MAX` wrap `endIdx - 1` into a catastrophic subscript; both indices are now saturated against real bounds. `LyricsSync::getContextLines` checked only the lower bound on the cached `currentPos_.lineIndex`, so loading a shorter song left a stale index that a subsequent query read past the end. A shared `constexpr checkedIndex()` helper replaces the ad-hoc `int`/`size_t` mixing at the QML bridge boundary that allowed both to survive.
+- `TestSunoEndpoints` and `TestPresetScanner` were compiled into `unit_tests` but never executed — the fail-closed host-allowlist guard had never actually run. Both are now registered in `test_main.cpp`; the static initializer that called `std::abort()` to make the endpoints test noticeable is removed.
 
 ## [1.1.0] - 2026-09-26
 
