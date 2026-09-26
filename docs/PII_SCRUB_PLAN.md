@@ -131,12 +131,16 @@ cd test.git
 Verify on the test clone that:
 
 ```bash
-# No hits for any PII pattern anywhere in the rewritten history.
-git log --all -p | grep -cE '6f1554f2|user_2ew9|sd[a-z]*@gmail|ssa\.nsomnia'
-# expect: 0
+# Substitute your own real values here. Do NOT paste them into this file, a
+# commit message, a chat message, or any other tracked file — writing the
+# identifiers into the repository is the exact failure this plan exists to undo.
+# Build the pattern list locally, from the audit output, in an untracked file:
+PATTERN_FILE=/tmp/pii-verify-patterns.txt   # chmod 600, never committed
 
+git log --all -p | grep -cEf "$PATTERN_FILE"   # expect: 0
 git log --all -p | grep -cE 'eyJ[A-Za-z0-9_-]{10,}'   # JWT-shaped remnants
 # inspect every hit; placeholders are acceptable, real tokens are not
+```
 
 # The tree still builds and the route catalog is intact.
 git log --oneline | wc -l    # should be 433 minus rewritten/deleted commits
@@ -188,7 +192,7 @@ result is expected and is not proof the scrub failed.
 ```bash
 git clone --mirror <remote> ../verify.git
 cd ../verify.git
-git log --all -p | grep -cE '6f1554f2|user_2ew9|sd[a-z]*@gmail'   # expect 0
+git log --all -p | grep -cEf "$PATTERN_FILE"   # expect 0
 ```
 
 Verify from a **fresh** clone. Checking the local repo proves nothing, because the
