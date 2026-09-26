@@ -1,341 +1,136 @@
-# ChadVis — Suno.com Frontend First, projectM Second: AGENTS.md
+# AGENTS.md — Operating Rules for ChadVis
 
-> **Product pivot ADOPTED 2026-08-26** — this repo is the shipping **Suno.com desktop frontend** (library, generation, downloads, playlists, account) with **projectM as secondary** visualizer / music-video engine (keyframe scene composition, karaoke, batch automation, future lightweight DAW). See `docs/PIVOT_PLAN.md` phases P0–P7. Suno API facts are capture-driven and use only the repository's `[T1]`/`[LEAD]`/`[VERIFY]` labels; do not import API shapes from external rewrite repositories or historical topic prose.
-> Live state tracker: `TODO.md`. Deepwork state: `.slim/deepwork/suno-frontend-pivot.md`.
+> **Read this first. It is short on purpose.** Every chat session in this
+> repository operates on this document, so it contains *rules*, not work items.
+> **All tracked work lives in [`TODO.md`](TODO.md).** The docs hub is
+> [`docs/README.md`](docs/README.md). Release history is
+> [`CHANGELOG.md`](CHANGELOG.md).
 
-## Active sprint (2026-09-24 →): branch `feat/suno-client-shell-refactor`
-- **Scope:** standalone paged Settings window, Suno-first shell re-home (Library / Explore / Notifications / Create / Listen / Video / Settings),
-  projectM+recording delegated to the Video page, native sign-in scaffold, and capture-backed upload/library surfaces.
-- **Binding gates:** native Google sign-in stays DISABLED until a human capture proves Clerk accepts a loopback or
-  custom-scheme desktop callback (no capture on this machine uses one — every observed redirect is Suno-owned HTTPS).
-  Never enable it, never hand-roll a Clerk handshake, and never put a Google ID token into `SunoClient`.
-- **Authority:** `docs/suno_api/ENDPOINT-INVENTORY.md` is the sole API-spec master;
-  `docs/suno_api/README.md` is the navigation boundary, `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` is the native
-  callback gate, and `docs/suno_api/raw/README.md` is provenance only. `src/suno/SunoEndpoints.hpp` is an implementation
-  mirror, not evidence. Do not implement `[LEAD]`/`[VERIFY]` routes as stable contracts or promote them without a direct capture.
-- **Capture/docs audit:** complete for the external directory labeled `sept-09-2026`; Burp item timestamps are 2026-09-24.
-  The raw XML is not sanitized, stays outside the repository, and is hash-indexed in the raw provenance document.
-- **Sprint state:** `.slim/deepwork/suno-client-shell-sprint.md`. Free model budget was ~6 days at kickoff — prefer
-  parallel bounded lanes, decisive commits, no gold-plating.
+## Product identity
 
-- Lint: using cline though clangd is available as well.
+**Product pivot ADOPTED 2026-08-26.** This repo ships the **Suno.com desktop
+frontend** (library, generation, downloads, playlists, account) with **projectM
+as a secondary** visualizer / music-video engine (keyframe scene composition,
+karaoke, batch automation, future lightweight DAW). Plan: `docs/PIVOT_PLAN.md`.
 
-## Sys Instructions & Requirements
-> Note: The caveman skill requirement was removed temporarily because the current model has unlimited inference. Re-add it (`npx skills add JuliusBrussee/caveman`) if/when running on quota-limited models.
-- **Oh-my-opencode-slim:** Used on the user's system (not used in cloud sessions).
-- **NEVER rm:** Never run `rm` for safety; instead append a date-time string to the filename and move it into `.backup_graveyard/` for archival. Committing the move is optional.
-- **git:** Commit frequently so `git log --oneline` gives future agents a parseable history. Use detailed commit messages for session completions and other major changes.
-- **General guidelines:** Worth a perusal when starting a new or complex session, but not mandatory: `GENERAL_LLM_STARTING_PROMPT.md`.
+Do not import API shapes from external rewrite repositories, frontend bundle
+strings, or historical topic prose. Suno facts are capture-driven and carry only
+the repository's `[T1]` / `[LEAD]` / `[VERIFY]` labels.
 
-## Legend & Rules
-- `[ ]` untouched.
-- `[~]` in-progress task.
-- `[x]` Finished for user review. Only the user may remove tasks, however the LLM model/agent is free to refactor, add, and reorganize all elements freely. The user may make changes at anytime with this noted.
-- `[?]` NOTE: something is blocking work being done.
-- `[!]` User or model attention is needed as soon as possible.
+## The rules
 
-## General Guidelines
-- Git history is the primary memory for future agent sessions, which *always* exceed compression/token limits and lose context. This project spans months with hundreds of millions of tokens invested over many models and generations.
-- If you find code or project maintenance that needs attention — immediate or far down the road — add it to this list. Another agent may pick it up simultaneously or in a future session.
-- Self-prioritize task selection when given free rein to improve the codebase.
-- Unlimited tool calls and full access to user-system packages: debuggers, `lynx`, `gh`, `git`, `ddgr`, anything under `pacman -Qq`. If you need a specific missing tool (e.g., debugger or language server), tell the user immediately.
-- Keep the "Chad" and "Arch, BTW" vibe — as if Linus Torvalds and Linus Tech Tips were orchestrating this while Richard Stallman dispenses GNU kung-fu wisdom in the background.
-- Keep documentation up-to-date, especially root `CHANGELOG.md` and the per-directory CHANGELOGs under `docs/`.
-- Write tests when they genuinely benefit the project or allow programmatic verification of logic.
-- To route a task to a specific model: `opencode --models` lists models ("free" ones are fair game; configured APIs may be non-operational or quota-limited), then run `opencode --model provider/name run "input_message"`.
-- Nesting files/directories is free; input/output tokens and edits on huge code blocks are not. ~500 LOC is a good soft limit for C++23 classes — use best judgment.
-- Follow industry standards wherever relevant. Everything should be production-ready and feel human-written: maintainable, no slop.
+### 1. Evidence discipline (non-negotiable)
 
-## Ralph Loop/Self-Repetition/Infinite Mode
-- You have complete freedom to, and are requested to, work as long as seems appropriate on this TODO list, so long as either there are tasks in this AGENTS.md TODO list, or you are aware of improvements that may be possible to the codebase. In these cases design and use a simple self-harness for repeating until you're confident your work is done and start with this harness wrapper, then end with a self promise statement of all tasks being done, compiled, tests run where appropriate, verified, logs checked, git commits made and then pushed to remote, and so-on until one step is fatally blocked or broken without being able to amend.
+- `docs/suno_api/ENDPOINT-INVENTORY.md` is the **sole API-spec master**.
+- `docs/suno_api/README.md` is the **navigation boundary**.
+- `docs/suno_api/OBSERVED-LEADS.md` is **non-contractual** — research and capture
+  planning only. Never wire a route from it.
+- `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` is the **native-callback gate**.
+- `docs/suno_api/raw/README.md` is **provenance only**.
+- `src/suno/SunoEndpoints.hpp` is an **implementation mirror, not evidence**.
+- **Never promote `[LEAD]` to `[T1]`** without a direct human capture.
+- `[T1]` means "directly captured". It does **not** mean "shipped" — the
+  inventory's `Implemented` column (`wired` / `declared-unused` / `not-in-code`)
+  is an independent axis.
+- **Fail closed on unverified hosts.** Never send cookies, bearers, or automatic
+  remote image requests to an absolute host absent from a captured allowlist.
+- Never hand-roll the Clerk handshake. Never put a Google ID token into
+  `SunoClient`.
 
----
+### 2. Secret handling (non-negotiable)
 
-## P0: Critical Bugs & Safety (Data Loss / Crashes / Security)
+- Never commit raw network captures, credentials, cookies, tokens, account or
+  clip identifiers, pasted private text, or complete media URLs.
+- Raw captures stay **outside** the repository. The only retained raw artifact is
+  the sanitized recon, governed by `docs/suno_api/raw/README.md`.
+- User secrets go to the OS keychain via `CredentialStore`, never to TOML or logs.
+- When a file is removed, report the fact. If a secret ever reaches a commit,
+  treat the account as compromised and rotate it — expiry is not remediation for
+  permanent identifiers.
 
-### Memory & Thread Safety
-- [x] **PFFFT static locals thread-unsafe** — `AudioAnalyzer` now uses a shared immutable RAII setup, 16-byte-aligned per-call FFT scratch, mutex-protected analyze/reset/PCM state, deterministic zero-on-setup-failure behavior, and focused normal plus ThreadSanitizer concurrency tests.
-- [x] **SunoClient use-after-free** — request epochs fence queued retries/waiters, tracked replies are disconnected and aborted, and stale restore/upload callbacks cannot publish after credential invalidation; focused epoch and upload cancellation tests pass.
-- [x] **QML cached singleton lifetime** — cached QML bridge pointers reset when their parented/unparented singleton is destroyed, preventing stale pointers across engine restarts.
-- [x] **VideoRecorderFFmpeg nullptr deref** — both video and audio `avcodec_alloc_context3()` results are checked before dereference.
-- [x] **VideoRecorderThread brace mismatch** — Root cause found (2026-08-25): `VideoRecorder::setAudioQueue` was never wired, so the rec queue was always null. Wired in `Application::init()`; braces were actually balanced.
-- [ ] **LyricsOverlayRenderer OOB access** — Out-of-bounds array access in renderer; crash on edge-case lyric data.
-- [x] **AudioEngine scratch buffer resize in audio callback** — scratch storage is preallocated during `init()` and oversized callback buffers are dropped without allocation.
-- [x] **Application destructor destruction order** — QML, controller, lyrics, preset, recorder, audio, and Qt application lifetimes are explicitly torn down in dependency order.
-- [x] **Playlist::loadM3U path traversal** — relative playlist entries are weakly canonicalized and rejected when they resolve outside the playlist directory.
+### 3. Verification bar
 
-### Security & Credentials
-- [x] **SunoPersistentAuth/SystemBrowserAuth credential storage audit** — Tokens now in OS keychain via `CredentialStore` (macOS Security.framework, atomic 0600 file fallback); TOML→keychain migration on first init; secrets never written to TOML/logs (2026-08-26, P1 Lane B).
-- [~] **Native OAuth security remains gated** — the offline scaffold covers state/nonce/PKCE/transaction ownership, but no reviewed capture proves Clerk accepts a loopback or custom-scheme callback. Keep live Google sign-in disabled and finish capture-backed callback/sign-out evidence before integration.
-- [x] **SQL injection risk in search_db.sh** — queries use SQLite `.param` binding for the search term; no user input is interpolated into SQL text.
+A task is **not** complete from a stale binary, a declaration, a scan string, or
+a historical commit. Verify the current source with a fresh configure/build, the
+relevant tests, focused lint/format checks, and a real runtime path. Record
+observed results in `CHANGELOG.md`.
 
-### Stubs & No-Ops (Functional Dead Code)
-- [x] **submitAudioSamples() complete no-op** — Empty method + its only dead caller removed (2026-08-25); recorder now fed via real audio-queue wiring.
+- Tests: `ctest --test-dir build/tests --output-on-failure`.
+  **Not** `--test-dir build` — that directory has no `CTestTestfile.cmake`,
+  discovers zero tests, and still exits 0.
+- Binary: `build/chadvis-projectm-qt`. **Not** `build/src/...`.
+- If a doc and `src/` disagree, `src/` wins and the doc is a bug worth fixing.
 
----
+### 4. Never `rm`
 
-## P1: High Priority (Broken Behavior / Major Architecture Issues)
+Append a date-time string to the filename and move it into
+`.backup_graveyard/`, which is gitignored. Committing the move is optional.
+Prune the graveyard when it is large and holds nothing of value — git history
+already preserves the source.
 
-### Core Infrastructure (Milestones)
-- [x] Refactor Main.qml with responsive Drawer and SplitView layout
-- [x] Refactor AudioEngine for better organization and granular responsibility
-- [x] Implement throttled bridge updates in VisualizerBridge/AudioBridge
-- [~] Complete full migration of Sidebar panels (Library, Presets, Recording) — PlaylistBridge + RecordingBridge APIs fixed; LyricsBridge search/export still stubbed
-- [x] Finalize robust persistence for all settings (SettingsBridge + TOML auto-save)
-- [x] Debounced auto-save (2s QTimer) on every SettingsBridge setter
-- [x] Explicit save() on app close via `onClosing` in Main.qml
-- [x] UIConfig expanded with `expandedPanel`, `sidebarWidth`, `drawerOpen`
-- [x] SettingsBridge Q_PROPERTYs for UI state (expandedPanel, sidebarWidth, drawerOpen)
-- [x] ConfigParsers parseUI/serialize updated for new UI fields
-- [x] Main.qml wired bidirectionally: accordion/drawer/sidebar ↔ SettingsBridge
-- [x] default.toml updated with new [ui] keys
+### 5. Git
 
-### Audio Engine
-- [ ] **AudioQueue triple queue redundancy** — 3 separate queues for same PCM data (3x memory). Consolidate to single ring buffer with multiple consumers.
-- [ ] **Naive beat detection** — Energy-ratio approach from 1990s; no spectral analysis. Implement onset detection or spectral flux.
-- [ ] **No FFT windowing function** — Rectangular window = spectral leakage. Apply Hann/Hamming window before FFT.
-- [ ] **No true gapless playback** — `swapPlayers()` introduces audible gap. Pre-buffer next track; crossfade or seamless splice.
-- [ ] **AudioEngine no sample format validation** — No check that audio output format matches source; potential distortion/crash on mismatched formats.
-- [ ] **AudioEngine analyzerWorker busy-wait** — Fixed `QThread::msleep()` spin-wait; should use wait condition or event-driven wake.
+Commit frequently so `git log --oneline` gives future agents a parseable history.
+Use detailed messages for session completions and other major changes. Git
+history is the primary memory for future sessions, which always exceed context
+limits and lose it.
 
-### Application Architecture
-- [ ] **Application god object** — 150+ line `init()`, owns everything. Split into subsystem managers (AudioSubsystem, UISubsystem, etc.).
-- [ ] **Application singleton via raw pointer** — `g_app` raw pointer; should be `unique_ptr` or stack-allocated. Risk of double-delete or leak.
-- [x] **Config parser defaults don't match struct defaults** — Fixed (2026-08-25): parser fallbacks now derive from default-constructed ConfigData structs (single source of truth).
-- [x] **Config::save() errors ignored** — settings, playlist, preset-state, database, FBO, and theme persistence failures now log actionable errors at their call sites.
-- [ ] **CLI X-macro pattern fragile** — CliArgs.inc X-macros: easy to break, poor IDE support. Consider codegen or reflection-based approach.
-- [ ] **TRY macro shadows std::expected** — Custom TRY conflicts with C++23 idiom; migrate to `std::expected` monadic chain.
+Never force-push rewritten history, delete a remote branch, or rewrite a tag
+without explicit per-instance user authorization.
 
-### Build System
-- [x] **PULSEAUDIO_FOUND checked but never searched** — Dead branch deleted from CMakeLists.
-- [x] **Icons registered twice** — QML uses qt/qml module paths exclusively; .qrc icon entries removed, dead icons archived.
-- [x] **test_PresetScanner / test_projectm_render not in CMake** — test_PresetScanner (real QtTest) wired into unit_tests; stub test files archived to graveyard.
-- [x] **WebEngineWidgets dead dependency** — Still linked but never used; bloats build and runtime deps.
-- [x] **Remove ~20 stale cmake modules** — Already resolved in earlier housekeeping; cmake/ holds only CPM.cmake + FindProjectM4.cmake.
+### 6. Documentation
 
-### Suno Integration
-- [~] **P1: Suno Core Correctness** — secure credential storage, lossless asynchronous restore readiness for Library/Explore, debounced Settings ownership through `SunoClient`, credential/request epochs with reply aborts, explicit no-replay mutation policy, queued authenticated requests, feed/clip/account parsing, exact Clerk active-session selection, method-specific Studio headers, and isolated persistence seams are implemented. Route preference/fallback order, sign-out, and authorized runtime behavior remain `[VERIFY]`.
-- [x] **2026-09-24 documentation/capture audit** — live Suno authority reduced to index + canonical inventory + OAuth gate + raw provenance; dated source map and SHA-256 hashes added. Only directly observed tokens, notification read, following feed, explore, audio init/finish, direct multipart storage upload, feed filter shape, numeric account/model types, and forbidden-media sentinel were promoted.
-- [~] **Fail closed on unverified routes and hosts** — active Orpheus/Modal, WAV conversion, legacy Clerk-host fallback, constructed-media, and user-reachable lead routes are disabled; QML artwork is restricted to exact captured Suno CDN origins, the undocumented synthetic Browser-Token is removed, and declaration-only fetch declarations/signals are retired. No unverified header may be reintroduced without fresh capture. Never send cookies/bearers or automatic remote image requests to unverified absolute hosts.
-- [ ] **Complete the generation surface** — bind typed model/catalog/limit data and the captured captcha decision to the request; add fake-request contract tests and durable queued/processing/failed UI state. Current generation remains disabled until a supported CAPTCHA token flow exists.
-- [~] **Media/download correctness** — playback selects only HTTPS media-array entries on the exact captured `audiopipe.suno.ai` origin, rejects forbidden sentinels/userinfo/fragments/nondefault ports, removes legacy and constructed fallbacks, and uses manual redirects. Unpromoted Range resume is disabled; retries restart from byte zero.
-- [x] **Audio upload lifecycle** — implement only the captured initialize → returned multipart storage URL → finish sequence for `.m4a`; the returned direct URL is restricted to the exact capture-proven HTTPS S3 origin, default/443, no userinfo/fragment, and manual redirects. `initialize-clip`, processing status, upload-to-generation linkage, limits/errors, and full validation remain gated.
-- [~] **Library search/filtering** — local filtering is wired and the feed no longer sends unobserved `searchText`; authorized pagination/DB merge validation remains.
-- [x] **Explore and notification surfaces** — read-only Explore and notification list/badge/mark-all-read are wired from direct captures; following-feed pagination remains `[VERIFY]`.
-- [x] **Wire aligned lyrics into the active sync pipeline** — captured aligned payloads flow from authoritative playback handoff/cache/DB/request into `LyricsSync` and lazy `LyricsBridge` for Listen and Video, including late-response gating, SRT/LRC export, local search, and context/upcoming queries.
-- [ ] **Header drift capture** — reconcile route-specific Authorization/Browser-Token/Device-Id requirements from a fresh sanitized capture before changing shared header policy.
-- [ ] **Capture-gated feature work** — implement directly observed `[T1]` surfaces only; keep B-Side, VIP, hidden, Orpheus, bundle-only, and method-conflicted routes disabled.
+One fact, one owning document. If two files claim the same thing, that is a bug.
+Every pointer to a document is a **link**, not backticked text. Keep the hub
+table of contents in `docs/README.md` and nowhere else.
 
-### Namespace & Type Issues
-- [ ] **Controllers in wrong namespace** — Some use `vc` instead of `vc::ui`; inconsistent with project convention.
-- [ ] **Missing `<cmath>` include in LyricsRenderer** — Uses `std::sin`/`std::cos` without including `<cmath>`; breaks on some compilers.
-- [ ] **Dual position update path in LyricsSync** — Timer + signal both update position; race condition on timing.
+### 7. Code style
 
-### Dangling Pointers & Dead Code
-- [ ] **Dangling pointers from getContextLines/getUpcomingLines** — Return raw pointers to container elements; invalidated on any modification.
-- [ ] **PlaylistItem::valid never read** — Field set but never checked; dead state.
-- [ ] **PresetBridge::cachedPresets_ never used** — Populated but never read; wasted memory.
-- [ ] **OverlayElementConfig animation fields unused** — Declared but never applied in rendering.
-- [ ] **VisualizerItem dead code** — QML component registered but never instantiated.
-- [ ] **Unused includes** — 5+ files with `#include` for types never referenced.
+- **Standard:** C++23 is the minimum, enforced at configure time.
+- **I/O:** prefer `std::println`; not `std::cout`, not `printf`, not `fmt`.
+- **Errors:** prefer `std::expected` with monadic `.and_then()` / `.or_else()`.
+  Expected failures return `vc::Result<T>`; `catch` is for genuinely exceptional
+  paths.
+- **Targets:** Arch Linux (latest GCC/Clang) is the primary development target;
+  macOS is the platform this is run and verified on.
+- ~500 LOC is a soft ceiling for a C++23 class. Use judgment.
+- Production-ready, maintainable, no slop. Follow industry standards.
 
-### Config & Defaults
-- [ ] **debug=true in default.toml** — Production default config has debug logging enabled; performance impact.
-- [x] **Duration migration runs every startup** — Gated behind `PRAGMA user_version` (runs once).
+### 8. Task state
 
-### QML
-- [x] **SettingsPanel.qml monolithic 526 LOC** — Split into 8 per-category panels under src/qml/panels/settings/ composed by a slim 86-LOC panel.
+Marks: `[ ]` todo · `[~]` in progress · `[x]` done, awaiting verification ·
+`[?]` blocked on a human or a capture · `[!]` needs user attention now.
 
----
+Only the user removes tasks. Agents may freely refactor, add, and reorganize.
+Record new findings in `TODO.md` rather than in this file.
 
-## P2: Medium Priority (Performance / Code Quality / Maintainability)
+### 9. Working style
 
-### Performance
-- [ ] **rand() instead of `<random>`** — `std::rand()` used for shuffle/randomization; not thread-safe, poor distribution. Use `std::mt19937` or `std::random_device`.
-- [ ] **PresetBridge rebuilds QVariantLists every access** — No caching; full rebuild on each QML read. Cache or use QAbstractListModel.
-- [ ] **LyricsData::search() allocates every call** — Returns vector by value; hot path allocates. Return view or cache results.
-- [ ] **flipImageGPU() allocates textures/FBOs per frame** — No reuse; GPU allocation every frame = stutter. Pool or persist resources.
-- [ ] **AudioAnalyzer::pcmData() returns full copy** — 4KB+ copy per frame for spectrum data. Return span/view instead.
-- [ ] **threadLoop() spin-waits ~100fps idle** — Busy-wait when no work; wastes CPU. Use condition variable or event-driven.
-- [ ] **parseDuration() uses std::regex** — Regex engine heavy for simple duration parsing; hand-write parser or use `std::from_chars`.
-- [ ] **AudioSpectrum passed by value in signal** — 4KB struct copied per emission; pass by const ref or use shared_ptr.
-- [ ] **Playlist::addFile synchronous metadata reading** — Blocks UI thread while reading tags; move to worker thread.
-- [ ] **AudioEngine::loadLastPlaylist no error recovery** — If file missing/corrupt, no fallback; silent empty playlist.
-- [ ] **MediaMetadata::formatLine inefficient string replacement** — Multiple `QString::replace()` calls; build format string once.
-- [ ] **AudioFrame alignas(64) wastes 52 bytes** — Over-aligned for cache; 64-byte alignment on ~12-byte frame wastes 52 bytes per frame in ring buffer.
-- [ ] **No constexpr usage** — Compile-time constants computed at runtime; `constexpr` where possible for zero-cost init.
-- [ ] **No [[nodiscard]] on Result<T> returns** — Discarded error results silently lost; add `[[nodiscard]]` to all Result-returning functions.
+- Unlimited tool calls and full access to user-system packages (`gh`, `git`,
+  `ddgr`, `pacman -Qq`). If a needed tool is missing, say so immediately.
+- Prefer parallel bounded lanes and decisive commits over gold-plating.
+- Route a task to a specific model with `opencode --models`, then
+  `opencode --model provider/name run "..."`. Free models are fair game.
+- Keep the "Chad" and "Arch, BTW" register: Linus Torvalds and Linus Tech Tips
+  orchestrating while Richard Stallman dispenses GNU kung-fu in the background.
+  Humor is the project's voice, not a substitute for information.
+- Self-prioritize when given free rein. Write tests where they genuinely let
+  logic be verified programmatically.
 
-### Code Organization
-- [ ] **VideoRecorder.hpp pointless facade** — Thin wrapper around VideoRecorderFFmpeg with no added abstraction; inline or remove.
-- [ ] **GLIncludes.hpp empty stub** — No content; dead include. Remove or populate.
-- [ ] **Hardcoded path in default.toml** — `/home/nsomnia/...` in default config; use `$HOME` or XDG paths.
-- [ ] **Stub test files dead code** — Test stubs that do nothing; remove or implement.
-- [ ] **PKGBUILD missing deps / wrong description** — Incomplete dependency list; description doesn't match project.
-- [ ] **PlaylistBridge takes address of reference** — `&refParam` = pointer to potentially-temporary; undefined behavior.
-- [ ] **Result.hpp→std::expected migration** — Custom Result<T> has map/andThen but missing orElse; migrate to `std::expected` with full monadic API.
-- [ ] **FileUtils Color::fromHex()/toHex() location** — Should move to Types.hpp or dedicated Color.hpp for cohesion.
-- [ ] **PresetBridge→QAbstractListModel** — `presetToVariantMap()` rebuilds every access; use proper model for large lists.
-- [ ] **SunoBridge onLibraryUpdated() manual QVariantMap** — Hand-built map should use shared conversion function.
-- [ ] **Duration type unclear definition** — Multiple duration representations; unify to strong typedef.
-- [ ] **Application::printHelp 80+ lines hardcoded** — Hardcoded help text; generate from CLI table or metadata.
-- [x] **CHANGELOG multiple Unreleased sections** — canonical root `CHANGELOG.md` now has one current release section and one `[Unreleased]` section; oversized history lives in `docs/CHANGELOG_LEGACY.md`.
-- [ ] **loadM3U appends not replaces** — Should clear playlist before loading; currently accumulates.
-- [ ] **SQLite FTS5 not used** — Full-text search available but not enabled; add FTS5 virtual table for lyrics/search.
+### 10. Self-driven loop
 
-### QML / UI
-- [ ] **Settings panel reuses playback icon** — Same icon for different actions; confusing UX. Add distinct icons.
-- [ ] **Theme.qml missing textPrimaryVariant** — Incomplete theme definition; text variants needed for hierarchy.
-- [ ] **Playlist "Show in Folder" unreliable on Linux** — `xdg-open` path handling broken for some DEs; fallback to file manager directly.
-- [ ] **Color picker unimplemented** — UI element present but no functionality.
-- [ ] **Fullscreen shortcut unimplemented** — F11 key binding declared but not wired.
-- [ ] **PresetPanel rebuilds model on every change** — Full model reset on single preset change; use beginInsertRows/beginRemoveRows.
-- [x] **Record button highlight inverted** — Fixed against RecordingBridge::isRecording semantics.
-- [x] **OverlayBridge saves on every change, no debounce** — 2s debounce added; destructor flushes pending writes.
-- [ ] **ThemeBridge only exposes 2 writable colors** — Most theme colors read-only; expose setters for runtime customization.
-- [ ] **No internationalization support** — All strings hardcoded in QML/C++; no i18n framework. Add Qt Linguist.
+You have freedom to keep working on `TODO.md` while tasks remain or improvements
+are evident. Use a simple self-harness for repetition, and end with an explicit
+statement of what is done, compiled, tested, verified, and committed — or the
+step that is fatally blocked and cannot be amended.
 
-### Tooling & Static Analysis
-- [ ] **.clang-tidy variable naming rules wrong** — Config doesn't match project convention; generates false positives.
-- [ ] **.clang-tidy missing useful checks** — Modernize, bugprone, concurrency checks disabled; enable incrementally.
-- [ ] **.clangd config minimal** — Missing compilation database hints, clang-tidy integration, header search paths.
+## Environment notes
 
----
-
-## P3: Low Priority (Polish / Best Practices / Future-Proofing)
-
-### Code Quality
-- [ ] **Color::fromHex uses std::stoi (allocating)** — `std::stoi` allocates; use `std::from_chars` for zero-alloc parse.
-- [ ] **TODO comments in CMakeLists** — Multiple `// TODO` in CMake; track here or resolve.
-- [ ] **All sources in single CMakeLists** — Monolithic source list; split into per-module subdirectories with `add_subdirectory`.
-- [ ] **CPM_LIBS target name guessing fragile** — CPM integration guesses target names; use `CPMFindPackage` with explicit targets.
-- [ ] **CPM.cmake downloaded at configure time** — Network fetch during build; should be vendored or fetched via FetchContent.
-- [ ] **setupStyle()/setupQmlStyle() are no-ops** — Empty functions; remove or implement.
-- [ ] **VisualizerRenderer::initialized_ never reset** — Flag set once, never cleared; can't re-init renderer.
-- [ ] **PresetScanner category defaults to Uncategorized** — Should infer from directory structure or metadata.
-- [ ] **LRC metadata tags not parsed** — `[ar:Artist]`, `[al:Album]` etc. ignored; parse and expose.
-- [ ] **sanitizeFilename() incomplete** — Doesn't handle Unicode, reserved names (CON, PRN), or path separators.
-- [ ] **downloadAudio() always writes .mp3** — Extension hardcoded regardless of actual format; detect from content-type.
-- [ ] **onWavConversionReady() redundant if/else** — Both branches do same thing; simplify.
-- [ ] **PresetPersistence/RatingManager lack atomic writes** — Non-atomic file writes; crash = corrupt file. Use write-rename pattern.
-- [ ] **Playlist no thread safety** — Accessed from UI + audio threads without synchronization; add mutex or make thread-safe.
-- [ ] **MediaMetadata only supports MP3/FLAC album art** — No WAV, OGG, M4A cover art extraction; extend with taglib.
-- [ ] **CircularBuffer::getSpans() defined but never used** — Dead method; remove or find use case.
-- [ ] **AudioAnalyzer::pcmData() unnecessary copy loop** — Copies data that could be returned as view; eliminate copy.
-- [ ] **AudioEngine.hpp includes projectM.h but doesn't use it** — Dead include; remove.
-- [ ] **CliUtils::findClosestMatch truncated** — Fuzzy match logic incomplete; doesn't handle all edge cases.
-- [ ] **#pragma once non-standard** — Use traditional include guards for .inc files; `#pragma once` OK for .hpp.
-- [ ] **Missing include guards in .inc files** — CliArgs.inc etc. have no guards; multiple-include risk.
-- [ ] **Inconsistent namespace usage** — Some files `vc::ui`, others `vc`, some top-level; standardize on `vc::ui`.
-- [ ] **README humor over documentation** — More memes than useful info; add proper build/run/contribute sections.
-- [x] **docs/suno_api/README.md reverse-engineered API** — explicit unofficial/support disclaimer, authority boundary, evidence labels, and secret-handling rules added (2026-09-24).
-
-### C++23 Modernization
-- [ ] **g_app raw pointer → unique_ptr** — Global app pointer should use smart pointer for ownership clarity.
-- [ ] **CircularBuffer could use std::array** — Fixed-size buffer; `std::array` over raw new/delete.
-- [ ] **Shuffle seed configurable** — Allow deterministic shuffle for testing/reproducibility.
-- [ ] **PlaylistItem std::variant for lyric sources** — Multiple source types; variant > tagged union.
-- [ ] **CliArg type safety with std::variant** — Stringly-typed args; variant for type-safe dispatch.
-- [ ] **POSIX isatty not portable** — `isatty()` Unix-only; use `QFile::exists()` or cross-platform check.
-- [ ] **Structured logging with JSON format** — For AI parsing and log aggregation; add structured log sink.
-- [ ] **std::mdspan for FFT** — Multi-dimensional view over audio buffers; zero-cost abstraction.
-- [ ] **Concepts/constraints in templates** — Template parameters unconstrained; add C++20 concepts.
-
----
-
-## P4: Feature Enhancements
-
-### Suno "Chad" Integration
-- [x] Upgrade Suno API to feed/v3 for library access
-- [x] Implement infinite scrolling for Suno Library (Pagination)
-
-### UI/UX & Polish
-- [x] Implement smooth height animations for AccordionPanel transitions
-- [x] Expand Settings.qml with comprehensive engine/recorder controls
-- [ ] Implement "Modern Visualizer Overlay" with reactive text/graphics
-- [ ] Add "Karaoke Master" mode: Synced lyrics with custom aesthetic overrides
-- [ ] Karaoke settings not persisted — Aesthetic overrides lost on restart; save to config.
-
-### Strategic Goals: Maximum Customizability
-- [ ] TOML-based "Chad Config": Every UI constant and engine parameter exposed
-- [ ] Profile Support: Save/Load different UI themes and visualizer preset banks
-- [x] Persistent state for all sidebar toggles and view modes
-
-### Themes & Customization
-- [ ] qss themes and theme switching — Default qss theme files in sub-directory; settings UI section to switch.
-- [ ] Custom user themes — End user adds themes to appropriate/custom directory; auto-populated in switcher.
-- [ ] Runtime theme switching — Currently requires restart; implement live theme reload.
-- [ ] ThemeBridge full color exposure — Only 2 writable colors currently; expose all theme colors for runtime editing.
-
----
-
-## P5: Infrastructure & Pipeline
-
-### Build & Release
-- [ ] **Default build type Debug** — Should default to ReleaseWithDebInfo for distribution; Debug only via explicit flag.
-- [ ] **No release pipeline** — No CI/CD for tagged releases; add GitHub Actions for build+package+publish.
-- [ ] **Audio playback filetypes limited** — Only MP3/FLAC/WAV; add OGG, M4A, OPUS via taglib/ffmpeg.
-
-### Testing
-- [ ] **Minimal test coverage** — Core audio engine, playlist, config parsing untested. Add unit tests for critical paths.
-- [ ] **Any tests useful for agentic workflows** — Industry standard or health-check tests for development cycles.
-
-### Documentation
-- [x] **CHANGELOG.md maintenance** — canonical release notes, legacy archive, and references are current for the 1.1.0 release.
-
----
-
-## Codebase Audit & Refactoring (2026-04-28)
-
-Full audit of 19,294 LOC across 10 modules. 24 issues found, 18 fixed across 5 phases.
-
-### Completed (Phases 1-4)
-- [x] **#1/#12** Lyrics unification: LyricsFactory canonical parser + AlignedLyrics conversion methods; removed dead LyricAligner.hpp
-- [x] **#2** SunoDatabase: Extracted `clipFromQuery()` helper (3 identical blocks → 1)
-- [x] **#3** SettingsBridge: X-macro table + SettingMacros.hpp (453→~120 LOC)
-- [x] **#4** Fixed broken QML Theme refs in KaraokeMaster.qml + KaraokeSettings.qml
-- [x] **#5/#13** CLI argument table: CliArgs.inc + per-type X-macros + applyOverride<T> (687→584 LOC)
-- [x] **#6/#23** SunoController lyrics dedup: Uses LyricsFactory directly, removed 84-line fallback parser
-- [x] **#7/#8** SunoDownloader: Extracted `getDownloadDir()` (5x) + `sanitizeFilename()` (4x)
-- [x] **#9/#22** Unified formatDuration/formatBytes into FileUtils (removed 3 local duplicates)
-- [x] **#10** VisualizerBridge: Wired stubs to real VisualizerWindow (added visualizerWindow Q_PROPERTY, actualFps())
-- [x] **#11** Namespace migration: `chadvis` → `vc::ui` in SunoPersistentAuth/SystemBrowserAuth
-- [x] **#15** Lerp consolidation: Single `vc::lerp()` in Types.hpp (removed 3 duplicates)
-- [x] **#16** Removed orphaned MIT license block from SunoAuthManager.hpp
-- [x] **#17** Removed duplicate `#include <QtSql/QSqlDatabase>` from SunoDatabase.hpp
-- [x] **#18** Removed duplicate GL state setup in VisualizerQFBO::render()
-- [x] **#19** Archived dead LyricsLoader.hpp to `.backup_graveyard/lyrics/`
-- [x] **#21** Removed orphaned `OverlayEngine` forward-decl from Types.hpp + Application.hpp
-- [x] **#24** Removed stale `${KISSFFT_INCLUDE_DIRS}` from CMakeLists.txt
-
-### Remaining (Phase 5+)
-- [ ] **#14** OverlayBridge uses separate JSON persistence instead of Config — documented, left alone (JSON appropriate for list data; future: add debouncing)
-- [x] **#25** VisualizerBridge::toggleActive() now toggles the native visualizer window visibility
-- [x] **#26** LyricsBridge exports SRT/LRC, filters local search, and returns owned context/upcoming line maps
-
-### Net Impact
-- **38 files changed, -894 net LOC removed** (2022 deletions, 1128 insertions)
-- 7 commits: Phase 1 quick wins → Phase 2 dedup → Phase 2 lyrics/namespace/lerp → Phase 3 SettingsBridge → Phase 3 CLI table → Phase 4 VisualizerBridge+lyrics → archive
-
----
-
-## Architectural Goals (Long-Term)
-
-- [ ] **DI over singletons** — Replace global singletons with dependency injection; improve testability and decoupling.
-- [ ] **Separate audio processing from UI** — Audio engine should be headless library; UI consumes via bridge interfaces.
-- [ ] **Consider std::execution/jthread** — C++23 parallel algorithms and join-aware threads for audio pipeline.
-- [ ] **QML BackendBridge consolidation** — Multiple bridge singletons → unified backend interface with namespaced properties.
-- [ ] **Build system improvements** — Split CMakeLists into per-module subdirs; vendor CPM.cmake; add Conan/vcpkg as optional.
-
----
-
-## C++23 Agent Guidelines
-- **Standard**: C++23 is the required minimum.
-- **I/O**: Prefer `std::println` over `std::cout` or `printf`.
-- **Error Handling**: Prefer `std::expected` for error handling (utilize monadic `.and_then()`/`.or_else()`).
-- **Optionals**: Use monadic operations for `std::optional`.
-- **Target**: Arch Linux (latest GCC/Clang) is the primary development target.
-
----
-*Consolidated from IMPROVEMENTS_*.md files on 2026-05-10. Sources: MINIMAX-M2.5, openrouter-owl-alpha, XIAOMI-MIMO-V2.5-PRO, XIAOMI-MIMI-V2.5-FLASH.*
-*Original audit: 2026-04-28 by AGENT (audit phases 1-4)*
+- Lint with `cline`; `clangd` is also available.
+- `oh-my-opencode-slim` is used on the user's system, not in cloud sessions.
+- The caveman skill was removed because the current model has unlimited
+  inference. Re-add it (`npx skills add JuliusBrussee/caveman`) if running on a
+  quota-limited model.
+- `GENERAL_LLM_STARTING_PROMPT.md` is optional background. It has drifted from
+  this document and from the code; where they disagree, this file and the source
+  win.

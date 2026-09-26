@@ -52,25 +52,28 @@ Open `Settings > Account` to manage the Suno session. The page includes a `Sign 
 
 Use the manual path instead:
 
-1. Expand `Paste session cookie or token instead`.
-2. Enter a Suno session cookie or bearer token in the masked `Session Token` field.
+1. Expand `▾ Paste session cookie header instead`.
+2. Paste the **complete `Cookie:` request header** — copied straight from a signed-in browser's request to `auth.suno.com/v1/client` — into the **Complete Cookie request header** field.
 3. Return to Library and refresh, or perform another authenticated action, so `SunoClient` reloads the stored credential.
 
-`SettingsBridge` sends this value to `CredentialStore`; it is not written to `config.toml`. When the session becomes valid, the Account page and main-window account chip can display the user name, plan, and credit balance from `SunoAccountManager`.
+A lone session JWT is **not** enough. The `__client…` cookies are the part that actually authenticates the Studio session; supplying only a bearer/session JWT produces a non-working session, and the Account page shows the cookie-header hint when the pasted value contains no `=`. Extra cookies are ignored.
+
+`SettingsBridge` sends this value to `CredentialStore`; it is stored in the OS keychain and is never written to `config.toml` or to logs. When the session becomes valid, the Account page and main-window account chip can display the user name, plan, and credit balance from `SunoAccountManager`.
 
 ## Shell Keyboard Controls
 
-The default bindings in `config/default.toml` are wired by `main.qml`:
+Seven bindings come from `config/default.toml` and are read through `SettingsBridge`. Two are hardcoded in QML and are not configurable.
 
-| Action | Default key |
-| :--- | :--- |
-| Play/pause | `Space` |
-| Next track | `N` |
-| Previous track | `P` |
-| Start/stop recording and reveal Video | `R` |
-| Previous projectM preset and reveal Video | `Left` |
-| Next projectM preset and reveal Video | `Right` |
-| Expand/collapse the navigation rail | `M` |
-| Close Settings | `Esc` |
+| Action | Default key | Source |
+| :--- | :--- | :--- |
+| Play/pause | `Space` | `keyboard.play_pause` |
+| Next track | `N` | `keyboard.next_track` |
+| Previous track | `P` | `keyboard.prev_track` |
+| Start/stop recording and reveal Video | `R` | `keyboard.toggle_record` |
+| Reveal Video — fullscreen action not wired yet | `F` | `keyboard.toggle_fullscreen` |
+| Next projectM preset and reveal Video | `Right` | `keyboard.next_preset` |
+| Previous projectM preset and reveal Video | `Left` | `keyboard.prev_preset` |
+| Expand/collapse the navigation rail | `M` | Hardcoded in `src/qml/main.qml` |
+| Close the Settings window | `Esc` | Hardcoded in `src/qml/SettingsWindow.qml` |
 
-The configured values can be reviewed in `Settings > Shortcuts`.
+The configured values can be reviewed in `Settings > Shortcuts`. Note that `F` is bound but is still a QML placeholder: it reveals the Video surface and logs a TODO instead of toggling fullscreen, so treat that binding as reserved rather than functional. `M` and `Esc` have no `config.toml` key — editing the config will not change them.

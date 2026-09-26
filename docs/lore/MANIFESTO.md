@@ -1,6 +1,6 @@
 # 📜 The ChadVis Manifesto: A Philosophical Bicker-fest
 
-Welcome to the heart of the project. This isn't about code; it's about the clash of titans, the chanting of monks, and the quest for the ultimate visualizer.
+Welcome to the heart of the project. This isn't about code; it's about the clash of titans, the chanting of monks, and the pursuit of a desktop client that does not lie to you about what it knows.
 
 ---
 
@@ -13,9 +13,9 @@ Welcome to the heart of the project. This isn't about code; it's about the clash
 
 ## 🥊 The Great Debate
 
-### On the Choice of C++20
+### On the Choice of C++23
 
-**Senior Dev:** "Look, C++20 is just better. Concepts, ranges, `std::jthread`. It makes the code cleaner and more robust. Why would we stay in the 90s?"
+**Senior Dev:** "Look, C++23 is just better. `std::expected`, `std::print`, `std::jthread`. It makes the code cleaner and more robust. Why would we stay in the 90s?"
 
 **Richard Stallman:** "Modern C++ is a monstrosity of complexity! It's designed to confuse the user and keep them from understanding the true nature of their software! We should be writing this in C, or better yet, a purely functional Lisp that can be formally verified by a community of free software saints!"
 
@@ -25,11 +25,13 @@ Welcome to the heart of the project. This isn't about code; it's about the clash
 
 ### On the "Arch BTW" Culture
 
+Actual install and packaging instructions live in [`docs/user/INSTALL.md`](../user/INSTALL.md). The ideology is shorter than the toolchain list:
+
+**Senior Dev:** "Arch isn't a choice; it's a lifestyle. It's about control — knowing exactly what's running on your metal."
+
 **Linus (LTT):** "Arch is great because it's fast and you get the latest packages. It's like the bleeding edge of PC hardware, but for software. **Speaking of bleeding edge, check out the new LTT screwdriver!**"
 
-**Senior Dev:** "Arch isn't a choice; it's a lifestyle. If you can't handle a manual installation, you shouldn't be handling a C++20 visualizer. It's about control. It's about knowing exactly what's running on your metal."
-
-**Richard Stallman:** "Arch Linux is a den of inequity! They include non-free software in their repositories! They don't even try to follow the Free System Distribution Guidelines! You should be using Guix System or Trisquel! Only then will your visualizations truly be free!"
+**Richard Stallman:** "Arch Linux is a den of inequity! They include non-free software in their repositories! Use Guix System or Trisquel! Only then will your visualizations truly be free!"
 
 ---
 
@@ -39,13 +41,13 @@ Welcome to the heart of the project. This isn't about code; it's about the clash
 
 **Linus (LTT):** "But Richard, I just made a song about a cat eating pizza in the style of 80s synth-pop. It took 30 seconds. How is that a moral failure? It's awesome!"
 
-**Senior Dev:** "The code treats Suno as a data source. We provide the viewer. We are the lens through which the AI's dreams become light. It's a tool, Richard. Like a compiler. A very weird, musical compiler."
+**Senior Dev:** "Suno is the product now; projectM is the engine that rides along with it. And because Suno publishes no API for us, every claim we make is a capture, labeled `[T1]`, `[LEAD]`, or `[VERIFY]`. We ship what we can prove and disable the rest. A slightly smaller client that tells the truth beats a complete one that guesses."
 
 ---
 
 ## 🕊️ The Conclusion (Sort of)
 
-We bicker because we care. We bicker because we want ChadVis to be the best. Whether you're here for the freedom, the performance, or the memes, you're welcome. Just don't ask us to support Windows.
+We bicker because we care. We bicker because we want ChadVis to be the best. Whether you're here for the freedom, the performance, or the memes, you're welcome. As for platforms: macOS is the only one we've actually run end to end, Linux is the primary development target with real install rules, and Windows exists in the build system as an NSIS/CPack target nobody has verified. So "don't ask us to support Windows" is now "don't ask us to *claim* Windows."
 
 ---
 

@@ -11,14 +11,21 @@
 
 - [`ENDPOINT-INVENTORY.md`](ENDPOINT-INVENTORY.md) is the **sole API-spec
   master** for routes, request/response shapes, host distinctions, and
-  `[T1]`/`[LEAD]`/`[VERIFY]` evidence status.
-- [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) is limited to the
-  observed Google web flow and the binding native-callback gate. Native Google
-  sign-in remains disabled until a human capture proves Clerk accepts a loopback
-  or custom-scheme callback.
-- [`raw/README.md`](raw/README.md) records provenance, hashes, and safe handling
-  for evidence. Raw scans and unredacted external exports are evidence, never
-  implementation contracts or documentation sources.
+  `[T1]` evidence status.
+- [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) is the catalogue of **non-contractual
+  observations** — every `[LEAD]` and `[VERIFY]` row. It is never a stable
+  contract and never an implementation source; it exists only for research and
+  capture planning, and may not be wired without a direct capture.
+- [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) is the single
+  location for the observed Google web flow, the Clerk cookie families, and the
+  **native-callback gate**. The intended desktop sign-in path is the system
+  default browser plus an app-owned `http://127.0.0.1:<port>` loopback callback
+  for Google/Facebook social login; Clerk's loopback acceptance still owes a
+  human capture.
+- [`raw/README.md`](raw/README.md) records provenance, SHA-256 hashes, artifact
+  retention, and capture maintenance discipline. Raw scans and unredacted
+  external exports are evidence, never implementation contracts or
+  documentation sources.
 
 This index intentionally contains no endpoint tables, auth recipes, model
 claims, or response schemas. Update the canonical inventory first; keep this
@@ -31,22 +38,31 @@ file as navigation only.
 - `[VERIFY]`: conflicting, incomplete, or observed but not established as
   universally required.
 
-`[T1]` is point-in-time evidence, not an availability or compatibility
-guarantee.
+Labels are defined in
+[`ENDPOINT-INVENTORY.md`](ENDPOINT-INVENTORY.md) section 1.1, which is the
+label authority. `[T1]` is point-in-time evidence, not an availability or
+compatibility guarantee, and it does **not** mean the route is implemented.
+Implementation state is a separate axis
+([section 1.3](ENDPOINT-INVENTORY.md)); do not read one as the other.
 
 ## 2026-09-24 capture audit
 
 The external source directory is labeled `sept-09-2026`, but its Burp export and
 all item timestamps are dated 2026-09-24. The raw base64 XML is not sanitized
-and remains outside the repository. See the inventory's dated source map and
-the raw provenance hash manifest before using any evidence.
+and remains outside the repository. See
+[`raw/README.md`](raw/README.md) for the reviewed-source map, the full SHA-256
+hash manifest, and the host/filename misspell reconciliation.
 
-Retained in-repository raw material:
+Raw captures stay **outside** the repository. The only in-repository raw
+material is the sanitized recon:
 
-- [Endpoint sniff list](raw/endpoints_sniffed.list) — unfiltered `[LEAD]`
-  discovery output.
 - [Sanitized OAuth recon](raw/sanitized-recon-2026-09-22.json) — request-only
-  evidence supporting the web-flow analysis.
+  evidence supporting the web-flow analysis. 79 entries, 64 redactions, no
+  response statuses or bodies.
+
+The endpoint sniff list that used to sit here was removed on 2026-09-26
+because it contained real PII. Its non-PII `[LEAD]` rows survive as prose in
+[`OBSERVED-LEADS.md`](OBSERVED-LEADS.md). Do not restore it.
 
 Never copy live credentials, cookies, OAuth state/codes, personal data,
 identifiers, private text, temporary upload fields, or complete media URLs into
