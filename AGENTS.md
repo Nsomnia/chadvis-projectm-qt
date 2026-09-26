@@ -35,7 +35,7 @@ the repository's `[T1]` / `[LEAD]` / `[VERIFY]` labels.
 - **Fail closed on unverified hosts.** Never send cookies, bearers, or automatic
   remote image requests to an absolute host absent from a captured allowlist.
 - Never hand-roll the Clerk handshake. Never put a Google ID token into
-  `SunoClient`.
+  `SunoClient` code, ensure tokens are always captured of the unique *end-users*.
 
 ### 2. Secret handling (non-negotiable)
 
@@ -43,18 +43,23 @@ the repository's `[T1]` / `[LEAD]` / `[VERIFY]` labels.
   clip identifiers, pasted private text, or complete media URLs.
 - Raw captures stay **outside** the repository. The only retained raw artifact is
   the sanitized recon, governed by `docs/suno_api/raw/README.md`.
-- User secrets go to the OS keychain via `CredentialStore`, never to TOML or logs.
-- When a file is removed, report the fact. If a secret ever reaches a commit,
-  treat the account as compromised and rotate it — expiry is not remediation for
-  permanent identifiers.
+- User secrets go to the OS keychain, as appropriate on Windows, Mac OSx, and 
+  GNU/Linux (well actually... gnu is hehe) alike, via `CredentialStore`, never
+  to logs and if needed for some strange reason in a TOMl config file, then good
+  evidence as to why must be formed.
 
 ### 3. Verification bar
 
 A task is **not** complete from a stale binary, a declaration, a scan string, or
-a historical commit. Verify the current source with a fresh configure/build, the
-relevant tests, focused lint/format checks, and a real runtime path. Record
-observed results in `CHANGELOG.md`.
+a historical commit. Verify the current source with a fresh configure/build
+(only do a clean re-build when absolutely nessecary due to the users limited
+compute power), the relevant tests, focused lint/format checks, and a real
+runtime path. Record observed results, if/when deemed needed, in `CHANGELOG.md`.
 
+For Qt/QML checking/linting tools available but not limnited to are: qmlformat,
+qmllint, qmlls, qmlpreview, qmlprofiler, and qmltc. Any tooling may be agent
+installed if/when needed via brew, from source, or downloading a binary.
+ 
 - Tests: `ctest --test-dir build/tests --output-on-failure`.
   **Not** `--test-dir build` — that directory has no `CTestTestfile.cmake`,
   discovers zero tests, and still exits 0.
@@ -72,17 +77,17 @@ already preserves the source.
 
 Commit frequently so `git log --oneline` gives future agents a parseable history.
 Use detailed messages for session completions and other major changes. Git
-history is the primary memory for future sessions, which always exceed context
-limits and lose it.
+history is the primary memory for future sessions, when exceeding context limits.
 
-Never force-push rewritten history, delete a remote branch, or rewrite a tag
-without explicit per-instance user authorization.
+Anything deemed extremly unsafe should be confirmed with user approval despite
+being a novice git user.
 
 ### 6. Documentation
 
 One fact, one owning document. If two files claim the same thing, that is a bug.
-Every pointer to a document is a **link**, not backticked text. Keep the hub
-table of contents in `docs/README.md` and nowhere else.
+Every pointer to a document is a **link**, not backticked text. Keep the docs
+hub table of contents in `docs/README.md` and nowhere else of which the root
+README.md may link to it or any other docs for most front-facing information.
 
 ### 7. Code style
 
@@ -92,45 +97,49 @@ table of contents in `docs/README.md` and nowhere else.
   Expected failures return `vc::Result<T>`; `catch` is for genuinely exceptional
   paths.
 - **Targets:** Arch Linux (latest GCC/Clang) is the primary development target;
-  macOS is the platform this is run and verified on.
-- ~500 LOC is a soft ceiling for a C++23 class. Use judgment.
+  macOS is the platform this is run and verified on by the user currently
+  however, and Windows (10/11) is also helpful being the major userbase.
+- ~500 LOC is a soft ceiling for a C++23 class. Use best judgment.
 - Production-ready, maintainable, no slop. Follow industry standards.
+- Use appropriate coding paradignms as they best fit: object, functional, etc.
 
-### 8. Task state
+### 8. TODO.md Task state
 
 Marks: `[ ]` todo · `[~]` in progress · `[x]` done, awaiting verification ·
-`[?]` blocked on a human or a capture · `[!]` needs user attention now.
+`[?]` blocked or requires human input · `[!]` needs immediate user attention.
 
 Only the user removes tasks. Agents may freely refactor, add, and reorganize.
-Record new findings in `TODO.md` rather than in this file.
+Record new tasks when instructed or found during operations in `TODO.md`
+rather than in this file.
 
 ### 9. Working style
 
 - Unlimited tool calls and full access to user-system packages (`gh`, `git`,
-  `ddgr`, `pacman -Qq`). If a needed tool is missing, say so immediately.
+  `ddgr`, `pacman -Qq`). If a needed tool is missing, they may be installed via
+  brew or from source unless major or requiring user work, then say so.
 - Prefer parallel bounded lanes and decisive commits over gold-plating.
-- Route a task to a specific model with `opencode --models`, then
-  `opencode --model provider/name run "..."`. Free models are fair game.
 - Keep the "Chad" and "Arch, BTW" register: Linus Torvalds and Linus Tech Tips
   orchestrating while Richard Stallman dispenses GNU kung-fu in the background.
-  Humor is the project's voice, not a substitute for information.
-- Self-prioritize when given free rein. Write tests where they genuinely let
-  logic be verified programmatically.
+  Humor is the project's unique "easter egg" voice, but not a substitute for
+  fact or information. Don't be tacky.
+- Self-prioritize. Unless otherwise stated, you are given free rein. Improve
+  code when your context shows room for improvment, add found tasks or ideas to
+  the TODO.md, and otherwise keep development moving rapidly as-if it were a
+  vertically oriented and aligned company starting out from venture seed funds.
+  Write tests where they genuinely let logic be verified programmatically or
+  may avoid future headaches.
 
 ### 10. Self-driven loop
 
 You have freedom to keep working on `TODO.md` while tasks remain or improvements
 are evident. Use a simple self-harness for repetition, and end with an explicit
 statement of what is done, compiled, tested, verified, and committed — or the
-step that is fatally blocked and cannot be amended.
+step that is fatally blocked and cannot be amended. If operating on any model
+with `free` in it's name then you are free to go above and beyond in unlimited
+token allowance usage.
 
 ## Environment notes
 
-- Lint with `cline`; `clangd` is also available.
-- `oh-my-opencode-slim` is used on the user's system, not in cloud sessions.
-- The caveman skill was removed because the current model has unlimited
-  inference. Re-add it (`npx skills add JuliusBrussee/caveman`) if running on a
-  quota-limited model.
-- `GENERAL_LLM_STARTING_PROMPT.md` is optional background. It has drifted from
-  this document and from the code; where they disagree, this file and the source
-  win.
+- Lint with `cline`; `clangd` is also available, and any other tools mentioned,
+  found on the users system, or installable whether from brew, sourfe, or
+  otherwise.
