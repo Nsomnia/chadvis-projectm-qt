@@ -529,14 +529,7 @@ void Application::quit() {
 }
 
 void Application::printVersion() {
-	using namespace CliColor;
-	std::cout << "\n" << brightCyan() << bold()
-		<< "╔═══════════════════════════════════════════╗\n"
-		<< "║ ChadVis Audio Player ║\n"
-		<< "╚═══════════════════════════════════════════╝" << reset() << "\n"
-		<< " Version: " << brightGreen() << "1.0.0" << reset() << "\n"
-		<< " Built with Qt: " << brightGreen() << qVersion() << reset() << "\n"
-		<< " " << dim() << "\"I use Arch btw\"" << reset() << "\n\n";
+	std::cout << Cli::versionBanner();
 }
 
 void Application::printHelp() {

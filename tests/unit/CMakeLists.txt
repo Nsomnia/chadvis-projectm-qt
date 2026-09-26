@@ -3,6 +3,7 @@ add_executable(unit_tests
     core/test_Logger.cpp
     core/test_ConfigParsers.cpp
     core/test_FileUtils.cpp
+    core/test_Version.cpp
     recorder/test_RecordingPipeline.cpp
     visualizer/test_PresetScanner.cpp
     suno/test_AuthModule.cpp
@@ -27,6 +28,21 @@ target_link_libraries(unit_tests PRIVATE
     Qt6::Test
     project_lib
 )
+
+# core/test_Version.cpp reads the repo-root version.txt at runtime so the
+# regression test tracks the single source of truth instead of a copy. The
+# define is only worth handing down when that fixture is really there, and the
+# executable is only worth naming once it exists.
+if(EXISTS "${CMAKE_SOURCE_DIR}/version.txt")
+    target_compile_definitions(unit_tests PRIVATE
+        CHADVIS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
+endif()
+if(TARGET chadvis-projectm-qt)
+    target_compile_definitions(unit_tests PRIVATE
+        CHADVIS_BINARY="$<TARGET_FILE:chadvis-projectm-qt>"
+    )
+endif()
 
 add_test(NAME unit_tests COMMAND unit_tests)
 

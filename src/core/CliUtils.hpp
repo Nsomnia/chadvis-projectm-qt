@@ -60,6 +60,24 @@ namespace CliColor {
  */
 namespace Cli {
     /**
+     * @brief Application version, from the build-time CHADVIS_VERSION definition.
+     *
+     * version.txt at the repository root is the single source of truth; CMake
+     * validates it into PROJECT_VERSION and forwards it as a compile
+     * definition. The user config is deliberately NOT consulted: the version
+     * is a build-time fact, and a user-editable file would make it spoofable.
+     */
+    [[nodiscard]] std::string_view version();
+
+    /**
+     * @brief Build the `--version` banner, byte-for-byte as it is emitted.
+     *
+     * Lives here instead of in Application so the text that reaches stdout is
+     * testable without capturing a stream; printVersion() only streams it.
+     */
+    [[nodiscard]] std::string versionBanner();
+
+    /**
      * @brief Print an error message with red highlighting
      */
     void printError(std::string_view message);
