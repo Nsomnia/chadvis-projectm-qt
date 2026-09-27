@@ -101,6 +101,17 @@ public:
 
     bool next();
     bool previous();
+    /**
+     * @brief Begin playback: select the first track, or the first entry of the
+     *        shuffled traversal.
+     *
+     * Pinning the start to index 0 while a shuffle is active would begin the
+     * traversal in the middle of its own permutation, so the entry before the
+     * start would never be played in that pass. A no-op once something is
+     * already selected.
+     */
+    bool startPlayback();
+
     bool jumpTo(usize index);
 
     // Playback modes

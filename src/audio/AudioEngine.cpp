@@ -76,7 +76,7 @@ void AudioEngine::setupConnections(QMediaPlayer* player, QAudioBufferOutput* buf
 
 void AudioEngine::play() {
     if (!playlist_.currentIndex() && !playlist_.empty()) {
-        playlist_.jumpTo(0);
+        playlist_.startPlayback();
     }
     if (player_->source().isEmpty() && playlist_.currentItem()) {
         loadCurrentTrack();

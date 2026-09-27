@@ -438,13 +438,12 @@ private slots:
         QVERIFY2(playlist.currentIndex() == std::optional<usize>{0},
                  why(show(playlist.currentIndex())));
 
-        // Shuffle walks a permutation. Note the traversal starts at shuffle
-        // position 1, because setShuffle() leaves shufflePosition_ at 0 and
-        // next() pre-increments — so the first entry of the shuffled order is
-        // the one item the first pass never visits. That is the current
-        // behaviour, pinned on purpose: an off-by-one in the traversal start
-        // would otherwise be invisible, and changing it is a deliberate
-        // navigation-semantics decision, not a refactor side effect.
+        // Shuffle walks a permutation, and a pass that has not started begins
+        // at its first entry: next() used to pre-increment shufflePosition_ from
+        // 0 even with no selection, so a fresh three-item queue visited two of
+        // its tracks under Repeat::Off. Starting the traversal is now
+        // startPlayback()'s job, and next() only steps when something is
+        // already playing.
         Playlist shuffled;
         shuffled.addUrl("a", "A");
         shuffled.addUrl("b", "B");
@@ -459,9 +458,11 @@ private slots:
                      why("shuffled next() reported success without a selection"));
             visited.push_back(*shuffled.currentIndex());
         }
-        QCOMPARE(visited.size(), usize{2});
-        QVERIFY2(visited[0] != visited[1],
-                 why("the shuffled walk visited the same track twice: " + show(visited)));
+        QCOMPARE(visited.size(), usize{3});
+        {
+            std::set<usize> once(visited.begin(), visited.end());
+            QCOMPARE(once.size(), usize{3});
+        }
 
         // Under Repeat::All the shuffle walk wraps and reshuffles, which does
         // reach shuffle position 0, so all three tracks are eventually visited.
@@ -585,6 +586,57 @@ private slots:
                          },
                          10000),
                  why("the track ended and the queue did not advance into playback"));
+    }
+
+    // Enabling shuffle must actually shuffle where playback starts, and a
+    // fresh pass must cover the whole queue. Both used to be false: play()
+    // pinned the first selection to index 0, which placed the traversal in the
+    // middle of its own permutation, and the entry before it was never played.
+    void shuffledPlaybackCoversEveryTrack() {
+        for (int attempt = 0; attempt < 25; ++attempt) {
+            Playlist playlist;
+            playlist.addUrl("a", "A");
+            playlist.addUrl("b", "B");
+            playlist.addUrl("c", "C");
+            playlist.setShuffle(true);
+            QVERIFY(playlist.shuffle());
+
+            QVERIFY2(playlist.startPlayback(),
+                     why("startPlayback refused an empty selection on a non-empty queue"));
+            std::vector<usize> visited{*playlist.currentIndex()};
+            while (playlist.next()) {
+                QVERIFY(playlist.currentIndex().has_value());
+                visited.push_back(*playlist.currentIndex());
+            }
+
+            QCOMPARE(visited.size(), usize{3});
+            std::set<usize> once(visited.begin(), visited.end());
+            QVERIFY2(once.size() == 3,
+                     why("a shuffled pass skipped a track: " + show(visited)));
+        }
+    }
+
+    // Adding a track to a shuffled queue mid-pass must not move the entry the
+    // traversal is standing on. Splicing the new track in at a random position
+    // used to desynchronise shufflePosition_ from the selection, so the pass
+    // could play one track twice and skip another.
+    void addingToAShuffledQueueKeepsTheTraversalConsistent() {
+        Playlist playlist;
+        playlist.addUrl("a", "A");
+        playlist.addUrl("b", "B");
+        playlist.setShuffle(true);
+        QVERIFY(playlist.startPlayback());
+        const usize playing = *playlist.currentIndex();
+        QVERIFY(playlist.next());
+
+        playlist.addUrl("c", "C");
+        QCOMPARE(playlist.size(), usize{3});
+
+        // previous() steps back to whatever the traversal was on before the
+        // insertion, which is the selection that is still playing.
+        QVERIFY(playlist.previous());
+        QVERIFY2(*playlist.currentIndex() == playing,
+                 why("inserting a track moved the traversal off the playing entry"));
     }
 
     void sessionPlaylistIsFlushedOnDestruction() {

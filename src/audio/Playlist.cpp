@@ -84,11 +84,12 @@ void Playlist::addFile(const fs::path& path) {
     items_.push_back(std::move(item));
     
     if (shuffle_) {
+        // Appended, like addUrl, and deliberately not spliced into a random
+        // position: shufflePosition_ indexes the entry currently playing, so
+        // moving entries underneath it would desynchronise the traversal from
+        // the selection and let a pass visit one track twice while skipping
+        // another. A new track simply plays later in the current pass.
         shuffleOrder_.push_back(index);
-        if (shuffleOrder_.size() > 1) {
-            std::uniform_int_distribution<usize> dist(0, shuffleOrder_.size() - 1);
-            std::swap(shuffleOrder_.back(), shuffleOrder_[dist(rng_)]);
-        }
     }
     
     // Appending cannot change the selection, so currentChanged stays silent.
@@ -244,15 +245,21 @@ bool Playlist::next() {
     }
     
     if (shuffle_) {
-        ++shufflePosition_;
-        if (shufflePosition_ >= shuffleOrder_.size()) {
-            if (repeatMode_ == RepeatMode::All) {
-                shufflePosition_ = 0;
-                regenerateShuffleOrder();
-            } else {
-                return false;
+        if (currentIndex_) {
+            ++shufflePosition_;
+            if (shufflePosition_ >= shuffleOrder_.size()) {
+                if (repeatMode_ == RepeatMode::All) {
+                    shufflePosition_ = 0;
+                    regenerateShuffleOrder();
+                } else {
+                    return false;
+                }
             }
         }
+        // No selection yet means the traversal has not started, so it begins at
+        // the first entry of the permutation rather than stepping past it.
+        // Pre-incrementing here used to skip that entry, so the first pass over
+        // a three-item queue visited two of them under Repeat::Off.
         currentIndex_ = shuffleOrder_[shufflePosition_];
     } else {
         if (!currentIndex_) {
@@ -304,6 +311,21 @@ bool Playlist::previous() {
     
     currentChanged.emitSignal(currentIndex_);
     return true;
+}
+
+bool Playlist::startPlayback() {
+    assertOwnerThread(__func__);
+
+    if (items_.empty() || currentIndex_)
+        return false;
+
+    if (shuffle_) {
+        shufflePosition_ = 0;
+        currentIndex_ = shuffleOrder_[0];
+        currentChanged.emitSignal(currentIndex_);
+        return true;
+    }
+    return jumpTo(0);
 }
 
 bool Playlist::jumpTo(usize index) {
