@@ -1,8 +1,11 @@
 // Version: 1.1.0
 // Last Edited: 2026-08-25 12:00:00
 // Description: Lock-free SPSC audio queues using moodycamel::ReaderWriterQueue
-//              Three-queue pattern: viz (visualizer) + rec (recorder) + ana (analyzer)
+//              Two-queue pattern: viz (visualizer) + rec (recorder)
 //              Producers hand over an AudioChunk view; queues store AudioFrame values.
+//              The third queue used to be ana (analyzer); its only consumer was the
+//              engine's analyzer worker, which computed a spectrum nothing read, so
+//              the queue only ever filled and dropped.
 
 #pragma once
 
@@ -50,10 +53,8 @@ public:
     explicit AudioQueue(u32 capacity = DEFAULT_QUEUE_CAPACITY)
         : vizQueue_(capacity)
         , recQueue_(capacity)
-        , anaQueue_(capacity)
         , vizDropCount_(0)
         , recDropCount_(0)
-        , anaDropCount_(0)
         , totalPushed_(0)
     {}
 
@@ -76,8 +77,7 @@ public:
     bool pushAll(const AudioChunk& chunk) {
         const bool a = pushInternal(vizQueue_, vizDropCount_, chunk);
         const bool b = pushInternal(recQueue_, recDropCount_, chunk);
-        const bool c = pushInternal(anaQueue_, anaDropCount_, chunk);
-        return a && b && c;
+        return a && b;
     }
 
     /// Raw-pointer overload retained for callers that have not adopted AudioChunk.
@@ -133,10 +133,6 @@ public:
         return popBatchInternal(recQueue_, buffer, maxFrames);
     }
 
-    u32 popAnaBatch(float* buffer, u32 maxFrames) {
-        return popBatchInternal(anaQueue_, buffer, maxFrames);
-    }
-
     // ========================================================================
     // Metrics (thread-safe via atomics)
     // ========================================================================
@@ -178,7 +174,6 @@ public:
         AudioFrame frame;
         while (vizQueue_.try_dequeue(frame)) {}
         while (recQueue_.try_dequeue(frame)) {}
-        while (anaQueue_.try_dequeue(frame)) {}
     }
 
 private:
@@ -186,11 +181,9 @@ private:
 
     Queue vizQueue_;
     Queue recQueue_;
-    Queue anaQueue_;
 
     std::atomic<u64> vizDropCount_;
     std::atomic<u64> recDropCount_;
-    std::atomic<u64> anaDropCount_;
     std::atomic<u64> totalPushed_;
 
     bool pushInternal(Queue& queue, std::atomic<u64>& dropCount, const AudioChunk& chunk) {

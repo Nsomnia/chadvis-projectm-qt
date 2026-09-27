@@ -1,6 +1,8 @@
 #include <QtTest>
+#include <QFile>
 #include <QObject>
 #include <QTemporaryDir>
+#include <cmath>
 #include <cstddef>
 #include <set>
 #include <string>
@@ -26,6 +28,54 @@ const char* why(std::string text) {
 
 std::string show(const std::optional<usize>& value) {
     return value ? std::to_string(*value) : std::string("<none>");
+}
+
+/// A half-second 16-bit mono WAV. The playback tests need a file the platform
+/// decoder can actually open: a bogus URL would fail to load, so "is it
+/// playing?" could not distinguish the bug from a missing audio backend.
+fs::path writeToneWav(const fs::path& path, u32 sampleRate = 44100, f32 seconds = 0.5f) {
+    const u32 samples = static_cast<u32>(sampleRate * seconds);
+    QByteArray pcm;
+    pcm.resize(static_cast<int>(samples) * 2);
+    auto* out = reinterpret_cast<qint16*>(pcm.data());
+    for (u32 i = 0; i < samples; ++i) {
+        const double t = static_cast<double>(i) / sampleRate;
+        out[i] = static_cast<qint16>(12000.0 * std::sin(2.0 * 3.14159265358979 * 440.0 * t));
+    }
+
+    QByteArray wav;
+    const auto append32 = [&wav](quint32 value) {
+        wav.append(static_cast<char>(value & 0xFF));
+        wav.append(static_cast<char>((value >> 8) & 0xFF));
+        wav.append(static_cast<char>((value >> 16) & 0xFF));
+        wav.append(static_cast<char>((value >> 24) & 0xFF));
+    };
+    const auto append16 = [&wav](quint16 value) {
+        wav.append(static_cast<char>(value & 0xFF));
+        wav.append(static_cast<char>((value >> 8) & 0xFF));
+    };
+
+    wav.append("RIFF");
+    append32(36 + static_cast<quint32>(pcm.size()));
+    wav.append("WAVE");
+    wav.append("fmt ");
+    append32(16);
+    append16(1); // PCM
+    append16(1); // mono
+    append32(sampleRate);
+    append32(sampleRate * 2);
+    append16(2);
+    append16(16);
+    wav.append("data");
+    append32(static_cast<quint32>(pcm.size()));
+    wav.append(pcm);
+
+    QFile file(QString::fromStdString(path.string()));
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(wav);
+        file.close();
+    }
+    return path;
 }
 
 std::string show(const std::vector<usize>& values) {
@@ -423,6 +473,118 @@ private slots:
             distinct.insert(*shuffled.currentIndex());
         }
         QCOMPARE(distinct.size(), std::size_t{3});
+    }
+
+    // A user skip must not resume a paused transport. The handler is bound to
+    // currentChanged, which fires for every index change, and it used to call
+    // play() unconditionally, so pressing "next" while paused started playing.
+    void skippingWhilePausedStaysPaused() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const fs::path sessionPath = directory.path().toStdString() + "/session.m3u";
+        const fs::path first = writeToneWav(directory.path().toStdString() + "/a.wav");
+        const fs::path second = writeToneWav(directory.path().toStdString() + "/b.wav");
+        QVERIFY(fs::exists(first) && fs::exists(second));
+
+        AudioEngine engine(sessionPath);
+        QVERIFY(engine.init());
+        engine.playlist().addFile(first);
+        engine.playlist().addFile(second);
+        QCOMPARE(engine.playlist().size(), usize{2});
+
+        // Positive control: without a decoder that can open the file, "paused"
+        // and "playing" are the same observation and the test proves nothing.
+        engine.play();
+        if (!QTest::qWaitFor([&engine] { return engine.isPlaying(); }, 3000)) {
+            QSKIP("no usable audio backend in this environment; playback state is unobservable");
+        }
+        QCOMPARE(engine.playlist().currentIndex(), std::optional<usize>{0});
+
+        engine.pause();
+        QVERIFY(QTest::qWaitFor([&engine] {
+            return engine.state() == PlaybackState::Paused;
+        }, 3000));
+
+        QVERIFY(engine.playlist().next());
+        QCOMPARE(engine.playlist().currentIndex(), std::optional<usize>{1});
+        QTest::qWait(150);
+        QVERIFY2(engine.state() != PlaybackState::Playing,
+                 why("skipping a track while paused started playback"));
+    }
+
+    // The other half of the same decision: a skip while already playing must
+    // keep playing. If the fix had simply dropped the unconditional play(), a
+    // user skipping mid-song would stop the transport, and this is what would
+    // notice. Note the observation is deliberately weak - a backend can report
+    // Playing without decoding - so it guards "a skip must not stop playback",
+    // nothing about audio actually coming out.
+    void skippingWhilePlayingKeepsPlaying() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const fs::path sessionPath = directory.path().toStdString() + "/session.m3u";
+        const fs::path first = writeToneWav(directory.path().toStdString() + "/a.wav");
+        const fs::path second = writeToneWav(directory.path().toStdString() + "/b.wav");
+        QVERIFY(fs::exists(first) && fs::exists(second));
+
+        AudioEngine engine(sessionPath);
+        QVERIFY(engine.init());
+        engine.playlist().addFile(first);
+        engine.playlist().addFile(second);
+        QCOMPARE(engine.playlist().size(), usize{2});
+
+        engine.play();
+        if (!QTest::qWaitFor([&engine] { return engine.isPlaying(); }, 3000))
+            QSKIP("no usable audio backend in this environment; playback state is unobservable");
+
+        QVERIFY(engine.playlist().next());
+        QCOMPARE(engine.playlist().currentIndex(), std::optional<usize>{1});
+        QVERIFY(QTest::qWaitFor([&engine] { return engine.isPlaying(); }, 3000));
+    }
+
+    // The automatic advance is the one selection change allowed to start
+    // playback by itself, and it is the reason that permission is passed
+    // explicitly instead of guessed from the transport state: Qt makes no
+    // promise about whether the player has already reported Stopped by the
+    // time EndOfMedia arrives. A real short file plays to its end here, so the
+    // transition is the genuine article rather than a simulated one.
+    void reachingTheEndOfATrackKeepsPlaying() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const fs::path sessionPath = directory.path().toStdString() + "/session.m3u";
+        const fs::path first =
+                writeToneWav(directory.path().toStdString() + "/a.wav", 44100, 0.4f);
+        const fs::path second =
+                writeToneWav(directory.path().toStdString() + "/b.wav", 44100, 0.4f);
+        QVERIFY(fs::exists(first) && fs::exists(second));
+
+        AudioEngine engine(sessionPath);
+        QVERIFY(engine.init());
+        engine.playlist().addFile(first);
+        engine.playlist().addFile(second);
+        QCOMPARE(engine.playlist().size(), usize{2});
+        QVERIFY(engine.playlist().jumpTo(0));
+
+        engine.play();
+        if (!QTest::qWaitFor([&engine] { return engine.isPlaying(); }, 3000))
+            QSKIP("no usable audio backend in this environment; playback state is unobservable");
+
+        // A backend that reports Playing without decoding would let the track
+        // run forever: position stays 0, EndOfMedia never arrives, and the wait
+        // below would be asserting a timeout rather than the behaviour. Skipping
+        // here is honest; pretending to have verified the auto-advance is not.
+        if (!QTest::qWaitFor([&engine] { return engine.position().count() > 0; }, 3000)) {
+            QSKIP("audio backend does not advance the playhead in this environment, "
+                  "so end-of-track cannot be produced");
+        }
+
+        QVERIFY2(QTest::qWaitFor(
+                         [&engine] {
+                             return engine.playlist().currentIndex() ==
+                                        std::optional<usize>{1} &&
+                                    engine.isPlaying();
+                         },
+                         10000),
+                 why("the track ended and the queue did not advance into playback"));
     }
 
     void sessionPlaylistIsFlushedOnDestruction() {

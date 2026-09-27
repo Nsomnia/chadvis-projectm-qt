@@ -1,5 +1,4 @@
 #pragma once
-#include "AudioAnalyzer.hpp"
 #include "AudioQueue.hpp"
 #include "Playlist.hpp"
 #include "util/Result.hpp"
@@ -43,7 +42,6 @@ public:
     Playlist& playlist() { return playlist_; }
     const Playlist& playlist() const { return playlist_; }
 
-    std::vector<f32> currentPCM() const { return analyzer_.pcmData(); }
     AudioQueue& audioQueue() { return audioQueue_; }
     const AudioQueue& audioQueue() const { return audioQueue_; }
 
@@ -51,7 +49,6 @@ signals:
     void stateChanged(PlaybackState state);
     void positionChanged(Duration position);
     void durationChanged(Duration duration);
-    void spectrumUpdated(const AudioSpectrum& spectrum);
     void trackChanged();
     void errorSignal(const std::string& error);
 
@@ -78,7 +75,6 @@ private:
     void prepareNextTrack();
     void swapPlayers();
     void processAudioBuffer(const QAudioBuffer& buffer);
-    void analyzerWorker();
     void loadLastPlaylist();
 
     /// Writes the session M3U now. Only called by the debounce timer and by the
@@ -96,13 +92,9 @@ private:
     std::unique_ptr<QAudioOutput> nextAudioOutput_;
     std::unique_ptr<QAudioBufferOutput> nextBufferOutput_;
 
-    JThread analyzerThread_;
-    std::atomic<bool> stopAnalyzer_{false};
 
     Playlist playlist_;
     fs::path sessionPath_;
-    AudioAnalyzer analyzer_;
-    AudioSpectrum currentSpectrum_;
     AudioQueue audioQueue_;
 
     /// Debounces saveLastPlaylist(); restarted by every playlist change.
@@ -111,6 +103,11 @@ private:
     PlaybackState state_{PlaybackState::Stopped};
     f32 volume_{1.0f};
     bool autoPlayNext_{true};
+    /// Armed by onMediaStatusChanged for the automatic EndOfMedia advance, so
+    /// that one selection change resumes playback while a user skip or a queue
+    /// edit preserves a paused transport. Consumed by the first
+    /// onPlaylistCurrentChanged after it is set.
+    bool autoAdvance_{false};
     std::vector<f32> scratchBuffer_;
 };
 

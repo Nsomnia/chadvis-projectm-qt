@@ -32,10 +32,6 @@ AudioEngine::~AudioEngine() {
     }
 
     stop();
-    stopAnalyzer_ = true;
-    if (analyzerThread_.joinable()) {
-        analyzerThread_.join();
-    }
 }
 
 Result<void> AudioEngine::init() {
@@ -65,9 +61,6 @@ Result<void> AudioEngine::init() {
 
     loadLastPlaylist();
 
-    stopAnalyzer_ = false;
-    analyzerThread_ = JThread(&AudioEngine::analyzerWorker, this);
-
     LOG_INFO("Audio engine initialized with QAudioBufferOutput");
     return Result<void>::ok();
 }
@@ -94,7 +87,7 @@ void AudioEngine::play() {
 }
 
 void AudioEngine::pause() { player_->pause(); }
-void AudioEngine::stop() { player_->stop(); analyzer_.reset(); }
+void AudioEngine::stop() { player_->stop(); }
 
 void AudioEngine::togglePlayPause() {
     if (state_ == PlaybackState::Playing) pause();
@@ -140,6 +133,13 @@ void AudioEngine::onErrorOccurred(QMediaPlayer::Error err, const QString& errorS
 void AudioEngine::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
     if (sender() != player_.get()) return;
     if (status == QMediaPlayer::EndOfMedia && autoPlayNext_) {
+        // The queue advance below is the one selection change that must start
+        // playback on its own. Arm it explicitly instead of inferring the
+        // intent from the transport state, because Qt makes no promise about
+        // whether playbackStateChanged(StoppedState) arrives before
+        // mediaStatusChanged(EndOfMedia) - reading state_ here would make
+        // gapless advance depend on that ordering.
+        autoAdvance_ = true;
         if (!nextPlayer_->source().isEmpty()) {
             swapPlayers();
             playlist_.next(); 
@@ -154,6 +154,17 @@ void AudioEngine::onAudioBufferReceived(const QAudioBuffer& buffer) {
 }
 
 void AudioEngine::onPlaylistCurrentChanged(std::optional<usize> index) {
+    // This handler is bound to currentChanged, so *every* index change lands
+    // here: a user skip, a queue edit that renumbers the selection, and the
+    // automatic EndOfMedia advance. Only the last of those may start playback
+    // by itself. Skipping a track while paused used to resume playback,
+    // because the handler called play() unconditionally.
+    //
+    // The flag is consumed by the first emission after it is armed, because a
+    // queue edit can emit more than one.
+    const bool shouldResume = autoAdvance_ || state_ == PlaybackState::Playing;
+    autoAdvance_ = false;
+
     if (!index) {
         // The selected track was removed, or the queue was cleared. This is the
         // case the old `Signal<usize>` could not express at all, which is why
@@ -167,7 +178,8 @@ void AudioEngine::onPlaylistCurrentChanged(std::optional<usize> index) {
 
     loadCurrentTrack();
     emit trackChanged();
-    play();
+    if (shouldResume)
+        play();
 }
 
 void AudioEngine::swapPlayers() {
@@ -219,19 +231,6 @@ void AudioEngine::saveLastPlaylist() {
     }
     if (auto result = playlist_.saveM3U(path); !result) {
         LOG_WARN("AudioEngine: Failed to save last playlist: {}", result.error().message);
-    }
-}
-
-void AudioEngine::analyzerWorker() {
-    std::vector<f32> localBuffer(2048);
-    while (!stopAnalyzer_) {
-        u32 popped = audioQueue_.popAnaBatch(localBuffer.data(), localBuffer.size() / 2);
-        if (popped > 0) {
-            currentSpectrum_ = analyzer_.analyze(std::span(localBuffer.data(), popped * 2), 48000, 2);
-            emit spectrumUpdated(currentSpectrum_);
-        } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
     }
 }
 
