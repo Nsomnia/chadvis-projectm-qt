@@ -11,7 +11,10 @@
 
 - [`ENDPOINT-INVENTORY.md`](ENDPOINT-INVENTORY.md) is the **sole API-spec
   master** for routes, request/response shapes, host distinctions, and
-  `[T1]` evidence status.
+  `[T1]` evidence status. Within auth it also owns the captured credential
+  shapes ([§3.3](ENDPOINT-INVENTORY.md#33-captured-clerk-credential-shapes--t1))
+  and the instance/captcha configuration
+  ([§3.4](ENDPOINT-INVENTORY.md#34-captured-clerk-instance-and-captcha-configuration--t1)).
 - [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) is the catalogue of **non-contractual
   observations** — every `[LEAD]` and `[VERIFY]` row. It is never a stable
   contract and never an implementation source; it exists only for research and

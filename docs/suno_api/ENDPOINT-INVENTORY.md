@@ -25,7 +25,13 @@ material extracted 2026-09-26; 2026-08-25 `auth.suno.com` export folded in
 
 This file owns evidence labels, precedence, hosts, request/response
 conventions, the captured route catalog, capture-backed contracts, status/limit
-semantics, and runtime notes. [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) owns
+semantics, and runtime notes. Within authentication it also owns the
+**captured credential shapes** ([§3.3](#33-captured-clerk-credential-shapes--t1))
+and the **captured Clerk instance and captcha configuration**
+([§3.4](#34-captured-clerk-instance-and-captcha-configuration--t1)) — that is
+where the token hierarchy, cookie attributes, enabled sign-in strategies, and
+the two-captcha-systems split live.
+[`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) owns
 every `[LEAD]`/`[VERIFY]` observation.
 [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) owns the observed
 Google web request sequence, the Clerk cookie families, and the binding
