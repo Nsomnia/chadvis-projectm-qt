@@ -1,9 +1,75 @@
 # Git History Scrub Plan — Account PII
 
-> **Status: PROPOSED. Nothing in this document has been executed.**
-> This is a review artifact. Every command below is inert until a human runs it.
-> Per [`AGENTS.md`](../AGENTS.md) §5, rewriting history and force-pushing refs or
-> tags requires explicit per-instance authorization.
+> **Status: EXECUTED LOCALLY 2026-09-28. The force-push is NOT yet done.**
+> The rewrite below has been applied to this repository and verified from a
+> fresh clone. The remote still carries the original history, so the scrub is
+> not complete until the force-push in step 5 runs and is confirmed from a
+> clone of the *remote*.
+> Per [`AGENTS.md`](../AGENTS.md) §5, force-pushing rewritten refs and tags is
+> the irreversible step and was deliberately left for the owner to run.
+
+## What was actually done
+
+Executed with `git-filter-repo` 2.47.0 after a full dry run on a throwaway
+mirror. **22 paths** were removed (every PII-bearing file that is already dead
+in `HEAD`) and **one literal replacement** removed the account handle. Nothing
+was regex-swept, and no live file was modified.
+
+| Check | Result |
+| :--- | :--- |
+| Account handle | **0** occurrences across all refs |
+| Real JWTs (`eyJ` + ≥25 chars) | **0** across all refs |
+| Upload filename / clip UUIDs / OAuth sign-in ids | **0** across all refs |
+| `HEAD` tree vs. pre-scrub mirror | **byte-identical** (`5cb1870a…`) |
+| Commits | **454 before, 454 after** — nothing dropped |
+| Refs | 6 before, 6 after |
+| Old tag trees | **pure deletions only** (0 files added, 1–3 removed per tag) |
+| `.git` size after `gc --prune=now` | 8.1 MB → **4.5 MB** |
+
+The remaining `eyJ` and `video_upload_` matches are **false positives**, all
+verified: `starts_with("eyJ")` JWT-detection code in `SunoClient.cpp` and
+`SunoController.cpp`, the `eyJ` regex inside this document, and this document's
+own deliberately-wrong placeholder example at line 84.
+
+### The account email was deliberately retained
+
+The owner reviewed the findings on 2026-09-28 and decided the account email is
+acceptable to keep. All **285** occurrences of it remain in history by explicit
+decision. The handle was scrubbed regardless, because it is a *separate*
+permanent identifier and the one most likely to have been reused in a public
+identifier space. Anyone reading this file later should not re-scrub the email
+without asking, and should not assume its presence is an oversight.
+
+### Scope correction against the original plan
+
+The plan above assumed roughly five PII-bearing blobs. The real blast radius was
+**26 files** across `docs/deepwiki/` (generated HTML/markdown exports),
+`.backup_graveyard/`, `.agent/`, and `docs/`. The plan's "delete the offending
+file where its remaining value is near zero" guidance is what made this tractable
+— string-replacing 285 email occurrences and dozens of lyric fragments in files
+that no longer exist would have been far more error-prone than removing 22 dead
+paths outright. Two corrections to the plan as written:
+
+- `--path-from-file` is **not** a `git filter-repo` option. The paths must be
+  passed as repeated `--path=` flags, and under `zsh` they must go in an array
+  (`args+=(--path="$f")`) because unquoted expansion is not word-split.
+- The plan's step 2 replacement example is itself a live PII string in this
+  file, and `--invert-paths` alone removed it from history. It survived the
+  rewrite only because this document is alive. It is a placeholder and grants
+  nothing, but it is the reason a naive `video_upload_` scan reports one hit.
+
+## Rollback (local)
+
+Until the mirror backup is deleted, full recovery is:
+
+```bash
+rm -rf .git
+git clone <path-to>/chadvis-pii-backup.git .
+```
+
+`recover/development` (at `6bbeb5f`) remains as a local-only safety ref; it was
+**not** pushed and, being local-only, was never exposed.
+
 
 ## Why
 
