@@ -17,18 +17,34 @@ sudo pacman -S cmake ninja qt6-base qt6-multimedia qt6-svg spdlog fmt taglib \
     tomlplusplus glm ffmpeg libprojectM
 ```
 
-This is the exact list the project's own dependency checker prints when something is missing (`scripts/check_deps.sh:88`). Run `./scripts/check_deps.sh` before blaming the compiler — it reports what it can actually find.
+This is the exact list the project's own dependency checker prints when something is missing (`scripts/check_deps.sh:88`), and it agrees with `cmake/Dependencies.cmake`. Run `./scripts/check_deps.sh` before blaming the compiler — it reports what it can actually find. The checker is a *probe*, though, not the specification: it also tests packages the build does not require (`qt6-svg`, `Qt6Widgets`, `Qt6OpenGLWidgets`) and it cannot test the CPM-only tier at all. When the two disagree, `cmake/Dependencies.cmake` is the authority.
 
 `glew` is **not** on that list and is no longer part of the build. It was removed on 2026-08-26; there are zero references left in `cmake/`, `CMakeLists.txt`, or `src/`. Installing it is harmless but pointless, and the fact that it used to be required is a historical artifact.
 
-Notes on the list:
+The macOS line further down installs the same dependencies in Homebrew's packaging: `qt` is one formula where Arch splits it into `qt6-base`/`qt6-multimedia`, there is no `libprojectM` (Homebrew cannot supply v4 — see [projectM v4 on macOS](#projectm-v4-on-macos)), and the line adds `pkg-config`, which the build only ever uses as an optional probe. Nothing else differs.
 
-*   **Qt6**: `find_package` requires `Core Gui Multimedia Network Quick Qml QuickControls2 Sql` (`cmake/Dependencies.cmake:12-13`). `qt6-base` covers all of them. The `qt6-svg` entry is carried over from the checker but is not in the required component list — install it if something asks, ignore it otherwise.
-*   **projectM v4**: specifically v4. v3 is legacy tier. Detection tries a config package, then `pkg-config projectM-4`, then falls back to a CPM source build.
-*   **FFmpeg**: `libavcodec`, `libavformat`, `libavutil`, `libswscale`, `libswresample`.
-*   **spdlog / fmt / toml++**: header-first libraries. If a system package is found it is used; otherwise CPM fetches and builds a pinned version at configure time, which means the first configure needs network access.
-*   **TagLib**: audio metadata. Found via `pkg-config`, with a manual `find_path`/`find_library` fallback.
-*   **GLM**: math library, required.
+### Notes on the list
+
+The dependencies fall into three tiers, and confusing them is what produces "it says the library is installed but configure still fails".
+
+**Tier 1 — required from the system, no fallback.** A missing package here is a hard configure error:
+
+*   **Qt6**: `find_package` requires `Core Gui Multimedia Network Quick Qml QuickControls2 Sql` (`cmake/Dependencies.cmake:12-13`). `qt6-base` covers all of them. The *test* lane asks for two more — `Qt6::Test` (`tests/CMakeLists.txt:2`) and `Qt6::OpenGL` (`tests/integration/CMakeLists.txt:18`) — and neither platform list names a package for them, so both are expected from the same base Qt6 install; the checker probes the same family at `scripts/check_deps.sh:35`. If configure stops on either of those two, the problem is the Qt6 install, not a missing line in the list below. The `qt6-svg` entry in the pacman line is carried over from the checker but is in no required component list; install it if something asks, ignore it otherwise.
+*   **OpenGL**: `find_package(OpenGL REQUIRED)` (`cmake/Dependencies.cmake:20`) — the visualizer renderers use it directly. It is a hard requirement and no package is named for it on either platform, because it comes from the platform's OpenGL stack rather than from anything ChadVis vendors. The checker verifies it only by looking for `libGL.so` (`scripts/check_deps.sh:79`). If configure stops at `OpenGL`, that is the missing piece and neither dependency line will fix it.
+*   **TagLib**: audio metadata, read by `src/audio/analysis/MediaMetadata.cpp` and `src/suno/SunoDownloader.cpp`. `pkg-config` first, then a manual `find_path`/`find_library` fallback; a total miss is a `FATAL_ERROR` (`cmake/Dependencies.cmake:112-115`).
+*   **GLM**: math library, `find_package(glm REQUIRED)` (`cmake/Dependencies.cmake:120`).
+*   **FFmpeg**: `libavcodec`, `libavformat`, `libavutil`, `libswscale`, `libswresample` (`cmake/Dependencies.cmake:123`), searched per-component with a `FATAL_ERROR` naming the component that was not found. That is the whole list — there is no hardware-acceleration component, because hardware encoding is resolved at runtime from whichever FFmpeg you installed, not selected at configure time.
+*   **projectM v4**: specifically v4. v3 is legacy tier. Detection tries a config package, then `pkg-config projectM-4`, then falls back to a CPM source build (see [projectM v4 on macOS](#projectm-v4-on-macos)).
+
+**Tier 2 — system first, CPM fallback.** Installing these is an optimisation, not a requirement: `find_package(... CONFIG QUIET)` succeeds and the CPM branch is skipped (`cmake/Dependencies.cmake:38`, `:51`, `:64`).
+
+*   **spdlog / fmt / toml++**: header-first libraries. If a system package is found it is used, with a pinned CPM source build as the fallback. The first configure therefore needs network access either way, because CPM is bootstrapped regardless.
+
+**Tier 3 — CPM only, no system-package option.** There is nothing to install; `CPMAddPackage` is called unconditionally (`cmake/Dependencies.cmake:76` for `pffft`, `:86` for `moodycamel/readerwriterqueue`). A fresh clone needs network access on every platform.
+
+**Optional tooling:**
+
+*   **pkg-config**: `find_package(PkgConfig QUIET)` — genuinely optional ("everything below degrades to manual search", `cmake/Dependencies.cmake:16`). That is why the Homebrew line carries it and the pacman line does not. Installing it on Linux just makes detection quieter, not more correct.
 
 ### The "I'm on something else" List
 
@@ -82,7 +98,7 @@ On macOS, the `pkg-config` detection path is also disabled by design (`cmake/Fin
 1. **Install projectM v4 yourself** so that it exports `projectM4Config.cmake` with the `libprojectM::projectM` and `libprojectM::playlist` targets, then point CMake at that prefix.
 2. **Let CPM build it.** If no v4 package config is found, the build fetches and compiles projectM **v4.1.6** from source as static libraries (`cmake/FindProjectM4.cmake:59-68`). This is the default path and it just works, but it needs network access and a working toolchain.
 
-Either way, expect the first configure to be slower. `pffft` and `readerwriterqueue` are always built through CPM with no system-package option, so a fresh clone requires network access on every platform, macOS included.
+Either way, expect the first configure to be slower. Remember the [tier 3 packages](#notes-on-the-list) — there is no system package to reach for, so a fresh clone requires network access on every platform, macOS included.
 
 **Linus (The Senior Dev):** "If you get a CMake error about `projectM-4`, it means you didn't install the v4 dev headers. Check your `/usr/include/projectM-4/` or stop complaining."
 

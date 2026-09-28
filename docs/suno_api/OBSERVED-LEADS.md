@@ -476,7 +476,6 @@ Master section: 3.4. The captured Clerk and social rows stay in the master.
 
 | Method | Path | Auth | Purpose | Evidence | Implemented |
 |---|---|---|---|---|---|
-| `GET?` or `POST?` | `/v1/client/verify` | Clerk cookies? | Method and purpose conflict; do not use as generic session verification | `[VERIFY]` | not-in-code |
 | GET? | `/v1/client/sync` | Clerk cookies? | Claimed client-state synchronization | `[LEAD]` old auth prose/scan | not-in-code |
 | GET? | `/v1/event` | Clerk cookies? | Claimed client telemetry/event surface | `[LEAD]` old auth prose/scan | not-in-code |
 | GET? | `/v1/logs` | Clerk cookies? | Claimed client log retrieval | `[LEAD]` old auth prose/scan | not-in-code |
@@ -494,9 +493,14 @@ Master section: 3.4. The captured Clerk and social rows stay in the master.
 | GET? | `/auth/error` | Clerk context | Auth error page | `[LEAD]` scan | not-in-code |
 | GET? | `/auth/verify` | Clerk context | Auth verification page | `[LEAD]` scan | not-in-code |
 
-`/v1/client/verify` and `/v1/verify` are separate routes and separate conflicts;
-both are in the master's conflict register (Appendix A). Do not merge them, and do
-not use `/v1/client/verify` as a bearer-refresh or generic preflight.
+`/v1/client/verify` and `/v1/verify` are separate routes and separate conflicts. The
+`/v1/client/verify` row was removed from this table on 2026-09-28: a directly
+reviewed 2026-08-25 export resolved its method to `POST` and its purpose to a
+captcha-gated Clerk session heartbeat, so it is now `[T1]` and owned by the
+master. `/v1/verify` remains unobserved and stays in the master's conflict
+register. Do not merge them, and do not use `/v1/client/verify` as a
+bearer-refresh or generic preflight — a `204` with no body cannot carry a
+bearer, which is now proven rather than merely prudent.
 
 The `?_method=PATCH` row is a trap worth naming: it reuses the *captured*
 `/v1/client` path with an unobserved transport method. The fact that

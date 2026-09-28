@@ -15,16 +15,18 @@
 
 ## 🚀 What is this?
 
-ChadVis is a native **C++23 / Qt6 desktop frontend for [suno.com](https://suno.com)**. Suno publishes no supported API for this client, so ChadVis works from capture-derived evidence recorded under [`docs/suno_api/`](docs/suno_api/README.md) — an unofficial, `[T1]`/`[LEAD]`/`[VERIFY]`-labeled research corpus. Most of that surface is still unverified, so the client fails closed rather than guessing. On top of it sit local superpowers the web app can only dream of: a full **projectM v4** video workspace with Milkdrop preset support, word-synced **karaoke lyrics**, hardware-accelerated **FFmpeg recording**, and an offline SQLite library cache.
+ChadVis is a native **C++23 / Qt6 desktop frontend for [suno.com](https://suno.com)**. Suno publishes no supported API for this client, so ChadVis works from capture-derived evidence recorded under [`docs/suno_api/`](docs/suno_api/README.md) — an unofficial, `[T1]`/`[LEAD]`/`[VERIFY]`-labeled research corpus. Most of that surface is still unverified, so the client fails closed rather than guessing. On top of it sit local superpowers the web app can only dream of: a full **projectM v4** video workspace with Milkdrop preset support, word-synced **karaoke lyrics**, **FFmpeg recording**, and an offline SQLite library cache.
 
 | Feature | The Chad Way | The "Other" Way |
 | :--- | :--- | :--- |
 | **Language** | C++23 (Pure Power) | Legacy Garbage |
 | **Product** | Suno client shell, projectM second | Either one, never both |
 | **Visuals** | projectM v4 (Milkdrop) | Flat static album art |
-| **Recording** | FFmpeg with HW Accel | Recording your screen with a phone |
+| **Recording** | FFmpeg software encode, HW paths in code but not enabled by the build | Recording your screen with a phone |
 | **AI Integration** | Capture-based, fail-closed, unofficial | Guessing endpoints and hoping |
 | **Flex Factor** | High (Arch BTW) | Non-existent KK&D n00bz |
+
+> **On that recording row, precisely:** the encoder is real and the build links exactly `libavcodec`, `libavformat`, `libavutil`, `libswscale`, and `libswresample` (`cmake/Dependencies.cmake:123`) — no hardware-acceleration *component*, and no `-hwaccel` configure option anywhere in `cmake/`, `CMakeLists.txt`, or `build.sh`. Hardware paths *are* in the source: `src/recorder/EncoderSettings.hpp:70-76` carries the `NVENC`/`VAAPI`/`QuickSync`/`AMF` enum, the panel offers `h264_nvenc` and `hevc_nvenc`, and `src/recorder/VideoRecorderFFmpeg.cpp:553-640` opens a real device (`av_hwdevice_ctx_create`) and real HW frames. But that path is **runtime-optional and inherited from your FFmpeg build**, not something this project enables: the encoder is resolved by name through `avcodec_find_encoder_by_name` (`src/recorder/VideoRecorderFFmpeg.cpp:333`), so it works only where the installed FFmpeg was compiled with that encoder, and there is no in-tree evidence it has ever run. Defaults are software H.264 with no HW device (`src/recorder/EncoderSettings.hpp:79,92`). Read "HW" as *not enabled by ChadVis*, not as *absent from the codebase*.
 
 ## 🛠️ Quick Start
 
