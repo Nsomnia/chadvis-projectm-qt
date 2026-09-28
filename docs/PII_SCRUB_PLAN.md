@@ -1,12 +1,11 @@
 # Git History Scrub Plan — Account PII
 
-> **Status: EXECUTED LOCALLY 2026-09-28. The force-push is NOT yet done.**
-> The rewrite below has been applied to this repository and verified from a
-> fresh clone. The remote still carries the original history, so the scrub is
-> not complete until the force-push in step 5 runs and is confirmed from a
-> clone of the *remote*.
-> Per [`AGENTS.md`](../AGENTS.md) §5, force-pushing rewritten refs and tags is
-> the irreversible step and was deliberately left for the owner to run.
+> **Status: EXECUTED AND PUSHED 2026-09-28. One residual item is GitHub-side
+> and cannot be fixed from the client — see "What remains" below.**
+> The rewrite was applied to this repository, verified locally, force-pushed to
+> `origin`, and confirmed clean from a fresh clone of the remote. Per
+> [`AGENTS.md`](../AGENTS.md) §5 the force-push was explicitly authorized by the
+> owner immediately before it ran.
 
 ## What was actually done
 
@@ -26,10 +25,44 @@ was regex-swept, and no live file was modified.
 | Old tag trees | **pure deletions only** (0 files added, 1–3 removed per tag) |
 | `.git` size after `gc --prune=now` | 8.1 MB → **4.5 MB** |
 
+Pushed with `--force-with-lease` for both branches and `--force` for all three
+tags (`--force-with-lease` does not apply to tags). Annotated/lightweight tag
+types were confirmed to match the remote before pushing, so no tag was silently
+downgraded. Confirmed by a fresh ordinary clone of the remote: `main` and
+`experiments/juce-refactor` plus all three tags, **0** hits for the handle, **0**
+real JWTs.
+
 The remaining `eyJ` and `video_upload_` matches are **false positives**, all
-verified: `starts_with("eyJ")` JWT-detection code in `SunoClient.cpp` and
-`SunoController.cpp`, the `eyJ` regex inside this document, and this document's
-own deliberately-wrong placeholder example at line 84.
+verified and all confined to this one document plus two source files:
+`starts_with("eyJ")` JWT-detection code in `SunoClient.cpp` and
+`SunoController.cpp`, the `eyJ` regex in this document, this document's own
+deliberately-wrong placeholder example, and the prose describing it.
+
+## What remains — GitHub `refs/pull/*` are not rewritable
+
+A `git clone --mirror` of the remote reports **685** commits, not 454, and four
+extra refs: `refs/pull/{4,5,6,9}/head`. Those still reach pre-scrub commits
+(handle 2 hits, `video_upload_` 4 hits; still **0** real JWTs). They are the old
+feature and bug-fix PRs — all four are **merged or closed**, so nothing live is
+at risk.
+
+They cannot be cleaned from the client. Every deletion attempt was refused:
+
+```
+git push origin :refs/pull/4/head
+ ! [remote rejected] refs/pull/4/head (deny updating a hidden ref)
+```
+
+`refs/pull/*` are server-managed hidden refs. Practical exposure is low —
+an ordinary `git clone` does not fetch them, and every one of them is a closed
+or merged PR — but the PR **diff pages** remain on github.com, and that is
+outside this repository's control. Removing that last surface needs GitHub
+Support. This is the honest residual: **the scrub is complete for every ref a
+client can clone, and incomplete for four server-side PR refs.**
+
+`recover/development` (at `acc64dc`, rewritten) stayed **local-only** and was
+never pushed.
+
 
 ### The account email was deliberately retained
 
