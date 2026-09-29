@@ -404,7 +404,7 @@ They are not two names for one challenge and must never be conflated.
 |---|---|---|
 | Clerk authentication — the `/v1/client/verify` heartbeat (section 5.1) | **Cloudflare Turnstile** | `display_config` reported `captcha_provider: turnstile`, `captcha_heartbeat: true`, and `captcha_widget_type: smart`. The `captcha_token` values on the wire had Turnstile's `1.<payload>.<hash>` shape, which independently rules out hCaptcha for this route. |
 | The `suno.com` web sign-in and session-recovery **UI** | **hCaptcha** | The 2026-09-22 sanitized recon records `POST`/`OPTIONS` to `api.hcaptcha.com/getcaptcha/…` on those pages. A separate provider, on a different surface, with a different token shape. |
-| Generation — `POST /api/c/check` (section 5.4) | **Not stated.** | The route is `[T1]` and its requirement decision is captured. **Its provider is not captured and is deliberately left unstated.** Do not infer it from either row above, from the widget type, or from the token format. |
+| Generation — `POST /api/c/check` (section 5.4) | **Resolved to `[LEAD]`: Cloudflare Turnstile v2.** | The 2026-09-28 recon read `TURNSTILE_GENERATION_CAPTCHA_VERSION = 2` alongside a legacy `HCAPTCHA_GENERATION_CAPTCHA_VERSION = 1`, and `FORCE_ENABLE_CAPTCHA = false`. **This is a client-bundle constant, so it is `[LEAD]`, not `[T1]`** — it identifies the provider but proves no request/response contract, no sitekey, no token lifetime, and no proof that this route currently demands a token. `FORCE_ENABLE_CAPTCHA = false` is a default, not a promise for any account. Do not infer a widget mode or token format from it, and do not treat it as authorization to solve a challenge. |
 
 The two Turnstile sitekeys below are the one secret-shaped value class this
 document may carry, because they are public by design: Cloudflare sitekeys are
@@ -480,7 +480,16 @@ The endpoint mirror also carries a `SESSION_CATALOG` alias for the same
 | GET | `/api/project/{project_id}` | Bearer | Project detail | `[T1]` HAR 2026-09-23 | declared-unused |
 | GET | `/api/project/default/pinned-clips` | Bearer | Pinned default-workspace clips | `[T1]` HAR 2026-09-23 | declared-unused |
 
-No project creation, collaboration, or Studio save/render operation is captured.
+Project **read** operations are `[T1]`. Project **mutation** operations are not: the
+2026-09-28 recon establishes that the following are **registered** — create-project,
+save-project, render-state, render-state-multitrack, `project_revision/{id}/clone`,
+`create-or-load-project-for-clip/{id}`, project trash, project clips, collaborators,
+collaborator-me, invite, and project metadata. Existence is `[REGISTERED]`, not `[T1]`:
+most were read from the client bundle rather than probed, so no request or response
+shape is observed. **No project creation, collaboration, or Studio save/render contract
+is captured**, and none of these may be wired on existence alone. The consequence for
+this client is recorded in the backlog: the music-video workspace surface is gated on
+our own wiring, not on Suno's API.
 
 ### 4.4 Generation, lyrics, prompts, and analysis
 
