@@ -44,12 +44,4 @@ void VisualizerBridge::previousPreset() {
 	if (s_engine) s_engine->previousPreset();
 }
 
-void VisualizerBridge::toggleActive() {
-	if (!s_engine) {
-		return;
-	}
-	s_engine->setVisible(!s_engine->isVisible());
-	emit visualizerWindowChanged();
-}
-
 } // namespace qml_bridge

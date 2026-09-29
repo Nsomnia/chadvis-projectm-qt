@@ -8,6 +8,21 @@
 # CPM), so no pkg-config-style variables exist for them. ProjectM headers
 # arrive transitively through PROJECTM_LINK_TARGETS; PROJECTM_INCLUDE_DIRS is
 # only non-empty in the pkg-config fallback path.
+#
+# DO NOT "FIX" THE MISSING /usr/local/include BY ADDING IT HERE (2026-09-29).
+# spdlog, fmt, toml++, glm and taglib are all Homebrew CONFIG packages whose
+# INTERFACE_INCLUDE_DIRECTORIES is exactly /usr/local/include, and they are
+# already linked via CPM_LIBS below — so the directory really does propagate.
+# It is absent from build/compile_commands.json anyway, because it is entry #1
+# of CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES (build/CMakeFiles/*/
+# CMakeCXXCompiler.cmake) and CMake elides include dirs the compiler already
+# searches. Re-adding it here would be elided identically. Forcing it on with
+# add_compile_options would reach the command line, but it would land in
+# CXX_FLAGS — after every -I in CXX_INCLUDES and below Qt's -isystem paths —
+# demoting the only route to those five packages in a build that is correct
+# today. The real compiler gets the directory from its own driver, which is
+# also why no third-party tool reading this database can see it; see the
+# measured note in .clang-tidy.
 set(COMMON_INCLUDES
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/qml_bridge

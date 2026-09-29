@@ -11,44 +11,123 @@
 #
 #       SDK="$(xcrun --show-sdk-path)"
 #       clang-tidy -p build \
-#         --extra-arg-before=-isystem --extra-arg-before=/usr/local/opt/llvm/include/c++/v1 \
-#         --extra-arg-before=-isystem --extra-arg-before="$SDK/usr/include" \
-#         --extra-arg-before=-isystem --extra-arg-before="$(brew --prefix spdlog)/include" \
-#         --extra-arg-before=-isystem --extra-arg-before="$(brew --prefix fmt)/include" \
-#         --extra-arg-before=-isystem --extra-arg-before="$(brew --prefix taglib)/include" \
-#         --extra-arg-before=-isystem --extra-arg-before="$(brew --prefix tomlplusplus)/include" \
-#         --extra-arg-before=-idirafter --extra-arg-before=/usr/local/include \
+#         --extra-arg-before=-isysroot --extra-arg-before="$SDK" \
+#         --extra-arg-before=-isystem --extra-arg-before=/usr/local/include \
 #         src/core/Logger.cpp
 #
-#   Whole tree (slow; run it on purpose, not on every save):
-#       run-clang-tidy -p build '^src/.*\.cpp$'
-#   Apply fixes to one file (READ THE DIFF):
-#       clang-tidy -p build --fix-errors ... src/core/Logger.cpp
+#   That is the whole command: two extra args, both load-bearing.
 #
-# WHY THOSE EXTRA ARGS ARE MANDATORY (this is why .clang-tidy had never run)
-#   build/compile_commands.json records the command for Apple clang 16
-#   (/usr/bin/c++), and it carries no -isysroot and no libc++ path. Apple clang
-#   infers the macOS SDK anyway; Homebrew LLVM's clang-tidy does not, so with
-#   only `-p build` it cannot find the C++ standard library headers and dies:
+#     -isysroot "$SDK"        the SDK, which also carries libc++ at
+#                             $SDK/usr/include/c++/v1 and the C headers at
+#                             $SDK/usr/include.
+#     -isystem /usr/local/include
+#                             fmt, spdlog, toml++, glm and taglib — Homebrew's
+#                             symlink farm puts all five under this one root.
+#                             An earlier revision passed
+#                             $(brew --prefix <pkg>)/include once per package
+#                             instead. Those are real, distinct directories and
+#                             that command did work; it just spent five paths on
+#                             what one directory covers.
+#
+#   Whole tree (slow; run it on purpose, not on every save). run-clang-tidy
+#   takes single-dash, =-joined extra args (see its argparse), and they repeat:
+#       run-clang-tidy -p build \
+#         -extra-arg-before=-isysroot -extra-arg-before="$SDK" \
+#         -extra-arg-before=-isystem -extra-arg-before=/usr/local/include \
+#         '^src/.*\.cpp$'
+#   Apply fixes to one file (READ THE DIFF): the same command plus --fix-errors.
+#
+#   Measured 2026-09-29 with the two-arg command above, errors only:
+#       src/core/Logger.cpp                 0
+#       src/core/ConfigParsers.cpp          0   (exercises toml++)
+#       src/audio/analysis/MediaMetadata.cpp 0   (exercises taglib)
+#
+# WHY THOSE TWO EXTRA ARGS ARE MANDATORY (this is why .clang-tidy had never run)
+#   build/compile_commands.json records the DRIVER command for Apple clang 16
+#   (/usr/bin/c++), and a driver command line does not contain what the driver
+#   itself injects. `c++ -v -E x.cpp` shows the cc1 line getting, with no such
+#   flag anywhere in the database:
+#
+#     -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+#     -I/usr/local/include
+#     -internal-isystem <SDK>/usr/include/c++/v1
+#     -internal-externc-isystem <SDK>/usr/include
+#
+#   Apple clang supplies all four by itself. A tool that replays the database
+#   without Apple's driver gets none of them, so `clang-tidy -p build <file>`
+#   dies on the first standard-library include:
 #
 #     $ clang-tidy -p build src/core/Logger.cpp
-#     .../spdlog/details/null_mutex.h:6:10: error: 'atomic' file not found
+#     /usr/local/include/spdlog/details/null_mutex.h:6:10: error: 'atomic' file not found
 #
-#   Measured 2026-09-29: that is the ONLY error, and adding -isystem for libc++
-#   and the SDK (plus spdlog) takes it to zero. Note what the error location
-#   proves: /usr/local/include WAS resolved — clang-tidy read the spdlog header
-#   from there and only then failed to find <atomic> inside it. So libc++ and
-#   the SDK are what are missing, not Homebrew's include root. An earlier
-#   revision of this comment claimed all three were unresolvable; that was
-#   wrong, and the fix was found by reading the error's file path.
+#   That is the only error in that run, but it does not mean two paths fix it.
+#   Measured 2026-09-29 by hand, on this tree:
+#     -isystem <SDK>/usr/include/c++/v1 ....... 20 errors (no C headers)
+#     + -isystem <SDK>/usr/include ...........  0 errors
+#     -isysroot <SDK> alone ..................  1 error, and a NEW one: spdlog
+#                                             is no longer found at all (see
+#                                             the /usr/local/include note below)
+#     -isysroot <SDK> + -isystem /usr/local/include ... 0 errors  <- documented
 #
-#   Adding -isystem for the SDK fixes libc++ too, because the SDK's
-#   usr/include/c++/v1 is where it lives.
+#   The error location is the load-bearing clue: /usr/local/include WAS
+#   resolved, because clang-tidy read spdlog's header out of it and only then
+#   failed to find <atomic> inside. An earlier revision of this file claimed all
+#   three paths were unresolvable; that was wrong, and the fix was found by
+#   reading the error's file path. A second claim, that the fix "belongs in
+#   cmake/ ... one line in cmake/Dependencies.cmake", is also wrong; see the
+#   next block, which is the measured reason.
 #
-#   The real fix belongs in cmake/ (export CMAKE_EXPORT_COMPILE_COMMANDS with an
-#   -isysroot, or add the include dirs to the target's INTERFACE_INCLUDE_DIRECTORIES),
-#   which would make the flags above unnecessary. Until then they are load-bearing.
-#   That is out of scope for a config file, so the incantation lives here.
+# WHY /usr/local/include IS NOT IN THE COMPILE DATABASE AT ALL
+#   It is not a propagation failure. project_lib really does link the imported
+#   Homebrew targets (cmake/TargetSetup.cmake:55-73, :100), and each one declares
+#   exactly this directory:
+#     /usr/local/lib/cmake/spdlog/spdlogConfigTargets.cmake:63,72
+#     /usr/local/lib/cmake/fmt/fmt-targets.cmake:64,73
+#     /usr/local/lib/cmake/tomlplusplus/tomlplusplusConfig.cmake:30
+#     /usr/local/share/glm/glmConfig.cmake:61
+#       -> INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include" = /usr/local/include
+#   CMake then suppresses the flag, because /usr/local/include is entry #1 of
+#   CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES (build/CMakeFiles/4.4.3/
+#   CMakeCXXCompiler.cmake:95) and CMake elides include dirs the compiler
+#   already searches. Counted: "/usr/local/include" appears in 0 of the 266
+#   entries in build/compile_commands.json. Adding the same directory to
+#   target_include_directories or INTERFACE_INCLUDE_DIRECTORIES cannot help —
+#   it is elided on the way out, which is why "one line in Dependencies.cmake"
+#   was the wrong diagnosis.
+#
+# WHY THIS IS NOT FIXABLE IN CMAKE WITHOUT PERTURBING THE BUILD
+#   CMAKE_OSX_SYSROOT is the only knob that makes CMake emit -isysroot, and
+#   setting it to the SDK the compiler reports for itself
+#   (CMAKE_CXX_COMPILER_APPLE_SYSROOT, which
+#   build/CMakeFiles/4.4.3/CMakeCXXCompiler.cmake:22 records as the very path
+#   the driver passes) is still rejected. Measured: adding that exact
+#   -isysroot to /usr/bin/c++ DROPS /usr/local/include from the driver's
+#   include search list — 6 entries become 5 — because with an explicit sysroot
+#   clang derives the local include dir as <sysroot>/usr/local/include, which
+#   does not exist. That path is the project's ONLY route to fmt, spdlog, toml++,
+#   glm and taglib, so the "provably inert" sysroot flag would in fact break
+#   the real build. Forcing /usr/local/include back on with add_compile_options
+#   would then place it in CXX_FLAGS, i.e. after every -I in CXX_INCLUDES and
+#   below Qt's -isystem paths as well, which is a real search-order change.
+#   Conclusion: the compile database records a driver command, and the driver
+#   hides exactly what a third-party tool needs. That is a property of Apple
+#   clang, not a defect in this project's build, so the two flags are
+#   load-bearing and stay documented here. Recorded rather than "fixed", because
+#   a lint tool is not worth a build that compiles differently.
+#
+# ONE RESIDUAL DIFFERENCE, STATED RATHER THAN HIDDEN
+#   Rank of /usr/local/include in the two search lists, measured with -v:
+#     /usr/bin/c++ (the real build): driver-injected -I, so it outranks EVERY
+#       command-line -I and every -isystem.
+#     clang-tidy with the command above: last of the database's -I group
+#       (project, ffmpeg, projectM, pffft) and first of the -isystem group
+#       (Qt), because --extra-arg-before prepends.
+#   So the linter ranks it lower than the real compiler does, and higher than
+#   Qt. Nothing is shadowed either way: the -I group holds project, FFmpeg,
+#   projectM and pffft headers and the -isystem group holds Qt, while
+#   /usr/local/include holds fmt/, spdlog/, toml++/, glm/ and taglib/ — no
+#   name collides across those groups. It is still an ordering difference, and
+#   it is the price of not touching the build.
 #
 # PREVIOUS REVISION WAS AN LLVM COPY-PASTE AND WRONG ON EVERY NAMING KEY
 #   It asked for CamelCase parameters, variables and members with no trailing

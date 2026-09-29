@@ -64,6 +64,13 @@ public slots:
     Q_INVOKABLE void seekToLine(int lineIndex);
     Q_INVOKABLE void exportToSrt(const QString& path);
     Q_INVOKABLE void exportToLrc(const QString& path);
+    /// Advanced SubStation Alpha, the karaoke subtitle format.
+    ///
+    /// One Dialogue event per LyricsLine, with every word tagged `\kf<cs>` so a
+    /// player sweeps the line in time with the audio. Sidecar only: this writes
+    /// a file, and deliberately does not mux a subtitle track into a container
+    /// -- that is a separate piece of work in the recorder, not here.
+    Q_INVOKABLE void exportToAss(const QString& path);
     Q_INVOKABLE QVariantMap getLine(int index) const;
     /// The `count` lines strictly after the cached currentLineIndex_, ascending.
     ///

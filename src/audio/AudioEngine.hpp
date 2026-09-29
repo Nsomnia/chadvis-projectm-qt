@@ -3,7 +3,6 @@
 #include "Playlist.hpp"
 #include "util/Result.hpp"
 #include "util/Types.hpp"
-#include "util/JThread.hpp"
 #include <QAudioBuffer>
 #include <QAudioBufferOutput>
 #include <QAudioOutput>

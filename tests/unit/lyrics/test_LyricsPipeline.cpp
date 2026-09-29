@@ -794,6 +794,115 @@ private slots:
         QVERIFY(bridgeUpcoming(bridge, huge).empty());
     }
 
+    void syncUpcomingLinesStopAtTheSongEndOnAnOversizedCount()
+    {
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(makeLyricsOfCount(8));
+        QCOMPARE(sync.getLyrics().lines.size(), size_t{8});
+
+        // The regression guard, and the mirror of
+        // contextLinesStopAtTheSongEndOnAnOversizedWindow on the other query.
+        // `count` is caller-supplied unsigned arithmetic, exactly like the
+        // remote data it is read alongside. The loop used to be
+        // `for (i = 0; i < count; ++i)` with a bounds test and no early exit, so
+        // a count of SIZE_MAX walked the entire width of size_t -- some 1.8e19
+        // iterations -- before the sum `anchor + i + 1` wrapped and the walk
+        // finally ended by appending an early line it had already stepped past.
+        // It now stops at the last line, so this is where a regression is
+        // caught: on the pre-fix code the line below does not return at all.
+        const size_t huge = std::numeric_limits<size_t>::max();
+
+        // Unset anchor, which is the state a freshly loaded song is in and the
+        // one the divergence below turns on: -1 is read as "line 0 is current",
+        // so the walk starts *after* line 0 and never includes it.
+        QCOMPARE(sync.getPosition().lineIndex, -1);
+        QCOMPARE(describeIndices(syncUpcoming(sync, huge)), QStringLiteral("1,2,3,4,5,6,7"));
+
+        // First line: everything after it.
+        sync.seek(0.5f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 0);
+        const auto pointers = sync.getUpcomingLines(huge);
+        const auto fromFirst = syncUpcoming(sync, huge);
+        QCOMPARE(describeIndices(fromFirst), QStringLiteral("1,2,3,4,5,6,7"));
+
+        // Pointer identity, not only the ordering: every entry names the line it
+        // claims to, and all of them come from the loaded song rather than from
+        // a wrapped index that happens to be in range.
+        const auto& lines = sync.getLyrics().lines;
+        QCOMPARE(pointers.size(), size_t{7});
+        for (size_t i = 0; i < pointers.size(); ++i) {
+            QVERIFY(pointers[i] == &lines[i + 1]);
+            QCOMPARE(pointers[i]->text, std::string("line") + std::to_string(i + 1));
+        }
+        QCOMPARE(pointers.back()->text, std::string("line7"));
+
+        // Middle line: bounded by the song end, not by the count.
+        sync.seek(3.5f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 3);
+        QCOMPARE(describeIndices(syncUpcoming(sync, huge)), QStringLiteral("4,5,6,7"));
+
+        // Last line: the correct answer really is nothing, for any count, so
+        // this is the boundary the two above are measured against rather than a
+        // regression in its own right.
+        sync.seek(7.5f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 7);
+        QVERIFY(syncUpcoming(sync, 1).empty());
+        QVERIFY(syncUpcoming(sync, huge).empty());
+    }
+
+    void syncUpcomingLinesClipACountThatFitsTheSong()
+    {
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(makeLyricsOfCount(5));
+
+        // Zero asks for nothing. The bound that clips an oversized count must
+        // not be a floor that turns a zero into "the rest of the song".
+        QCOMPARE(sync.getPosition().lineIndex, -1);
+        QVERIFY(syncUpcoming(sync, 0).empty());
+
+        // Middle line, on both sides of the exact-fit boundary: two lines remain,
+        // so a third is the first that gets clipped.
+        sync.seek(2.5f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 2);
+        QCOMPARE(describeIndices(syncUpcoming(sync, 1)), QStringLiteral("3"));
+        QCOMPARE(describeIndices(syncUpcoming(sync, 2)), QStringLiteral("3,4"));
+        QCOMPARE(describeIndices(syncUpcoming(sync, 3)), QStringLiteral("3,4"));
+        QCOMPARE(describeIndices(syncUpcoming(sync, 99)), QStringLiteral("3,4"));
+
+        // The start of the song, where there is the most room, so the clip is
+        // proven to come from the song and not from a fixed constant.
+        sync.seek(0.5f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 0);
+        QCOMPARE(describeIndices(syncUpcoming(sync, 3)), QStringLiteral("1,2,3"));
+        QCOMPARE(describeIndices(syncUpcoming(sync, 4)), QStringLiteral("1,2,3,4"));
+        QCOMPARE(describeIndices(syncUpcoming(sync, 5)), QStringLiteral("1,2,3,4"));
+
+        // Past the end of the song findLineIndex falls back to the closest line
+        // before the time, so the last line is the anchor there too.
+        sync.seek(99.0f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 4);
+        QVERIFY(syncUpcoming(sync, 0).empty());
+        QVERIFY(syncUpcoming(sync, 1).empty());
+        QVERIFY(syncUpcoming(sync, 99).empty());
+
+        // An empty container is a normal state, not an error path: remote lyrics
+        // arrive empty whenever the payload has no usable words, and that is the
+        // state loadLyrics refuses. Every count against it is nothing, including
+        // the oversized one, and the anchor is still read as line 0.
+        LyricsSync emptySync(nullptr);
+        QCOMPARE(emptySync.getLyrics().lines.size(), size_t{0});
+        QCOMPARE(emptySync.getPosition().lineIndex, -1);
+        QVERIFY(syncUpcoming(emptySync, 0).empty());
+        QVERIFY(syncUpcoming(emptySync, 3).empty());
+        QVERIFY(syncUpcoming(emptySync, std::numeric_limits<size_t>::max()).empty());
+    }
+
     void bridgeAndSyncUpcomingLinesAgreeExceptAtTheAnchor()
     {
         LyricsSync sync(nullptr);

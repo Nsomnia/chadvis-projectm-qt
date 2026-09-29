@@ -283,17 +283,44 @@ void LyricsSync::jumpToLine(size_t lineIndex) {
 
 std::vector<const LyricsLine*> LyricsSync::getUpcomingLines(size_t count) const {
     std::vector<const LyricsLine*> result;
-    
-    int currentIdx = currentPos_.lineIndex;
-    if (currentIdx < 0) currentIdx = 0;
-    
-    for (size_t i = 0; i < count; ++i) {
-        size_t idx = currentIdx + i + 1;
-        if (idx < lyrics_.lines.size()) {
-            result.push_back(&lyrics_.lines[idx]);
+
+    // Anchor rule, and it is deliberately NOT LyricsBridge's: an unset index
+    // (-1, "no active line") is read here as "line 0 is current", so the walk
+    // starts *after* line 0 and line 0 is never in the answer. The bridge reads
+    // the same cached -1 as "the whole song is still to come" and includes it.
+    // That is the single documented divergence between these two functions, it
+    // is what stops the bridge delegating here, and
+    // bridgeAndSyncUpcomingLinesAgreeExceptAtTheAnchor pins it. Do not
+    // harmonise the two.
+    const int anchor = currentPos_.lineIndex < 0 ? 0 : currentPos_.lineIndex;
+
+    // currentPos_ is a cache, not a view of the live vector, so the anchor is
+    // resolved through checkedIndex like every other index in this file: an
+    // anchor that outlived the lines it names -- a stale index, or one past the
+    // end -- is out of range and there is nothing after it to report.
+    //
+    // The walk is then bounded by the real distance to the last line rather than
+    // by the caller's count. `for (i = 0; i < count; ++i)` with a bounds test and
+    // no early exit does not come back for a count of SIZE_MAX: it runs the full
+    // width of size_t, and the sum then wraps -- for any anchor of 1 or more the
+    // wrapped value is small enough to pass the bounds test, so the walk would
+    // finally end by appending an early line it had already stepped past. The
+    // min() is exact, so the shape and order of every result on a legitimate
+    // count are unchanged: the old loop pushed precisely this many lines before
+    // each remaining subscript failed its check.
+    size_t window = 0;
+    if (const auto first = checkedIndex(lyrics_.lines, anchor)) {
+        window = std::min(count, lyrics_.lines.size() - *first - 1);
+    }
+
+    for (size_t i = 0; i < window; ++i) {
+        // checkedIndex stays the thing that proves the index; `window` only
+        // decides when to stop walking, exactly as in getContextLines.
+        if (const auto idx = checkedIndex(lyrics_.lines, anchor + static_cast<int>(i) + 1)) {
+            result.push_back(&lyrics_.lines[*idx]);
         }
     }
-    
+
     return result;
 }
 

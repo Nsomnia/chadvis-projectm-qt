@@ -39,9 +39,8 @@ QString currentPreset() const;
 int fps() const;
 
 public slots:
-Q_INVOKABLE void nextPreset();
-Q_INVOKABLE void previousPreset();
-Q_INVOKABLE void toggleActive();
+    Q_INVOKABLE void nextPreset();
+    Q_INVOKABLE void previousPreset();
 
 signals:
 void visualizerWindowChanged();

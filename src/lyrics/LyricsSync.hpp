@@ -191,6 +191,12 @@ public:
     
     /**
      * @brief Get upcoming lines (for pre-rendering)
+     *
+     * Returns at most min(count, lines remaining after the current one), in
+     * song order, so an oversized count is clipped at the last line rather than
+     * walked. An unset position is read as "line 0 is current" and therefore
+     * starts after it -- deliberately unlike LyricsBridge::getUpcomingLines,
+     * which includes line 0 for the same position.
      */
     std::vector<const LyricsLine*> getUpcomingLines(size_t count = 3) const;
     
