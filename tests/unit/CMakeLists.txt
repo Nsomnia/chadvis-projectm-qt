@@ -17,6 +17,7 @@ add_executable(unit_tests
     suno/test_OAuthLoginService.cpp
     suno/test_ClipParser.cpp
     suno/test_DownloadQueue.cpp
+    suno/test_SunoDownloader.cpp
     suno/test_SunoEndpoints.cpp
     lyrics/test_LyricsPipeline.cpp
     lyrics/test_LyricsExport.cpp

@@ -2,6 +2,7 @@
 #include "core/Config.hpp"
 #include "ui/controllers/SunoController.hpp"
 #include "suno/ClipParser.hpp"
+#include "suno/ClipResolver.hpp"
 #include "suno/SunoAccountManager.hpp"
 #include "suno/SunoClient.hpp"
 #include "suno/auth/AuthCoordinator.hpp"
@@ -26,6 +27,10 @@ SunoBridge::~SunoBridge() {
     notificationService_ = nullptr;
     delete exploreService_;
     exploreService_ = nullptr;
+    if (downloader_) {
+        disconnect(downloader_, nullptr, this, nullptr);
+        downloader_ = nullptr;
+    }
     s_controller = nullptr;
     s_client = nullptr;
 }
@@ -188,6 +193,15 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
             bridgeInstance->destroyAudioUploadService();
             bridgeInstance->destroyNotificationService();
             bridgeInstance->destroyExploreService();
+            // The downloader is a child of the outgoing controller, and
+            // disconnecting the controller does not reach its children's
+            // signals, so drop the borrow explicitly. The next ensureDownloader()
+            // resolves the new controller's own downloader.
+            if (bridgeInstance->downloader_) {
+                QObject::disconnect(bridgeInstance->downloader_, nullptr, bridgeInstance, nullptr);
+                bridgeInstance->downloader_ = nullptr;
+            }
+            bridgeInstance->playRequestClipId_.clear();
             QObject::disconnect(previousController, nullptr, bridgeInstance, nullptr);
             if (auto* lm = previousController->libraryManager()) {
                 QObject::disconnect(lm, nullptr, bridgeInstance, nullptr);
@@ -215,6 +229,11 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
             bridgeInstance->destroyAudioUploadService();
             bridgeInstance->destroyNotificationService();
             bridgeInstance->destroyExploreService();
+            if (bridgeInstance->downloader_) {
+                QObject::disconnect(bridgeInstance->downloader_, nullptr, bridgeInstance, nullptr);
+                bridgeInstance->downloader_ = nullptr;
+            }
+            bridgeInstance->playRequestClipId_.clear();
             bridgeInstance->updateModelCatalog();
             emit bridgeInstance->authenticationChanged();
             emit bridgeInstance->googleLoginStateChanged();
@@ -234,6 +253,10 @@ void SunoBridge::wireControllerSignals() {
     ensureNotificationService();
     ensureExploreService();
     ensureAudioUploadService();
+    // Resolved rather than constructed: the downloader (and its one
+    // DownloadQueue) belongs to the controller, so this only wires the
+    // saved-file signal. Fails closed to a null borrow if it is ever absent.
+    ensureDownloader();
     auto* bridgeInstance = this;
 
     connect(s_controller, &vc::suno::SunoController::libraryUpdated,
@@ -257,8 +280,11 @@ void SunoBridge::wireControllerSignals() {
             });
     connect(s_controller, &vc::suno::SunoController::downloadStateChanged,
             bridgeInstance, [bridgeInstance](const QString& clipId, int state, int percent) {
-                if (!bridgeInstance->activeDownloadClipId_.isEmpty() &&
-                    clipId != bridgeInstance->activeDownloadClipId_) {
+                // Only an explicit play request suppresses other clips' events.
+                // A save-only request leaves this empty, so a batch's results
+                // are never filtered out by the play path's bookkeeping.
+                if (!bridgeInstance->playRequestClipId_.isEmpty() &&
+                    clipId != bridgeInstance->playRequestClipId_) {
                     return;
                 }
                 const QString title = bridgeInstance->clipTitle(clipId);
@@ -270,25 +296,36 @@ void SunoBridge::wireControllerSignals() {
                     bridgeInstance->setDownloadStatusForClip(
                             clipId, QStringLiteral("Downloading %1… %2%").arg(title).arg(qMax(0, percent)));
                     break;
-                case vc::suno::DownloadState::Completed:
+                case vc::suno::DownloadState::Completed: {
+                    // Save and play are separate requests that share one queue
+                    // event, so the wording has to come from the request rather
+                    // than be hardcoded: a silent save must never claim the
+                    // transport moved.
+                    const bool wasPlayRequest = bridgeInstance->playRequestClipId_ == clipId;
                     bridgeInstance->setDownloadStatusForClip(
-                            clipId, QStringLiteral("Downloaded %1; now playing").arg(title));
-                    if (bridgeInstance->activeDownloadClipId_ == clipId) {
+                            clipId, wasPlayRequest
+                                        ? QStringLiteral("Downloaded %1; now playing").arg(title)
+                                        : QStringLiteral("Saved %1 to your downloads").arg(title));
+                    if (wasPlayRequest) {
+                        bridgeInstance->playRequestClipId_.clear();
                         bridgeInstance->activeDownloadClipId_.clear();
                     }
                     break;
+                }
                 case vc::suno::DownloadState::FailedRetryable:
                 case vc::suno::DownloadState::FailedPermanent:
                     bridgeInstance->setDownloadStatusForClip(
                             clipId, QStringLiteral("Download failed for %1").arg(title));
-                    if (bridgeInstance->activeDownloadClipId_ == clipId) {
+                    if (bridgeInstance->playRequestClipId_ == clipId) {
+                        bridgeInstance->playRequestClipId_.clear();
                         bridgeInstance->activeDownloadClipId_.clear();
                     }
                     break;
                 case vc::suno::DownloadState::Cancelled:
                     bridgeInstance->setDownloadStatusForClip(
                             clipId, QStringLiteral("Download cancelled for %1").arg(title));
-                    if (bridgeInstance->activeDownloadClipId_ == clipId) {
+                    if (bridgeInstance->playRequestClipId_ == clipId) {
+                        bridgeInstance->playRequestClipId_.clear();
                         bridgeInstance->activeDownloadClipId_.clear();
                     }
                     break;
@@ -506,14 +543,119 @@ void SunoBridge::playClip(const QString& clipId) {
 
     setErrorMessage({});
     activeDownloadClipId_ = clipId;
+    // Marked separately from activeDownloadClipId_, which is the single
+    // status slot and is latched by any download event: only an explicit
+    // play request may suppress other clips' events or be reported as
+    // "now playing".
+    playRequestClipId_ = clipId;
     const QString title = clipTitle(clipId);
     setStatusMessage(QStringLiteral("Preparing %1 for playback").arg(title));
     setDownloadStatusForClip(clipId,
                              QStringLiteral("Preparing %1 for playback").arg(title));
     if (!s_controller->playClipById(clipId.toStdString())) {
+        playRequestClipId_.clear();
         activeDownloadClipId_.clear();
         setErrorMessage(QStringLiteral("This clip has no playable media yet."));
     }
+}
+
+void SunoBridge::downloadClip(const QString& clipId) {
+    downloadInto({clipId});
+}
+
+void SunoBridge::downloadClips(const QStringList& clipIds) {
+    downloadInto(clipIds);
+}
+
+/// Save-only by construction: nothing in this path can enqueue, jump, or
+/// otherwise touch the transport, so a batch cannot hijack playback. Playback
+/// stays the separate, explicit playClip() request.
+void SunoBridge::downloadInto(const QStringList& clipIds) {
+    auto* downloader = ensureDownloader();
+    if (!downloader || !s_controller) {
+        setErrorMessage(
+            QStringLiteral("Downloads are unavailable because no download service is attached."));
+        return;
+    }
+    if (clipIds.isEmpty()) {
+        return;
+    }
+
+    setErrorMessage({});
+
+    int accepted = 0;
+    int rejected = 0;
+    int unknown = 0;
+    QString firstRejection;
+    for (const QString& clipId : clipIds) {
+        const auto clip = vc::suno::resolveClip(s_controller->clips(), s_controller->db(),
+                                                clipId.toStdString());
+        if (!clip) {
+            ++unknown;
+            continue;
+        }
+        auto result = downloader->download(*clip);
+        if (!result) {
+            ++rejected;
+            if (firstRejection.isEmpty()) {
+                firstRejection = result.error();
+            }
+            continue;
+        }
+        ++accepted;
+    }
+
+    if (accepted > 0) {
+        setStatusMessage(accepted == 1 ? QStringLiteral("Saving 1 clip to disk")
+                                       : QStringLiteral("Saving %1 clips to disk").arg(accepted));
+    }
+
+    // Report why a request was refused rather than leaving a dead button: the
+    // clip has no capture-backed media, or it is not in the loaded library.
+    QString message;
+    if (rejected == 1) {
+        message = firstRejection;
+    } else if (rejected > 1) {
+        message = QStringLiteral("%1 clips could not be saved. First reason: %2")
+                      .arg(rejected)
+                      .arg(firstRejection);
+    }
+    if (unknown > 0) {
+        QString missing;
+        if (unknown == 1) {
+            missing = QStringLiteral("1 clip is not in the loaded library.");
+        } else {
+            missing = QStringLiteral("%1 clips are not in the loaded library.").arg(unknown);
+        }
+        message = message.isEmpty() ? missing : QStringLiteral("%1 %2").arg(missing, message);
+    }
+    if (!message.isEmpty()) {
+        setErrorMessage(message);
+    }
+}
+
+vc::suno::SunoDownloader* SunoBridge::ensureDownloader() {
+    if (!s_controller) {
+        downloader_ = nullptr;
+        return nullptr;
+    }
+    // SunoController constructs the one SunoDownloader (and therefore the one
+    // DownloadQueue) and parents it to itself, so the QObject tree is the only
+    // handle reachable from this layer. Re-resolved rather than cached blindly
+    // so a controller swap cannot leave a dangling pointer or a duplicate
+    // signal connection behind.
+    auto* found = s_controller->findChild<vc::suno::SunoDownloader*>();
+    if (found == downloader_) {
+        return downloader_;
+    }
+    if (downloader_) {
+        disconnect(downloader_, nullptr, this, nullptr);
+    }
+    downloader_ = found;
+    if (downloader_) {
+        connect(downloader_, &vc::suno::SunoDownloader::fileSaved, this, &SunoBridge::clipSaved);
+    }
+    return downloader_;
 }
 
 int SunoBridge::credits() const {

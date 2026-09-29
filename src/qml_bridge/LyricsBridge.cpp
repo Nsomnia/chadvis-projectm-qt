@@ -12,8 +12,43 @@ namespace qml_bridge {
 
 namespace {
 
-QString formatSrtTime(const vc::f32 seconds) {
-    const qint64 totalMs = std::max<qint64>(0, std::llround(seconds * 1000.0f));
+/// SRT writes milliseconds; LRC and ASS both write centiseconds.
+constexpr vc::f32 kMillisecondsPerSecond = 1000.0f;
+constexpr vc::f32 kCentisecondsPerSecond = 100.0f;
+
+/// One message for every entry point that needs lyrics. The file writers and
+/// the string builder all refuse the same way, and they must keep refusing the
+/// same way: a caller that gets a different string from the string builder
+/// than from exportToAss has no way to tell it is the same condition.
+constexpr auto kNoLyricsMessage = "No lyrics are loaded.";
+
+/// Remote-derived seconds to a whole number of `unitsPerSecond`, clamped at zero.
+///
+/// One implementation for all three time formatters, so the non-finite guard
+/// cannot be triplicated and then quietly lost from one of them. The scale is
+/// a parameter rather than being baked in because the formats genuinely
+/// disagree, and that disagreement is not cosmetic: routing SRT through a
+/// centisecond helper would quantise it twice and change bytes it has already
+/// shipped (1.4567s is 1457ms scaled directly, but 1460ms via 146cs), so the
+/// scale has to stay the caller's choice. The parameter is f32 rather than an
+/// integer type so the multiply stays a float one, bit-identical to what each
+/// format wrote before this existed -- an integer scale would promote the
+/// product to double and quietly move the rounding.
+///
+/// std::llround rounds half away from zero. The non-finite check is the defect
+/// this helper exists to fix: llround on a NaN or infinite value is undefined
+/// behaviour, and these seconds come from a remote payload, so a malformed or
+/// hostile time could take the export down rather than merely mis-render. A
+/// non-finite time names no real instant, so it becomes zero -- the same answer
+/// the pre-existing clamp already gave a negative one.
+qint64 toTimeUnits(const vc::f32 seconds, const vc::f32 unitsPerSecond) {
+    if (!std::isfinite(seconds)) {
+        return 0;
+    }
+    return std::max<qint64>(0, std::llround(seconds * unitsPerSecond));
+}
+
+QString formatSrtMilliseconds(const qint64 totalMs) {
     const qint64 hours = totalMs / 3600000;
     const qint64 minutes = (totalMs / 60000) % 60;
     const qint64 secs = (totalMs / 1000) % 60;
@@ -25,8 +60,12 @@ QString formatSrtTime(const vc::f32 seconds) {
             .arg(millis, 3, 10, QLatin1Char('0'));
 }
 
+QString formatSrtTime(const vc::f32 seconds) {
+    return formatSrtMilliseconds(toTimeUnits(seconds, kMillisecondsPerSecond));
+}
+
 QString formatLrcTime(const vc::f32 seconds) {
-    const qint64 totalCentiseconds = std::max<qint64>(0, std::llround(seconds * 100.0f));
+    const qint64 totalCentiseconds = toTimeUnits(seconds, kCentisecondsPerSecond);
     const qint64 minutes = totalCentiseconds / 6000;
     const qint64 secs = (totalCentiseconds / 100) % 60;
     const qint64 centis = totalCentiseconds % 100;
@@ -55,27 +94,22 @@ bool writeExportFile(const QString& path, const QByteArray& contents, QString& e
 
 /// Seconds to the centiseconds ASS timestamps are written in.
 ///
+/// The guard and the arithmetic live in toTimeUnits; what is left here is the
+/// part that is specific to ASS karaoke, which is why it gets a name.
+///
 /// A karaoke tag's position is not stated directly: a player derives it by
 /// *accumulating* the durations that precede it. That is what makes the
-/// rounding rule load-bearing, and it is why this function exists separately
-/// from the duration arithmetic. A writer that rounds each word's span on its
-/// own pays up to half a centisecond of error per word, in one direction per
-/// word, and the error survives into every later word in the line -- 200 words
-/// of 0.333s is a 66.6s line that such a writer ends 0.6s early. Every
-/// duration below is instead a difference of two *absolute* stamps, so the
-/// error is bounded at each boundary and the last word of the line lands on
-/// the real line end. See assLongWordSequenceKeepsTheTailHonest.
-///
-/// std::llround rounds half away from zero, matching formatSrtTime and
-/// formatLrcTime. The non-finite check is the one place this is deliberately
-/// stricter than the siblings: their std::llround is undefined behaviour on a
-/// NaN or infinite start time, and a remote payload that parses one would take
-/// the export down with it rather than merely mis-render.
+/// rounding rule load-bearing, and it is why every duration below is a
+/// difference of two *absolute* stamps rather than an independent rounding of
+/// each word's span. A writer that rounds per word pays up to half a
+/// centisecond of error per word, in one direction per word, and the error
+/// survives into every later word in the line -- 200 words of 0.333s is a
+/// 66.6s line that such a writer ends 0.6s early. Anchoring on the absolute
+/// stamps bounds the error at each boundary instead of letting it compound, so
+/// the last word of the line lands on the real line end. See
+/// assLongWordSequenceKeepsTheTailHonest.
 qint64 toAssCentiseconds(const vc::f32 seconds) {
-    if (!std::isfinite(seconds)) {
-        return 0;
-    }
-    return std::max<qint64>(0, std::llround(seconds * 100.0f));
+    return toTimeUnits(seconds, kCentisecondsPerSecond);
 }
 
 /// `H:MM:SS.cc` -- ASS counts centiseconds, not SRT's milliseconds.
@@ -192,6 +226,122 @@ QString assHeaderValue(const QString& value) {
     cleaned.replace(QLatin1Char('\n'), QLatin1Char(' '));
     cleaned.replace(QLatin1Char('\r'), QLatin1Char(' '));
     return cleaned;
+}
+
+/// An LRC metadata value, for [ti:] and [ar:].
+///
+/// Same newline rule as assHeaderValue, and for the same reason: a record is
+/// one line, so a newline in the value would end the tag early and leave the
+/// remainder to be read as a record of its own.
+///
+/// LRC adds a second hazard that ASS does not have, because LRC defines no
+/// escape syntax at all -- there is no way to write a literal `[`. A `[` in a
+/// title is therefore not merely cosmetically ambiguous, it is re-read as the
+/// start of a tag. This repository's own parser demonstrates it: fromLrc
+/// (LyricsData.cpp) matches timestamps with an *unanchored* regex_search, so a
+/// title of `Song [00:30] Live` exported as `[ti:Song [00:30] Live]` comes back
+/// as a phantom lyric line at 30 seconds, with the trailing ` Live]` as its
+/// text. Third-party players that parse [ti:]/[ar:] as tags would instead
+/// truncate the value at the bracket.
+///
+/// So the brackets are *substituted* rather than escaped -- there is no escape
+/// to use. U+FF3B and U+FF3D (fullwidth square brackets) are the substitution
+/// because they are visually still brackets, so the title still reads
+/// correctly, and they cannot match any LRC tag grammar. Dropping the
+/// character instead would silently lose data, and a space would run two words
+/// together.
+///
+/// Both ends are substituted, not just the opening one. Substituting only `[`
+/// was measurably worse: it leaves the value visually unbalanced, and the
+/// surviving ASCII `]` still gives a tag reader something to truncate at. With
+/// both, the file's remaining ASCII brackets are exactly its real tag
+/// delimiters, which is a checkable invariant rather than a hope.
+QString lrcHeaderValue(const QString& value) {
+    QString cleaned = value;
+    cleaned.replace(QLatin1Char('\n'), QLatin1Char(' '));
+    cleaned.replace(QLatin1Char('\r'), QLatin1Char(' '));
+    cleaned.replace(QLatin1Char('['), QChar(0xFF3B)); // fullwidth [
+    cleaned.replace(QLatin1Char(']'), QChar(0xFF3D)); // fullwidth ]
+    return cleaned;
+}
+
+/// The one and only ASS assembly path.
+///
+/// Both entry points call this and nothing else assembles a document: the file
+/// writer and the string builder. That is the whole reason it is a separate
+/// function rather than a body inside exportToAss -- this file already grew a
+/// second, byte-different SRT/LRC formatter in LyricsData that had no callers
+/// and so no tests, and the cheapest way to guarantee the next one cannot
+/// happen is to make a duplicate impossible to write rather than merely
+/// discouraged. There is no way to obtain ASS bytes without going through here.
+///
+/// Takes the LyricsData rather than reading s_sync, so it has no opinion about
+/// where lyrics come from and can be reasoned about (and diffed) on its own.
+QString buildAssDocument(const vc::LyricsData& lyrics) {
+    QString output = QStringLiteral("[Script Info]\n");
+    if (!lyrics.title.empty()) {
+        output += QStringLiteral("Title: %1\n")
+                          .arg(assHeaderValue(QString::fromStdString(lyrics.title)));
+    }
+
+    // PlayResX/Y are the script's coordinate space, and they are 1920x1080
+    // because that is what the recorder encodes by default: a subtitle authored
+    // in the script resolution of the video it will be muxed into needs no
+    // rescale, so Alignment 2 and MarginV mean the same thing here as they do
+    // on the finished frame. Any other choice would be a guess that a player
+    // silently corrects by scaling, which is how a bottom-centre caption ends
+    // up somewhere else entirely.
+    //
+    // WrapStyle 0 is the only value that degrades safely. A lyric line longer
+    // than the script width is expected -- the capture makes no attempt to
+    // wrap prose -- and style 0 (smart wrapping) folds it back onto the frame,
+    // whereas 1 and 2 break only on an explicit \N and simply run off the edge
+    // with the text unreadable (verified against libass 0.17.5 at
+    // PlayResX 640: style 0 reflowed onto five lines, style 2 clipped both
+    // ends). The alternative to wrapping is the hard break this writer
+    // refuses to invent; see assEventText.
+    //
+    // The two Format lines are the field lists, in the exact order the spec
+    // fixes. Order is not cosmetic: a renderer reads these positionally, so a
+    // transposed field does not error, it just puts Outline where Alignment
+    // belongs and the file plays with garbage geometry.
+    output += QStringLiteral(
+            "ScriptType: v4.00+\n"
+            "WrapStyle: 0\n"
+            "PlayResX: 1920\n"
+            "PlayResY: 1080\n"
+            "ScaledBorderAndShadow: yes\n"
+            "\n"
+            "[V4+ Styles]\n"
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+            "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, "
+            "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
+            "MarginL, MarginR, MarginV, Encoding\n"
+            "Style: Default,Arial,60,&H00FFFFFF,&H00808080,&H00000000,&H00000000,"
+            "0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n"
+            "\n"
+            "[Events]\n"
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n");
+
+    for (const auto& line : lyrics.lines) {
+        if (line.text.empty()) {
+            continue;
+        }
+
+        // The same widening exportToSrt applies, so a line whose endTime
+        // precedes its startTime is never written backwards. The floor is
+        // stricter than SRT's: a Dialogue whose End <= Start is discarded
+        // outright by most players, so without it a sub-centisecond line would
+        // not merely look wrong, it would vanish.
+        const qint64 startCs = toAssCentiseconds(line.startTime);
+        const qint64 endCs =
+                line.endTime > line.startTime ? toAssCentiseconds(line.endTime) : startCs + 100;
+        output += QStringLiteral("Dialogue: 0,%1,%2,Default,,0,0,0,,%3\n")
+                          .arg(formatAssTime(startCs), formatAssTime(std::max(startCs + 1, endCs)),
+                               assEventText(line));
+    }
+
+    return output;
 }
 
 } // namespace
@@ -350,7 +500,7 @@ void LyricsBridge::seekToLine(int lineIndex) {
 
 void LyricsBridge::exportToSrt(const QString& path) {
     if (!s_sync || !s_sync->hasLyrics()) {
-        emit exportFailed(QStringLiteral("No lyrics are loaded."));
+        emit exportFailed(QString::fromLatin1(kNoLyricsMessage));
         return;
     }
 
@@ -360,10 +510,23 @@ void LyricsBridge::exportToSrt(const QString& path) {
         if (line.text.empty()) {
             continue;
         }
-        const auto end = line.endTime > line.startTime ? line.endTime : line.startTime + 1.0f;
+        // Widen by a second when the end precedes the start, then floor in the
+        // OUTPUT unit. Both steps are needed and they are not the same check.
+        // The float comparison is true for an infinite endTime, which the
+        // non-finite guard then maps to 0 -- so widening alone would emit a
+        // backwards cue (00:00:01,000 --> 00:00:00,000), and a player discards
+        // a cue whose End <= Start outright. The floor is inert for every
+        // well-formed finite line, so it changes no golden byte. This mirrors
+        // exportToAss's std::max(start + 1, end) for the same reason.
+        const qint64 startMs = toTimeUnits(line.startTime, kMillisecondsPerSecond);
+        qint64 endMs = toTimeUnits(line.endTime, kMillisecondsPerSecond);
+        if (line.endTime <= line.startTime) {
+            endMs = startMs + 1000;
+        }
+        endMs = std::max(endMs, startMs + 1);
         output += QStringLiteral("%1\n%2 --> %3\n%4\n\n")
                 .arg(index++)
-                .arg(formatSrtTime(line.startTime), formatSrtTime(end),
+                .arg(formatSrtMilliseconds(startMs), formatSrtMilliseconds(endMs),
                      QString::fromStdString(line.text));
     }
 
@@ -377,19 +540,24 @@ void LyricsBridge::exportToSrt(const QString& path) {
 
 void LyricsBridge::exportToLrc(const QString& path) {
     if (!s_sync || !s_sync->hasLyrics()) {
-        emit exportFailed(QStringLiteral("No lyrics are loaded."));
+        emit exportFailed(QString::fromLatin1(kNoLyricsMessage));
         return;
     }
 
     QString output;
     const auto& lyrics = s_sync->getLyrics();
+    // Escaped because these come from a remote payload: see lrcHeaderValue for
+    // why a `[` here is a correctness problem and not a cosmetic one. The
+    // header is the only part of an LRC file with a tag grammar -- a lyric line
+    // is `[mm:ss.xx]text` and its text is whatever follows, so nothing in the
+    // timed lines needs the same treatment.
     if (!lyrics.title.empty()) {
         output += QStringLiteral("[ti:%1]\n")
-                .arg(QString::fromStdString(lyrics.title));
+                          .arg(lrcHeaderValue(QString::fromStdString(lyrics.title)));
     }
     if (!lyrics.artist.empty()) {
         output += QStringLiteral("[ar:%1]\n")
-                .arg(QString::fromStdString(lyrics.artist));
+                          .arg(lrcHeaderValue(QString::fromStdString(lyrics.artist)));
     }
     for (const auto& line : lyrics.lines) {
         if (line.text.empty()) {
@@ -409,81 +577,26 @@ void LyricsBridge::exportToLrc(const QString& path) {
 
 void LyricsBridge::exportToAss(const QString& path) {
     if (!s_sync || !s_sync->hasLyrics()) {
-        emit exportFailed(QStringLiteral("No lyrics are loaded."));
+        emit exportFailed(QString::fromLatin1(kNoLyricsMessage));
         return;
     }
 
-    const auto& lyrics = s_sync->getLyrics();
-
-    QString output = QStringLiteral("[Script Info]\n");
-    if (!lyrics.title.empty()) {
-        output += QStringLiteral("Title: %1\n")
-                          .arg(assHeaderValue(QString::fromStdString(lyrics.title)));
-    }
-
-    // PlayResX/Y are the script's coordinate space, and they are 1920x1080
-    // because that is what the recorder encodes by default: a subtitle authored
-    // in the script resolution of the video it will be muxed into needs no
-    // rescale, so Alignment 2 and MarginV mean the same thing here as they do
-    // on the finished frame. Any other choice would be a guess that a player
-    // silently corrects by scaling, which is how a bottom-centre caption ends
-    // up somewhere else entirely.
-    //
-    // WrapStyle 0 is the only value that degrades safely. A lyric line longer
-    // than the script width is expected -- the capture makes no attempt to
-    // wrap prose -- and style 0 (smart wrapping) folds it back onto the frame,
-    // whereas 1 and 2 break only on an explicit \N and simply run off the edge
-    // with the text unreadable (verified against libass 0.17.5 at
-    // PlayResX 640: style 0 reflowed onto five lines, style 2 clipped both
-    // ends). The alternative to wrapping is the hard break this writer
-    // refuses to invent; see assEventText.
-    //
-    // The two Format lines are the field lists, in the exact order the spec
-    // fixes. Order is not cosmetic: a renderer reads these positionally, so a
-    // transposed field does not error, it just puts Outline where Alignment
-    // belongs and the file plays with garbage geometry.
-    output += QStringLiteral(
-            "ScriptType: v4.00+\n"
-            "WrapStyle: 0\n"
-            "PlayResX: 1920\n"
-            "PlayResY: 1080\n"
-            "ScaledBorderAndShadow: yes\n"
-            "\n"
-            "[V4+ Styles]\n"
-            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
-            "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, "
-            "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
-            "MarginL, MarginR, MarginV, Encoding\n"
-            "Style: Default,Arial,60,&H00FFFFFF,&H00808080,&H00000000,&H00000000,"
-            "0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n"
-            "\n"
-            "[Events]\n"
-            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n");
-
-    for (const auto& line : lyrics.lines) {
-        if (line.text.empty()) {
-            continue;
-        }
-
-        // The same widening exportToSrt applies, so a line whose endTime
-        // precedes its startTime is never written backwards. The floor is
-        // stricter than SRT's: a Dialogue whose End <= Start is discarded
-        // outright by most players, so without it a sub-centisecond line would
-        // not merely look wrong, it would vanish.
-        const qint64 startCs = toAssCentiseconds(line.startTime);
-        const qint64 endCs =
-                line.endTime > line.startTime ? toAssCentiseconds(line.endTime) : startCs + 100;
-        output += QStringLiteral("Dialogue: 0,%1,%2,Default,,0,0,0,,%3\n")
-                          .arg(formatAssTime(startCs), formatAssTime(std::max(startCs + 1, endCs)),
-                               assEventText(line));
-    }
-
     QString error;
-    if (!writeExportFile(path, output.toUtf8(), error)) {
+    if (!writeExportFile(path, buildAssDocument(s_sync->getLyrics()).toUtf8(), error)) {
         emit exportFailed(error);
         return;
     }
     emit exportFinished(path);
+}
+
+QString LyricsBridge::assDocument(QString* error) const {
+    if (!s_sync || !s_sync->hasLyrics()) {
+        if (error) {
+            *error = QString::fromLatin1(kNoLyricsMessage);
+        }
+        return {};
+    }
+    return buildAssDocument(s_sync->getLyrics());
 }
 
 void LyricsBridge::setSearchQuery(const QString& query) {

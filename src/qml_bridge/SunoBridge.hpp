@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QtQml/qqml.h>
 #include <QTimer>
+#include <QStringList>
 #include <QVariantList>
 #include <QString>
 #include <cstddef>
@@ -11,6 +12,7 @@ namespace vc {
 namespace suno {
 class SunoController;
 class SunoClient;
+class SunoDownloader;
 class SunoExploreService;
 class SunoNotificationService;
 class SunoAudioUploadService;
@@ -110,6 +112,8 @@ public slots:
     Q_INVOKABLE void requestNextLibraryPage();
     Q_INVOKABLE void searchLibrary(const QString& searchText);
     Q_INVOKABLE void playClip(const QString& clipId);
+    Q_INVOKABLE void downloadClip(const QString& clipId);
+    Q_INVOKABLE void downloadClips(const QStringList& clipIds);
     Q_INVOKABLE void sendChatMessage(const QString& message, const QString& workspaceId = {});
     Q_INVOKABLE void fetchChatHistory();
     Q_INVOKABLE void clearLoading();
@@ -154,6 +158,11 @@ signals:
     void unreadCountChanged();
     void notificationsLoadingChanged();
     void notificationsErrorChanged();
+    /// One clip's audio is on disk, tagged and sidecarred. The per-clip result
+    /// channel for a download: unlike downloadStatus, which is a single string
+    /// describing the most recent event, this fires for every clip of a batch
+    /// and carries the path that was written.
+    void clipSaved(const QString& clipId, const QString& savedPath);
 
 private slots:
     void onLibraryUpdated();
@@ -182,6 +191,10 @@ private:
     void destroyNotificationService();
     void ensureAudioUploadService();
     void destroyAudioUploadService();
+    void downloadInto(const QStringList& clipIds);
+    /// The single SunoDownloader, borrowed from SunoController. Null (and the
+    /// caller must fail closed) when no controller is attached.
+    vc::suno::SunoDownloader* ensureDownloader();
     void setDiscoverError(const QString& message);
     void setNotificationsError(const QString& message);
     QString clipTitle(const QString& clipId) const;
@@ -208,6 +221,16 @@ private:
     vc::suno::SunoExploreService* exploreService_{nullptr};
     vc::suno::SunoNotificationService* notificationService_{nullptr};
     vc::suno::SunoAudioUploadService* audioUploadService_{nullptr};
+    /// Not owned here. Re-resolved from the QObject tree by ensureDownloader()
+    /// whenever the controller changes, so a controller swap cannot leave a
+    /// dangling pointer or a stale signal connection behind.
+    vc::suno::SunoDownloader* downloader_{nullptr};
+    /// The clip whose download was requested as "save and play". Kept apart
+    /// from activeDownloadClipId_, which is the single status slot and is
+    /// latched by any event: a save-only request must never look like a play
+    /// request, or a batch would report the first clip it latches as "now
+    /// playing" and then filter out the rest of its own results.
+    QString playRequestClipId_;
     bool loading_{false};
     bool hasMorePages_{false};
     bool discoverLoading_{false};

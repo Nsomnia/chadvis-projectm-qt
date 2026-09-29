@@ -9,9 +9,11 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QNetworkAccessManager>
 #include <QUrl>
 #include <fstream>
 #include <algorithm>
+#include <utility>
 
 // TagLib Includes
 #include <taglib/mpegfile.h>
@@ -24,6 +26,16 @@
 
 namespace vc::suno {
 
+namespace {
+
+/// The one extension this downloader writes. A WAV request is rejected
+/// before a destination is ever chosen (see download()), so a format
+/// parameter on the destination helpers would be a parameter with exactly
+/// one legal value.
+constexpr std::string_view kAudioExtension = ".mp3";
+
+} // namespace
+
 SunoDownloader::SunoDownloader(SunoClient*,
                                SunoDatabase& db,
                                AudioEngine* audioEngine,
@@ -35,7 +47,22 @@ SunoDownloader::SunoDownloader(SunoClient*,
       // The queue adopts the controller-provided manager; this is the one
       // QNetworkAccessManager for clip downloads (no ad-hoc managers here).
       queue_(std::make_unique<DownloadQueue>(networkManager, this)) {
+    wireQueue();
+}
 
+SunoDownloader::SunoDownloader(SunoDatabase& db,
+                               AudioEngine* audioEngine,
+                               ReplyFactory replyFactory)
+    : QObject(nullptr),
+      db_(db),
+      audioEngine_(audioEngine),
+      queue_(std::make_unique<DownloadQueue>(std::move(replyFactory), this)) {
+    wireQueue();
+}
+
+SunoDownloader::~SunoDownloader() = default;
+
+void SunoDownloader::wireQueue() {
     connect(queue_.get(), &DownloadQueue::itemStateChanged, this,
             [this](const QString& clipId, int state, int progressPercent) {
                 emit downloadStateChanged(clipId, state, progressPercent);
@@ -45,8 +72,6 @@ SunoDownloader::SunoDownloader(SunoClient*,
     connect(queue_.get(), &DownloadQueue::queueIdle,
             this, &SunoDownloader::downloadQueueIdle);
 }
-
-SunoDownloader::~SunoDownloader() = default;
 
 fs::path SunoDownloader::getDownloadDir() const {
   fs::path dir = CONFIG.suno().downloadPath;
@@ -123,48 +148,156 @@ SunoDownloader::selectDownloadUrl(const SunoClip& clip,
     return std::nullopt;
 }
 
-void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
-    if (clip.id.empty()) return;
+QString SunoDownloader::noUsableMediaMessage(const SunoClip& clip) {
+    if (clip.status != "complete") {
+        return QStringLiteral("This clip is not finished (status: %1), so there is no audio to "
+                              "save yet.")
+            .arg(clip.status.empty() ? QStringLiteral("unknown")
+                                     : QString::fromStdString(clip.status));
+    }
+    // Deliberately says nothing about which media types exist or might be
+    // usable: it only restates the fail-closed decision selectDownloadUrl()
+    // already made, so that a dead button is at least an explained one.
+    return QStringLiteral(
+        "This clip has no playable audio on the captured media host, so there is "
+        "nothing to save.");
+}
+
+std::expected<DownloadStarted, QString> SunoDownloader::download(const SunoClip& clip,
+                                                                const DownloadAction action) {
+    if (clip.id.empty()) {
+        return std::unexpected(
+            QStringLiteral("This clip has no identifier, so it cannot be saved."));
+    }
 
     const auto format = CONFIG.suno().downloadFormat;
-    if (format == vc::SunoDownloadFormat::WAV) {
+    if (format != vc::SunoDownloadFormat::MP3) {
         LOG_WARN("SunoDownloader: WAV download rejected for clip {}: conversion route is LEAD-only",
                  clip.id);
-        return;
+        return std::unexpected(
+            QStringLiteral("WAV download is unavailable: the conversion route is not "
+                           "capture-backed."));
     }
 
     const auto selectedUrl = selectDownloadUrl(clip, format);
     if (!selectedUrl) {
         LOG_WARN("SunoDownloader: no usable captured MP3 URL for clip {} (status {})",
                  clip.id, clip.status);
-        return;
+        return std::unexpected(noUsableMediaMessage(clip));
     }
 
-    const std::string safeTitle = safeStem(clip.title, clip.id);
-    const fs::path targetPath =
-        getDownloadDir() / (safeTitle + ".mp3");
-
+    const fs::path targetPath = resolveDestPath(clip);
     if (fs::exists(targetPath)) {
-        if (addAndPlay(targetPath, clip.id)) {
+        return finishAlreadyOnDisk(clip, targetPath, action);
+    }
+
+    enqueueAudio(clip, *selectedUrl, action);
+    return DownloadStarted{clip.id, action, false};
+}
+
+void SunoDownloader::downloadAndPlay(const SunoClip& clip) {
+    static_cast<void>(download(clip, DownloadAction::SaveAndPlay));
+}
+
+bool SunoDownloader::cancelDownload(const std::string& clipId) {
+    if (clipId.empty()) {
+        return false;
+    }
+    // The queue drops the .part file and emits the terminal Cancelled state,
+    // which is what clears pendingClips_; nothing is written to disk and no
+    // saved-file notification is emitted.
+    return queue_->cancel(clipId);
+}
+
+std::expected<DownloadStarted, QString>
+SunoDownloader::finishAlreadyOnDisk(const SunoClip& clip,
+                                    const fs::path& path,
+                                    const DownloadAction action) {
+    if (action == DownloadAction::SaveAndPlay) {
+        // Pre-existing shortcut, preserved deliberately: a clip already in the
+        // download directory goes straight to the transport with no transfer,
+        // and the synthetic Completed state is emitted only when playback
+        // actually started.
+        if (addAndPlay(path, clip.id)) {
             emit downloadStateChanged(QString::fromStdString(clip.id),
                                       static_cast<int>(DownloadState::Completed), 100);
+        } else {
+            LOG_WARN("SunoDownloader: {} is on disk but could not be enqueued for playback",
+                     clip.id);
         }
-        return;
+        return DownloadStarted{clip.id, action, true};
     }
 
-    enqueueAudio(clip, *selectedUrl, ".mp3");
+    // SaveOnly: the file is already where it belongs, so announce it and
+    // leave the playlist and the transport exactly as they were.
+    emit fileSaved(QString::fromStdString(clip.id), QString::fromStdString(path.string()));
+    emit downloadStateChanged(QString::fromStdString(clip.id),
+                              static_cast<int>(DownloadState::Completed), 100);
+    return DownloadStarted{clip.id, action, true};
+}
+
+fs::path SunoDownloader::resolveDestPath(const SunoClip& clip) {
+    if (const auto known = destByClip_.find(clip.id); known != destByClip_.end()) {
+        return known->second;
+    }
+
+    const fs::path dir = getDownloadDir();
+    const std::string stem = safeStem(clip.title, clip.id);
+    fs::path candidate = dir / (stem + std::string(kAudioExtension));
+
+    // Two clips that share a title must not share a file, or a batch silently
+    // overwrites the first with the second. The plain name counts as taken
+    // when any other clip has already been handed it -- whether or not its
+    // bytes have landed -- and the unique clip id breaks the tie.
+    //
+    // Deliberately NOT keyed on fs::exists(): a file left by an earlier
+    // session must still be reused, because that is the "already downloaded"
+    // shortcut downloadAndPlay depends on, and probing the filesystem here
+    // would make the answer depend on whether this clip's own bytes have
+    // arrived yet -- so the transfer and the sidecar writers, which run on
+    // either side of that moment, could disagree about the path.
+    if (destOwner_.contains(candidate.string())) {
+        candidate = dir / (stem + "-" + clip.id + std::string(kAudioExtension));
+    }
+    destOwner_.emplace(candidate.string(), clip.id);
+    destByClip_.emplace(clip.id, candidate);
+    return candidate;
+}
+
+fs::path SunoDownloader::defaultDestPathFor(const std::string& clipId) const {
+    if (const auto known = destByClip_.find(clipId); known != destByClip_.end()) {
+        return known->second;
+    }
+    // Claims nothing: a lyrics fetch can arrive for a clip this downloader
+    // never saved, and it must not steal a destination from a download that
+    // has not happened yet.
+    const auto clip = resolveClip({}, db_, clipId);
+    return getDownloadDir() / (safeStem(clip ? clip->title : std::string{}, clipId) +
+                               std::string(kAudioExtension));
 }
 
 /// Route one transfer through the shared DownloadQueue; tagging/sidecars run
 /// from the completion hook in handleItemState().
 void SunoDownloader::enqueueAudio(const SunoClip& clip,
                                   const std::string& url,
-                                  const std::string& extension) {
-    const fs::path targetPath =
-        getDownloadDir() / (safeStem(clip.title, clip.id) + extension);
-    pendingClips_[clip.id] = PendingDownload{clip, targetPath};
+                                  const DownloadAction action) {
+    if (const auto live = pendingClips_.find(clip.id); live != pendingClips_.end()) {
+        // A live job already owns this clip id and DownloadQueue rejects a
+        // second one for it. The pre-fix branch overwrote the live request's
+        // completion record and then erased it, so the in-flight transfer
+        // finished with no tag, no sidecar and no announcement. Escalate the
+        // live request instead: SaveAndPlay wins, because escalating a save
+        // into a play is the only direction a later request may move it.
+        if (action == DownloadAction::SaveAndPlay) {
+            live->second.action = DownloadAction::SaveAndPlay;
+        }
+        return;
+    }
+
+    const fs::path targetPath = resolveDestPath(clip);
+    pendingClips_.emplace(clip.id, PendingDownload{clip, targetPath, action});
     if (!queue_->enqueue(clip.id, url, targetPath)) {
-        pendingClips_.erase(clip.id);  // duplicate live job: queue already owns it
+        pendingClips_.erase(clip.id);  // rejected for a reason only the queue knows
     }
 }
 
@@ -177,11 +310,19 @@ void SunoDownloader::handleItemState(const std::string& clipId, DownloadState st
     pendingClips_.erase(it);
 
     switch (state) {
-        case DownloadState::Completed:
+        case DownloadState::Completed: {
+            // The file, its tags and its sidecars are all in place before the
+            // path can reach the audio engine, so a synchronous lyrics fetch
+            // triggered from addAndPlay() finds a complete download directory.
             tagAudioFile(pending.destPath, pending.clip);
-            processDownloadedFile(pending.clip, pending.destPath);
             saveMetadataSidecar(pending.clip);
+            if (pending.action == DownloadAction::SaveAndPlay) {
+                static_cast<void>(addAndPlay(pending.destPath, pending.clip.id));
+            }
+            emit fileSaved(QString::fromStdString(clipId),
+                           QString::fromStdString(pending.destPath.string()));
             break;
+        }
         case DownloadState::FailedPermanent:
             LOG_ERROR("SunoDownloader: permanent failure for clip {}", clipId);
             break;
@@ -201,7 +342,20 @@ void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
 
     if (ext == ".mp3") {
         TagLib::MPEG::File f(path.c_str());
+        // TagLib hands back a null tag when the file will not open, and a
+        // download that renamed into place on an HTTP 200 is not guaranteed
+        // to be a readable MPEG stream. Every write below would be through
+        // that null pointer.
+        if (!f.isValid()) {
+            LOG_WARN("SunoDownloader: {} is not a readable MPEG file; left untagged",
+                     path.string());
+            return;
+        }
         TagLib::ID3v2::Tag* tag = f.ID3v2Tag(true);
+        if (!tag) {
+            LOG_WARN("SunoDownloader: no ID3v2 tag available for {}", path.string());
+            return;
+        }
 
         tag->setTitle(TagLib::String(clip.title, TagLib::String::UTF8));
         tag->setArtist(TagLib::String(clip.display_name, TagLib::String::UTF8));
@@ -233,7 +387,16 @@ void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
         f.save();
     } else if (ext == ".flac") {
         TagLib::FLAC::File f(path.c_str());
+        if (!f.isValid()) {
+            LOG_WARN("SunoDownloader: {} is not a readable FLAC file; left untagged",
+                     path.string());
+            return;
+        }
         TagLib::Ogg::XiphComment* tag = f.xiphComment(true);
+        if (!tag) {
+            LOG_WARN("SunoDownloader: no XiphComment available for {}", path.string());
+            return;
+        }
 
         tag->setTitle(TagLib::String(clip.title, TagLib::String::UTF8));
         tag->setArtist(TagLib::String(clip.display_name, TagLib::String::UTF8));
@@ -271,15 +434,10 @@ bool SunoDownloader::addAndPlay(const fs::path& path, const std::string& clipId)
     return true;
 }
 
-bool SunoDownloader::processDownloadedFile(const SunoClip& clip, const fs::path& path) {
-    return addAndPlay(path, clip.id);
-}
-
 void SunoDownloader::saveLyricsSidecar(const std::string& clipId,
                                       const std::string& json,
                                       const QJsonDocument&,
                                       const std::vector<SunoClip>& clips) {
-    const auto saveDir = getDownloadDir();
     auto clip = resolveClip(clips, db_, clipId);
     if (!clip) {
         clip = SunoClip{};
@@ -291,12 +449,15 @@ void SunoDownloader::saveLyricsSidecar(const std::string& clipId,
         return;
     }
 
-    const auto audioPath = saveDir / (safeStem(clip->title, clipId) + ".mp3");
+    // Derived from the audio path, not from a second sanitize-and-append, so a
+    // disambiguated destination (two clips sharing a title) still gets its
+    // lyrics written next to the file it belongs to.
+    fs::path audioPath = defaultDestPathFor(clipId);
     if (!fs::exists(audioPath)) {
         return;
     }
 
-    const auto srtPath = saveDir / (safeStem(clip->title, clipId) + ".srt");
+    const fs::path srtPath = audioPath.replace_extension(".srt");
     std::ofstream sf(srtPath);
     if (!sf) {
         return;
@@ -326,11 +487,11 @@ void SunoDownloader::saveLyricsSidecar(const std::string& clipId,
 }
 
 void SunoDownloader::saveMetadataSidecar(const SunoClip& clip) {
-  fs::path downloadDir = getDownloadDir();
+    // replace_extension on the resolved audio path: the sidecar can only ever
+    // land beside the file it describes, disambiguated or not.
+    const fs::path sidecar = resolveDestPath(clip).replace_extension(".txt");
 
-  std::string safeTitle = safeStem(clip.title, clip.id);
-
-    std::ofstream file(downloadDir / (safeTitle + ".txt"));
+    std::ofstream file(sidecar);
     if (file) {
         file << "Title: " << clip.title << "\nArtist: " << clip.display_name << "\nTrack ID: " << clip.id << "\nPrompt: " << clip.metadata.prompt << "\nTags: " << clip.metadata.tags << "\nLyrics:\n" << clip.metadata.lyrics;
     }

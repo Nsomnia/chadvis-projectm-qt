@@ -71,6 +71,21 @@ public slots:
     /// a file, and deliberately does not mux a subtitle track into a container
     /// -- that is a separate piece of work in the recorder, not here.
     Q_INVOKABLE void exportToAss(const QString& path);
+    /// The same ASS document exportToAss writes, as a string.
+    ///
+    /// The muxer needs the content, not a filename to read back, so this is the
+    /// seam it consumes. It is the *same* bytes by construction: both entry
+    /// points go through one buildAssDocument, and there is no second assembly
+    /// path to drift.
+    ///
+    /// Failure is reported through `error` rather than the exportFailed signal,
+    /// on purpose. That signal means "a file could not be written" and is wired
+    /// to the QML error surface; a caller that merely wants the bytes to mux has
+    /// not failed at anything, so firing it would put a spurious error in front
+    /// of the user. An empty return is unambiguous here because a successful
+    /// document always carries the three section headers and so is never empty
+    /// -- an invariant assDocumentIsNeverEmptyOnSuccess pins.
+    Q_INVOKABLE QString assDocument(QString* error = nullptr) const;
     Q_INVOKABLE QVariantMap getLine(int index) const;
     /// The `count` lines strictly after the cached currentLineIndex_, ascending.
     ///

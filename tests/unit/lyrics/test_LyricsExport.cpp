@@ -24,6 +24,7 @@
 #include <QTemporaryDir>
 #include <QtTest>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -59,6 +60,57 @@ LyricsData threeWordLine() {
     return data;
 }
 
+/// The same fixture test_LyricsPipeline.cpp builds for its SRT/LRC golden
+/// bytes -- "hello" at 0.0-1.0 with two words, "again" at 1.0-2.0, then an
+/// empty spacer and a line whose endTime precedes its startTime.
+///
+/// Duplicated deliberately rather than shared: the two suites belong to
+/// different lanes, and the point of this copy is to assert the *same* expected
+/// bytes the pipeline suite asserts, so that a regression in the shared
+/// formatter shows up as a failure in whichever file the reader has open. It
+/// pins SRT and LRC output to bytes that were already shipped, which is the
+/// only evidence available for a refactor of the conversion helper.
+LyricsData pipelineGoldenLyrics() {
+    LyricsData data;
+    data.source = "suno";
+    data.title = "Test";
+    data.artist = "Artist";
+    data.isSynced = true;
+
+    LyricsLine first;
+    first.text = "hello";
+    first.startTime = 0.0f;
+    first.endTime = 1.0f;
+    first.isSynced = true;
+    first.words.push_back({"hello", 0.0f, 0.5f, 1.0f});
+    first.words.push_back({"world", 0.5f, 1.0f, 1.0f});
+
+    LyricsLine second;
+    second.text = "again";
+    second.startTime = 1.0f;
+    second.endTime = 2.0f;
+    second.isSynced = true;
+    second.words.push_back({"again", 1.0f, 2.0f, 1.0f});
+
+    LyricsLine spacer;
+    spacer.text = "";
+    spacer.startTime = 2.0f;
+    spacer.endTime = 2.0f;
+    spacer.isSynced = true;
+
+    LyricsLine inverted;
+    inverted.text = "backwards";
+    inverted.startTime = 3.0f;
+    inverted.endTime = 2.0f;
+    inverted.isSynced = true;
+
+    data.lines.push_back(first);
+    data.lines.push_back(second);
+    data.lines.push_back(spacer);
+    data.lines.push_back(inverted);
+    return data;
+}
+
 QByteArray readExported(const QString& path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -90,6 +142,18 @@ QStringList dialogueTexts(const QByteArray& contents) {
     }
     return texts;
 }
+
+/// UTF-8 bytes for U+FF3B and U+FF3D, the fullwidth square brackets the LRC
+/// metadata escaper substitutes for '[' and ']'.
+///
+/// Spelled as separate concatenated literals on purpose: a bare "\xEF\xBC\x9B"
+/// immediately followed by a hex digit merges into a single escape, so
+/// "\x9B0" above, which is a compiler error that reads like a typo. Constants
+/// also keep the expectations honest about being bytes rather than source
+/// characters, which matters because the file could be read under any
+/// execution charset.
+constexpr auto kFullwidthOpen = "\xEF\xBC\xBB";  // U+FF3B FULLWIDTH LEFT SQUARE BRACKET
+constexpr auto kFullwidthClose = "\xEF\xBC\xBD"; // U+FF3D FULLWIDTH RIGHT SQUARE BRACKET
 
 struct AssBraces {
     int unescapedOpen{0};
@@ -353,11 +417,11 @@ private slots:
                 continue;
             }
             // Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-            const QStringList fields = line.mid(QStringLiteral("Dialogue: ").length())
-                                               .split(QLatin1Char(','));
+            const QStringList fields =
+                    line.mid(QStringLiteral("Dialogue: ").length()).split(QLatin1Char(','));
             QVERIFY2(fields.size() >= 9,
                      qPrintable(QStringLiteral("Dialogue line has %1 fields, need 10")
-                                    .arg(fields.size())));
+                                        .arg(fields.size())));
             for (const int which : {1, 2}) {
                 QVERIFY2(shape.match(fields.at(which)).hasMatch(),
                          qPrintable(QStringLiteral("timestamp not HH:MM:SS.cc: %1")
@@ -365,8 +429,8 @@ private slots:
                 // Every fixture value has non-zero centiseconds, so a field
                 // ending in "00" means the centiseconds were dropped.
                 QVERIFY2(fields.at(which).right(2) != QStringLiteral("00"),
-                         qPrintable(QStringLiteral("centiseconds dropped: %1")
-                                            .arg(fields.at(which))));
+                         qPrintable(
+                                 QStringLiteral("centiseconds dropped: %1").arg(fields.at(which))));
             }
             ++checked;
         }
@@ -765,16 +829,16 @@ private slots:
             if (!line.startsWith(QStringLiteral("Dialogue: "))) {
                 continue;
             }
-            const QStringList fields = line.mid(QStringLiteral("Dialogue: ").length())
-                                               .split(QLatin1Char(','));
+            const QStringList fields =
+                    line.mid(QStringLiteral("Dialogue: ").length()).split(QLatin1Char(','));
             QVERIFY2(fields.size() >= 9,
                      qPrintable(QStringLiteral("Dialogue line has %1 fields, need 10")
-                                    .arg(fields.size())));
+                                        .arg(fields.size())));
             QCOMPARE(fields.at(1).size(), 11);
             QCOMPARE(fields.at(2).size(), 11);
             QVERIFY2(fields.at(1) < fields.at(2),
                      qPrintable(QStringLiteral("event is not forward in time: %1 -> %2")
-                                    .arg(fields.at(1), fields.at(2))));
+                                        .arg(fields.at(1), fields.at(2))));
             ++events;
         }
         QCOMPARE(events, 3);
@@ -787,6 +851,408 @@ private slots:
         QCOMPARE(braces.unescapedClose, 4);
         QCOMPARE(braces.escapedOpen, 0);
         QCOMPARE(braces.escapedClose, 0);
+    }
+
+    /// SRT and LRC must produce the bytes they produced before the shared
+    /// conversion helper was introduced.
+    ///
+    /// This asserts the *same* golden strings test_LyricsPipeline.cpp asserts in
+    /// bridgeExportsAreTheOnlySrtAndLrcFormatter and searchAndExportsOwnedLyrics,
+    /// on the same fixture, in a file this lane owns. The refactor moved
+    /// `std::llround(seconds * 1000.0f)` and `std::llround(seconds * 100.0f)`
+    /// behind one helper parameterised by scale, and the risk in that change is
+    /// not the guard but the *units*: routing SRT through a centisecond helper
+    /// would quantise twice (1.4567s is 1457ms directly, 1460ms via 146cs) and
+    /// silently change shipped output. So the bytes are pinned here, from the
+    /// same expectations, rather than left to the other suite.
+    void srtAndLrcGoldenBytesSurviveTheSharedConversionHelper() {
+        LyricsSync sync(nullptr);
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+        qml_bridge::LyricsBridge bridge;
+        sync.loadLyrics(pipelineGoldenLyrics());
+        QCOMPARE(sync.getState(), LyricsSyncState::Ready);
+
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString srtPath = directory.filePath(QStringLiteral("lyrics.srt"));
+        const QString lrcPath = directory.filePath(QStringLiteral("lyrics.lrc"));
+        QSignalSpy finished(&bridge, &qml_bridge::LyricsBridge::exportFinished);
+        QSignalSpy failed(&bridge, &qml_bridge::LyricsBridge::exportFailed);
+
+        bridge.exportToSrt(srtPath);
+        bridge.exportToLrc(lrcPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 2000);
+        QCOMPARE(failed.count(), 0);
+
+        // Four source lines, three entries: the empty one is skipped and does
+        // not consume an index. The inverted span widens to a whole second.
+        const QByteArray srt = readExported(srtPath);
+        QVERIFY(!srt.isEmpty());
+        QCOMPARE(srt.count("-->"), 3);
+        QVERIFY(srt.contains("1\n00:00:00,000 --> 00:00:01,000\nhello\n\n"));
+        QVERIFY(srt.contains("2\n00:00:01,000 --> 00:00:02,000\nagain\n\n"));
+        QVERIFY(srt.contains("3\n00:00:03,000 --> 00:00:04,000\nbackwards\n\n"));
+        QVERIFY(!srt.contains("4\n"));
+        QVERIFY(!srt.contains("00:00:03,000 --> 00:00:02,000"));
+
+        // LRC: the [ti:]/[ar:] headers, the same three lines, and a newline
+        // count that pins the record structure (two headers plus three lines).
+        const QByteArray lrc = readExported(lrcPath);
+        QVERIFY(!lrc.isEmpty());
+        QVERIFY(lrc.startsWith("[ti:Test]\n[ar:Artist]\n"));
+        QCOMPARE(lrc.count('\n'), 5);
+        QVERIFY(lrc.contains("[00:00.00]hello\n"));
+        QVERIFY(lrc.contains("[00:01.00]again\n"));
+        QVERIFY(lrc.contains("[00:03.00]backwards\n"));
+
+        // The escaping added for LRC metadata is a no-op on ordinary values.
+        // "Test" and "Artist" contain no bracket and no newline, so if this ever
+        // fails the escaper is corrupting titles that were fine -- the same
+        // class of bug as the original unescaped write, in the other direction.
+        QVERIFY(!lrc.contains(kFullwidthOpen)); // no fullwidth [ leaked into a clean title
+    }
+
+    /// A non-finite time from a remote payload must not take the export down.
+    ///
+    /// std::llround on a NaN or infinity is undefined behaviour. These seconds
+    /// come straight off the wire -- LyricsSync::loadLyrics is a plain copy with
+    /// no time sanitisation -- so a malformed or hostile value used to reach
+    /// llround unguarded in both formatSrtTime and formatLrcTime. The ASS writer
+    /// already guarded this; the two siblings did not, which is why the guard now
+    /// lives in one shared helper instead of three copies.
+    ///
+    /// The observable contract is that the export *succeeds* and the bad instant
+    /// becomes zero, the same answer the pre-existing clamp already gave a
+    /// negative time. What this cannot assert is that the old code crashed --
+    /// undefined behaviour is not a reliable oracle -- so the assertion is on
+    /// the defined, defensible result rather than on a difference.
+    void srtAndLrcSurviveNonFiniteTimes() {
+        const float nan = std::numeric_limits<f32>::quiet_NaN();
+        const float inf = std::numeric_limits<f32>::infinity();
+
+        LyricsData data;
+        data.isSynced = true;
+        data.title = "Test";
+
+        // A NaN start, an infinite end: both fields of both formatters get
+        // exercised across the three lines below.
+        LyricsLine nanStart;
+        nanStart.text = "nan start";
+        nanStart.startTime = nan;
+        nanStart.endTime = 1.0f;
+        nanStart.isSynced = true;
+
+        LyricsLine infEnd;
+        infEnd.text = "inf end";
+        infEnd.startTime = 1.0f;
+        infEnd.endTime = inf;
+        infEnd.isSynced = true;
+
+        LyricsLine bothBad;
+        bothBad.text = "both";
+        bothBad.startTime = -inf;
+        bothBad.endTime = nan;
+        bothBad.isSynced = true;
+
+        data.lines.push_back(nanStart);
+        data.lines.push_back(infEnd);
+        data.lines.push_back(bothBad);
+
+        LyricsSync sync(nullptr);
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+        qml_bridge::LyricsBridge bridge;
+        sync.loadLyrics(data);
+        QCOMPARE(sync.getState(), LyricsSyncState::Ready);
+
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString srtPath = directory.filePath(QStringLiteral("lyrics.srt"));
+        const QString lrcPath = directory.filePath(QStringLiteral("lyrics.lrc"));
+        QSignalSpy finished(&bridge, &qml_bridge::LyricsBridge::exportFinished);
+        QSignalSpy failed(&bridge, &qml_bridge::LyricsBridge::exportFailed);
+
+        bridge.exportToSrt(srtPath);
+        bridge.exportToLrc(lrcPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 2000);
+        QCOMPARE(failed.count(), 0);
+
+        // All three lines now come out FORWARD, which is the point. Under the old
+        // `end > start ? end : start + 1` rule the floor lived on the raw floats,
+        // so a non-finite value slipped past it and the formatter then mapped it
+        // to zero:
+        //
+        //   nan start  (NaN, 1.0)  every comparison against NaN is false, so the
+        //                           widening branch fired, widened a NaN, and
+        //                           formatted 0 -- discarding the real 1.0s end.
+        //   inf end    (1.0, +inf) +inf > 1.0 is true, so the value survived
+        //                           widening and only became 0 in the formatter,
+        //                           yielding a BACKWARDS cue.
+        //   both       (-inf, NaN) NaN <= -inf is false; both sides format to 0.
+        //
+        // Flooring in the output unit instead fixes all three: a cue whose
+        // End <= Start is discarded outright by players, so a 1ms floor is the
+        // only universally-renderable answer. The floor is inert for every
+        // finite, well-formed line, which is why the golden bytes in
+        // srtAndLrcGoldenBytesSurviveTheSharedConversionHelper do not move.
+        const QByteArray srt = readExported(srtPath);
+        QVERIFY(!srt.isEmpty());
+        QCOMPARE(srt.count("-->"), 3);
+        QVERIFY(srt.contains("1\n00:00:00,000 --> 00:00:01,000\nnan start\n\n"));
+        QVERIFY(srt.contains("2\n00:00:01,000 --> 00:00:01,001\ninf end\n\n"));
+        QVERIFY(srt.contains("3\n00:00:00,000 --> 00:00:00,001\nboth\n\n"));
+
+        // The properties that are actually guaranteed: every line is emitted,
+        // every timestamp is a fixed-width well-formed field, and nothing wraps
+        // or goes negative.
+        for (const QString& line : QString::fromUtf8(srt).split(QLatin1Char('\n'))) {
+            if (!line.contains(QStringLiteral("-->"))) {
+                continue;
+            }
+            const QStringList times = line.split(QStringLiteral(" --> "));
+            QCOMPARE(times.size(), 2);
+            for (const QString& stamp : times) {
+                QCOMPARE(stamp.size(), 12); // HH:MM:SS,mmm
+                QVERIFY(!stamp.startsWith(QLatin1Char('-')));
+            }
+        }
+
+        // LRC: the NaN start becomes 00:00.00, and the record count still
+        // matches the three lines, so nothing was dropped or merged.
+        const QByteArray lrc = readExported(lrcPath);
+        QVERIFY(!lrc.isEmpty());
+        QCOMPARE(lrc.count('\n'), 4); // [ti:] plus three lines
+        QVERIFY(lrc.contains("[00:00.00]nan start\n"));
+        QVERIFY(lrc.contains("[00:01.00]inf end\n"));
+        QVERIFY(lrc.contains("[00:00.00]both\n"));
+    }
+
+    /// LRC metadata comes from a remote payload, so a `[` in a title is not a
+    /// cosmetic problem: LRC has no escape syntax at all, so anything written
+    /// there is re-read as the start of a tag.
+    ///
+    /// The concrete failure is visible in this repository's own parser:
+    /// fromLrc matches timestamps with an *unanchored* regex_search, so a title
+    /// of `Song [00:30] Live` written as `[ti:Song [00:30] Live]` comes back as
+    /// a phantom lyric line at 30 seconds with the trailing ` Live]` as its
+    /// text. So this asserts both halves: that no ASCII `[` survives into a
+    /// header value, and that the substituted character cannot match a
+    /// timestamp -- proved by feeding the result back through the real parser
+    /// and checking no line was invented.
+    void lrcHeaderMetadataCannotForgeATag() {
+        LyricsData data;
+        data.isSynced = true;
+        data.title = "Song [00:30] Live";
+        data.artist = "Band\n[ti:Forged]";
+
+        LyricsLine line;
+        line.text = "real lyric";
+        line.startTime = 1.0f;
+        line.endTime = 2.0f;
+        line.isSynced = true;
+        data.lines.push_back(line);
+
+        LyricsSync sync(nullptr);
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+        qml_bridge::LyricsBridge bridge;
+        sync.loadLyrics(data);
+
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString lrcPath = directory.filePath(QStringLiteral("lyrics.lrc"));
+        QSignalSpy finished(&bridge, &qml_bridge::LyricsBridge::exportFinished);
+        QSignalSpy failed(&bridge, &qml_bridge::LyricsBridge::exportFailed);
+
+        bridge.exportToLrc(lrcPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 2000);
+        QCOMPARE(failed.count(), 0);
+
+        const QByteArray lrc = readExported(lrcPath);
+        QVERIFY(!lrc.isEmpty());
+
+        // Exactly two header records plus one lyric line. A newline in either
+        // value would have added a record, which is the forging case.
+        QCOMPARE(lrc.count('\n'), 3);
+
+        // Both headers are single, complete records, with every literal bracket
+        // substituted. The newline in the artist collapsed to a space, so it
+        // cannot end the tag early and leave "[ti:Forged]" to be read as a
+        // record of its own.
+        QVERIFY(lrc.startsWith(QByteArray("[ti:Song ") + kFullwidthOpen + "00:30" +
+                               kFullwidthClose + " Live]\n"));
+        QVERIFY(lrc.contains(QByteArray("[ar:Band ") + kFullwidthOpen + "ti:Forged" +
+                             kFullwidthClose + "]\n"));
+
+        // The decisive property: the only ASCII brackets left in the file are the
+        // three real tag delimiters, so nothing a reader could mistake for a tag
+        // survives anywhere in it. Bracket-for-bracket balanced as a result.
+        QCOMPARE(lrc.count('['), 3); // [ti:  [ar:  [00:01.00]
+        QCOMPARE(lrc.count(']'), 3);
+        QCOMPARE(lrc.count(kFullwidthOpen), 2); // one per substituted value
+        QCOMPARE(lrc.count(kFullwidthClose), 2);
+
+        // And the round trip, through this repository's actual parser: the
+        // embedded [00:30] in the title must not become a lyric at 30 seconds.
+        const LyricsData reparsed = LyricsFactory::fromLrc(std::string(lrc.constData()));
+        QCOMPARE(reparsed.lines.size(), size_t{1});
+        QCOMPARE(reparsed.lines[0].text, std::string("real lyric"));
+        QCOMPARE(reparsed.lines[0].startTime, 1.0f);
+
+        // SRT is deliberately untouched by this: it has no header, so there is
+        // no tag grammar to forge. Asserted so the rule stays LRC-scoped.
+        const QString srtPath = directory.filePath(QStringLiteral("lyrics.srt"));
+        bridge.exportToSrt(srtPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 2000);
+        const QByteArray srt = readExported(srtPath);
+        // SRT is deliberately untouched by the escaper: it has no header, so
+        // there is no tag grammar to forge. Asserted via the absence of the
+        // substitution rather than the presence of the title, because SRT has
+        // no title field at all -- exportToSrt writes only numbered cues and
+        // their text, so looking for the title here would assert something
+        // untrue about the format rather than anything about escaping.
+        QVERIFY(srt.contains("real lyric"));
+        QVERIFY(!srt.contains(kFullwidthOpen));
+        QVERIFY(!srt.contains(kFullwidthClose));
+    }
+
+    /// The string entry point and the file entry point must be the same bytes.
+    ///
+    /// This is the assertion that keeps one implementation rather than two. Both
+    /// go through buildAssDocument, so they cannot differ -- but "cannot" is a
+    /// claim about the code's shape, and a shape claim rots the first time
+    /// someone adds a parameter to one of them. Comparing the two outputs
+    /// directly is what actually pins it, and it is the check the muxer in
+    /// src/recorder depends on: it consumes the string, the user downloads the
+    /// file, and a difference between them would be invisible until someone
+    /// compared.
+    void assDocumentAndTheFileAreByteIdentical() {
+        LyricsSync sync(nullptr);
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+        qml_bridge::LyricsBridge bridge;
+        // The awkward fixture, not a trivial one: per-word karaoke tags, a title,
+        // a spaced token, and a timestamp with non-zero centiseconds.
+        sync.loadLyrics(pipelineGoldenLyrics());
+
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("lyrics.ass"));
+        QSignalSpy finished(&bridge, &qml_bridge::LyricsBridge::exportFinished);
+        QSignalSpy failed(&bridge, &qml_bridge::LyricsBridge::exportFailed);
+
+        bridge.exportToAss(path);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 2000);
+        QCOMPARE(failed.count(), 0);
+
+        QString error;
+        const QString document = bridge.assDocument(&error);
+        QVERIFY(error.isEmpty());
+        QVERIFY(!document.isEmpty());
+
+        // Byte for byte, not "contains": the file is the document encoded as
+        // UTF-8, and the muxer will hand those same bytes to avformat.
+        const QByteArray fromFile = readExported(path);
+        QCOMPARE(fromFile, document.toUtf8());
+
+        // And the string is a real document, not just an equal blob: it starts
+        // at the header and contains the events.
+        QVERIFY(document.startsWith(QStringLiteral("[Script Info]\n")));
+        QVERIFY(document.contains(QStringLiteral("Title: Test\n")));
+        QVERIFY(document.contains(QStringLiteral("Dialogue: 0,00:00:00.00")));
+        QVERIFY(document.endsWith(QLatin1Char('\n')));
+    }
+
+    /// A successful document is never empty, which is what makes an empty
+    /// return unambiguously the failure case.
+    ///
+    /// assDocument signals failure by returning an empty string, so the contract
+    /// only holds while a successful build always carries the three section
+    /// headers. That is a property of buildAssDocument rather than a fact about
+    /// any particular song, so it is asserted across the shapes that could
+    /// plausibly produce nothing: a line with no text at all, a single timed
+    /// line, and the karaoke fixture. If a future edit ever made the assembly
+    /// conditional on having events, this fails rather than the muxer quietly
+    /// receiving an empty subtitle track.
+    void assDocumentIsNeverEmptyOnSuccess() {
+        LyricsSync sync(nullptr);
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+        qml_bridge::LyricsBridge bridge;
+
+        {
+            // A line with no text: hasLyrics() is true, so this succeeds, and it
+            // must still produce a header-only -- but present -- document.
+            LyricsData blank;
+            blank.isSynced = true;
+            blank.title = "Test";
+            LyricsLine empty;
+            empty.text = "";
+            empty.startTime = 0.0f;
+            empty.endTime = 1.0f;
+            blank.lines.push_back(empty);
+
+            sync.loadLyrics(blank);
+            QCOMPARE(sync.getState(), LyricsSyncState::Ready);
+            QString error;
+            const QString document = bridge.assDocument(&error);
+            QVERIFY(error.isEmpty());
+            QVERIFY(!document.isEmpty());
+            QVERIFY(document.contains(QStringLiteral("[Script Info]")));
+            QVERIFY(document.contains(QStringLiteral("[Events]")));
+            QVERIFY(!document.contains(QStringLiteral("Dialogue: ")));
+        }
+        {
+            sync.loadLyrics(pipelineGoldenLyrics());
+            QString error;
+            const QString document = bridge.assDocument(&error);
+            QVERIFY(error.isEmpty());
+            QVERIFY(!document.isEmpty());
+            QVERIFY(document.contains(QStringLiteral("[V4+ Styles]")));
+        }
+    }
+
+    /// The failure path: no lyrics, an empty string, a reason, and no signal.
+    ///
+    /// The last part is the design decision being pinned. assDocument is a
+    /// getter, not a file write, so it must not emit exportFailed -- that signal
+    /// means "a file could not be written" and is wired to the QML error
+    /// surface. A muxer asking for the bytes to embed has not failed at
+    /// anything, and firing a user-facing error there would be a lie. So the
+    /// reason travels through the out-parameter and the signals stay silent,
+    /// which this asserts by counting them.
+    void assDocumentFailsWithoutLyricsAndEmitsNoSignal() {
+        LyricsSync sync(nullptr);
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+        qml_bridge::LyricsBridge bridge;
+
+        QSignalSpy finished(&bridge, &qml_bridge::LyricsBridge::exportFinished);
+        QSignalSpy failed(&bridge, &qml_bridge::LyricsBridge::exportFailed);
+
+        QString error;
+        const QString document = bridge.assDocument(&error);
+        QVERIFY(document.isEmpty());
+        // The same message the file writers emit, so a caller cannot tell the
+        // two conditions apart by accident.
+        QCOMPARE(error, QStringLiteral("No lyrics are loaded."));
+
+        // Null out-parameter is legal: the reason is optional.
+        QVERIFY(bridge.assDocument().isEmpty());
+
+        // Nothing was written and nothing was announced.
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(finished.count(), 0);
+
+        // The file writer still fails loudly for the same condition -- the two
+        // entry points differ only in how they report, not in when they refuse.
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        bridge.exportToAss(directory.filePath(QStringLiteral("lyrics.ass")));
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.first().first().toString(), QStringLiteral("No lyrics are loaded."));
+        QCOMPARE(finished.count(), 0);
+
+        // And it starts working the moment lyrics arrive.
+        sync.loadLyrics(threeWordLine());
+        error.clear();
+        QVERIFY(!bridge.assDocument(&error).isEmpty());
+        QVERIFY(error.isEmpty());
     }
 };
 
