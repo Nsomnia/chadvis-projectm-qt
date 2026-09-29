@@ -147,3 +147,4 @@ token allowance usage.
   shellcheck pre-commit cmake-lint ccache catch2 nlohmann-json yaml-cpp eigen
   boost (newer version env var set in bash/zsh/fish rc) cli11 flatbuffers
   msgpack vcpkg glfw samply hyperfine gitui eza zoxide git-delta
+- cmake language server and cmake-lint are also available on brew

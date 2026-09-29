@@ -316,11 +316,41 @@ QVariantList LyricsBridge::getContextLines(int before, int after) const {
     if (lines.empty()) {
         return result;
     }
-    const int center = std::clamp(currentLineIndex_, 0, static_cast<int>(lines.size()) - 1);
-    const int start = std::max(0, center - std::max(0, before));
-    const int end = std::min(static_cast<int>(lines.size()), center + std::max(0, after) + 1);
+
+    // This is the bridge's own copy of the context-window query, and it cannot
+    // be merged into LyricsSync::getContextLines because the two pick the
+    // centre differently and that difference is user-visible:
+    //
+    //   * this surface anchors on its own cached currentLineIndex_ and treats
+    //     "no active line" as the start of the song, so it always returns at
+    //     least line 0. LyricsSync anchors on currentPos_.lineIndex and returns
+    //     nothing when that is unset. QML depends on the anchor, and the bridge
+    //     is constructed lazily by the QML engine, so a page opened after
+    //     playback started genuinely has currentLineIndex_ == -1.
+    //   * LyricsSync takes a size_t window; this takes int, so a negative window
+    //     from QML has no LyricsSync equivalent at all.
+    //
+    // So the window arithmetic is shared -- measured as a distance to the first
+    // and last line rather than summed, and every subscript proven by the same
+    // vc::checkedIndex gate LyricsData and LyricsSync use -- but the centre
+    // rule stays here, deliberately. Collapsing it is a behaviour change and
+    // needs a product decision, not a refactor. See
+    // bridgeContextLinesMatchLyricsSyncExceptAtTheAnchor for the pinned
+    // agreement, and for the one place the two answers differ.
+    const int last = static_cast<int>(lines.size()) - 1;
+    const int center = std::clamp(currentLineIndex_, 0, last);
+
+    // before/after arrive from QML as an int, so `center + after + 1` overflows
+    // for any `after` near INT_MAX: it wrapped `end` negative, the loop below
+    // never ran, and the caller got an empty list with no error. Clamp each
+    // span to the distance actually available before adding.
+    const int start = center - std::min(std::max(0, before), center);
+    const int end = center + 1 + std::min(std::max(0, after), last - center);
+
     for (int index = start; index < end; ++index) {
-        result.append(lineToVariant(lines[static_cast<std::size_t>(index)], index));
+        if (const auto offset = vc::checkedIndex(lines, index)) {
+            result.append(lineToVariant(lines[*offset], index));
+        }
     }
     return result;
 }

@@ -222,18 +222,15 @@ std::vector<LyricsLine> alignWordsToLines(const std::vector<LyricsWord>& words,
 
 /**
  * @brief Export functions for saving lyrics to various formats
+ *
+ * SRT and LRC serialization deliberately live *only* in
+ * `qml_bridge::LyricsBridge::exportToSrt` / `exportToLrc`. This used to carry
+ * a second, byte-for-byte-different pair of formatters with no callers at all;
+ * two time formatters drift, and the unused one is the one nothing tests.
+ * Bridge is the owner because it is the reachable path -- it is the only thing
+ * QML invokes, and it already has to resolve the file path and surface errors.
  */
 namespace LyricsExport {
-    /**
-     * @brief Export to SRT format
-     */
-    std::string toSrt(const LyricsData& lyrics);
-    
-    /**
-     * @brief Export to LRC format
-     */
-    std::string toLrc(const LyricsData& lyrics);
-    
     /**
      * @brief Export to JSON (for database storage)
      */

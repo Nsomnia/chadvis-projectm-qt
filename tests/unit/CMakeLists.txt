@@ -4,6 +4,7 @@ add_executable(unit_tests
     core/test_ConfigParsers.cpp
     core/test_FileUtils.cpp
     core/test_Version.cpp
+    core/test_Signal.cpp
     recorder/test_RecordingPipeline.cpp
     audio/test_Playlist.cpp
     visualizer/test_PresetScanner.cpp

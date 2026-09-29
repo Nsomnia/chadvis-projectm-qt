@@ -66,6 +66,13 @@ public slots:
     Q_INVOKABLE void exportToLrc(const QString& path);
     Q_INVOKABLE QVariantMap getLine(int index) const;
     Q_INVOKABLE QVariantList getUpcomingLines(int count) const;
+    /// Window of [center-before, center+after] inclusive, ascending.
+    ///
+    /// Deliberately NOT a thin delegate to LyricsSync::getContextLines: this
+    /// anchors on the cached currentLineIndex_ and returns line 0 when there is
+    /// no active line, while LyricsSync returns nothing. See the comment in the
+    /// .cpp; the difference is pinned by a test, and unifying it changes what
+    /// QML receives.
     Q_INVOKABLE QVariantList getContextLines(int before, int after) const;
 
 signals:

@@ -8,10 +8,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QLatin1StringView>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QStringList>
 #include <QUrl>
+#include <array>
 #include <expected>
 #include <optional>
 #include <utility>
@@ -145,6 +148,79 @@ std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByt
     return ParsedEnvelope{*bearer, candidate->sessionId};
 }
 
+/// The three Clerk cookie families relevant to the captured sign-in flow,
+/// longest first. Clerk **instance-key-suffixes** the name it writes, so family
+/// membership is a prefix test and never equality: the 2026-08-25 capture puts
+/// `__client_Jnxw-muT` and `__client_uat_Jnxw-muT` on the wire, and
+/// `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` names the families as "`__client`
+/// and its instance-key-suffixed variant" (likewise `__client_uat` and
+/// `__session`) while warning that the suffix is not a fixed, universal
+/// frontend key -- so nothing here may hard-code one. An empty suffix (the bare
+/// `__client`) is the same family and must match too.
+///
+/// The order is longest-first for unambiguous reasoning rather than for
+/// matching: `__client` is itself a prefix of `__client_uat`, so testing it
+/// first would file the non-secret session-presence cookie under the refresh
+/// family.
+constexpr std::array<QLatin1StringView, 3> kClerkCookieFamilies{
+        QLatin1StringView("__client_uat"),
+        QLatin1StringView("__client"),
+        QLatin1StringView("__session"),
+};
+
+/// Bounds on the "which names were actually seen" diagnostic. A cookie *name* is
+/// a fixed identifier and is not a secret (its *value* is), so quoting names is
+/// what separates "wrong cookie" from "no cookie at all" -- but a name arrives
+/// from a user paste, so it is untrusted text that must not reach a log verbatim.
+constexpr qsizetype kMaxReportedNames = 8;
+constexpr qsizetype kMaxReportedNameLength = 64;
+
+/// True for a cookie name that is safe to reproduce in a diagnostic: non-empty,
+/// bounded, and drawn from the conventional cookie-name character set only. A
+/// jar of real cookies always passes; arbitrary pasted text usually does not,
+/// and is then reported as a count instead of a string.
+[[nodiscard]] bool isReportableCookieName(const QString& name) {
+    if (name.isEmpty() || name.size() > kMaxReportedNameLength) {
+        return false;
+    }
+    for (const QChar c : name) {
+        const bool allowed = (c >= QLatin1Char('a') && c <= QLatin1Char('z')) ||
+                             (c >= QLatin1Char('A') && c <= QLatin1Char('Z')) ||
+                             (c >= QLatin1Char('0') && c <= QLatin1Char('9')) ||
+                             c == QLatin1Char('_') || c == QLatin1Char('-') ||
+                             c == QLatin1Char('.') || c == QLatin1Char('$');
+        if (!allowed) {
+            return false;
+        }
+    }
+    return true;
+}
+
+QString expectedCredentialReason() {
+    return QStringLiteral("expected a JWT bearer token or a Cookie header containing "
+                          "__client, __client_uat, or __session, each with or without "
+                          "Clerk's instance-key suffix");
+}
+
+/// The wrong-cookie diagnostic: a syntactically valid cookie header that carries
+/// none of the three Clerk families. Names the names it saw, because "you
+/// pasted the wrong cookie" and "you pasted no cookie header at all" are
+/// different user mistakes with different fixes.
+QString noClerkCookieReason(const QStringList& seenNames, qsizetype withheldCount) {
+    QString reason = QStringLiteral("cookie-pair header carrying no Clerk cookie out of "
+                                    "__client, __client_uat, or __session");
+    if (seenNames.isEmpty()) {
+        reason += QStringLiteral("; no conventional cookie name could be reported");
+    } else {
+        reason += QStringLiteral("; saw cookie name(s): %1")
+                          .arg(seenNames.join(QStringLiteral(", ")));
+    }
+    if (withheldCount > 0) {
+        reason += QStringLiteral("; %1 further name(s) withheld").arg(withheldCount);
+    }
+    return reason;
+}
+
 } // namespace
 
 StoredCredentialClassification classifyStoredCredential(const QString& value) {
@@ -158,6 +234,8 @@ StoredCredentialClassification classifyStoredCredential(const QString& value) {
     const QString cookieHeader = normalized;
     bool hasNameValuePair = false;
     bool hasClerkCookie = false;
+    QStringList seenNames;
+    qsizetype withheldNameCount = 0;
     const QStringList parts = cookieHeader.split(QLatin1Char(';'), Qt::SkipEmptyParts);
     for (const QString& part : parts) {
         const QString pair = part.trimmed();
@@ -168,9 +246,17 @@ StoredCredentialClassification classifyStoredCredential(const QString& value) {
 
         hasNameValuePair = true;
         const QString name = pair.left(separator).trimmed();
-        if (name == QLatin1String("__client") ||
-            name == QLatin1String("__client_uat")) {
-            hasClerkCookie = true;
+        for (const QLatin1StringView family : kClerkCookieFamilies) {
+            if (name.startsWith(family)) {
+                hasClerkCookie = true;
+                break;
+            }
+        }
+
+        if (seenNames.size() < kMaxReportedNames && isReportableCookieName(name)) {
+            seenNames << name;
+        } else {
+            ++withheldNameCount;
         }
     }
 
@@ -188,13 +274,14 @@ StoredCredentialClassification classifyStoredCredential(const QString& value) {
         }
     }
 
-    const QString detectedShape = hasNameValuePair
-            ? QStringLiteral("cookie-pair header without __client or __client_uat")
-            : QStringLiteral("unrecognized non-cookie value");
+    const QString detectedShape =
+            hasNameValuePair
+                    ? noClerkCookieReason(seenNames, withheldNameCount)
+                    : QStringLiteral("unrecognized non-cookie value");
     return {StoredCredentialShape::Unsupported,
             AuthFailureKind::NoActiveSession,
-            QStringLiteral("stored credential shape: %1; no active session; expected a JWT bearer token or a Cookie header containing __client or __client_uat")
-                    .arg(detectedShape)};
+            QStringLiteral("stored credential shape: %1; no active session; %2")
+                    .arg(detectedShape, expectedCredentialReason())};
 }
 
 // ---------------------------------------------------------------------------

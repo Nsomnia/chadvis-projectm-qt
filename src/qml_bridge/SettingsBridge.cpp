@@ -1,5 +1,6 @@
 #include "SettingsBridge.hpp"
 #include "SettingMacros.hpp"
+#include "core/CliUtils.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "suno/SunoClient.hpp"
@@ -74,6 +75,20 @@ void SettingsBridge::attachSunoClient(vc::suno::SunoClient* client)
 void SettingsBridge::scheduleAutoSave()
 {
     m_autoSaveTimer.start(); // Restarts the timer if already running (debounce)
+}
+
+// ═══════════════════════════════════════════════════════════
+// BUILD METADATA
+// ═══════════════════════════════════════════════════════════
+
+QString SettingsBridge::version() const
+{
+    // Deliberately the same accessor the --version banner uses. CHADVIS_VERSION
+    // is forwarded by CMake from version.txt at the repository root, so the UI
+    // and the CLI cannot report different versions, and there is no second
+    // place for a version string to live.
+    const std::string_view v = vc::Cli::version();
+    return QString::fromUtf8(v.data(), static_cast<qsizetype>(v.size()));
 }
 
 // ═══════════════════════════════════════════════════════════

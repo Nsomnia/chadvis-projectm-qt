@@ -84,7 +84,10 @@ private:
   bool encodeAudioFrame(AVFrame* frame, u64& bytesWritten);
   bool writePacket(AVPacket* packet, AVStream* stream, u64& bytesWritten);
 
-  AVFormatContextPtr formatCtx_;
+  // Muxing only: allocated by avformat_alloc_output_context2, so the output
+  // alias is the one that closes pb and frees. A demuxer context must use
+  // AVFormatContextInPtr instead.
+  AVFormatContextOutPtr formatCtx_;
   AVCodecContextPtr videoCodecCtx_;
   AVCodecContextPtr audioCodecCtx_;
   AVStream* videoStream_{nullptr};

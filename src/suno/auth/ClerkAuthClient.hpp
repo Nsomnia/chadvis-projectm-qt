@@ -41,7 +41,12 @@ struct StoredCredentialClassification {
 
 /// Classifies a credential by shape only. JWTs use the same decoder acceptance
 /// as the rest of the auth module; cookie headers must contain name=value pairs
-/// and at least one capture-proven Clerk cookie (`__client` / `__client_uat`).
+/// and at least one capture-proven Clerk cookie. Matching is by *name prefix*,
+/// because Clerk instance-suffixes its cookies and a jar may legitimately carry
+/// only the suffixed forms: `__client`, `__client_uat`, `__session`, with or
+/// without an instance-key suffix. Note this classifies *shape*, not
+/// sufficiency — a jar may be classified as a Clerk header and still be
+/// rejected by the server.
 [[nodiscard]] StoredCredentialClassification classifyStoredCredential(
         const QString& value);
 

@@ -16,9 +16,6 @@
 #include "qml_bridge/BridgeRegistration.hpp"
 #include "qml_bridge/RecordingBridge.hpp"
 
-#include <QDir>
-#include <QFile>
-#include <QFontDatabase>
 #include <QQmlEngine>
 #include <QtQuickControls2/QQuickStyle>
 #include <QQuickWindow>

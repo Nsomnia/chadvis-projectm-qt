@@ -302,17 +302,20 @@ std::vector<const LyricsLine*> LyricsSync::getContextLines(size_t before,
     std::vector<const LyricsLine*> result;
     
     // currentPos_ is a cache, not a view of the live vector: once lyrics_ is
-    // replaced the cached lineIndex can name a line the new song does not have,
-    // so the lower bound below is not enough on its own. Every subscript in
-    // this function goes through checkedIndex, which applies the same upper
-    // bound as the `idx < lyrics_.lines.size()` guard the loop below used to
-    // spell out by hand.
+    // replaced the cached lineIndex can name a line the new song does not have.
+    // Every index in this function -- and every subscript -- therefore goes
+    // through checkedIndex, which applies both bounds in one place. The two
+    // loops below only decide how far to walk; they never prove an index.
     const auto current = checkedIndex(lyrics_.lines, currentPos_.lineIndex);
     if (!current) return result;
     const int currentIdx = static_cast<int>(*current);
     
-    // Add lines before
-    for (int i = static_cast<int>(before); i > 0; --i) {
+    // Add lines before, still counting down from the furthest so the result
+    // order is unchanged. The counter is bounded by the first line rather than
+    // by `before`: a caller-supplied `before` near SIZE_MAX otherwise spins for
+    // two billion iterations to find nothing below index 0.
+    const int beforeCount = static_cast<int>(std::min(before, static_cast<size_t>(currentIdx)));
+    for (int i = beforeCount; i > 0; --i) {
         if (auto idx = checkedIndex(lyrics_.lines, currentIdx - i)) {
             result.push_back(&lyrics_.lines[*idx]);
         }
@@ -321,9 +324,13 @@ std::vector<const LyricsLine*> LyricsSync::getContextLines(size_t before,
     // Add current line
     result.push_back(&lyrics_.lines[*current]);
     
-    // Add lines after
-    for (size_t i = 1; i <= after; ++i) {
-        if (auto idx = checkedIndex(lyrics_.lines, currentIdx + static_cast<int>(i))) {
+    // Add lines after, bounded by the last line rather than by `after`. The
+    // same oversized `after` would otherwise never terminate at all, and there
+    // is nothing past the end of the song to report. checkedIndex stays the
+    // thing that proves each index; this only decides when to stop walking.
+    const int lastIdx = static_cast<int>(lyrics_.lines.size() - 1);
+    for (int i = 1; i <= after && currentIdx + i <= lastIdx; ++i) {
+        if (auto idx = checkedIndex(lyrics_.lines, currentIdx + i)) {
             result.push_back(&lyrics_.lines[*idx]);
         }
     }

@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <mutex>
+#include <type_traits>
 #include <utility>
 
 namespace vc {
@@ -15,6 +16,22 @@ class Signal {
 public:
     using Slot = std::function<void(Args...)>;
     using SlotId = std::size_t;
+
+    // Fan-out is a compile-time property of the signal, not a per-emit runtime
+    // branch. `Slot`'s invoker takes every argument by value, so a payload that
+    // cannot be copied cannot be delivered to two subscribers: the second one
+    // would receive the same xvalue the first already moved out of. Saying so
+    // here is a compile error at the declaration, whereas checking it in
+    // `emitSignal` would be an assert that compiles out under NDEBUG -- and
+    // the distributable builds are Release, so that check would leave a
+    // release-only silent-corruption path. References are judged on the
+    // pointee, so `Signal<const std::vector<SunoClip>&>` is judged on the
+    // vector.
+    static_assert(
+            (std::is_copy_constructible_v<std::remove_cvref_t<Args>> && ... && true),
+            "Signal payload must be copy-constructible: every subscriber but the "
+            "last receives a copy, and a runtime check for that would compile out "
+            "of Release builds");
     
 private:
     struct Connection {
@@ -70,7 +87,52 @@ public:
     }
     
     // Emit signal to all connected slots
-    void emitSignal(Args... args) {
+    //
+    // Perfect forwarding, deliberately. The old signature took the payload by
+    // value and passed it on as an lvalue, so every subscriber
+    // copy-constructed it: on `frameCaptured` that is ~8 MB of memcpy per frame
+    // per subscriber on the GUI thread, immediately after a GPU readback that
+    // already cost the same again. A `std::vector<u8>` move is a 24-byte buffer
+    // steal, so copies and moves are not comparable costs -- the defect was
+    // always measured in bytes, and a copy is what it was.
+    //
+    // `Ts&&...` is a *deduced* forwarding reference and not `Args&&...` on
+    // purpose. `Args` is pinned by the class template parameter list, which
+    // makes `Args&&` an rvalue reference to a fixed type rather than a
+    // forwarding reference: it would reject every non-const lvalue caller
+    // (currentPos_, currentIndex_, state_, index, name, ...), of which this
+    // tree has about twenty. Deducting per call accepts lvalues, rvalues and
+    // const lvalues and forwards the value category exactly. The price is that
+    // deduction constrains nothing against the declared payload, so the
+    // static_assert at the top of `emitSignal` restores that check.
+    //
+    // A move is destructive, so the *last* active subscriber takes the
+    // forwarded value and every earlier one takes a copy of the still-intact
+    // payload; forwarding to all of them would hand subscribers 2..N a
+    // moved-from object. `frameCaptured` has exactly one production subscriber
+    // (VisualizerWindow.cpp:83; the only other connects are in tests), so the
+    // hot path takes the forwarded branch and pays zero copies -- which is the
+    // entire point of the change. Measured, old to new:
+    //
+    //     1 sub, rvalue    copies 1 -> 0    moves 2 -> 2
+    //     1 sub, lvalue    copies 2 -> 1    moves 1 -> 1
+    //     2 sub, lvalue    copies 3 -> 2    moves 2 -> 2
+    //     3 sub, rvalue    copies 3 -> 2    moves 4 -> 4
+    //
+    // Strictly copy-reducing and move-neutral in every case. Note the old code
+    // was never "N copies + 1 move": the by-value parameter meant N copies and
+    // N+1 moves.
+    template<typename... Ts>
+    void emitSignal(Ts&&... args) {
+        // The call site no longer constrains anything by itself, so constrain it
+        // here -- otherwise a wrong-typed call would fail deep inside
+        // `std::function`'s invoker, naming the subscriber's lambda parameter
+        // instead of the signal's payload.
+        static_assert(
+                sizeof...(Ts) == sizeof...(Args)
+                        && (std::is_convertible_v<Ts, Args> && ... && true),
+                "emitSignal arguments must match the signal's declared payload");
+
         std::vector<Slot> slotsToCall;
         {
             std::lock_guard lock(mutex_);
@@ -83,8 +145,12 @@ public:
             }
         }
 
-        for (const auto& slot : slotsToCall) {
-            slot(args...);
+        for (std::size_t i = 0, n = slotsToCall.size(); i < n; ++i) {
+            if (i + 1 == n) {
+                slotsToCall[i](std::forward<Ts>(args)...);
+            } else {
+                slotsToCall[i](args...);
+            }
         }
 
         {
@@ -96,7 +162,8 @@ public:
     }
     
     // Operator() shorthand
-    void operator()(Args... args) { emitSignal(std::forward<Args>(args)...); }
+    template<typename... Ts>
+    void operator()(Ts&&... args) { emitSignal(std::forward<Ts>(args)...); }
     
     // Check if any slots connected
     [[nodiscard]] bool hasConnections() const {

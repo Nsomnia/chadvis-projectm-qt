@@ -5,6 +5,7 @@ int runTestLogger(int argc, char** argv);
 int runTestConfigParsers(int argc, char** argv);
 int runTestFileUtils(int argc, char** argv);
 int runTestVersion(int argc, char** argv);
+int runTestSignal(int argc, char** argv);
 int runTestRecorder(int argc, char** argv);
 int runTestPlaylist(int argc, char** argv);
 int runTestPresetScanner(int argc, char** argv);
@@ -28,6 +29,7 @@ int main(int argc, char* argv[]) {
     status |= runTestConfigParsers(argc, argv);
     status |= runTestFileUtils(argc, argv);
     status |= runTestVersion(argc, argv);
+    status |= runTestSignal(argc, argv);
     status |= runTestRecorder(argc, argv);
     status |= runTestPlaylist(argc, argv);
     status |= runTestPresetScanner(argc, argv);

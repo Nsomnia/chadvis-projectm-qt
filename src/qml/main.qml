@@ -78,9 +78,94 @@ ApplicationWindow {
                                                : Theme.navRailWidthCollapsed
     }
 
+    // ── Fullscreen ─────────────────────────────────────────────────────────
+    // Fullscreen is a property of THIS QQuickWindow, not of the native
+    // projectM QWindow.  VisualizerWindow is never shown as a top-level
+    // window — nothing in the C++ ever calls show() on it, it exists only as
+    // a QQuickWindowContainer child (VideoView.qml:18) — so QWindow's
+    // showFullScreen() on it is inert, and the nav rail, header, footer,
+    // overlay and karaoke layers are QML siblings in this scene that would
+    // stay on screen no matter what the native window claimed.  Fullscreening
+    // this ApplicationWindow is the only definition that both hides the
+    // chrome and actually fills the display.
+    //
+    // Derived from `visibility` rather than stored in a flag, so a
+    // window-manager-initiated exit (macOS Escape, the green button) cannot
+    // leave the shell believing it is still fullscreen and refusing to
+    // re-enter on the next press.
+    readonly property bool fullscreenActive: visibility === Window.FullScreen
+
+    readonly property var contentViews: ["library", "notifications", "discover",
+                                        "create", "listen", "video"]
+
+    // Geometry is captured on the way in and re-applied on the way out rather
+    // than trusted to the platform: Qt does not guarantee that leaving
+    // fullscreen restores the pre-fullscreen size, and this app is
+    // user-resizable, so a lost size would be a permanently squashed window.
+    property string viewBeforeFullscreen: ""
+    property real restoreX: 0
+    property real restoreY: 0
+    property real restoreWidth: 0
+    property real restoreHeight: 0
+
+    function setFullscreen(on) {
+        if (on === fullscreenActive)
+            return
+
+        if (on) {
+            viewBeforeFullscreen = activeView
+            restoreX = x
+            restoreY = y
+            restoreWidth = width
+            restoreHeight = height
+            // Fullscreen means "the visualizer, full bleed", so reveal the
+            // surface it belongs to. This is the one behaviour the previous
+            // placeholder got right and it is kept deliberately: a fullscreen
+            // Library would be the app shell at screen size with no
+            // visualizer in it.
+            navigate("video")
+            visibility = Window.FullScreen
+        } else {
+            visibility = Window.Windowed
+            x = restoreX
+            y = restoreY
+            width = restoreWidth
+            height = restoreHeight
+            // Round-trip back to wherever the user was, mirroring the
+            // returnView idiom the Settings window already uses. Guarded on
+            // contentViews so a stale "settings" can never re-open a window.
+            if (contentViews.indexOf(viewBeforeFullscreen) >= 0
+                    && activeView === "video")
+                navigate(viewBeforeFullscreen)
+            viewBeforeFullscreen = ""
+        }
+    }
+
+    // A bare-letter shortcut must not fire while the user is typing, or every
+    // "f" typed into the Library search box would fullscreen the app. Window
+    // exposes activeFocusItem (QQuickWindowQmlImpl prototypes QQuickWindow);
+    // the short ancestor walk covers both cases, where a TextField takes focus
+    // itself and where focus lands on the TextInput/TextEdit inside a
+    // TextField, TextArea or SpinBox contentItem.
+    readonly property bool textEntryFocused: {
+        var item = activeFocusItem
+        for (var depth = 0; item && depth < 4; ++depth) {
+            if (item instanceof TextInput || item instanceof TextEdit
+                    || item instanceof TextField || item instanceof TextArea)
+                return true
+            item = item.parent
+        }
+        return false
+    }
+
+    // Only a single unmodified character can be typed by accident. A
+    // modifier-bound or function key is never swallowed by a text field, so
+    // it keeps working everywhere.
+    readonly property bool fullscreenKeyConflictsWithTyping:
+        /^[A-Za-z0-9]$/.test(String(SettingsBridge.keyboardToggleFullscreen).trim())
+
     Component.onCompleted: {
         const savedView = String(SettingsBridge.expandedPanel)
-        const contentViews = ["library", "notifications", "discover", "create", "listen", "video"]
         activeView = contentViews.indexOf(savedView) >= 0 ? savedView : "library"
         returnView = activeView
         railUserExpanded = SettingsBridge.sidebarWidth > 100
@@ -122,7 +207,11 @@ ApplicationWindow {
     palette.toolTipText: Theme.textPrimary
 
     header: ToolBar {
-        implicitHeight: Theme.topBarHeight
+        // Fullscreen drops the shell chrome; the explicit implicitHeight
+        // collapse keeps the space freed even on platforms where
+        // ApplicationWindow's own layout still reserves an invisible bar.
+        visible: !mainWindow.fullscreenActive
+        implicitHeight: mainWindow.fullscreenActive ? 0 : Theme.topBarHeight
 
         background: Rectangle {
             color: Theme.surface
@@ -223,7 +312,8 @@ ApplicationWindow {
     }
 
     footer: ToolBar {
-        implicitHeight: Theme.statusBarHeight
+        visible: !mainWindow.fullscreenActive
+        implicitHeight: mainWindow.fullscreenActive ? 0 : Theme.statusBarHeight
 
         background: Rectangle {
             color: Theme.surface
@@ -267,7 +357,7 @@ ApplicationWindow {
             }
 
             Text {
-                text: "v2.0.0 · Suno Desktop"
+                text: "v" + SettingsBridge.version + " · Suno Desktop"
                 color: Theme.textSecondary
                 font: Theme.fontCaption
             }
@@ -284,6 +374,8 @@ ApplicationWindow {
             anchors.left: parent.left
             z: 10
 
+            visible: !mainWindow.fullscreenActive
+
             activeView: mainWindow.activeView
             expanded: mainWindow.railEffectiveExpanded
 
@@ -298,7 +390,9 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.right: parent.right
-            anchors.left: navRail.right
+            // The rail's width is reserved only while it is on screen;
+            // fullscreen reclaims the strip for the visualizer.
+            anchors.left: mainWindow.fullscreenActive ? parent.left : navRail.right
             clip: true
 
             LibraryView {
@@ -414,15 +508,57 @@ ApplicationWindow {
         onActivated: AudioBridge.previous()
     }
 
-    // Fullscreen remains a QML placeholder until VisualizerBridge exposes
-    // a toggle; the action now reveals the surface it belongs to.
+    // ── Fullscreen: two bindings, one action ──────────────────────────────
+    // DECISION (do not re-litigate without reading this):
+    //
+    //  * Fullscreen is the QML ApplicationWindow, NOT the native projectM
+    //    QWindow.  VisualizerWindow::toggleFullscreen() exists and looks like
+    //    the obvious thing to call, but VisualizerWindow is never shown as a
+    //    top-level window (no C++ path calls show() on it) — it lives only as
+    //    a QQuickWindowContainer child, so its QWindow::showFullScreen() is
+    //    inert and its keyPressEvent can never see a key, because a container
+    //    child is never the activated window.  Its showFullScreen() would also
+    //    leave the nav rail, header, footer, overlay and karaoke layers on
+    //    screen, because those are QML siblings in this scene.  That is not
+    //    fullscreen, that is a window that lied.
+    //    (Its mouseDoubleClickEvent *does* still fire, and toggles that inert
+    //    native state.  Harmless — the container re-lays the child out — and
+    //    precisely why the native flag is not the source of truth here.)
+    //
+    //  * F and F11 are two bindings for the SAME action, not a primary and a
+    //    fallback.  F is the user-configurable key (KeyboardConfig
+    //    toggleFullscreen, default "F") and is suppressed during text entry
+    //    because a bare letter is typeable.  F11 is unconditional, because a
+    //    text field can never consume a function key as text — that is what
+    //    makes the shortcut still work when the user is typing.  Neither can
+    //    double-fire: they are distinct key events, and the native window's
+    //    own F/F11 branch in VisualizerWindow::keyPressEvent is unreachable
+    //    while it is embedded (see above).
+    //
+    //  * The "reveal the Video page" step is kept, but as a precondition of
+    //    the action rather than a leftover: fullscreen is defined as "the
+    //    visualizer, full bleed", and setFullscreen() now also returns to the
+    //    previous view on the way out.
     Shortcut {
         sequence: SettingsBridge.keyboardToggleFullscreen
         enabled: !settingsWindow.visible
-        onActivated: {
-            mainWindow.navigate("video")
-            console.log("Fullscreen toggle (TODO)")
-        }
+                 && (!mainWindow.fullscreenKeyConflictsWithTyping
+                     || !mainWindow.textEntryFocused)
+        onActivated: mainWindow.setFullscreen(!mainWindow.fullscreenActive)
+    }
+
+    Shortcut {
+        sequence: "F11"
+        enabled: !settingsWindow.visible
+        onActivated: mainWindow.setFullscreen(!mainWindow.fullscreenActive)
+    }
+
+    // Escape is bound only while fullscreen, so it cannot shadow the Escape
+    // handling of a dialog, a sheet or a menu outside fullscreen.
+    Shortcut {
+        sequence: "Escape"
+        enabled: !settingsWindow.visible && mainWindow.fullscreenActive
+        onActivated: mainWindow.setFullscreen(false)
     }
 
     Shortcut {

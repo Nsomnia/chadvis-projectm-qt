@@ -61,9 +61,10 @@ struct ClerkClientInfo {
 /// Raw credential material captured from the logged-in browser session.
 ///
 /// The Cookie header string is sent to auth.suno.com verbatim: the root
-/// credential cookies (__client / __client_uat and their suffixed variants)
-/// must not be re-parsed or re-serialized, so we keep exactly what was
-/// captured and treat it as an opaque blob.
+/// credential cookies (__client / __client_uat / __session, with or without
+/// Clerk's instance-key suffix) must not be re-parsed or re-serialized, so we
+/// keep exactly what was captured and treat it as an opaque blob. See
+/// classifyStoredCredential for how a pasted header is classified.
 struct Credentials {
     QString cookieHeader;
 };

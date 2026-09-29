@@ -256,7 +256,7 @@ Rectangle {
 
                 Text {
                     visible: root.expanded
-                    text: "v2.0"
+                    text: "v" + SettingsBridge.version
                     color: Theme.textDisabled
                     font: Theme.fontTiny
                     opacity: root.expanded ? 1 : 0

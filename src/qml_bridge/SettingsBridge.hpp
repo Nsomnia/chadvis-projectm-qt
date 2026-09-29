@@ -29,6 +29,13 @@ friend class QmlSingletonBridge<SettingsBridge, SingletonPolicy::CachedQmlParent
     QML_ELEMENT
     QML_SINGLETON
 
+    // Build metadata. SettingsBridge is the app-level bridge — it already owns
+    // keyboard bindings and UI state, i.e. facts about the application rather
+    // than about one engine subsystem — so the version belongs here. It is a
+    // build-time fact from version.txt, NOT a persisted setting, hence CONSTANT
+    // with no setter and no auto-save.
+    Q_PROPERTY(QString version READ version CONSTANT)
+
     // Audio Settings
     Q_PROPERTY(int audioBufferSize READ audioBufferSize WRITE setAudioBufferSize NOTIFY audioBufferSizeChanged)
     Q_PROPERTY(int audioSampleRate READ audioSampleRate WRITE setAudioSampleRate NOTIFY audioSampleRateChanged)
@@ -76,6 +83,9 @@ friend class QmlSingletonBridge<SettingsBridge, SingletonPolicy::CachedQmlParent
     Q_PROPERTY(bool drawerOpen READ drawerOpen WRITE setDrawerOpen NOTIFY drawerOpenChanged)
 
 public:
+    // Build metadata
+    QString version() const;
+
     // Audio
     int audioBufferSize() const;
     void setAudioBufferSize(int size);

@@ -3,13 +3,16 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QSignalSpy>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QtTest>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "audio/AudioEngine.hpp"
 #include "core/Config.hpp"
@@ -97,6 +100,48 @@ LyricsData makeLyricsOfCount(int lineCount)
         data.lines.push_back(line);
     }
     return data;
+}
+
+QByteArray readExported(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    return file.readAll();
+}
+
+QString describeIndices(const std::vector<int>& indices)
+{
+    QStringList parts;
+    for (const int index : indices) {
+        parts << QString::number(index);
+    }
+    return parts.join(QLatin1Char(','));
+}
+
+/// The window the QML surface returns, as the indices it puts in each map.
+std::vector<int> bridgeWindow(const qml_bridge::LyricsBridge& bridge, int before, int after)
+{
+    std::vector<int> indices;
+    for (const auto& entry : bridge.getContextLines(before, after)) {
+        // toMap(), not QVariant::value(QString) -- that overload is gone in Qt 6.
+        indices.push_back(entry.toMap().value(QStringLiteral("index")).toInt());
+    }
+    return indices;
+}
+
+/// The same window from LyricsSync, with its line pointers mapped back to indices.
+/// Pointer arithmetic, not std::distance: the two arguments are a vector
+/// iterator and a raw pointer, which no std::distance overload accepts.
+std::vector<int> syncWindow(const LyricsSync& sync, size_t before, size_t after)
+{
+    const auto& lines = sync.getLyrics().lines;
+    std::vector<int> indices;
+    for (const auto* line : sync.getContextLines(before, after)) {
+        indices.push_back(static_cast<int>(line - lines.data()));
+    }
+    return indices;
 }
 
 class DownloadPathGuard
@@ -294,6 +339,46 @@ private slots:
         QCOMPARE(sync.getState(), LyricsSyncState::Error);
     }
 
+    void checkedIndexIsTheSingleBoundsGate()
+    {
+        const LyricsData data = makeLyrics();
+        QCOMPARE(data.lines.size(), size_t{2});
+
+        // Happy path: a valid index survives unchanged.
+        QCOMPARE(checkedIndex(data.lines, 0), std::optional<size_t>{0});
+        QCOMPARE(checkedIndex(data.lines, 1), std::optional<size_t>{1});
+
+        // The lower bound. -1 is the documented "no active line" sentinel and
+        // must be refused, not reinterpreted as a huge subscript.
+        QVERIFY(!checkedIndex(data.lines, -1).has_value());
+        QVERIFY(!checkedIndex(data.lines, std::numeric_limits<int>::min()).has_value());
+
+        // The upper bound that the old hand-rolled checks missed: one past the
+        // end is out, and so is anything further.
+        QVERIFY(!checkedIndex(data.lines, 2).has_value());
+        QVERIFY(!checkedIndex(data.lines, 99).has_value());
+
+        // The near-SIZE_MAX wrap from getTimeRange. A size_t end index of
+        // SIZE_MAX narrows to -1 as an int, so the sign check is what has to
+        // catch it. A gate that only compared against size() would have
+        // compared -1 against 2 and waved it through as a subscript.
+        static_assert(static_cast<int>(std::numeric_limits<size_t>::max()) == -1);
+        QVERIFY(!checkedIndex(data.lines, static_cast<int>(std::numeric_limits<size_t>::max()))
+                     .has_value());
+        // The same value with the top bit cleared stays a large positive int and
+        // is caught by the upper bound instead, so neither bound is load-bearing
+        // on its own.
+        QVERIFY(!checkedIndex(data.lines, std::numeric_limits<int>::max()).has_value());
+
+        // An empty container has no valid index at all, including 0. Remote
+        // lyrics arrive as an empty vector whenever the payload has no usable
+        // words, so this is a normal state, not an error.
+        const LyricsData empty;
+        QVERIFY(empty.lines.empty());
+        QVERIFY(!checkedIndex(empty.lines, 0).has_value());
+        QVERIFY(!checkedIndex(empty.lines, -1).has_value());
+    }
+
     void getTimeRangeClampsIndexPastEndOfShortSong()
     {
         const LyricsData data = makeLyrics();
@@ -356,6 +441,63 @@ private slots:
         QCOMPARE(far.second, 0.0f);
     }
 
+    void contextLinesStopAtTheSongEndOnAnOversizedWindow()
+    {
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(makeLyricsOfCount(8));
+        sync.seek(3.5f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 3);
+
+        // The window is caller-supplied unsigned arithmetic, exactly like the
+        // remote data it is read alongside. `for (i = 1; i <= after; ++i)` never
+        // terminates when `after` is SIZE_MAX, and the same counter spun for
+        // two billion iterations on the way down. Both now stop at the first
+        // and last line, so the answer is the whole song and it returns at all.
+        const auto everything = sync.getContextLines(std::numeric_limits<size_t>::max(),
+                                                     std::numeric_limits<size_t>::max());
+        QCOMPARE(everything.size(), size_t{8});
+        for (size_t i = 0; i < everything.size(); ++i) {
+            QVERIFY(everything[i] == &sync.getLyrics().lines[i]);
+        }
+        // Order is preserved: furthest-before first, then the current line,
+        // then forwards. The "before" walk still counts down.
+        QCOMPARE(everything[0]->text, std::string("line0"));
+        QCOMPARE(everything[3]->text, std::string("line3"));
+        QCOMPARE(everything.back()->text, std::string("line7"));
+
+        // A zero window is just the current line, from either direction.
+        const auto alone = sync.getContextLines(0, 0);
+        QCOMPARE(alone.size(), size_t{1});
+        QVERIFY(alone.front() == &sync.getLyrics().lines[3]);
+    }
+
+    void staleLineIndexIsRefusedByTheGate()
+    {
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(makeLyricsOfCount(8));
+        sync.seek(7.5f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 7);
+
+        // The shorter song replaces lyrics_ under the cached index.
+        sync.loadLyrics(makeLyrics());
+        QCOMPARE(sync.getPosition().lineIndex, -1);
+
+        // loadLyrics and clear both reset currentPos_, so there is no public
+        // way to leave the cache stale today and the reset is the real
+        // protection. Assert the gate anyway, because it -- not the reset -- is
+        // what bounds the subscripts: an index of 7 is exactly what a stale
+        // cache carried from the eight-line song would hold, and it must be
+        // refused against this two-line one rather than handed to lines[].
+        QCOMPARE(sync.getLyrics().lines.size(), size_t{2});
+        QVERIFY(!checkedIndex(sync.getLyrics().lines, 7).has_value());
+        // Index 1 is the last real line and must still resolve, so the check
+        // above is a bound and not a blanket refusal.
+        QCOMPARE(checkedIndex(sync.getLyrics().lines, 1), std::optional<size_t>{1});
+        QVERIFY(!checkedIndex(sync.getLyrics().lines, 2).has_value());
+    }
+
     void contextQueriesStayBoundedAfterShorterSongLoad()
     {
         LyricsSync sync(nullptr);
@@ -389,6 +531,106 @@ private slots:
             QCOMPARE(bridge.getContextLines(2, 2).size(), 2);
             QCOMPARE(bridge.getUpcomingLines(3).size(), 2);
         }
+    }
+
+    void bridgeContextLinesMatchLyricsSyncExceptAtTheAnchor()
+    {
+        LyricsSync sync(nullptr);
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+
+        // The bridge is built *after* the lyrics are loaded, which is what a
+        // lazily instantiated QML singleton looks like when the user opens a
+        // page after playback already started: currentLineIndex_ is still -1
+        // while the sync is happily reporting a real line.
+        sync.loadLyrics(makeLyricsOfCount(5));
+        qml_bridge::LyricsBridge bridge;
+
+        // The one documented divergence, asserted first because it is the whole
+        // reason the bridge cannot delegate. With no active line LyricsSync
+        // refuses to invent a centre and returns nothing; the QML surface
+        // anchors on the first line so a panel is never blank. If someone
+        // re-inlines the window walk and drops that anchor, this fails.
+        QCOMPARE(sync.getPosition().lineIndex, -1);
+        QVERIFY(sync.getContextLines(2, 2).empty());
+        QCOMPARE(describeIndices(bridgeWindow(bridge, 0, 0)), QStringLiteral("0"));
+        QCOMPARE(describeIndices(bridgeWindow(bridge, 1, 1)), QStringLiteral("0,1"));
+        QCOMPARE(describeIndices(bridgeWindow(bridge, 2, 2)), QStringLiteral("0,1,2"));
+        QCOMPARE(describeIndices(bridgeWindow(bridge, 99, 99)), QStringLiteral("0,1,2,3,4"));
+
+        // From here the bridge's cache tracks the sync's -- positionChanged is
+        // emitted synchronously by syncNow() -- so the two queries must produce
+        // identical windows. Any re-inline in the bridge that shifts a single
+        // index, changes the ordering, or changes the clipping fails here.
+        const auto agreeAt = [&sync, &bridge](f32 time, int lineIndex, int before, int after) {
+            sync.seek(time);
+            sync.syncNow();
+            QCOMPARE(sync.getPosition().lineIndex, lineIndex);
+            QCOMPARE(bridge.currentLineIndex(), lineIndex);
+            QCOMPARE(describeIndices(bridgeWindow(bridge, before, after)),
+                     describeIndices(syncWindow(sync, static_cast<size_t>(before),
+                                                static_cast<size_t>(after))));
+        };
+
+        // An oversized window is the case that used to overflow: the old
+        // `center + after + 1` wrapped `end` negative for any after near
+        // INT_MAX, so the bridge silently returned an empty list where LyricsSync
+        // returned the whole song.
+        const int huge = std::numeric_limits<int>::max();
+
+        // First line -- the window is clipped at the start of the song.
+        agreeAt(0.5f, 0, 0, 0);
+        agreeAt(0.5f, 0, 2, 2);
+        agreeAt(0.5f, 0, huge, huge);
+        // Middle line, each side independently.
+        agreeAt(2.5f, 2, 2, 2);
+        agreeAt(2.5f, 2, 0, 0);
+        agreeAt(2.5f, 2, 0, 1);
+        agreeAt(2.5f, 2, 1, 0);
+        agreeAt(2.5f, 2, huge, huge);
+        // Last line -- clipped at the end.
+        agreeAt(4.5f, 4, 0, 0);
+        agreeAt(4.5f, 4, 2, 2);
+        agreeAt(4.5f, 4, huge, huge);
+        // Past the end of the song: findLineIndex falls back to the closest
+        // line before the time, so this is a last-line centre, not a stale one.
+        agreeAt(99.0f, 4, 2, 2);
+
+        // Negative windows are the bridge's own domain: QML can pass them and
+        // LyricsSync's size_t signature cannot express one, so only the bridge's
+        // answer is asserted here. Each side is clamped to zero independently,
+        // and a window negative on *both* sides is refused outright.
+        sync.seek(2.5f);
+        sync.syncNow();
+        QCOMPARE(describeIndices(bridgeWindow(bridge, -1, 2)), QStringLiteral("2,3,4"));
+        QCOMPARE(describeIndices(bridgeWindow(bridge, 2, -1)), QStringLiteral("0,1,2"));
+        QVERIFY(bridge.getContextLines(-1, -1).isEmpty());
+    }
+
+    void contextLinesWithoutASyncYieldNothing()
+    {
+        // A real sync with a live position, deliberately not attached: the
+        // bridge must reach only the static. Registration sets it before any
+        // QML loads, so a bridge built before that is a real state, and every
+        // window query on it is an empty list rather than a null dereference.
+        LyricsSync sync(nullptr);
+        sync.loadLyrics(makeLyricsOfCount(5));
+        sync.seek(2.5f);
+        sync.syncNow();
+        QCOMPARE(sync.getPosition().lineIndex, 2);
+        qml_bridge::LyricsBridge::setLyricsSync(nullptr);
+
+        qml_bridge::LyricsBridge unattached;
+        QVERIFY(!unattached.hasLyrics());
+        QCOMPARE(unattached.currentLineIndex(), -1);
+        QVERIFY(unattached.lines().isEmpty());
+        QVERIFY(unattached.getContextLines(2, 2).isEmpty());
+        QVERIFY(unattached.getContextLines(0, 0).isEmpty());
+        QVERIFY(unattached.getContextLines(99, 99).isEmpty());
+        QVERIFY(unattached.getContextLines(-1, -1).isEmpty());
+        QVERIFY(unattached.getUpcomingLines(3).isEmpty());
+
+        // The detached bridge neither advanced nor cleared the sync it cannot see.
+        QCOMPARE(sync.getPosition().lineIndex, 2);
     }
 
     void unsyncedLinesWithEmptyWordsAreQueryable()
@@ -564,6 +806,73 @@ private slots:
         bridge.exportToSrt(QString());
         QCOMPARE(finished.count(), 2);
         QCOMPARE(failed.count(), 1);
+    }
+
+    void bridgeExportsAreTheOnlySrtAndLrcFormatter()
+    {
+        LyricsSync sync(nullptr);
+        qml_bridge::LyricsBridge::setLyricsSync(&sync);
+        qml_bridge::LyricsBridge bridge;
+
+        // This is the shape of real remote lyrics: an empty spacer line, and an
+        // aligned span whose endTime precedes its startTime. Both are the cases
+        // that gave the retired second formatter in LyricsData something to get
+        // wrong -- it emitted both verbatim. These assertions exist so the
+        // exported bytes are pinned to this formatter, and so a second one
+        // reappearing has to match it rather than drift from it.
+        LyricsData data = makeLyrics();
+
+        LyricsLine spacer;
+        spacer.text = "";
+        spacer.startTime = 2.0f;
+        spacer.endTime = 2.0f;
+        spacer.isSynced = true;
+
+        LyricsLine inverted;
+        inverted.text = "backwards";
+        inverted.startTime = 3.0f;
+        inverted.endTime = 2.0f;
+        inverted.isSynced = true;
+
+        data.lines.push_back(spacer);
+        data.lines.push_back(inverted);
+
+        sync.loadLyrics(data);
+        QCOMPARE(sync.getState(), LyricsSyncState::Ready);
+
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString srtPath = directory.filePath(QStringLiteral("lyrics.srt"));
+        const QString lrcPath = directory.filePath(QStringLiteral("lyrics.lrc"));
+        QSignalSpy finished(&bridge, &qml_bridge::LyricsBridge::exportFinished);
+        QSignalSpy failed(&bridge, &qml_bridge::LyricsBridge::exportFailed);
+
+        bridge.exportToSrt(srtPath);
+        bridge.exportToLrc(lrcPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 2000);
+        QCOMPARE(failed.count(), 0);
+
+        // Four source lines, three entries: the empty one is skipped and does
+        // not consume an index, so numbering stays consecutive. The inverted
+        // span is widened to a whole second instead of being written backwards.
+        const QByteArray srt = readExported(srtPath);
+        QVERIFY(!srt.isEmpty());
+        QCOMPARE(srt.count("-->"), 3);
+        QVERIFY(srt.contains("1\n00:00:00,000 --> 00:00:01,000\nhello\n\n"));
+        QVERIFY(srt.contains("2\n00:00:01,000 --> 00:00:02,000\nagain\n\n"));
+        QVERIFY(srt.contains("3\n00:00:03,000 --> 00:00:04,000\nbackwards\n\n"));
+        QVERIFY(!srt.contains("4\n"));
+        QVERIFY(!srt.contains("00:00:03,000 --> 00:00:02,000"));
+
+        // LRC carries the [ti:]/[ar:] headers, which the retired formatter never
+        // wrote, and the same three lines.
+        const QByteArray lrc = readExported(lrcPath);
+        QVERIFY(!lrc.isEmpty());
+        QVERIFY(lrc.startsWith("[ti:Test]\n[ar:Artist]\n"));
+        QCOMPARE(lrc.count('\n'), 5);
+        QVERIFY(lrc.contains("[00:00.00]hello\n"));
+        QVERIFY(lrc.contains("[00:01.00]again\n"));
+        QVERIFY(lrc.contains("[00:03.00]backwards\n"));
     }
 
     void lazyBridgeReceivesUpdates()

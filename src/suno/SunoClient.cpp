@@ -1040,7 +1040,7 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
         if (!page) {
             LOG_ERROR("SunoClient: feed envelope parse failed: {}",
                       page.error().toStdString());
-            libraryFetched.emitSignal({});
+            libraryFetched.emitSignal(std::vector<SunoClip>{});
             return;
         }
 
@@ -1081,7 +1081,7 @@ void SunoClient::onGenerateReply(QNetworkReply* reply) {
         if (!parsed) {
             LOG_ERROR("SunoClient: generation reply parse failed: {}",
                       parsed.error().toStdString());
-            generationStarted.emitSignal({});
+            generationStarted.emitSignal(std::vector<SunoClip>{});
             return;
         }
         std::vector<SunoClip> clips(parsed->cbegin(), parsed->cend());

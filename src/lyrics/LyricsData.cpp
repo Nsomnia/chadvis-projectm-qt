@@ -6,6 +6,7 @@
 #include "LyricsData.hpp"
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <limits>
 #include <regex>
 #include <sstream>
@@ -484,53 +485,6 @@ LyricsData fromDatabase(const std::string& json) {
 // Export implementations
 
 namespace LyricsExport {
-
-std::string toSrt(const LyricsData& lyrics) {
-    std::ostringstream out;
-    
-    auto fmtTime = [](f32 time) -> std::string {
-        int totalMs = static_cast<int>(time * 1000);
-        int ms = totalMs % 1000;
-        int totalSec = totalMs / 1000;
-        int sec = totalSec % 60;
-        int min = (totalSec / 60) % 60;
-        int hr = totalSec / 3600;
-        
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%02d:%02d:%02d,%03d", hr, min, sec, ms);
-        return std::string(buf);
-    };
-    
-    for (size_t i = 0; i < lyrics.lines.size(); ++i) {
-        const auto& line = lyrics.lines[i];
-        out << (i + 1) << "\n";
-        out << fmtTime(line.startTime) << " --> " << fmtTime(line.endTime) << "\n";
-        out << line.text << "\n\n";
-    }
-    
-    return out.str();
-}
-
-std::string toLrc(const LyricsData& lyrics) {
-    std::ostringstream out;
-    
-    auto fmtTime = [](f32 time) -> std::string {
-        int totalSec = static_cast<int>(time);
-        int min = totalSec / 60;
-        int sec = totalSec % 60;
-        int cs = static_cast<int>((time - totalSec) * 100);
-        
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%02d:%02d.%02d", min, sec, cs);
-        return std::string(buf);
-    };
-    
-    for (const auto& line : lyrics.lines) {
-        out << "[" << fmtTime(line.startTime) << "]" << line.text << "\n";
-    }
-    
-    return out.str();
-}
 
 std::string toJson(const LyricsData& lyrics) {
     QJsonArray array;

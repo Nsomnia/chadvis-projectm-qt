@@ -14,8 +14,8 @@
 #pragma once
 #include <QObject>
 #include <QTimer>
-#include <functional>
-#include <deque>
+#include <cstddef>
+#include <vector>
 #include "LyricsData.hpp"
 #include "util/Signal.hpp"
 #include "util/Types.hpp"

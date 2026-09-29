@@ -1,10 +1,7 @@
 #include "AudioEngine.hpp"
-#include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
 
-#include <QAudioDevice>
-#include <QMediaDevices>
 #include <QUrl>
 
 namespace vc {
