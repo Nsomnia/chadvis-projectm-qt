@@ -299,10 +299,56 @@ QVariantList LyricsBridge::getUpcomingLines(int count) const {
         return result;
     }
     const auto& lines = s_sync->getLyrics().lines;
-    const int start = std::max(currentLineIndex_ + 1, 0);
-    const int end = std::min(start + count, static_cast<int>(lines.size()));
-    for (int index = start; index < end; ++index) {
-        result.append(lineToVariant(lines[static_cast<std::size_t>(index)], index));
+    if (lines.empty()) {
+        return result;
+    }
+
+    // This is the same overflow getContextLines had, one function up: the
+    // window used to be `start + count`, and `count` arrives from QML as an
+    // int, so any count near INT_MAX wrapped the end index negative, the loop
+    // never ran, and the caller got an empty list with no error. The window is
+    // therefore measured as a distance to the last line rather than summed, and
+    // every subscript is proven by the same vc::checkedIndex gate LyricsData,
+    // LyricsSync and getContextLines use, so there is one bounds gate in the
+    // whole path. See upcomingLinesStopAtTheSongEndOnAnOversizedCount.
+    const int last = static_cast<int>(lines.size()) - 1;
+
+    // The start is chosen from the bounds rather than by `currentLineIndex_ + 1`,
+    // which is signed overflow for the one value INT_MAX -- and it is a value
+    // this surface can be handed, because currentLineIndex_ is just the last
+    // position it was told about. An index at or past the last line has nothing
+    // upcoming, so the window is empty and the addition is never reached.
+    //
+    // The anchor is deliberately NOT getContextLines' anchor. There, an unset
+    // currentLineIndex_ means "the first line is the current one", so line 0 is
+    // included. Here the same unset index has always meant "nothing is playing
+    // yet, so the whole song from the first line is still to come", so -1 keeps
+    // starting the window at line 0. Clamping the index to 0 and stepping off
+    // it would silently drop line 0 from the pre-render buffer.
+    const int start = currentLineIndex_ < 0
+        ? 0
+        : (currentLineIndex_ >= last ? static_cast<int>(lines.size()) : currentLineIndex_ + 1);
+
+    // The window is the distance to the last line, not a sum with the caller's
+    // count, so it cannot overflow for any `count` at all. Both ends of the
+    // subtraction are bounded above by lines.size(), so the distance is itself
+    // in [0, lines.size()] and the lower clamp is belt-and-braces rather than
+    // load-bearing; the upper clamp is the count, which is the same pair of
+    // bounds getContextLines applies per side. A negative count never reaches
+    // here: the count <= 0 refusal above is that clamp applied to the whole
+    // window, since a single span has no "other side" to fall back on, exactly
+    // as getContextLines(-1, -1) is refused. That refusal is also what keeps
+    // std::clamp's lo <= hi precondition true here.
+    //
+    // start + window is therefore at most lines.size(), so the loop bound is a
+    // real subscript ceiling and not another sum of caller-supplied values.
+    // `count` is never added to anything; it is only ever compared against.
+    const int window = std::clamp(last - start + 1, 0, count);
+
+    for (int index = start; index < start + window; ++index) {
+        if (const auto offset = vc::checkedIndex(lines, index)) {
+            result.append(lineToVariant(lines[*offset], index));
+        }
     }
     return result;
 }

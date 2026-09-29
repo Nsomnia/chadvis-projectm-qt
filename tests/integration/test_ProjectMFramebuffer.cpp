@@ -293,22 +293,16 @@ struct DecodedVideo {
     i32 framesDecoded{0};
 };
 
-// The shared AVFormatContextDeleter is write-side only: it reads c->oformat,
-// which a demuxer never sets. A reader has to close the input instead.
-struct InputFormatDeleter {
-    void operator()(AVFormatContext* context) const {
-        if (context)
-            avformat_close_input(&context);
-    }
-};
-
+// avformat_open_input returns a demuxer, so this context is closed through the
+// input alias in recorder/FFmpegUtils.hpp. That is where the reader/writer rule
+// lives; a local copy of the deleter could only ever drift from it.
 DecodedVideo decodeVideo(const std::string& path, i32 maxFrames) {
     DecodedVideo result;
 
     AVFormatContext* rawFormat = nullptr;
     if (avformat_open_input(&rawFormat, path.c_str(), nullptr, nullptr) != 0)
         return result;
-    std::unique_ptr<AVFormatContext, InputFormatDeleter> format(rawFormat);
+    AVFormatContextInPtr format(rawFormat);
     if (!format)
         return result;
     if (avformat_find_stream_info(format.get(), nullptr) < 0)

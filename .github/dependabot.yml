@@ -1,11 +1,55 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# ---------------------------------------------------------------------------
+# Dependabot version updates.
+#
+# SCOPE, AND WHY IT IS THIS NARROW
+#   GitHub Dependabot has no CMake ecosystem. It cannot read
+#   cmake/Dependencies.cmake, so the six CPM-pinned dependencies (spdlog 1.14.1,
+#   fmt 11.0.2, tomlplusplus 3.4.0, pffft e1dbebc9, readerwriterqueue v1.0.6,
+#   projectM) and the nine unpinned system find_package/pkg-config lookups are
+#   OUT OF SCOPE for this file. There is no honest way to express "bump a
+#   CPMAddPackage(VERSION ...)" in dependabot's schema, and pretending otherwise
+#   with a `package-ecosystem: ""` entry is worse than not having the file: a
+#   template that has never run reads as coverage and delivers none.
+#
+#   What this repo DOES have is exactly one Dependabot-supported ecosystem:
+#   `github-actions`. The single workflow, .github/workflows/opencode.yml, uses
+#   actions/checkout and anomalyco/opencode/github, both of which are version-
+#   pinnable and both of which are a supply-chain risk worth tracking.
+#
+#   To track the CMake dependencies instead, the options are (a) none, (b) a
+#   scheduled CI job that greps Dependencies.cmake and opens an issue, or
+#   (c) vcpkg/conan manifests. None of those is dependabot, and (b)/(c) are
+#   build-system work outside this file.
+#
+# HOW TO VERIFY IT IS LIVE (rather than a template again)
+#   After this is merged, the repository's Dependabot tab on GitHub must show
+#   these two actions with real versions, and Settings > Code security and
+#   quality > Dependabot alerts must be enabled. An empty list, or a list
+#   showing `actions/checkout` pinned to nothing, means the ecosystem or
+#   directory is wrong again.
+#   Locally, the file parses as:
+#     python3 -c "import yaml,sys; yaml.safe_load(open('.github/dependabot.yml')); print('ok')"
+# ---------------------------------------------------------------------------
 
 version: 2
+
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
-      interval: "manual"
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+    groups:
+      # One PR for all GitHub Actions bumps rather than a stream of single-action
+      # PRs, which is how dependabot config stops being read.
+      actions:
+        patterns:
+          - "*"

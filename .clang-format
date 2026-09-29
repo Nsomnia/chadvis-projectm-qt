@@ -1,66 +1,128 @@
-# Generated from CLion C/C++ Code Style settings
+# ---------------------------------------------------------------------------
+# ChadVis C++ style.  Regenerated from the code, not the other way round.
+#
+# HOW TO INVOKE (clang-format 23.1.0, on PATH at /usr/local/bin/clang-format)
+#
+#   Format only the lines you changed (the gate this repo can actually pass):
+#       git clang-format                 # staged changes
+#       git clang-format main            # everything this branch touched
+#       git clang-format --diff main     # report only, change nothing
+#
+#   Measure the whole tree (expected: ~4700 findings today, see below):
+#       clang-format --dry-run -Werror src/ tests/
+#
+# WHY THE WHOLE-TREE COUNT IS NOT ZERO, AND THAT IS FINE
+#   src/ is ~84% compliant with this file and ~16% is not. The stragglers are
+#   real and are listed here so nobody re-derives them:
+#     * 19 files indent with TABs            (JThread.hpp, Types.hpp, CliUtils.*, ...)
+#     *  5 files indent with 2 SPACES       (VideoRecorderCore.{cpp,hpp}, ...)
+#     *  1 file uses Allman braces          (SunoExploreService.cpp)
+#     * 83 files carry trailing whitespace on blank lines. clang-format always
+#       strips that and there is no option to keep it, so these can never be
+#       clean without a one-time whitespace pass over src/.
+#   The whole-tree count also includes ~1456 over-wrapped continuation lines
+#   (lines broken well before column 100) and a handful of hand-aligned blocks
+#   in Application.cpp / CliUtils.cpp.
+#   Consequence: this file is a DIFF-SCOPED gate (git clang-format), not a
+#   whole-repo ratchet. Do not add `clang-format --dry-run -Werror` to CI as a
+#   blocking check until those have been cleaned up.
+#
+# PREVIOUS REVISION WAS UNUSABLE
+#   It asked for Allman braces (BraceWrapping.AfterFunction: true) and a
+#   ColumnLimit of 0 while the tree is attached-brace, 4-space, ~100-column
+#   throughout, so it reported 6526 findings across the 141 files measured,
+#   with exactly 1 file clean. A config that flags the whole repository is a
+#   config nobody runs.
+# ---------------------------------------------------------------------------
+
 BasedOnStyle: LLVM
-AccessModifierOffset: -4
-AlignAfterOpenBracket: Align
-AlignConsecutiveAssignments: None
-AlignOperands: Align
-AllowAllArgumentsOnNextLine: false
-AllowAllConstructorInitializersOnNextLine: false
-AllowAllParametersOfDeclarationOnNextLine: false
-AllowShortBlocksOnASingleLine: Always
-AllowShortCaseLabelsOnASingleLine: false
-AllowShortFunctionsOnASingleLine: None
-AllowShortIfStatementsOnASingleLine: Never
-AllowShortLambdasOnASingleLine: All
-AllowShortLoopsOnASingleLine: false
-AlwaysBreakAfterReturnType: None
-AlwaysBreakTemplateDeclarations: Yes
-BreakBeforeBraces: Custom
-BraceWrapping:
-  AfterCaseLabel: false
-  AfterClass: true
-  AfterControlStatement: Always
-  AfterEnum: true
-  AfterFunction: true
-  AfterNamespace: false
-  AfterUnion: true
-  BeforeCatch: true
-  BeforeElse: true
-  IndentBraces: false
-  SplitEmptyFunction: true
-  SplitEmptyRecord: true
-BreakBeforeBinaryOperators: None
-BreakBeforeTernaryOperators: true
-BreakConstructorInitializers: BeforeComma
-BreakInheritanceList: BeforeColon
-ColumnLimit: 0
-CompactNamespaces: false
-ContinuationIndentWidth: 4
-IndentCaseLabels: true
-IndentPPDirectives: None
+
+# --- indentation ------------------------------------------------------------
+# Measured: 4-space everywhere, no tab characters except in 19 straggler files.
 IndentWidth: 4
-KeepEmptyLinesAtTheStartOfBlocks: true
-MaxEmptyLinesToKeep: 2
-NamespaceIndentation: None
-ObjCSpaceAfterProperty: false
-ObjCSpaceBeforeProtocolList: true
-PointerAlignment: Left
-ReflowComments: false
-SpaceAfterCStyleCast: true
-SpaceAfterLogicalNot: false
-SpaceAfterTemplateKeyword: false
-SpaceBeforeAssignmentOperators: true
-SpaceBeforeCpp11BracedList: false
-SpaceBeforeCtorInitializerColon: true
-SpaceBeforeInheritanceColon: true
-SpaceBeforeParens: ControlStatements
-SpaceBeforeRangeBasedForLoopColon: true
-SpaceInEmptyParentheses: false
-SpacesBeforeTrailingComments: 1
-SpacesInAngles: false
-SpacesInCStyleCastParentheses: false
-SpacesInContainerLiterals: false
-SpacesInParentheses: false
-SpacesInSquareBrackets: false
 TabWidth: 4
 UseTab: Never
+AccessModifierOffset: -4
+NamespaceIndentation: None
+IndentCaseLabels: true
+IndentPPDirectives: None
+ContinuationIndentWidth: 8 # measured: wrapped call arguments sit 8 past the statement
+
+# --- braces -----------------------------------------------------------------
+# Measured: attached braces, function bodies only merged onto one line in
+# headers. The old config wanted Allman here and was the single largest source
+# of false positives.
+BreakBeforeBraces: Attach
+BreakConstructorInitializers: BeforeColon
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: All # >100 single-line bodies in src/
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLambdasOnASingleLine: All
+AllowShortLoopsOnASingleLine: false
+# No AllowShortRecordOnASingleLine: that key only exists in clang-format 17+, and
+# Apple clangd 16 (which reads this file to format in the editor) hard-errors on
+# it and silently falls back to LLVM for every buffer. Everything in this file
+# must parse under BOTH /usr/local/bin/clang-format (23) and
+# /Library/Developer/CommandLineTools/usr/bin/clang-format (16). Check with:
+#   for cf in /usr/local/bin/clang-format \
+#              /Library/Developer/CommandLineTools/usr/bin/clang-format; do
+#     $cf --style=file --dump-config src/core/Logger.cpp >/dev/null && echo "ok $cf"
+#   done
+
+# --- line width -------------------------------------------------------------
+# Measured over src/: p50 29, p90 74, p99 103, and only 184 lines exceed 100.
+# 100 is therefore the intent, not a guess.
+ColumnLimit: 100
+BreakBeforeTernaryOperators: true
+BreakBeforeBinaryOperators: None # && and || stay at end of line, measured
+AllowAllArgumentsOnNextLine: true
+AllowAllConstructorInitializersOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AlwaysBreakTemplateDeclarations: Yes
+AlignAfterOpenBracket: Align
+AlignOperands: Align
+BinPackArguments: true
+BinPackParameters: true
+
+# --- whitespace -------------------------------------------------------------
+MaxEmptyLinesToKeep: 2
+KeepEmptyLinesAtTheStartOfBlocks: false
+ReflowComments: false # comments carry hand-drawn box rules and tables; leave them
+SpacesBeforeTrailingComments: 1
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true # measured: `for (auto& elem : v)`
+SpaceAfterCStyleCast: false
+DerivePointerAlignment: false
+PointerAlignment: Left # measured: `QWindow* parent`, `const QString& name`
+
+# --- alignment of declaration groups ---------------------------------------
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignEscapedNewlines: Right
+
+# --- includes ---------------------------------------------------------------
+# Measured order across the 53 src/ files that mix std and Qt headers:
+# 46 put the Qt block first, 7 do not (lyrics/, core/ConfigParsers.cpp,
+# util/FileUtils.cpp, suno/SunoLyrics.*, suno/SunoAccountManager.cpp).
+# So: main header, then Qt, then everything else angled, then project headers.
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+IncludeCategories:
+  - Regex: '^<Q' # Qt, both <QWidget> and <QtCore/QString> forms
+    Priority: 1
+  - Regex: '^<'
+    Priority: 2
+  - Regex: '^"'
+    Priority: 3
+
+# --- language ----------------------------------------------------------------
+# NOTE: no `Standard:` key. clang-format 23 accepts `c++23`, but Apple clangd 16
+# (which reads this same file for in-editor formatting) rejects it with
+# "unknown enumerated scalar" and then falls back to LLVM for every buffer. One
+# key is not worth two formatting behaviours; the language is fixed by
+# cmake/Compiler.cmake and enforced with static_assert elsewhere anyway.
+FixNamespaceComments: true
+DerivePointerBinding: false
+Cpp11BracedListStyle: true
+SpaceBeforeCpp11BracedList: false

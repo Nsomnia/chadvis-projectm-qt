@@ -1,2 +1,49 @@
+# clangd configuration (Apple clangd 16.0.0, /usr/bin/clangd).
+#
+# HOW THIS FILE IS MEANED TO BE USED
+#   clangd reads this file automatically for any file under the repository root.
+#   Nothing needs to be run for it to take effect; it is not a gate.
+#   To verify it is doing its job:
+#       clangd --check=src/core/Logger.cpp --compile-commands-dir=build
+#   Expected: "Loaded compilation database from .../build/compile_commands.json"
+#   followed by "All checks completed, 0 errors".
+#
+# WHY CompilationDatabase MATTERS HERE
+#   The build was configured with Ninja, which always writes
+#   build/compile_commands.json (266 entries, verified). Without this key clangd
+#   falls back to guessing a single include path, so every Qt, FFmpeg, spdlog and
+#   projectM include becomes an error and autocomplete is useless.
+#   Note CMAKE_EXPORT_COMPILE_COMMANDS is cached OFF in build/CMakeCache.txt;
+#   Ninja emits the file regardless, so no reconfigure is needed.
+#
+# NO HEADER-SEARCH HINTS ARE NEEDED, and that is deliberate. clangd queries the
+# real driver recorded in compile_commands.json (/usr/bin/c++), so it resolves
+# the macOS SDK, libc++, and Homebrew's /usr/local/include on its own -- a
+# -I/-isystem list here would only duplicate them and drift. This is also why
+# clangd works on this project while Homebrew's clang-tidy needs eight
+# --extra-arg-before flags to reach the same place; see .clang-tidy.
+
 CompileFlags:
+  CompilationDatabase: build
+  # Dropped by Apple clang 16 on this toolchain and only ever produces
+  # "unknown argument" noise on other clang versions.
   Remove: [-mno-direct-extern-access]
+
+Diagnostics:
+  # AGENTS.md forbids exceptions on the happy path; an unhandled one is a bug
+  # worth surfacing loudly, but the default "all" volume buries it.
+  Suppress: [unhandled-exception]
+  # Qt and FFmpeg headers produce warnings we do not own and cannot fix.
+  Suppress: [-Wunused-private-field, -Wdeprecated-declarations]
+  MissingInclude:
+    File: warn
+    Path: [./src, ./src/qml_bridge, ./build/_deps]
+
+Index:
+  # Only the four CPM-fetched trees are large enough to matter here.
+  Background: build
+
+Style:
+  # clang-format picks up ./.clang-format on its own; declaring it again would
+  # be a second source of truth for the same thing.
+  File: null

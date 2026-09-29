@@ -1,5 +1,6 @@
 #include <QtTest>
 #include <cstddef>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -361,6 +362,139 @@ private slots:
         QCOMPARE(firstCalls, 2);
         QCOMPARE(secondCalls, 1);
         QCOMPARE(signal.connectionCount(), std::size_t{1});
+    }
+
+    /// A re-entrant emit must not take ownership of the chain cleanup away from
+    /// the emit that is still running. A bool cannot express that, and it fails
+    /// twice over: the inner emit's `false` sweeps the connection list early,
+    /// and it makes the *outer* emit's later `disconnect` calls erase outright.
+    ///
+    /// Connect order is A, B, C, D and it is load-bearing: A must be first so
+    /// the outer emit starts there, and A is the only slot that re-enters.
+    /// Trace, with the outer emit iterating [A, B, C, D]:
+    ///   A  disconnects B (a deferred mark), emits again, then reads the
+    ///      connection list twice.
+    ///      - after the nested emit returns, before its own later disconnect:
+    ///        correct 4 (B and D are marked, nothing erased), a bool gives 2 --
+    ///        the inner emit had already swept both marks.
+    ///      - after disconnecting C, still inside the outer emit: correct 4 (a
+    ///        mark is not an erasure), a bool gives 1 (erased outright, because
+    ///        its flag was already false).
+    ///   The nested snapshot is [A, C, D] under both, since B is marked by
+    ///   then, so the two observations are about *when* the list is swept and
+    ///   nothing else -- which is why the call counts below come out identical
+    ///   in both models and cannot be what makes this test pass.
+    void nestedEmitDoesNotTakeTheChainCleanupFromTheOuterEmit() {
+        Signal<int> signal;
+        int aCalls = 0;
+        int bCalls = 0;
+        int cCalls = 0;
+        int dCalls = 0;
+        std::size_t countAfterNestedEmit = 0;
+        std::size_t countAfterOuterDisconnect = 0;
+        bool inNestedEmit = false;
+        Signal<int>::SlotId bId{0};
+        Signal<int>::SlotId cId{0};
+        Signal<int>::SlotId dId{0};
+
+        signal.connect([&](int) {
+            ++aCalls;
+            if (!inNestedEmit) {
+                signal.disconnect(bId);
+                inNestedEmit = true;
+                signal.emitSignal(-1);
+                inNestedEmit = false;
+                countAfterNestedEmit = signal.connectionCount();
+                signal.disconnect(cId);
+                countAfterOuterDisconnect = signal.connectionCount();
+            }
+        });
+        bId = signal.connect([&bCalls](int) { ++bCalls; });
+        cId = signal.connect([&](int) {
+            ++cCalls;
+            if (inNestedEmit) {
+                // A disconnect issued from inside the nested emit must still be
+                // a mark, not an erase.
+                signal.disconnect(dId);
+            }
+        });
+        dId = signal.connect([&dCalls](int) { ++dCalls; });
+
+        signal.emitSignal(1);
+
+        // The point of the test: nothing was erased while the outer emit was
+        // still iterating, neither by the inner emit nor by its own later
+        // disconnect.
+        QCOMPARE(countAfterNestedEmit, std::size_t{4});
+        QCOMPARE(countAfterOuterDisconnect, std::size_t{4});
+
+        // The sweep happened exactly once, at the outermost leave: B, C and D
+        // were all marked, and all three are gone now.
+        QCOMPARE(signal.connectionCount(), std::size_t{1});
+
+        // Snapshot semantics, unchanged: B is excluded from the nested emit
+        // (already marked when that snapshot was taken) and B, C and D all ran
+        // for the outer emit.
+        QCOMPARE(aCalls, 2);
+        QCOMPARE(bCalls, 1);
+        QCOMPARE(cCalls, 2);
+        QCOMPARE(dCalls, 2);
+    }
+
+    /// A throwing subscriber must not strand the chain. With the depth counter
+    /// reached from a plain `emitting_ = false` at the end of `emitSignal`, the
+    /// throw skips it, and every later `disconnect` takes the mark-only path for
+    /// the rest of the Signal's life: the dead connection is still counted, and
+    /// is still called on every subsequent emit.
+    ///
+    /// `good` is connected first so that it runs *before* the throw; the
+    /// subject under test is the stranded counter, not the abandoned tail of
+    /// the snapshot.
+    void aThrowingSubscriberDoesNotStrandTheEmitChain() {
+        Signal<int> signal;
+        int goodCalls = 0;
+        signal.connect([&goodCalls](int) { ++goodCalls; });
+        const Signal<int>::SlotId throwerId =
+                signal.connect([](int) { throw std::runtime_error("boom"); });
+
+        try {
+            signal.emitSignal(1);
+            QFAIL("the subscriber's exception did not propagate out of emitSignal");
+        } catch (const std::runtime_error&) {
+            // Expected: emitSignal is not noexcept, so it propagates.
+        }
+        QCOMPARE(goodCalls, 1);
+
+        // The chain unwound, so this erases outright instead of only marking.
+        signal.disconnect(throwerId);
+        QCOMPARE(signal.connectionCount(), std::size_t{1});
+
+        // And the dead subscriber really is gone: this emit does not throw.
+        signal.emitSignal(2);
+        QCOMPARE(goodCalls, 2);
+    }
+
+    /// The fan-out loop picks its branch on `i + 1 == n`, so it is exercised
+    /// above the handful of subscribers the other tests use.
+    void everySubscriberAmongManyStillSeesTheFullValue() {
+        constexpr int kSubscribers = 12;
+        Probe::resetCounts();
+
+        Signal<Probe> signal;
+        std::vector<int> seen;
+        for (int i = 0; i < kSubscribers; ++i) {
+            signal.connect([&seen](Probe probe) { seen.push_back(probe.value); });
+        }
+
+        Probe payload = Probe(99);
+        signal.emitSignal(std::move(payload));
+
+        QCOMPARE(seen.size(), std::size_t{kSubscribers});
+        for (const int value : seen) {
+            QCOMPARE(value, 99);
+        }
+        QCOMPARE(Probe::copies, kSubscribers - 1);
+        QCOMPARE(payload.value, Probe::kMovedFrom);
     }
 
     void zeroArgumentSignalStillWorks() {

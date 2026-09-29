@@ -1,8 +1,5 @@
 #include "VisualizerWindow.hpp"
-#include <QGuiApplication>
 #include <QKeyEvent>
-#include <QMouseEvent>
-#include <QScreen>
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 
@@ -204,21 +201,6 @@ void VisualizerWindow::feedAudio(const f32*,
     // This method exists for backward compatibility but does nothing.
 }
 
-void VisualizerWindow::toggleFullscreen() {
-    if (fullscreen_) {
-        showNormal();
-        setGeometry(normalGeometry_);
-        fullscreen_ = false;
-    } else {
-        normalGeometry_ = geometry();
-        auto* screen = QGuiApplication::primaryScreen();
-        if (screen)
-            setGeometry(screen->geometry());
-        showFullScreen();
-        fullscreen_ = true;
-    }
-}
-
 void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
     const auto& keys = CONFIG.keyboard();
     QString key = event->text().toUpper();
@@ -226,9 +208,7 @@ void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
         key = QKeySequence(event->key()).toString();
     std::string keyStr = key.toStdString();
 
-    if (keyStr == keys.toggleFullscreen || event->key() == Qt::Key_F11)
-        toggleFullscreen();
-    else if (keyStr == keys.nextPreset || event->key() == Qt::Key_Right)
+    if (keyStr == keys.nextPreset || event->key() == Qt::Key_Right)
         nextPreset();
     else if (keyStr == keys.prevPreset || event->key() == Qt::Key_Left)
         previousPreset();
@@ -236,14 +216,6 @@ void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
         randomPreset();
     else if (event->key() == Qt::Key_L)
         lockPreset(!renderer_->projectM().isPresetLocked());
-    else if (event->key() == Qt::Key_Escape && fullscreen_)
-        toggleFullscreen();
-}
-
-void VisualizerWindow::mouseDoubleClickEvent(QMouseEvent* event) {
-    if (event->button() == Qt::LeftButton)
-        toggleFullscreen();
-    QWindow::mouseDoubleClickEvent(event);
 }
 
 } // namespace vc

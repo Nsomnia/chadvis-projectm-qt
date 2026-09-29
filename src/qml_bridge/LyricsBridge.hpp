@@ -65,12 +65,22 @@ public slots:
     Q_INVOKABLE void exportToSrt(const QString& path);
     Q_INVOKABLE void exportToLrc(const QString& path);
     Q_INVOKABLE QVariantMap getLine(int index) const;
+    /// The `count` lines strictly after the cached currentLineIndex_, ascending.
+    ///
+    /// `count` is an int because QML speaks int here, so it is signed and can
+    /// be negative or near INT_MAX; a count <= 0 yields an empty list. The
+    /// window is measured as a distance to the last line, so an oversized count
+    /// returns the rest of the song rather than overflowing. With no active
+    /// line the window starts at line 0 -- unlike getContextLines, which anchors
+    /// there and includes it as the current line. See the comment in the .cpp.
     Q_INVOKABLE QVariantList getUpcomingLines(int count) const;
     /// Window of [center-before, center+after] inclusive, ascending.
     ///
-    /// Deliberately NOT a thin delegate to LyricsSync::getContextLines: this
-    /// anchors on the cached currentLineIndex_ and returns line 0 when there is
-    /// no active line, while LyricsSync returns nothing. See the comment in the
+    /// `before`/`after` are ints for the same reason `count` is, and each is
+    /// clamped to zero independently; a window negative on both sides is refused
+    /// outright. Deliberately NOT a thin delegate to LyricsSync::getContextLines:
+    /// this anchors on the cached currentLineIndex_ and returns line 0 when there
+    /// is no active line, while LyricsSync returns nothing. See the comment in the
     /// .cpp; the difference is pinned by a test, and unifying it changes what
     /// QML receives.
     Q_INVOKABLE QVariantList getContextLines(int before, int after) const;

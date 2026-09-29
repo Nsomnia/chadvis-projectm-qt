@@ -43,7 +43,60 @@ private:
     std::vector<Connection> slots_;
     SlotId nextId_{0};
     mutable std::mutex mutex_;
-    bool emitting_{false};
+    /// Depth of the current emit chain. A slot may emit this same signal --
+    /// layered bridges make that easy -- so `emitSignal` is re-entrant, and only
+    /// the outermost emit may touch `slots_`. A plain bool was wrong here: the
+    /// inner emit's `false` cleared the flag the outer one still depended on,
+    /// which both ran the sweep early and routed the outer emit's remaining
+    /// `disconnect` calls straight to `erase_if` on the live connection list.
+    std::size_t emitDepth_{0};
+    /// Set only when a mark actually changed a connection, so the outermost
+    /// emit's sweep is skipped on the overwhelmingly common path where nothing
+    /// was disconnected. Cleared by that sweep, and never anywhere else, so it
+    /// cannot be lost before the emit chain that set it unwinds.
+    bool cleanupPending_{false};
+    
+    /// Leaves the emit chain: only the emit whose decrement lands on zero owns
+    /// the sweep, and a subscriber can throw, so this runs from a destructor
+    /// (`EmitGuard`) where it is the only code that gets to run. A depth
+    /// stranded above zero would disable the deferred cleanup for the rest of
+    /// the Signal's life: every later `disconnect` would take the mark-only
+    /// path, so dead connections would be called forever and never swept.
+    ///
+    /// `noexcept` is sound because the mutex is never held across a slot
+    /// invocation -- `connect`, `disconnect` and `disconnectAll` only touch
+    /// `slots_` -- so the lock here cannot deadlock, and `std::erase_if` on a
+    /// vector of `std::function` cannot throw.
+    void leaveEmit() noexcept {
+        std::lock_guard lock(mutex_);
+        if (--emitDepth_ > 0) {
+            // An outer emit is still iterating its own snapshot; it owns the
+            // sweep, and the flag stays set for it.
+            return;
+        }
+        if (cleanupPending_) {
+            // Cleanup inactive connections
+            std::erase_if(slots_, [](const Connection& c) { return !c.active; });
+            cleanupPending_ = false;
+        }
+    }
+    
+    /// RAII owner of one level of the emit chain. The destructor is the only
+    /// thing that can run when a subscriber throws, so the decrement lives there
+    /// rather than at the end of `emitSignal`.
+    class EmitGuard {
+    public:
+        explicit EmitGuard(Signal& owner) noexcept : owner_(&owner) {}
+        ~EmitGuard() { owner_->leaveEmit(); }
+        
+        EmitGuard(const EmitGuard&) = delete;
+        EmitGuard& operator=(const EmitGuard&) = delete;
+        EmitGuard(EmitGuard&&) = delete;
+        EmitGuard& operator=(EmitGuard&&) = delete;
+    
+    private:
+        Signal* owner_;
+    };
     
 public:
     Signal() = default;
@@ -66,23 +119,33 @@ public:
     // Disconnect by ID
     void disconnect(SlotId id) {
         std::lock_guard lock(mutex_);
-        if (emitting_) {
-            // Mark as inactive, cleanup later
-            for (auto& conn : slots_) {
-                if (conn.id == id) conn.active = false;
-            }
-        } else {
+        if (emitDepth_ == 0) {
             std::erase_if(slots_, [id](const Connection& c) { return c.id == id; });
+        } else {
+            // Mark as inactive, cleanup later. The flag records that something
+            // actually changed, so an outer emit that never has anything to
+            // sweep skips the sweep.
+            for (auto& conn : slots_) {
+                if (conn.id == id && conn.active) {
+                    conn.active = false;
+                    cleanupPending_ = true;
+                }
+            }
         }
     }
     
     // Disconnect all
     void disconnectAll() {
         std::lock_guard lock(mutex_);
-        if (emitting_) {
-            for (auto& conn : slots_) conn.active = false;
-        } else {
+        if (emitDepth_ == 0) {
             slots_.clear();
+        } else {
+            for (auto& conn : slots_) {
+                if (conn.active) {
+                    conn.active = false;
+                    cleanupPending_ = true;
+                }
+            }
         }
     }
     
@@ -136,14 +199,19 @@ public:
         std::vector<Slot> slotsToCall;
         {
             std::lock_guard lock(mutex_);
-            emitting_ = true;
             slotsToCall.reserve(slots_.size());
             for (const auto& conn : slots_) {
                 if (conn.active) {
                     slotsToCall.push_back(conn.callback);
                 }
             }
+            // Entered last, inside the same critical section: if building the
+            // snapshot throws, the depth is left untouched, and nothing between
+            // this increment and the guard can throw either -- so the guard
+            // below owns the decrement unconditionally.
+            ++emitDepth_;
         }
+        const EmitGuard guard{*this};
 
         for (std::size_t i = 0, n = slotsToCall.size(); i < n; ++i) {
             if (i + 1 == n) {
@@ -151,13 +219,6 @@ public:
             } else {
                 slotsToCall[i](args...);
             }
-        }
-
-        {
-            std::lock_guard lock(mutex_);
-            emitting_ = false;
-            // Cleanup inactive connections
-            std::erase_if(slots_, [](const Connection& c) { return !c.active; });
         }
     }
     

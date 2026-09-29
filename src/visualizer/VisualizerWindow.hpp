@@ -6,6 +6,26 @@
  * lifecycle, OpenGL context creation, input events, and timers. It delegates
  * the actual rendering to VisualizerRenderer.
  *
+ * @section Embedding
+ * This window is never a top-level window.  `Application` constructs it with
+ * no parent and hands the pointer to the QML `WindowContainer` in
+ * `src/qml/views/VideoView.qml`; Qt's container then parents the embedded
+ * QWindow to the QQuickWindow (`QQuickWindowContainer::updatePolish` calls
+ * `QWindow::setParent`) and re-lays it out from the item rect on every
+ * polish.  Two consequences have already produced dead code, so do not add
+ * more without re-reading this:
+ *
+ * - `showFullScreen()` is inert on a container child, and the nav rail,
+ *   header, footer, overlay and karaoke layers are QML siblings in the same
+ *   scene that would stay on screen regardless.  Fullscreen is therefore
+ *   owned by the QML `ApplicationWindow` (`src/qml/main.qml`) alone.
+ * - A container child is not the activated window, so `keyPressEvent` is not
+ *   a dependable input path.  The preset bindings it still carries are kept
+ *   only because `R` (random preset) and `L` (lock preset) have no QML
+ *   equivalent, and unprovable unreachability is not a reason to drop a
+ *   capability.  Do not treat them as the primary binding path — `main.qml`
+ *   owns the QML-side `Shortcut`s.
+ *
  * @section Dependencies
  * - Qt GUI (QWindow, QOpenGLContext)
  * - VisualizerRenderer
@@ -66,14 +86,10 @@ public:
 	[[nodiscard]] f32 actualFps() const { return actualFps_; }
 	void feedAudio(const f32* data, u32 frames, u32 channels, u32 sampleRate);
 
-public slots:
-    void toggleFullscreen();
-
 protected:
     void exposeEvent(QExposeEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
-    void mouseDoubleClickEvent(QMouseEvent* event) override;
 
 private slots:
     void render();
@@ -103,8 +119,6 @@ private:
     // exposed (for example, the Video shortcut navigates and starts in the
     // same QML turn).  Keep the request until the GL context is initialized.
     bool recordingRequested_{false};
-    bool fullscreen_{false};
-    QRect normalGeometry_;
 };
 
 } // namespace vc

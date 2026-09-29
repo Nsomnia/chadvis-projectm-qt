@@ -2,8 +2,10 @@
 
 #include "VideoRecorderFFmpeg.hpp"
 #include <libavcodec/version.h>
+#include <libavutil/mathematics.h>
 #include <libavutil/opt.h>
 #include "core/Logger.hpp"
+#include <algorithm>
 #include <filesystem>
 #include <fmt/core.h>
 #ifdef _WIN32
@@ -199,7 +201,13 @@ void VideoRecorderFFmpeg::cleanup() {
 
     videoStream_ = nullptr;
     audioStream_ = nullptr;
-    videoFrameCount_ = 0;
+    haveVideoOrigin_ = false;
+    videoOriginUs_ = 0;
+    havePreviousCaptureUs_ = false;
+    previousCaptureUs_ = 0;
+    lastVideoStepUs_ = 0;
+    lastVideoPts_ = -1;
+    warnedMissingCaptureTime_ = false;
     audioFrameCount_ = 0;
 
     if (fileLockFd_ >= 0) {
@@ -244,7 +252,7 @@ bool VideoRecorderFFmpeg::encodeVideo(const GrabbedFrame& frame,
     videoFrame_->data,
     videoFrame_->linesize);
 
-  videoFrame_->pts = videoFrameCount_++;
+  videoFrame_->pts = presentationTimestampFor(frame.timestamp);
 
   AVFrame* encodeFrame = videoFrame_.get();
 
@@ -259,6 +267,83 @@ bool VideoRecorderFFmpeg::encodeVideo(const GrabbedFrame& frame,
   }
 
   return encodeVideoFrame(encodeFrame, bytesWritten);
+}
+
+i64 VideoRecorderFFmpeg::presentationTimestampFor(i64 captureTimestampUs) {
+    // GrabbedFrame::timestamp is microseconds; the codec time base is
+    // {1, video.fps}, so this is the elapsed wall time expressed in frame
+    // ticks. av_rescale_q is the library's own nearest-integer rescale, which
+    // is what we want: truncating would bias every frame one tick early and
+    // accumulate.
+    static constexpr AVRational microsecondTimeBase{1, 1000000};
+
+    // A non-positive capture time carries no elapsed-time information at all --
+    // GrabbedFrame defaults the field to 0 and VideoRecorder::submitVideoFrame
+    // forwards its caller's argument without validating it, so 0 really does
+    // arrive (the pre-existing frameSubmissionsReachEncoder test sends 0 for
+    // its first frame). It is not a plausible steady_clock reading: a monotonic
+    // clock since boot is never exactly 0 microseconds in a running process.
+    if (captureTimestampUs <= 0) {
+        if (!warnedMissingCaptureTime_) {
+            warnedMissingCaptureTime_ = true;
+            LOG_WARN("Encoder received a frame with no capture timestamp; "
+                     "stepping the timeline by the last observed frame "
+                     "interval until a timestamped frame arrives");
+        }
+        // Deliberately not a frame counter. It advances by the most recently
+        // observed real capture interval, and the very next timestamped frame
+        // is re-anchored absolutely against videoOriginUs_ rather than
+        // incrementally, so an extrapolation error can never accumulate. With
+        // no interval observed yet there is nothing to extrapolate from, so
+        // this collapses to one tick -- the only available answer when the
+        // producer supplied no timing information whatsoever.
+        const i64 stepTicks =
+            av_rescale_q(lastVideoStepUs_, microsecondTimeBase,
+                         videoCodecCtx_->time_base);
+        lastVideoPts_ += std::max<i64>(stepTicks, 1);
+        return lastVideoPts_;
+    }
+
+    if (!haveVideoOrigin_) {
+        // Normalise: the first real capture time becomes PTS 0 rather than an
+        // arbitrary offset. A microsecond-since-boot value as a start time
+        // lands in the container's edit list / first cluster timestamp, which
+        // inflates the reported duration by the offset and makes seeking
+        // behave as if the file started later than it does. Offset 0 keeps the
+        // header small, keeps the fragment/AVIO story irrelevant (the muxer
+        // writes a plain interleaved file), and makes the file's duration equal
+        // the wall time it actually spans.
+        videoOriginUs_ = captureTimestampUs;
+        haveVideoOrigin_ = true;
+        lastVideoPts_ = -1;
+    }
+
+    if (havePreviousCaptureUs_) {
+        const i64 stepUs = captureTimestampUs - previousCaptureUs_;
+        // A backwards clock tick must not poison the learned interval that the
+        // un-timestamped fallback above relies on.
+        if (stepUs > 0) {
+            lastVideoStepUs_ = stepUs;
+        }
+    }
+    previousCaptureUs_ = captureTimestampUs;
+    havePreviousCaptureUs_ = true;
+
+    const i64 elapsedUs = captureTimestampUs - videoOriginUs_;
+    const i64 ticks = av_rescale_q(elapsedUs, microsecondTimeBase,
+                                   videoCodecCtx_->time_base);
+
+    // Strictly increasing, always. Two capture instants closer together than
+    // one nominal frame interval rescale to the same tick, and a clock that
+    // ticked backwards (or a producer whose origin moved) rescales to an
+    // earlier one; libavcodec rejects a non-increasing pts, and the muxer
+    // would emit a stream it cannot seek. The floor is applied to the
+    // *rescaled* value, so a capture rate above the nominal record rate is
+    // clamped to the nominal rate instead of corrupting the timeline. That
+    // case is the fps mismatch VisualizerRenderer::startRecording already
+    // warns about, and it is unchanged from the old counter's behaviour.
+    lastVideoPts_ = std::max(ticks, lastVideoPts_ + 1);
+    return lastVideoPts_;
 }
 
 bool VideoRecorderFFmpeg::encodeAudio(std::vector<f32>& buffer,
@@ -329,6 +414,15 @@ void VideoRecorderFFmpeg::flush(u64& bytesWritten) {
 
 Result<void> VideoRecorderFFmpeg::initVideoStream(
   const EncoderSettings& settings) {
+  if (settings.video.fps == 0) {
+    // {1, 0} is not a time base: every rescale against it divides by zero,
+    // both the per-frame capture-time conversion and the packet rescale in
+    // writePacket. ConfigParsers clamps the configured value into range, so
+    // this only guards a directly-constructed EncoderSettings -- but it is a
+    // hard arithmetic failure, not a degraded result, so it fails closed.
+    return Result<void>::err("Invalid video frame rate: 0");
+  }
+
   const AVCodec* codec =
     avcodec_find_encoder_by_name(settings.video.codecName().c_str());
   if (!codec) {

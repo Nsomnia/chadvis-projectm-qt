@@ -512,18 +512,23 @@ ApplicationWindow {
     // DECISION (do not re-litigate without reading this):
     //
     //  * Fullscreen is the QML ApplicationWindow, NOT the native projectM
-    //    QWindow.  VisualizerWindow::toggleFullscreen() exists and looks like
-    //    the obvious thing to call, but VisualizerWindow is never shown as a
-    //    top-level window (no C++ path calls show() on it) — it lives only as
-    //    a QQuickWindowContainer child, so its QWindow::showFullScreen() is
-    //    inert and its keyPressEvent can never see a key, because a container
-    //    child is never the activated window.  Its showFullScreen() would also
-    //    leave the nav rail, header, footer, overlay and karaoke layers on
-    //    screen, because those are QML siblings in this scene.  That is not
-    //    fullscreen, that is a window that lied.
-    //    (Its mouseDoubleClickEvent *does* still fire, and toggles that inert
-    //    native state.  Harmless — the container re-lays the child out — and
-    //    precisely why the native flag is not the source of truth here.)
+    //    QWindow.  VisualizerWindow is never a top-level window (no C++ path
+    //    calls show() on it) — it lives only as a QQuickWindowContainer child,
+    //    so a QWindow::showFullScreen() request on it is inert, and it is never
+    //    the activated window so its keyPressEvent can never see a key.  It
+    //    would also leave the nav rail, header, footer, overlay and karaoke
+    //    layers on screen, because those are QML siblings in this scene.  That
+    //    is not fullscreen, that is a window that lied.
+    //
+    //    The C++ half of that (VisualizerWindow::toggleFullscreen, its
+    //    fullscreen_ / normalGeometry_ state, and the left-double-click that
+    //    drove it) has since been DELETED as dead: the double-click was the one
+    //    path that really did fire, and it was not harmless — it latched
+    //    fullscreen_ = true forever and fought the container's layout sync while
+    //    the QML chrome stayed on screen anyway.  This comment is the only
+    //    record of why; the class-level @section Embedding in
+    //    VisualizerWindow.hpp is the other half.  Note the double-click gesture
+    //    is therefore gone — F / F11 is the supported way in.
     //
     //  * F and F11 are two bindings for the SAME action, not a primary and a
     //    fallback.  F is the user-configurable key (KeyboardConfig
@@ -531,9 +536,8 @@ ApplicationWindow {
     //    because a bare letter is typeable.  F11 is unconditional, because a
     //    text field can never consume a function key as text — that is what
     //    makes the shortcut still work when the user is typing.  Neither can
-    //    double-fire: they are distinct key events, and the native window's
-    //    own F/F11 branch in VisualizerWindow::keyPressEvent is unreachable
-    //    while it is embedded (see above).
+    //    double-fire: they are distinct key events, and there is no longer a
+    //    native F/F11 branch to collide with (see above).
     //
     //  * The "reveal the Video page" step is kept, but as a precondition of
     //    the action rather than a leftover: fullscreen is defined as "the
