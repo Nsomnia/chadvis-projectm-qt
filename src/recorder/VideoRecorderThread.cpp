@@ -16,9 +16,13 @@ VideoRecorderThread::~VideoRecorderThread() {
     stop();
 }
 
-void VideoRecorderThread::start() {
+void VideoRecorderThread::start(std::string_view assSubtitle) {
     frameGrabber_.start();
-    if (auto res = ffmpeg_.init(settings_); !res) {
+    // Synchronous, on the caller's thread, and the borrowed view dies with this
+    // statement. Everything the encoding thread will later read about the
+    // subtitle track is ffmpeg_'s own copy, written here and published by the
+    // JThread construction further down.
+    if (auto res = ffmpeg_.init(settings_, assSubtitle); !res) {
         LOG_ERROR("Failed to initialize FFmpeg: {}", res.error().message);
         parent_.error.emitSignal(res.error().message);
         return;
@@ -33,6 +37,9 @@ void VideoRecorderThread::start() {
         stats_.currentFile = actualOutputPath_;
     }
     
+    // The capture is `this` and nothing else. A string_view must never appear
+    // here: this lambda outlives the caller's buffer by construction, and the
+    // document has already been copied into ffmpeg_ anyway.
     thread_ = JThread([this](StopToken st) { threadLoop(st); });
     LOG_INFO("Recording thread started: {}", settings_.outputPath.string());
 }

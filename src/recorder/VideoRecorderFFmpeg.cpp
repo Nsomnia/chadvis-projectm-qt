@@ -1,12 +1,19 @@
 // Version: 2.1.0 - 2026-04-14 14:25:00 MDT
 
 #include "VideoRecorderFFmpeg.hpp"
+#include <libavcodec/defs.h>
 #include <libavcodec/version.h>
 #include <libavutil/mathematics.h>
 #include <libavutil/opt.h>
 #include "core/Logger.hpp"
+#include "lyrics/LyricsData.hpp"
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
+#include <limits>
+#include <string>
+#include <vector>
 #include <fmt/core.h>
 #ifdef _WIN32
 #include <io.h>
@@ -81,13 +88,96 @@ void closeExclusive(int fd) {
 
 } // namespace
 
+// ── Subtitle stream state ────────────────────────────────────────────────────
+//
+// Everything the karaoke track needs, and nothing the caller has to keep alive.
+// Two lifetimes, and both are ours:
+//
+//   * the script -- once avcodec_open2 has run, the *only* owner of the header
+//     bytes is the codec: ff_ass_encoder's ass_encode_init av_malloc's an
+//     extradata and memcpy's `subtitle_header` into it. The copy in
+//     initSubtitleStream's local is dead on the next line, so the caller's
+//     buffer has to outlive that call and nothing else.
+//   * `events`  -- the cue bodies, held for the whole recording because a cue
+//     at 3:12 is written when the video clock reaches 3:12. Each is copied into
+//     its packet by av_strlcpy inside avcodec_encode_subtitle, so the vector
+//     owns them outright and hands out no reference to a caller.
+//
+// `stream` is an AVStream owned by formatCtx_, not by us; it is dereferenced
+// only between init and cleanup.
+//
+// That is the buffer-lifetime argument for this design, and it is why no AVIO
+// context appears anywhere below. An `avio_alloc_context` read callback over an
+// in-memory buffer is the *demuxer* idiom: it lets a muxer re-read a source it
+// has already been handed. Muxing a subtitle track needs no such thing -- the
+// cues are discrete packets, and the only way a use-after-free would arise here
+// is a caller's buffer that outlived init, which the copying removes.
+struct VideoRecorderFFmpeg::SubtitleTrack {
+  AVCodecContextPtr codecCtx;
+  AVStream* stream{nullptr};
+  std::vector<LyricsExport::AssEvent> events;
+  /// Index of the next cue to write. Advances even when a cue cannot be
+  /// written, so one unencodable line cannot spin the flush loop forever.
+  std::size_t next{0};
+};
+
+namespace {
+
+/// The subtitle stream's time base: milliseconds.
+///
+/// This is the container's own resolution -- Matroska's Timestamp is 1 ms, and
+/// its muxer derives `time_scale` from `st->time_base` and warns for anything
+/// that is neither 1/1000 nor 1/1000000000. It is also exact for ASS, whose
+/// timestamps are centiseconds, so no rescale rounding can move a cue.
+/// AV_TIME_BASE_Q is the encoder-side base ffmpeg's own CLI uses for subtitle
+/// encoders, and is required: ff_encode_preinit rejects an unset encoder time
+/// base outright.
+constexpr AVRational kSubtitleTimeBase{1, 1000};
+
+/// ms per ASS centisecond.
+constexpr std::int64_t kMillisecondsPerCentisecond = 10;
+
+/// ASS timestamps are centiseconds; the subtitle stream's time base is
+/// milliseconds, so the conversion is a multiplication by ten.
+///
+/// It is a named function rather than a bare `*` at each of the two call sites
+/// because the original bug here was exactly this and nothing caught it for two
+/// rounds: `cs / kMillisecondsPerCentisecond` is a plausible-looking line, it
+/// compiles, it produces plausible-looking numbers, and it is wrong by a factor
+/// of 100. A two-second cue became a 20 ms cue, and a three-minute song's whole
+/// lyric sheet collapsed into its first 1.8 seconds. Only a test asserting the
+/// *exact* millisecond value could see it -- an assertion of the form "the
+/// duration is non-zero" or "roughly 2 s" would have passed throughout.
+constexpr std::int64_t toMilliseconds(const std::int64_t centiseconds) {
+  return centiseconds * kMillisecondsPerCentisecond;
+}
+
+/// The `ass` encoder is `ff_ass_encoder`, gated on libavcodec's
+/// CONFIG_ASS_ENCODER. `ssa` is the same codec under its other name -- both map
+/// to AV_CODEC_ID_ASS with one shared body -- so the fallback is free.
+///
+/// A passthrough text encoder: ass_encode_frame is `av_strlcpy(buf,
+/// rects[0]->ass, bufsize)`. It is *not* libass, and nothing in libavcodec
+/// links libass -- `--enable-libass` on the ffmpeg CLI gates the `ass`/
+/// `subtitles` *filters* (burn-in), not this. The dependency set does not
+/// change.
+const AVCodec* findAssEncoder() {
+  if (const AVCodec* codec = avcodec_find_encoder_by_name("ass")) {
+    return codec;
+  }
+  return avcodec_find_encoder_by_name("ssa");
+}
+
+} // namespace
+
 VideoRecorderFFmpeg::VideoRecorderFFmpeg() = default;
 
 VideoRecorderFFmpeg::~VideoRecorderFFmpeg() {
   cleanup();
 }
 
-Result<void> VideoRecorderFFmpeg::init(const EncoderSettings& settings) {
+Result<void> VideoRecorderFFmpeg::init(const EncoderSettings& settings,
+                                       std::string_view assSubtitle) {
   int ret;
 
   std::filesystem::path originalPath(settings.outputPath);
@@ -155,6 +245,11 @@ Result<void> VideoRecorderFFmpeg::init(const EncoderSettings& settings) {
     return result;
   }
 
+  // Before avio_open and avformat_write_header, because a stream only exists to
+  // the muxer if it was declared before the header went out. Returns void on
+  // purpose: see the declaration -- no subtitle outcome may fail a recording.
+  initSubtitleStream(assSubtitle);
+
   if (!(formatCtx_->oformat->flags & AVFMT_NOFILE)) {
     ret = avio_open(
       &formatCtx_->pb, currentOutputPath_.c_str(), AVIO_FLAG_WRITE);
@@ -171,6 +266,9 @@ Result<void> VideoRecorderFFmpeg::init(const EncoderSettings& settings) {
   if (ret < 0) {
     return Result<void>::err("Failed to write header: " + ffmpegError(ret));
   }
+  // The gate cleanup() uses before writing any late subtitle packet. Set here and
+  // nowhere else, so "the muxer will accept a packet" has exactly one answer.
+  headerWritten_ = true;
 
   packet_.reset(av_packet_alloc());
   if (!packet_) {
@@ -193,6 +291,31 @@ void VideoRecorderFFmpeg::cleanup() {
     swrCtx_.reset();
     videoCodecCtx_.reset();
     audioCodecCtx_.reset();
+
+    // Any cue the video clock never reached. Written here rather than in flush()
+    // because cleanup() is the only guaranteed-terminal path -- the destructor
+    // calls it, and VideoRecorderThread::stop() reaches it even if the loop
+    // exited on an error -- so this is where "the recording is over" can be
+    // stated exactly once. Idempotent: subtitle_->next only moves forward.
+    //
+    // Gated on the same two facts av_write_trailer is gated on, and it needs
+    // both: an init that failed at avio_open leaves formatCtx_ with no pb, and
+    // handing that to av_interleaved_write_frame is a null deref; an init that
+    // failed at avformat_write_header leaves a pb but no header, and writing
+    // packets into that would produce a file that is not merely unfinished but
+    // structurally invalid. subtitle_->codecCtx must outlive this, which is why
+    // the reset below is not up with the other codec contexts.
+    if (subtitle_ && headerWritten_ && formatCtx_ && formatCtx_->pb) {
+        u64 subtitleBytes = 0;
+        writeSubtitlePacketsUpTo(std::numeric_limits<std::int64_t>::max(),
+                                 subtitleBytes);
+    }
+
+    // Releases the subtitle codec context and the cue bodies. The AVStream is
+    // not ours; it dies with formatCtx_ below, and nothing touches
+    // subtitle_->stream between here and then.
+    subtitle_.reset();
+    headerWritten_ = false;
 
     if (formatCtx_ && formatCtx_->pb) {
         av_write_trailer(formatCtx_.get());
@@ -396,7 +519,8 @@ void VideoRecorderFFmpeg::flush(u64& bytesWritten) {
                     avcodec_receive_packet(videoCodecCtx_.get(), packet_.get());
             if (ret < 0)
                 break;
-            writePacket(packet_.get(), videoStream_, bytesWritten);
+            writePacket(packet_.get(), videoStream_, videoCodecCtx_->time_base,
+                        bytesWritten);
         }
     }
 
@@ -407,7 +531,8 @@ void VideoRecorderFFmpeg::flush(u64& bytesWritten) {
                     avcodec_receive_packet(audioCodecCtx_.get(), packet_.get());
             if (ret < 0)
                 break;
-            writePacket(packet_.get(), audioStream_, bytesWritten);
+            writePacket(packet_.get(), audioStream_, audioCodecCtx_->time_base,
+                        bytesWritten);
         }
     }
 }
@@ -606,7 +731,8 @@ bool VideoRecorderFFmpeg::encodeVideoFrame(AVFrame* frame, u64& bytesWritten) {
         if (ret < 0)
             return false;
 
-        writePacket(packet_.get(), videoStream_, bytesWritten);
+        writePacket(packet_.get(), videoStream_, videoCodecCtx_->time_base,
+                    bytesWritten);
     }
     return true;
 }
@@ -623,18 +749,30 @@ bool VideoRecorderFFmpeg::encodeAudioFrame(AVFrame* frame, u64& bytesWritten) {
         if (ret < 0)
             return false;
 
-        writePacket(packet_.get(), audioStream_, bytesWritten);
+        writePacket(packet_.get(), audioStream_, audioCodecCtx_->time_base,
+                    bytesWritten);
     }
     return true;
 }
 
 bool VideoRecorderFFmpeg::writePacket(AVPacket* packet,
   AVStream* stream,
+  AVRational sourceTimeBase,
   u64& bytesWritten) {
-  av_packet_rescale_ts(packet,
-    stream == videoStream_ ? videoCodecCtx_->time_base
-    : audioCodecCtx_->time_base,
-    stream->time_base);
+  if (stream == videoStream_ && subtitle_) {
+    // Interleave on the video clock: emit every cue that begins at or before
+    // this frame. Writing the whole lyric sheet up front would be simpler and
+    // wrong -- av_interleaved_write_frame would have to hold every one of those
+    // packets in its interleave buffer until the video caught up, and past its
+    // 10000-packet default it returns EAGAIN, which is a silently dropped cue.
+    // Doing it here keeps the buffer at a couple of packets, and it is the same
+    // order a player sees either way: the cue's own pts is in the packet.
+    const std::int64_t frameMilliseconds =
+        av_rescale_q(packet->pts, sourceTimeBase, kSubtitleTimeBase);
+    writeSubtitlePacketsUpTo(frameMilliseconds, bytesWritten);
+  }
+
+  av_packet_rescale_ts(packet, sourceTimeBase, stream->time_base);
   packet->stream_index = stream->index;
 
   if (av_interleaved_write_frame(formatCtx_.get(), packet) >= 0) {
@@ -642,6 +780,220 @@ bool VideoRecorderFFmpeg::writePacket(AVPacket* packet,
     return true;
   }
   return false;
+}
+
+void VideoRecorderFFmpeg::writeSubtitlePacketsUpTo(std::int64_t millisecond,
+                                                   u64& bytesWritten) {
+  if (!subtitle_) {
+    return;
+  }
+  while (subtitle_->next < subtitle_->events.size()) {
+    const auto& event = subtitle_->events[subtitle_->next];
+    // Same centiseconds-to-milliseconds conversion as writeSubtitlePacket, and
+    // it has to be the same one: when this divided while that one divided the
+    // two agreed with each other and disagreed with the file, so every cue was
+    // flushed far too early and then written with a timestamp the video clock
+    // had already passed.
+    if (toMilliseconds(event.startCentiseconds) > millisecond) {
+      break;
+    }
+    writeSubtitlePacket(bytesWritten);
+  }
+}
+
+bool VideoRecorderFFmpeg::writeSubtitlePacket(u64& bytesWritten) {
+  if (!subtitle_ || subtitle_->next >= subtitle_->events.size()) {
+    return false;
+  }
+  // Advance first. A cue that cannot be written is still consumed: leaving it in
+  // place would make writeSubtitlePacketsUpTo retry it for every subsequent
+  // frame, forever.
+  const auto& event = subtitle_->events[subtitle_->next++];
+
+  AVPacketPtr packet(av_packet_alloc());
+  if (!packet) {
+    LOG_WARN("Karaoke track: could not allocate a subtitle packet; the cue is lost");
+    return false;
+  }
+
+  // One byte over the payload. ass_encode_frame is
+  // `av_strlcpy(buf, rects[0]->ass, bufsize)` and rejects `len >= bufsize`, so
+  // an exactly-sized buffer would come back AVERROR_BUFFER_TOO_SMALL. The spare
+  // byte is also what makes the packet payload a C string, which the matching
+  // decoder relies on -- ass_decode_frame copies it with av_strdup, and a
+  // payload without a terminator would be read past its end.
+  const auto capacity = static_cast<int>(event.body.size()) + 1;
+  if (av_new_packet(packet.get(), capacity) < 0) {
+    LOG_WARN("Karaoke track: could not allocate {} bytes for a cue", capacity);
+    return false;
+  }
+
+  std::string text = event.body;
+  text.push_back('\0');
+  AVSubtitleRect rect{};
+  rect.type = SUBTITLE_ASS;
+  rect.ass = text.data();
+  AVSubtitleRect* rects[1] = {&rect};
+
+  const std::int64_t startMilliseconds =
+      toMilliseconds(event.startCentiseconds);
+  // A cue is never zero-length: toAssDocument floors the line at one
+  // centisecond, and a zero-duration packet is one that compute_pkt_fields()
+  // would go on to guess a duration for.
+  const std::int64_t durationMilliseconds = std::max<std::int64_t>(
+      1, toMilliseconds(event.endCentiseconds - event.startCentiseconds));
+
+  AVSubtitle subtitle{};
+  subtitle.pts = 0; // Unused by the ASS encoder; set rather than left undefined.
+  // Not optional: avcodec_encode_subtitle refuses anything else with a bare
+  // `return -1` before it even reaches the codec.
+  subtitle.start_display_time = 0;
+  subtitle.end_display_time = static_cast<std::uint32_t>(
+      std::min<std::int64_t>(durationMilliseconds,
+                             std::numeric_limits<std::uint32_t>::max()));
+  subtitle.num_rects = 1;
+  subtitle.rects = rects;
+
+  const int written = avcodec_encode_subtitle(subtitle_->codecCtx.get(),
+                                              packet->data, packet->size,
+                                              &subtitle);
+  if (written < 0) {
+    LOG_WARN("Karaoke track: the ass encoder refused a cue: {}",
+             ffmpegError(written));
+    return false;
+  }
+  av_shrink_packet(packet.get(), written);
+
+  packet->stream_index = subtitle_->stream->index;
+  packet->pts = startMilliseconds;
+  packet->dts = startMilliseconds;
+  packet->duration = durationMilliseconds;
+  packet->time_base = kSubtitleTimeBase;
+
+  // Source and stream base are the same, so the rescale inside writePacket is
+  // the identity. It is still the path taken, so a subtitle packet can never
+  // pick up a base belonging to another stream by accident.
+  return writePacket(packet.get(), subtitle_->stream, kSubtitleTimeBase,
+                     bytesWritten);
+}
+
+void VideoRecorderFFmpeg::initSubtitleStream(std::string_view assDocument) {
+  if (assDocument.empty()) {
+    return; // No lyrics is the common case, and it is not a failure.
+  }
+
+  // 1. Can this container carry the track at all?
+  //
+  // avformat_query_codec consults the muxer's own codec-tag table (for Matroska,
+  // `ff_mkv_codec_tags`, which has S_TEXT/ASS and S_ASS mapping to
+  // AV_CODEC_ID_ASS) or the muxer's query_codec hook. Anything not greater than
+  // zero means no, including the AVERROR_PATCHWELCOME it returns for a container
+  // with no tag table -- so this fails closed on anything unrecognised rather
+  // than optimistically adding a stream.
+  //
+  // This is not a defensive check; without it an MP4 recording *fails*.
+  // libavformat's init_muxer looks the tag up, finds none, and returns EINVAL
+  // from avformat_write_header ("Could not find tag for codec ass in stream #2,
+  // codec not currently supported in container" -- measured against this
+  // project's own FFmpeg 9.0.1). Of the five containers EncoderSettings offers,
+  // only Matroska carries ASS: mov/mp4 have mov_text, which is 3GPP timed text
+  // with no override tags at all, so a `\kf` karaoke cue has nowhere to live;
+  // WebM's table is WebVTT only, and AVI has no subtitle support.
+  if (avformat_query_codec(formatCtx_->oformat, AV_CODEC_ID_ASS,
+                           FF_COMPLIANCE_NORMAL) <= 0) {
+    LOG_INFO("Karaoke track: {} cannot carry an ASS subtitle stream; recording "
+             "without one", formatCtx_->oformat->name);
+    return;
+  }
+
+  // 2. Does this libavcodec have the encoder? A build configured
+  //    --disable-encoder=ass has none, and AV_CODEC_ID_ASS would still be a
+  //    legal stream for a container that supports it.
+  const AVCodec* codec = findAssEncoder();
+  if (!codec) {
+    LOG_INFO("Karaoke track: this libavcodec has no ASS encoder; recording "
+             "without one");
+    return;
+  }
+
+  // 3. Split the document. Doing this before touching formatCtx_ is deliberate:
+  //    every failure from here on must leave the output context exactly as it
+  //    was, or the recording dies for want of a subtitle.
+  auto stream = LyricsExport::splitAssStream(std::string(assDocument));
+  if (stream.header.empty() || stream.events.empty()) {
+    LOG_WARN("Karaoke track: the document has no script header or no cues "
+             "({} header bytes, {} cues); recording without one",
+             stream.header.size(), stream.events.size());
+    return;
+  }
+
+  // 4. Open the codec *before* declaring the stream, so an avcodec_open2
+  //    failure cannot leave a registered AVStream with an unusable codecpar --
+  //    which is precisely what would make avformat_write_header fail.
+  auto track = std::make_unique<SubtitleTrack>();
+  std::string script = std::move(stream.header);
+  track->events = std::move(stream.events);
+
+  track->codecCtx.reset(avcodec_alloc_context3(codec));
+  if (!track->codecCtx) {
+    LOG_WARN("Karaoke track: could not allocate the subtitle codec context");
+    return;
+  }
+  track->codecCtx->codec_type = AVMEDIA_TYPE_SUBTITLE;
+  track->codecCtx->codec_id = AV_CODEC_ID_ASS;
+  track->codecCtx->time_base = AV_TIME_BASE_Q;
+  // The script, handed to the codec which copies it into its own extradata
+  // during avcodec_open2. That copy is why the caller's document only has to
+  // outlive this function and not the recording.
+  // int, not size_t: AVCodecContext::subtitle_header_size is declared `int`
+  // (avcodec.h). The cast is the narrowing made explicit rather than left to an
+  // implicit conversion; a script over 2 GiB would need a different field type
+  // upstream, not a silent wrap here.
+  track->codecCtx->subtitle_header_size = static_cast<int>(script.size());
+  // The one raw allocation this file makes that has no local owner, and the
+  // static_cast is the price of it: FFmpeg's headers are C, where `void *`
+  // converts to `uint8_t *` implicitly and C++ does not. Ownership is not
+  // ambiguous -- avcodec_free_context calls av_freep(&avctx->subtitle_header), so
+  // AVCodecContextDeleter releases it whether or not avcodec_open2 ever ran.
+  // This is also the pattern ffmpeg's own enc_open uses.
+  track->codecCtx->subtitle_header = static_cast<u8*>(av_mallocz(script.size() + 1));
+  if (!track->codecCtx->subtitle_header) {
+    LOG_WARN("Karaoke track: could not allocate the script header");
+    return;
+  }
+  memcpy(track->codecCtx->subtitle_header, script.data(), script.size());
+
+  const int opened = avcodec_open2(track->codecCtx.get(), codec, nullptr);
+  if (opened < 0) {
+    LOG_WARN("Karaoke track: could not open the ASS encoder: {}",
+             ffmpegError(opened));
+    return;
+  }
+
+  track->stream = avformat_new_stream(formatCtx_.get(), nullptr);
+  if (!track->stream) {
+    LOG_WARN("Karaoke track: the muxer refused a third stream");
+    return;
+  }
+  avcodec_parameters_from_context(track->stream->codecpar,
+                                 track->codecCtx.get());
+  track->stream->time_base = kSubtitleTimeBase;
+  // Karaoke is the point of the track, so it has to be on without the user
+  // hunting for it in a track menu. Without this it would be *off*: Matroska
+  // infers FlagDefault from the codec type, and mkv_default_mode returns "not
+  // default" for everything that is not audio unless the muxer is told to
+  // infer it, so a subtitle with no disposition is a subtitle nobody sees.
+  track->stream->disposition |= AV_DISPOSITION_DEFAULT;
+  // No language tag, deliberately: the video and audio streams above set none
+  // either, and a single-tagged track out of three produces a track picker
+  // listing one language beside two blanks. Matching the existing streams is
+  // the consistent answer, and a language is a product decision rather than
+  // something to invent here.
+
+  subtitle_ = std::move(track);
+  LOG_INFO("Karaoke track: {} cues muxed as a {} subtitle stream into {}",
+           subtitle_->events.size(), formatCtx_->oformat->name,
+           currentOutputPath_);
 }
 
 AVPixelFormat VideoRecorderFFmpeg::getHWPixelFormat(const EncoderSettings& settings) const {

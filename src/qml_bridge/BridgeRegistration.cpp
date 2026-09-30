@@ -42,6 +42,11 @@ void registerBridges(QQmlApplicationEngine* engine,
     PlaylistBridge::setPlaylist(&audioEngine->playlist());
     VisualizerBridge::setVisualizerEngine(visualizer);
     RecordingBridge::setRecorder(recorder);
+    // The recorder's bridge needs the lyrics as well as the recorder: it is the
+    // only layer that holds both, and it muxes the ASS document into the file at
+    // startRecording. RecordingBridge::startRecording is the sole production
+    // caller of VideoRecorder::start, so without this line nothing else can.
+    RecordingBridge::setLyricsSync(lyricsSync);
     PresetBridge::setPresetManager(presetManager);
     
     // Lyrics integration

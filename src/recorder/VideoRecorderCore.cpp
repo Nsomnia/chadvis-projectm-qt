@@ -13,7 +13,8 @@ VideoRecorder::~VideoRecorder() {
   audioQueue_.store(nullptr, std::memory_order_release);
 }
 
-Result<void> VideoRecorder::start(const EncoderSettings& settings) {
+Result<void> VideoRecorder::start(const EncoderSettings& settings,
+                                 std::string_view assSubtitle) {
   if (state_ != RecordingState::Stopped) {
     return Result<void>::err("Recording already in progress");
   }
@@ -36,7 +37,11 @@ Result<void> VideoRecorder::start(const EncoderSettings& settings) {
   if (AudioQueue* queue = audioQueue_.load(std::memory_order_acquire)) {
     worker_->setAudioQueue(queue);
   }
-  worker_->start();
+  // Straight through, no copy and no member: worker_->start() consumes the view
+  // synchronously on this thread before it creates its JThread, and
+  // ffmpeg_.init() copies the script and every cue body out of it. Anything else
+  // would either be a redundant copy of a few KB or a dangling borrow.
+  worker_->start(assSubtitle);
 
   state_ = RecordingState::Recording;
   stateChanged.emitSignal(state_);
@@ -48,14 +53,15 @@ Result<void> VideoRecorder::start(const EncoderSettings& settings) {
   return Result<void>::ok();
 }
 
-Result<void> VideoRecorder::start(const fs::path& outputPath) {
+Result<void> VideoRecorder::start(const fs::path& outputPath,
+                                 std::string_view assSubtitle) {
   auto settings = EncoderSettings::fromConfig();
   if (auto container = EncoderSettings::containerFromPath(outputPath)) {
     settings.container = *container;
   }
   settings.outputPath = EncoderSettings::outputPathForContainer(
     outputPath, settings.container);
-  return start(settings);
+  return start(settings, assSubtitle);
 }
 
 Result<void> VideoRecorder::stop() {

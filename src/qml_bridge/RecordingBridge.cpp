@@ -1,6 +1,8 @@
 #include "RecordingBridge.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
+#include "lyrics/LyricsData.hpp"
+#include "lyrics/LyricsSync.hpp"
 #include "recorder/VideoRecorderCore.hpp"
 #include "util/FileUtils.hpp"
 #include "visualizer/VisualizerWindow.hpp"
@@ -10,6 +12,7 @@ namespace qml_bridge {
 
 vc::VideoRecorder* RecordingBridge::s_recorder = nullptr;
 vc::VisualizerWindow* RecordingBridge::s_visualizer = nullptr;
+vc::LyricsSync* RecordingBridge::s_lyricsSync = nullptr;
 
 RecordingBridge::RecordingBridge(QObject* parent) : QObject(parent) {
     setInstance(this);
@@ -31,6 +34,14 @@ void RecordingBridge::setRecorder(vc::VideoRecorder* recorder) {
 
 void RecordingBridge::setVisualizer(vc::VisualizerWindow* visualizer) {
     s_visualizer = visualizer;
+}
+
+void RecordingBridge::setLyricsSync(vc::LyricsSync* sync) {
+    // A raw pointer, deliberately not a QPointer: the same lifetime the rest of
+    // the bridge set uses, and the same contract -- Application owns the
+    // LyricsSync (Application.cpp:429) and outlives every bridge. LyricsBridge
+    // stores its own the same way.
+    s_lyricsSync = sync;
 }
 
 void RecordingBridge::connectRecorderSignals()
@@ -122,7 +133,43 @@ void RecordingBridge::startRecording(const QString& outputPath)
         s_visualizer->setRecordingSize(settings.video.width, settings.video.height);
     }
 
-    const auto result = s_recorder->start(settings);
+    // Where the karaoke subtitle document comes from, and why it is here.
+    //
+    // This bridge is the only layer that holds both ends: it already owns the
+    // recorder (setRecorder) and now the LyricsSync (setLyricsSync), and it is
+    // the only production caller of VideoRecorder::start at all. So it is the
+    // only place that can hand the recorder a document without either inventing
+    // a second start path or making the recorder reach upward.
+    //
+    // The two alternatives were checked, not assumed:
+    //
+    //   * Application computing it. Not available. Application never calls
+    //     VideoRecorder::start; the sole production caller is this function.
+    //     Routing it through Application would mean moving the settings build,
+    //     the container override and the visualizer hand-off out of here, i.e.
+    //     relocating the whole start sequence to reach one extra argument.
+    //   * The recorder calling LyricsSync itself. Rejected. The recorder's whole
+    //     relationship to ASS is "here are some bytes": no header under
+    //     src/recorder/ includes anything from src/lyrics/, and the one
+    //     include-level edge that does exist is VideoRecorderFFmpeg.cpp's call
+    //     into LyricsExport::splitAssStream, which is a deliberate one-function
+    //     edge and is not widened here. This bridge depends on src/lyrics/
+    //     already -- LyricsBridge.hpp includes lyrics/LyricsData.hpp -- so adding
+    //     one more is the layer's existing convention, not a new one.
+    //
+    // Read on the GUI thread, which is where LyricsSync's only writer runs
+    // (SunoController, and its own QTimer). LyricsSync is documented as
+    // deliberately lock-free single-threaded state (LyricsSync.hpp:85-88), so
+    // reading it from the thread that drives it is the only correct option, and
+    // startRecording is a Q_INVOKABLE, i.e. always on that thread.
+    //
+    // `subtitle` is a std::string, so it owns its bytes for the whole of
+    // VideoRecorder::start. The parameter is a view, and the view's only reader
+    // is ffmpeg_.init, which runs synchronously on this thread and copies before
+    // it returns.
+    const std::string subtitle = karaokeDocument();
+
+    const auto result = s_recorder->start(settings, subtitle);
     if (!result) {
         LOG_ERROR("RecordingBridge: startRecording failed: {}", result.error().message);
         emit recordingError(QString::fromStdString(result.error().message));
@@ -137,6 +184,22 @@ void RecordingBridge::startRecording(const QString& outputPath)
     } else {
         LOG_WARN("RecordingBridge: recording started without a visualizer window");
     }
+}
+
+std::string RecordingBridge::karaokeDocument() const
+{
+    // The null checks mirror LyricsBridge::assDocument's exactly, including the
+    // reason: Application only creates the LyricsSync on the non-headless path
+    // (Application.cpp:381,429), so a null here is a real state, not a
+    // defensive fiction.
+    if (!s_lyricsSync || !s_lyricsSync->hasLyrics()) {
+        return {};
+    }
+    // Header-only documents are impossible from here -- hasLyrics() is
+    // !lyrics_.empty() -- so the muxer always gets either cues or nothing, and
+    // "nothing" is the empty string rather than a document it would have to
+    // refuse.
+    return vc::LyricsExport::toAssDocument(s_lyricsSync->getLyrics());
 }
 
 void RecordingBridge::stopRecording()

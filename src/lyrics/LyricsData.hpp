@@ -13,6 +13,7 @@
 
 #pragma once
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -229,12 +230,125 @@ std::vector<LyricsLine> alignWordsToLines(const std::vector<LyricsWord>& words,
  * two time formatters drift, and the unused one is the one nothing tests.
  * Bridge is the owner because it is the reachable path -- it is the only thing
  * QML invokes, and it already has to resolve the file path and surface errors.
+ *
+ * ASS is the exception and lives here, for a reason that is about *who else*
+ * needs the bytes rather than about the format. A subtitle track muxed into a
+ * recording (see `recorder/VideoRecorderFFmpeg`) is built by the same code that
+ * writes the sidecar, and `src/recorder/` must not reach up into
+ * `src/qml_bridge/` to get it -- that inverts the dependency and couples a
+ * worker thread to a QObject. So the writer sits one layer down, over
+ * LyricsData, and both callers use it: the bridge for the file and the string
+ * it hands to QML, the recorder for the stream it muxes.
+ *
+ * SRT and LRC are the two formats with a *single* consumer, so the "put it next
+ * to the only thing that calls it" argument still holds for them; what they do
+ * share -- the seconds-to-whole-units conversion -- is `toTimeUnits` below, so
+ * the primitive is not triplicated either.
  */
 namespace LyricsExport {
     /**
      * @brief Export to JSON (for database storage)
      */
     std::string toJson(const LyricsData& lyrics);
+
+    /**
+     * @brief Seconds to a whole number of `unitsPerSecond`, clamped at zero
+     *
+     * The one conversion every time formatter uses. SRT wants milliseconds, LRC
+     * and ASS centiseconds, and routing one through the other's scale would
+     * quantise twice and change bytes they have already shipped (1.4567s is
+     * 1457ms scaled directly but 1460ms via 146cs), so the scale is a parameter
+     * rather than being baked in.
+     *
+     * `f32` rather than an integer type so the multiply stays a float one,
+     * bit-identical to what each format wrote before the helper existed -- an
+     * integer scale would promote the product to double and quietly move the
+     * rounding.
+     *
+     * The non-finite check is the defect this helper was introduced to fix:
+     * `std::llround` on a NaN or infinity is undefined behaviour, and these
+     * seconds come from a remote payload, so a malformed or hostile time could
+     * take an export down rather than merely mis-render. A non-finite time names
+     * no real instant, so it becomes zero -- the same answer the pre-existing
+     * clamp already gave a negative one.
+     */
+    std::int64_t toTimeUnits(f32 seconds, f32 unitsPerSecond);
+
+    /**
+     * @brief The one and only Advanced SubStation Alpha assembly path
+     *
+     * UTF-8, byte for byte what `LyricsBridge::exportToAss` writes and what
+     * `LyricsBridge::assDocument` returns. A complete document: the section
+     * headers, the styles, and one `Dialogue:` event per LyricsLine with every
+     * word behind a `\kf<centiseconds>` tag so a player sweeps the line in
+     * time with the audio.
+     *
+     * The ASS format itself is settled -- probe files were rendered through
+     * real libass 0.17.5 to fix the semantics that memory gets wrong: the
+     * backslash is deliberately not escaped, `\kf` rather than `\k`, and
+     * WrapStyle 0. Do not "correct" any of those without re-rendering.
+     *
+     * Takes the LyricsData rather than reading a sync engine, so it has no
+     * opinion about where lyrics come from and can be reasoned about on its own.
+     * A successful document is never empty: it always carries the three section
+     * headers, even when every line was blank.
+     */
+    std::string toAssDocument(const LyricsData& lyrics);
+
+    /**
+     * @brief One cue, in the form an AV_CODEC_ID_ASS stream packet carries
+     */
+    struct AssEvent {
+        std::int64_t startCentiseconds{0};
+        std::int64_t endCentiseconds{0};
+        /**
+         * The packet payload: `readorder,layer,` followed by the `Dialogue`
+         * line's text-and-effects fields verbatim.
+         *
+         * That shape is not a convention we get to choose. FFmpeg's own ASS
+         * muxer writes exactly this (measured: a one-line `.ass` muxed to Matroska
+         * came back as the 53 bytes `0,0,K,,0,0,0,,{\kf100}ka...` with a
+         * 2 s duration and pts 0), and its demuxer regenerates it from
+         * `libavformat/assdec.c`'s `av_bprintf(dst, "%u,%d,%s", readorder++,
+         * layer, p + pos)`. A player that concatenates the track's CodecPrivate
+         * with its packets would otherwise be handed a second `Dialogue: 0,`
+         * prefix per cue, which is not a script.
+         */
+        std::string body;
+    };
+
+    /**
+     * @brief A complete ASS document split the way a subtitle stream needs it
+     *
+     * The `ass` codec is not a whole-file codec: the *script* (everything that
+     * is not a Dialogue event) is the stream's extradata -- Matroska's
+     * CodecPrivate -- and each cue is a separate packet. `ff_ass_encoder`'s
+     * `ass_encode_init` copies `subtitle_header` into the codec's extradata and
+     * `ass_encode_frame` writes only `rects[0]->ass` into the packet, so a
+     * document muxed whole would be either a script with no cues or cues with
+     * no script.
+     */
+    struct AssStream {
+        std::string header;
+        std::vector<AssEvent> events;
+    };
+
+    /**
+     * @brief Split an ASS document into a stream header and its cues
+     *
+     * Deliberately the *inverse* of what FFmpeg's ASS demuxer does, so the two
+     * agree on every line: a well-formed `Dialogue:` event becomes a cue, and
+     * everything else -- section headers, `Format:` lines, styles, `Comment:`
+     * lines, and any `Dialogue:` line whose timestamps or field count do not
+     * parse -- is retained in the header. A malformed line going into the
+     * header rather than into a cue is what `assdec.c` does and is the safe
+     * direction: it degrades to a line the renderer ignores rather than to a
+     * cue with a garbage timestamp.
+     *
+     * `readorder` is assigned here, in document order from zero, because the
+     * demuxer assigns it in packet order and the two have to match.
+     */
+    AssStream splitAssStream(const std::string& document);
 } // namespace LyricsExport
 
 } // namespace vc

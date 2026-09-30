@@ -3,6 +3,7 @@
 
 #include "audio/AudioQueue.hpp"
 #include "core/Config.hpp"
+#include "lyrics/LyricsData.hpp"
 #include "recorder/EncoderSettings.hpp"
 #include "recorder/FFmpegUtils.hpp"
 #include "recorder/FrameGrabber.hpp"
@@ -12,7 +13,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
+#include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -218,6 +222,323 @@ std::vector<i64> captureTimesEveryTick(i64 count, i64 skipIndex = -1) {
         times.push_back(kOriginUs + i * kIntervalUs);
     }
     return times;
+}
+
+// ── Karaoke subtitle track ──────────────────────────────────────────────────
+//
+// What the muxer tests read, and how. Everything here goes through
+// avformat_open_input on the *finished file* -- the same three streams, the same
+// extradata, the same packet payloads a player would see. Nothing asserts on the
+// recorder's own state, because the recorder's state is the thing under test.
+//
+// The container finding these tests are pinned to, and it was measured rather
+// than assumed, against this project's own FFmpeg 9.0.1 (libavcodec 63.1.101):
+//
+//   MP4/MOV  no.  `ffmpeg -i ... -c:s ass out.mp4` fails with "Could not find
+//            tag for codec ass in stream #2, codec not currently supported in
+//            container", then "Could not write header ... Invalid argument",
+//            exit 234. The container's only text codec is mov_text, 3GPP timed
+//            text, which has no override tag syntax at all -- a \kf karaoke cue
+//            has nowhere to live. So the muxer must *not* declare the stream.
+//   WebM     no.  "Only VP8 or VP9 or AV1 video and Vorbis or Opus audio and
+//            WebVTT subtitles are supported for WebM", exit 234.
+//   AVI      no.  "Not yet implemented in FFmpeg, patches welcome", exit 176.
+//   MKV      yes. libavformat/matroska.c's ff_mkv_codec_tags maps S_TEXT/ASS,
+//            S_TEXT/SSA, S_ASS and S_SSA to AV_CODEC_ID_ASS. A one-line .ass
+//            muxed in came back out byte-identical through
+//            `ffmpeg -c:s copy`, and ffprobe reported the cue as a 53-byte
+//            packet at pts 0 with a 2 s duration.
+//
+// Nothing in libavcodec links libass: the `ass` encoder is a passthrough
+// (`ass_encode_frame` is one av_strlcpy) gated on CONFIG_ASS_ENCODER, and
+// `otool -L libavcodec.63.dylib` lists no libass. --enable-libass on the CLI
+// gates the burn-in filters, not this. So the dependency set is unchanged.
+
+/// One cue of read-back subtitle content, as a player would see it.
+struct EncodedSubtitle {
+    bool present{false};
+    AVCodecID codecId{AV_CODEC_ID_NONE};
+    int disposition{0};
+    std::string header;                          // the stream's extradata
+    /// (pts, duration) per cue, both in **milliseconds**.
+    ///
+    /// The second element is a length, not an end time. That distinction is the
+    /// one an assertion most easily gets wrong, and getting it wrong here hid the
+    /// writeSubtitlePacket bug: the expectation was written as a start-end pair
+    /// read off the fixture (2.5-3.5 s) while the field holds a duration, so the
+    /// numbers being compared were never the numbers the muxer produced.
+    std::vector<std::pair<std::int64_t, std::int64_t>> timingsMs;
+    std::vector<std::string> payloads;
+};
+
+struct EncodedStreams {
+    std::vector<AVMediaType> types; // in stream-index order
+    EncodedSubtitle subtitle;
+    int videoStreamCount{0};
+    int audioStreamCount{0};
+};
+
+/// Read a finished file's stream table, and its subtitle content if it has one.
+///
+/// Two things this must not do, both of which it originally did. Read them
+/// before changing anything else here, because the second one is a property of
+/// libavformat rather than of this code:
+///
+///  1. **A non-subtitle stream must never be recorded as a subtitle.** An
+///     `if/else if` chain that counts video and audio and then *falls through*
+///     into the subtitle block is enough to do it, and the symptom is
+///     indistinguishable from the real thing: every file, with or without a
+///     subtitle track, comes back with `present == true`. The mapping is now one
+///     `if` with an unconditional `continue`, so the only way into the block is
+///     a stream whose own `codec_type` is AVMEDIA_TYPE_SUBTITLE.
+///
+///  2. **A demuxer is a forward-only cursor, so it cannot be drained once per
+///     stream.** `av_read_frame` advances through the file; a per-stream loop
+///     gives the first stream the entire file and leaves every later stream with
+///     nothing. The real subtitle stream is the last stream added, so it is
+///     always the one that reads zero, which looks exactly like "the muxer wrote
+///     no packets". The stream table is therefore read from `format->streams`
+///     (metadata, no I/O) and the file is walked exactly once for packets.
+bool readEncodedStreams(const fs::path& path, EncodedStreams& out) {
+    const std::string pathStr = path.string();
+    AVFormatContext* raw = nullptr;
+    if (avformat_open_input(&raw, pathStr.c_str(), nullptr, nullptr) < 0)
+        return false;
+
+    AVFormatContextInPtr format(raw);
+    if (!format) return false;
+    if (avformat_find_stream_info(format.get(), nullptr) < 0) return false;
+
+    int subtitleIndex = -1;
+    for (unsigned i = 0; i < format->nb_streams; ++i) {
+        AVStream* stream = format->streams[i];
+        const AVMediaType type = stream->codecpar->codec_type;
+        out.types.push_back(type);
+
+        if (type == AVMEDIA_TYPE_VIDEO) {
+            ++out.videoStreamCount;
+            continue;
+        }
+        if (type == AVMEDIA_TYPE_AUDIO) {
+            ++out.audioStreamCount;
+            continue;
+        }
+        if (type != AVMEDIA_TYPE_SUBTITLE) {
+            continue; // attachments, data: not interesting here
+        }
+        if (subtitleIndex >= 0) {
+            continue; // a second subtitle track; the assertions name one
+        }
+
+        subtitleIndex = static_cast<int>(i);
+        out.subtitle.present = true;
+        out.subtitle.codecId = stream->codecpar->codec_id;
+        out.subtitle.disposition = stream->disposition;
+        if (stream->codecpar->extradata_size > 0) {
+            out.subtitle.header.assign(
+                reinterpret_cast<const char*>(stream->codecpar->extradata),
+                static_cast<std::size_t>(stream->codecpar->extradata_size));
+        }
+    }
+
+    if (subtitleIndex < 0) {
+        return true; // no subtitle track: there are no packets to look for
+    }
+
+    // Spelled out rather than av_q2d, which has moved headers between FFmpeg
+    // releases; this is the same division, and readVideoTimeline above says so
+    // for the same reason.
+    AVStream* subtitleStream = format->streams[subtitleIndex];
+    const AVRational timeBase = subtitleStream->time_base;
+
+    AVPacketPtr packet(av_packet_alloc());
+    if (!packet) return false;
+    while (av_read_frame(format.get(), packet.get()) >= 0) {
+        if (packet->stream_index == subtitleIndex && packet->size > 0) {
+            out.subtitle.payloads.emplace_back(
+                reinterpret_cast<const char*>(packet->data),
+                static_cast<std::size_t>(packet->size));
+            if (packet->pts != AV_NOPTS_VALUE && timeBase.den > 0) {
+                // Milliseconds, to match the field's name and the expectations.
+                //
+                // This was seconds: `pts * (num/den)` is the seconds conversion,
+                // and the field was called `timingsMs` and asserted against
+                // millisecond values. That mismatch hid the production bug in
+                // writeSubtitlePacket entirely -- with the reader scaling down
+                // and the writer scaling down by the same wrong factor, the two
+                // errors cancelled and the assertion saw a plausible small
+                // number instead of a 100x error. Rescaled from the container's
+                // own time base rather than assuming 1/1000, so it stays right
+                // whatever the muxer picks.
+                //
+                // One integer expression, so there is a single truncation rather
+                // than a seconds value losing its remainder and then being
+                // multiplied by 1000.
+                const auto toMilliseconds = [&](const std::int64_t ticks) {
+                    return ticks * timeBase.num * 1000 / timeBase.den;
+                };
+                out.subtitle.timingsMs.emplace_back(
+                    toMilliseconds(packet->pts),
+                    toMilliseconds(packet->duration));
+            }
+        }
+        av_packet_unref(packet.get());
+    }
+
+    return true;
+}
+
+/// "video/ffv1, audio/aac" -- the stream table, for a failure message.
+///
+/// Added because `'!present' returned FALSE` on its own is a *misleading*
+/// diagnostic: it names the assertion, which reads as "the muxer added a track",
+/// when the reader can produce the same symptom for a file that has no subtitle
+/// track at all. When the assertion fires, the stream table is what distinguishes
+/// those, and it is already in hand.
+QString streamTypeSummary(const EncodedStreams& streams) {
+    QStringList summary;
+    for (const AVMediaType type : streams.types) {
+        summary << QString::fromLatin1(
+            av_get_media_type_string(type) ? av_get_media_type_string(type) : "?");
+    }
+    return QStringLiteral("streams in the file: [%1]").arg(summary.join(", "));
+}
+
+/// The whole ASS script as a reader would reconstruct it: the CodecPrivate
+/// followed by each cue, which is the only ordering that is a valid document.
+std::string reassembledScript(const EncodedSubtitle& subtitle) {
+    std::string script = subtitle.header;
+    for (const auto& payload : subtitle.payloads) {
+        script += payload;
+        script += '\n';
+    }
+    return script;
+}
+
+/// Lyrics with word-level timing, so every cue carries \kf karaoke tags.
+LyricsData karaokeLyrics() {
+    LyricsData data;
+    data.isSynced = true;
+    data.title = "Test";
+
+    const char* words[] = {"ka", "ra", "o", "ke"};
+    const f32 starts[] = {0.0f, 0.5f, 1.0f, 1.5f};
+    const f32 ends[] = {0.5f, 1.0f, 1.5f, 2.0f};
+
+    LyricsLine first;
+    first.text = "karaoke";
+    first.startTime = 0.0f;
+    first.endTime = 2.0f;
+    first.isSynced = true;
+    for (usize i = 0; i < 4; ++i) {
+        LyricsWord word;
+        word.text = words[i];
+        word.startTime = starts[i];
+        word.endTime = ends[i];
+        first.words.push_back(word);
+    }
+    data.lines.push_back(first);
+
+    LyricsLine second;
+    second.text = "second line";
+    second.startTime = 2.5f;
+    second.endTime = 3.5f;
+    second.isSynced = true;
+    data.lines.push_back(second);
+
+    return data;
+}
+
+/// Encode a short clip through VideoRecorderFFmpeg directly, with an optional
+/// ASS document. Returns the path actually written (init may have suffixed it).
+bool encodeWithSubtitle(const fs::path& requested,
+                        const std::string& assDocument,
+                        Container container,
+                        VideoCodec videoCodec,
+                        AudioCodec audioCodec,
+                        fs::path& actualOut) {
+    VideoRecorderFFmpeg encoder;
+    auto settings = testSettings(QString::fromStdString(requested.string()),
+                                 videoCodec, audioCodec, container);
+    // B-frames off so the read-back frame count is exact, matching the
+    // timeline fixtures. The subtitle path does not depend on it either way.
+    settings.video.bFrames = 0;
+    if (auto started = encoder.init(settings, assDocument); !started) return false;
+    actualOut = fs::path(encoder.getOutputPath());
+
+    u64 bytesWritten = 0;
+    for (usize i = 0; i < 8; ++i) {
+        GrabbedFrame frame;
+        frame.width = 32;
+        frame.height = 32;
+        frame.timestamp = kOriginUs + static_cast<i64>(i) * kIntervalUs;
+        frame.data = std::vector<u8>(32 * 32 * 4, static_cast<u8>(i * 13));
+        if (!encoder.encodeVideo(frame, bytesWritten)) return false;
+    }
+
+    // Enough samples for at least one AAC frame (1024) in stereo, so the audio
+    // stream carries data and the file is genuinely playable rather than a
+    // header with an empty track.
+    std::vector<f32> audio(4096 * 2, 0.05f);
+    encoder.encodeAudio(audio, 2, bytesWritten);
+
+    encoder.flush(bytesWritten);
+    encoder.cleanup();
+    return true;
+}
+
+/// QTRY_VERIFY expands to a QVERIFY, which returns from the enclosing function
+/// on failure, so it needs a void one. Split out for that reason alone.
+void waitForFramesEncoded(VideoRecorder& recorder, u64 frameCount) {
+    QTRY_VERIFY_WITH_TIMEOUT(recorder.getCurrentStats().framesWritten >= frameCount, 5000);
+}
+
+/// Drive the whole VideoRecorder path -- start on this thread, frames and audio
+/// through the encoding worker, then stop -- and return the file it produced.
+///
+/// `forwardSubtitle` false takes the one-argument overload, which is what every
+/// pre-existing call site compiles to, so the two tests using this exercise two
+/// different call paths rather than the same one twice.
+///
+/// No QVERIFY here: it returns void from the enclosing function on failure, so
+/// it cannot appear in a bool helper. Assertions belong in the test.
+bool recordThroughVideoRecorder(const EncoderSettings& settings,
+                                const std::string& subtitle,
+                                bool forwardSubtitle,
+                                fs::path& actualOut) {
+    VideoRecorder recorder;
+    AudioQueue queue;
+    // Attached before start(), so the worker is created with it already bound.
+    recorder.setAudioQueue(&queue);
+
+    const auto started = forwardSubtitle ? recorder.start(settings, subtitle)
+                                         : recorder.start(settings);
+    if (!started) return false;
+    // Read before stopping: after stop() the worker is released and the
+    // recorder falls back to its own snapshot, which carries the same path.
+    // VideoRecorderThread::start assigned it before VideoRecorder::start
+    // returned, and getStats() takes the mutex, so this is a settled read.
+    actualOut = fs::path(recorder.getCurrentStats().currentFile);
+    if (!pushAudio(queue)) return false;
+
+    // u64, because that is what RecordingStats::framesWritten is; an i64 here
+    // compiles but is a sign-compare inside the QTRY macro.
+    constexpr u64 frameCount = 8;
+    for (u64 i = 0; i < frameCount; ++i) {
+        recorder.submitVideoFrame(
+            std::vector<u8>(32 * 32 * 4, static_cast<u8>(i * 17)), 32, 32,
+            kOriginUs + static_cast<i64>(i) * kIntervalUs);
+    }
+
+    // Not optional. stop() sets the token and joins, and threadLoop's guard
+    // `!stopToken.stop_requested()` is checked on entry -- so a thread body that
+    // had not been scheduled yet exits without draining, and the file would come
+    // out empty. Waiting for the counter is what makes this deterministic;
+    // frameSubmissionsReachEncoder does the same for the same reason.
+    waitForFramesEncoded(recorder, frameCount);
+
+    (void)recorder.stop();
+    return true;
 }
 
 } // namespace
@@ -583,6 +904,292 @@ private slots:
         QVERIFY(selectedExtensionMatches);
         QVERIFY(codecWasApplied);
         QVERIFY(crfWasApplied);
+    }
+
+    // ── Karaoke subtitle track ──────────────────────────────────────────────
+    // See the block comment above readEncodedStreams for the container finding
+    // these pin. The shape being defended throughout: a subtitle is a
+    // *nice-to-have* on a recording, and no one of these tests would be worth a
+    // broken video file.
+
+    void mkvRecordingCarriesTheKaraokeTrack() {
+        // The one container of the five EncoderSettings offers that can carry
+        // ASS, so this is the case the feature exists for.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const std::string document = LyricsExport::toAssDocument(karaokeLyrics());
+        QVERIFY(document.find("{\\kf") != std::string::npos);
+
+        fs::path actual;
+        QVERIFY(encodeWithSubtitle(fs::path(dir.path().toStdString()) / "karaoke.mkv",
+                                   document, Container::MKV, VideoCodec::FFV1,
+                                   AudioCodec::AAC, actual));
+
+        EncodedStreams streams;
+        QVERIFY(readEncodedStreams(actual, streams));
+
+        // Three streams, in the declared order: the subtitle was appended after
+        // the two existing ones and did not reorder them.
+        QCOMPARE(streams.types.size(), static_cast<std::size_t>(3));
+        QCOMPARE(streams.videoStreamCount, 1);
+        QCOMPARE(streams.audioStreamCount, 1);
+        QVERIFY(streams.subtitle.present);
+        QCOMPARE(streams.types[2], AVMEDIA_TYPE_SUBTITLE);
+        QCOMPARE(streams.subtitle.codecId, AV_CODEC_ID_ASS);
+
+        // On by default, or a player shows a track nobody turns on. Matroska
+        // infers FlagDefault from the codec type and would leave a subtitle with
+        // no disposition switched off.
+        QVERIFY(streams.subtitle.disposition & AV_DISPOSITION_DEFAULT);
+
+        // Both cues made it, with the exact timestamps the writer emitted. The
+        // fixture's first line is 0.0-2.0 s and its second is 2.5-3.5 s, so the
+        // expected (pts, duration) pairs in milliseconds are (0, 2000) and
+        // (2500, 1000).
+        //
+        // The exact millisecond values are the whole point of these four
+        // assertions, and they are what caught a real 100x error in
+        // writeSubtitlePacket: the centisecond-to-millisecond conversion divided
+        // by ten where it had to multiply, so a two-second cue was written as
+        // 20 ms. Asserting only "the duration is positive", or "about two
+        // seconds", would have passed on every version of that bug. Note the
+        // second element is a duration, not the 3.5 s end time.
+        //
+        // The second line has no word timings, so its cue is an untagged caption
+        // -- still a cue, and still on the timeline.
+        QCOMPARE(streams.subtitle.payloads.size(), static_cast<std::size_t>(2));
+        QCOMPARE(streams.subtitle.timingsMs.size(), static_cast<std::size_t>(2));
+        QCOMPARE(streams.subtitle.timingsMs[0].first, std::int64_t{0});
+        QCOMPARE(streams.subtitle.timingsMs[0].second, std::int64_t{2000});
+        QCOMPARE(streams.subtitle.timingsMs[1].first, std::int64_t{2500});
+        QCOMPARE(streams.subtitle.timingsMs[1].second, std::int64_t{1000});
+
+        // The content, which is the actual claim. The script is the CodecPrivate
+        // and each cue is a packet, so the two have to be joined in that order
+        // to be a document at all -- and the result has to be the document the
+        // writer produced.
+        const std::string script = reassembledScript(streams.subtitle);
+        QVERIFY2(script.find("[Script Info]") != std::string::npos,
+                 "the stream carries no script header");
+        QVERIFY2(script.find("[Events]") != std::string::npos,
+                 "the stream carries no Events section");
+        // The exact cue text, with the separator spaces the writer puts between
+        // words. 50 centiseconds per half-second word, four of them.
+        //
+        // The spaces are load-bearing and this expectation used to be wrong
+        // about them. LyricsExport::assEventText joins word tokens with a single
+        // space after each \kf tag, and that is what separates one word's tag
+        // from the next: "{\kf50}ka{\kf50}ra" is a tag immediately followed by
+        // the next tag with no glyph between them, where a renderer would draw
+        // the words run together. tests/unit/lyrics/test_LyricsExport.cpp:330
+        // pins the same thing as a golden byte -- "{\kf50}one {\kf40}two
+        // {\kf50}three" -- and that suite passes, so the spaced form is the
+        // writer's contract and the unspaced form here was copied from a
+        // hand-typed probe file rather than from the writer.
+        QVERIFY2(script.find("{\\kf50}ka {\\kf50}ra {\\kf50}o {\\kf50}ke") !=
+                     std::string::npos,
+                 qPrintable(QStringLiteral("reassembled script was:\n%1")
+                                .arg(QString::fromStdString(script))));
+        QVERIFY2(script.find("second line") != std::string::npos,
+                 "the untagged line did not survive the mux");
+
+        // And the payload shape is FFmpeg's, not merely parseable: readorder,
+        // layer, then the Dialogue text-and-effects fields. A whole
+        // `Dialogue: 0,...` line per packet would be a second, conflicting copy
+        // of a script a renderer concatenates.
+        QVERIFY2(streams.subtitle.payloads[0].rfind("0,0,Default,,0,0,0,,", 0) == 0,
+                 qPrintable(QStringLiteral("cue payload was: %1")
+                                .arg(QString::fromStdString(
+                                    streams.subtitle.payloads[0]))));
+    }
+
+    void mp4RecordingDropsTheKaraokeTrackAndStillProducesAPlayableFile() {
+        // The requirement, stated as a test: an MP4 must come out playable.
+        //
+        // MP4 has no ASS/SSA stream. libavformat's init_muxer looks the codec's
+        // tag up, finds none, and fails avformat_write_header with EINVAL --
+        // measured: "Could not find tag for codec ass in stream #2, codec not
+        // currently supported in container", exit 234. So the correct behaviour
+        // is to *not declare the stream*, and the observable consequence is a
+        // normal two-stream MP4 plus a log line. Declaring it unconditionally
+        // loses the recording.
+        //
+        // The alternative -- silently transcoding to mov_text -- is not
+        // available: mov_text is 3GPP timed text with no override tag syntax, so
+        // a \kf karaoke cue would be flattened to plain text and the feature
+        // would appear to work while being exactly the thing it must not be.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const std::string document = LyricsExport::toAssDocument(karaokeLyrics());
+        fs::path actual;
+        QVERIFY(encodeWithSubtitle(fs::path(dir.path().toStdString()) / "karaoke.mp4",
+                                   document, Container::MP4, VideoCodec::H264,
+                                   AudioCodec::AAC, actual));
+
+        EncodedStreams streams;
+        QVERIFY(readEncodedStreams(actual, streams));
+        QCOMPARE(streams.types.size(), static_cast<std::size_t>(2));
+        QCOMPARE(streams.videoStreamCount, 1);
+        QCOMPARE(streams.audioStreamCount, 1);
+        QVERIFY2(!streams.subtitle.present,
+                 qPrintable(QStringLiteral("the muxer declared an ASS stream in "
+                                          "an MP4, which means the capability "
+                                          "probe failed closed nowhere; %1")
+                                .arg(streamTypeSummary(streams))));
+
+        // And the video is intact, not merely a header: the frame count the
+        // encoder produced is what the file carries.
+        EncodedTimeline timeline;
+        QVERIFY(readVideoTimeline(actual, timeline));
+        QCOMPARE(timeline.presentationSeconds.size(), static_cast<usize>(8));
+    }
+
+    void aRecordingWithNoLyricsHasNoSubtitleStream() {
+        // The default path: init() called with no document at all. The subtitle
+        // code must be inert -- not an error, not an empty subtitle track, not a
+        // wasted stream index that shifts the other two.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        fs::path actual;
+        QVERIFY(encodeWithSubtitle(fs::path(dir.path().toStdString()) / "plain.mkv",
+                                   std::string(), Container::MKV, VideoCodec::FFV1,
+                                   AudioCodec::AAC, actual));
+
+        EncodedStreams streams;
+        QVERIFY(readEncodedStreams(actual, streams));
+        QCOMPARE(streams.types.size(), static_cast<std::size_t>(2));
+        QCOMPARE(streams.types[0], AVMEDIA_TYPE_VIDEO);
+        QCOMPARE(streams.types[1], AVMEDIA_TYPE_AUDIO);
+        QVERIFY2(!streams.subtitle.present,
+                 qPrintable(streamTypeSummary(streams)));
+
+        // The video is whole, so "no lyrics" demonstrably cost nothing.
+        EncodedTimeline timeline;
+        QVERIFY(readVideoTimeline(actual, timeline));
+        QCOMPARE(timeline.presentationSeconds.size(), static_cast<usize>(8));
+    }
+
+    void aHeaderlessAssDocumentIsRefusedRatherThanMuxed() {
+        // A document with cues but no script, or a script with no cues, is not a
+        // subtitle track a player can render. Both are refused before the output
+        // context is touched, so the recording is unaffected -- and the file says
+        // so, which is the difference between "no lyrics" and "lyrics that did
+        // not work" being told apart in a bug report.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const char* unusable[] = {
+            "",                                                   // nothing at all
+            "Dialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,hello\n", // no header
+            "[Script Info]\nScriptType: v4.00+\n[Events]\n",         // no cues
+        };
+
+        for (usize i = 0; i < 3; ++i) {
+            const std::string name = "unusable" + std::to_string(i) + ".mkv";
+            fs::path actual;
+            QVERIFY2(encodeWithSubtitle(
+                         fs::path(dir.path().toStdString()) / name, unusable[i],
+                         Container::MKV, VideoCodec::FFV1, AudioCodec::AAC, actual),
+                     qPrintable(QStringLiteral("fixture %1 did not record at all")
+                                    .arg(i)));
+
+            EncodedStreams streams;
+            QVERIFY(readEncodedStreams(actual, streams));
+            QVERIFY2(!streams.subtitle.present,
+                     qPrintable(QStringLiteral("fixture %1 produced a subtitle track; %2")
+                                    .arg(i).arg(streamTypeSummary(streams))));
+            QCOMPARE(streams.videoStreamCount, 1);
+            QCOMPARE(streams.audioStreamCount, 1);
+        }
+    }
+
+    // ── The production call path ────────────────────────────────────────────
+    // The two tests below drive VideoRecorder::start, which is the only path a
+    // user can reach. Everything above it calls VideoRecorderFFmpeg::init
+    // directly and therefore proves the muxer but not the wiring.
+
+    void videoRecorderStartForwardsTheSubtitleDocumentToTheMuxer() {
+        // The regression guard for the missing hop.
+        //
+        // mkvRecordingCarriesTheKaraokeTrack calls ffmpeg_.init on the calling
+        // thread, so it proves the muxer and nothing above it. This drives
+        // VideoRecorder::start -> VideoRecorderThread::start -> ffmpeg_.init,
+        // where the encoding runs on a *different* thread and the document
+        // travels as a borrowed view. So it proves two things the direct test
+        // structurally cannot:
+        //
+        //   1. the parameter is forwarded at all -- drop the forwarding and this
+        //      fails on the stream count, with init() itself untouched;
+        //   2. what the worker reads long after the call is ffmpeg_'s own copy
+        //      of the cues, not the caller's buffer. The first cue is written by
+        //      the first video packet, the second by cleanup(), so this exercises
+        //      a cross-thread read of subtitle_->events on both paths.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const std::string document = LyricsExport::toAssDocument(karaokeLyrics());
+        fs::path actual;
+        QVERIFY(recordThroughVideoRecorder(
+            testSettings(QString::fromStdString(
+                             (fs::path(dir.path().toStdString()) / "wired.mkv").string()),
+                VideoCodec::FFV1, AudioCodec::AAC, Container::MKV),
+            document, /*forwardSubtitle=*/true, actual));
+
+        EncodedStreams streams;
+        QVERIFY(readEncodedStreams(actual, streams));
+        QCOMPARE(streams.types.size(), static_cast<std::size_t>(3));
+        QCOMPARE(streams.types[2], AVMEDIA_TYPE_SUBTITLE);
+        QVERIFY(streams.subtitle.present);
+        QCOMPARE(streams.subtitle.codecId, AV_CODEC_ID_ASS);
+        QVERIFY(streams.subtitle.disposition & AV_DISPOSITION_DEFAULT);
+
+        QCOMPARE(streams.subtitle.payloads.size(), static_cast<std::size_t>(2));
+        const std::string script = reassembledScript(streams.subtitle);
+        // Spaced between words, for the reason given in
+        // mkvRecordingCarriesTheKaraokeTrack: assEventText joins tokens with a
+        // space, and test_LyricsExport.cpp:330 pins that as the golden byte.
+        QVERIFY2(script.find("{\\kf50}ka {\\kf50}ra {\\kf50}o {\\kf50}ke") !=
+                     std::string::npos,
+                 qPrintable(QStringLiteral("reassembled script was:\n%1")
+                                .arg(QString::fromStdString(script))));
+
+        // The video half is untouched by any of this.
+        EncodedTimeline timeline;
+        QVERIFY(readVideoTimeline(actual, timeline));
+        QCOMPARE(timeline.presentationSeconds.size(), static_cast<usize>(8));
+    }
+
+    void videoRecorderStartWithoutLyricsStillRecordsNormally() {
+        // The one-argument overload, which is what every pre-existing call site
+        // compiles to -- frameSubmissionsReachEncoder, the integration
+        // GL suite's `recorder.start(settings)`, and the fs::path overload's
+        // internal call. So this is the regression guard for the *default*:
+        // adding the parameter must not change what a no-lyrics recording
+        // produces, and in particular must not reserve a third stream index.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        fs::path actual;
+        QVERIFY(recordThroughVideoRecorder(
+            testSettings(QString::fromStdString(
+                             (fs::path(dir.path().toStdString()) / "plain-wired.mkv").string()),
+                VideoCodec::FFV1, AudioCodec::AAC, Container::MKV),
+            std::string(), /*forwardSubtitle=*/false, actual));
+
+        EncodedStreams streams;
+        QVERIFY(readEncodedStreams(actual, streams));
+        QCOMPARE(streams.types.size(), static_cast<std::size_t>(2));
+        QCOMPARE(streams.types[0], AVMEDIA_TYPE_VIDEO);
+        QCOMPARE(streams.types[1], AVMEDIA_TYPE_AUDIO);
+        QVERIFY2(!streams.subtitle.present,
+                 qPrintable(streamTypeSummary(streams)));
+
+        EncodedTimeline timeline;
+        QVERIFY(readVideoTimeline(actual, timeline));
+        QCOMPARE(timeline.presentationSeconds.size(), static_cast<usize>(8));
     }
 
     // ── AVFormatContext ownership ───────────────────────────────────────────

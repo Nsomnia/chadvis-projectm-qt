@@ -1,10 +1,12 @@
 #pragma once
 #include <QObject>
 #include <QtQml/qqml.h>
+#include <string>
 #include "recorder/VideoRecorderCore.hpp"
 #include "QmlSingletonBridge.hpp"
 
 namespace vc {
+class LyricsSync;
 class VideoRecorder;
 class VisualizerWindow;
 }
@@ -37,6 +39,7 @@ public:
     explicit RecordingBridge(QObject* parent = nullptr);
     static void setRecorder(vc::VideoRecorder* recorder);
     static void setVisualizer(vc::VisualizerWindow* visualizer);
+    static void setLyricsSync(vc::LyricsSync* sync);
 
     bool isRecording() const;
     QString currentFile() const;
@@ -64,8 +67,17 @@ private:
     void onStatsUpdated(const vc::RecordingStats& stats);
     void onError(const std::string& msg);
 
+    /// The karaoke subtitle document for the recording about to start, or empty.
+    ///
+    /// See the comment at the call site in the .cpp for why this bridge, and not
+    /// the recorder and not Application, is the layer that owns that decision.
+    /// Kept out of the header's public surface deliberately: nothing in QML has
+    /// any business choosing or inspecting a subtitle document.
+    std::string karaokeDocument() const;
+
     static vc::VideoRecorder* s_recorder;
     static vc::VisualizerWindow* s_visualizer;
+    static vc::LyricsSync* s_lyricsSync;
     vc::RecordingStats cachedStats_;
 };
 

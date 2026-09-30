@@ -1,6 +1,7 @@
 #pragma once
 #include <atomic>
 #include <memory>
+#include <string_view>
 #include <vector>
 #include "EncoderSettings.hpp"
 #include "util/Result.hpp"
@@ -29,8 +30,30 @@ public:
   VideoRecorder();
   ~VideoRecorder();
 
-  Result<void> start(const EncoderSettings& settings);
-  Result<void> start(const fs::path& outputPath);
+  /**
+   * @brief Begin a recording, optionally muxing a karaoke subtitle track.
+   *
+   * @param assSubtitle  A complete Advanced SubStation Alpha document, UTF-8,
+   *                     as built by `vc::LyricsExport::toAssDocument`. Opaque
+   *                     here on purpose: nothing in `src/recorder/` names a
+   *                     lyrics type, and the caller -- the layer that has both
+   *                     the lyrics and the recorder -- decides whether one
+   *                     exists. Empty means "no lyrics", and is the default so
+   *                     every existing call site and test is unaffected.
+   *
+   * Borrowed, not retained, and the borrow is confined to this call: it is
+   * forwarded straight to `VideoRecorderThread::start` and consumed by
+   * `VideoRecorderFFmpeg::init`, which copies what it needs before returning.
+   * Both of those run synchronously on the calling thread, *before*
+   * `VideoRecorderThread::start` constructs its JThread, so no view can
+   * outlive the buffer that owns it and none can reach the encoding thread.
+   * A missing or unusable document is never a start failure -- the muxer drops
+   * the track and the file records normally.
+   */
+  Result<void> start(const EncoderSettings& settings,
+                     std::string_view assSubtitle = {});
+  Result<void> start(const fs::path& outputPath,
+                     std::string_view assSubtitle = {});
   Result<void> stop();
 
   void submitVideoFrame(std::vector<u8>&& data, u32 width, u32 height, i64 timestamp);

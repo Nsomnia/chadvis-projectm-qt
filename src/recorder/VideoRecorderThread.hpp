@@ -19,6 +19,7 @@
 #pragma once
 #include <atomic>
 #include <mutex>
+#include <string_view>
 #include <vector>
 #include "FrameGrabber.hpp"
 #include "VideoRecorderCore.hpp"
@@ -34,7 +35,22 @@ public:
     VideoRecorderThread(VideoRecorder& parent, const EncoderSettings& settings);
     ~VideoRecorderThread();
 
-    void start();
+    /**
+     * @brief Open the muxer, then start the encoding thread.
+     *
+     * @param assSubtitle  See `VideoRecorder::start`. Forwarded verbatim to
+     *                     `VideoRecorderFFmpeg::init`, which copies what it
+     *                     needs and returns.
+     *
+     * Runs on the *caller's* thread, not a new one, and that is the whole
+     * lifetime argument for the borrowed view: `ffmpeg_.init` consumes it
+     * synchronously on line one of the body, and `thread_` -- whose lambda
+     * captures only `this` -- is not constructed until afterwards. Nothing that
+     * reaches the encoding thread refers to the caller's buffer; what the worker
+     * reads later is `VideoRecorderFFmpeg`'s own copies, published by the
+     * thread creation that happens after they were written.
+     */
+    void start(std::string_view assSubtitle = {});
     void stop();
 
     // Data input

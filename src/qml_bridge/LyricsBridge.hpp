@@ -67,16 +67,19 @@ public slots:
     /// Advanced SubStation Alpha, the karaoke subtitle format.
     ///
     /// One Dialogue event per LyricsLine, with every word tagged `\kf<cs>` so a
-    /// player sweeps the line in time with the audio. Sidecar only: this writes
-    /// a file, and deliberately does not mux a subtitle track into a container
-    /// -- that is a separate piece of work in the recorder, not here.
+    /// player sweeps the line in time with the audio.
+    ///
+    /// The document itself is assembled by `vc::LyricsExport::toAssDocument`, one
+    /// layer down, because the recorder muxes the same bytes into a subtitle
+    /// stream; this method owns the *file* -- resolving the path and reporting
+    /// the outcome -- and nothing more.
     Q_INVOKABLE void exportToAss(const QString& path);
     /// The same ASS document exportToAss writes, as a string.
     ///
     /// The muxer needs the content, not a filename to read back, so this is the
     /// seam it consumes. It is the *same* bytes by construction: both entry
-    /// points go through one buildAssDocument, and there is no second assembly
-    /// path to drift.
+    /// points call one `vc::LyricsExport::toAssDocument`, and there is no second
+    /// assembly path to drift.
     ///
     /// Failure is reported through `error` rather than the exportFailed signal,
     /// on purpose. That signal means "a file could not be written" and is wired
