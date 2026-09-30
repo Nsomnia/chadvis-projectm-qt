@@ -149,3 +149,38 @@ target_link_libraries(test_AudioAnalyzer PRIVATE
 )
 
 add_test(NAME test_AudioAnalyzer COMMAND test_AudioAnalyzer)
+
+# ---------------------------------------------------------------------------
+# Sanitizer lane environment.
+#
+# Measured on Darwin: the default is abort_on_error=1, so a ctest entry that
+# finds a race dies with SIGABRT (exit 134) on the FIRST finding and collects
+# exactly one report per run. halt_on_error=0 does NOT prevent that -- measured --
+# abort_on_error=0 does. So without this block a real race looks like a crash
+# and the suite reports nothing useful.
+#
+# Applied to every unit-test entry rather than to a hand-picked pair, because
+# they are all instrumented in the sanitizer tree and an unannotated one would
+# abort confusingly. The integration and GL suites are deliberately NOT included:
+# integration_gl_tests drives the OpenGL driver, and TSan under a GL driver is a
+# known source of unreproducible noise.
+# ---------------------------------------------------------------------------
+if(CHADVIS_SANITIZER)
+    # Instrumented builds check every memory access, so a wait budget that is
+    # comfortable in a normal build is not comfortable here. Tests scale their
+    # waits with this rather than hard-coding a large number everywhere, so the
+    # normal build keeps its tight, fast timeouts.
+    target_compile_definitions(unit_tests PRIVATE CHADVIS_SANITIZER_BUILD=1)
+
+    set_tests_properties(
+        unit_tests
+        test_SunoAudioUploadService
+        test_SunoRequestEpoch
+        test_SunoExploreService
+        test_SunoNotificationService
+        test_ClerkAuthClient
+        test_AudioAnalyzer
+        PROPERTIES ENVIRONMENT
+        "TSAN_OPTIONS=abort_on_error=0:halt_on_error=0:exitcode=66:suppressions=${CMAKE_SOURCE_DIR}/cmake/tsan.supp"
+    )
+endif()

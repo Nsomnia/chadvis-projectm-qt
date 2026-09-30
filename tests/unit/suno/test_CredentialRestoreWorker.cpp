@@ -14,10 +14,47 @@ using vc::suno::CredentialStoreWorker;
 
 namespace {
 
-void runEventLoopWithTimeout(QEventLoop& loop, int timeoutMs = 2000) {
+// A wait budget that is comfortable in a normal build is not comfortable under
+// ThreadSanitizer, where every instrumented memory access is checked. The
+// sanitizer lane defines CHADVIS_SANITIZER_BUILD; the normal build keeps its
+// tight, fast budget rather than being slowed down to accommodate it.
+#ifdef CHADVIS_SANITIZER_BUILD
+constexpr int kWaitMs = 30000;
+#else
+constexpr int kWaitMs = 2000;
+#endif
+
+void runEventLoopWithTimeout(QEventLoop& loop, int timeoutMs = kWaitMs) {
     QTimer::singleShot(timeoutMs, &loop, &QEventLoop::quit);
     loop.exec();
 }
+
+/// Unblocks the credential backend on EVERY exit path, exactly once.
+///
+/// The backend blocks in releaseBackend.acquire() until this test lets it go,
+/// and ~CredentialStoreWorker joins that thread. So if any assertion between the
+/// request and the matching release() fails, QVERIFY early-returns, the worker
+/// thread stays blocked forever, and the join in the destructor hangs — turning
+/// a one-line failure into a 300 s QTest timeout and SIGABRT that hides the real
+/// message. Observed under ThreadSanitizer, but the path is reachable in any
+/// build: the assert does not have to fail for a reason TSan can detect.
+class BackendUnblocker {
+public:
+    explicit BackendUnblocker(QSemaphore& sem) : sem_(&sem) {}
+    BackendUnblocker(const BackendUnblocker&) = delete;
+    BackendUnblocker& operator=(const BackendUnblocker&) = delete;
+    ~BackendUnblocker() { unblock(); }
+
+    void unblock() {
+        if (sem_) {
+            sem_->release();
+            sem_ = nullptr;
+        }
+    }
+
+private:
+    QSemaphore* sem_;
+};
 
 } // namespace
 
@@ -67,6 +104,9 @@ private slots:
         QObject guiReceiver;
         QSemaphore backendEntered(0);
         QSemaphore releaseBackend(0);
+        // Armed before anything can fail, so no early return can strand the
+        // worker thread inside the blocking backend.
+        BackendUnblocker unblockBackend(releaseBackend);
         std::atomic_int backendCalls{0};
         std::atomic_bool firstCompleted{false};
         std::atomic_bool duplicateCompleted{false};
@@ -87,7 +127,7 @@ private slots:
                 [&](CredentialStoreWorker::Outcome) {
                     firstCompleted.store(true);
                 }));
-        QVERIFY(backendEntered.tryAcquire(1, 2000));
+        QVERIFY(backendEntered.tryAcquire(1, kWaitMs));
 
         QVERIFY(!worker.requestRestore(
                 CredentialStoreWorker::Request{},
@@ -97,9 +137,9 @@ private slots:
         QCOMPARE(backendCalls.load(), 1);
         QVERIFY(worker.isRestoreInFlight());
 
-        releaseBackend.release();
-        QTRY_VERIFY_WITH_TIMEOUT(firstCompleted.load(), 2000);
-        QTRY_VERIFY_WITH_TIMEOUT(duplicateCompleted.load(), 2000);
+        unblockBackend.unblock();
+        QTRY_VERIFY_WITH_TIMEOUT(firstCompleted.load(), kWaitMs);
+        QTRY_VERIFY_WITH_TIMEOUT(duplicateCompleted.load(), kWaitMs);
         QVERIFY(!worker.isRestoreInFlight());
         QCOMPARE(backendCalls.load(), 1);
     }

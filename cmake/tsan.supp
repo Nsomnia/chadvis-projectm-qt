@@ -1,0 +1,30 @@
+# ThreadSanitizer suppressions for ChadVis.
+#
+# STATUS: starter. Nothing is suppressed here yet, deliberately.
+#
+# Qt is Homebrew qtbase 6.11.1 and is NOT built with sanitizer support -- it has
+# zero __tsan_* undefined symbols. That is the usual reason to expect heavy
+# toolkit noise, but the measured probes did not show it: a cross-Qt-thread
+# round trip produced exactly one report, and it was the genuine race. So this
+# file exists to absorb noise that has NOT been seen, not to hide what has.
+#
+# Add an entry only for a report you have actually reproduced and judged
+# benign, and record why in the comment beside it. A suppression with no
+# justification is how a real race gets hidden.
+#
+# Syntax: <report_type>:<substring matched against the symbolized frames>
+# Verify:  TSAN_OPTIONS=suppressions=cmake/tsan.supp ctest --test-dir build-tsan/tests
+# Debug:   TSAN_OPTIONS=verbosity=1 ...
+#
+# --- Qt internals ---------------------------------------------------------
+# Candidates in the order they are most likely to appear. NOT enabled: an
+# unreproduced suppression is a guess, and a guess that happens to be wrong is
+# indistinguishable from a race being hidden.
+#   race:QCoreApplication
+#   race:QMutex
+#
+# --- OpenGL / driver (integration_gl_tests only) --------------------------
+# Left out of the sanitizer lane entirely; TSan under a GL driver is a known
+# source of unreproducible noise. See the CMakeLists ENVIRONMENT block.
+#   race:aglCreateContext
+#   race:QOpenGLContext
