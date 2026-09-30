@@ -19,6 +19,7 @@ fact, that is a bug — fix it here rather than adding a third copy.
 | Document | Covers |
 | :--- | :--- |
 | [Architecture](dev/ARCHITECTURE.md) | Process ownership, init and teardown order, the QML shell, bridge registration, Suno data flow. |
+| [Invariants](dev/INVARIANTS.md) | Hard-won constraints that must not be violated: threading contracts, buffer lifetime, timestamp rules, and testing traps. |
 | [Testing](dev/TESTING.md) | The 19 `unit_tests` sources, the 6 standalone executables, and the integration harness. How to actually run them. |
 | [Manual QA](dev/manual-qa.md) | The MT-001 GUI checklist. Real-GUI versus offscreen coverage, per item. |
 | [Contributing](dev/CONTRIBUTING.md) | C++23 conventions, error handling, and PR process. |
