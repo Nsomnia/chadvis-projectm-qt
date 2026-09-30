@@ -50,8 +50,23 @@ public:
      * reads later is `VideoRecorderFFmpeg`'s own copies, published by the
      * thread creation that happens after they were written.
      */
-    void start(std::string_view assSubtitle = {});
+    Result<void> start(std::string_view assSubtitle = {});
     void stop();
+
+    /// Did the muxer refuse a packet for a reason that damages the file?
+    ///
+    /// Snapshotted from the encoder in stop(), because cleanup() resets the
+    /// encoder's own flag to keep the instance reusable. Recorded per recording
+    /// rather than read live, so VideoRecorder::stop can report it after the
+    /// worker has been torn down.
+    bool writeFailed() const { return writeFailed_; }
+
+    /// Test seam, forwarded to the encoder. See
+    /// VideoRecorderFFmpeg::simulateWriteFailureForTesting for why the failure
+    /// cannot be provoked directly.
+    void simulateWriteFailureForTesting() {
+        ffmpeg_.simulateWriteFailureForTesting();
+    }
 
     // Data input
     void pushVideoFrame(GrabbedFrame frame);
@@ -92,6 +107,9 @@ private:
     // Thread-safe stats
     mutable std::mutex statsMutex_;
     RecordingStats stats_;
+
+    // Set in stop() from ffmpeg_, before cleanup() resets it. See writeFailed().
+    bool writeFailed_{false};
 };
 
 } // namespace vc

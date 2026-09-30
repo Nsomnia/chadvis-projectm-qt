@@ -292,20 +292,23 @@ void VideoRecorderFFmpeg::cleanup() {
     videoCodecCtx_.reset();
     audioCodecCtx_.reset();
 
+    // Captured before anything resets it, and used for both writes below. "The
+    // muxer got a header" is the one fact that decides whether either is legal.
+    const bool muxerIsWritable = headerWritten_ && formatCtx_ && formatCtx_->pb;
+
     // Any cue the video clock never reached. Written here rather than in flush()
     // because cleanup() is the only guaranteed-terminal path -- the destructor
     // calls it, and VideoRecorderThread::stop() reaches it even if the loop
     // exited on an error -- so this is where "the recording is over" can be
     // stated exactly once. Idempotent: subtitle_->next only moves forward.
     //
-    // Gated on the same two facts av_write_trailer is gated on, and it needs
-    // both: an init that failed at avio_open leaves formatCtx_ with no pb, and
-    // handing that to av_interleaved_write_frame is a null deref; an init that
-    // failed at avformat_write_header leaves a pb but no header, and writing
-    // packets into that would produce a file that is not merely unfinished but
-    // structurally invalid. subtitle_->codecCtx must outlive this, which is why
-    // the reset below is not up with the other codec contexts.
-    if (subtitle_ && headerWritten_ && formatCtx_ && formatCtx_->pb) {
+    // Gated on the same fact av_write_trailer is gated on: an init that failed at
+    // avio_open leaves formatCtx_ with no pb, and an init that failed at
+    // avformat_write_header leaves a pb but no header, and writing packets into
+    // either produces a file that is not merely unfinished but structurally
+    // invalid. subtitle_->codecCtx must outlive this, which is why the reset
+    // below is not up with the other codec contexts.
+    if (subtitle_ && muxerIsWritable) {
         u64 subtitleBytes = 0;
         writeSubtitlePacketsUpTo(std::numeric_limits<std::int64_t>::max(),
                                  subtitleBytes);
@@ -317,10 +320,28 @@ void VideoRecorderFFmpeg::cleanup() {
     subtitle_.reset();
     headerWritten_ = false;
 
-    if (formatCtx_ && formatCtx_->pb) {
-        av_write_trailer(formatCtx_.get());
+    // Checked. A refused trailer is the index of the file: without it a
+    // Matroska file has no cues and cannot be seeked, and an MP4 has no moov
+    // atom at all and will not open. Either way the caller must hear about it,
+    // because the alternative is the exact failure this class is here to stop --
+    // a file that looks like a recording and is not. It cannot fire in a healthy
+    // recording: the same context accepted a header and every packet up to here,
+    // and the only cause of a trailer failure is an I/O error on the final write.
+    if (muxerIsWritable) {
+        const int trailer = av_write_trailer(formatCtx_.get());
+        if (trailer < 0) {
+            writeFailed_ = true;
+            LOG_ERROR("Failed to write the trailer; the file is incomplete: {}",
+                      ffmpegError(trailer));
+        }
     }
     formatCtx_.reset();
+
+    // The encoder is reusable, so a failed instance must not leave the next
+    // recording looking broken. VideoRecorderThread snapshots writeFailed()
+    // before calling cleanup() precisely so this reset cannot swallow the report.
+    writeFailed_ = false;
+    writeFailureReported_ = false;
 
     videoStream_ = nullptr;
     audioStream_ = nullptr;
@@ -347,6 +368,12 @@ bool VideoRecorderFFmpeg::encodeVideo(const GrabbedFrame& frame,
 
   std::lock_guard lock(mutex_);
   if (!videoCodecCtx_ || !videoFrame_)
+    return false;
+
+  // Once the muxer has refused a packet for a damaging reason, do not keep
+  // feeding it: every further frame lands in a file nobody should trust, and
+  // lengthening the plausible-looking segment is worse than stopping.
+  if (writeFailed_)
     return false;
 
   const u8* srcData[1] = {frame.data.data()};
@@ -473,7 +500,12 @@ bool VideoRecorderFFmpeg::encodeAudio(std::vector<f32>& buffer,
                                       u32 channels,
                                       u64& bytesWritten) {
     std::lock_guard lock(mutex_);
-    if (!audioCodecCtx_ || !audioFrame_ || buffer.empty())
+    // swrCtx_ is in the list because initAudioStream can now legitimately return
+    // without one -- it returns ok() with no audio stream at all when the codec
+    // is missing or needs a variable frame size -- and the old code called
+    // swr_convert on swrCtx_.get() with only audioCodecCtx_ and audioFrame_
+    // checked.
+    if (!audioCodecCtx_ || !audioFrame_ || !swrCtx_ || buffer.empty())
         return false;
 
     int frameSize = audioCodecCtx_->frame_size;
@@ -511,6 +543,15 @@ bool VideoRecorderFFmpeg::encodeAudio(std::vector<f32>& buffer,
 
 void VideoRecorderFFmpeg::flush(u64& bytesWritten) {
     std::lock_guard lock(mutex_);
+
+    // Nothing may be written to a muxer that never had a header. VideoRecorder's
+    // destructor reaches flush() through VideoRecorderThread::stop() even when
+    // init() failed at avio_open or avformat_write_header, and the encoders are
+    // open by then, so draining them would hand packets to a context with no pb
+    // at all or with a pb and no header. Same gate cleanup() uses.
+    if (!headerWritten_ || !formatCtx_) {
+        return;
+    }
 
     if (videoCodecCtx_) {
         avcodec_send_frame(videoCodecCtx_.get(), nullptr);
@@ -618,10 +659,24 @@ Result<void> VideoRecorderFFmpeg::initVideoStream(
   videoStream_->time_base = videoCodecCtx_->time_base;
 
   videoFrame_.reset(av_frame_alloc());
+  if (!videoFrame_)
+    return Result<void>::err("Failed to allocate video frame");
   videoFrame_->format = AV_PIX_FMT_YUV420P;
   videoFrame_->width = videoCodecCtx_->width;
   videoFrame_->height = videoCodecCtx_->height;
-  av_frame_get_buffer(videoFrame_.get(), 0);
+  // Checked. av_frame_get_buffer is the only thing that allocates videoFrame_'s
+  // plane pointers, and sws_scale writes through data[0] unconditionally on the
+  // next call -- an unchecked failure here is a null write, not a soft error.
+  // The condition it catches is a 32-bit malloc failing on a
+  // width*height*1.5-byte allocation (a 4K frame is ~12 MB, and a machine under
+  // memory pressure can refuse it). It cannot fire in a healthy recording: the
+  // same allocation already succeeded for the codec context and the muxer, and
+  // the frame is only this size because settings.video validated non-zero.
+  ret = av_frame_get_buffer(videoFrame_.get(), 0);
+  if (ret < 0) {
+    return Result<void>::err("Failed to allocate video frame buffer: " +
+      ffmpegError(ret));
+  }
 
   if (hwFramesCtx_) {
     hwFrame_.reset(av_frame_alloc());
@@ -646,10 +701,12 @@ Result<void> VideoRecorderFFmpeg::initAudioStream(
         return Result<void>::ok();
     }
 
-    audioStream_ = avformat_new_stream(formatCtx_.get(), nullptr);
-    if (!audioStream_)
-        return Result<void>::err("Failed to create audio stream");
-
+    // The codec context is opened before the stream is declared, and the stream
+    // is only created once this codec has proved it can be driven. That ordering
+    // is not cosmetic: avformat_new_stream cannot be undone -- the AVStream stays
+    // in formatCtx_ -- so declaring it first and then deciding the codec is
+    // unusable leaves avformat_write_header looking at a stream with no codecpar.
+    // Same discipline initSubtitleStream uses, for the same reason.
     audioCodecCtx_.reset(avcodec_alloc_context3(codec));
     if (!audioCodecCtx_)
         return Result<void>::err("Failed to allocate audio codec context");
@@ -685,26 +742,63 @@ Result<void> VideoRecorderFFmpeg::initAudioStream(
         audioCodecCtx_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
 
-    if (avcodec_open2(audioCodecCtx_.get(), codec, nullptr) < 0) {
-        return Result<void>::err("Failed to open audio codec");
+    const int opened = avcodec_open2(audioCodecCtx_.get(), codec, nullptr);
+    if (opened < 0) {
+        return Result<void>::err("Failed to open audio codec: " +
+                                 ffmpegError(opened));
     }
+
+    // A variable-frame-size codec reports frame_size <= 0. The old code set
+    // nb_samples from it, skipped the buffer allocation because nb_samples was
+    // 0, and then let swr_convert write through audioFrame_'s null data pointers;
+    // encodeAudio's own `frameSize <= 0` guard reads a different local and did
+    // not stop it. Decided here, before any stream exists, so the answer is
+    // "record without audio" rather than "declare an audio stream and then never
+    // fill it".
+    //
+    // It cannot fire for any AudioCodec this project offers: AAC, Opus, FLAC, MP3
+    // and PCM all report a fixed frame_size once open. It is not in the
+    // project's output set, so this is a guard against a future codec rather
+    // than a condition a healthy recording hits -- which is why it skips the
+    // stream (the same choice the missing-codec branch above makes) instead of
+    // failing the recording.
+    if (audioCodecCtx_->frame_size <= 0) {
+        LOG_WARN("Audio codec {} needs {} samples per frame; recording without audio",
+                 settings.audio.codecName(), audioCodecCtx_->frame_size);
+        return Result<void>::ok();
+    }
+
+    audioStream_ = avformat_new_stream(formatCtx_.get(), nullptr);
+    if (!audioStream_)
+        return Result<void>::err("Failed to create audio stream");
 
     avcodec_parameters_from_context(audioStream_->codecpar,
                                     audioCodecCtx_.get());
     audioStream_->time_base = audioCodecCtx_->time_base;
 
     audioFrame_.reset(av_frame_alloc());
+    if (!audioFrame_) {
+        return Result<void>::err("Failed to allocate audio frame");
+    }
     audioFrame_->format = audioCodecCtx_->sample_fmt;
     av_channel_layout_copy(&audioFrame_->ch_layout, &audioCodecCtx_->ch_layout);
     audioFrame_->sample_rate = audioCodecCtx_->sample_rate;
     audioFrame_->nb_samples = audioCodecCtx_->frame_size;
 
-    if (audioFrame_->nb_samples > 0) {
-        av_frame_get_buffer(audioFrame_.get(), 0);
+    // Non-zero by now: the frame_size guard above ran before this stream existed.
+    // Checked for the same reason as the video frame: swr_convert writes into
+    // audioFrame_->data. frame_size * channels * bytes-per-sample is small --
+    // 1024 * 2 * 4 for AAC at 48 kHz -- so this only catches genuine
+    // out-of-memory, and the allocation it guards is the only one for these
+    // pointers.
+    const int buffered = av_frame_get_buffer(audioFrame_.get(), 0);
+    if (buffered < 0) {
+        return Result<void>::err("Failed to allocate audio frame buffer: " +
+                                  ffmpegError(buffered));
     }
 
     SwrContext* s = nullptr;
-    swr_alloc_set_opts2(&s,
+    const int allocated = swr_alloc_set_opts2(&s,
                         &audioCodecCtx_->ch_layout,
                         audioCodecCtx_->sample_fmt,
                         audioCodecCtx_->sample_rate,
@@ -713,8 +807,24 @@ Result<void> VideoRecorderFFmpeg::initAudioStream(
                         settings.audio.sampleRate,
                         0,
                         nullptr);
+    // Checked. Both of these were discarded while swrCtx_.get() was
+    // dereferenced by the very next call, so a resampler that could not be
+    // configured -- an unsupported sample-format conversion, or an out-of-memory
+    // -- became a null dereference inside swr_convert rather than an error.
+    // Neither can fire for the project's settings: the layouts are the defaults
+    // for the configured channel count, both rates are the same value, and the
+    // only conversion is float to whatever the opened encoder advertises.
+    if (allocated < 0 || !s) {
+        return Result<void>::err("Failed to allocate the audio resampler: " +
+                                  ffmpegError(allocated));
+    }
+    const int inited = swr_init(s);
+    if (inited < 0) {
+        swr_free(&s);
+        return Result<void>::err("Failed to initialise the audio resampler: " +
+                                  ffmpegError(inited));
+    }
     swrCtx_.reset(s);
-    swr_init(swrCtx_.get());
 
     return Result<void>::ok();
 }
@@ -724,6 +834,12 @@ bool VideoRecorderFFmpeg::encodeVideoFrame(AVFrame* frame, u64& bytesWritten) {
     if (ret < 0)
         return false;
 
+    // "Every packet this frame produced reached the file". The old code
+    // discarded writePacket's answer and returned true, and VideoRecorderThread
+    // incremented framesWritten on that true -- so a muxer that had been refusing
+    // packets for a minute still reported a climbing count.
+    bool allWritten = true;
+
     while (ret >= 0) {
         ret = avcodec_receive_packet(videoCodecCtx_.get(), packet_.get());
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
@@ -731,16 +847,22 @@ bool VideoRecorderFFmpeg::encodeVideoFrame(AVFrame* frame, u64& bytesWritten) {
         if (ret < 0)
             return false;
 
-        writePacket(packet_.get(), videoStream_, videoCodecCtx_->time_base,
-                    bytesWritten);
+        if (!writePacket(packet_.get(), videoStream_, videoCodecCtx_->time_base,
+                         bytesWritten)) {
+            allWritten = false;
+        }
     }
-    return true;
+    return allWritten;
 }
 
 bool VideoRecorderFFmpeg::encodeAudioFrame(AVFrame* frame, u64& bytesWritten) {
     int ret = avcodec_send_frame(audioCodecCtx_.get(), frame);
     if (ret < 0)
         return false;
+
+    // Same contract as encodeVideoFrame: true only if every packet this frame
+    // produced is in the file.
+    bool allWritten = true;
 
     while (ret >= 0) {
         ret = avcodec_receive_packet(audioCodecCtx_.get(), packet_.get());
@@ -749,10 +871,12 @@ bool VideoRecorderFFmpeg::encodeAudioFrame(AVFrame* frame, u64& bytesWritten) {
         if (ret < 0)
             return false;
 
-        writePacket(packet_.get(), audioStream_, audioCodecCtx_->time_base,
-                    bytesWritten);
+        if (!writePacket(packet_.get(), audioStream_, audioCodecCtx_->time_base,
+                         bytesWritten)) {
+            allWritten = false;
+        }
     }
-    return true;
+    return allWritten;
 }
 
 bool VideoRecorderFFmpeg::writePacket(AVPacket* packet,
@@ -775,11 +899,44 @@ bool VideoRecorderFFmpeg::writePacket(AVPacket* packet,
   av_packet_rescale_ts(packet, sourceTimeBase, stream->time_base);
   packet->stream_index = stream->index;
 
-  if (av_interleaved_write_frame(formatCtx_.get(), packet) >= 0) {
-    bytesWritten += packet->size;
-    return true;
+  const int written =
+      av_interleaved_write_frame(formatCtx_.get(), packet);
+
+  // The return value used to be discarded at every call site, which is how a
+  // disk that filled at 90% produced a truncated file that opens, plays to the
+  // break, and is reported Completed.
+  switch (classifyWriteResult(written)) {
+    case WriteOutcome::Written:
+      bytesWritten += packet->size;
+      return true;
+
+    case WriteOutcome::Backpressure:
+      // Not a failure, and deliberately not counted as one. The packet is not in
+      // the file, so the frame must not be counted -- but nothing is damaged, and
+      // calling this a failure would mark a merely-slow recording as broken. One
+      // log line, not one per frame.
+      if (!writeFailureReported_) {
+        writeFailureReported_ = true;
+        LOG_WARN("Muxer asked for backpressure; a packet was deferred");
+      }
+      return false;
+
+    case WriteOutcome::Failed:
+      writeFailed_ = true;
+      LOG_ERROR("Muxer refused a packet for stream {}: {}",
+                stream->index, ffmpegError(written));
+      return false;
   }
+
   return false;
+}
+
+bool VideoRecorderFFmpeg::reportWriteFailure() {
+  if (!writeFailed_ || writeFailureReported_) {
+    return false;
+  }
+  writeFailureReported_ = true;
+  return true;
 }
 
 void VideoRecorderFFmpeg::writeSubtitlePacketsUpTo(std::int64_t millisecond,

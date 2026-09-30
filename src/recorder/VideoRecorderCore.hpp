@@ -13,7 +13,20 @@ namespace vc {
 class AudioQueue;
 class VideoRecorderThread;
 
-enum class RecordingState { Stopped, Starting, Recording, Stopping, Finalizing, Error };
+/// Why the recorder is in its current state.
+enum class RecordingState {
+  Stopped,     ///< Idle: nothing running. The initial state, and the resting
+               ///< state after stop().
+  Starting,    ///< A worker is being brought up. Transient and synchronous.
+  Recording,   ///< Reached *only* when the muxer was genuinely opened and its
+               ///< header written.
+  Stopping,    ///< stop() was asked for.
+  Finalizing,  ///< Draining encoders and writing the trailer.
+  /// The recording never began: the output could not be opened, a codec could
+  /// not be opened, or the header could not be written. Holds no worker, and is
+  /// a legal state to start from, so one failure cannot brick the recorder.
+  Error
+};
 
 struct RecordingStats {
   Duration elapsed{0};
@@ -60,6 +73,11 @@ public:
   void submitVideoFrame(const u8* data, u32 width, u32 height, i64 timestamp);
 
   void setAudioQueue(AudioQueue* queue);
+
+    /// Test seam, forwarded to the encoding worker. See
+    /// VideoRecorderFFmpeg::simulateWriteFailureForTesting for why the muxer
+    /// failure cannot be provoked directly.
+    void simulateWriteFailureForTesting();
 
   RecordingState state() const { return state_; }
   bool isRecording() const { return state_ == RecordingState::Recording; }

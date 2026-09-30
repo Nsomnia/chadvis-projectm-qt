@@ -22,6 +22,7 @@
 */
 
 #pragma once
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -60,6 +61,38 @@ struct HWFramesContextDeleter {
 };
 using HWFramesContextPtr = std::unique_ptr<AVBufferRef, HWFramesContextDeleter>;
 
+/// What one `av_interleaved_write_frame` return code means.
+///
+/// Split out of writePacket and made a free function because this
+/// classification *is* the behaviour worth testing, and it is the one thing
+/// about a muxer that cannot be provoked from a test: libavformat's only
+/// reliable way to be handed a bad return is a full filesystem. A pure function
+/// over the return code is directly checkable, and it pins the case that matters
+/// most -- EAGAIN is not a failure.
+enum class WriteOutcome {
+  /// >= 0. The packet is in the file.
+  Written,
+  /// `AVERROR(EAGAIN)`. The interleave buffer is full and the caller is being
+  /// asked to come back later. **The packet was not written**, so this is not
+  /// success, but it is also not damage: nothing about the file is wrong, the
+  /// recorder simply cannot keep up for a moment. Treating it as a failure
+  /// would mark healthy recordings as broken under load, which is the exact
+  /// inversion this function exists to prevent.
+  Backpressure,
+  /// Anything else. The muxer refused the packet -- ENOSPC, EIO, EINVAL. The
+  /// packets already accepted are interleaved with holes, and the resulting
+  /// container opens, plays to the break and then stops, which is worse than a
+  /// failed recording because it looks like a good one.
+  Failed
+};
+
+/// Classify an `av_interleaved_write_frame` return code. See `WriteOutcome`.
+constexpr WriteOutcome classifyWriteResult(const int result) {
+  return result >= 0 ? WriteOutcome::Written
+                     : (result == AVERROR(EAGAIN) ? WriteOutcome::Backpressure
+                                                  : WriteOutcome::Failed);
+}
+
 class VideoRecorderFFmpeg {
 public:
   VideoRecorderFFmpeg();
@@ -97,6 +130,38 @@ public:
   bool encodeVideo(const GrabbedFrame& frame, u64& bytesWritten);
   bool encodeAudio(std::vector<f32>& buffer, u32 channels, u64& bytesWritten);
   void flush(u64& bytesWritten);
+
+  /**
+   * @brief Has the muxer refused a packet for a reason that damages the file?
+   *
+   * Sticky once set: the container cannot be repaired after a hole, so every
+   * later packet is into a file nobody should trust. `VideoRecorder::stop`
+   * reads this to refuse to report a plausible-looking success.
+   */
+  bool writeFailed() const { return writeFailed_; }
+
+  /**
+   * @brief True exactly once, on the first damaging write failure.
+   *
+   * The one-shot shape is what lets the encoding loop report a single error
+   * instead of one per frame for the rest of the recording, and it matches the
+   * `warnedMissingCaptureTime_` pattern already in this class.
+   */
+  bool reportWriteFailure();
+
+  /**
+   * @brief Test seam: declare the muxer to be failing, without one.
+   *
+   * Exists because `av_interleaved_write_frame`'s failure cannot be provoked
+   * portably and safely: the realistic triggers are a full filesystem, a closed
+   * descriptor behind AVIO's back, or an RLIMIT_FSIZE that would also trip the
+   * logger inside the same process. What is under test is everything this app
+   * does *after* the muxer says no -- the encoder reporting failure, the frame
+   * counter not advancing, and `stop()` refusing to call it complete -- and that
+   * whole chain is unreachable without this. Which return codes mean what is
+   * covered directly by `classifyWriteResult`.
+   */
+  void simulateWriteFailureForTesting() { writeFailed_ = true; }
 
 private:
   Result<void> initVideoStream(const EncoderSettings& settings);
@@ -162,7 +227,22 @@ private:
   /// for writing a late subtitle packet: a context that failed at avio_open has
   /// no pb to write to, and one that failed at write_header has a pb but no
   /// header, and neither is a muxer that will accept a packet.
+  ///
+  /// The same gate now covers av_write_trailer and flush(), which both used to
+  /// write into a context that had never had a header -- an init failure at
+  /// avio_open or write_header left a context that either had no pb at all or a
+  /// pb and no header, and cleanup() then asked the muxer to finalise it.
   bool headerWritten_{false};
+
+  /// Sticky: see writeFailed(). Reset only by cleanup().
+  ///
+  /// Atomic because writeFailed() is read from the GUI thread (VideoRecorder::
+  /// stop, after the join) and, under the test seam, written from the test's
+  /// thread while the encoding thread is inside encodeVideo. The flag is the one
+  /// piece of recorder state that legitimately crosses that boundary.
+  std::atomic<bool> writeFailed_{false};
+  /// Cleared by reportWriteFailure() so exactly one caller reports it.
+  bool writeFailureReported_{false};
 
   // Hardware acceleration contexts
   HWDeviceContextPtr hwDeviceCtx_;

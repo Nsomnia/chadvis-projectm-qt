@@ -1192,6 +1192,212 @@ private slots:
         QCOMPARE(timeline.presentationSeconds.size(), static_cast<usize>(8));
     }
 
+    // ── Failure reporting ───────────────────────────────────────────────────
+    // The recorder's whole job is producing a correct file, and until these
+    // landed it reported success in two independent ways: a start that never
+    // opened a muxer became an active recording, and a muxer that had been
+    // refusing packets for a minute still had its frame counter climbing.
+
+    void aFailedStartDoesNotBecomeAnActiveRecording() {
+        // Deterministic, permission-free failure: the output path's parent is a
+        // *regular file*, so init()'s exclusive create fails with ENOTDIR. Not
+        // EEXIST, so it is not mistaken for a filename collision and retried, and
+        // not EACCES, so this does not depend on the test not running as root --
+        // which is what makes an "unwritable directory" fixture unreliable.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const fs::path blocker =
+            fs::path(dir.path().toStdString()) / "not-a-directory";
+        {
+            std::ofstream file(blocker);
+            QVERIFY(file.is_open());
+            file << "x";
+        }
+        QVERIFY(fs::is_regular_file(blocker));
+
+        auto settings = testSettings(QString::fromStdString(
+            (blocker / "recording.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV);
+
+        VideoRecorder recorder;
+        const auto started = recorder.start(settings);
+
+        // The Result, not just the absence of a file: the caller has to be able
+        // to tell, and RecordingBridge::startRecording already reports
+        // result.error().message verbatim.
+        QVERIFY2(!started, "a start that never opened a muxer reported success");
+        QVERIFY2(!started.error().message.empty(),
+                 "the failure carried no reason for the user");
+
+        // The state, which is what the UI reads. On the old code this was
+        // Recording: the frame counter climbed, the timer ran, and no file ever
+        // appeared.
+        QVERIFY2(!recorder.isRecording(),
+                 "the recorder claims to be recording after a failed start");
+        QCOMPARE(recorder.state(), RecordingState::Error);
+
+        // Nothing was recorded. The file may or may not exist -- init() claims
+        // the path before opening the muxer -- but the counters must not claim a
+        // frame reached it.
+        QCOMPARE(recorder.getCurrentStats().framesWritten, u64{0});
+        QCOMPARE(recorder.getCurrentStats().bytesWritten, u64{0});
+
+        // Error is recoverable, and this is the part that would otherwise be a
+        // worse bug than the one being fixed: start() used to refuse any state
+        // that was not Stopped, so one failed recording bricked the recorder for
+        // the rest of the session.
+        const auto retried = recorder.start(
+            testSettings(QString::fromStdString(
+                             (fs::path(dir.path().toStdString()) / "retry.mkv").string()),
+                VideoCodec::FFV1, AudioCodec::AAC, Container::MKV));
+        QVERIFY2(retried, qPrintable(QString::fromStdString(
+                               retried.error().message)));
+        QVERIFY(recorder.isRecording());
+        (void)recorder.stop();
+    }
+
+    void aMuxerWriteFailureIsReportedAndNotCounted() {
+        // The (b) half. av_interleaved_write_frame's failure cannot be provoked
+        // portably -- see VideoRecorderFFmpeg::simulateWriteFailureForTesting for
+        // the three mechanisms rejected and why -- so what is tested here is the
+        // half this application owns: once the muxer has said no, the encoder
+        // stops reporting frames as written, and stop() refuses to call the
+        // recording complete. Which return codes mean what is covered separately
+        // by muxerWriteResultsAreClassifiedByDamage.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        VideoRecorder recorder;
+        auto settings = testSettings(QString::fromStdString(
+                                         (fs::path(dir.path().toStdString()) / "io.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV);
+        QVERIFY(recorder.start(settings));
+
+        // Count frames the healthy way first, so there is a real number for the
+        // failure to be measured against.
+        for (u64 i = 0; i < 8; ++i) {
+            recorder.submitVideoFrame(
+                std::vector<u8>(32 * 32 * 4, static_cast<u8>(i * 17)), 32, 32,
+                kOriginUs + static_cast<i64>(i) * kIntervalUs);
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(recorder.getCurrentStats().framesWritten >= 8, 5000);
+
+        // The muxer starts refusing. The encoding loop sees this on its next
+        // pass, stops producing, and emits exactly one error -- which reaches the
+        // user through RecordingBridge's existing connection to
+        // VideoRecorder::error.
+        const u64 healthyFrames = recorder.getCurrentStats().framesWritten;
+        recorder.simulateWriteFailureForTesting();
+
+        // Deliberately submitted *after* the failure, so a counter that keeps
+        // climbing here is a counter counting frames the file never received.
+        for (u64 i = 8; i < 24; ++i) {
+            recorder.submitVideoFrame(
+                std::vector<u8>(32 * 32 * 4, static_cast<u8>(i * 17)), 32, 32,
+                kOriginUs + static_cast<i64>(i) * kIntervalUs);
+        }
+
+        const auto stopped = recorder.stop();
+
+        // This is the assertion the old code could not pass in any form: it
+        // returned ok() and the caller reported a completed recording for a file
+        // with holes in it.
+        const QString reason = QString::fromStdString(stopped.error().message);
+        QVERIFY2(!stopped, "a recording with a failing muxer reported success");
+        QVERIFY2(reason.contains(QStringLiteral("incomplete")),
+                 qPrintable(QStringLiteral("expected an 'incomplete' reason, got: %1")
+                                .arg(reason)));
+        QVERIFY2(reason.contains(QStringLiteral("full volume")),
+                 qPrintable(QStringLiteral("expected the likely cause to be named: %1")
+                                .arg(reason)));
+
+        // And the counter stopped the moment the muxer did. Sixteen further
+        // frames were submitted after the failure, and at most one of them could
+        // still be in flight -- the loop checks for the failure at the top of
+        // each pass, so exactly one frame per pass can escape the check. The old
+        // code incremented framesWritten on a `true` that writePacket's discarded
+        // answer could not reach, so it climbed through all sixteen.
+        const u64 failedFrames = recorder.getCurrentStats().framesWritten;
+        QVERIFY2(failedFrames >= healthyFrames,
+                 "the frame counter went backwards");
+        QVERIFY2(failedFrames <= healthyFrames + 1,
+                 qPrintable(QStringLiteral("framesWritten advanced from %1 to %2 "
+                                          "after the muxer started failing")
+                                .arg(healthyFrames).arg(failedFrames)));
+        QCOMPARE(recorder.state(), RecordingState::Stopped);
+    }
+
+    void muxerWriteResultsAreClassifiedByDamage() {
+        // The decision, tested directly, because it is the one thing about a
+        // muxer that cannot be provoked: libavformat's reliable way to be handed
+        // a bad return is a full filesystem. The carve-out that matters most is
+        // EAGAIN -- backpressure, not damage -- and misclassifying it is what
+        // would turn a recording that merely runs a moment behind into one
+        // reported as broken.
+        // QVERIFY rather than QCOMPARE: QCOMPARE needs an operator<< for the
+        // failure report, and gaining one for a three-valued enum that only has
+        // to be compared is not worth the API.
+        QVERIFY(classifyWriteResult(0) == WriteOutcome::Written);
+        QVERIFY(classifyWriteResult(4096) == WriteOutcome::Written);
+
+        QVERIFY(classifyWriteResult(AVERROR(EAGAIN)) == WriteOutcome::Backpressure);
+
+        QVERIFY(classifyWriteResult(AVERROR(ENOSPC)) == WriteOutcome::Failed);
+        QVERIFY(classifyWriteResult(AVERROR(EIO)) == WriteOutcome::Failed);
+        QVERIFY(classifyWriteResult(AVERROR(EINVAL)) == WriteOutcome::Failed);
+    }
+
+    void aWriteFailureIsNotStickyAcrossRecordings() {
+        // The encoder is reusable, so a failed instance must not leave the next
+        // recording looking broken. cleanup() resets the flag; the reporting
+        // snapshot has to be taken before it does, which is why
+        // VideoRecorderThread::stop reads ffmpeg_.writeFailed() before cleanup().
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        auto settingsFor = [&](const char* name) {
+            return testSettings(QString::fromStdString(
+                                   (fs::path(dir.path().toStdString()) / name).string()),
+                VideoCodec::FFV1, AudioCodec::AAC, Container::MKV);
+        };
+
+        {
+            VideoRecorderFFmpeg encoder;
+            QVERIFY(encoder.init(settingsFor("first.mkv")));
+            QVERIFY(!encoder.writeFailed());
+            encoder.simulateWriteFailureForTesting();
+            QVERIFY(encoder.writeFailed());
+            // One-shot reporting: the first caller gets it, the second does not,
+            // which is what keeps the encoding loop from emitting one error per
+            // frame for the rest of the recording.
+            QVERIFY(encoder.reportWriteFailure());
+            QVERIFY(!encoder.reportWriteFailure());
+            encoder.cleanup();
+            QVERIFY2(!encoder.writeFailed(),
+                     "cleanup() left the encoder looking failed to the next "
+                     "recording");
+        }
+
+        {
+            VideoRecorderFFmpeg encoder;
+            QVERIFY(encoder.init(settingsFor("second.mkv")));
+            QVERIFY(!encoder.writeFailed());
+            GrabbedFrame frame;
+            frame.width = 32;
+            frame.height = 32;
+            frame.timestamp = kOriginUs;
+            frame.data = std::vector<u8>(32 * 32 * 4, 3);
+            u64 bytes = 0;
+            // Healthy again, so encodeVideo reports success rather than
+            // short-circuiting on a stale flag.
+            QVERIFY(encoder.encodeVideo(frame, bytes));
+            encoder.flush(bytes);
+            encoder.cleanup();
+            QVERIFY(!encoder.writeFailed());
+        }
+    }
+
     // ── AVFormatContext ownership ───────────────────────────────────────────
     // A demuxer context has oformat == nullptr. The single shared deleter read
     // c->oformat->flags to decide whether to close pb, so every read path
