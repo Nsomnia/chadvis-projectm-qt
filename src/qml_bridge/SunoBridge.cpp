@@ -639,12 +639,15 @@ vc::suno::SunoDownloader* SunoBridge::ensureDownloader() {
         downloader_ = nullptr;
         return nullptr;
     }
-    // SunoController constructs the one SunoDownloader (and therefore the one
-    // DownloadQueue) and parents it to itself, so the QObject tree is the only
-    // handle reachable from this layer. Re-resolved rather than cached blindly
-    // so a controller swap cannot leave a dangling pointer or a duplicate
-    // signal connection behind.
-    auto* found = s_controller->findChild<vc::suno::SunoDownloader*>();
+    // Asked of the controller directly rather than found via findChild. The
+    // controller owns the one SunoDownloader (and therefore the one
+    // DownloadQueue), so an accessor is the honest way to reach it: findChild
+    // resolves by object tree, which fails silently and without a diagnostic if
+    // the parent ever changes, and it also matches any other downloader that
+    // happened to be parented somewhere. Still re-resolved rather than cached
+    // blindly, so a controller swap cannot leave a dangling pointer or a
+    // duplicate signal connection behind.
+    auto* found = s_controller->downloader();
     if (found == downloader_) {
         return downloader_;
     }

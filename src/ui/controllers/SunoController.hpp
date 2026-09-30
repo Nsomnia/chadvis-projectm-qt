@@ -44,6 +44,13 @@ public:
 	~SunoController() override;
 
   SunoClient* client() { return client_.get(); }
+
+  /// The one downloader this controller owns, for the bridge layer. An
+  /// accessor rather than a findChild() from outside: the object tree is a
+  /// QObject implementation detail that can change without a diagnostic, and a
+  /// failed lookup would surface as a silently disabled feature rather than a
+  /// compile error.
+  vc::suno::SunoDownloader* downloader() { return downloader_.get(); }
   auth::AuthCoordinator* authCoordinator() { return authCoordinator_.get(); }
   SunoLibraryManager* libraryManager() { return libraryManager_.get(); }
   SunoAccountManager* accountManager() { return accountManager_.get(); }
