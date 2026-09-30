@@ -151,6 +151,80 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# Post-processing (burn-in) -- OPTIONAL
+# ---------------------------------------------------------------------------
+#
+# libavfilter is probed separately and is deliberately NOT appended to
+# CHADVIS_FFMPEG_COMPONENTS. That list FATAL_ERRORs on a missing component, so
+# making avfilter mandatory would convert every FFmpeg-4-era container and every
+# stripped distro into a build failure of the *entire application* -- including
+# the Suno client, which has nothing to do with video. An optional feature that
+# can break the build of an unrelated feature is not optional.
+#
+# Two gates, not one, because they fail independently:
+#
+#   CHADVIS_HAS_AVFILTER  configure-time. Is the library there? Gates the source
+#                         file and the compile definition, so a build without it
+#                         compiles, links and runs, and burnInAvailable() reports
+#                         itself unsupported at runtime.
+#   avfilter_get_by_name   run-time, inside SubtitleBurnIn. A libavfilter built
+#                         without libass has no `ass` or `subtitles` filter even
+#                         though the library links perfectly. This is the case a
+#                         configure-time-only check misses, and the one a distro
+#                     shipping a minimal libavfilter is most likely to hit.
+#
+# libass is NOT looked for separately: it is a dependency of the *filter*, not of
+# this project, and libavfilter links it itself. Measured on this machine:
+# `otool -L libavfilter.12.dylib` lists libass.9, libfreetype.6 and
+# libfontconfig.1, while `libavcodec.63.dylib` links none of them. So the only
+# thing to find is libavfilter.
+
+option(CHADVIS_POSTPROCESS
+    "FFmpeg post-pass: burn a subtitle track into the pixels of a finished file"
+    ON)
+
+set(CHADVIS_HAS_AVFILTER OFF)
+if(CHADVIS_POSTPROCESS)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(AVFILTER QUIET libavfilter)
+    endif()
+    if(AVFILTER_FOUND)
+        set(CHADVIS_HAS_AVFILTER ON)
+        list(APPEND FFMPEG_INCLUDE_DIRS ${AVFILTER_INCLUDE_DIRS})
+        list(APPEND FFMPEG_LIBRARIES ${AVFILTER_LIBRARIES})
+        # pkg-config can name a prefix that is not on the default search path.
+        # The FFMPEG block above has the same latent gap; this one is closed.
+        if(AVFILTER_LIBRARY_DIRS)
+            link_directories(${AVFILTER_LIBRARY_DIRS})
+        endif()
+        message(STATUS
+            "Post-pass: libavfilter ${AVFILTER_VERSION} found -- burn-in enabled")
+    else()
+        # Non-fatal manual fallback, mirroring the loop above.
+        find_path(AVFILTER_INCLUDE_DIR libavfilter/avfilter.h)
+        find_library(AVFILTER_LIBRARY NAMES avfilter)
+        if(AVFILTER_INCLUDE_DIR AND AVFILTER_LIBRARY)
+            set(CHADVIS_HAS_AVFILTER ON)
+            list(APPEND FFMPEG_INCLUDE_DIRS ${AVFILTER_INCLUDE_DIR})
+            list(APPEND FFMPEG_LIBRARIES ${AVFILTER_LIBRARY})
+            message(STATUS
+                "Post-pass: libavfilter found via manual search (${AVFILTER_LIBRARY})"
+                " -- burn-in enabled")
+        else()
+            message(STATUS
+                "Post-pass: libavfilter NOT found. CHADVIS_POSTPROCESS is ON but "
+                "burn-in will report itself unsupported at runtime. This is not a "
+                "build error; every other feature is unaffected. Install "
+                "libavfilter, or pass -DCHADVIS_POSTPROCESS=OFF to skip the probe.")
+        endif()
+    endif()
+else()
+    message(STATUS
+        "Post-pass: disabled by CHADVIS_POSTPROCESS=OFF -- burn-in compiled out")
+endif()
+
+
+# ---------------------------------------------------------------------------
 # projectM v4 (system detection with CPM source-build fallback)
 # ---------------------------------------------------------------------------
 

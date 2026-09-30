@@ -141,6 +141,24 @@ set(LYRICS_SOURCES
     src/lyrics/LyricsSync.cpp
 )
 
+# Post-pass (burn-in). Empty when CHADVIS_HAS_AVFILTER is off, which is the point:
+# the whole feature disappears from the build rather than failing to link, and
+# burnInAvailable() reports it unsupported at runtime. Included unconditionally in
+# the target, because an empty source list costs nothing and gating it a second
+# time here would only create a way for the two gates to disagree.
+#
+# FFmpegUtils.hpp is NOT in this list on purpose. It is included by files that
+# build with or without libavfilter, and it is the one header that would have to
+# conditionally include libavfilter/avfilter.h -- which is why SubtitleBurnIn.hpp
+# carries the #if instead and is the only header that mentions avfilter.
+set(CHADVIS_POSTPROCESS_SOURCES "")
+if(CHADVIS_HAS_AVFILTER)
+    list(APPEND CHADVIS_POSTPROCESS_SOURCES
+        src/recorder/SubtitleBurnIn.hpp
+        src/recorder/SubtitleBurnIn.cpp
+    )
+endif()
+
 # ─────────────────────────────────────────────────────────────
 # QML BRIDGE SOURCES - C++ types exposed to QML
 # ─────────────────────────────────────────────────────────────

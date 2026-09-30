@@ -7,6 +7,7 @@
 #include "recorder/EncoderSettings.hpp"
 #include "recorder/FFmpegUtils.hpp"
 #include "recorder/FrameGrabber.hpp"
+#include "recorder/SubtitleBurnIn.hpp"
 #include "recorder/VideoRecorderCore.hpp"
 #include "recorder/VideoRecorderFFmpeg.hpp"
 
@@ -14,6 +15,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <string>
 #include <string_view>
@@ -482,6 +484,161 @@ bool encodeWithSubtitle(const fs::path& requested,
     std::vector<f32> audio(4096 * 2, 0.05f);
     encoder.encodeAudio(audio, 2, bytesWritten);
 
+    encoder.flush(bytesWritten);
+    encoder.cleanup();
+    return true;
+}
+
+// ── Burn-in (post-pass) ───────────────────────────────────────────────────
+//
+// A test that only checks the output file exists proves nothing: a burn-in that
+// silently copied its input would pass it. So the assertion is on the *pixels* --
+// decoded back out of the finished file and compared against the source clip.
+//
+// The recording used throughout is ffv1 in Matroska, which is lossless, so the
+// re-encode is bit-exact everywhere the filter did not touch. That is what makes
+// the comparison decisive rather than approximate: a frame with no cue on it must
+// come back *identical*, and a frame with a cue on it must differ, and the
+// difference must be in the bottom band where the writer puts its text.
+
+/// One decoded frame as a flat vector of 8-bit luma samples, plus its dimensions.
+/// Luma only: text is a luma *and* chroma difference, and comparing luma is both
+/// sufficient and immune to chroma subsampling noise at the small sizes used here.
+struct LumaFrame {
+    int width{0};
+    int height{0};
+    std::vector<u8> samples;
+};
+
+/// Decode frame `index` of `path` to luma. False if the file will not open or the
+/// frame index is out of range.
+bool readLumaFrame(const fs::path& path, int index, LumaFrame& out) {
+    const std::string pathStr = path.string();
+    AVFormatContext* raw = nullptr;
+    if (avformat_open_input(&raw, pathStr.c_str(), nullptr, nullptr) < 0)
+        return false;
+    AVFormatContextInPtr format(raw);
+    if (!format) return false;
+    if (avformat_find_stream_info(format.get(), nullptr) < 0) return false;
+
+    const int streamIndex =
+        av_find_best_stream(format.get(), AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+    if (streamIndex < 0) return false;
+    AVStream* stream = format->streams[streamIndex];
+    const AVCodec* decoder = avcodec_find_decoder(stream->codecpar->codec_id);
+    if (!decoder) return false;
+
+    AVCodecContextPtr ctx(avcodec_alloc_context3(decoder));
+    if (!ctx) return false;
+    if (avcodec_parameters_to_context(ctx.get(), stream->codecpar) < 0) return false;
+    if (avcodec_open2(ctx.get(), decoder, nullptr) < 0) return false;
+
+    AVPacketPtr packet(av_packet_alloc());
+    AVFramePtr frame(av_frame_alloc());
+    if (!packet || !frame) return false;
+
+    int seen = 0;
+    while (av_read_frame(format.get(), packet.get()) >= 0) {
+        if (packet->stream_index == streamIndex) {
+            if (avcodec_send_packet(ctx.get(), packet.get()) >= 0) {
+                while (true) {
+                    const int ret = avcodec_receive_frame(ctx.get(), frame.get());
+                    if (ret < 0) break;
+                    if (seen == index) {
+                        out.width = frame->width;
+                        out.height = frame->height;
+                        out.samples.resize(static_cast<usize>(
+                            out.width * out.height));
+                        const u8* luma = frame->data[0];
+                        for (int y = 0; y < out.height; ++y) {
+                            std::memcpy(out.samples.data() +
+                                            static_cast<usize>(y * out.width),
+                                        luma + static_cast<usize>(
+                                                  y * frame->linesize[0]),
+                                        static_cast<usize>(out.width));
+                        }
+                        return true;
+                    }
+                    ++seen;
+                    av_frame_unref(frame.get());
+                }
+            }
+        }
+        av_packet_unref(packet.get());
+    }
+    return false;
+}
+
+/// How many luma samples differ, and how many of those are in the bottom eighth
+/// of the frame.
+struct FrameDiff {
+    usize total{0};
+    usize bottomBand{0};
+};
+
+FrameDiff diffFrames(const LumaFrame& a, const LumaFrame& b) {
+    FrameDiff diff;
+    if (a.width != b.width || a.height != b.height || a.samples.empty()) {
+        return diff;
+    }
+    const int bandStart = a.height * 7 / 8;
+    for (int y = 0; y < a.height; ++y) {
+        for (int x = 0; x < a.width; ++x) {
+            const usize offset = static_cast<usize>(y * a.width + x);
+            if (a.samples[offset] == b.samples[offset]) {
+                continue;
+            }
+            ++diff.total;
+            if (y >= bandStart) {
+                ++diff.bottomBand;
+            }
+        }
+    }
+    return diff;
+}
+
+/// Bytes of a file, for the "input is unmodified" assertion.
+std::vector<u8> readAllBytes(const fs::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    return std::vector<u8>((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+}
+
+/// Write `text` to `path` and return it. Used for the .ass input, which has to be
+/// a real file on disk because that is what the filter is given.
+bool writeTextFile(const fs::path& path, const std::string& text) {
+    std::ofstream file(path, std::ios::binary);
+    if (!file) return false;
+    file << text;
+    return file.good();
+}
+
+/// A clip long enough to contain a cue, a gap, and a second cue: 90 frames at
+/// 30 fps is 3 s, and karaokeLyrics() cues at 0-2 s and 2.5-3.5 s, so frames
+/// 0-59 are cued, 60-74 are bare, and 75-89 are cued again.
+bool recordLongClip(const fs::path& path, fs::path& actualOut) {
+    VideoRecorderFFmpeg encoder;
+    auto settings = testSettings(QString::fromStdString(path.string()),
+                                 VideoCodec::FFV1, AudioCodec::AAC,
+                                 Container::MKV);
+    // Lossless video and no audio, so the only thing that can change a pixel
+    // between the input and the output of the post-pass is the filter itself.
+    settings.audio.codec = AudioCodec::FLAC;
+    if (auto started = encoder.init(settings); !started) return false;
+    actualOut = fs::path(encoder.getOutputPath());
+
+    u64 bytesWritten = 0;
+    for (u64 i = 0; i < 90; ++i) {
+        GrabbedFrame frame;
+        frame.width = 320;
+        frame.height = 240;
+        frame.timestamp = kOriginUs + static_cast<i64>(i) * kIntervalUs;
+        // A flat mid-grey frame, so any luma change is drawn text and nothing
+        // else. Flat matters: a textured background would make "the frame
+        // changed" true for reasons that have nothing to do with the subtitle.
+        frame.data.assign(320 * 240 * 4, 0xC0);
+        if (!encoder.encodeVideo(frame, bytesWritten)) return false;
+    }
     encoder.flush(bytesWritten);
     encoder.cleanup();
     return true;
@@ -1190,6 +1347,195 @@ private slots:
         EncodedTimeline timeline;
         QVERIFY(readVideoTimeline(actual, timeline));
         QCOMPARE(timeline.presentationSeconds.size(), static_cast<usize>(8));
+    }
+
+    // ── Burn-in: the optional post-pass ─────────────────────────────────────
+    //
+    // Burn-in is a post-pass over a *finished* file, never part of recording, and
+    // it depends on libavfilter, which is optional by design. So the first thing
+    // these tests do is check the gate itself: on a build without the feature the
+    // answer must be a visible "unsupported", not a silent no-op.
+
+    void burnInReportsWhetherThisBuildCanRender() {
+        // The gate, and the reason it gives. Both must be meaningful: an empty
+        // reason claiming availability, or a bare `false` with nothing to show the
+        // user, is the silent no-op this requirement exists to prevent.
+        const bool available = burnInAvailable();
+        const std::string reason = burnInUnavailableReason();
+
+        if (available) {
+            QVERIFY2(reason.empty(),
+                     "burn-in is available but still carries a reason");
+            return;
+        }
+
+        QVERIFY2(!reason.empty(),
+                 "burn-in is unavailable and gives the user no reason");
+        // The two causes are different problems with different fixes, and the
+        // user cannot act on "unavailable" alone.
+        const bool noLibrary =
+            reason.find("CHADVIS_POSTPROCESS") != std::string::npos;
+        const bool noFilter = reason.find("libass") != std::string::npos;
+        QVERIFY2(noLibrary || noFilter,
+                 qPrintable(QStringLiteral(
+                     "the unsupported reason names neither a missing libavfilter "
+                     "nor a missing filter: %1")
+                                .arg(QString::fromStdString(reason))));
+
+        // And a call in that state must fail visibly rather than write an output
+        // file that is a byte-for-byte copy of its input.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        fs::path clip;
+        QVERIFY(recordLongClip(fs::path(dir.path().toStdString()) / "gate.mkv",
+                               clip));
+        const auto ass = fs::path(dir.path().toStdString()) / "gate.ass";
+        QVERIFY(writeTextFile(ass, "x"));
+        const fs::path out = fs::path(dir.path().toStdString()) / "gate-out.mkv";
+
+        BurnInOptions options;
+        options.inputVideo = clip;
+        options.subtitleFile = ass;
+        options.outputVideo = out;
+        const auto result = burnInSubtitles(options);
+        QVERIFY2(!result,
+                 "a build that cannot burn in reported success for the attempt");
+        QVERIFY(!fs::exists(out));
+    }
+
+    void burnInDrawsTheCueAndLeavesTheBareFramesAlone() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        if (!burnInAvailable()) {
+            QSKIP("this build has no burn-in; burnInReportsWhetherThisBuildCanRender"
+                  " covers the unsupported state");
+        }
+
+        const fs::path dirPath(dir.path().toStdString());
+        fs::path clip;
+        QVERIFY(recordLongClip(dirPath / "source.mkv", clip));
+        const std::vector<u8> inputBefore = readAllBytes(clip);
+        QVERIFY(!inputBefore.empty());
+
+        // The real document, from the real writer, so this is the same bytes the
+        // sidecar export and the muxed track use. Nothing hand-typed.
+        const std::string document = LyricsExport::toAssDocument(karaokeLyrics());
+        const fs::path ass = dirPath / "karaoke.ass";
+        QVERIFY(writeTextFile(ass, document));
+
+        const fs::path out = dirPath / "burned.mkv";
+        BurnInOptions options;
+        options.inputVideo = clip;
+        options.subtitleFile = ass;
+        options.outputVideo = out;
+        // ffv1/MKV: the input's own codec, and lossless, so the only thing that
+        // can differ between the two files is what the filter drew.
+        const auto result = burnInSubtitles(options);
+        QVERIFY2(result, qPrintable(QString::fromStdString(
+                             result.error().message)));
+        QVERIFY(fs::exists(out));
+
+        // The input is untouched. The pass opens it read-only, and this is the
+        // check that says so rather than assuming it.
+        QCOMPARE(readAllBytes(clip), inputBefore);
+
+        // Frame 10 is inside the 0-2 s cue; frame 66 is in the 2.0-2.5 s gap
+        // between the two cues. Same decoder, same index, same source.
+        constexpr int kCuedFrame = 10;
+        constexpr int kBareFrame = 66;
+
+        LumaFrame inputCued;
+        LumaFrame outputCued;
+        LumaFrame inputBare;
+        LumaFrame outputBare;
+        QVERIFY(readLumaFrame(clip, kCuedFrame, inputCued));
+        QVERIFY(readLumaFrame(out, kCuedFrame, outputCued));
+        QVERIFY(readLumaFrame(clip, kBareFrame, inputBare));
+        QVERIFY(readLumaFrame(out, kBareFrame, outputBare));
+
+        QVERIFY(outputCued.width > 0);
+        QCOMPARE(outputCued.width, inputCued.width);
+        QCOMPARE(outputCued.height, inputCued.height);
+
+        // A cued frame must have changed. This is the assertion that fails if the
+        // pass copies its input, and a file-that-exists check would not.
+        const FrameDiff cued = diffFrames(inputCued, outputCued);
+        QVERIFY2(cued.total > 0,
+                 "the cued frame is pixel-identical to the input, so nothing was "
+                 "drawn -- the post-pass silently did nothing");
+
+        // ...and the change is where the text is. The karaoke writer's style row
+        // is Alignment 2 with MarginV 10, so the text sits at the bottom. A
+        // difference scattered evenly over the frame would be a scaling or
+        // colour-space change, not a subtitle.
+        QVERIFY2(cued.bottomBand * 2 > cued.total,
+                 qPrintable(QStringLiteral(
+                     "of %1 changed samples only %2 are in the bottom eighth, so "
+                     "the difference is not the subtitle")
+                                .arg(cued.total).arg(cued.bottomBand)));
+
+        // A frame with no cue on it must be untouched. Lossless in, lossless out,
+        // and the filter composites nothing where there is nothing to composite.
+        const FrameDiff bare = diffFrames(inputBare, outputBare);
+        QVERIFY2(bare.total == 0,
+                 qPrintable(QStringLiteral(
+                     "%1 samples of a frame with no cue changed, so the pass "
+                     "altered pixels it should not have touched")
+                                .arg(bare.total)));
+    }
+
+    void burnInRefusesToOverwriteAndReportsMissingInputs() {
+        // The failure paths, all of which must be a Result error rather than a
+        // plausible-looking output. The overwrite case is the one with teeth: a
+        // post-pass is meant to be re-runnable, and silently clobbering the
+        // previous render is how a comparison between two settings is lost.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const fs::path dirPath(dir.path().toStdString());
+
+        BurnInOptions options;
+        options.inputVideo = dirPath / "nothing-here.mkv";
+        options.subtitleFile = dirPath / "nothing.ass";
+        options.outputVideo = dirPath / "out.mkv";
+
+        // Missing input.
+        QVERIFY2(!burnInSubtitles(options), "a missing input reported success");
+
+        // Missing subtitle document, with the input now present.
+        fs::path clip;
+        QVERIFY(recordLongClip(dirPath / "present.mkv", clip));
+        options.inputVideo = clip;
+        QVERIFY2(!burnInSubtitles(options),
+                 "a missing subtitle document reported success");
+        QVERIFY2(!burnInSubtitles(options).error().message.empty(),
+                 "a refusal carried no reason");
+
+        // An empty subtitle document is refused for a different reason than a
+        // missing one, and that distinction matters: one is a user error, the
+        // other would produce an output identical to its input.
+        const fs::path emptyAss = dirPath / "empty.ass";
+        QVERIFY(writeTextFile(emptyAss, ""));
+        options.subtitleFile = emptyAss;
+        const auto emptyResult = burnInSubtitles(options);
+        if (burnInAvailable()) {
+            QVERIFY2(!emptyResult,
+                     "an empty subtitle document produced a reported success");
+        }
+
+        // Refusing to overwrite an existing output.
+        if (burnInAvailable()) {
+            const fs::path ass = dirPath / "real.ass";
+            QVERIFY(writeTextFile(ass, LyricsExport::toAssDocument(karaokeLyrics())));
+            options.subtitleFile = ass;
+            options.outputVideo = dirPath / "twice.mkv";
+            QVERIFY(burnInSubtitles(options));
+            QVERIFY(fs::exists(options.outputVideo));
+
+            const std::vector<u8> firstOutput = readAllBytes(options.outputVideo);
+            const auto second = burnInSubtitles(options);
+            QVERIFY2(!second, "a second run silently overwrote the first output");
+            QCOMPARE(readAllBytes(options.outputVideo), firstOutput);
+        }
     }
 
     // ── Failure reporting ───────────────────────────────────────────────────

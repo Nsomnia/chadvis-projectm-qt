@@ -82,6 +82,42 @@ using AVFormatContextInPtr = std::unique_ptr<AVFormatContext, AVFormatContextInD
 using SwsContextPtr = std::unique_ptr<SwsContext, SwsContextDeleter>;
 using SwrContextPtr = std::unique_ptr<SwrContext, SwrContextDeleter>;
 
+/// What one `av_interleaved_write_frame` return code means.
+///
+/// Lives here rather than in VideoRecorderFFmpeg.hpp because the subtitle
+/// post-pass classifies its own writes the same way, and FFmpegUtils.hpp is the
+/// one header both can include without either depending on the other.
+///
+/// Split out of writePacket and made a free function because this
+/// classification *is* the behaviour worth testing, and it is the one thing
+/// about a muxer that cannot be provoked from a test: libavformat's only
+/// reliable way to be handed a bad return is a full filesystem. A pure function
+/// over the return code is directly checkable, and it pins the case that matters
+/// most -- EAGAIN is not a failure.
+enum class WriteOutcome {
+  /// >= 0. The packet is in the file.
+  Written,
+  /// `AVERROR(EAGAIN)`. The interleave buffer is full and the caller is being
+  /// asked to come back later. **The packet was not written**, so this is not
+  /// success, but it is also not damage: nothing about the file is wrong, the
+  /// recorder simply cannot keep up for a moment. Treating it as a failure
+  /// would mark healthy recordings as broken under load, which is the exact
+  /// inversion this function exists to prevent.
+  Backpressure,
+  /// Anything else. The muxer refused the packet -- ENOSPC, EIO, EINVAL. The
+  /// packets already accepted are interleaved with holes, and the resulting
+  /// container opens, plays to the break and then stops, which is worse than a
+  /// failed recording because it looks like a good one.
+  Failed
+};
+
+/// Classify an `av_interleaved_write_frame` return code. See `WriteOutcome`.
+constexpr WriteOutcome classifyWriteResult(const int result) {
+  return result >= 0 ? WriteOutcome::Written
+                     : (result == AVERROR(EAGAIN) ? WriteOutcome::Backpressure
+                                                  : WriteOutcome::Failed);
+}
+
 // Helper for error messages
 inline std::string ffmpegError(int err) {
     char buf[AV_ERROR_MAX_STRING_SIZE];

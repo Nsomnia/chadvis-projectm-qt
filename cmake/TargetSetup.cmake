@@ -86,6 +86,7 @@ add_library(project_lib STATIC
     ${SUNO_AUTH_SOURCES}
     ${RECORDER_SOURCES}
     ${LYRICS_SOURCES}
+    ${CHADVIS_POSTPROCESS_SOURCES}
     ${UI_SOURCES}
     ${QML_BRIDGE_SOURCES}
     resources/chadvis-projectm-qt.qrc
@@ -105,6 +106,14 @@ target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
 # project_lib (the executable, the test lanes) reports the identical value;
 # the user config is deliberately never consulted for it.
 target_compile_definitions(project_lib PUBLIC CHADVIS_VERSION="${PROJECT_VERSION}")
+
+# PUBLIC so the test lanes, which link project_lib, see the same answer the
+# library was built with. A test that quietly compiled the burn-in assertions
+# against a build that has no burn-in would be the exact silent-no-op this
+# feature is supposed to avoid.
+if(CHADVIS_HAS_AVFILTER)
+    target_compile_definitions(project_lib PUBLIC CHADVIS_HAS_AVFILTER=1)
+endif()
 
 # ─────────────────────────────────────────────────────────────
 # QML MODULE - Modern UI components
