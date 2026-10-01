@@ -58,7 +58,7 @@ runtime path. Record observed results, if/when deemed needed, in `CHANGELOG.md`.
 
 For Qt/QML checking/linting tools available but not limnited to are: qmlformat,
 qmllint, qmlls, qmlpreview, qmlprofiler, and qmltc. Any tooling may be agent
-installed if/when needed via brew, from source, or downloading a binary.
+installed if/when needed via brew, via port (setup on fish config for sure), from source, or downloading a binary.
  
 - Tests: `ctest --test-dir build/tests --output-on-failure`.
   **Not** `--test-dir build` — that directory has no `CTestTestfile.cmake`,
