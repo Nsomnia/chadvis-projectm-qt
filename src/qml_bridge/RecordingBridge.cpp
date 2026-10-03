@@ -1,18 +1,125 @@
 #include "RecordingBridge.hpp"
+#include <QString>
+#include <utility>
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "lyrics/LyricsData.hpp"
 #include "lyrics/LyricsSync.hpp"
+#include "recorder/SubtitleBurnIn.hpp"
 #include "recorder/VideoRecorderCore.hpp"
 #include "util/FileUtils.hpp"
 #include "visualizer/VisualizerWindow.hpp"
-#include <QString>
 
 namespace qml_bridge {
 
 vc::VideoRecorder* RecordingBridge::s_recorder = nullptr;
 vc::VisualizerWindow* RecordingBridge::s_visualizer = nullptr;
 vc::LyricsSync* RecordingBridge::s_lyricsSync = nullptr;
+bool RecordingBridge::s_burnInRunning = false;
+
+namespace {
+
+/// One burn-in job: the three files, and why it may not run yet.
+///
+/// Resolved in one place so the properties QML reads and the call
+/// burnInSubtitles() makes can never disagree about a filename or about whether
+/// the pass is allowed to run.
+struct BurnInJob {
+    fs::path input;
+    fs::path subtitle;
+    fs::path output;
+    QString blockedReason;
+
+    [[nodiscard]] bool ready() const { return blockedReason.isEmpty(); }
+};
+
+/// Resolve the one job this bridge can offer: `inputPath`, or the last recording
+/// when that is empty.
+///
+/// There is deliberately no way to choose the subtitle file or the output. The
+/// whole design is that the document is the recording's own sidecar and the
+/// output is a new derived name -- a caller who could pick both would be able to
+/// ask the panel to promise one pair of files and then run another, which is the
+/// exact disagreement this single resolver exists to prevent.
+BurnInJob describeBurnIn(const QString& currentFilePath, const QString& inputPath = {}) {
+    BurnInJob job;
+
+    // Empty means "the last recording", the convention startRecording's
+    // outputPath already uses and RecordingPanel states as "Auto-generated if
+    // empty" (:132). The bridge holds the only candidate, so QML is never asked
+    // to thread a path through to reach a file it just made.
+    job.input = inputPath.isEmpty() ? fs::path(currentFilePath.toStdString())
+                                    : fs::path(inputPath.toStdString());
+
+    // Derived only from an input that exists, so the public getters never answer
+    // ".ass" or "-burned" for a recording that was never made.
+    //
+    // The paths are resolved *before* the availability gate, and that is
+    // deliberate: the .ass sidecar is worth writing on a build that cannot burn
+    // it in -- it is the same document the MKV muxer takes as a soft track -- and
+    // a user reading only "unsupported" learns nothing about which files are
+    // involved. The gate still blocks the pass; it just does not hide the names.
+    if (!job.input.empty()) {
+        // "song-burned.mp4" rather than a counter: the name says what produced
+        // it, which is the discipline burnInSubtitles() asks for when it refuses
+        // to overwrite (:177-183). Deriving rather than prompting also means the
+        // panel can name the file *before* the click, so nothing is ever
+        // overwritten by surprise. A second pass has to be aimed elsewhere on
+        // purpose.
+        job.output = job.input;
+        job.output.replace_extension();
+        job.output += "-burned";
+        job.output += job.input.extension();
+
+        // The subtitle document is read back off disk rather than regenerated
+        // from the live lyrics. That is what keeps the pass re-runnable after the
+        // user has moved on to another track -- which is the entire reason a
+        // post-pass exists rather than a mux-at-record-time -- and it means an
+        // edit to the .ass is the thing that changes the next render, not a code
+        // change. Beside the recording, by the repo's existing sidecar convention
+        // (SunoDownloader derives .srt and .txt the same way:
+        // SunoDownloader.cpp:452-460 and :489-492).
+        job.subtitle = job.input.replace_extension(".ass");
+    }
+
+#if CHADVIS_HAS_AVFILTER
+    if (const std::string unavailable = vc::burnInUnavailableReason(); !unavailable.empty()) {
+        job.blockedReason = QString::fromStdString(unavailable);
+        return job;
+    }
+#else
+    job.blockedReason = kBurnInUnavailable;
+    return job;
+#endif
+
+    if (job.input.empty()) {
+        job.blockedReason =
+                QStringLiteral("Record something first \u2014 burn-in runs on a finished file.");
+        return job;
+    }
+    if (!fs::exists(job.input)) {
+        job.blockedReason = QStringLiteral("No such recording: %1")
+                                    .arg(QString::fromStdString(job.input.string()));
+        return job;
+    }
+
+    // Sidecar first, output second: with both true, the missing file is the one
+    // the user can actually do something about.
+    if (!fs::exists(job.subtitle)) {
+        job.blockedReason = QStringLiteral("No karaoke subtitles beside the recording: %1")
+                                    .arg(QString::fromStdString(job.subtitle.string()));
+        return job;
+    }
+    if (fs::exists(job.output)) {
+        job.blockedReason = QStringLiteral("%1 already exists, and burn-in will not overwrite "
+                                           "it \u2014 delete it first or rename the output.")
+                                    .arg(QString::fromStdString(job.output.string()));
+        return job;
+    }
+    return job;
+}
+
+} // namespace
 
 RecordingBridge::RecordingBridge(QObject* parent) : QObject(parent) {
     setInstance(this);
@@ -218,6 +325,116 @@ void RecordingBridge::stopRecording()
         LOG_ERROR("RecordingBridge: stopRecording failed: {}", result.error().message);
         emit recordingError(QString::fromStdString(result.error().message));
     }
+}
+
+// ── Karaoke burn-in: the described state ─────────────────────────────────────
+
+// There is deliberately no `burnInSupported` getter: on a build without
+// libavfilter the unsupported reason *is* the blocked reason, so a boolean would
+// be a second, weaker answer to a question burnInBlockedReason already answers
+// in full -- and a QML boolean nobody reads is exactly the dead surface TODO.md
+// keeps finding in this bridge.
+QString RecordingBridge::burnInUnavailableReason() const {
+#if CHADVIS_HAS_AVFILTER
+    return QString::fromStdString(vc::burnInUnavailableReason());
+#else
+    return kBurnInUnavailable;
+#endif
+}
+
+bool RecordingBridge::burnInRunning() const { return s_burnInRunning; }
+
+QString RecordingBridge::burnInInputFile() const {
+    return QString::fromStdString(describeBurnIn(currentFile()).input.string());
+}
+
+QString RecordingBridge::burnInSubtitleFile() const {
+    return QString::fromStdString(describeBurnIn(currentFile()).subtitle.string());
+}
+
+QString RecordingBridge::burnInOutputFile() const {
+    return QString::fromStdString(describeBurnIn(currentFile()).output.string());
+}
+
+QString RecordingBridge::burnInBlockedReason() const {
+    return describeBurnIn(currentFile()).blockedReason;
+}
+
+void RecordingBridge::refreshBurnInState() { emit burnInStateChanged(); }
+
+// ── Karaoke burn-in: the pass ───────────────────────────────────────────────
+
+void RecordingBridge::burnInSubtitles(const QString& inputPath) {
+    const BurnInJob job = describeBurnIn(currentFile(), inputPath);
+
+#if !CHADVIS_HAS_AVFILTER
+    // Same gate describeBurnIn already reported, so the click cannot do
+    // something the caption did not promise.
+    Q_UNUSED(job)
+    emit recordingError(kBurnInUnavailable);
+#else
+    if (!job.ready()) {
+        emit recordingError(job.blockedReason);
+        return;
+    }
+    if (s_burnInRunning) {
+        emit recordingError(QStringLiteral("A burn-in is already running."));
+        return;
+    }
+
+    vc::BurnInOptions options;
+    options.inputVideo = job.input;
+    options.subtitleFile = job.subtitle;
+    options.outputVideo = job.output;
+    // videoCodec is left empty on purpose. Empty means "re-encode with the
+    // input's own codec", which is what a visual-only edit should do: forcing
+    // the codec currently selected in the panel above would silently change the
+    // codec of a file the user chose as a subtitle pass, and the container is
+    // already fixed by the derived filename.
+    //
+    // crf is read from the same config the recording used, exactly as
+    // videoCodec() reads its codec, so the pass does not introduce a quality
+    // knob the rest of the panel does not already have -- and no new config key
+    // is needed. fontsDir stays empty too: the filter's only font option is a
+    // search directory, and which face renders comes from the document's
+    // [V4+ Styles] row, so the honest workflow is "edit the .ass, run it again".
+    options.crf = static_cast<int>(vc::Config::instance().recording().video.crf);
+
+    s_burnInRunning = true;
+    emit burnInStateChanged();
+
+    // Off the GUI thread on purpose. A full re-encode of a long recording takes
+    // minutes, and running it inline would freeze the window -- which is the
+    // same "the UI looks broken" failure the in-progress state exists to avoid,
+    // just arrived at from the other direction.
+    //
+    // BurnInOptions is captured by value and owns three paths, so nothing
+    // borrowed crosses the thread boundary. The outcome is marshalled back with
+    // the same queued QMetaObject::invokeMethod the recorder's own signals use
+    // (see connectRecorderSignals, above), so every signal is emitted on the GUI
+    // thread.
+    burnInWorker_ = vc::JThread([this, options = std::move(options)]() {
+        const auto result = vc::burnInSubtitles(options);
+        const bool ok = result.isOk();
+        const std::string message = ok ? std::string{} : result.error().message;
+        const std::string output = options.outputVideo.string();
+
+        QMetaObject::invokeMethod(
+                this,
+                [this, ok, message, output] {
+                    s_burnInRunning = false;
+                    if (ok) {
+                        LOG_INFO("RecordingBridge: burned subtitles into {}", output);
+                        emit burnInFinished(QString::fromStdString(output));
+                    } else {
+                        LOG_ERROR("RecordingBridge: burn-in failed: {}", message);
+                        emit recordingError(QString::fromStdString(message));
+                    }
+                    emit burnInStateChanged();
+                },
+                Qt::QueuedConnection);
+    });
+#endif
 }
 
 void RecordingBridge::onStateChanged(vc::RecordingState state)

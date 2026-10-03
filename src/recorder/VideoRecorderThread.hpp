@@ -61,9 +61,23 @@ public:
     /// worker has been torn down.
     bool writeFailed() const { return writeFailed_; }
 
+    /// What the resampler cost this recording. Snapshotted in stop(), because
+    /// cleanup() clears the encoder's counters to keep the instance reusable.
+    /// See VideoRecorderFFmpeg::AudioResampleReport for why this is not
+    /// folded into writeFailed().
+    VideoRecorderFFmpeg::AudioResampleReport audioResample() const {
+        return audioResample_;
+    }
+
     /// Test seam, forwarded to the encoder. See
-    /// VideoRecorderFFmpeg::simulateWriteFailureForTesting for why the failure
-    /// cannot be provoked directly.
+    /// VideoRecorderFFmpeg::simulateResampleFailureForTesting.
+    void simulateResampleFailureForTesting(u32 frames) {
+        ffmpeg_.simulateResampleFailureForTesting(frames);
+    }
+
+    /// Test seam, forwarded to the encoder. See
+    /// VideoRecorderFFmpeg::simulateWriteFailureForTesting: the refusal is
+    /// injected at the write, so the code that classifies it runs.
     void simulateWriteFailureForTesting() {
         ffmpeg_.simulateWriteFailureForTesting();
     }
@@ -110,6 +124,9 @@ private:
 
     // Set in stop() from ffmpeg_, before cleanup() resets it. See writeFailed().
     bool writeFailed_{false};
+    // Likewise. A value rather than a reference, because the encoder's counter
+    // it is copied from does not survive the cleanup() that follows.
+    VideoRecorderFFmpeg::AudioResampleReport audioResample_;
 };
 
 } // namespace vc

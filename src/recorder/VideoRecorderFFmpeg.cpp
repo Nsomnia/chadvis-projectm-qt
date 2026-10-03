@@ -152,6 +152,27 @@ constexpr std::int64_t toMilliseconds(const std::int64_t centiseconds) {
   return centiseconds * kMillisecondsPerCentisecond;
 }
 
+/// Should a failure that can repeat forever be logged at this occurrence count?
+///
+/// Throttled logarithmically rather than per-occurrence or on a fixed interval.
+/// At 48 kHz stereo AAC a persistent resampler failure is ~47 frames a second,
+/// so `LOG_WARN` per occurrence is ~2800 lines a minute -- which makes the log
+/// useless in exactly the recording where the diagnosis matters. A fixed
+/// "every 1000th" is better but still unbounded over a long take. Logging the
+/// first occurrence and then each power of two costs log2(N) lines forever, so
+/// the first line says *what* failed, the later ones say *it is still happening
+/// and here is how much*, and a three-hour failure is about 24 lines.
+///
+/// Shared by the two failures that can repeat: dropped resample frames, and
+/// refused muxer writes. `flush()` is the second one's worst case, because the
+/// drain is a loop over every packet the encoders were still holding.
+bool shouldLogOccurrence(const u64 occurrence) {
+  if (occurrence <= 1) {
+    return true;
+  }
+  return (occurrence & (occurrence - 1)) == 0; // a power of two
+}
+
 /// The `ass` encoder is `ff_ass_encoder`, gated on libavcodec's
 /// CONFIG_ASS_ENCODER. `ssa` is the same codec under its other name -- both map
 /// to AV_CODEC_ID_ASS with one shared body -- so the fallback is free.
@@ -338,10 +359,16 @@ void VideoRecorderFFmpeg::cleanup() {
     formatCtx_.reset();
 
     // The encoder is reusable, so a failed instance must not leave the next
-    // recording looking broken. VideoRecorderThread snapshots writeFailed()
-    // before calling cleanup() precisely so this reset cannot swallow the report.
+    // recording looking broken. VideoRecorderThread snapshots writeFailed() and
+    // audioResampleReport() before calling cleanup() precisely so these resets
+    // cannot swallow the reports.
     writeFailed_ = false;
     writeFailureReported_ = false;
+    audioFramesDropped_.store(0, std::memory_order_release);
+    injectedResampleFailures_.store(0, std::memory_order_release);
+    writesBeforeWriteFailure_.store(0, std::memory_order_release);
+    writeFailureArmed_.store(false, std::memory_order_release);
+    writeFailures_ = 0;
 
     videoStream_ = nullptr;
     audioStream_ = nullptr;
@@ -353,6 +380,7 @@ void VideoRecorderFFmpeg::cleanup() {
     lastVideoPts_ = -1;
     warnedMissingCaptureTime_ = false;
     audioFrameCount_ = 0;
+    audioFramesEncoded_ = 0;
 
     if (fileLockFd_ >= 0) {
         unlockExclusive(fileLockFd_);
@@ -496,23 +524,40 @@ i64 VideoRecorderFFmpeg::presentationTimestampFor(i64 captureTimestampUs) {
     return lastVideoPts_;
 }
 
-bool VideoRecorderFFmpeg::encodeAudio(std::vector<f32>& buffer,
-                                      u32 channels,
-                                      u64& bytesWritten) {
+VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
+    std::vector<f32>& buffer, const u32 channels, u64& bytesWritten) {
     std::lock_guard lock(mutex_);
     // swrCtx_ is in the list because initAudioStream can now legitimately return
     // without one -- it returns ok() with no audio stream at all when the codec
     // is missing or needs a variable frame size -- and the old code called
     // swr_convert on swrCtx_.get() with only audioCodecCtx_ and audioFrame_
     // checked.
+    //
+    // Every one of these is NoProgress, not Failed: nothing about the encoder is
+    // broken, there was simply nothing for it to do. See AudioEncodeOutcome for
+    // why that distinction is worth a return value.
     if (!audioCodecCtx_ || !audioFrame_ || !swrCtx_ || buffer.empty())
-        return false;
+        return AudioEncodeOutcome::NoProgress;
+
+    // Same short-circuit encodeVideo has, for the same reason: once the muxer
+    // has refused a packet for a damaging reason the container is untrustworthy,
+    // and encoding more audio into it only lengthens a broken file. This is *not*
+    // applied to a resampler failure, which is a track problem and does not stop
+    // the recording -- see the note on resampleIntoAudioFrame.
+    if (writeFailed_)
+        return AudioEncodeOutcome::NoProgress;
 
     int frameSize = audioCodecCtx_->frame_size;
     if (frameSize <= 0)
-        return false;
+        return AudioEncodeOutcome::NoProgress;
 
     bool encodedAny = false;
+    // The encoder refusing a frame, as opposed to a packet not reaching the
+    // file. encodeAudioFrame reports both with one bool, so the muxer case is
+    // excluded by its own sticky flag: that fault has a one-shot report
+    // (reportWriteFailure) and must not also arrive here as a generic "the
+    // encoder failed", which is how a full volume used to be reported twice.
+    bool encoderRefused = false;
 
     while (buffer.size() >= static_cast<usize>(frameSize * channels)) {
         std::vector<f32> samples(buffer.begin(),
@@ -521,13 +566,19 @@ bool VideoRecorderFFmpeg::encodeAudio(std::vector<f32>& buffer,
 
         const u8* srcData[1] = {reinterpret_cast<const u8*>(samples.data())};
 
-        int ret = swr_convert(swrCtx_.get(),
-                              audioFrame_->data,
-                              frameSize,
-                              srcData,
-                              frameSize);
+        int ret = resampleIntoAudioFrame(audioFrame_.get(), srcData, frameSize);
         if (ret < 0) {
-            LOG_WARN("Audio resample error: {}", ffmpegError(ret));
+            // The frame is left out. That is not corruption -- the container, the
+            // index and the audio stream all stay valid, and the result decodes
+            // with a gap -- which is precisely why it used to be invisible. So it
+            // is counted, and the count is what stop() reports.
+            const u64 dropped = audioFramesDropped_.fetch_add(
+                                    1, std::memory_order_acq_rel) +
+                                1;
+            if (shouldLogOccurrence(dropped)) {
+                LOG_WARN("Audio resample error ({} dropped so far): {}",
+                         dropped, ffmpegError(ret));
+            }
             continue;
         }
 
@@ -536,9 +587,16 @@ bool VideoRecorderFFmpeg::encodeAudio(std::vector<f32>& buffer,
 
         if (encodeAudioFrame(audioFrame_.get(), bytesWritten)) {
             encodedAny = true;
+            ++audioFramesEncoded_;
+        } else if (!writeFailed_) {
+            encoderRefused = true;
         }
     }
-    return encodedAny;
+
+    if (encoderRefused)
+        return AudioEncodeOutcome::Failed;
+    return encodedAny ? AudioEncodeOutcome::Encoded
+                      : AudioEncodeOutcome::NoProgress;
 }
 
 void VideoRecorderFFmpeg::flush(u64& bytesWritten) {
@@ -550,6 +608,24 @@ void VideoRecorderFFmpeg::flush(u64& bytesWritten) {
     // open by then, so draining them would hand packets to a context with no pb
     // at all or with a pb and no header. Same gate cleanup() uses.
     if (!headerWritten_ || !formatCtx_) {
+        return;
+    }
+
+    // Nor to one that has already refused a packet. flush() is the only write
+    // path encodeVideo and encodeAudio do not short-circuit on writeFailed_, and
+    // the two are the same decision: those two refuse to lengthen a file nobody
+    // should trust, and the drain was lengthening it with every packet the
+    // encoders were still holding -- a full volume turns that into a burst of
+    // writes, each one a LOG_ERROR, into a container already damaged. It also
+    // cost the log: writeFailureReported_ guards only the Backpressure line, so
+    // the drain was the loudest thing in an otherwise quiet failure.
+    //
+    // av_write_trailer in cleanup() deliberately still runs. That is not part of
+    // this: a trailer is what makes a truncated file openable at all -- without
+    // it an MP4 has no moov atom and a Matroska file has no cues -- so refusing
+    // it would convert "plays to the break" into "does not open", and stop() has
+    // already told the user the file is incomplete by then.
+    if (writeFailed_) {
         return;
     }
 
@@ -855,6 +931,43 @@ bool VideoRecorderFFmpeg::encodeVideoFrame(AVFrame* frame, u64& bytesWritten) {
     return allWritten;
 }
 
+int VideoRecorderFFmpeg::resampleIntoAudioFrame(AVFrame* frame,
+                                                 const u8* const* srcData,
+                                                 const int frameSize) {
+  // The seam injects the *error code*, not a branch, so everything the caller
+  // does with a failure is the production path. Zero in production, and
+  // fetch_sub on zero would wrap a u32 to 4 billion, hence the guard.
+  if (injectedResampleFailures_.load(std::memory_order_acquire) > 0) {
+    injectedResampleFailures_.fetch_sub(1, std::memory_order_acq_rel);
+    return AVERROR(EINVAL);
+  }
+  return swr_convert(swrCtx_.get(), frame->data, frameSize, srcData, frameSize);
+}
+
+bool VideoRecorderFFmpeg::consumeInjectedWriteFailure() {
+  // Armed is a separate flag rather than a sentinel in the countdown, because
+  // "0 writes remaining" is both the immediate case and the exhausted one.
+  if (!writeFailureArmed_.load(std::memory_order_acquire)) {
+    return false;
+  }
+  auto remaining = writesBeforeWriteFailure_.load(std::memory_order_acquire);
+  while (remaining > 0) {
+    if (writesBeforeWriteFailure_.compare_exchange_weak(
+            remaining, remaining - 1, std::memory_order_acq_rel,
+            std::memory_order_acquire)) {
+      return false; // this write is allowed through
+    }
+  }
+  // The countdown is spent: refuse this write and disarm. See the note on
+  // simulateWriteFailureForTesting -- production's own persistence is
+  // writeFailed_, and a seam that refused forever would make a gated write path
+  // indistinguishable from one that never ran, because a refused packet
+  // contributes no bytes. Only the encoding thread writes, so there is no race
+  // here worth an atomic exchange.
+  writeFailureArmed_.store(false, std::memory_order_release);
+  return true;
+}
+
 bool VideoRecorderFFmpeg::encodeAudioFrame(AVFrame* frame, u64& bytesWritten) {
     int ret = avcodec_send_frame(audioCodecCtx_.get(), frame);
     if (ret < 0)
@@ -899,8 +1012,14 @@ bool VideoRecorderFFmpeg::writePacket(AVPacket* packet,
   av_packet_rescale_ts(packet, sourceTimeBase, stream->time_base);
   packet->stream_index = stream->index;
 
+  // The seam substitutes the return value, not a branch above it, so the
+  // classification below is the production path. AVERROR(ENOSPC) because that is
+  // the real cause the message names, and because a code the classifier maps to
+  // Failed is what the surrounding switch exists for.
   const int written =
-      av_interleaved_write_frame(formatCtx_.get(), packet);
+      consumeInjectedWriteFailure()
+          ? AVERROR(ENOSPC)
+          : av_interleaved_write_frame(formatCtx_.get(), packet);
 
   // The return value used to be discarded at every call site, which is how a
   // disk that filled at 90% produced a truncated file that opens, plays to the
@@ -923,8 +1042,15 @@ bool VideoRecorderFFmpeg::writePacket(AVPacket* packet,
 
     case WriteOutcome::Failed:
       writeFailed_ = true;
-      LOG_ERROR("Muxer refused a packet for stream {}: {}",
-                stream->index, ffmpegError(written));
+      // Throttled by occurrence rather than latched, for the same reason the
+      // resampler log is: flush() drains every packet the encoders were still
+      // holding, and a full volume turns that loop into one LOG_ERROR per packet.
+      // Deliberately *not* writeFailureReported_, which is the one-shot *report*
+      // to the encoding loop -- latching it here would silence the user's error.
+      if (shouldLogOccurrence(++writeFailures_)) {
+        LOG_ERROR("Muxer refused a packet for stream {} ({} so far): {}",
+                  stream->index, writeFailures_, ffmpegError(written));
+      }
       return false;
   }
 

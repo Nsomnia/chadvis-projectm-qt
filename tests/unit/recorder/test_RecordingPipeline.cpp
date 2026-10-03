@@ -117,6 +117,19 @@ constexpr i64 kOriginUs = 4LL * 60 * 60 * 1000000;
 // about 1e-5 of a tick, and does not accumulate into anything observable here.
 constexpr f64 kTickTolerance = 0.25 * kTick;
 
+/// One 32x32 RGBA frame at a plausible capture time, for the encoder-level
+/// tests that need real packets. `originOffsetUs` moves it forward so a second
+/// frame does not repeat a timestamp; presentationTimestampFor floors the
+/// sequence either way, so nothing depends on the exact values.
+GrabbedFrame solidFrame(const u8 fill, const i64 originOffsetUs = 0) {
+    GrabbedFrame frame;
+    frame.width = 32;
+    frame.height = 32;
+    frame.timestamp = kOriginUs + originOffsetUs;
+    frame.data = std::vector<u8>(32 * 32 * 4, fill);
+    return frame;
+}
+
 EncoderSettings timelineSettings(const QString& outputPath) {
     EncoderSettings settings = testSettings(outputPath);
     // B-frames off so the finished file carries no edit list and no
@@ -1538,6 +1551,465 @@ private slots:
         }
     }
 
+    // ── Degraded audio: a resampler failure ────────────────────────────────
+    //
+    // The counterpart to the muxer-failure tests above, and the deliberately
+    // *different* case. A resampler failure does not damage the file: the
+    // container, the index and the audio stream all stay valid, and the result
+    // decodes with gaps in the sound. That is exactly why it used to be invisible
+    // -- and exactly why it must not borrow the corruption wording.
+
+    void aResamplerFailureIsCountedAndReportedAsDegradedAudio() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        AudioQueue queue;
+        VideoRecorder recorder;
+        recorder.setAudioQueue(&queue);
+
+        auto settings = testSettings(QString::fromStdString(
+            (fs::path(dir.path().toStdString()) / "degraded.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV);
+        QVERIFY(recorder.start(settings));
+        const fs::path clip(recorder.getCurrentStats().currentFile);
+
+        // The injection is armed BEFORE the audio is pushed, and that ordering is
+        // the whole determinism of this test. Armed afterwards, it races the
+        // worker: how many audio frames have been pulled off the queue by the
+        // time the seam is set is a scheduling detail, so a test that injects "N
+        // drops" after pushing has an N-dependent chance of dropping every frame
+        // that exists and landing in the total-loss branch instead of the
+        // degraded one. Armed first, *every* frame the worker consumes is counted
+        // deterministically and only the first N are dropped.
+        constexpr u32 kInjectedDrops = 2;
+        recorder.simulateResampleFailureForTesting(kInjectedDrops);
+
+        // 8 batches of 4096 samples, and 4096 samples at 48 kHz is 4 AAC frames,
+        // so at least 32 frames exist. N therefore only has to be smaller than
+        // that for the interleaved case; 2 leaves every batch with successes
+        // after its drops.
+        for (int i = 0; i < 8; ++i) {
+            QVERIFY(pushAudio(queue));
+        }
+
+        // Video, which the previous version of this test did not submit at all
+        // and then asserted 8 frames of. A recording with no video frames still
+        // gets a declared video stream, because initVideoStream always creates
+        // one and writes the header -- which is why readEncodedStreams reported a
+        // video stream and readVideoTimeline still failed, on its last line,
+        // having found zero video *packets*. Submitting real frames is what makes
+        // "the video is intact" a claim rather than a formality.
+        constexpr u64 kVideoFrames = 8;
+        for (u64 i = 0; i < kVideoFrames; ++i) {
+            recorder.submitVideoFrame(
+                std::vector<u8>(32 * 32 * 4, static_cast<u8>(i * 17)), 32, 32,
+                kOriginUs + static_cast<i64>(i) * kIntervalUs);
+        }
+
+        // Wait for both to be consumed before stopping, rather than letting
+        // stop()'s flush race the worker. recDepth is the idiom the audio tests
+        // already use; framesWritten is the one the video tests use.
+        QTRY_VERIFY_WITH_TIMEOUT(queue.recDepth() == 0, 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(recorder.getCurrentStats().framesWritten >= kVideoFrames, 5000);
+
+        const auto stopped = recorder.stop();
+
+        // The user-visible outcome: a failure, with wording that says the audio
+        // is degraded and that the rest of the file is fine.
+        QVERIFY2(!stopped, "a recording with a degraded audio track reported "
+                           "success");
+        const QString reason = QString::fromStdString(stopped.error().message);
+        QVERIFY2(reason.contains(QStringLiteral("audio is degraded")),
+                 qPrintable(QStringLiteral(
+                     "expected the message to call the audio degraded, got: %1")
+                                .arg(reason)));
+        QVERIFY2(!reason.contains(QStringLiteral("incomplete")),
+                 qPrintable(QStringLiteral(
+                     "the degraded-audio message borrowed the corruption wording: %1")
+                                .arg(reason)));
+        QVERIFY2(reason.contains(QStringLiteral("plays normally")),
+                 qPrintable(QStringLiteral(
+                     "the message should say the rest of the file is fine, got: %1")
+                                .arg(reason)));
+
+        // Counted, and the count is in the stats rather than only in a message.
+        QCOMPARE(recorder.getCurrentStats().audioFramesDropped, u64{kInjectedDrops});
+
+        // The file is still a real recording, which is the whole distinction
+        // being tested: it opens, both streams are there, and the video is
+        // intact. The frame count is now earned rather than assumed, because the
+        // test submits them.
+        EncodedStreams streams;
+        QVERIFY(readEncodedStreams(clip, streams));
+        QCOMPARE(streams.videoStreamCount, 1);
+        QCOMPARE(streams.audioStreamCount, 1);
+        EncodedTimeline timeline;
+        QVERIFY(readVideoTimeline(clip, timeline));
+        QCOMPARE(timeline.presentationSeconds.size(),
+                 static_cast<usize>(kVideoFrames));
+    }
+
+    void stopReasonComposesEachProblemWithoutBorrowingWording() {
+        // What extracting composeStopReason bought: the whole decision, as a
+        // table, with no worker, no queue, no fault injection and no QTRY.
+        //
+        // The negatives are the load-bearing half and they are asserted in *both*
+        // directions. The corruption wording must not leak into the degradation
+        // case -- telling a user whose file plays fine that it is incomplete costs
+        // their trust in everything else the application says. And the two
+        // degradation severities must not leak into each other: "degraded" for a
+        // track with nothing in it is as wrong as "incomplete" for a merely gapped
+        // one. Neither assertion can be made from the end-to-end version of this
+        // test, which only ever saw the string its own inputs happened to produce.
+        //
+        // The inputs are not stubbed: each is proven end to end by
+        // aResamplerFailureIsCountedAndReportedAsDegradedAudio and
+        // aMuxerWriteFailureIsReportedAndNotCounted. What is under test here is
+        // only the composition of the two facts -- which inside stop() was
+        // unreachable, because both come from a worker that has already been
+        // released. See composeStopReason.
+        struct Row {
+            bool writeFailed;
+            u64 droppedFrames;
+            bool anyFrameWritten;
+            /// Required in the composed reason; empty means "not required".
+            const char* contains;
+            const char* alsoContains;
+            /// Forbidden. Every row names at least the wording it must not borrow.
+            const char* excludes;
+            const char* alsoExcludes;
+        };
+
+        // 42 is the frame count stop() reports, and it is threaded through here so
+        // row 2 can check the number really reaches the sentence.
+        constexpr u64 kFramesWritten = 42;
+        constexpr Row kRows[] = {
+            // Clean: nothing to say, so nothing is said.
+            {false, 0, false, "", "", "incomplete", "audio"},
+            // Corruption alone, and it names where it stopped.
+            {true, 0, false, "incomplete", "frame 42", "audio", "degraded"},
+            // Gaps in the sound: degraded, and the rest of the file is fine.
+            {false, 2, true, "audio is degraded", "plays normally", "incomplete", "no audio"},
+            // Nothing of the track survived, which is not a degradation.
+            {false, 2, false, "has no audio", "plays normally", "degraded", "incomplete"},
+            // Both, in one string, corruption first.
+            {true, 2, true, "incomplete", "audio is degraded", "no audio", "has no audio"},
+        };
+        constexpr usize kRowCount = sizeof(kRows) / sizeof(kRows[0]);
+
+        for (usize i = 0; i < kRowCount; ++i) {
+            const Row& row = kRows[i];
+            const VideoRecorderFFmpeg::AudioResampleReport audio{
+                row.droppedFrames, row.anyFrameWritten};
+
+            const QString reason = QString::fromStdString(
+                composeStopReason(row.writeFailed, kFramesWritten, audio));
+
+            if (i == 0) {
+                // Checked as emptiness rather than as an absence, because "the
+                // message says nothing" is the whole claim for a healthy recording.
+                QVERIFY2(reason.isEmpty(),
+                         qPrintable(QStringLiteral(
+                             "a clean recording was reported as: %1").arg(reason)));
+            }
+
+            for (const char* required : {row.contains, row.alsoContains}) {
+                if (required == nullptr || *required == '\0') {
+                    continue;
+                }
+                QVERIFY2(reason.contains(QString::fromLatin1(required)),
+                         qPrintable(QStringLiteral(
+                             "row %1 is missing \"%2\"; it produced: %3")
+                                        .arg(i)
+                                        .arg(QString::fromLatin1(required))
+                                        .arg(reason)));
+            }
+
+            for (const char* forbidden : {row.excludes, row.alsoExcludes}) {
+                if (forbidden == nullptr || *forbidden == '\0') {
+                    continue;
+                }
+                QVERIFY2(!reason.contains(QString::fromLatin1(forbidden)),
+                         qPrintable(QStringLiteral(
+                             "row %1 borrowed the wording \"%2\"; it produced: %3")
+                                        .arg(i)
+                                        .arg(QString::fromLatin1(forbidden))
+                                        .arg(reason)));
+            }
+        }
+    }
+
+    void aHealthyRecordingReportsNothingAndKeepsItsAudio() {
+        // The negative case, and the one that would catch a counter that is
+        // always non-zero or a message that fires on a clean recording. A test
+        // suite that only ever injects failures proves nothing about the path a
+        // user actually takes.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        AudioQueue queue;
+        VideoRecorder recorder;
+        recorder.setAudioQueue(&queue);
+        QVERIFY(recorder.start(testSettings(
+            QString::fromStdString(
+                (fs::path(dir.path().toStdString()) / "healthy.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+        for (int i = 0; i < 4; ++i) {
+            QVERIFY(pushAudio(queue));
+        }
+
+        // Wait for the audio to be *encoded*, not merely dequeued, before stopping.
+        //
+        // The encoding loop waits up to 10 ms for a video frame before it looks at
+        // the audio queue, and this test submits none, so stop() can arrive before
+        // the worker's first pass and the file can come out with two declared
+        // streams and no packets in either. readEncodedStreams cannot even open
+        // such a file, and "reported clean" over a file with nothing in it would
+        // prove nothing -- which is exactly how this test failed before the wait
+        // was added.
+        //
+        // bytesWritten rather than recDepth() == 0: the depth only says a batch
+        // left the queue, and the pop happens before the encode inside the same
+        // pass. bytesWritten advances only after encodeAudio reported success, so
+        // it is proof that audio reached the muxer -- and here audio is the only
+        // thing being encoded, so it is unambiguous.
+        QTRY_VERIFY_WITH_TIMEOUT(recorder.getCurrentStats().bytesWritten > 0, 3000);
+
+        const auto stopped = recorder.stop();
+        QVERIFY2(stopped, qPrintable(QString::fromStdString(
+                              stopped.error().message)));
+        QCOMPARE(recorder.getCurrentStats().audioFramesDropped, u64{0});
+
+        // And the audio really is there, so "reported clean" is not the same
+        // thing as "recorded nothing".
+        const fs::path clip(recorder.getCurrentStats().currentFile);
+        EncodedStreams streams;
+        QVERIFY(readEncodedStreams(clip, streams));
+        QCOMPARE(streams.audioStreamCount, 1);
+    }
+
+    void resampleFailureCountingIsNotStickyAcrossRecordings() {
+        // The encoder is reusable, so a recording that lost audio frames must not
+        // make the next one look like it did. Same reason the muxer-failure flag
+        // is reset in cleanup().
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const fs::path dirPath(dir.path().toStdString());
+
+        {
+            VideoRecorderFFmpeg encoder;
+            QVERIFY(encoder.init(testSettings(
+                QString::fromStdString((dirPath / "first.mkv").string()),
+                VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+            QVERIFY(encoder.audioResampleReport().droppedFrames == 0);
+            QVERIFY(encoder.audioResampleReport().anyFrameWritten == false);
+
+            std::vector<f32> samples(4096 * 2, 0.05f);
+            u64 bytes = 0;
+            QVERIFY(encoder.encodeAudio(samples, 2, bytes) ==
+                    VideoRecorderFFmpeg::AudioEncodeOutcome::Encoded);
+            QVERIFY(encoder.audioResampleReport().anyFrameWritten);
+
+            encoder.simulateResampleFailureForTesting(3);
+            std::vector<f32> more(4096 * 2, 0.05f);
+            encoder.encodeAudio(more, 2, bytes);
+            QVERIFY2(encoder.audioResampleReport().droppedFrames == 3,
+                     "the injected failures were not counted");
+            encoder.cleanup();
+            QVERIFY2(encoder.audioResampleReport().droppedFrames == 0,
+                     "cleanup() left the count non-zero for the next recording");
+        }
+
+        {
+            VideoRecorderFFmpeg encoder;
+            QVERIFY(encoder.init(testSettings(
+                QString::fromStdString((dirPath / "second.mkv").string()),
+                VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+            QVERIFY(encoder.audioResampleReport().droppedFrames == 0);
+            std::vector<f32> samples(4096 * 2, 0.05f);
+            u64 bytes = 0;
+            QVERIFY(encoder.encodeAudio(samples, 2, bytes) ==
+                    VideoRecorderFFmpeg::AudioEncodeOutcome::Encoded);
+            QVERIFY2(encoder.audioResampleReport().droppedFrames == 0,
+                     "a fresh encoder reported drops from a previous recording");
+        }
+    }
+
+    // ── Which "nothing happened" ─────────────────────────────────────────────
+    //
+    // encodeAudio returned one bool for two opposite situations, and three things
+    // downstream had to guess which one they were looking at. The three tests
+    // below pin the distinction at the seam that decides it.
+
+    void aTotalResamplerLossIsNotAnEncodingError() {
+        // The dropped-frame batch came back `false`, the encoding loop read that as
+        // an encoding error, and the user was told "Encoding error occurred" up to
+        // ~100 times a second through RecordingBridge -- and then, at stop(), told
+        // the file was fine. The drop path already reports this, once, in its own
+        // words; the loop must not announce it as a generic fault.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const fs::path dirPath(dir.path().toStdString());
+
+        VideoRecorderFFmpeg encoder;
+        QVERIFY(encoder.init(testSettings(
+            QString::fromStdString((dirPath / "all-dropped.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+
+        // 4096 samples at 48 kHz is 4 AAC frames, and the injection covers all
+        // four, so this is the total-loss case: no audio, and nothing wrong. Exact
+        // because nothing here runs on a worker thread.
+        constexpr u32 kFramesInBatch = 4;
+        encoder.simulateResampleFailureForTesting(kFramesInBatch + 4);
+        std::vector<f32> samples(4096 * 2, 0.05f);
+        u64 bytes = 0;
+
+        const auto outcome = encoder.encodeAudio(samples, 2, bytes);
+        QVERIFY2(outcome != VideoRecorderFFmpeg::AudioEncodeOutcome::Failed,
+                 "a batch whose every frame was dropped by the resampler was "
+                 "reported as an encoder failure, which the loop turns into a "
+                 "user-visible error every pass");
+        QCOMPARE(encoder.audioResampleReport().droppedFrames, u64{kFramesInBatch});
+        QVERIFY(!encoder.audioResampleReport().anyFrameWritten);
+        QCOMPARE(bytes, u64{0});
+
+        // And the partial case is progress rather than a fault, which is the other
+        // half: some of the batch got through, so something reached the file.
+        encoder.simulateResampleFailureForTesting(2);
+        std::vector<f32> more(4096 * 2, 0.05f);
+        QVERIFY(encoder.encodeAudio(more, 2, bytes) ==
+                VideoRecorderFFmpeg::AudioEncodeOutcome::Encoded);
+        QVERIFY(encoder.audioResampleReport().anyFrameWritten);
+        QVERIFY2(bytes > 0, "no audio packet was counted after a partial drop");
+    }
+
+    void aRefusedAudioWriteIsNotReportedAsAFrameThatReachedTheFile() {
+        // `anyFrameEncoded` was seeded from audioFrameCount_, which is the pts
+        // counter and is advanced *before* the frame is encoded -- so it answered
+        // "did the encoder accept a frame", and could report an essentially empty
+        // audio track as encoded. stop() then attributed every hole in the sound
+        // to the resampler when the cause was a mux loss. Renaming it would have
+        // hidden that; the fix is the second counter, and this is its test.
+        //
+        // One AAC frame -- 1024 samples at 48 kHz, stereo -- per call, and the muxer
+        // refuses the first packet that comes out. The audio track ends up empty
+        // with zero resample drops, which is the case the old counter got exactly
+        // backwards.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        VideoRecorderFFmpeg encoder;
+        QVERIFY(encoder.init(testSettings(
+            QString::fromStdString(
+                (fs::path(dir.path().toStdString()) / "lost-audio.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+
+        u64 bytes = 0;
+        encoder.simulateWriteFailureForTesting();
+
+        // One AAC frame per call -- 1024 samples at 48 kHz, stereo -- fed until
+        // the muxer refuses. How many sends it takes is the encoder's own delay,
+        // which is exactly the thing not worth hard-coding: a mux loss is a mux
+        // loss however many packets the encoder was holding behind it. The refusal
+        // is one-shot, so no later frame can succeed, and encodeAudio
+        // short-circuits on writeFailed_ anyway.
+        bool refused = false;
+        for (int i = 0; i < 8 && !refused; ++i) {
+            std::vector<f32> oneFrame(1024 * 2, 0.05f);
+            const auto outcome = encoder.encodeAudio(oneFrame, 2, bytes);
+            QVERIFY2(outcome != VideoRecorderFFmpeg::AudioEncodeOutcome::Failed,
+                     "a mux loss was reported as an encoder fault; it has its own "
+                     "one-shot report");
+            refused = encoder.writeFailed();
+        }
+
+        QVERIFY2(refused,
+                 "the injected refusal never reached the muxer, so no audio packet "
+                 "was attempted and this test proves nothing");
+        QCOMPARE(encoder.audioResampleReport().droppedFrames, u64{0});
+        QVERIFY2(!encoder.audioResampleReport().anyFrameWritten,
+                 "a refused audio packet was reported as a frame that reached "
+                 "the file");
+        QCOMPARE(bytes, u64{0});
+    }
+
+    void theFlushDrainStopsOnceTheMuxerHasRefusedAWrite() {
+        // flush() was the one write path that ignored writeFailed_, while
+        // encodeVideo and encodeAudio both short-circuit on it -- the same decision,
+        // two paths. On a full volume the drain kept writing, and kept emitting a
+        // LOG_ERROR per packet because writeFailureReported_ guards only the
+        // Backpressure line, into a container that had already been declared
+        // untrustworthy. av_write_trailer in cleanup() deliberately still runs; see
+        // the comment there.
+        //
+        // Observable, because a *refused* packet contributes no bytes and a
+        // successful one does. So the ordering matters: one write is refused
+        // first, while a packet the encoders are still holding waits for the
+        // drain, and the refusal is one-shot -- the drain's write would succeed.
+        // Bytes unchanged across flush() is then an observation, not a tautology.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const fs::path dirPath(dir.path().toStdString());
+
+        {
+            VideoRecorderFFmpeg encoder;
+            QVERIFY(encoder.init(testSettings(
+                QString::fromStdString((dirPath / "drain.mkv").string()),
+                VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+
+            u64 bytes = 0;
+            QVERIFY(encoder.encodeVideo(solidFrame(11), bytes));
+
+            // One AAC frame per call, fed until the muxer refuses: the refusal is
+            // the first write, and the frame that triggered it is still inside the
+            // encoder, so there is a packet waiting for the drain. The seam is
+            // one-shot, so the drain's write would succeed -- which is what makes
+            // the byte count an observation instead of a tautology.
+            encoder.simulateWriteFailureForTesting();
+            bool refused = false;
+            for (int i = 0; i < 8 && !refused; ++i) {
+                std::vector<f32> oneFrame(1024 * 2, 0.05f);
+                encoder.encodeAudio(oneFrame, 2, bytes);
+                refused = encoder.writeFailed();
+            }
+            QVERIFY2(refused,
+                     "the injected refusal never reached the muxer, so the drain "
+                     "had nothing to be compared against");
+
+            const u64 beforeDrain = bytes;
+            encoder.flush(bytes);
+            QVERIFY2(bytes == beforeDrain,
+                     qPrintable(QStringLiteral(
+                         "the drain wrote into a container the muxer had already "
+                         "refused: %1 bytes became %2")
+                                    .arg(beforeDrain).arg(bytes)));
+            encoder.cleanup();
+        }
+
+        // The control, and the reason the assertion above is not vacuous: the same
+        // fixture with nothing refused *does* still hold a packet when the drain
+        // runs, and the drain writes it. If this fails, the codec under test emits
+        // everything immediately, "bytes did not change" would hold for a drain
+        // that had nothing to do, and the test above would be proving nothing.
+        {
+            VideoRecorderFFmpeg control;
+            QVERIFY(control.init(testSettings(
+                QString::fromStdString((dirPath / "drain-control.mkv").string()),
+                VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+
+            u64 bytes = 0;
+            QVERIFY(control.encodeVideo(solidFrame(11), bytes));
+            std::vector<f32> oneFrame(1024 * 2, 0.05f);
+            control.encodeAudio(oneFrame, 2, bytes);
+            const u64 beforeDrain = bytes;
+            control.flush(bytes);
+            QVERIFY2(bytes > beforeDrain,
+                     "the control's drain wrote nothing, so the assertion above "
+                     "could not tell a gated drain from an empty one");
+            control.cleanup();
+        }
+    }
+
     // ── Failure reporting ───────────────────────────────────────────────────
     // The recorder's whole job is producing a correct file, and until these
     // landed it reported success in two independent ways: a start that never
@@ -1694,6 +2166,51 @@ private slots:
         QVERIFY(classifyWriteResult(AVERROR(EINVAL)) == WriteOutcome::Failed);
     }
 
+    void aRefusedPacketIsClassifiedAsFailedThroughTheWritePath() {
+        // writePacket's `case WriteOutcome::Failed`, executed. The seam used to
+        // assign writeFailed_ itself, so it set the *consequence* and left the one
+        // statement that produces it uncovered by any test anywhere: the arm, the
+        // sticky flag, and the packet's bytes not being counted were all reached
+        // only by tests that never made the muxer say no.
+        //
+        // The seam now substitutes the return value at the call, so this runs the
+        // same production classification a full volume does -- which is the point:
+        // the arm is the classification, and the classification is the behaviour.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        VideoRecorderFFmpeg encoder;
+        QVERIFY(encoder.init(testSettings(
+            QString::fromStdString(
+                (fs::path(dir.path().toStdString()) / "refused.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+
+        u64 bytes = 0;
+        // One healthy frame first, so the refused one is refused against a muxer
+        // that was working.
+        QVERIFY(encoder.encodeVideo(solidFrame(11), bytes));
+
+        // The volume fills: the very next write is refused. That is the
+        // ENOSPC-at-zero-bytes case, and it is the right default -- `writeFailed_`
+        // gates packets, not the header, so a refusal here leaves a file that has a
+        // valid header and a hole in it. (The old test's comment claimed the
+        // opposite, which is part of why it could never be set up.)
+        encoder.simulateWriteFailureForTesting();
+
+        QVERIFY2(!encoder.encodeVideo(solidFrame(23, kIntervalUs), bytes),
+                 "a refused packet was reported as written");
+        QVERIFY2(encoder.writeFailed(),
+                 "the refusal did not mark the file damaged -- so nothing above "
+                 "executed the Failed arm and this test proves nothing");
+        // And it is the one fault the encoding loop is told about once, rather
+        // than a generic encode error per frame. This is also the whole chain the
+        // old seam skipped: VideoRecorderThread increments framesWritten on a true
+        // from here, and stop() reads the flag this arm sets.
+        QVERIFY(encoder.reportWriteFailure());
+        QVERIFY(!encoder.reportWriteFailure());
+        encoder.cleanup();
+    }
+
     void aWriteFailureIsNotStickyAcrossRecordings() {
         // The encoder is reusable, so a failed instance must not leave the next
         // recording looking broken. cleanup() resets the flag; the reporting
@@ -1712,8 +2229,15 @@ private slots:
             VideoRecorderFFmpeg encoder;
             QVERIFY(encoder.init(settingsFor("first.mkv")));
             QVERIFY(!encoder.writeFailed());
+            // Arm the seam, then drive a real write. Setting the flag directly --
+            // which is all the old seam could do -- would leave this test asserting
+            // that a member can be assigned, and would skip the classification that
+            // actually sets it.
             encoder.simulateWriteFailureForTesting();
-            QVERIFY(encoder.writeFailed());
+            u64 bytes = 0;
+            QVERIFY(!encoder.encodeVideo(solidFrame(3), bytes));
+            QVERIFY2(encoder.writeFailed(),
+                     "a refused packet did not mark the file damaged");
             // One-shot reporting: the first caller gets it, the second does not,
             // which is what keeps the encoding loop from emitting one error per
             // frame for the rest of the recording.

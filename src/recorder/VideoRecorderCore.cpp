@@ -7,6 +7,49 @@
 
 namespace vc {
 
+namespace {
+
+/// The corruption half. Its own function only so the "at frame N" sentence can
+/// be formatted once and stay identical wherever it is composed.
+std::string corruptionClause(const u64 framesWritten) {
+  return fmt::format(
+      "Recording failed at frame {} -- the file is incomplete. The most "
+      "common cause is a full volume.",
+      framesWritten);
+}
+
+/// The degradation half, graded by whether anything survived.
+std::string audioClause(const VideoRecorderFFmpeg::AudioResampleReport& audio) {
+  return audio.anyFrameWritten
+             ? fmt::format(
+                   "The audio is degraded: {} frames could not be resampled and "
+                   "were left out, so there are gaps in the sound. The video and "
+                   "the rest of the file are intact and it plays normally.",
+                   audio.droppedFrames)
+             : fmt::format(
+                   "The recording has no audio: all {} audio frames could not "
+                   "be resampled. The video is intact and plays normally.",
+                   audio.droppedFrames);
+}
+
+} // namespace
+
+std::string composeStopReason(bool writeFailed, const u64 framesWritten,
+                              const VideoRecorderFFmpeg::AudioResampleReport& audio) {
+  std::string reasons;
+
+  if (writeFailed) {
+    reasons = corruptionClause(framesWritten);
+  }
+
+  if (audio.droppedFrames > 0) {
+    const std::string degraded = audioClause(audio);
+    reasons = reasons.empty() ? degraded : reasons + " " + degraded;
+  }
+
+  return reasons;
+}
+
 VideoRecorder::VideoRecorder() = default;
 
 VideoRecorder::~VideoRecorder() {
@@ -118,11 +161,13 @@ Result<void> VideoRecorder::stop() {
   state_ = RecordingState::Finalizing;
   stateChanged.emitSignal(state_);
 
-  // Read before the worker is released; it is the snapshot taken in its stop().
+  // Read before the worker is released; both are snapshots taken in its stop().
   bool writeFailed = false;
+  VideoRecorderFFmpeg::AudioResampleReport audioResample;
   if (worker_) {
     worker_->stop();
     writeFailed = worker_->writeFailed();
+    audioResample = worker_->audioResample();
     // Preserve the worker's final counters before releasing it.  The bridge
     // reads these after the Stopped transition, so final frame/file stats must
     // not fall back to the zeroed parent snapshot.
@@ -133,18 +178,32 @@ Result<void> VideoRecorder::stop() {
   state_ = RecordingState::Stopped;
   stateChanged.emitSignal(state_);
 
+  // One string, naming both problems when both happened, so the user is not left
+  // correlating two separate messages. Composed by a pure function so the wording
+  // -- in particular the corruption/degradation distinction -- is testable
+  // without a worker, a queue or a fault injection; every LOG_* stays here, next
+  // to the snapshot it describes. See composeStopReason.
+  //
+  // Returned as a failure so RecordingBridge::stopRecording's existing
+  // `if (!result) emit recordingError(...)` puts it in front of the user with no
+  // change to the bridge. The file exists and opens, which is exactly why this has
+  // to be said out loud: a truncated recording is otherwise indistinguishable
+  // from a good one until someone watches it to the end.
+  const std::string reasons =
+      composeStopReason(writeFailed, stats_.framesWritten, audioResample);
+
   if (writeFailed) {
-    // Returned as a failure so RecordingBridge::stopRecording's existing
-    // `if (!result) emit recordingError(...)` puts it in front of the user with
-    // no change to the bridge. The file exists and opens, which is exactly why
-    // this has to be said out loud: a truncated recording is otherwise
-    // indistinguishable from a good one until someone watches it to the end.
     LOG_ERROR("Recording stopped with an incomplete file at {} frames",
               stats_.framesWritten);
-    return Result<void>::err(
-      fmt::format("Recording failed at frame {} -- the file is incomplete. "
-                  "The most common cause is a full volume.",
-                  stats_.framesWritten));
+  }
+
+  if (audioResample.droppedFrames > 0) {
+    LOG_WARN("Recording stopped with a degraded audio track: {} frames dropped",
+             audioResample.droppedFrames);
+  }
+
+  if (!reasons.empty()) {
+    return Result<void>::err(reasons);
   }
 
   LOG_INFO("Recording stopped. Frames: {}, Dropped: {}",
@@ -191,6 +250,12 @@ RecordingStats VideoRecorder::getCurrentStats() const {
 void VideoRecorder::simulateWriteFailureForTesting() {
   if (worker_) {
     worker_->simulateWriteFailureForTesting();
+  }
+}
+
+void VideoRecorder::simulateResampleFailureForTesting(u32 frames) {
+  if (worker_) {
+    worker_->simulateResampleFailureForTesting(frames);
   }
 }
 

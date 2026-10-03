@@ -141,23 +141,30 @@ set(LYRICS_SOURCES
     src/lyrics/LyricsSync.cpp
 )
 
-# Post-pass (burn-in). Empty when CHADVIS_HAS_AVFILTER is off, which is the point:
-# the whole feature disappears from the build rather than failing to link, and
-# burnInAvailable() reports it unsupported at runtime. Included unconditionally in
-# the target, because an empty source list costs nothing and gating it a second
-# time here would only create a way for the two gates to disagree.
+# Post-pass (burn-in). Compiled UNCONDITIONALLY, and that is the point.
+#
+# SubtitleBurnIn.cpp carries its own #if: with CHADVIS_HAS_AVFILTER it holds the
+# real filter-graph implementation, and without it the same translation unit holds
+# the stub that makes burnInUnavailableReason() explain the absence. One file, two
+# bodies, one set of symbols either way.
+#
+# Gating this list on CHADVIS_HAS_AVFILVER was a real build-breaking bug, found by
+# the lane that wired the UI: gating removed the very file that contains the stub,
+# so vc::burnIn* had NO definition on a no-libavfilter build and any reference to
+# them was a LINK ERROR of the whole application -- on precisely the stripped
+# distros CHADVIS_POSTPROCESS exists to keep working. The defect needed two gates
+# to disagree: this one, and the macro definition in TargetSetup.cmake. Removing
+# either alone would have left the same trap one refactor away, so this one is gone
+# entirely and the macro is now the only gate.
 #
 # FFmpegUtils.hpp is NOT in this list on purpose. It is included by files that
 # build with or without libavfilter, and it is the one header that would have to
 # conditionally include libavfilter/avfilter.h -- which is why SubtitleBurnIn.hpp
 # carries the #if instead and is the only header that mentions avfilter.
-set(CHADVIS_POSTPROCESS_SOURCES "")
-if(CHADVIS_HAS_AVFILTER)
-    list(APPEND CHADVIS_POSTPROCESS_SOURCES
-        src/recorder/SubtitleBurnIn.hpp
-        src/recorder/SubtitleBurnIn.cpp
-    )
-endif()
+set(CHADVIS_POSTPROCESS_SOURCES
+    src/recorder/SubtitleBurnIn.hpp
+    src/recorder/SubtitleBurnIn.cpp
+)
 
 # ─────────────────────────────────────────────────────────────
 # QML BRIDGE SOURCES - C++ types exposed to QML

@@ -2,10 +2,17 @@
 // Description: Optional post-pass: burn a subtitle track into a finished file.
 //
 // See SubtitleBurnIn.hpp for why libavfilter is optional and why there are two
-// gates. This file compiles to nothing at all when CHADVIS_HAS_AVFILTER is
-// absent, and the entry points then report the feature unsupported -- which is
-// the whole point: a stripped distro gets a working application that says so,
-// not a link error.
+// gates. This file is ALWAYS compiled. With CHADVIS_HAS_AVFILTER it holds the
+// real filter-graph implementation; without it, this same translation unit holds
+// the stub that makes burnInUnavailableReason() explain the absence and returns
+// an error from every entry point. One file, two bodies, one set of symbols
+// either way -- so an optional dependency can never become a link error of the
+// whole application on a stripped distro, which is the entire point of the gate.
+//
+// The corollary is load-bearing: do NOT gate this file in cmake/Sources.cmake on
+// CHADVIS_HAS_AVFILTER. Doing so once removed the very translation unit that
+// holds the stub, leaving vc::burnIn* undefined and turning every reference into
+// a link failure. The macro in cmake/TargetSetup.cmake is the only gate.
 
 #include "SubtitleBurnIn.hpp"
 

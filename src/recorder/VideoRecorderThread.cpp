@@ -59,22 +59,39 @@ void VideoRecorderThread::stop() {
     // Final flush
     u64 bytes = 0;
     ffmpeg_.flush(bytes);
-    
+
+    // Read the encoder's verdict *before* cleanup(), which resets the counters so
+    // the instance can be reused. These two facts are what decide whether
+    // VideoRecorder::stop reports a finished recording, a damaged one, or a
+    // finished one with a degraded audio track. Snapshotted once, and used for
+    // both the stats and the log below, so there is a single answer to "what did
+    // this recording cost" rather than two reads of a counter that is about to
+    // be zeroed.
+    writeFailed_ = ffmpeg_.writeFailed();
+    audioResample_ = ffmpeg_.audioResampleReport();
+
     // Update final stats
     {
         std::lock_guard<std::mutex> lock(statsMutex_);
         stats_.bytesWritten += bytes;
+        // Final value of a counter that updateStats() has been publishing live
+        // every second for the whole recording. It used to be assigned *only*
+        // here, which made it unreadable for the duration: a bridge polling it
+        // saw a zero that could not be told apart from "nothing dropped yet",
+        // and then a jump to N at teardown.
+        stats_.audioFramesDropped = audioResample_.droppedFrames;
     }
-
-    // Read the encoder's verdict *before* cleanup(), which resets it so the
-    // instance can be reused. This is the single fact that decides whether
-    // VideoRecorder::stop reports a finished recording or an incomplete one.
-    writeFailed_ = ffmpeg_.writeFailed();
 
     ffmpeg_.cleanup();
     if (writeFailed_) {
         LOG_ERROR("Recording stopped with an incomplete file: the muxer refused "
                   "at least one packet");
+    } else if (audioResample_.droppedFrames > 0) {
+        // Not LOG_ERROR: the file is complete and decodes. This is a degraded
+        // track, and saying so in the log is the point -- the old code said it
+        // once per frame and never said how many.
+        LOG_WARN("Recording stopped with degraded audio: {} frames were left "
+                 "out of the audio track", audioResample_.droppedFrames);
     } else {
         LOG_INFO("Recording thread stopped");
     }
@@ -136,7 +153,15 @@ void VideoRecorderThread::threadLoop(StopToken stopToken) {
         u32 popped = queue->popRecBatch(audioBatch, AUDIO_BATCH_SIZE);
         if (popped > 0) {
             std::vector<f32> audioBuffer(audioBatch, audioBatch + popped * 2);
-            if (!ffmpeg_.encodeAudio(audioBuffer, 2, bytesWritten)) {
+            // Only the encoder itself is an error here. A batch whose every frame
+            // was refused by the resampler produced no audio and nothing wrong
+            // with the encoder, and the drop path already reports it -- once, in
+            // words that say the file is fine -- at stop(). Reporting it here as
+            // well told the user the recording had broken up to ~100 times a
+            // second, via RecordingBridge, and then contradicted it at the end.
+            const auto outcome =
+                ffmpeg_.encodeAudio(audioBuffer, 2, bytesWritten);
+            if (outcome == VideoRecorderFFmpeg::AudioEncodeOutcome::Failed) {
                 hadError = true;
                 LOG_WARN("Failed to encode audio samples");
             } else {
@@ -193,6 +218,14 @@ void VideoRecorderThread::updateStats(TimePoint startTime,
     auto now = std::chrono::steady_clock::now();
     
     std::lock_guard<std::mutex> lock(statsMutex_);
+    
+    // Read here rather than only at stop(), for the same reason framesDropped is
+    // read on this thread: the whole point of a counter is that a reader can watch
+    // it move. Every caller of updateStats is threadLoop -- the once-a-second pass
+    // and the final one -- so this runs on the encoding thread, the only writer of
+    // the counters it reads, and the atomic load is the one that needs the care.
+    // framesDropped is published right below, so a reader sees both or neither.
+    stats_.audioFramesDropped = ffmpeg_.audioResampleReport().droppedFrames;
     
     // Calculate elapsed time
     stats_.elapsed = std::chrono::duration_cast<Duration>(now - startTime);

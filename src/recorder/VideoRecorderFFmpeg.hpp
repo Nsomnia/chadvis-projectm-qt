@@ -96,7 +96,34 @@ public:
   std::string getOutputPath() const { return currentOutputPath_; }
 
   bool encodeVideo(const GrabbedFrame& frame, u64& bytesWritten);
-  bool encodeAudio(std::vector<f32>& buffer, u32 channels, u64& bytesWritten);
+
+  /// Which kind of "no audio came out" an encodeAudio call hit. A bool could not
+  /// carry this; see encodeAudio.
+  enum class AudioEncodeOutcome {
+    /// At least one frame's packets all reached the file.
+    Encoded,
+    /// Nothing reached the file and nothing is wrong: the batch was empty, every
+    /// frame was dropped by the resampler, or the muxer had already refused a
+    /// packet and encodeAudio short-circuited.
+    NoProgress,
+    /// The audio encoder itself refused a frame.
+    Failed
+  };
+
+  /**
+   * @brief Encode one batch of decoded audio, reporting *which kind* of nothing
+   * happened.
+   *
+   * The two ways a batch can produce no audio are opposites. A resampler that
+   * refused every frame left a recording whose file is intact and audibly
+   * degraded -- which the drop path already reports, once, in its own words, at
+   * stop() -- while an encoder that refused a frame is a genuine fault. Collapsing
+   * them into one `false` made the encoding loop emit "Encoding error occurred"
+   * up to a hundred times a second for a drop-only batch: it told the user the
+   * recording had broken, and then, at stop(), told them the file was fine.
+   */
+  AudioEncodeOutcome encodeAudio(std::vector<f32>& buffer, u32 channels,
+                                 u64& bytesWritten);
   void flush(u64& bytesWritten);
 
   /**
@@ -118,18 +145,88 @@ public:
   bool reportWriteFailure();
 
   /**
-   * @brief Test seam: declare the muxer to be failing, without one.
+   * @brief Test seam: make the muxer refuse, where the refusal happens.
    *
-   * Exists because `av_interleaved_write_frame`'s failure cannot be provoked
-   * portably and safely: the realistic triggers are a full filesystem, a closed
-   * descriptor behind AVIO's back, or an RLIMIT_FSIZE that would also trip the
-   * logger inside the same process. What is under test is everything this app
-   * does *after* the muxer says no -- the encoder reporting failure, the frame
-   * counter not advancing, and `stop()` refusing to call it complete -- and that
-   * whole chain is unreachable without this. Which return codes mean what is
-   * covered directly by `classifyWriteResult`.
+   * Injected as the *return code* handed to `writePacket`'s classifier, not as a
+   * separate code path, so the production handling of a refusal -- the
+   * `case WriteOutcome::Failed` arm, the sticky flag, the frame counter standing
+   * still, the throttled log, and stop() refusing to call it complete -- is the
+   * code under test rather than a rehearsal of it. The earlier version of this
+   * seam assigned `writeFailed_` directly, which set the *consequence* and left
+   * the site that produces it unexecuted by any test anywhere.
+   *
+   * `av_interleaved_write_frame`'s failure still cannot be provoked for real, and
+   * the reasons are the three rejected mechanisms in the commit history: a full
+   * filesystem, a descriptor closed behind AVIO's back, or an RLIMIT_FSIZE that
+   * would also trip the logger inside the same process.
+   *
+   * @param writesBeforeFailure  Writes allowed through before one is refused.
+   *                             Zero -- the default -- refuses the very next
+   *                             write, which is the ENOSPC-at-zero-bytes case: a
+   *                             header went out, the first packet did not.
+   *
+   * One refusal, then the seam disarms. What a full volume does *afterwards* is
+   * writeFailed_'s job -- encodeVideo and encodeAudio short-circuit on it, flush()
+   * is gated on it, and reportWriteFailure() is the one-shot -- so a seam that
+   * refused every later write would add nothing but an unobservable: a refused
+   * packet contributes no bytes, so a permanently refusing muxer looks exactly
+   * like a write path that did not run at all, and the gate could not be tested.
    */
-  void simulateWriteFailureForTesting() { writeFailed_ = true; }
+  void simulateWriteFailureForTesting(u64 writesBeforeFailure = 0) {
+    writesBeforeWriteFailure_.store(writesBeforeFailure, std::memory_order_release);
+    writeFailureArmed_.store(true, std::memory_order_release);
+  }
+
+  /**
+   * @brief What the resampler cost this recording.
+   *
+   * Deliberately *not* folded into `writeFailed()`. A muxer failure damages the
+   * file -- the container, the index, every stream -- and a resampler failure
+   * damages one track's contents: the container still has a header, a trailer and
+   * a valid audio stream, and it decodes. The user gets a recording that plays
+   * with gaps in the sound, and the two conditions deserve different words.
+   */
+  struct AudioResampleReport {
+    /// Audio frames swr_convert refused, and which were therefore left out.
+    u64 droppedFrames{0};
+    /// Did any audio frame reach the file? False together with a non-zero
+    /// droppedFrames means the audio track is empty, which is a different severity
+    /// from "there are gaps in it".
+    ///
+    /// This used to be `audioFrameCount_ > 0`, and that counter is the PTS
+    /// seed -- it is incremented *before* the frame is encoded, and the encode
+    /// can fail with the packet not in the file. So it answered "did the
+    /// encoder accept a frame at all", and could report an essentially empty
+    /// audio track as encoded; stop() then attributed every hole in the sound to
+    /// the resampler when some of them were mux losses. The distinction is
+    /// load-bearing, so it is counted separately (`audioFramesEncoded_`) rather
+    /// than renamed.
+    bool anyFrameWritten{false};
+  };
+
+  /// The above, read live by the encoding thread and once more at finalisation.
+  /// See the note on the members about why the drop counter is atomic and why
+  /// cleanup() clears them.
+  AudioResampleReport audioResampleReport() const {
+    return AudioResampleReport{audioFramesDropped_.load(std::memory_order_acquire),
+                               audioFramesEncoded_ > 0};
+  }
+
+  /**
+   * @brief Test seam: make the next `frames` resample attempts fail.
+   *
+   * Injected as the *return value* of the call to swr_convert, not as a
+   * separate code path, so the production handling of a resampler failure --
+   * the counter, the log throttle, the stop() message -- is the code under test
+   * and not a rehearsal of it. For the same reason as the muxer seam, this
+   * cannot be provoked for real: swr_convert fails on a resampler that was
+   * configured with an impossible conversion, and round 5 made the alternative
+   * (fixing the configuration) a hard error at init, so there is no reachable
+   * state in which a healthy recording hits this.
+   */
+  void simulateResampleFailureForTesting(u32 frames) {
+    injectedResampleFailures_.store(frames, std::memory_order_release);
+  }
 
 private:
   Result<void> initVideoStream(const EncoderSettings& settings);
@@ -155,6 +252,15 @@ private:
 
   bool encodeVideoFrame(AVFrame* frame, u64& bytesWritten);
   bool encodeAudioFrame(AVFrame* frame, u64& bytesWritten);
+  /// One resample into audioFrame_.data, or a simulated failure. Everything
+  /// downstream of the return value is the production path in both cases.
+  int resampleIntoAudioFrame(AVFrame* frame, const u8* const* srcData,
+                             int frameSize);
+  /// Charge one write against the test seam's countdown. True means "refuse this
+  /// one", i.e. the caller substitutes a muxer error for the real call. See
+  /// simulateWriteFailureForTesting; atomic because it can be armed from the
+  /// test's thread while the encoding thread is inside a write.
+  bool consumeInjectedWriteFailure();
   /// Rescale a packet out of `sourceTimeBase` and hand it to the muxer.
   ///
   /// The source base is a parameter rather than being looked up from the stream
@@ -209,8 +315,34 @@ private:
   /// thread while the encoding thread is inside encodeVideo. The flag is the one
   /// piece of recorder state that legitimately crosses that boundary.
   std::atomic<bool> writeFailed_{false};
-  /// Cleared by reportWriteFailure() so exactly one caller reports it.
+  /// Cleared by reportWriteFailure() so exactly one caller reports it. Also the
+  /// one-shot for the refusal log inside writePacket, because `Failed` is
+  /// reported per *occurrence* through a throttled count (writeFailures_) and
+  /// latching this instead would suppress the log for the whole recording.
   bool writeFailureReported_{false};
+
+  /// Audio frames the resampler refused. Atomic for the same reason
+  /// writeFailed_ is: read by the GUI thread at finalisation, and under the test
+  /// seam written from the test's thread while the encoding thread is inside
+  /// encodeAudio. Reset by cleanup(), which is why the report is snapshotted
+  /// before it runs. Also read live by the encoding thread's stats block, which
+  /// is the point: a count only published at teardown cannot be told apart from
+  /// "none dropped".
+  std::atomic<u64> audioFramesDropped_{0};
+  /// Audio frames whose packets *all reached the file*, as opposed to
+  /// audioFrameCount_ below which counts every frame the encoder accepted. Read
+  /// only on the encoding thread, like audioFrameCount_.
+  u64 audioFramesEncoded_{0};
+  /// Remaining resample failures the test seam will simulate. Zero in production
+  /// and on every build that is not a test.
+  std::atomic<u32> injectedResampleFailures_{0};
+  /// Remaining writes the test seam will allow before refusing one, and whether
+  /// it has been armed at all. Zero in production.
+  std::atomic<u64> writesBeforeWriteFailure_{0};
+  std::atomic<bool> writeFailureArmed_{false};
+  /// Refused writes so far, for the throttled log. Distinct from
+  /// writeFailureReported_, which is the one-shot *report* to the caller.
+  u64 writeFailures_{0};
 
   // Hardware acceleration contexts
   HWDeviceContextPtr hwDeviceCtx_;
@@ -244,6 +376,10 @@ private:
   // One-shot diagnostic: a frame reached the encoder with no capture time.
   bool warnedMissingCaptureTime_{false};
 
+  /// Seed for `audioFrame_->pts`, so audio packets land on the audio clock rather
+  /// than on a frame counter that would interleave them with the video. Advanced
+  /// for every frame the *encoder accepted*, which is why it cannot answer
+  /// AudioResampleReport::anyFrameWritten -- see audioFramesEncoded_.
   u64 audioFrameCount_{0};
 
   int fileLockFd_{-1};

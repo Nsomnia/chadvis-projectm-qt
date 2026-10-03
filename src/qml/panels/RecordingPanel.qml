@@ -10,6 +10,31 @@ ColumnLayout {
 
     spacing: Theme.spacingMedium
 
+    // One status line for the whole panel, fed by both bridges that can fail in
+    // it. It used to not exist at all: RecordingBridge::recordingError had zero
+    // QML consumers, so a failed start or stop was logged and never seen. The
+    // burn-in pass adds a second, slower operation to the same panel, so it
+    // shares the line rather than growing a second one that could contradict it.
+    property string statusText: ""
+    property bool statusIsError: false
+
+    // A file path in this panel is longer than the dock is wide, so the visible
+    // text names the file and the tooltip carries the whole path.
+    function fileName(path) {
+        if (!path)
+            return ""
+        const parts = path.split(/[\\/]/)
+        return parts.length > 0 ? parts[parts.length - 1] : path
+    }
+
+    // One place, because a string the panel states twice is a string that will
+    // eventually be stated two different ways.
+    readonly property string burnInDescription: RecordingBridge.burnInInputFile.length === 0
+        ? ""
+        : fileName(RecordingBridge.burnInInputFile) + " + "
+          + fileName(RecordingBridge.burnInSubtitleFile)
+          + " → " + fileName(RecordingBridge.burnInOutputFile)
+
     // QML's url value type has no toLocalFile(), so replicate
     // QUrl::toLocalFile here: strip the scheme, percent-decode, and drop the
     // extra slash before a Windows drive letter ("file:///C:/x" -> "C:/x").
@@ -61,6 +86,52 @@ ColumnLayout {
             active: RecordingBridge.isRecording
             baseColor: Theme.recording
             size: 12
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // STATUS
+    // ═══════════════════════════════════════════════════════════
+
+    Text {
+        Layout.fillWidth: true
+        visible: root.statusText.length > 0
+        text: root.statusText
+        color: root.statusIsError ? Theme.error : Theme.success
+        font: Theme.fontCaption
+        wrapMode: Text.WordWrap
+    }
+
+    Connections {
+        target: RecordingBridge
+
+        function onRecordingError(message) {
+            root.statusText = message
+            root.statusIsError = true
+        }
+
+        function onBurnInFinished(path) {
+            root.statusText = "Burned in — wrote " + root.fileName(path)
+            root.statusIsError = false
+        }
+    }
+
+    Connections {
+        target: LyricsBridge
+
+        // The sidecar's arrival is the only thing that can unblock the burn-in
+        // button, and the bridge learns it from the filesystem. Re-notifying here
+        // enables the button from the event that created the file instead of on
+        // the next unrelated repaint.
+        function onExportFinished(path) {
+            root.statusText = "Saved " + root.fileName(path)
+            root.statusIsError = false
+            RecordingBridge.refreshBurnInState()
+        }
+
+        function onExportFailed(message) {
+            root.statusText = message
+            root.statusIsError = true
         }
     }
 
@@ -198,6 +269,96 @@ ColumnLayout {
                 }
             }
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // KARAOKE BURN-IN (optional post-pass over a finished file)
+    // ═══════════════════════════════════════════════════════════
+    //
+    // Deliberately not a single "Burn in" button. Burn-in is a second, slower
+    // operation on a file that already exists, it writes a *new* file, and it
+    // does not exist at all on a build without libavfilter. A lone button would
+    // have to be silently dead on one build, would have nothing to say about the
+    // file it is about to create, and would leave the user unable to tell a
+    // finished pass from one that never started. So it is described before it is
+    // offered: what it reads, what it will write, and why it cannot run right
+    // now.
+    //
+    // The style is the panel's existing one throughout -- AppButton, PulseIndicator,
+    // a caption in Theme.textSecondary -- so this reads as part of the Record tab
+    // rather than as a new feature bolted onto it.
+
+    SectionHeader {
+        Layout.fillWidth: true
+        text: "Karaoke burn-in"
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Theme.spacingSmall
+
+        AppButton {
+            Layout.fillWidth: true
+            text: RecordingBridge.burnInRunning ? "Burning in…" : "Burn in subtitles"
+            enabled: !RecordingBridge.burnInRunning
+                     && RecordingBridge.burnInBlockedReason.length === 0
+            onClicked: RecordingBridge.burnInSubtitles()
+            ToolTip.visible: hovered
+            ToolTip.text: RecordingBridge.burnInRunning
+                          ? "Re-encoding the whole file. This is not instant."
+                          : root.burnInDescription
+            ToolTip.delay: 300
+        }
+
+        // The panel's own word for "working": the Record/Stop row uses exactly
+        // this indicator for a running capture, so a running pass is not a new
+        // visual idea.
+        PulseIndicator {
+            active: RecordingBridge.burnInRunning
+            baseColor: Theme.accent
+            size: 12
+        }
+    }
+
+    // Named before the click, so nothing is ever created by surprise and the
+    // refusal to overwrite is a fact on screen rather than an error after the
+    // fact.
+    Text {
+        Layout.fillWidth: true
+        visible: root.burnInDescription.length > 0
+        text: root.burnInDescription
+        color: Theme.textSecondary
+        font: Theme.fontCaption
+        elide: Text.ElideMiddle
+    }
+
+    // One reason, not four booleans: an unsupported build, a missing sidecar and
+    // a name collision are three different problems with three different fixes,
+    // and a disabled button says none of them. Warning rather than error colour
+    // because none of these is a failure -- the pass simply is not available yet.
+    Text {
+        Layout.fillWidth: true
+        visible: RecordingBridge.burnInBlockedReason.length > 0
+        text: RecordingBridge.burnInBlockedReason
+        color: Theme.warning
+        font: Theme.fontCaption
+        wrapMode: Text.WordWrap
+    }
+
+    // The sidecar is what burnInSubtitles() reads, so the panel is also where it
+    // is written -- one name, one owner, rather than a user-chosen filename in a
+    // different dialog that would then not match what the pass looks for. This is
+    // the exportToAss entry point that had no QML caller at all.
+    AppButton {
+        Layout.fillWidth: true
+        text: "Save karaoke subtitles (.ass)"
+        enabled: RecordingBridge.burnInInputFile.length > 0
+                 && LyricsBridge.hasLyrics
+                 && !RecordingBridge.burnInRunning
+        onClicked: LyricsBridge.exportToAss(RecordingBridge.burnInSubtitleFile)
+        ToolTip.visible: hovered
+        ToolTip.text: root.fileName(RecordingBridge.burnInSubtitleFile)
+        ToolTip.delay: 300
     }
 
     Item { Layout.fillHeight: true }
