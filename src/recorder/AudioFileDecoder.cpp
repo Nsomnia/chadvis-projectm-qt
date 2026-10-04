@@ -15,6 +15,7 @@ extern "C" {
 
 #include "audio/AudioQueue.hpp"
 #include "recorder/FFmpegUtils.hpp"
+#include "recorder/ResamplerEngine.hpp"
 
 #include <algorithm>
 
@@ -215,6 +216,15 @@ std::expected<void, DecodeError> AudioFileDecoder::Impl::buildResampler() {
             return fail(DecodeErrorKind::ResamplerFailed, "swr_set_matrix failed", matrixed);
         }
     }
+
+    // Engine selection, same ordering constraint as the matrix above and for the
+    // same reason: options are settable only while the context is allocated and
+    // not yet initialized. This is the one resampler in the tree that genuinely
+    // *rate*-converts -- an arbitrary source rate becomes spec.sampleRate -- so it
+    // is the one whose passband soxr improves. The call cannot fail the decode:
+    // a refusal leaves libswresample's own resampler in place (measured) and
+    // applyEngine has already logged why.
+    applyEngine(raw, "AudioFileDecoder");
 
     if (const int inited = swr_init(raw); inited < 0) {
         swr_free(&raw);

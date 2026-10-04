@@ -278,6 +278,16 @@ EncoderSettings EncoderSettings::fromConfig() {
     settings.video.fps = recCfg.video.fps;
     settings.video.crf = recCfg.video.crf;
     settings.video.preset = parseEncoderPreset(recCfg.video.preset);
+    // The last two fields ConfigParsers used to drop on every save, because they
+    // were in no field table and serialize() rebuilds the whole document from
+    // structs. Persisting them is only half a fix: VideoRecorderFFmpeg reads
+    // VideoSettings::gopSize and ::bFrames, but nothing ever copied them across
+    // from config, so a persisted value that no code path consumed would be the
+    // "declaration counted as a feature" trap rather than a fix. gopSize 0 means
+    // auto -- the encoder substitutes fps * 2 -- and that is the default, so
+    // passing it through unchanged is the correct no-config behaviour.
+    settings.video.gopSize = recCfg.video.gopSize;
+    settings.video.bFrames = recCfg.video.bFrames;
 
     // Audio
     settings.audio.codec = parseAudioCodec(recCfg.audio.codec);

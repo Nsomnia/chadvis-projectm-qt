@@ -56,6 +56,10 @@ struct OverlayConfig {
 };
 
 // Video encoding settings
+//
+// These describe the OUTPUT file. Nothing here describes the input: a recording
+// has no input file, only a stream of PCM arriving on AudioQueue, and the
+// encoder converts that into exactly what is written below.
 struct VideoEncoderConfig {
     std::string codec{"libx264"};
     u32 crf{18};
@@ -71,11 +75,29 @@ struct VideoEncoderConfig {
     std::string presetName() const {
         return preset;
     }
+    // Keyframe interval. 0 = let the encoder choose (VideoRecorderFFmpeg.cpp
+    // substitutes fps * 2). Written to `[recording.video] gop_size`.
     u32 gopSize{0};
+    // B-frames allowed in the output. 0 disables them, which is also what every
+    // test fixture in the tree sets -- see the measured note at
+    // VideoRecorderFFmpeg.cpp:460 that both codecs this project uses report
+    // has_b_frames == 0 regardless. Written to `[recording.video] b_frames`.
     u32 bFrames{0};
 };
 
 // Audio encoding settings
+//
+// `sampleRate` and `channels` are the ENCODER'S OUTPUT spec, not the source
+// file's. This was ambiguous here -- there was no comment at all, and a reader
+// could reasonably take them for "what the input carries". Three call sites
+// settle it:
+//   - EncoderSettings::fromConfig() copies them into AudioSettings, and
+//   - VideoRecorderFFmpeg::initAudioStream() sets
+//     `audioCodecCtx_->sample_rate` from it, i.e. it is what the codec is
+//     *opened* at, and
+//   - the same value is passed to swr_alloc_set_opts2 as the resampler's OUT
+//     rate.
+// So 48000 here means "write a 48 kHz track", whatever the source was.
 struct AudioEncoderConfig {
     std::string codec{"aac"};
     u32 bitrate{320};
@@ -83,7 +105,13 @@ struct AudioEncoderConfig {
     std::string codecName() const {
         return codec;
     }
+    // Written to `[recording.audio] sample_rate`. Not `[audio] sample_rate`,
+    // which is a different table describing the playback device
+    // (AudioConfig::sampleRate) -- see parseAudio.
     u32 sampleRate{48000};
+    // Written to `[recording.audio] channels`. Capped at 2 in practice: an
+    // AudioFrame is stereo-only (AudioQueue.hpp:31), so a wider sink could not
+    // reach a consumer intact.
     u32 channels{2};
 };
 

@@ -364,3 +364,66 @@ list(APPEND RECORDER_SOURCES
     src/recorder/RenderQueue.hpp
     src/recorder/RenderQueue.cpp
 )
+
+# ─────────────────────────────────────────────────────────────
+# HTTP POLICY — the one owner of the tree's request policy (appended 2026-10-04)
+#
+# src/suno/HttpPolicy.{hpp,cpp} exists because the policy had no owner.
+# DownloadQueue was hardened with a transfer timeout, a byte cap and a
+# hand-parsed Retry-After; the other five sites in the tree had none of it, so a
+# hung endpoint held a client slot forever. Centralising is the fix — a comment
+# at each call site would reproduce the same bug in six months.
+#
+# Two measured Qt 6.11.1 facts make it non-optional rather than tidy:
+#   * an UNSET transfer timeout is 0, meaning NO timeout at all, not a
+#     conservative default. DefaultTransferTimeoutConstant applies only when the
+#     setter is called with no argument. So the unhardened sites had none.
+#   * Qt's own setDecompressedSafetyCheckThreshold docs state it "does not impose
+#     an absolute limit on the total decompressed output size" and advise the app
+#     to monitor bytesAvailable() itself — which is what BodyReader::pump does.
+#
+# SUNO_SOURCES specifically, for the non-globbing reason as the three blocks
+# above. Merge into its literal when the tree is next normalised.
+# ─────────────────────────────────────────────────────────────
+list(APPEND SUNO_SOURCES
+    src/suno/HttpPolicy.hpp
+    src/suno/HttpPolicy.cpp
+)
+
+# ─────────────────────────────────────────────────────────────
+# CREDENTIAL STORE PLATFORM BACKENDS (appended 2026-10-04)
+#
+# Listed UNCONDITIONALLY and guarded INSIDE each file with
+# CHADVIS_HAS_WIN32_CREDENTIALS / CHADVIS_HAS_SECRET_SERVICE, so Windows-only
+# code never compiles on Linux and vice versa, and both define their factory in
+# every configuration — returning nullptr when compiled out. That is what lets
+# CredentialStore.cpp dispatch with no platform #ifdef of its own.
+#
+# Do NOT re-gate this list on CHADVIS_HAS_KEYCHAIN. That is precisely the trap
+# the CHADVIS_POSTPROCESS list recorded earlier for SubtitleBurnIn.cpp: gating a
+# list removes the very translation unit holding the no-backend stub, so
+# vc::storeCredential loses its definition on exactly the platforms the gate was
+# meant to protect. Both gates would have to disagree for it to happen, and that
+# is two chances to be wrong rather than one.
+# ─────────────────────────────────────────────────────────────
+list(APPEND SUNO_AUTH_SOURCES
+    src/suno/auth/CredentialStoreWin32.cpp
+    src/suno/auth/CredentialStoreSecretService.cpp
+)
+
+# ─────────────────────────────────────────────────────────────
+# RESAMPLER ENGINE SELECTION (appended 2026-10-04)
+#
+# Not in any RECORDER_SOURCES set() above — TargetSetup.cmake names each variable
+# explicitly and does NOT glob, so a new recorder source is dropped silently and
+# only surfaces as an undefined symbol at link time, naming the CALLER rather
+# than the forgotten file. That trap has now been hit four times in this project
+# (PcmFormat.cpp, Color.cpp, AudioFileDecoder.cpp, and this one).
+#
+# The FFmpeg-free header is the point: applyEngine() needs a SwrContext*, and
+# choosingEngine() — the part with the interesting branches — is pure.
+# ─────────────────────────────────────────────────────────────
+list(APPEND RECORDER_SOURCES
+    src/recorder/ResamplerEngine.hpp
+    src/recorder/ResamplerEngine.cpp
+)

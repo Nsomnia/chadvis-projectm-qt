@@ -10,7 +10,19 @@
 #   * projectM v4 detection lives in FindProjectM4.cmake.
 
 find_package(Qt6 REQUIRED COMPONENTS
-    Core Gui Multimedia Network Quick Qml QuickControls2 Sql)
+    Core Gui Multimedia Network Quick Qml QuickControls2 Sql DBus)
+
+# Qt 6.7 floor, and not for a new feature. `QNetworkRequest::setTransferTimeout`
+# arrived in 6.7, and on anything older the call does not exist -- so without the
+# floor an optional network-hardening feature silently vanishes on an older Qt
+# rather than failing loudly. `cmake/TargetSetup.cmake`'s HttpPolicy wiring
+# carries the matching `static_assert(QT_VERSION >= 6.7)` so both halves agree.
+if(Qt6_VERSION VERSION_LESS 6.7)
+    message(FATAL_ERROR
+        "ChadVis requires Qt 6.7 or newer: QNetworkRequest::setTransferTimeout, "
+        "which src/suno/HttpPolicy.cpp stamps onto every request, was added in "
+        "6.7. On an older Qt the request policy would silently not exist.")
+endif()
 
 # pkg-config is optional: everything below degrades to manual search.
 find_package(PkgConfig QUIET)

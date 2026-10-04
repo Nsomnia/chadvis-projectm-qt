@@ -21,6 +21,7 @@ add_executable(unit_tests
     suno/test_OAuthLoginService.cpp
     suno/test_ClipParser.cpp
     suno/test_DownloadQueue.cpp
+    suno/test_CredentialStorePolicy.cpp
     suno/test_SunoDownloader.cpp
     suno/test_SunoEndpoints.cpp
     lyrics/test_LyricsPipeline.cpp
@@ -54,6 +55,26 @@ if(TARGET chadvis-projectm-qt)
 endif()
 
 add_test(NAME unit_tests COMMAND unit_tests)
+
+# test_HttpPolicy.cpp carries its own main(), so it is a standalone target rather
+# than a unit_tests member. It needs Qt6::Network directly because unit_tests
+# does not link it — the same reason the seven other suno/ suites are separate.
+add_executable(test_HttpPolicy
+    suno/test_HttpPolicy.cpp
+)
+
+set_target_properties(test_HttpPolicy PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_HttpPolicy PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_HttpPolicy COMMAND test_HttpPolicy)
 
 add_executable(test_SunoAudioUploadService
     suno/test_SunoAudioUploadService.cpp

@@ -10,13 +10,20 @@
  *
  * @section UnknownKeys
  * serialize REBUILDS the root table from the structs, so a key that is not in
- * a field table (and not one of the four hand-handled keys below) does not
+ * a field table (and not one of the five hand-handled keys below) does not
  * survive a save. That is a deliberate, tested decision rather than an
  * accident -- see tests/unit/core/test_ConfigLoader.cpp. The keys handled by
  * hand are `visualizer.preset_path`, `visualizer.texture_paths`,
  * `recording.output_directory`, `suno.download_path` and
  * `suno.download_format`, each because its parse side needs different
  * fallback behaviour from a plain `get`.
+ *
+ * The corollary is the rule to remember when adding a field: a struct member
+ * with no table entry is a value that vanishes on the next save, silently and
+ * with no warning. Four such members shipped -- `VideoEncoderConfig::gopSize`
+ * and `bFrames`, `AudioEncoderConfig::sampleRate` and `channels` -- and because
+ * their defaults were already the values anyone would have configured, nothing
+ * observable changed and the loss was invisible.
  *
  * @section Secrets
  * `suno.token` and `suno.cookie` are parse-only. See
@@ -111,18 +118,31 @@ fs::path expandPath(std::string_view path) {
     X("default_filename", defaultFilename, STR)          \
     X("container", container, STR)
 
-#define CHADVIS_VIDEO_FIELDS(X)     \
-    X("codec", codec, STR)          \
-    X("crf", crf, U32)              \
-    X("preset", preset, STR)        \
-    X("pixel_format", pixelFormat, STR) \
-    X("width", width, U32)          \
-    X("height", height, U32)        \
-    X("fps", fps, U32)
+// gop_size and b_frames were absent from this table for the life of the project,
+// which meant ConfigParsers::serialize -- which rebuilds the whole root table
+// from the structs, so anything not in a table does not survive a save --
+// silently dropped both on every save. Same class of bug as `[recording.video]`
+// being emitted empty, and the reason it went unnoticed is the same: a default
+// value is indistinguishable from a value that round-tripped.
+#define CHADVIS_VIDEO_FIELDS(X)                                                                    \
+    X("codec", codec, STR)                                                                         \
+    X("crf", crf, U32)                                                                             \
+    X("preset", preset, STR)                                                                       \
+    X("pixel_format", pixelFormat, STR)                                                            \
+    X("width", width, U32)                                                                         \
+    X("height", height, U32)                                                                       \
+    X("fps", fps, U32)                                                                             \
+    X("gop_size", gopSize, U32)                                                                    \
+    X("b_frames", bFrames, U32)
 
-#define CHADVIS_REC_AUDIO_FIELDS(X) \
-    X("codec",   codec,   STR)      \
-    X("bitrate", bitrate, U32)
+// sample_rate and channels are the encoder's OUTPUT spec, not the source
+// file's -- see the note on AudioEncoderConfig. Absent from this table for the
+// same reason and with the same consequence as gop_size / b_frames above.
+#define CHADVIS_REC_AUDIO_FIELDS(X)                                                                \
+    X("codec", codec, STR)                                                                         \
+    X("bitrate", bitrate, U32)                                                                     \
+    X("sample_rate", sampleRate, U32)                                                              \
+    X("channels", channels, U32)
 
 #define CHADVIS_UI_FIELDS(X)                          \
     X("theme", theme, STR)                            \
@@ -282,6 +302,15 @@ void ConfigParsers::parseRecording(const toml::table& tbl,
         cfg.video.width = (std::clamp(cfg.video.width, 160u, 7680u) + 1) & ~1u;
         cfg.video.height = (std::clamp(cfg.video.height, 120u, 4320u) + 1) & ~1u;
         cfg.video.fps = std::clamp(cfg.video.fps, 10u, 120u);
+        // 0 means "let the encoder choose" for gop_size -- VideoRecorderFFmpeg
+        // substitutes fps * 2 -- so 0 must survive untouched and only an absurd
+        // value is pulled back to auto. b_frames is bounded absolutely rather
+        // than against gop_size: gop_size 0 means "auto", and clamping against it
+        // would silently disable B-frames for every user who left the GOP alone,
+        // which is a behaviour change masquerading as validation. 16 is generous
+        // (x264's own default is 3) and beyond it no decoder gains anything.
+        cfg.video.gopSize = cfg.video.gopSize > 600u ? 0u : cfg.video.gopSize;
+        cfg.video.bFrames = std::min(cfg.video.bFrames, 16u);
     }
 
     if (auto* at = (*t)["audio"].as_table()) {
@@ -292,6 +321,19 @@ void ConfigParsers::parseRecording(const toml::table& tbl,
         CHADVIS_REC_AUDIO_FIELDS(VC_PARSE_FIELD)
 
         cfg.audio.bitrate = std::clamp(cfg.audio.bitrate, 64u, 640u);
+        // The output spec, so these are the rates and layouts the encoder is
+        // *opened* at rather than anything read off an input -- see the note on
+        // AudioEncoderConfig. Two is the channel cap and it is not a taste
+        // decision: AudioQueue::AudioFrame is stereo-only, so a wider stream
+        // could not reach a consumer intact.
+        //
+        // The rate bounds follow the material this project actually renders:
+        // AudioQueue feeds 48 kHz, the lowest rate the decoder is tested against
+        // is 8 kHz, and nothing above 192 kHz is supported by any codec in the
+        // output set. Below 8 kHz a value is a typo rather than an intention --
+        // swr would accept 1000 Hz and produce a file no one can use.
+        cfg.audio.sampleRate = std::clamp(cfg.audio.sampleRate, 8000u, 192000u);
+        cfg.audio.channels = std::clamp(cfg.audio.channels, 1u, 2u);
     }
 }
 

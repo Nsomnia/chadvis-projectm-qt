@@ -60,12 +60,16 @@ stop_at_track_end = false
 
     [recording.audio]
     bitrate = 320
+    channels = 2
     codec = 'aac'
+    sample_rate = 48000
 
     [recording.video]
+    b_frames = 0
     codec = 'libx264'
     crf = 18
     fps = 60
+    gop_size = 0
     height = 1080
     pixel_format = 'yuv420p'
     preset = 'medium'

@@ -3,7 +3,9 @@
 #include "AuthHeaders.hpp"
 #include "JwtUtils.hpp"
 #include "core/Logger.hpp"
+#include "suno/HttpPolicy.hpp"
 
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -344,6 +346,10 @@ void ClerkAuthClient::abortInflight() {
         }
     }
     inflight_.clear();
+    // A reader holds a QByteArray of at most 1 MiB; draining the map here rather
+    // than leaving it to the reply's deletion is what keeps a torn-down client
+    // from holding that much until the last reply dies.
+    readers_.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -384,6 +390,11 @@ QNetworkRequest ClerkAuthClient::makeRequest(const QUrl& url, const Credentials&
     QNetworkRequest request(url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
+    // The credential exchange is the one request whose hang is worst: a wedged
+    // Clerk call leaves the user with no session and no way to tell whether the
+    // client is working. 30 s of silence is dead; there is no version of this
+    // response that legitimately stalls that long.
+    http::applyRequestPolicy(request, http::RequestClass::Auth);
     const QString cookie = normalizeCookieHeader(creds.cookieHeader);
     if (!cookie.isEmpty()) {
         request.setRawHeader("Cookie", cookie.toUtf8());
@@ -406,22 +417,58 @@ static QString sessionUrl(const QString& sessionId, const QString& action) {
 }
 
 void ClerkAuthClient::startClientFetch(CallContext ctx) {
-    const QString url = QStringLiteral("%1/client").arg(AUTH_BASE);
-    QNetworkReply* reply = nam_->get(makeRequest(QUrl(url), ctx.creds, false));
-
-    inflight_.push_back(reply);
-    connect(reply, &QNetworkReply::finished, this,
-            [this, reply]() { handleReply(reply); });
+    (void)startBounded(
+            makeRequest(QUrl(QStringLiteral("%1/client").arg(AUTH_BASE)), ctx.creds, false),
+            std::nullopt);
 }
 
 void ClerkAuthClient::startTouch(CallContext ctx) {
-    const QString url = sessionUrl(ctx.sessionId, QStringLiteral("touch"));
-    QNetworkReply* reply = nam_->post(
-            makeRequest(QUrl(url), ctx.creds, true), QByteArrayLiteral("intent=focus"));
+    (void)startBounded(
+            makeRequest(QUrl(sessionUrl(ctx.sessionId, QStringLiteral("touch"))), ctx.creds, true),
+            QByteArrayLiteral("intent=focus"));
+}
 
+QNetworkReply* ClerkAuthClient::startBounded(const QNetworkRequest& request,
+                                             const std::optional<QByteArray>& postBody) {
+    auto reader = http::makeBodyReader(http::RequestClass::Auth,
+                                       http::maxResponseBytes(http::RequestClass::Auth));
+    if (!reader) {
+        // Unreachable with the current constant cap, but a body we cannot bound
+        // must not be requested at all -- that is the whole defect this closes,
+        // so it is reported rather than assumed away.
+        emitFailure(AuthFailureKind::ProtocolMismatch,
+                    http::describePolicyFailureText(reader.error()));
+        return nullptr;
+    }
+
+    QNetworkReply* reply =
+            postBody.has_value() ? nam_->post(request, *postBody) : nam_->get(request);
     inflight_.push_back(reply);
+    readers_.insert(reply, *reader);
+
+    // Drain on readyRead, not at finished(). This is the difference between a cap
+    // and a post-hoc check: an origin streaming forever is aborted one chunk past
+    // the cap, so the bytes never arrive. Draining only in finished() would cap
+    // what we *retain* while Qt went on buffering all of it.
+    connect(reply, &QNetworkReply::readyRead, this, [this, reply]() { pumpBody(reply); });
     connect(reply, &QNetworkReply::finished, this,
             [this, reply]() { handleReply(reply); });
+    return reply;
+}
+
+void ClerkAuthClient::pumpBody(QNetworkReply* reply) {
+    const auto it = readers_.find(reply);
+    if (it == readers_.end()) {
+        return;
+    }
+    if (auto drained = it->pump(*reply); !drained) {
+        LOG_ERROR("ClerkAuthClient: {}", http::describePolicyFailure(drained.error()));
+        // abort() re-enters through finished(), which is where the user-facing
+        // failure is emitted -- once. BodyReader::failure() is sticky precisely so
+        // that the aborted reply, now reading as drained, still reports the real
+        // limit instead of looking like an ordinary cancellation.
+        reply->abort();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -464,9 +511,39 @@ void ClerkAuthClient::emitFailure(AuthFailureKind kind, const QString& reason) {
 void ClerkAuthClient::handleReply(QNetworkReply* reply) {
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const bool ok = reply->error() == QNetworkReply::NoError && status >= 200 && status < 300;
-    const QByteArray body = reply->readAll();
+
+    // No readAll() anywhere on this path -- an unbounded read of a credential
+    // response is exactly the hazard the policy now closes.
+    QByteArray body;
+    std::optional<http::PolicyFailure> capFailure;
+    if (const auto it = readers_.find(reply); it != readers_.end()) {
+        if (const auto drained = it->pump(*reply); !drained) {
+            capFailure = drained.error();
+        }
+        if (!capFailure && it->failure().has_value()) {
+            // The breach happened on an earlier readyRead and the reply was
+            // aborted; report the limit it actually crossed.
+            capFailure = *it->failure();
+        }
+        body = it->body();
+        readers_.erase(it);
+    } else {
+        // No reader, so no usable cap for this body. Never fall back to an
+        // unbounded read to "get something"; say so instead.
+        capFailure = http::PolicyFailure{http::PolicyError::InvalidByteLimit,
+                                         http::RequestClass::Auth, 0, 0};
+    }
+
     reply->deleteLater();
     inflight_.removeOne(reply);
+
+    if (capFailure.has_value()) {
+        // Protocol mismatch, not a credential problem: an origin answering with
+        // more than its own cap is not something a re-sign-in fixes.
+        emitFailure(AuthFailureKind::ProtocolMismatch,
+                    http::describePolicyFailureText(*capFailure));
+        return;
+    }
 
     if (ok) {
         handleEnvelopeBody(body, {});

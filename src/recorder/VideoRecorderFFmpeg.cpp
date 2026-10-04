@@ -7,6 +7,7 @@
 #include <libavutil/opt.h>
 #include "core/Logger.hpp"
 #include "lyrics/LyricsData.hpp"
+#include "recorder/ResamplerEngine.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -914,13 +915,35 @@ Result<void> VideoRecorderFFmpeg::initAudioStream(
     // dereferenced by the very next call, so a resampler that could not be
     // configured -- an unsupported sample-format conversion, or an out-of-memory
     // -- became a null dereference inside swr_convert rather than an error.
-    // Neither can fire for the project's settings: the layouts are the defaults
-    // for the configured channel count, both rates are the same value, and the
-    // only conversion is float to whatever the opened encoder advertises.
+    //
+    // What *can* fire is narrower than that sentence implies, and one half of it
+    // is now wrong on purpose. The layouts are the defaults for the configured
+    // channel count, and the only sample-format conversion is float to whatever
+    // the opened encoder advertises -- but the two rates are NOT the same value
+    // by design and not by measurement: `settings.audio.sampleRate` is passed as
+    // BOTH in_rate and out_rate (the 6th and 3rd arguments above), so this
+    // context declares the queue's rate to be the encoder's rate and never
+    // actually rate-converts. That is a real bug and it is not fixed here,
+    // because the honest in_rate is whatever the queue carried and
+    // `encodeAudio` is not told it -- it needs a new parameter threaded from
+    // VideoRecorderThread. Recorded rather than silently corrected, because
+    // quietly changing the in_rate would have made every recording resample
+    // from a wrong assumption without anyone deciding to.
     if (allocated < 0 || !s) {
         return Result<void>::err("Failed to allocate the audio resampler: " +
                                   ffmpegError(allocated));
     }
+
+    // Engine selection, before swr_init: FFmpeg requires a context to be
+    // "allocated, not yet initialized" for its options to be settable. On this
+    // resampler soxr buys nothing *today* for the reason in the comment above --
+    // with in_rate == out_rate there is no rate conversion to improve -- and it
+    // is applied anyway because it is one line and so that the higher-quality
+    // engine is already in use the moment that pin is fixed. A refusal leaves
+    // libswresample's own resampler in place (measured) and has already been
+    // logged with its reason.
+    applyEngine(s, "VideoRecorderFFmpeg");
+
     const int inited = swr_init(s);
     if (inited < 0) {
         swr_free(&s);

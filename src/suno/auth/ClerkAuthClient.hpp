@@ -1,12 +1,17 @@
 #pragma once
 
 #include "AuthTypes.hpp"
+#include "suno/HttpPolicy.hpp"
 
+#include <QByteArray>
+#include <QHash>
 #include <QList>
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <QPointer>
 #include <QString>
+
+#include <optional>
 
 class QNetworkReply;
 class QNetworkRequest;
@@ -88,6 +93,15 @@ private:
     void startClientFetch(CallContext ctx);
     void startTouch(CallContext ctx);
 
+    /// Arm the response cap, issue the request, and wire the pump. Returns
+    /// nullptr (after emitting a named failure) when a cap could not be
+    /// established -- a body we cannot bound must not be requested at all.
+    QNetworkReply* startBounded(const QNetworkRequest& request,
+                                const std::optional<QByteArray>& postBody);
+
+    /// One incremental, bounded read of whatever the reply currently holds.
+    void pumpBody(QNetworkReply* reply);
+
     void handleReply(QNetworkReply* reply);
     void handleEnvelopeBody(const QByteArray& body, const CallContext& ctx);
 
@@ -106,6 +120,12 @@ private:
     /// In-flight replies (aborted on destruction). QPointer guards against a
     /// reply that already self-destructed via deleteLater().
     QList<QPointer<QNetworkReply>> inflight_;
+
+    /// One bounded reader per in-flight reply, drained from `readyRead` rather
+    /// than slurped in `finished()`. This is the response cap; the entry is erased
+    /// in handleReply and the whole map cleared in abortInflight().
+    QHash<QNetworkReply*, vc::suno::http::BodyReader> readers_;
+
     QString lastObservedSessionId_;
 
     AuthFailureKind failureKind_ = AuthFailureKind::None;

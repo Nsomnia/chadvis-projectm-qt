@@ -90,6 +90,14 @@ RecordingConfig distinctiveEncoders() {
     rec.video.fps = 24;
     rec.audio.codec = "libopusprobe";
     rec.audio.bitrate = 256;
+    // The four fields that were declared but in no field table, so serialize()
+    // destroyed them on every save. Every value is inside the clamps
+    // parseRecording applies (gop_size <= 600, b_frames <= 16,
+    // sample_rate in [8000, 192000], channels in [1, 2]).
+    rec.video.gopSize = 120;
+    rec.video.bFrames = 4;
+    rec.audio.sampleRate = 44100;
+    rec.audio.channels = 2;
     return rec;
 }
 
@@ -105,6 +113,14 @@ void verifyDistinctiveEncoders(const RecordingConfig& rec) {
     QCOMPARE(rec.video.fps, 24u);
     QCOMPARE(rec.audio.codec, std::string("libopusprobe"));
     QCOMPARE(rec.audio.bitrate, 256u);
+    // Not [audio] sample_rate -- that is the *playback device* rate, a
+    // different table with a different default. This is the encoder's output
+    // spec, which EncoderSettings::fromConfig copies into AudioSettings and
+    // VideoRecorderFFmpeg passes to the codec AND to swr as the out rate.
+    QCOMPARE(rec.audio.sampleRate, 44100u);
+    QCOMPARE(rec.audio.channels, 2u);
+    QCOMPARE(rec.video.gopSize, 120u);
+    QCOMPARE(rec.video.bFrames, 4u);
 }
 
 /// Populate EVERY field with a value that differs from its struct default, so a
@@ -395,12 +411,13 @@ private slots:
         auto* audio = (*recording)["audio"].as_table();
         QVERIFY2(audio != nullptr, "[recording.audio] was not written at all");
 
-        // Non-empty, with the exact key count the field tables declare: 7 video
-        // (codec, crf, preset, pixel_format, width, height, fps) and 2 audio
-        // (codec, bitrate). "Present" alone would be satisfied by an empty
-        // table, which is precisely what the bug produced.
-        QCOMPARE(video->size(), std::size_t{7});
-        QCOMPARE(audio->size(), std::size_t{2});
+        // Non-empty, with the exact key count the field tables declare: 9 video
+        // (codec, crf, preset, pixel_format, width, height, fps, gop_size,
+        // b_frames) and 4 audio (codec, bitrate, sample_rate, channels).
+        // "Present" alone would be satisfied by an empty table, which is
+        // precisely what the bug produced.
+        QCOMPARE(video->size(), std::size_t{9});
+        QCOMPARE(audio->size(), std::size_t{4});
 
         // The collision that lost the data: one flat `codec` key carried both
         // values and toml++ insert() keeps the first, so the AUDIO codec was the
@@ -479,15 +496,11 @@ private slots:
         // populate() first, so every OTHER section is exercised too and the
         // encoder values start from something different from the ones asserted.
         populate(config(), 1);
-        config().recording().video.codec = "libx265probe";
-        config().recording().video.crf = 41;
-        config().recording().video.preset = "veryslow";
-        config().recording().video.pixelFormat = "yuv444p10le";
-        config().recording().video.width = 2560;
-        config().recording().video.height = 1440;
-        config().recording().video.fps = 24;
-        config().recording().audio.codec = "libopusprobe";
-        config().recording().audio.bitrate = 256;
+        // One helper, not a second inline copy. This test used to restate the
+        // encoder values field by field, which is how it came to assert gop_size,
+        // b_frames, sample_rate and channels that it had never actually set --
+        // a test that failed for the right reason and the wrong value at once.
+        config().recording() = distinctiveEncoders();
 
         const auto saved = ConfigLoader::save(config(), path);
         QVERIFY2(saved.isOk(), saved.isErr() ? saved.error().message.c_str() : "");

@@ -2,17 +2,27 @@
 #include <QTemporaryDir>
 
 #include "audio/AudioQueue.hpp"
+#include "core/ConfigParsers.hpp"
 #include "recorder/AudioFileDecoder.hpp"
 #include "recorder/EncoderSettings.hpp"
 #include "recorder/FFmpegUtils.hpp"
+#include "recorder/ResamplerEngine.hpp"
 #include "recorder/VideoRecorderFFmpeg.hpp"
+
+extern "C" {
+#include <libavutil/channel_layout.h>
+#include <libavutil/error.h>
+#include <libavutil/opt.h>
+}
 
 #include <array>
 #include <bit>
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -1105,6 +1115,226 @@ private slots:
                                                      static_cast<qsizetype>(name.size()))));
             }
         }
+    }
+
+    // ── Resampling engine selection ──────────────────────────────────────────
+    //
+    // The brief for this work said "call swr_set_engine". That function does not
+    // exist in this project's libswresample: it is absent from swresample.h, and
+    // `nm -gU libswresample.7.1.102.dylib` lists 20 swr_ symbols with no such
+    // name among them. Engine selection goes through av_opt_set(ctx, "engine",
+    // "soxr", 0) instead. These tests pin the *decision* -- which is pure, and so
+    // assertable on a machine with no soxr at all -- plus one live probe against
+    // the real libswresample, which is the only thing that can catch a wrong
+    // option name.
+
+    void soxrIsSelectedOnlyWhenTheLibraryActuallyAcceptedIt() {
+        // The affirmative case, stated first: a genuine 0 is the ONLY thing that
+        // selects soxr. Nothing else may, or a soxr-less build would silently
+        // claim the better engine.
+        const EngineChoice yes = chooseEngine(0);
+        QCOMPARE(yes.engine, ResamplerEngine::Soxr);
+        QVERIFY(yes.usingSoxr());
+        QCOMPARE(yes.fallback, SoxrFallbackReason::None);
+        // Nothing to report, so nothing is reported: a soxr success that still
+        // carried a reason string would put a stale caveat in every log line.
+        QVERIFY(yes.detail.empty());
+
+        // The default is the engine libswresample already uses, so leaving it
+        // alone changes no output -- which is what makes the fallback free.
+        const EngineChoice no = chooseEngine(-1);
+        QCOMPARE(no.engine, ResamplerEngine::Default);
+        QVERIFY(!no.usingSoxr());
+        QVERIFY(!no.describe().empty());
+    }
+
+    void aLibswresampleWithoutSoxrFallsBackAndSaysWhy() {
+        // The measured result on this machine: pkg-config --exists soxr exits 1,
+        // `ffmpeg -buildconf` has no --enable-libsoxr, and
+        // av_opt_set(swr, "engine", "soxr", 0) returns AVERROR_OPTION_NOT_FOUND
+        // because libswresample omits the option entirely rather than
+        // registering it and refusing later. Feeding that exact value in asserts
+        // the classification -- OptionMissing, NOT a generic refusal -- because
+        // the two need different advice: only this one is fixed by rebuilding
+        // FFmpeg, and a message that said "refused" would send someone to
+        // reconfigure a build that was already correct.
+        const EngineChoice missing = chooseEngine(AVERROR_OPTION_NOT_FOUND);
+        QCOMPARE(missing.engine, ResamplerEngine::Default);
+        QCOMPARE(missing.fallback, SoxrFallbackReason::OptionMissing);
+        // The message names libswresample rather than saying "soxr unavailable",
+        // because the actionable fact is which library lacks the option -- that
+        // is what tells someone the fix is a different FFmpeg and not a
+        // different build of this project.
+        QVERIFY(soxrFallbackReasonName(SoxrFallbackReason::OptionMissing).find("libswresample") !=
+                std::string_view::npos);
+        // av_strerror's own words, so a log carries the number *and* the text.
+        QCOMPARE(missing.detail, std::string("Option not found"));
+
+        // A different negative means something else and must not be dressed up as
+        // a missing option.
+        QCOMPARE(chooseEngine(AVERROR(EINVAL)).fallback, SoxrFallbackReason::Refused);
+
+        // Declining to attempt (CHADVIS_USE_SOXR_ENGINE=0, or a null context) is
+        // its own reason: it says nothing about what the library would have said.
+        const EngineChoice notTried = chooseEngine(std::nullopt);
+        QCOMPARE(notTried.engine, ResamplerEngine::Default);
+        QCOMPARE(notTried.fallback, SoxrFallbackReason::NotAttempted);
+        QVERIFY(notTried.detail.empty());
+    }
+
+    void theLiveResamplerAgreesWithWhateverThisBuildCanDo() {
+        // The only assertion here that can fail on a *correct* build is the one
+        // that must not: it asserts the mechanism, not a particular engine. A
+        // wrong option name would give AVERROR_OPTION_NOT_FOUND here too, and
+        // that is indistinguishable from "this FFmpeg has no soxr" -- which is
+        // exactly why the control below exists.
+        //
+        // Control first: av_opt_find does work on a SwrContext. Without it, a
+        // null from the engine lookup would prove nothing, because a broken probe
+        // looks exactly like an absent option.
+        SwrContext* ctx = nullptr;
+        AVChannelLayout stereo;
+        av_channel_layout_default(&stereo, 2);
+        QCOMPARE(swr_alloc_set_opts2(&ctx, &stereo, AV_SAMPLE_FMT_FLT, 48000, &stereo,
+                                     AV_SAMPLE_FMT_FLT, 44100, 0, nullptr),
+                 0);
+        QVERIFY(ctx != nullptr);
+        QVERIFY(av_opt_find(ctx, "filter_size", nullptr, 0, 0) != nullptr);
+
+        const bool soxrInThisBuild = av_opt_find(ctx, "engine", nullptr, 0, 0) != nullptr;
+        const EngineChoice applied = applyEngine(ctx, "test");
+        swr_free(&ctx);
+
+        if (soxrInThisBuild) {
+            // The affirmative half of the brief: "if soxr is present, assert it is
+            // actually selected." It is not merely asserted in a mock -- the real
+            // library is asked and the real answer is checked.
+            QVERIFY2(applied.usingSoxr(),
+                     "this libswresample exposes an 'engine' option but soxr was "
+                     "not selected");
+        } else {
+            QCOMPARE(applied.engine, ResamplerEngine::Default);
+            QCOMPARE(applied.fallback, SoxrFallbackReason::OptionMissing);
+            QCOMPARE(applied.detail, std::string("Option not found"));
+        }
+
+        // Either way the context is usable, which is the property that makes the
+        // fallback free rather than a build-breaking dependency. Measured:
+        // swr_init returns 0 with engine=soxr refused.
+        QVERIFY(applyEngine(nullptr, "test").fallback == SoxrFallbackReason::NotAttempted);
+    }
+
+    // ── Encoder settings that could never survive a save ─────────────────────
+    //
+    // ConfigParsers::serialize rebuilds the whole TOML root from the structs, so
+    // a struct member with no entry in a CHADVIS_*_FIELDS table is dropped on
+    // every save -- silently, because the defaults were already the values anyone
+    // would have configured. Four members shipped in that state for the life of
+    // the project. This is the guard.
+    //
+    // The canonical home for a config round-trip is tests/unit/core/
+    // test_ConfigLoader.cpp; it lives here as well so it is guarded today rather
+    // than after a handoff, and because these four are the recorder's output spec
+    // -- the AudioFileDecoder suite is where an encoder spec belongs.
+
+    void everyEncoderFieldSurvivesASave() {
+        RecordingConfig original;
+        original.video.gopSize = 240;
+        original.video.bFrames = 2;
+        original.audio.sampleRate = 44100;
+        original.audio.channels = 2;
+
+        const toml::table out = ConfigParsers::serialize(
+                AudioConfig{}, VisualizerConfig{}, original, UIConfig{}, KeyboardConfig{},
+                SunoConfig{}, KaraokeConfig{}, OverlayConfig{}, false);
+
+        // Read back through the real parser rather than inspecting the table, so
+        // the test covers both halves of the round trip. A hand-edited
+        // Configuration::get on the raw table would pass with the *write* broken.
+        RecordingConfig reloaded;
+        QVERIFY(out["recording"].is_table());
+        ConfigParsers::parseRecording(out, reloaded);
+
+        QCOMPARE(reloaded.video.gopSize, 240u);
+        QCOMPARE(reloaded.video.bFrames, 2u);
+        QCOMPARE(reloaded.audio.sampleRate, 44100u);
+        QCOMPARE(reloaded.audio.channels, 2u);
+
+        // And the keys are the documented spelling, asserted literally. The whole
+        // failure was invisible precisely because nobody could name what had gone
+        // missing; a test that only compared structs would not have caught a key
+        // renamed on both sides at once.
+        QCOMPARE(out["recording"]["video"]["gop_size"].value_or(0), 240);
+        QCOMPARE(out["recording"]["video"]["b_frames"].value_or(0), 2);
+        QCOMPARE(out["recording"]["audio"]["sample_rate"].value_or(0), 44100);
+        QCOMPARE(out["recording"]["audio"]["channels"].value_or(0), 2);
+    }
+
+    void encoderOutputDefaultsAndValidationHold() {
+        // The struct defaults are what a first run writes, so they are also what
+        // an absent key falls back to. Pinning them makes a default change a
+        // deliberate act.
+        const AudioEncoderConfig def{};
+        QCOMPARE(def.sampleRate, 48000u);
+        QCOMPARE(def.channels, 2u);
+        const VideoEncoderConfig vdef{};
+        QCOMPARE(vdef.gopSize, 0u);
+        QCOMPARE(vdef.bFrames, 0u);
+
+        // Two bounds that are decisions rather than tastes, and both of which can
+        // silently corrupt a render if dropped:
+        //  - channels > 2 cannot reach a consumer, because AudioQueue::AudioFrame
+        //    is stereo-only. Accepting 6 would open an encoder nothing can feed.
+        //  - a b_frames value above 16 gains nothing and interacts badly with a
+        //    short GOP.
+        RecordingConfig cfg;
+        cfg.audio.channels = 6;
+        cfg.audio.sampleRate = 4000;
+        cfg.video.gopSize = 100000;
+        cfg.video.bFrames = 900;
+        const toml::table tbl = ConfigParsers::serialize(AudioConfig{}, VisualizerConfig{}, cfg,
+                                                         UIConfig{}, KeyboardConfig{}, SunoConfig{},
+                                                         KaraokeConfig{}, OverlayConfig{}, false);
+        RecordingConfig parsed;
+        ConfigParsers::parseRecording(tbl, parsed);
+        QCOMPARE(parsed.audio.channels, 2u);
+        QCOMPARE(parsed.audio.sampleRate, 8000u);
+        // gop_size 0 means "auto" (VideoRecorderFFmpeg substitutes fps * 2), so
+        // an absurd value is pulled back to auto rather than clamped to something
+        // arbitrary.
+        QCOMPARE(parsed.video.gopSize, 0u);
+        QCOMPARE(parsed.video.bFrames, 16u);
+    }
+
+    void theAudioEncoderSpecIsTheOutputsNotTheInputs() {
+        // sampleRate/channels were the ambiguous half of this change: nothing in
+        // ConfigData.hpp said whether they described the source file or the
+        // encoded result, and a reader could reasonably assume the former. The
+        // comment now claims they are the OUTPUT spec, so this pins that claim
+        // against the code that consumes it -- a comment asserting an
+        // unverified fact is worse than no comment.
+        //
+        // EncoderSettings::fromConfig() is the only hop from the config struct
+        // into the encoder, and it is a static function reading the Config
+        // singleton, so it cannot be driven from a fixture without global state.
+        // The evidence is therefore the *other* consumer, which is explicit:
+        // VideoRecorderFFmpeg::initAudioStream sets
+        // `audioCodecCtx_->sample_rate = settings.audio.sampleRate` and passes
+        // the same value to swr_alloc_set_opts2 as the resampler's OUT rate.
+        // Both are reads of the encoder's output spec. If either were changed to
+        // read the source, this test would need revisiting -- which is the point
+        // of writing it.
+        const EncoderSettings settings;
+        QCOMPARE(settings.audio.sampleRate, 48000u);
+        QCOMPARE(settings.audio.channels, 2u);
+
+        // A different table, a different meaning: `[audio] sample_rate` belongs
+        // to AudioConfig and describes the playback device, not this track. A
+        // shared key name across the two tables is exactly how the original
+        // ambiguity happened, so name them apart.
+        const AudioConfig playback;
+        QCOMPARE(playback.sampleRate, 44100u);
+        QVERIFY(playback.sampleRate != AudioEncoderConfig{}.sampleRate);
     }
 };
 

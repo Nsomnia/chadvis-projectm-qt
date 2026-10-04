@@ -189,3 +189,71 @@ if(APPLE AND NOT CHADVIS_NO_KEYCHAIN)
     target_link_libraries(project_lib PUBLIC ${SECURITY_FRAMEWORK})
     target_compile_definitions(project_lib PUBLIC CHADVIS_HAS_KEYCHAIN)
 endif()
+
+# Windows and Linux get a real backend instead of a plaintext file. Without
+# this, CHADVIS_HAS_KEYCHAIN was undefined on both and every platform fell
+# through to FileBackend, which writes the Clerk credential -- whose
+# token_type is "refresh" with Max-Age=31536000, i.e. a ONE-YEAR secret in the
+# clear. The macro guards the *inside* of each backend file rather than
+# excluding the file, so both always compile and each defines its factory in
+# every configuration (returning nullptr when compiled out). That is what lets
+# CredentialStore.cpp dispatch with no platform #ifdef of its own, and it is
+# why the file is listed unconditionally in cmake/Sources.cmake.
+if(WIN32 AND NOT CHADVIS_NO_KEYCHAIN)
+    target_compile_definitions(project_lib PUBLIC CHADVIS_HAS_WIN32_CREDENTIALS)
+endif()
+
+if(UNIX AND NOT APPLE AND NOT CHADVIS_NO_KEYCHAIN)
+    # QtDBus, not libsecret: libsecret spins a GMainContext in a Qt app whose
+    # entire event model is Qt's, and every caller here is already on
+    # CredentialStoreWorker. The API actually needed is five methods.
+    target_link_libraries(project_lib PUBLIC Qt6::DBus)
+    target_compile_definitions(project_lib PUBLIC CHADVIS_HAS_SECRET_SERVICE)
+endif()
+
+# ---------------------------------------------------------------------------
+# Resampler engine (soxr) -- OPTIONAL, and reported rather than enforced.
+#
+# `swr_set_engine` does not exist. Measured on the libswresample this project
+# links (7.1.102): the header declares `enum SwrEngine {SWR_ENGINE_SWR,
+# SWR_ENGINE_SOXR, ...}` but exports no function of that name -- `nm -gU` lists
+# twenty swr_ symbols and none is it. Engine selection is an AVOption:
+# `av_opt_set(ctx, "engine", "soxr", 0)`.
+#
+# The option is OMITTED ENTIRELY when libswresample was built without
+# --enable-libsoxr, and that cannot be detected at configure time. So having
+# libsoxr installed says nothing about whether the *linked* FFmpeg can use it,
+# and a compile-time gate on pkg-config would be a lie in both directions.
+# src/recorder/ResamplerEngine.cpp therefore probes at runtime and degrades
+# with a reason; this block only reports.
+#
+# Nothing is linked: libswresample pulls in libsoxr itself, and this must never
+# reach CHADVIS_FFMPEG_COMPONENTS, which FATAL_ERRORs on a missing component --
+# that would turn an optional audio-quality flag into a build failure of the
+# whole application.
+# ---------------------------------------------------------------------------
+option(CHADVIS_USE_SOXR_ENGINE
+    "Ask libswresample for its higher-quality (soxr) resampling engine where the linked FFmpeg was built with --enable-libsoxr; degrades to libswresample's own resampler otherwise"
+    ON)
+
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(SOXR QUIET soxr)
+endif()
+if(SOXR_FOUND)
+    message(STATUS
+        "Resampler: libsoxr ${SOXR_VERSION} is installed, so the soxr engine MAY be "
+        "usable. That does NOT confirm the linked FFmpeg was configured with "
+        "--enable-libsoxr; compare with -DCHADVIS_USE_SOXR_ENGINE=0.")
+else()
+    message(STATUS
+        "Resampler: libsoxr NOT found. Not an error: the runtime probe will keep "
+        "libswresample's own resampler and log the reason once. Homebrew ships "
+        "`sox`, which is a different library -- libsoxr comes from your FFmpeg "
+        "vendor's package.")
+endif()
+if(NOT CHADVIS_USE_SOXR_ENGINE)
+    message(STATUS
+        "Resampler: soxr disabled by CHADVIS_USE_SOXR_ENGINE=0 -- libswresample's "
+        "own resampler only, which is the A/B baseline")
+    target_compile_definitions(project_lib PUBLIC CHADVIS_USE_SOXR_ENGINE=0)
+endif()

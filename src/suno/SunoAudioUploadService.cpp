@@ -1,5 +1,6 @@
 #include "SunoAudioUploadService.hpp"
 
+#include "HttpPolicy.hpp"
 #include "SunoClient.hpp"
 #include "SunoEndpoints.hpp"
 
@@ -174,6 +175,13 @@ SunoAudioUploadService::directRequest(const QUrl& url)
     QNetworkRequest request(url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
+    // 60 s, not 30: this is the one direction where a long silent gap is real,
+    // because a congested uplink fills its TCP buffers and then waits. Still a
+    // stall deadline rather than a wall-clock budget, so a 100 MB upload on a slow
+    // line is not killed for taking fifteen minutes -- only for going silent that
+    // long. See HttpPolicy.hpp for why that distinction is what makes the API
+    // usable here at all.
+    http::applyRequestPolicy(request, http::RequestClass::Upload);
     return request;
 }
 
@@ -245,7 +253,23 @@ void SunoAudioUploadService::handleInitializeReply(QNetworkReply* reply, quint64
     }
 
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    const QByteArray payload = reply->readAll();
+
+    // Bounded, not readAll(). Honest about what this can and cannot do: the reply
+    // was created by SunoClient::enqueueAuthenticatedRequest, so Qt has already
+    // buffered the transfer by the time we get here. What this caps is what *we*
+    // retain -- 16 MiB for a studio-API envelope rather than whatever the origin
+    // chose to send -- and, more importantly, what the user is told. An unbounded
+    // readAll() of a hostile origin is a memory exhaustion with no diagnostic at
+    // all; this is a refusal that names the limit. The version that prevents the
+    // bytes arriving needs a readyRead pump on the reply SunoClient owns, which
+    // is a change to that file (see the W5-C report).
+    auto bounded = http::readBodyBounded(*reply, http::RequestClass::JsonApi);
+    if (!bounded) {
+        reply->deleteLater();
+        fail(http::describePolicyFailureText(bounded.error()));
+        return;
+    }
+    const QByteArray payload = std::move(*bounded);
     reply->deleteLater();
     if (status != 200) {
         fail(QStringLiteral("Audio upload initialization failed."));

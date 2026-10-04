@@ -133,16 +133,22 @@ constexpr std::array<const char*, 12> kHttpMonths{"Jan", "Feb", "Mar", "Apr", "M
 ///
 /// Hand-rolled on purpose, because Qt's own parser cannot be used here and the
 /// failure is silent. Measured against the Qt 6.11.1 on this machine:
-/// `QDateTime::fromString(s, Qt::RFC2822Date)` returns an invalid QDateTime for
-/// "Sun, 06 Nov 1994 08:49:37 GMT" -- the exact example in RFC 2822 -- and for
-/// every "GMT"/"UT" spelling, because RFC 2822's timezone token is a named zone
-/// that Qt does not accept in that position. It *does* accept "+0000", and then
-/// silently ignores it: "Thu, 01 Jan 2026 00:00:00 +0000" came back as
-/// 1767225600 where `QDateTime::fromString("2026-01-01T00:00:00", ISODate).toUTC()`
-/// gives 1767250800 -- exactly the machine's UTC-7 offset. A date parser that
-/// is 7 hours wrong on the one header a rate limit depends on is worse than no
-/// parser, because the ladder would then be chosen as though the server had
-/// sent nothing.
+/// `QDateTime::fromString(s, Qt::RFC2822Date)` returns an **invalid** QDateTime
+/// for "Sun, 06 Nov 1994 08:49:37 GMT" -- the exact example in RFC 2822, and
+/// the exact spelling IMF-fixdate (RFC 9110's only mandated HTTP-date form)
+/// mandates -- and for every "GMT"/"UT"/"UTC" spelling, because RFC 2822's
+/// timezone token is a *named* zone that Qt does not accept in that position.
+///
+/// A CORRECTION to the earlier version of this comment, which claimed Qt
+/// "silently ignores" numeric offsets too. It does not. Measured on the same Qt:
+///   "...08:49:37 +0000" -> 784111777  (exact)
+///   "...08:49:37 +0100" -> 784108177  (exact)
+///   "...08:49:37 -0500" -> 784129777  (exact)
+/// The original evidence compared against
+/// `QDateTime::fromString("2026-01-01T00:00:00", ISODate).toUTC()`, which is a
+/// *local-time* parse -- it measured this machine's UTC offset, not a Qt bug.
+/// Hand-parsing is still correct, but for exactly one reason: **named** zones are
+/// unparseable. A numeric offset would have been fine.
 ///
 /// The weekday is required to be present and is then discarded: RFC 9110 5.6.7
 /// makes it redundant and requires recipients to accept a mismatched one.
@@ -171,13 +177,21 @@ std::optional<std::int64_t> parseHttpDate(const QByteArray& value,
     const int second = hms[2].toInt();
 
     // Widths are lenient -- a hand-rolled server that emits "6 Nov" is common
-    // enough to be worth accepting. Ranges are not: measured, QTime accepts an
-    // hour of 99 and QDateTime happily turns "99:49:37" into a real instant, so
-    // an unchecked field yields a *plausible* wrong time rather than an invalid
-    // one. RFC 9110's time-hour is 00-23, time-minute 00-59, time-second 00-60
-    // (60 for a leap second, which QTime accepts and which we pass through).
+    // enough to be worth accepting. Ranges are not, and the measured reason is
+    // sharper than "an unchecked field yields a wrong time": QTime REJECTS an
+    // out-of-range field, yet QDateTime{d, invalidQTime, UTC}.isValid() is TRUE
+    // and its toSecsSinceEpoch() is MIDNIGHT of that day. Measured on Qt 6.11.1:
+    //   QTime(8,49,60).isValid()                          -> false
+    //   QDateTime(QDate(1994,11,6), QTime(8,49,60), UTC)
+    //       .toSecsSinceEpoch()                           -> 784080000, midnight
+    // So the !when.isValid() guard below cannot catch a bad field: QDateTime
+    // claims valid and substitutes a plausible instant. `Retry-After:
+    // Sun, 06 Nov 1994 08:49:60 GMT` therefore parsed as -31 717 seconds --
+    // a leap-second hint read as "retry immediately", clamped up to the 1 s
+    // floor. RFC 9110 does permit time-second 60, but Qt cannot represent it, so
+    // reject it and let the caller fall back to the backoff ladder.
     if (day < 1 || day > 31 || month < 1 || month > 12 || hour > 23 || hour < 0 ||
-        minute > 59 || minute < 0 || second > 60 || second < 0) {
+        minute > 59 || minute < 0 || second > 59 || second < 0) {
         return std::nullopt;
     }
 

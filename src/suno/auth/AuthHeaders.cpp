@@ -1,5 +1,7 @@
 #include "AuthHeaders.hpp"
 
+#include "suno/HttpPolicy.hpp"
+
 #include <QHttpHeaders>
 #include <QUrl>
 
@@ -8,6 +10,11 @@ namespace vc::suno::auth {
 void StudioApiHeaders::apply(QNetworkRequest& request) const {
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
+    // The manual redirect above is the fail-closed host check; this is the other
+    // half of the policy and it has its own owner. Every /api/* call goes through
+    // this function, so this is the one line that bounds all of them -- which is
+    // exactly why the timeout did not live here before.
+    http::applyRequestPolicy(request, http::RequestClass::JsonApi);
     QHttpHeaders headers = request.headers();
     if (authorization.isEmpty()) {
         headers.removeAll("Authorization");

@@ -37,6 +37,7 @@ SAFE_TESTS=(
     test_SunoNotificationService
     test_ClerkAuthClient
     test_AudioAnalyzer
+    test_HttpPolicy
 )
 
 usage() {
