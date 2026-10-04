@@ -251,10 +251,34 @@ void SunoExploreService::handleReply(QNetworkReply* reply, bool append,
     const int status =
         reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString networkErrorText = reply->errorString();
-    const QByteArray payload = reply->readAll();
+
+    // Bounded body, and read BEFORE the transport error is judged -- deliberately.
+    // SunoClient arms every reply it issues with a readyRead-driven BodyReader, so
+    // a body past the studio-API cap is aborted mid-transfer and reply->error() is
+    // OperationCanceledError by the time we get here; reporting that would say
+    // "Operation canceled" and nothing else. readTrackedBody() carries the sticky
+    // refusal out of the reader and names the limit.
+    //
+    // It is also the only body path that works at all now. This reply has already
+    // been pumped, so reply->readAll() here would return an empty QByteArray that
+    // is indistinguishable from a server that sent nothing, and the user would be
+    // told "Explore returned invalid JSON".
+    if (!client_)
+    {
+        reply->deleteLater();
+        activeRequest_ = 0;
+        fail(QStringLiteral("Explore has no SunoClient to read the response with"));
+        return;
+    }
+    auto body = client_->readTrackedBody(reply);
     reply->deleteLater();
     activeRequest_ = 0;
 
+    if (!body)
+    {
+        fail(body.error());
+        return;
+    }
     if (networkError != QNetworkReply::NoError || status < 200 || status >= 300)
     {
         fail(networkErrorText.isEmpty()
@@ -264,7 +288,7 @@ void SunoExploreService::handleReply(QNetworkReply* reply, bool append,
     }
 
     QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(payload, &parseError);
+    const QJsonDocument document = QJsonDocument::fromJson(*body, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject())
     {
         fail(QStringLiteral("Explore returned invalid JSON"));

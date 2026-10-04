@@ -25,9 +25,9 @@
 #include <vector>
 
 #if defined(__APPLE__)
-#    include <mach/mach.h>
+#include <mach/mach.h>
 #elif defined(__linux__)
-#    include <unistd.h>
+#include <unistd.h>
 #endif
 
 namespace vc {
@@ -55,8 +55,7 @@ QSurfaceFormat coreContextFormat() {
 constexpr int kExposeTimeoutMs = 5000;
 
 bool waitForExpose(QWindow& window) {
-    if (window.isExposed())
-        return true;
+    if (window.isExposed()) return true;
     QElapsedTimer deadline;
     deadline.start();
     while (!window.isExposed() && deadline.elapsed() < kExposeTimeoutMs) {
@@ -74,8 +73,7 @@ bool waitForExpose(QWindow& window) {
 /// as `initializeOpenGLFunctions()` returning false on the *second* context in a
 /// process rather than on the first. Doing it this way removed that failure.
 bool exposeThenMakeCurrent(QOpenGLContext& context, QWindow& window) {
-    if (!waitForExpose(window))
-        return false;
+    if (!waitForExpose(window)) return false;
     return context.makeCurrent(&window);
 }
 
@@ -125,8 +123,7 @@ struct SentinelVerdict {
 /// buffer untouched on a failed read reports non-zero content that has nothing to
 /// do with what was rendered. Measured behaviour differs between platforms here,
 /// so it is measured rather than assumed -- see the report's `sentinel` fields.
-SentinelVerdict probeSentinel(QOpenGLFunctions_3_3_Core& gl,
-                              const OffscreenProbeConfig& cfg,
+SentinelVerdict probeSentinel(QOpenGLFunctions_3_3_Core& gl, const OffscreenProbeConfig& cfg,
                               std::vector<u8>& scratch) {
     SentinelVerdict verdict;
     scratch.assign(static_cast<usize>(cfg.width) * cfg.height * 4, 0);
@@ -152,13 +149,8 @@ SentinelVerdict probeSentinel(QOpenGLFunctions_3_3_Core& gl,
     verdict.clearError = static_cast<u32>(clearError);
 
     gl.glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    gl.glReadPixels(0,
-                    0,
-                    static_cast<GLsizei>(cfg.width),
-                    static_cast<GLsizei>(cfg.height),
-                    GL_RGBA,
-                    GL_UNSIGNED_BYTE,
-                    scratch.data());
+    gl.glReadPixels(0, 0, static_cast<GLsizei>(cfg.width), static_cast<GLsizei>(cfg.height),
+                    GL_RGBA, GL_UNSIGNED_BYTE, scratch.data());
     verdict.readError = static_cast<u32>(gl.glGetError());
 
     for (usize i = 0; i + 3 < scratch.size(); i += 4) {
@@ -191,25 +183,31 @@ struct ContextRun {
 /// reads the result back. Called only with a current context, and always before
 /// the context goes out of scope, so the `pm::Engine` destructor (which calls
 /// `projectm_destroy`) still has a current context.
-ContextRun renderOnCurrentContext(QOpenGLFunctions_3_3_Core& gl,
-                                  const OffscreenProbeConfig& cfg,
-                                  u32 warmupFrames,
-                                  u32 timedFrames,
+ContextRun renderOnCurrentContext(QOpenGLFunctions_3_3_Core& gl, const OffscreenProbeConfig& cfg,
+                                  u32 warmupFrames, u32 timedFrames,
                                   std::vector<double>* timingsMs) {
     ContextRun run;
 
     while (gl.glGetError() != GL_NO_ERROR) {
     }
-    GLint redBits = 0;
-    GLint depthBits = 0;
-    gl.glGetIntegerv(GL_RED_BITS, &redBits);
-    gl.glGetIntegerv(GL_DEPTH_BITS, &depthBits);
+    // Completeness of the *default* framebuffer, and its viewport, rather than
+    // GL_RED_BITS/GL_DEPTH_BITS. Measured reason for the swap: on the macOS driver in a
+    // core-profile context all three of GL_RED_BITS, GL_ALPHA_BITS and GL_DEPTH_BITS
+    // return GL_INVALID_ENUM (0x500), on a window-backed context that demonstrably holds
+    // pixels -- so the colour-depth queries cannot tell a working drawable from a broken
+    // one and reported both as "0 bits". glCheckFramebufferStatus separates them cleanly:
+    // GL_FRAMEBUFFER_COMPLETE for the window, GL_FRAMEBUFFER_UNDEFINED with a
+    // 0x0 viewport for QOffscreenSurface.
+    gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    run.frame.framebufferStatus = static_cast<u32>(gl.glCheckFramebufferStatus(GL_FRAMEBUFFER));
+    GLint viewport[4]{0, 0, 0, 0};
+    gl.glGetIntegerv(GL_VIEWPORT, viewport);
     while (gl.glGetError() != GL_NO_ERROR) {
     }
+    run.frame.viewportWidth = viewport[2] > 0 ? static_cast<u32>(viewport[2]) : 0;
+    run.frame.viewportHeight = viewport[3] > 0 ? static_cast<u32>(viewport[3]) : 0;
     run.frame.width = cfg.width;
     run.frame.height = cfg.height;
-    run.frame.redBits = static_cast<u32>(redBits < 0 ? 0 : redBits);
-    run.frame.depthBits = static_cast<u32>(depthBits < 0 ? 0 : depthBits);
     run.frame.bytes = static_cast<usize>(cfg.width) * cfg.height * 4;
 
     pm::EngineConfig engineConfig;
@@ -227,9 +225,7 @@ ContextRun renderOnCurrentContext(QOpenGLFunctions_3_3_Core& gl,
 
     const auto renderOnce = [&](u32 frameIndex) {
         const std::vector<f32> pcm = percussiveTick(cfg, frameIndex);
-        engine.addPCMDataInterleaved(pcm.data(),
-                                     static_cast<u32>(pcm.size() / 2),
-                                     2);
+        engine.addPCMDataInterleaved(pcm.data(), static_cast<u32>(pcm.size() / 2), 2);
         gl.glViewport(0, 0, static_cast<GLsizei>(cfg.width), static_cast<GLsizei>(cfg.height));
         engine.render();
         gl.glFinish();
@@ -243,7 +239,7 @@ ContextRun renderOnCurrentContext(QOpenGLFunctions_3_3_Core& gl,
         const auto start = Clock::now();
         renderOnce(warmupFrames + i);
         timingsMs->push_back(
-            std::chrono::duration<double, std::milli>(Clock::now() - start).count());
+                std::chrono::duration<double, std::milli>(Clock::now() - start).count());
     }
     run.projectmRendered = timedFrames > 0 || warmupFrames > 0;
 
@@ -257,22 +253,17 @@ ContextRun renderOnCurrentContext(QOpenGLFunctions_3_3_Core& gl,
     }
     gl.glPixelStorei(GL_PACK_ALIGNMENT, 4);
     std::vector<u8> pixels(run.frame.bytes, 0);
-    gl.glReadPixels(0,
-                    0,
-                    static_cast<GLsizei>(cfg.width),
-                    static_cast<GLsizei>(cfg.height),
-                    GL_RGBA,
-                    GL_UNSIGNED_BYTE,
-                    pixels.data());
+    gl.glReadPixels(0, 0, static_cast<GLsizei>(cfg.width), static_cast<GLsizei>(cfg.height),
+                    GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
     run.frame.glError = static_cast<u32>(gl.glGetError());
     run.frame.framesRendered = warmupFrames + timedFrames;
 
-    const auto nonZero = static_cast<u64>(std::count_if(
-        pixels.begin(), pixels.end(), [](u8 byte) { return byte != 0; }));
+    const auto nonZero = static_cast<u64>(
+            std::count_if(pixels.begin(), pixels.end(), [](u8 byte) { return byte != 0; }));
     run.frame.nonZeroBytes = nonZero;
     run.frame.nonZeroFraction =
-        run.frame.bytes ? static_cast<double>(nonZero) / static_cast<double>(run.frame.bytes)
-                        : 0.0;
+            run.frame.bytes ? static_cast<double>(nonZero) / static_cast<double>(run.frame.bytes)
+                            : 0.0;
     run.frame.checksum = nonZero ? fnv1a(pixels) : 0;
 
     const SentinelVerdict sentinel = probeSentinel(gl, cfg, pixels);
@@ -339,11 +330,67 @@ ContextRun probeOffThread(const OffscreenProbeConfig& cfg) {
     return run;
 }
 
+/// The same `QOffscreenSurface` + `QOpenGLContext` shape as `probeOffThread`, built on
+/// the GUI thread instead of a worker.
+///
+/// This exists because it is the control that makes the verdict honest. Measured: on
+/// macOS/cocoa it produces the *identical* incomplete framebuffer -- `0x0` viewport,
+/// `glClear` and `glReadPixels` both `GL_INVALID_FRAMEBUFFER_OPERATION`, zero bytes back.
+/// So the thing that fails is the *surface shape*, on any thread, and the failure has
+/// nothing to do with thread affinity. Without this pass the report would blame the
+/// thread, and the first thing a future engineer would try is "same thing on the main
+/// thread" -- which measures the same nothing.
+///
+/// Rendered with zero warmup frames, because nothing about the drawable's shape depends on
+/// how long projectM has been running and every extra frame is a real cost here.
+ContextRun probeOffscreenSurfaceOnMainThread(const OffscreenProbeConfig& cfg) {
+    ContextRun run;
+    QOffscreenSurface surface;
+    surface.setFormat(coreContextFormat());
+    surface.create();
+    if (!surface.isValid()) {
+        run.failure = "QOffscreenSurface::create() produced no valid surface on the GUI thread";
+        return run;
+    }
+
+    QOpenGLContext context;
+    context.setFormat(coreContextFormat());
+    run.contextCreated = context.create();
+    if (!run.contextCreated) {
+        run.failure = "QOpenGLContext::create() returned false on the GUI thread";
+        return run;
+    }
+    run.contextCurrent = context.makeCurrent(&surface);
+    if (!run.contextCurrent) {
+        run.failure = "QOpenGLContext::makeCurrent(QOffscreenSurface*) returned false on the "
+                      "GUI thread";
+        return run;
+    }
+
+    QOpenGLFunctions_3_3_Core gl;
+    if (!gl.initializeOpenGLFunctions()) {
+        run.failure = "QOpenGLFunctions_3_3_Core::initializeOpenGLFunctions() returned false on "
+                      "the GUI thread";
+        return run;
+    }
+
+    std::vector<double> timings;
+    const ContextRun inner = renderOnCurrentContext(gl, cfg, 0, 0, &timings);
+    run.projectmInitialized = inner.projectmInitialized;
+    run.projectmRendered = inner.projectmRendered;
+    run.frame = inner.frame;
+    run.sentinelHeld = inner.sentinelHeld;
+    run.sentinelClearError = inner.sentinelClearError;
+    run.sentinelReadError = inner.sentinelReadError;
+    run.failure = inner.failure;
+    context.doneCurrent();
+    context.makeCurrent(nullptr);
+    return run;
+}
+
 double meanOf(std::span<const double> values) {
-    if (values.empty())
-        return 0.0;
-    return std::accumulate(values.begin(), values.end(), 0.0) /
-           static_cast<double>(values.size());
+    if (values.empty()) return 0.0;
+    return std::accumulate(values.begin(), values.end(), 0.0) / static_cast<double>(values.size());
 }
 
 double minimumOf(std::span<const double> values) {
@@ -355,14 +402,84 @@ double maximumOf(std::span<const double> values) {
 }
 
 double percentileOf(std::span<const double> values, double percentile) {
-    if (values.empty())
-        return 0.0;
+    if (values.empty()) return 0.0;
     std::vector<double> sorted(values.begin(), values.end());
     std::sort(sorted.begin(), sorted.end());
-    const auto rank = static_cast<usize>(
-        std::clamp(percentile * static_cast<double>(sorted.size()), 1.0,
-                   static_cast<double>(sorted.size())));
+    const auto rank = static_cast<usize>(std::clamp(percentile * static_cast<double>(sorted.size()),
+                                                    1.0, static_cast<double>(sorted.size())));
     return sorted[rank - 1];
+}
+
+/// The `NeedsMainThread` explanation, assembled from the measurements so the attribution
+/// is derived rather than asserted.
+///
+/// Two things this string must not do, both of which the earlier revision did:
+///
+///  - quote a datum that cannot discriminate. It quoted `GL_RED_BITS=0`, which is *also* 0
+///    on a window-backed context that demonstrably holds pixels, because `GL_RED_BITS` is not
+///    a valid query on a core-profile context on this driver and returns GL_INVALID_ENUM. A
+///    reader who checks it finds the control agrees with the failure and concludes the probe
+///    is broken.
+///  - blame the thread when the measurement blames the surface. Whether the offscreen-surface
+///    control disagrees with the window control is the whole question, so the two possible
+///    stories are spelled differently and the "shape" story is only claimed when
+///    `drawableShapeIsTheVariable` actually holds.
+std::string buildNeedsMainThreadReason(const OffscreenProbeReport& report) {
+    const auto yesNo = [](bool value) { return value ? "yes" : "no"; };
+
+    std::string reason =
+            std::string("a GL context creates and becomes current on a worker "
+                        "thread and projectM initialises there (projectM "
+                        "initialized: ") +
+            yesNo(report.offThreadProjectmInitialized) +
+            ", frames rendered: " + std::to_string(report.offThreadFrame.framesRendered) +
+            "), but the drawable it is given does not hold what is written to it. Default "
+            "framebuffer on the worker: " +
+            toStringFramebufferStatus(report.offThreadFrame.framebufferStatus) + ", viewport " +
+            std::to_string(report.offThreadFrame.viewportWidth) + "x" +
+            std::to_string(report.offThreadFrame.viewportHeight) + ", glReadPixels -> " +
+            toString(report.offThreadFrame.glError) +
+            ", nonZero=" + std::to_string(report.offThreadFrame.nonZeroBytes) + "/" +
+            std::to_string(report.offThreadFrame.bytes) +
+            ", sentinelHeld=" + yesNo(report.offThreadFrame.sentinelHeld) + ". ";
+
+    if (report.drawableShapeIsTheVariable) {
+        reason += std::string("The same QOffscreenSurface+QOpenGLContext pair on the GUI "
+                              "thread produces the same incomplete framebuffer (") +
+                  toStringFramebufferStatus(
+                          report.offscreenSurfaceOnMainThreadFrame.framebufferStatus) +
+                  ", viewport " +
+                  std::to_string(report.offscreenSurfaceOnMainThreadFrame.viewportWidth) + "x" +
+                  std::to_string(report.offscreenSurfaceOnMainThreadFrame.viewportHeight) +
+                  ", glReadPixels -> " +
+                  toString(report.offscreenSurfaceOnMainThreadFrame.glError) +
+                  "), while the window-backed control on that same thread is " +
+                  toStringFramebufferStatus(report.mainThreadFrame.framebufferStatus) +
+                  " and returns " + std::to_string(report.mainThreadFrame.nonZeroBytes) +
+                  " non-zero bytes of " + std::to_string(report.mainThreadFrame.bytes) +
+                  ". The variable is therefore the drawable shape, not the thread: this "
+                  "platform provides no offscreen colour buffer on any thread. ";
+    } else if (report.offscreenSurfaceOnMainThreadAttempted) {
+        // The control did not produce the expected disagreement, so the honest claim is the
+        // weaker one. Saying "the thread is the problem" here would be an inference the
+        // measurement does not support.
+        reason += "The offscreen-surface control on the GUI thread did not produce a "
+                  "comparable result, so this report cannot say whether the drawable shape or "
+                  "the thread is the variable: ";
+        reason += report.offscreenSurfaceOnMainThreadFailure.empty()
+                          ? "no reason recorded for the control"
+                          : report.offscreenSurfaceOnMainThreadFailure;
+        reason += " ";
+    } else {
+        reason += "The offscreen-surface control was not run, so the thread cannot be ruled "
+                  "out as the variable. ";
+    }
+
+    reason += "All GL work must therefore be marshalled onto the GUI thread, where the only "
+              "drawable that works is an NSWindow: N concurrent render jobs become N "
+              "interleaved jobs over one context, and RenderQueue::setMaxConcurrent(1) is the "
+              "ceiling this verdict permits (see offscreenVerdictMaxConcurrency).";
+    return reason;
 }
 
 } // namespace
@@ -379,12 +496,80 @@ const char* toString(RenderThreadVerdict verdict) noexcept {
     return "Unsupported";
 }
 
+int offscreenVerdictMaxConcurrency(RenderThreadVerdict verdict) noexcept {
+    switch (verdict) {
+        case RenderThreadVerdict::Supported:
+            // No ceiling follows from this verdict, and -1 says so rather than
+            // substituting another invented constant for the one being replaced.
+            return -1;
+        case RenderThreadVerdict::NeedsMainThread:
+            return 1;
+        case RenderThreadVerdict::Unsupported:
+            return 0;
+    }
+    return 0;
+}
+
+const char* toString(u32 glError) noexcept {
+    switch (glError) {
+        case GL_NO_ERROR:
+            return "GL_NO_ERROR";
+        case GL_INVALID_ENUM:
+            return "GL_INVALID_ENUM";
+        case GL_INVALID_VALUE:
+            return "GL_INVALID_VALUE";
+        case GL_INVALID_OPERATION:
+            return "GL_INVALID_OPERATION";
+        case GL_STACK_OVERFLOW:
+            return "GL_STACK_OVERFLOW";
+        case GL_STACK_UNDERFLOW:
+            return "GL_STACK_UNDERFLOW";
+        case GL_OUT_OF_MEMORY:
+            return "GL_OUT_OF_MEMORY";
+        case GL_INVALID_FRAMEBUFFER_OPERATION:
+            return "GL_INVALID_FRAMEBUFFER_OPERATION";
+        default:
+            break;
+    }
+    static thread_local char unknown[48];
+    std::snprintf(unknown, sizeof(unknown), "GL_UNKNOWN_ERROR(0x%x)", glError);
+    return unknown;
+}
+
+const char* toStringFramebufferStatus(u32 status) noexcept {
+    switch (status) {
+        case GL_FRAMEBUFFER_COMPLETE:
+            return "GL_FRAMEBUFFER_COMPLETE";
+        case GL_FRAMEBUFFER_UNDEFINED:
+            return "GL_FRAMEBUFFER_UNDEFINED";
+        case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+            return "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
+        case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+            return "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
+        case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
+            return "GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER";
+        case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
+            return "GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER";
+        case GL_FRAMEBUFFER_UNSUPPORTED:
+            return "GL_FRAMEBUFFER_UNSUPPORTED";
+        case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
+            return "GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE";
+        case GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS:
+            return "GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS";
+        default:
+            break;
+    }
+    static thread_local char unknown[48];
+    std::snprintf(unknown, sizeof(unknown), "GL_FRAMEBUFFER_UNKNOWN(0x%x)", status);
+    return unknown;
+}
+
 usize residentSetBytes() noexcept {
 #if defined(__APPLE__)
     mach_task_basic_info info{};
     mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
-    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
-                  reinterpret_cast<task_info_t>(&info), &count) != KERN_SUCCESS)
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, reinterpret_cast<task_info_t>(&info),
+                  &count) != KERN_SUCCESS)
         return 0;
     return static_cast<usize>(info.resident_size);
 #elif defined(__linux__)
@@ -392,32 +577,30 @@ usize residentSetBytes() noexcept {
     // cycle is cheap and, unlike a ps parse, needs no allocation.
     const int resident = [] {
         std::FILE* file = std::fopen("/proc/self/statm", "r");
-        if (!file)
-            return -1;
+        if (!file) return -1;
         long total = 0;
         long residentPages = 0;
         const int read = std::fscanf(file, "%ld %ld", &total, &residentPages);
         std::fclose(file);
         return read == 2 ? static_cast<int>(residentPages) : -1;
     }();
-    if (resident < 0)
-        return 0;
+    if (resident < 0) return 0;
     return static_cast<usize>(resident) * static_cast<usize>(::sysconf(_SC_PAGESIZE));
 #else
     return 0;
 #endif
 }
 
-std::expected<OffscreenProbeReport, std::string> runOffscreenRenderProbe(
-    const OffscreenProbeConfig& config) {
+std::expected<OffscreenProbeReport, std::string>
+runOffscreenRenderProbe(const OffscreenProbeConfig& config) {
     auto* guiApp = qobject_cast<QGuiApplication*>(QCoreApplication::instance());
     if (!guiApp)
         return std::unexpected("runOffscreenRenderProbe needs a QGuiApplication; "
-                              "unit_tests runs a QCoreApplication and cannot host GL");
+                               "unit_tests runs a QCoreApplication and cannot host GL");
     if (QThread::currentThread() != guiApp->thread())
         return std::unexpected("runOffscreenRenderProbe must be called on the QGuiApplication "
-                              "thread: it creates its own windows and QWindow may only be "
-                              "constructed there");
+                               "thread: it creates its own windows and QWindow may only be "
+                               "constructed there");
 
     OffscreenProbeReport report;
     report.platform = QGuiApplication::platformName().toStdString();
@@ -430,33 +613,33 @@ std::expected<OffscreenProbeReport, std::string> runOffscreenRenderProbe(
         QWindow window;
         window.setSurfaceType(QWindow::OpenGLSurface);
         window.setFormat(coreContextFormat());
-window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
-            window.show();
-            if (window.winId() == 0) {
+        window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
+        window.show();
+        if (window.winId() == 0) {
             report.mainThreadFailure = "QWindow::create() produced no native handle";
         } else {
             QOpenGLContext context;
             context.setFormat(coreContextFormat());
             if (!context.create()) {
                 report.mainThreadFailure =
-                    "QOpenGLContext::create() failed for a window-backed context; this QPA "
-                    "plugin cannot provide a GL 3.3 core context";
+                        "QOpenGLContext::create() failed for a window-backed context; this QPA "
+                        "plugin cannot provide a GL 3.3 core context";
             } else if (!exposeThenMakeCurrent(context, window)) {
                 report.mainThreadFailure =
-                    window.isExposed()
-                        ? "QOpenGLContext::makeCurrent(QWindow*) failed on the GUI thread"
-                        : "the window never became exposed, so framebuffer 0 has no "
-                          "drawable";
+                        window.isExposed()
+                                ? "QOpenGLContext::makeCurrent(QWindow*) failed on the GUI thread"
+                                : "the window never became exposed, so framebuffer 0 has no "
+                                  "drawable";
             } else {
                 QOpenGLFunctions_3_3_Core gl;
                 if (!gl.initializeOpenGLFunctions()) {
                     report.mainThreadFailure =
-                        "QOpenGLFunctions_3_3_Core::initializeOpenGLFunctions() failed for a "
-                        "window-backed context";
+                            "QOpenGLFunctions_3_3_Core::initializeOpenGLFunctions() failed for a "
+                            "window-backed context";
                 } else {
                     std::vector<double> timings;
                     const ContextRun run =
-                        renderOnCurrentContext(gl, config, config.warmupFrames, 0, &timings);
+                            renderOnCurrentContext(gl, config, config.warmupFrames, 0, &timings);
                     report.mainThreadDrawableAvailable = true;
                     report.mainThreadProjectmInitialized = run.projectmInitialized;
                     report.mainThreadFrame = run.frame;
@@ -485,6 +668,31 @@ window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
         report.offThreadFailure = run.failure;
     }
 
+    // ------------------------------------------- offscreen-surface control (GUI thread)
+    // Run after the background-thread pass and before the verdict, because the verdict's
+    // *reason* depends on it: with the control in hand the spike can say the drawable shape
+    // is the variable, and without it the same data would read as a thread-affinity claim.
+    if (config.measureOffThread && config.measureMainThreadControl) {
+        report.offscreenSurfaceOnMainThreadAttempted = true;
+        const ContextRun run = probeOffscreenSurfaceOnMainThread(config);
+        report.offscreenSurfaceOnMainThreadValid = run.contextCurrent;
+        report.offscreenSurfaceOnMainThreadFrame = run.frame;
+        report.offscreenSurfaceOnMainThreadFrame.sentinelHeld = run.sentinelHeld;
+        report.offscreenSurfaceOnMainThreadFrame.sentinelClearError = run.sentinelClearError;
+        report.offscreenSurfaceOnMainThreadFrame.sentinelReadError = run.sentinelReadError;
+        report.offscreenSurfaceOnMainThreadFailure = run.failure;
+        // "The drawable shape is the variable" means the two controls disagree: a
+        // window-backed drawable is complete and holds a picture, and the offscreen surface
+        // is not -- with the thread held constant in the second pair and the surface held
+        // constant across the first. Both halves are required; either alone would be
+        // consistent with several different causes.
+        report.drawableShapeIsTheVariable =
+                report.mainThreadDrawableAvailable && report.offscreenSurfaceOnMainThreadValid &&
+                report.mainThreadFrame.framebufferStatus == GL_FRAMEBUFFER_COMPLETE &&
+                report.offscreenSurfaceOnMainThreadFrame.framebufferStatus !=
+                        GL_FRAMEBUFFER_COMPLETE;
+    }
+
     // -------------------------------------------------------------------- frame cost
     if (config.measureFrameCost) {
         QWindow window;
@@ -499,8 +707,8 @@ window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
                 QOpenGLFunctions_3_3_Core gl;
                 if (gl.initializeOpenGLFunctions()) {
                     std::vector<double> timings;
-                    const ContextRun run = renderOnCurrentContext(
-                        gl, config, config.warmupFrames, config.measureFrames, &timings);
+                    const ContextRun run = renderOnCurrentContext(gl, config, config.warmupFrames,
+                                                                  config.measureFrames, &timings);
                     report.measuredFrames = static_cast<u32>(timings.size());
                     report.meanFrameMs = meanOf(timings);
                     report.p95FrameMs = percentileOf(timings, 0.95);
@@ -508,8 +716,8 @@ window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
                     report.maxFrameMs = maximumOf(timings);
                     if (!run.frame.usable())
                         report.mainThreadFailure +=
-                            std::string(report.mainThreadFailure.empty() ? "" : "; ") +
-                            "frame-cost pass produced no usable frame";
+                                std::string(report.mainThreadFailure.empty() ? "" : "; ") +
+                                "frame-cost pass produced no usable frame";
                 }
             }
         }
@@ -536,24 +744,19 @@ window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
             // luck.
             QOpenGLFunctions_3_3_Core firstGl;
             QOpenGLFunctions_3_3_Core secondGl;
-            auto boot = [&](QWindow& window,
-                            QOpenGLContext& context,
-                            QOpenGLFunctions_3_3_Core& gl,
+            auto boot = [&](QWindow& window, QOpenGLContext& context, QOpenGLFunctions_3_3_Core& gl,
                             pm::Engine& engine) {
                 window.setSurfaceType(QWindow::OpenGLSurface);
                 window.setFormat(coreContextFormat());
-                window.resize(static_cast<int>(config.width),
-                              static_cast<int>(config.height));
+                window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
                 window.show();
                 if (window.winId() == 0)
                     return std::string{"QWindow::show() produced no native handle"};
                 context.setFormat(coreContextFormat());
-                if (!context.create())
-                    return std::string{"QOpenGLContext::create() failed"};
+                if (!context.create()) return std::string{"QOpenGLContext::create() failed"};
                 if (!exposeThenMakeCurrent(context, window)) {
-                    return window.isExposed()
-                               ? std::string{"makeCurrent failed for this window"}
-                               : std::string{"the window never became exposed"};
+                    return window.isExposed() ? std::string{"makeCurrent failed for this window"}
+                                              : std::string{"the window never became exposed"};
                 }
                 if (!gl.initializeOpenGLFunctions())
                     return std::string{"QOpenGLFunctions_3_3_Core init failed for a "} +
@@ -565,15 +768,10 @@ window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
                 engineConfig.height = config.height;
                 engineConfig.fps = config.fps;
                 const auto init = engine.init(engineConfig);
-                if (!init)
-                    return "projectM init failed: " + init.error().message;
+                if (!init) return "projectM init failed: " + init.error().message;
                 const std::vector<f32> warm = percussiveTick(config, 0);
-                engine.addPCMDataInterleaved(warm.data(),
-                                             static_cast<u32>(warm.size() / 2),
-                                             2);
-                gl.glViewport(0,
-                              0,
-                              static_cast<GLsizei>(config.width),
+                engine.addPCMDataInterleaved(warm.data(), static_cast<u32>(warm.size() / 2), 2);
+                gl.glViewport(0, 0, static_cast<GLsizei>(config.width),
                               static_cast<GLsizei>(config.height));
                 engine.render();
                 gl.glFinish();
@@ -583,47 +781,67 @@ window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
             pm::Engine secondEngine;
             QWindow firstWindow;
             QWindow secondWindow;
-            const std::string firstError =
-                boot(firstWindow, firstContext, firstGl, firstEngine);
+            const std::string firstError = boot(firstWindow, firstContext, firstGl, firstEngine);
             const std::string secondError =
-                firstError.empty()
-                    ? boot(secondWindow, secondContext, secondGl, secondEngine)
-                    : std::string{"not attempted because context 1 did not come up"};
+                    firstError.empty()
+                            ? boot(secondWindow, secondContext, secondGl, secondEngine)
+                            : std::string{"not attempted because context 1 did not come up"};
             if (!firstError.empty() || !secondError.empty()) {
                 fail("context 1: " + (firstError.empty() ? std::string("ok") : firstError) +
                      "; context 2: " + (secondError.empty() ? std::string("ok") : secondError));
             } else {
                 alternating.reserve(config.measureFrames);
+                // A makeCurrent that fails mid-pass is recorded, never skipped in
+                // silence. `continue` here used to leave `dualContextMeasured`
+                // true with a SHORT sample, so a pass that rendered 3 of 6 frames
+                // reported the same verdict, and the same mean/min/max/p95, as a
+                // clean 6-frame measurement -- a partial list presented as a total,
+                // which is the one thing a benchmark may not do. Observed on this
+                // machine: n=3 of 6, intermittent and load-dependent, with the
+                // windows still exposed and both contexts at 4.1 core, so it is
+                // cocoa declining the swap and not a misconfigured context.
+                u32 makeCurrentFailures = 0;
                 for (u32 i = 0; i < config.measureFrames; ++i) {
                     const bool useFirst = (i % 2) == 0;
                     QOpenGLFunctions_3_3_Core& gl = useFirst ? firstGl : secondGl;
                     pm::Engine& engine = useFirst ? firstEngine : secondEngine;
                     QOpenGLContext& context = useFirst ? firstContext : secondContext;
-                    if (!context.makeCurrent(useFirst ? &firstWindow : &secondWindow))
+                    if (!context.makeCurrent(useFirst ? &firstWindow : &secondWindow)) {
+                        ++makeCurrentFailures;
                         continue;
+                    }
                     const std::vector<f32> pcm = percussiveTick(config, i);
                     const auto start = Clock::now();
-                    engine.addPCMDataInterleaved(pcm.data(),
-                                                 static_cast<u32>(pcm.size() / 2),
-                                                 2);
-                    gl.glViewport(0,
-                                  0,
-                                  static_cast<GLsizei>(config.width),
+                    engine.addPCMDataInterleaved(pcm.data(), static_cast<u32>(pcm.size() / 2), 2);
+                    gl.glViewport(0, 0, static_cast<GLsizei>(config.width),
                                   static_cast<GLsizei>(config.height));
                     engine.render();
                     gl.glFinish();
-                    alternating.push_back(std::chrono::duration<double, std::milli>(
-                                              Clock::now() - start)
-                                              .count());
+                    alternating.push_back(
+                            std::chrono::duration<double, std::milli>(Clock::now() - start)
+                                    .count());
                 }
                 report.dualMeasuredFrames = static_cast<u32>(alternating.size());
-                report.dualContextMeasured = !alternating.empty();
+                // The statistics are kept even when the pass is refused, because
+                // `describeOffscreenProbe` prints them and a partial sample that
+                // says how much is missing is more useful than no numbers. What
+                // it must never do is claim to be the measurement.
                 report.dualMeanFrameMs = meanOf(alternating);
                 report.dualP95FrameMs = percentileOf(alternating, 0.95);
                 report.dualMinFrameMs = minimumOf(alternating);
                 report.dualMaxFrameMs = maximumOf(alternating);
-                if (!report.dualContextMeasured)
-                    fail("both contexts booted but no frame could be made current");
+                if (makeCurrentFailures > 0) {
+                    report.dualContextMeasured = false;
+                    fail("makeCurrent succeeded for only " +
+                         std::to_string(alternating.size()) + " of " +
+                         std::to_string(config.measureFrames) +
+                         " frames, so this is a partial sample and not the measurement; "
+                         "cocoa declined the context swap mid-pass on an exposed window");
+                } else {
+                    report.dualContextMeasured = !alternating.empty();
+                    if (!report.dualContextMeasured)
+                        fail("both contexts booted but no frame could be made current");
+                }
             }
         }
     }
@@ -655,52 +873,38 @@ window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
             const auto runCycle = [&](u32 cycle) {
                 QOpenGLContext context;
                 context.setFormat(coreContextFormat());
-                if (!context.create() || !context.makeCurrent(&window))
-                    return false;
+                if (!context.create() || !context.makeCurrent(&window)) return false;
                 QOpenGLFunctions_3_3_Core gl;
-                if (!gl.initializeOpenGLFunctions())
-                    return false;
+                if (!gl.initializeOpenGLFunctions()) return false;
                 pm::Engine engine;
                 if (config.teardownInitializeProjectm) {
                     pm::EngineConfig engineConfig;
                     engineConfig.width = config.width;
                     engineConfig.height = config.height;
                     engineConfig.fps = config.fps;
-                    if (!engine.init(engineConfig))
-                        return false;
+                    if (!engine.init(engineConfig)) return false;
                     const std::vector<f32> pcm = percussiveTick(config, cycle);
-                    engine.addPCMDataInterleaved(pcm.data(),
-                                                 static_cast<u32>(pcm.size() / 2),
-                                                 2);
-                    gl.glViewport(0,
-                                  0,
-                                  static_cast<GLsizei>(config.width),
+                    engine.addPCMDataInterleaved(pcm.data(), static_cast<u32>(pcm.size() / 2), 2);
+                    gl.glViewport(0, 0, static_cast<GLsizei>(config.width),
                                   static_cast<GLsizei>(config.height));
                     engine.render();
                     gl.glFinish();
                 }
-                if (!config.teardownReadback)
-                    return true;
+                if (!config.teardownReadback) return true;
                 gl.glPixelStorei(GL_PACK_ALIGNMENT, 4);
-                gl.glReadPixels(0,
-                                0,
-                                static_cast<GLsizei>(config.width),
-                                static_cast<GLsizei>(config.height),
-                                GL_RGBA,
-                                GL_UNSIGNED_BYTE,
+                gl.glReadPixels(0, 0, static_cast<GLsizei>(config.width),
+                                static_cast<GLsizei>(config.height), GL_RGBA, GL_UNSIGNED_BYTE,
                                 pixels.data());
                 const auto nonZero = static_cast<u64>(
-                    std::count_if(pixels.begin(), pixels.end(), [](u8 b) { return b != 0; }));
+                        std::count_if(pixels.begin(), pixels.end(), [](u8 b) { return b != 0; }));
                 return nonZero > 0;
             };
             for (u32 cycle = 0; cycle < config.teardownCycles; ++cycle) {
                 const auto start = Clock::now();
                 const bool drew = runCycle(cycle);
                 ++completed;
-                if (drew || !config.teardownReadback)
-                    ++report.teardownRenderedCycles;
-                cycleMs += std::chrono::duration<double, std::milli>(Clock::now() - start)
-                               .count();
+                if (drew || !config.teardownReadback) ++report.teardownRenderedCycles;
+                cycleMs += std::chrono::duration<double, std::milli>(Clock::now() - start).count();
                 const usize now = residentSetBytes();
                 peak = std::max(peak, now);
                 report.teardownRssBytes.push_back(now);
@@ -713,17 +917,15 @@ window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
             // Taken from the series rather than re-read here: two RSS readings taken a
             // microsecond apart differ, and a report whose `rssAfterBytes` disagrees
             // with its own last series entry cannot be checked by a reader.
-            report.rssAfterBytes = report.teardownRssBytes.empty()
-                                       ? report.rssBeforeBytes
-                                       : report.teardownRssBytes.back();
+            report.rssAfterBytes = report.teardownRssBytes.empty() ? report.rssBeforeBytes
+                                                                   : report.teardownRssBytes.back();
             report.peakRssBytes = peak;
             report.rssDeltaBytes = static_cast<i64>(report.rssAfterBytes) -
                                    static_cast<i64>(report.rssBeforeBytes);
         } else {
             report.rssAvailable = false;
-            report.mainThreadFailure +=
-                std::string(report.mainThreadFailure.empty() ? "" : "; ") +
-                "teardown pass could not obtain a window drawable";
+            report.mainThreadFailure += std::string(report.mainThreadFailure.empty() ? "" : "; ") +
+                                        "teardown pass could not obtain a window drawable";
         }
     }
 
@@ -733,33 +935,20 @@ window.resize(static_cast<int>(config.width), static_cast<int>(config.height));
     if (!report.mainThreadDrawableAvailable) {
         report.verdict = RenderThreadVerdict::Unsupported;
         report.reason = report.mainThreadFailure.empty()
-                            ? "no window-backed GL context was available for the control "
-                              "measurement on the GUI thread"
-                            : "no window-backed GL context was available for the control "
-                              "measurement: " + report.mainThreadFailure;
+                                ? "no window-backed GL context was available for the control "
+                                  "measurement on the GUI thread"
+                                : "no window-backed GL context was available for the control "
+                                  "measurement: " +
+                                          report.mainThreadFailure;
     } else if (report.offThreadFrame.usable()) {
         report.verdict = RenderThreadVerdict::Supported;
-        report.reason = "a background-thread context produced a full-resolution frame with "
-                        + std::to_string(report.offThreadFrame.nonZeroBytes) + " of " +
+        report.reason = "a background-thread context produced a full-resolution frame with " +
+                        std::to_string(report.offThreadFrame.nonZeroBytes) + " of " +
                         std::to_string(report.offThreadFrame.bytes) +
                         " non-zero bytes, so workers may render off the GUI thread";
     } else if (report.offThreadContextCurrent) {
         report.verdict = RenderThreadVerdict::NeedsMainThread;
-        report.reason =
-            "the context creates and becomes current on a worker thread (projectM "
-            "initialized: " +
-            std::string(report.offThreadProjectmInitialized ? "yes" : "no") +
-            ", frames rendered: " + std::to_string(report.offThreadFrame.framesRendered) +
-            "), but the drawable it gets there does not hold what is written to it: "
-            "GL_RED_BITS=" + std::to_string(report.offThreadFrame.redBits) +
-            " readPixels error 0x" + std::to_string(report.offThreadFrame.glError) +
-            " nonZero=" + std::to_string(report.offThreadFrame.nonZeroBytes) + "/" +
-            std::to_string(report.offThreadFrame.bytes) + " sentinelHeld=" +
-            std::string(report.offThreadFrame.sentinelHeld ? "yes" : "no") +
-            " sentinelReadError=0x" +
-            std::to_string(report.offThreadFrame.sentinelReadError) +
-            ". The GL work has to be marshalled onto the GUI thread, so N concurrent "
-            "render jobs become N interleaved jobs over one context.";
+        report.reason = buildNeedsMainThreadReason(report);
     } else {
         report.verdict = RenderThreadVerdict::Unsupported;
         report.reason = "no GL context could be created or made current on a worker thread" +
@@ -776,62 +965,98 @@ std::vector<std::string> offscreenProbeLines(const OffscreenProbeReport& report)
         return std::string(buffer);
     };
     return {
-        "platform: " + report.platform,
-        "verdict: " + std::string(toString(report.verdict)),
-        "reason: " + report.reason,
-        "off-thread: contextCreated=" + std::string(report.offThreadContextCreated ? "yes" : "no") +
-            " current=" + std::string(report.offThreadContextCurrent ? "yes" : "no") +
-            " projectmInit=" +
-            std::string(report.offThreadProjectmInitialized ? "yes" : "no") +
-            " framesRendered=" + std::to_string(report.offThreadFrame.framesRendered),
-        "off-thread frame: " + std::to_string(report.offThreadFrame.width) + "x" +
-            std::to_string(report.offThreadFrame.height) + " bytes=" +
-            std::to_string(report.offThreadFrame.bytes) + " nonZero=" +
-            std::to_string(report.offThreadFrame.nonZeroBytes) + " (" +
-            fixed(report.offThreadFrame.nonZeroFraction * 100.0, 3) +
-            "%) redBits=" + std::to_string(report.offThreadFrame.redBits) +
-            " depthBits=" + std::to_string(report.offThreadFrame.depthBits) +
-            " glError=0x" + std::to_string(report.offThreadFrame.glError) +
-            " checksum=" + std::to_string(report.offThreadFrame.checksum) +
-            " sentinelHeld=" + std::string(report.offThreadFrame.sentinelHeld ? "yes" : "no") +
-            " sentinelClearErr=0x" + std::to_string(report.offThreadFrame.sentinelClearError) +
-            " sentinelReadErr=0x" + std::to_string(report.offThreadFrame.sentinelReadError),
-        "main-thread control: available=" +
-            std::string(report.mainThreadDrawableAvailable ? "yes" : "no") +
-            " projectmInit=" + std::string(report.mainThreadProjectmInitialized ? "yes" : "no"),
-        "main-thread frame: nonZero=" +
-            std::to_string(report.mainThreadFrame.nonZeroBytes) + " of " +
-            std::to_string(report.mainThreadFrame.bytes) + " (" +
-            fixed(report.mainThreadFrame.nonZeroFraction * 100.0, 3) + "%) redBits=" +
-            std::to_string(report.mainThreadFrame.redBits) + " depthBits=" +
-            std::to_string(report.mainThreadFrame.depthBits) + " checksum=" +
-            std::to_string(report.mainThreadFrame.checksum) + " sentinelHeld=" +
-            std::string(report.mainThreadFrame.sentinelHeld ? "yes" : "no"),
-        "frame cost: n=" + std::to_string(report.measuredFrames) + " min=" +
-            fixed(report.minFrameMs, 3) + " mean=" + fixed(report.meanFrameMs, 3) +
-            " p95=" + fixed(report.p95FrameMs, 3) + " max=" +
-            fixed(report.maxFrameMs, 3) + " ms",
-        "dual context: measured=" + std::string(report.dualContextMeasured ? "yes" : "no") +
-            " n=" + std::to_string(report.dualMeasuredFrames) + " min=" +
-            fixed(report.dualMinFrameMs, 3) + " mean=" + fixed(report.dualMeanFrameMs, 3) +
-            " p95=" + fixed(report.dualP95FrameMs, 3) + " max=" +
-            fixed(report.dualMaxFrameMs, 3) + " ms" + (report.dualFailure.empty() ? "" : " failure=" + report.dualFailure),
-        "teardown rss series (MiB): " + [&report] {
-            std::string joined;
-            for (const usize value : report.teardownRssBytes) {
-                joined += std::to_string(double(value) / (1024.0 * 1024.0));
-                joined += ' ';
-            }
-            return joined;
-        }(),
-        "teardown: cycles=" + std::to_string(report.teardownCycles) + " rendered=" +
-            std::to_string(report.teardownRenderedCycles) + " rss " +
-            std::to_string(report.rssBeforeBytes) + " -> " +
-            std::to_string(report.rssAfterBytes) + " (" +
-            std::to_string(report.rssDeltaBytes) + " bytes) peak=" +
-            std::to_string(report.peakRssBytes) + " rssAvailable=" +
-            std::string(report.rssAvailable ? "yes" : "no") + " cycleMean=" +
-            fixed(report.teardownCycleMs, 3) + " ms",
+            "platform: " + report.platform,
+            "verdict: " + std::string(toString(report.verdict)),
+            "verdict permits maxConcurrent=" +
+                    std::to_string(offscreenVerdictMaxConcurrency(report.verdict)),
+            "reason: " + report.reason,
+            "off-thread: contextCreated=" +
+                    std::string(report.offThreadContextCreated ? "yes" : "no") + " current=" +
+                    std::string(report.offThreadContextCurrent ? "yes" : "no") + " projectmInit=" +
+                    std::string(report.offThreadProjectmInitialized ? "yes" : "no") +
+                    " framesRendered=" + std::to_string(report.offThreadFrame.framesRendered),
+            "off-thread framebuffer 0: status=" +
+                    std::string(
+                            toStringFramebufferStatus(report.offThreadFrame.framebufferStatus)) +
+                    " viewport=" + std::to_string(report.offThreadFrame.viewportWidth) + "x" +
+                    std::to_string(report.offThreadFrame.viewportHeight),
+            "off-thread frame: " + std::to_string(report.offThreadFrame.width) + "x" +
+                    std::to_string(report.offThreadFrame.height) +
+                    " bytes=" + std::to_string(report.offThreadFrame.bytes) +
+                    " nonZero=" + std::to_string(report.offThreadFrame.nonZeroBytes) + " (" +
+                    fixed(report.offThreadFrame.nonZeroFraction * 100.0, 3) +
+                    "%) glReadPixelsError=" + std::string(toString(report.offThreadFrame.glError)) +
+                    " checksum=" + std::to_string(report.offThreadFrame.checksum) +
+                    " sentinelHeld=" +
+                    std::string(report.offThreadFrame.sentinelHeld ? "yes" : "no") +
+                    " sentinelClearErr=" +
+                    std::string(toString(report.offThreadFrame.sentinelClearError)) +
+                    " sentinelReadErr=" +
+                    std::string(toString(report.offThreadFrame.sentinelReadError)),
+            "offscreen-surface control (GUI thread): attempted=" +
+                    std::string(report.offscreenSurfaceOnMainThreadAttempted ? "yes" : "no") +
+                    " valid=" +
+                    std::string(report.offscreenSurfaceOnMainThreadValid ? "yes" : "no") +
+                    " status=" +
+                    std::string(toStringFramebufferStatus(
+                            report.offscreenSurfaceOnMainThreadFrame.framebufferStatus)) +
+                    " viewport=" +
+                    std::to_string(report.offscreenSurfaceOnMainThreadFrame.viewportWidth) + "x" +
+                    std::to_string(report.offscreenSurfaceOnMainThreadFrame.viewportHeight) +
+                    " nonZero=" +
+                    std::to_string(report.offscreenSurfaceOnMainThreadFrame.nonZeroBytes) +
+                    " glReadPixelsError=" +
+                    std::string(toString(report.offscreenSurfaceOnMainThreadFrame.glError)) +
+                    " sentinelHeld=" +
+                    std::string(report.offscreenSurfaceOnMainThreadFrame.sentinelHeld ? "yes"
+                                                                                      : "no") +
+                    " failure=" +
+                    (report.offscreenSurfaceOnMainThreadFailure.empty()
+                             ? std::string("(none)")
+                             : report.offscreenSurfaceOnMainThreadFailure),
+            "drawable shape is the variable (not the thread): " +
+                    std::string(report.drawableShapeIsTheVariable ? "yes" : "no"),
+            "main-thread control: available=" +
+                    std::string(report.mainThreadDrawableAvailable ? "yes" : "no") +
+                    " projectmInit=" +
+                    std::string(report.mainThreadProjectmInitialized ? "yes" : "no"),
+            "main-thread frame: status=" +
+                    std::string(
+                            toStringFramebufferStatus(report.mainThreadFrame.framebufferStatus)) +
+                    " viewport=" + std::to_string(report.mainThreadFrame.viewportWidth) + "x" +
+                    std::to_string(report.mainThreadFrame.viewportHeight) +
+                    " nonZero=" + std::to_string(report.mainThreadFrame.nonZeroBytes) + " of " +
+                    std::to_string(report.mainThreadFrame.bytes) + " (" +
+                    fixed(report.mainThreadFrame.nonZeroFraction * 100.0, 3) + "%) checksum=" +
+                    std::to_string(report.mainThreadFrame.checksum) + " sentinelHeld=" +
+                    std::string(report.mainThreadFrame.sentinelHeld ? "yes" : "no"),
+            "frame cost: n=" + std::to_string(report.measuredFrames) + " min=" +
+                    fixed(report.minFrameMs, 3) + " mean=" + fixed(report.meanFrameMs, 3) +
+                    " p95=" + fixed(report.p95FrameMs, 3) + " max=" + fixed(report.maxFrameMs, 3) +
+                    " ms",
+            "dual context: measured=" + std::string(report.dualContextMeasured ? "yes" : "no") +
+                    " n=" + std::to_string(report.dualMeasuredFrames) + " min=" +
+                    fixed(report.dualMinFrameMs, 3) + " mean=" + fixed(report.dualMeanFrameMs, 3) +
+                    " p95=" + fixed(report.dualP95FrameMs, 3) +
+                    " max=" + fixed(report.dualMaxFrameMs, 3) + " ms" +
+                    (report.dualFailure.empty() ? "" : " failure=" + report.dualFailure),
+            "teardown rss series (MiB): " +
+                    [&report] {
+                        std::string joined;
+                        for (const usize value : report.teardownRssBytes) {
+                            joined += std::to_string(double(value) / (1024.0 * 1024.0));
+                            joined += ' ';
+                        }
+                        return joined;
+                    }(),
+            "teardown: cycles=" + std::to_string(report.teardownCycles) +
+                    " rendered=" + std::to_string(report.teardownRenderedCycles) + " rss " +
+                    std::to_string(report.rssBeforeBytes) + " -> " +
+                    std::to_string(report.rssAfterBytes) + " (" +
+                    std::to_string(report.rssDeltaBytes) +
+                    " bytes) peak=" + std::to_string(report.peakRssBytes) +
+                    " rssAvailable=" + std::string(report.rssAvailable ? "yes" : "no") +
+                    " cycleMean=" + fixed(report.teardownCycleMs, 3) + " ms",
     };
 }
 
@@ -842,8 +1067,7 @@ std::string describeOffscreenProbe(const OffscreenProbeReport& report) {
         joined += line;
         joined += '\n';
     }
-    if (!joined.empty())
-        joined.pop_back();
+    if (!joined.empty()) joined.pop_back();
     return joined;
 }
 

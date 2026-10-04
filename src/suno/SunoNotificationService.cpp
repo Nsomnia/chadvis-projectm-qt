@@ -290,9 +290,30 @@ void SunoNotificationService::handleRefreshReply(QNetworkReply* reply, ReplyKind
 
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString error = requestError(reply, QStringLiteral("Notification request failed"));
-    const QByteArray payload = reply->readAll();
+
+    // Body first, transport error second, and the order is load-bearing. SunoClient
+    // arms every reply it issues with a readyRead-driven BodyReader, so a body past
+    // the studio-API cap was already aborted mid-transfer: reply->error() is
+    // OperationCanceledError and errorString() says only "Operation canceled". The
+    // sticky refusal names the limit, and it only survives if we ask for the body
+    // before discarding it.
+    //
+    // readTrackedBody() is also the only path that still has the bytes -- this
+    // reply has been pumped, so readAll() would hand back an empty QByteArray that
+    // is indistinguishable from a server that sent nothing, and would surface as
+    // "Notification response returned invalid JSON".
+    if (!client_) {
+        reply->deleteLater();
+        failRefresh(QStringLiteral("Notifications has no SunoClient to read the response with"));
+        return;
+    }
+    auto body = client_->readTrackedBody(reply);
     reply->deleteLater();
 
+    if (!body) {
+        failRefresh(body.error());
+        return;
+    }
     if (!error.isEmpty()) {
         failRefresh(error);
         return;
@@ -303,7 +324,7 @@ void SunoNotificationService::handleRefreshReply(QNetworkReply* reply, ReplyKind
     }
 
     QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(payload, &parseError);
+    const QJsonDocument document = QJsonDocument::fromJson(*body, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
         failRefresh(QStringLiteral("Notification response returned invalid JSON"));
         return;
@@ -388,15 +409,28 @@ void SunoNotificationService::handleMarkReadReply(QNetworkReply* reply, quint64 
 
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString error = requestError(reply, QStringLiteral("Mark all read failed"));
-    const QByteArray payload = reply->readAll();
+
+    // Same ordering and same reason as handleRefreshReply: the body carries the
+    // breach diagnosis, the transport error only says the reply was cancelled.
+    if (!client_) {
+        reply->deleteLater();
+        failMarkRead(QStringLiteral("Notifications has no SunoClient to read the response with"));
+        return;
+    }
+    auto body = client_->readTrackedBody(reply);
     reply->deleteLater();
+
+    if (!body) {
+        failMarkRead(body.error());
+        return;
+    }
     if (!error.isEmpty() || status < 200 || status >= 300) {
         failMarkRead(error.isEmpty() ? QStringLiteral("Mark all read failed") : error);
         return;
     }
 
     QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(payload, &parseError);
+    const QJsonDocument document = QJsonDocument::fromJson(*body, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
         failMarkRead(QStringLiteral("Mark all read returned invalid JSON"));
         return;

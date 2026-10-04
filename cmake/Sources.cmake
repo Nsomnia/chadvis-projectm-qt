@@ -427,3 +427,30 @@ list(APPEND RECORDER_SOURCES
     src/recorder/ResamplerEngine.hpp
     src/recorder/ResamplerEngine.cpp
 )
+
+# ─────────────────────────────────────────────────────────────
+# OFFSCREEN RENDER SPIKE (appended 2026-10-04)
+#
+# src/recorder/OffscreenRenderSpike.{hpp,cpp} answers the question that gates the
+# whole batch renderer: can a GL context render pixels on a background thread?
+#
+# MEASURED ANSWER ON macOS: NO, and not because of thread affinity. The context
+# itself is fine off-thread (raw CGLSetCurrentContext succeeds and reports
+# GL 4.1), but there is no off-main-thread DRAWABLE left: CGLCreatePBuffer is
+# gone (deprecated 10.3, removed 10.7), QWindow::create() from a worker throws
+# NSInternalInconsistencyException, Qt's own makeCurrent(QWindow*) guard fires,
+# and raw NSOpenGLContext setView: SIGILLs inside AppKit. QOffscreenSurface makes
+# a context with framebuffer 0 == GL_FRAMEBUFFER_UNDEFINED.
+#
+# So the batch design is: ONE long-lived context and ONE long-lived pm::Engine on
+# the GUI thread, with N jobs interleaving frames through it, each keeping its own
+# encoder. Parallelism moves from contexts to encoders.
+#
+# This file is in the tree because the answer is a measurement, and a
+# measurement nobody can reproduce is a comment. RECORDER_SOURCES for the usual
+# non-globbing reason.
+# ─────────────────────────────────────────────────────────────
+list(APPEND RECORDER_SOURCES
+    src/recorder/OffscreenRenderSpike.hpp
+    src/recorder/OffscreenRenderSpike.cpp
+)

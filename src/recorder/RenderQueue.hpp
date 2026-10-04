@@ -36,15 +36,16 @@
  * `isCancelRequested()` for one that cannot.
  *
  * @section Why bounded concurrency is mandatory, and why the default is 2
- * One job costs a GL context, an FFmpeg encoder with its own thread, a demuxer,
- * and a per-frame full-frame readback. The readback is the number that decides
- * this: `captureAsync` builds a fresh `std::vector<u8>` per frame, which is
- * 8.3 MB at 1080p RGBA and roughly 500 MB/s of malloc/free at 60 fps. Two jobs
- * already put a megabyte-scale allocator on the critical path twice over; the
- * default is therefore 2 and not `DownloadQueue`'s 3, which is the right number
- * for three sockets and the wrong one for two GL contexts competing for the same
- * driver. The limit is a real ceiling, not a hint -- `pump()` is the only thing
- * that fills slots and it checks before every handout.
+ * This was written as "2, not DownloadQueue's 3, because one job costs a GL
+ * context and an 8.3 MB per-frame readback, so two put a megabyte-scale
+ * allocator on the critical path twice over." That was an argument, not a
+ * measurement, and OffscreenRenderSpike has now measured it: on macOS the
+ * ceiling is **1**, because there is no off-main-thread drawable at all and a
+ * second job cannot have a context on a worker thread. The allocator was never
+ * the binding constraint.
+ *
+ * The limit is a real ceiling, not a hint -- `pump()` is the only thing that
+ * fills slots and it checks before every handout.
  *
  * @section Why there is no backoff ladder
  * `DownloadQueue`'s ladder (1s / 4s / 16s with jitter) exists because its
@@ -230,9 +231,37 @@ class RenderQueue : public QObject {
     Q_OBJECT
 
 public:
-    /// Two GL contexts and two encoders, not three: see the file header on the
-    /// per-frame readback cost.
-    static constexpr int kDefaultMaxConcurrent = 2;
+        /// ONE, and that is a measurement rather than a preference.
+///
+/// It was 2, chosen from an *argument*: one job costs a GL context, an FFmpeg
+/// encoder with its own thread, a demuxer, and a per-frame full-frame readback,
+/// and two of those were thought to be a fair trade on a four-core box. The
+/// argument was never tested. `src/recorder/OffscreenRenderSpike` now has, and
+/// it refutes the premise on macOS: there is **no off-main-thread drawable at
+/// all**, so a second job cannot have its own context on a worker thread and the
+/// ceiling is 1 regardless of how much RAM the readback costs.
+///
+/// The measured detail that matters, because it is the expensive kind of wrong:
+/// this is not thread *affinity*. A context created on a worker thread is fine
+/// (raw CGLSetCurrentContext succeeds, GL 4.1); what fails is that framebuffer 0
+/// is GL_FRAMEBUFFER_UNDEFINED, because every mechanism that used to give a
+/// worker a drawable is gone -- CGLCreatePBuffer (deprecated 10.3, removed
+/// 10.7), QWindow::create() from a worker (NSInternalInconsistencyException),
+/// Qt's own makeCurrent(QWindow*) guard, raw NSOpenGLContext setView: (SIGILL
+/// inside AppKit). QOffscreenSurface makes a working *context* with no colour
+/// buffer.
+///
+/// So the shape is: one long-lived context and one long-lived pm::Engine on the
+/// GUI thread, with N jobs interleaving frames through it, each keeping its own
+/// encoder. Parallelism moves from contexts to encoders, and this ceiling bounds
+/// the encoders, not the GL.
+///
+/// A platform where a worker CAN have a drawable is what the ceiling exists for:
+/// set it from offscreenVerdictMaxConcurrency(), which returns -1 for Supported
+/// precisely so that no ceiling is invented until the frame-cost pass measures
+/// one. Raise this when that platform exists, and do not raise it because a
+/// machine has spare cores.
+static constexpr int kDefaultMaxConcurrent = 1;
     /// One retry, immediately. Not a ladder; see the file header on why.
     static constexpr int kMaxAttempts = 2;
 

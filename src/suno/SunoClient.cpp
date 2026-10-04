@@ -13,12 +13,14 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
+#include <QScopeGuard>
 #include <QThread>
 #include <QTimer>
 #include <QUrl>
 
 #include <algorithm>
 #include <deque>
+#include <iterator>
 #include <utility>
 
 namespace vc::suno {
@@ -27,11 +29,22 @@ namespace vc::suno {
 // header recipes and JWT decoding all live in suno/auth/. What remains here
 // is scheduling policy: when to refresh (proactive timer + single 401 retry)
 // and how requests queue behind authentication.
-
 namespace {
+
 /// Cap on the proactive-refresh delay: even for long-lived tokens, re-touch at
 /// most every 55 minutes (per Aug-2026 capture guidance).
 constexpr qint64 kMaxRefreshDelaySecs = 55 * 60;
+
+/// Reported when a caller asks for the body of a reply this client never issued --
+/// or of one whose diagnosis has already been consumed. Named rather than
+/// dereferenced: a null reply is a programming error, and an empty QByteArray
+/// returned for it would be indistinguishable from "the server sent nothing",
+/// which is precisely the silent failure this accessor exists to delete.
+QString untrackedBodyMessage() {
+    return QStringLiteral(
+            "no bounded response body is available for this reply: SunoClient did not "
+            "issue it, or its body has already been read");
+}
 
 /// Accept-or-explain for a token we are about to install as a live bearer.
 /// Returns an empty string when the token may be used, otherwise a
@@ -736,9 +749,93 @@ void SunoClient::trackReply(QNetworkReply* reply) {
     if (reply) {
         activeReplies_.push_back(QPointer<QNetworkReply>(reply));
     }
+    armBodyReader(reply);
+}
+
+void SunoClient::armBodyReader(QNetworkReply* reply) {
+    if (!reply || bodyReaders_.contains(reply)) {
+        return;
+    }
+
+    // JsonApi, and hardcoded rather than passed in. Every reply tracked here was
+    // built by enqueueAuthenticatedRequest(), whose request already carries
+    // http::RequestClass::JsonApi's transfer timeout via StudioApiHeaders::apply
+    // (auth/AuthHeaders.cpp:17). Naming the class in one place is what keeps the
+    // timeout and the byte cap from being two numbers that can disagree -- the
+    // timeout would be 60 s for an Upload and the cap 1 MiB rather than 16, and a
+    // caller that guessed wrong would get a cap the request policy never agreed to.
+    auto reader =
+            http::makeBodyReader(http::RequestClass::JsonApi,
+                                 http::maxResponseBytes(http::RequestClass::JsonApi));
+    if (!reader) {
+        // Unreachable for a class cap HttpPolicy already asserts is usable, but a
+        // reader we could not build must not leave the reply unbounded, so the
+        // refusal is recorded and enforced rather than swallowed.
+        LOG_ERROR("SunoClient: cannot bound a response body: {}",
+                  http::describePolicyFailure(reader.error()));
+        bodyFailures_.insert(reply, CarriedBodyFailure{reader.error(), false});
+        reply->abort();
+        return;
+    }
+    bodyReaders_.insert(reply, std::move(*reader));
+
+    // Pumped from readyRead, not from finished(). This is the whole point: a read
+    // that happens after the transfer has completed bounds what we RETAIN, but Qt
+    // has already buffered the body, so a hostile origin can keep sending
+    // indefinitely. Pumping as bytes arrive is what actually stops them -- the
+    // one-byte overrun is detected on the read that crosses it and the reply is
+    // aborted there and then.
+    connect(reply, &QIODevice::readyRead, this, [this, reply]() { pumpTrackedBody(reply); });
+}
+
+void SunoClient::pumpTrackedBody(QNetworkReply* reply) {
+    auto it = bodyReaders_.find(reply);
+    if (it == bodyReaders_.end()) {
+        return;
+    }
+    // The result is copied out before abort() is called: aborting emits finished(),
+    // which lands in handleReplyFinished() and erases this very map entry, so
+    // holding `it` across the abort would leave a dangling iterator.
+    const auto drained = it->pump(*reply);
+    if (drained) {
+        return;
+    }
+    LOG_ERROR("SunoClient: aborting an oversized response: {}",
+              http::describePolicyFailure(drained.error()));
+    // The refusal is sticky inside the reader and is copied into bodyFailures_ by
+    // removeTrackedReply(), so the handler that runs off the abort below reports
+    // the limit rather than "Operation canceled".
+    reply->abort();
+}
+
+void SunoClient::pruneCarriedFailures() {
+    for (auto it = bodyFailures_.begin(); it != bodyFailures_.end();) {
+        it = (it.key() == nullptr) ? bodyFailures_.erase(it) : std::next(it);
+    }
 }
 
 void SunoClient::removeTrackedReply(QNetworkReply* reply) {
+    // Order matters and is the reason this is one function. The buffered body --
+    // up to 16 MiB per reply -- is released here, before the reply is dropped;
+    // the sticky PolicyFailure is copied out first, because the reader holding it
+    // is what is being destroyed. Without the copy the single most useful
+    // diagnostic dies with the buffer, and the reply that was aborted precisely
+    // so the user could be told why now reports only a cancelled operation.
+    if (const auto it = bodyReaders_.find(reply); it != bodyReaders_.end()) {
+        if (const auto failure = it->failure(); failure) {
+            // Insert-if-absent, never overwrite. The absent case is the normal one:
+            // the reader's failure has not been asked about yet. The present case is
+            // the ordering recorded at length in SunoClient.hpp's
+            // CarriedBodyFailure -- the handler already ran, already got this
+            // sentence from the reader, and its untrack scope guard has now fired.
+            // Writing here regardless is what reported the same breach twice.
+            if (!bodyFailures_.contains(reply)) {
+                bodyFailures_.insert(reply, CarriedBodyFailure{*failure, false});
+            }
+        }
+        bodyReaders_.erase(it);
+    }
+    pruneCarriedFailures();
     activeReplies_.erase(
             std::remove_if(activeReplies_.begin(), activeReplies_.end(),
                            [reply](const QPointer<QNetworkReply>& tracked) {
@@ -756,11 +853,18 @@ void SunoClient::abortTrackedReplies() {
             continue;
         }
         QObject::disconnect(reply, nullptr, this, nullptr);
+        // Drop the buffered body rather than carrying a breach nobody will ever
+        // report: every one of these replies is disconnected and abandoned, so
+        // there is no handler left to name a limit to. This is also the path
+        // sign-out takes, and a sign-out must not leave 16 MiB per in-flight
+        // reply sitting in a map that only the next untrack would empty.
+        bodyReaders_.remove(reply);
         reply->abort();
         if (!weak.isNull()) {
             reply->deleteLater();
         }
     }
+    bodyFailures_.clear();
 }
 
 void SunoClient::applyBearer(const auth::BearerToken& token) {
@@ -1045,7 +1149,13 @@ void SunoClient::handleReplyFinished(QNetworkReply* reply, PendingRequest&& pend
         return;
     }
     const bool tracked = isTrackedReply(reply);
-    removeTrackedReply(reply);
+    // One untrack for every exit below, and deliberately at scope exit rather than
+    // at the top of the function: the callback has to be able to call
+    // readTrackedBody() while the reader still exists. Untracking first would mean
+    // every successful reply was read after its buffer had already been released,
+    // which returns the untracked-body error instead of the body -- the mirror
+    // image of the empty-readAll() hazard, and just as silent.
+    const auto untrack = qScopeGuard([this, reply]() { removeTrackedReply(reply); });
     if (!tracked || pending.epoch != requestEpoch_ ||
         authState_ != auth::AuthState::ActiveValid) {
         reply->deleteLater();
@@ -1077,9 +1187,86 @@ void SunoClient::handleReplyFinished(QNetworkReply* reply, PendingRequest&& pend
     pending.callback(reply);
 }
 
+std::expected<QByteArray, QString> SunoClient::readTrackedBody(QNetworkReply* reply) {
+    if (reply == nullptr) {
+        return std::unexpected(untrackedBodyMessage());
+    }
+
+    // Take the carried breach for THIS reply, if there is one, before deciding.
+    //
+    // `bodyFailures_` is keyed on a raw `QNetworkReply*`, so an entry nobody
+    // consumes outlives the reply it names -- and a later reply allocated at the
+    // same address would inherit a breach that never happened to it. Consuming it
+    // here rather than only in the untracked branch means the entry cannot survive
+    // a read of its own reply under ANY ordering of `finished` delivery and the
+    // untrack scope guard.
+    //
+    // A `delivered` entry is dropped WITHOUT being reported: that is the
+    // "reported once" half of the contract, and it is why the flag exists at all
+    // (see CarriedBodyFailure for the observed ordering that requires it).
+    std::optional<http::PolicyFailure> carried;
+    if (const auto it = bodyFailures_.find(reply); it != bodyFailures_.end()) {
+        if (!it->delivered) {
+            carried = it->failure;
+        }
+        bodyFailures_.erase(it);
+    }
+
+    if (const auto it = bodyReaders_.find(reply); it != bodyReaders_.end()) {
+        // Final drain, and it is load-bearing rather than hygiene. A reply can
+        // deliver its last bytes with no readyRead of its own -- a small body
+        // that arrives in one chunk, or a reply that finished before the event
+        // loop got round to the signal -- so a reader pumped only from readyRead
+        // would hand back a short body and look like a server truncation.
+        if (const auto drained = it->pump(*reply); !drained) {
+            // Marked delivered BEFORE returning, because the caller is the request
+            // callback and the untrack scope guard in handleReplyFinished runs the
+            // instant it returns -- re-inserting the failure we are reporting right
+            // now.
+            bodyFailures_.insert(reply, CarriedBodyFailure{drained.error(), true});
+            return std::unexpected(http::describePolicyFailureText(drained.error()));
+        }
+        // Unreachable while `failure_` is set only by a failing pump() and never
+        // cleared -- a successful pump above proves there is none. Kept because the
+        // two facts live in different translation units, and this branch reports
+        // the same way either way.
+        if (const auto failure = it->failure(); failure) {
+            carried = *failure;
+        }
+        if (carried) {
+            bodyFailures_.insert(reply, CarriedBodyFailure{*carried, true});
+            return std::unexpected(http::describePolicyFailureText(*carried));
+        }
+        return it->body();
+    }
+
+    // Untracked, but a breach was recorded as the reader was torn down. `carried`
+    // already holds it -- consumed from bodyFailures_ at the top of this function
+    // -- so it is reported exactly once, and a second ask about a reply whose body
+    // is gone gets the "not available" error rather than a repeated failure.
+    if (carried) {
+        return std::unexpected(http::describePolicyFailureText(*carried));
+    }
+
+    return std::unexpected(untrackedBodyMessage());
+}
+
 void SunoClient::handleJsonReply(QNetworkReply* reply,
                                   std::function<void(const QJsonDocument&)> handler) {
     if (!reply) {
+        return;
+    }
+    // The body is read BEFORE the transport error is consulted, and that ordering
+    // is the reason a user learns anything. A body that breached its cap was
+    // aborted from readyRead, so reply->error() is OperationCanceledError by now
+    // and errorString() says "Operation canceled" -- true, and useless. The
+    // sticky PolicyFailure carried out of the reader names the limit instead, so
+    // it has to be asked for first.
+    auto body = readTrackedBody(reply);
+    if (!body) {
+        LOG_ERROR("SunoClient: {}", body.error().toStdString());
+        errorOccurred.emitSignal(body.error().toStdString());
+        reply->deleteLater();
         return;
     }
     if (reply->error() != QNetworkReply::NoError) {
@@ -1087,7 +1274,7 @@ void SunoClient::handleJsonReply(QNetworkReply* reply,
         reply->deleteLater();
         return;
     }
-    const QJsonDocument document = QJsonDocument::fromJson(reply->readAll());
+    const QJsonDocument document = QJsonDocument::fromJson(*body);
     reply->deleteLater();
     handler(document);
 }

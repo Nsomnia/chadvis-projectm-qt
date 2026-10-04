@@ -1,0 +1,5 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "model": "kilo/Space Bunny Alpha",
+  "small_model": "kilo/Auto Efficient"
+}

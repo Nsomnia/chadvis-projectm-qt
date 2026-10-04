@@ -24,6 +24,7 @@ int runTestClipParser(int argc, char** argv);
 int runTestDownloadQueue(int argc, char** argv);
 int runTestCredentialStorePolicy(int argc, char** argv);
 int runTestSunoDownloader(int argc, char** argv);
+int runTestBoundedBody(int argc, char** argv);
 int runTestLyricsPipeline(int argc, char** argv);
 int runTestLyricsExport(int argc, char** argv);
 int runTestPcmFormat(int argc, char** argv);
@@ -56,6 +57,7 @@ int main(int argc, char* argv[]) {
     status |= runTestDownloadQueue(argc, argv);
     status |= runTestCredentialStorePolicy(argc, argv);
     status |= runTestSunoDownloader(argc, argv);
+    status |= runTestBoundedBody(argc, argv);
     status |= runTestLyricsPipeline(argc, argv);
     status |= runTestLyricsExport(argc, argv);
     status |= runTestPcmFormat(argc, argv);

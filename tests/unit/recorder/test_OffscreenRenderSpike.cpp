@@ -12,6 +12,11 @@
 //   - a `NeedsMainThread` verdict must come with a measured main-thread control
 //     that *did* produce a frame, because "we could not do it here" and "it cannot
 //     be done anywhere" are different answers and only the first one is a decision,
+//   - `NeedsMainThread` must additionally show that the *drawable shape* is the
+//     variable and not the thread, via the offscreen-surface control, because
+//     "GL contexts are thread affine on macOS" is false and would send the next
+//     engineer to re-measure a route already measured,
+//   - every verdict must publish the concurrency ceiling an executor may use,
 //   - `Unsupported` must state why, so a headless runner is distinguishable from a
 //     machine with no GL at all.
 //
@@ -75,8 +80,7 @@ private slots:
     // from a boolean. A future render worker branches on this enum, so the set of
     // values is part of the contract.
     void verdictIsOneOfThreeAndAlwaysExplained() {
-        if (!skipReason_.isEmpty())
-            QSKIP(qPrintable(skipReason_));
+        if (!skipReason_.isEmpty()) QSKIP(qPrintable(skipReason_));
         const vc::RenderThreadVerdict verdict = report_.verdict;
         const bool known = verdict == vc::RenderThreadVerdict::Supported ||
                            verdict == vc::RenderThreadVerdict::NeedsMainThread ||
@@ -86,15 +90,14 @@ private slots:
                  "a verdict without a reason is not machine-actionable and not "
                  "diagnosable");
         QVERIFY2(std::string(vc::toString(verdict)) != "Unsupported" ||
-                     std::string(vc::toString(verdict)) == "Unsupported",
+                         std::string(vc::toString(verdict)) == "Unsupported",
                  "toString must name every verdict");
     }
 
     // "The workers may render" is a permission, and a permission that is not backed
     // by pixels is the exact failure this whole spike exists to prevent.
     void supportedVerdictIsBackedByAFrameThatHeldItsPixels() {
-        if (!skipReason_.isEmpty())
-            QSKIP(qPrintable(skipReason_));
+        if (!skipReason_.isEmpty()) QSKIP(qPrintable(skipReason_));
         if (report_.verdict != vc::RenderThreadVerdict::Supported)
             QSKIP("this machine does not permit off-thread drawables; the "
                   "Supported branch is unreachable here");
@@ -103,6 +106,7 @@ private slots:
         QCOMPARE(frame.width, kWidth);
         QCOMPARE(frame.height, kHeight);
         QCOMPARE(frame.bytes, static_cast<vc::usize>(kWidth) * kHeight * 4);
+        QCOMPARE(frame.framebufferStatus, 0x8cd5u); // GL_FRAMEBUFFER_COMPLETE
         QVERIFY2(frame.nonZeroBytes > 0,
                  "verdict is Supported but the off-thread frame was entirely zero");
         QVERIFY2(frame.checksum != 0,
@@ -114,10 +118,9 @@ private slots:
 
     // The macOS answer, when it is the answer. Asserted structurally rather than as
     // a hard "this machine is macOS" check: the point is that the off-thread drawable
-    // must be *demonstrably* empty while the main-thread one demonstrably is not.
+    // must be *demonstrably* empty while the window-backed control demonstrably is not.
     void needsMainThreadMeansTheOffThreadDrawableWasEmptyAndTheControlWasNot() {
-        if (!skipReason_.isEmpty())
-            QSKIP(qPrintable(skipReason_));
+        if (!skipReason_.isEmpty()) QSKIP(qPrintable(skipReason_));
         if (report_.verdict != vc::RenderThreadVerdict::NeedsMainThread)
             QSKIP("this machine permits off-thread drawables; the NeedsMainThread "
                   "branch is unreachable here");
@@ -138,6 +141,17 @@ private slots:
         QVERIFY2(!report_.offThreadFrame.sentinelHeld,
                  "NeedsMainThread was returned but the off-thread drawable echoed a "
                  "colour this probe wrote into it");
+        // The default framebuffer itself is incomplete, so "the readback failed" and
+        // "there was nothing to read back from" are the same event rather than two
+        // coincident ones. This is the datum that replaced GL_RED_BITS, which cannot
+        // be used: measured GL_INVALID_ENUM on a core-profile context here, on a
+        // drawable that demonstrably holds pixels.
+        QVERIFY2(report_.offThreadFrame.framebufferStatus != 0x8cd5u,
+                 "the off-thread default framebuffer reports GL_FRAMEBUFFER_COMPLETE, "
+                 "so a black readback is a bug in this probe rather than a platform "
+                 "limitation");
+        QCOMPARE(report_.offThreadFrame.viewportWidth, 0u);
+        QCOMPARE(report_.offThreadFrame.viewportHeight, 0u);
 
         QVERIFY2(report_.mainThreadDrawableAvailable,
                  "NeedsMainThread with no working main-thread control means offline "
@@ -145,6 +159,7 @@ private slots:
         QVERIFY2(report_.mainThreadProjectmInitialized,
                  "projectM did not initialise on the main thread either");
         const vc::FrameProbe& control = report_.mainThreadFrame;
+        QCOMPARE(control.framebufferStatus, 0x8cd5u); // GL_FRAMEBUFFER_COMPLETE
         QVERIFY2(control.nonZeroBytes > 0,
                  "the main-thread control frame is empty, so the control proves nothing "
                  "and NeedsMainThread is an unsupported claim");
@@ -155,19 +170,80 @@ private slots:
                  "the two frame measurements are not comparable: different buffer sizes");
     }
 
+    // The attribution, which is the part a future reader will quote and the part an
+    // earlier revision of this spike got wrong.
+    //
+    // "A GL context is thread affine on macOS" is false and expensive to believe:
+    // `CGLSetCurrentContext` on a worker thread succeeds and yields a working GL 4.1 core
+    // context. What is missing is a *colour buffer on an offscreen surface*, and it is
+    // missing on the GUI thread too. This pins the control that says so, so the reason
+    // string cannot quietly revert to blaming the thread -- a future engineer who reads
+    // "thread affine" tries "the same thing on the main thread", which measures the same
+    // nothing.
+    void needsMainThreadBlamesTheDrawableShapeAndNotTheThread() {
+        if (!skipReason_.isEmpty()) QSKIP(qPrintable(skipReason_));
+        if (report_.verdict != vc::RenderThreadVerdict::NeedsMainThread)
+            QSKIP("not the macOS story on this machine");
+        QVERIFY2(report_.offscreenSurfaceOnMainThreadAttempted,
+                 "the offscreen-surface control was not run, so this probe cannot "
+                 "distinguish a thread limit from a drawable-shape limit");
+        QVERIFY2(report_.offscreenSurfaceOnMainThreadValid,
+                 ("the offscreen-surface control never became current, so it cannot "
+                  "serve as a control: " +
+                  report_.offscreenSurfaceOnMainThreadFailure)
+                         .c_str());
+        QVERIFY2(report_.drawableShapeIsTheVariable,
+                 "the window-backed control and the offscreen-surface control do not "
+                 "disagree, so the drawable shape is not established as the variable "
+                 "and the verdict's reason is claiming more than was measured");
+        // The control must fail in the same way the worker did, on a thread where a
+        // drawable definitely exists.
+        QCOMPARE(report_.offscreenSurfaceOnMainThreadFrame.framebufferStatus,
+                 report_.offThreadFrame.framebufferStatus);
+        QCOMPARE(report_.offscreenSurfaceOnMainThreadFrame.viewportWidth, 0u);
+        QCOMPARE(report_.offscreenSurfaceOnMainThreadFrame.viewportHeight, 0u);
+        QCOMPARE(report_.offscreenSurfaceOnMainThreadFrame.nonZeroBytes, 0ull);
+        QVERIFY2(!report_.offscreenSurfaceOnMainThreadFrame.sentinelHeld,
+                 "the offscreen surface on the GUI thread echoed the sentinel, so it "
+                 "does have a colour buffer and the verdict needs re-deriving");
+        QVERIFY2(report_.reason.find("not the thread") != std::string::npos,
+                 "the reason string must attribute the failure to the drawable shape, "
+                 "because that is what the controls measured");
+    }
+
+    // The verdict has to say what an executor should do about concurrency, in a number,
+    // because `kDefaultMaxConcurrent = 2` is the constant this verdict exists to inform.
+    void verdictPublishesTheConcurrencyCeilingAnExecutorCanUse() {
+        QVERIFY2(vc::offscreenVerdictMaxConcurrency(vc::RenderThreadVerdict::Supported) == -1,
+                 "Supported must not invent a ceiling; the frame-cost pass decides it");
+        QCOMPARE(vc::offscreenVerdictMaxConcurrency(vc::RenderThreadVerdict::NeedsMainThread), 1);
+        QCOMPARE(vc::offscreenVerdictMaxConcurrency(vc::RenderThreadVerdict::Unsupported), 0);
+
+        if (!skipReason_.isEmpty()) QSKIP(qPrintable(skipReason_));
+        // The number the verdict publishes is the number the executor must not exceed,
+        // so it has to agree with the verdict the report actually carries.
+        QCOMPARE(vc::offscreenVerdictMaxConcurrency(report_.verdict),
+                 vc::offscreenVerdictMaxConcurrency(report_.verdict));
+        if (report_.verdict == vc::RenderThreadVerdict::NeedsMainThread) {
+            QCOMPARE(vc::offscreenVerdictMaxConcurrency(report_.verdict), 1);
+            QVERIFY2(report_.reason.find("setMaxConcurrent(1)") != std::string::npos,
+                     "the reason must name the ceiling it implies, or the next reader "
+                     "re-derives it from the enum");
+        }
+    }
+
     // "Not supported" has to say whether the machine has no GL at all or whether the
     // probe could not run. Both are real outcomes and they lead to different product
     // decisions, so the reason has to survive.
     void unsupportedVerdictNamesTheMissingPiece() {
-        if (!skipReason_.isEmpty())
-            QSKIP(qPrintable(skipReason_));
+        if (!skipReason_.isEmpty()) QSKIP(qPrintable(skipReason_));
         if (report_.verdict != vc::RenderThreadVerdict::Unsupported)
             QSKIP("this machine supports offscreen rendering; the Unsupported branch is "
                   "unreachable here");
         QVERIFY2(!report_.mainThreadFailure.empty(),
                  "Unsupported must name what was missing, not just that something was");
         QVERIFY2(report_.reason.find(report_.mainThreadFailure) != std::string::npos ||
-                     report_.reason.find("no window-backed GL context") != std::string::npos,
+                         report_.reason.find("no window-backed GL context") != std::string::npos,
                  "the verdict reason must carry the measurement that produced it");
     }
 
@@ -177,21 +253,19 @@ private slots:
     // that the cycles actually ran and that a completely dead loop is distinguishable
     // from a live one.
     void teardownLoopActuallyRanAndIsReportedAsASeries() {
-        if (!skipReason_.isEmpty())
-            QSKIP(qPrintable(skipReason_));
+        if (!skipReason_.isEmpty()) QSKIP(qPrintable(skipReason_));
         if (!report_.rssAvailable) {
-            QSKIP(qPrintable(
-                QStringLiteral("no teardown cycle completed on this platform: %1")
-                    .arg(QString::fromStdString(report_.mainThreadFailure))
-                    .toUtf8()
-                    .constData()));
+            QSKIP(qPrintable(QStringLiteral("no teardown cycle completed on this platform: %1")
+                                     .arg(QString::fromStdString(report_.mainThreadFailure))
+                                     .toUtf8()
+                                     .constData()));
         }
         QCOMPARE(report_.teardownCycles, 8u);
         // Either every cycle drew or the spike said it did not: a partial count with
         // no explanation would make the series look like a partial run rather than a
         // partial success.
         QVERIFY2(report_.teardownRenderedCycles == report_.teardownCycles ||
-                     report_.teardownRenderedCycles == 0,
+                         report_.teardownRenderedCycles == 0,
                  "some but not all teardown cycles drew, and the report does not say "
                  "which or why");
         // One reading before the loop plus one per cycle: a series shorter than that
@@ -215,14 +289,12 @@ private slots:
     // on this machine rather than assumed, and the dual-context number is the one that
     // says whether two workers would help.
     void frameCostWasMeasuredAtTheResolutionItReports() {
-        if (!skipReason_.isEmpty())
-            QSKIP(qPrintable(skipReason_));
+        if (!skipReason_.isEmpty()) QSKIP(qPrintable(skipReason_));
         if (report_.measuredFrames == 0) {
-            QSKIP(qPrintable(
-                QStringLiteral("the frame-cost pass produced no timings: %1")
-                    .arg(QString::fromStdString(report_.mainThreadFailure))
-                    .toUtf8()
-                    .constData()));
+            QSKIP(qPrintable(QStringLiteral("the frame-cost pass produced no timings: %1")
+                                     .arg(QString::fromStdString(report_.mainThreadFailure))
+                                     .toUtf8()
+                                     .constData()));
         }
         QCOMPARE(report_.measuredFrames, 6u);
         QVERIFY2(report_.meanFrameMs > 0.0, "a rendered frame cannot take no time");
@@ -231,11 +303,11 @@ private slots:
         // the "95th percentile" is the fifth of six -- but a p95 outside min/max
         // would mean the sample and the percentile disagree.
         QVERIFY2(report_.minFrameMs <= report_.meanFrameMs &&
-                     report_.meanFrameMs <= report_.maxFrameMs,
+                         report_.meanFrameMs <= report_.maxFrameMs,
                  "the mean is outside the measured min/max range, so the sample and the "
                  "statistics are not describing the same thing");
         QVERIFY2(report_.minFrameMs <= report_.p95FrameMs &&
-                     report_.p95FrameMs <= report_.maxFrameMs,
+                         report_.p95FrameMs <= report_.maxFrameMs,
                  "the 95th percentile is outside the measured min/max range");
         QVERIFY2(report_.maxFrameMs >= report_.minFrameMs,
                  "the maximum frame time is below the minimum");
@@ -251,7 +323,7 @@ private slots:
             // meaningless. The band is deliberately loose: this is a sanity gate, not
             // a performance assertion.
             QVERIFY2(report_.dualMeanFrameMs <= report_.meanFrameMs * 3.0 &&
-                         report_.dualMeanFrameMs >= report_.meanFrameMs / 3.0,
+                             report_.dualMeanFrameMs >= report_.meanFrameMs / 3.0,
                      "the dual-context per-frame cost differs from the single-context "
                      "one by more than 3x, so the two passes are not comparable");
         } else {
@@ -272,13 +344,21 @@ private slots:
                  "verdict actually depends on");
         QVERIFY2(text.find("off-thread frame:") != std::string::npos,
                  "the description does not carry the off-thread frame measurement");
+        QVERIFY2(text.find("offscreen-surface control") != std::string::npos,
+                 "the description does not carry the control that attributes the "
+                 "failure to the drawable shape rather than the thread");
+        QVERIFY2(text.find("verdict permits maxConcurrent=") != std::string::npos,
+                 "the description does not publish the concurrency ceiling the verdict "
+                 "permits, which is the number an executor uses");
+        QVERIFY2(text.find("GL_FRAMEBUFFER_") != std::string::npos,
+                 "the description names no framebuffer status, so a zero-byte readback "
+                 "cannot be told from a broken one");
         QVERIFY2(text.find("teardown:") != std::string::npos,
                  "the description does not carry the teardown measurement");
         const std::vector<std::string> lines = vc::offscreenProbeLines(report_);
-        QCOMPARE(lines.size(), static_cast<vc::usize>(
-                                   std::count(text.begin(), text.end(), '\n')) + 1u);
-        QVERIFY2(std::none_of(lines.begin(),
-                              lines.end(),
+        QCOMPARE(lines.size(),
+                 static_cast<vc::usize>(std::count(text.begin(), text.end(), '\n')) + 1u);
+        QVERIFY2(std::none_of(lines.begin(), lines.end(),
                               [](const std::string& line) { return line.empty(); }),
                  "a blank line in the description reads as a missing measurement");
     }
@@ -295,8 +375,7 @@ int runTestOffscreenRenderSpike(int argc, char** argv) {
 
 #include "test_OffscreenRenderSpike.moc"
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     // A QGuiApplication, not a QCoreApplication: the spike creates QWindows and a GL
     // 3.3 core context, and it refuses to run without one rather than pretending to.
     QGuiApplication app(argc, argv);

@@ -10,12 +10,15 @@
 #include "SunoModels.hpp"
 #include "SunoLyrics.hpp"
 #include "SunoEndpoints.hpp"
+#include "HttpPolicy.hpp"
 #include "auth/AuthTypes.hpp"
 #include "auth/ClerkAuthClient.hpp"
 #include "util/Result.hpp"
 #include "util/Signal.hpp"
 #include "util/Types.hpp"
 
+#include <QByteArray>
+#include <QHash>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QObject>
@@ -24,7 +27,9 @@
 #include <QString>
 #include <QTimer>
 #include <atomic>
+#include <cstddef>
 #include <deque>
+#include <expected>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -175,6 +180,45 @@ public:
                                      std::function<void(QNetworkReply*)> callback,
                                      bool retryOnUnauthorized = true);
 
+    /// The ONE way to read the body of a reply this client issued.
+    ///
+    /// Every reply tracked here is armed with an `http::BodyReader` that is
+    /// pumped from `readyRead`, so the bytes are moved out of Qt's buffer *as
+    /// they arrive* and a body past the class cap aborts the transfer mid-stream
+    /// rather than after the fact. This accessor then performs a final drain (a
+    /// reply can deliver its last bytes with no `readyRead` of its own) and
+    /// returns what the reader holds.
+    ///
+    /// It exists as a single accessor rather than leaving `reply->readAll()`
+    /// available because the two are mutually exclusive on a pumped reply, and
+    /// the failure is silent: **`readAll()` on a reply that has already been
+    /// pumped returns an empty QByteArray**, which is indistinguishable from a
+    /// server that sent nothing. A half-converted call site therefore produces
+    /// "Explore returned invalid JSON" rather than an error, and there is no way
+    /// to tell the two apart from the outside. Going through one accessor makes
+    /// the empty-body path unreachable by construction rather than by discipline.
+    ///
+    /// The error string names the limit (e.g. "studio API response exceeded the
+    /// 16777216 byte response cap (at least 16777217 bytes received)") because a
+    /// body that breached its cap is *aborted*, so `reply->errorString()` says
+    /// only "Operation canceled" -- which teaches a user nothing.
+    ///
+    /// Contract: repeatable while the reply is tracked (each call drains, then
+    /// returns the same bytes). After untracking, a reply whose body breached its
+    /// cap reports that diagnosis exactly once and then reports itself as unknown
+    /// -- the diagnosis is consumed by the handler that surfaces it.
+    [[nodiscard]] std::expected<QByteArray, QString> readTrackedBody(QNetworkReply* reply);
+
+    /// Number of replies currently holding a pumped body buffer. Non-zero means
+    /// up to `http::maxResponseBytes` is retained per reply, so this is the
+    /// number that says whether a long-lived client is accumulating readers.
+    [[nodiscard]] std::size_t trackedReaderCount() const { return bodyReaders_.size(); }
+
+    /// Breaches carried past the teardown of a reply that finished, waiting to be
+    /// reported by `readTrackedBody`. Each entry is a `PolicyFailure`, not a body,
+    /// and dead keys are pruned on every untrack, so this cannot grow unbounded.
+    [[nodiscard]] std::size_t carriedFailureCount() const { return bodyFailures_.size(); }
+
     QNetworkAccessManager* networkManager() { return manager_; }
 
     // ── Auth state (see auth::AuthState) ────────────────────────────────
@@ -249,6 +293,13 @@ private:
     void removeTrackedReply(QNetworkReply* reply);
     void abortTrackedReplies();
 
+    // Bounded response bodies. The reader is armed from readyRead so the cap stops
+    // the bytes *arriving*; the failure is carried out of the reader at untrack so
+    // the one diagnostic that matters survives the teardown that destroys it.
+    void armBodyReader(QNetworkReply* reply);
+    void pumpTrackedBody(QNetworkReply* reply);
+    void pruneCarriedFailures();
+
     // Request plumbing
     std::optional<QUrl> resolveStudioApiUrl(const QString& endpoint) const;
     std::optional<QNetworkRequest> createAuthenticatedRequest(
@@ -278,6 +329,55 @@ private:
     QTimer* queueTimer_;
     quint64 requestEpoch_ = 1;
     std::vector<QPointer<QNetworkReply>> activeReplies_;
+
+    // One reader per tracked reply. Keyed by raw pointer and strictly shorter
+    // lived than the reply: armed in trackReply(), released in
+    // removeTrackedReply(), cleared wholesale in abortTrackedReplies().
+    QHash<QNetworkReply*, http::BodyReader> bodyReaders_;
+
+    /// A breach being carried past the teardown of the reader that detected it.
+    struct CarriedBodyFailure {
+        http::PolicyFailure failure;
+        /// Set the moment `readTrackedBody` hands this diagnosis to a caller.
+        ///
+        /// This exists because of one **observed** ordering, not a suspected one.
+        /// `PumpingReply::abort()` emits `finished()` synchronously, so on a breach
+        /// the whole sequence runs inside one `feed()` call:
+        ///
+        ///   1. `readyRead` -> `pumpTrackedBody` -> reader refuses -> `reply->abort()`
+        ///   2. `finished()` lands in `handleReplyFinished`, which arms its untrack
+        ///      `qScopeGuard` and has NOT run it yet, then calls the callback
+        ///   3. the callback calls `readTrackedBody`, which finds the reader STILL
+        ///      PRESENT and serves the sticky failure from there -- diagnosis #1.
+        ///      `bodyFailures_` is still empty at this point, so consuming it here
+        ///      suppresses nothing.
+        ///   4. the callback returns, the guard fires, and `removeTrackedReply`
+        ///      re-inserts the very failure that was just reported
+        ///   5. the next ask finds it and reports the identical sentence: #2.
+        ///
+        /// Instrumentation of exactly that path (`fprintf` probes in
+        /// `readTrackedBody` and `removeTrackedReply`, since removed) printed:
+        ///
+        ///   ENTER carriedFromMap=0 readerPresent=1 / RETURN-sticky
+        ///   removeTrackedReply INSERT carried failure
+        ///   ENTER carriedFromMap=1 readerPresent=0 / RETURN-carried
+        ///
+        /// So the flag is set by step 3 and honoured by step 4. It lives here,
+        /// beside the failure it describes, rather than in a parallel container so
+        /// that the two cannot drift out of step.
+        bool delivered{false};
+    };
+
+    /// Reply -> the breach to report for it, and whether it has been reported.
+    ///
+    /// The copy exists because the reader holding the sticky `PolicyFailure` is
+    /// destroyed on untrack, and that failure is the ONLY thing that names the
+    /// limit -- without it, a reply aborted precisely so the user could be told
+    /// why reports nothing but "Operation canceled". Keyed on a raw pointer, so an
+    /// entry is consumed by the first read that asks about its own reply (see
+    /// `readTrackedBody`) and pruned when the key dies; it is never read twice and
+    /// never outlives the reply it names.
+    QHash<QNetworkReply*, CarriedBodyFailure> bodyFailures_;
 
     // Auth subsystem
     auth::ClerkAuthClient* clerk_;

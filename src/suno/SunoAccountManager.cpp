@@ -5,6 +5,7 @@
 
 #include <QtGlobal>
 #include <cmath>
+#include <expected>
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -192,11 +193,31 @@ void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
     const bool authenticated = client_ && client_->isAuthenticated();
     const QNetworkReply::NetworkError error = reply->error();
     const QString errorString = reply->errorString();
-    const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
+
+    // Body before error, and the ordering is the point. SunoClient arms every
+    // reply it issues with a readyRead-driven BodyReader, so a session body past
+    // the studio-API cap was aborted mid-transfer and errorString() reports
+    // "Operation canceled" -- which tells a user nothing about why their account
+    // panel is empty. The sticky refusal names the limit instead.
+    //
+    // It is also the only path that still holds the bytes: this reply has already
+    // been pumped, so readAll() would return an empty QByteArray, the parse would
+    // produce an empty object, and the failure would be reported as "session
+    // envelope had no user object" -- a wrong diagnosis of a real fault.
+    auto body = client_ ? client_->readTrackedBody(reply)
+                        : std::expected<QByteArray, QString>(std::unexpected(
+                              QStringLiteral("account manager has no SunoClient to read the "
+                                             "response with")));
     reply->deleteLater();
 
     if (!authenticated) {
         clearSnapshots();
+        return;
+    }
+    if (!body) {
+        LOG_WARN("SunoAccountManager: session response refused: {}",
+                 body.error().toStdString());
+        emit accountError(body.error());
         return;
     }
     if (error != QNetworkReply::NoError) {
@@ -206,6 +227,7 @@ void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
         return;
     }
 
+    const QJsonObject root = QJsonDocument::fromJson(*body).object();
     auto user = parseUser(root);
     if (!user) {
         LOG_WARN("SunoAccountManager: session envelope had no usable user object");
@@ -223,10 +245,20 @@ void SunoAccountManager::handleBillingReply(QNetworkReply* reply) {
     const bool authenticated = client_ && client_->isAuthenticated();
     const QNetworkReply::NetworkError error = reply->error();
     const QString errorString = reply->errorString();
-    const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
+
+    auto body = client_ ? client_->readTrackedBody(reply)
+                        : std::expected<QByteArray, QString>(std::unexpected(
+                              QStringLiteral("account manager has no SunoClient to read the "
+                                             "response with")));
     reply->deleteLater();
 
     if (!authenticated) {
+        return;
+    }
+    if (!body) {
+        LOG_WARN("SunoAccountManager: billing response refused: {}",
+                 body.error().toStdString());
+        emit accountError(body.error());
         return;
     }
     if (error != QNetworkReply::NoError) {
@@ -236,6 +268,7 @@ void SunoAccountManager::handleBillingReply(QNetworkReply* reply) {
         return;
     }
 
+    const QJsonObject root = QJsonDocument::fromJson(*body).object();
     auto info = parseBilling(root);
     if (!info) {
         emit accountError(QStringLiteral("billing envelope was empty"));

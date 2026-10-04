@@ -24,6 +24,7 @@ add_executable(unit_tests
     suno/test_CredentialStorePolicy.cpp
     suno/test_SunoDownloader.cpp
     suno/test_SunoEndpoints.cpp
+    suno/test_BoundedBody.cpp
     lyrics/test_LyricsPipeline.cpp
     lyrics/test_LyricsExport.cpp
     util/test_PathSafety.cpp
@@ -57,8 +58,11 @@ endif()
 add_test(NAME unit_tests COMMAND unit_tests)
 
 # test_HttpPolicy.cpp carries its own main(), so it is a standalone target rather
-# than a unit_tests member. It needs Qt6::Network directly because unit_tests
-# does not link it — the same reason the seven other suno/ suites are separate.
+# than a unit_tests member -- the deciding reason. Qt6::Network is NOT a reason:
+# cmake/TargetSetup.cmake puts it in COMMON_LIBS and links it PUBLIC on project_lib,
+# which unit_tests links, so suno/test_DownloadQueue.cpp is already a unit_tests
+# member that subclasses QNetworkReply. Do not add a false reason here; a comment
+# that misstates the build is worse than no comment.
 add_executable(test_HttpPolicy
     suno/test_HttpPolicy.cpp
 )
@@ -75,6 +79,34 @@ target_link_libraries(test_HttpPolicy PRIVATE
 )
 
 add_test(NAME test_HttpPolicy COMMAND test_HttpPolicy)
+
+# The offscreen-render spike needs a QGuiApplication (a GL context requires the
+# GUI stack) while unit_tests' main() is a QCoreApplication, so it must be a
+# standalone target rather than a unit_tests member -- the same reason
+# test_HttpPolicy is separate.
+add_executable(test_OffscreenRenderSpike
+    recorder/test_OffscreenRenderSpike.cpp
+)
+
+set_target_properties(test_OffscreenRenderSpike PROPERTIES
+    AUTOMOC ON
+)
+
+target_include_directories(test_OffscreenRenderSpike PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(test_OffscreenRenderSpike PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::OpenGL
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_OffscreenRenderSpike COMMAND test_OffscreenRenderSpike)
+
+# The spike drives projectM in a loop; the default ctest timeout would otherwise
+# report a hang where there is only slowness.
+set_tests_properties(test_OffscreenRenderSpike PROPERTIES TIMEOUT 180)
 
 add_executable(test_SunoAudioUploadService
     suno/test_SunoAudioUploadService.cpp
