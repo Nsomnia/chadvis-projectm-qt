@@ -33,6 +33,55 @@ namespace {
 /// most every 55 minutes (per Aug-2026 capture guidance).
 constexpr qint64 kMaxRefreshDelaySecs = 55 * 60;
 
+/// Accept-or-explain for a token we are about to install as a live bearer.
+/// Returns an empty string when the token may be used, otherwise a
+/// secret-free reason naming the clause that failed -- the same shape as
+/// ClerkAuthClient's `noClerkCookieReason`, for the same reason: a user who
+/// pastes a credential has to be told what was wrong with it.
+///
+/// No grace window, matching the `graceSecs=0` these sites used before (or, for
+/// setToken, not having an expiry check at all): only an already-elapsed or
+/// uncheckable token is refused. A token one second short of expiry still passes
+/// and scheduleProactiveRefresh() re-arms for it immediately. Only Clerk's
+/// bearer exchange uses kDefaultExpiryGraceSecs, because there we can ask for a
+/// better token instead of keeping this one.
+///
+/// Two properties make this safe to log verbatim. `source` is always a literal
+/// chosen at the call site, never anything derived from the credential, and no
+/// branch interpolates `jwt` -- so the returned text is entirely composed of
+/// this file's own string literals and cannot carry a token or cookie.
+[[nodiscard]] QString unusableBearerReason(const QString& source, const QString& jwt) {
+    const auto claims = auth::JwtUtils::claims(jwt);
+    if (!claims) {
+        return QStringLiteral("%1 is not a decodable JWT").arg(source);
+    }
+    if (auth::JwtUtils::hasUsableLifetime(*claims)) {
+        return {};
+    }
+    // Not usable, so name which clause failed. Both calls below pass
+    // graceSecs=0 and both read the same function, so this switch cannot claim a
+    // different verdict than the check just above it.
+    switch (auth::JwtUtils::expiryDefect(*claims, /*graceSecs=*/0)) {
+        case auth::JwtUtils::ExpiryDefect::None:
+            return {};
+        case auth::JwtUtils::ExpiryDefect::Missing:
+            return QStringLiteral("%1 has no \"exp\" claim, so its validity cannot be checked "
+                                  "or refreshed")
+                    .arg(source);
+        case auth::JwtUtils::ExpiryDefect::NotIntegral:
+            return QStringLiteral("%1 has an \"exp\" claim that is not an integer number of "
+                                  "seconds")
+                    .arg(source);
+        case auth::JwtUtils::ExpiryDefect::NotPositive:
+            return QStringLiteral("%1 has an \"exp\" claim that is not a positive epoch-seconds "
+                                  "value")
+                    .arg(source);
+        case auth::JwtUtils::ExpiryDefect::Elapsed:
+            return QStringLiteral("%1 expired before it could be used").arg(source);
+    }
+    return {};
+}
+
 CredentialStoreWorker::Outcome runCredentialStoreRequest(
         CredentialStoreWorker::Request request) {
     CredentialStoreWorker::Outcome outcome;
@@ -74,8 +123,21 @@ CredentialStoreWorker::Outcome runCredentialStoreRequest(
                      request.legacyWasCookie ? "cookie" : "token");
         } else {
             outcome.legacyMigrationFailed = true;
-            LOG_ERROR("SunoClient: credential migration to keychain failed ({}) - keeping "
-                      "legacy TOML values in place",
+            // Not "keeping legacy TOML values in place" any more, and the
+            // difference is a security property rather than wording.
+            // ConfigParsers no longer expands `suno.token`/`suno.cookie` into the
+            // serializer at all, so Config::save() physically cannot write a raw
+            // `__client=…` cookie to disk. The consequence is that because
+            // serialize() rebuilds the whole document, the FIRST save after a
+            // failed migration *deletes* the legacy secret from config.toml. The
+            // credential survives in memory for this session only, and the user
+            // has to paste it again after a restart. That is the correct
+            // trade -- a one-year refresh cookie in a 0644 file is the thing
+            // worth preventing -- but it has to be said out loud, or the user
+            // finds themselves signed out with no explanation.
+            LOG_ERROR("SunoClient: credential migration to keychain failed ({}) - the "
+                      "credential stays in memory for this session only and will NOT "
+                      "survive a restart; re-paste it once the keychain is available",
                       auth::CredentialStore::redact(request.legacyCredential).toStdString());
         }
     }
@@ -317,6 +379,10 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
     }
 
     bool rejectedStoredCredential = false;
+    // Declared out here rather than inside the BearerToken case: an unbraced
+    // case cannot hold an initialized declaration, and a braced one re-indents
+    // the whole arm away from its siblings. Empty means "not refused".
+    QString rejectedBearerReason;
     bool storedCookieChanged = false;
     const bool storedCookieCleared =
             !result.cookie.has_value() || result.cookie->isEmpty();
@@ -357,6 +423,34 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
         }
         switch (classification.shape) {
         case auth::StoredCredentialShape::BearerToken:
+            // A bare JWT is the one credential we can use with no Clerk round
+            // trip, so this is the only restore path with nothing downstream to
+            // catch a bad token: the gate below is the whole validation. The old
+            // code accepted whatever decoded, then persisted it as suno/bearer,
+            // set ActiveValid and armed no refresh timer -- i.e. a token with no
+            // "exp" was used until the server 401'd. Refusal is shaped exactly
+            // like the Unsupported case below (same recovery, same reason log,
+            // same fall-through), so a bad paste leaves the stored value in place
+            // for the user to fix.
+            rejectedBearerReason = unusableBearerReason(QStringLiteral("stored bearer"), value);
+            if (!rejectedBearerReason.isEmpty()) {
+                if (!credentialChanged) {
+                    invalidateForRestore(QStringLiteral("stored bearer unusable"),
+                                         /*preserve=*/false);
+                }
+                credentials_ = auth::Credentials{};
+                bearer_ = auth::BearerToken{};
+                lastActiveSessionId_.clear();
+                setAuthFailureKind(auth::AuthFailureKind::NoActiveSession);
+                setState(auth::AuthState::NeedsReauth);
+                LOG_ERROR("SunoClient: {} (stored value preserved)",
+                          rejectedBearerReason.toStdString());
+                if (mode == RestoreMode::Reload) {
+                    emit tokenChanged(std::string());
+                }
+                rejectedStoredCredential = true;
+                break;
+            }
             credentials_.cookieHeader.clear();
             lastActiveSessionId_.clear();
             if (value != bearer_.jwt) {
@@ -407,8 +501,16 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
 
     if (!storedCookieChanged && result.bearer.has_value()) {
         const QString jwt = auth::normalizeCookieHeader(*result.bearer);
-        auto claims = auth::JwtUtils::claims(jwt);
-        if (claims && !auth::JwtUtils::isExpired(*claims, /*graceSecs=*/0)) {
+        // Rejecting an unusable cached bearer and falling through is deliberate:
+        // the cookie branch below still gets its chance, and otherwise the "no
+        // active credential" reporting at the end of this function owns the
+        // outcome -- exactly as it already did for an *expired* cached bearer,
+        // which this gate also covers. The old test was isExpired(graceSecs=0),
+        // which answers "false" for a token carrying no "exp" at all, so the
+        // unusable case was applied, marked ActiveValid, and left
+        // scheduleProactiveRefresh() with no timer to arm.
+        const QString reason = unusableBearerReason(QStringLiteral("stored bearer"), jwt);
+        if (reason.isEmpty()) {
             if (storedCookieCleared) {
                 if (!credentialChanged &&
                     (configuredCredential_ != jwt || !credentials_.cookieHeader.isEmpty() ||
@@ -425,6 +527,7 @@ void SunoClient::applyRestoreResult(RestoreMode mode,
             flushAuthWaiters();
             return;
         }
+        LOG_WARN("SunoClient: ignoring an unusable stored bearer: {}", reason.toStdString());
     }
 
     if (storedCookieCleared &&
@@ -518,8 +621,15 @@ void SunoClient::setCookie(const std::string& cookie) {
 
 void SunoClient::setToken(const std::string& token) {
     const QString jwt = auth::normalizeCookieHeader(QString::fromStdString(token));
-    if (!auth::JwtUtils::claims(jwt)) {
-        LOG_WARN("SunoClient: rejected malformed token input");
+    // Decodable is necessary, not sufficient. The old gate asked only whether
+    // the payload parsed as base64url JSON, so the literal string "aaa.bbb.ccc"
+    // and any exp-less token counted as credentials -- the second half is the
+    // fail-open JwtUtils::expiryEpochSecs() made possible. Refusing here, before
+    // any state is touched, keeps a rejected paste a true no-op exactly as the
+    // malformed-input rejection did.
+    const QString reason = unusableBearerReason(QStringLiteral("pasted token"), jwt);
+    if (!reason.isEmpty()) {
+        LOG_WARN("SunoClient: rejected token input: {}", reason.toStdString());
         return;
     }
     const bool restoreInFlight = credentialStoreWorker_->isRestoreInFlight();
@@ -671,6 +781,14 @@ void SunoClient::applyBearer(const auth::BearerToken& token) {
 
 void SunoClient::scheduleProactiveRefresh() {
     if (!bearer_.expiresAt.isValid()) {
+        // Reaching this is an internal-contract violation, not a normal state:
+        // JwtUtils::fromJwt() leaves expiresAt invalid only when the token has no
+        // integral positive "exp", and every path into applyBearer() now gates on
+        // JwtUtils::hasUsableLifetime() first. Returning early is still right --
+        // scheduling from an invalid QDateTime would compute a garbage delay --
+        // but it used to be the *silent* half of the fail-open, so say so.
+        LOG_ERROR("SunoClient: bearer has no usable expiry; proactive refresh cannot "
+                  "be scheduled and the token will be used until the server rejects it");
         return;
     }
     qint64 delaySecs =

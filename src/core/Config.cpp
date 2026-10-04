@@ -27,19 +27,19 @@ Result<void> Config::save(const fs::path& path) const {
 
 void Config::addOverlayElement(OverlayElementConfig elem) {
     std::lock_guard lock(mutex_);
-    overlayElements_.push_back(std::move(elem));
+    overlay_.elements.push_back(std::move(elem));
     markDirty();
 }
 
 void Config::removeOverlayElement(const std::string& id) {
     std::lock_guard lock(mutex_);
-    std::erase_if(overlayElements_,
+    std::erase_if(overlay_.elements,
                   [&id](const auto& e) { return e.id == id; });
     markDirty();
 }
 
 OverlayElementConfig* Config::findOverlayElement(const std::string& id) {
-    for (auto& elem : overlayElements_) {
+    for (auto& elem : overlay_.elements) {
         if (elem.id == id)
             return &elem;
     }

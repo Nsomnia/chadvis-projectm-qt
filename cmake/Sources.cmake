@@ -270,3 +270,97 @@ set(QML_SOURCES
     src/qml/settings/SettingsWindowFooter.qml
     src/qml/settings/SettingsPageRail.qml
 )
+
+# ─────────────────────────────────────────────────────────────
+# PCM FORMAT LAYER (appended 2026-10-03)
+#
+# src/audio/PcmFormat.{hpp,cpp} is the pure, device-free PCM conversion that
+# AudioEngine::processAudioBuffer used to inline. It was untestable in place: the
+# old `if Float / else if Int16` had no else, so an undecodable sink format fell
+# through and pushed the previous buffer's samples into both consumer queues.
+# Hoisting it is what made the unsupported-format contract assertable without an
+# audio device.
+#
+# Appended to AUDIO_SOURCES with list(APPEND) rather than merged into its literal
+# above, so no existing line is touched. It has to be that variable: TargetSetup
+# names ${AUDIO_SOURCES} explicitly in add_library(project_lib STATIC ...) and
+# does not glob, so a fresh set() would be silently dropped -- PcmFormat.cpp would
+# never be compiled and every vc::pcm reference would be a link error. Merge this
+# into the AUDIO_SOURCES literal when the tree is next normalised; there is no
+# ordering or dependency reason for it to live apart.
+# ─────────────────────────────────────────────────────────────
+list(APPEND AUDIO_SOURCES
+    src/audio/PcmFormat.hpp
+    src/audio/PcmFormat.cpp
+)
+
+# ─────────────────────────────────────────────────────────────
+# OFFLINE RENDER INPUT — the file -> PCM decoder (appended 2026-10-03)
+#
+# src/recorder/AudioFileDecoder.{hpp,cpp} is the last missing class on the offline
+# music-video path: VisualizerRenderer is already a plain class whose isExposed is
+# a parameter, AudioQueue::pushAll is already a producer seam, and swresample is
+# already linked — what did not exist was anything that decoded a file.
+#
+# Appended to RECORDER_SOURCES with list(APPEND) rather than merged into its
+# literal above, so no existing line is touched. It has to be that variable:
+# TargetSetup.cmake:80-93 names each set() variable explicitly in
+# add_library(project_lib STATIC ...) and does NOT glob, so a fresh
+# set(AUDIODECODER_SOURCES ...) would be silently dropped — AudioFileDecoder.cpp
+# would never be compiled and every vc::AudioFileDecoder reference would be a link
+# error of the whole application. This is the second time that trap has been
+# available in this file; the PcmFormat block above records the first. Merge both
+# into their literals when the tree is next normalised; there is no ordering or
+# dependency reason for either to live apart.
+#
+# Not gated on anything, deliberately. It needs no libavfilter, no OpenGL and no
+# network, so a CMake option around it would add a configuration in which the
+# offline renderer's only input path silently does not exist.
+# ─────────────────────────────────────────────────────────────
+list(APPEND RECORDER_SOURCES
+    src/recorder/AudioFileDecoder.hpp
+    src/recorder/AudioFileDecoder.cpp
+)
+
+# ─────────────────────────────────────────────────────────────
+# COLOR CODEC — src/util/Color.{hpp,cpp} (appended 2026-10-03)
+#
+# parseHexColor() replaced the allocating, throwing std::stoi inside
+# Color::fromHex, which could throw std::invalid_argument straight out of
+# ConfigLoader::load (whose catch covered only toml::parse_error) on a
+# hand-edited `accent_color`. Color::fromHex/toHex MOVED here from FileUtils.cpp,
+# so this entry is REQUIRED, not optional: omit it and every vc::Color::toHex()
+# caller — ConfigParsers, ThemeBridge, ConfigLoader — is an undefined symbol.
+#
+# Must be UTIL_SOURCES specifically. TargetSetup.cmake names each set() variable
+# explicitly in add_library(project_lib STATIC ...) and does NOT glob, so a fresh
+# set(COLOR_SOURCES ...) would be silently dropped. That is the same trap the
+# PcmFormat and AudioFileDecoder blocks above record; this is the third time it
+# has been available in this file. Merge all three into their literals when the
+# tree is next normalised — there is no ordering or dependency reason for any of
+# them to live apart.
+# ─────────────────────────────────────────────────────────────
+list(APPEND UTIL_SOURCES
+    src/util/Color.hpp
+    src/util/Color.cpp
+)
+
+# ─────────────────────────────────────────────────────────────
+# RENDER JOB MODEL (appended 2026-10-03)
+#
+# src/recorder/Render{Job,Queue}.{hpp,cpp} are the durable-state half of the
+# batch music-video creator: without them "re-render this at 4K" means
+# re-rendering three minutes in real time, because nothing records that the first
+# output was 1800 frames at 60 fps from these presets. The queue takes the work
+# as an injected JobRunner and knows nothing about GL, FFmpeg or audio — a GL
+# context current on a background thread is a separate spike, and coupling it in
+# here would make this untestable without a display.
+#
+# RECORDER_SOURCES for the same non-globbing reason as the three blocks above.
+# ─────────────────────────────────────────────────────────────
+list(APPEND RECORDER_SOURCES
+    src/recorder/RenderJob.hpp
+    src/recorder/RenderJob.cpp
+    src/recorder/RenderQueue.hpp
+    src/recorder/RenderQueue.cpp
+)

@@ -7,6 +7,21 @@
  * VC_PARSE_FIELD / VC_SER_FIELD. Parse fallbacks are read from a
  * default-constructed config struct, so parser defaults can never drift from
  * the initializers in ConfigData.hpp (the source of truth).
+ *
+ * @section UnknownKeys
+ * serialize REBUILDS the root table from the structs, so a key that is not in
+ * a field table (and not one of the four hand-handled keys below) does not
+ * survive a save. That is a deliberate, tested decision rather than an
+ * accident -- see tests/unit/core/test_ConfigLoader.cpp. The keys handled by
+ * hand are `visualizer.preset_path`, `visualizer.texture_paths`,
+ * `recording.output_directory`, `suno.download_path` and
+ * `suno.download_format`, each because its parse side needs different
+ * fallback behaviour from a plain `get`.
+ *
+ * @section Secrets
+ * `suno.token` and `suno.cookie` are parse-only. See
+ * CHADVIS_SUNO_LEGACY_SECRET_FIELDS for why they are not in the serialized
+ * table at all.
  */
 #include "ConfigParsers.hpp"
 #include <algorithm>
@@ -140,18 +155,31 @@ fs::path expandPath(std::string_view path) {
     X("shadow_color", shadowColor, COLOR)
 
 // download_path and download_format handled manually (see parseSuno).
-// token/cookie stay in the table READ-ONLY by convention: they exist so the
-// one-time migration in SunoClient can find legacy secrets, and are blanked
-// afterwards. Never persist fresh values there.
 #define CHADVIS_SUNO_FIELDS(X)                    \
     X("device_id", deviceId, STR)                 \
-    X("token", token, STR)                        \
-    X("cookie", cookie, STR)                      \
     X("auto_download", autoDownload, BOOL)        \
     X("save_lyrics", saveLyrics, BOOL)            \
     X("embed_metadata", embedMetadata, BOOL)      \
     X("debug_lyrics", debugLyrics, BOOL)          \
     X("debug_lyrics_file", debugLyricsFile, PATH)
+
+// Legacy Clerk credential -- READ ONLY, and deliberately not part of
+// CHADVIS_SUNO_FIELDS.
+//
+// This table is expanded by parseSuno and by nothing else. Splitting it out is
+// what makes "the serializer cannot emit a secret" a structural property rather
+// than a convention: serialize expands CHADVIS_SUNO_FIELDS, and there is no
+// expansion left that reaches `token` or `cookie`. Do not merge the two tables
+// back together to "simplify" them, and do not add a new secret here -- a new
+// secret belongs in CredentialStore, never in config.toml.
+//
+// Values found here are used once, by SunoClient's startup migration into
+// CredentialStore. Because serialize rebuilds the entire file, the first save
+// after this fix removes them from disk; parseSuno logs a warning when it sees
+// one so that is never silent.
+#define CHADVIS_SUNO_LEGACY_SECRET_FIELDS(X) \
+    X("token", token, STR)                    \
+    X("cookie", cookie, STR)
 
 // ── Parse expansion ──────────────────────────────────────────────────
 #define VC_PARSE_FIELD(key, member, TYPE) VC_PARSE_##TYPE(key, member)
@@ -267,29 +295,34 @@ void ConfigParsers::parseRecording(const toml::table& tbl,
     }
 }
 
-void ConfigParsers::parseOverlay(const toml::table& tbl,
-                                 std::vector<OverlayElementConfig>& elements) {
-    elements.clear();
-    if (auto overlay = tbl["overlay"].as_table()) {
-        if (auto elementsArr = (*overlay)["elements"].as_array()) {
-            for (const auto& elem : *elementsArr) {
-                if (auto elemTbl = elem.as_table()) {
-                    OverlayElementConfig cfg;
-                    cfg.id = get(*elemTbl, "id", std::string("element"));
-                    cfg.text = get(*elemTbl, "text", std::string(""));
-                    if (auto pos = (*elemTbl)["position"].as_table())
-                        cfg.position = parseVec2(*pos);
-                    cfg.fontSize = get(*elemTbl, "font_size", 32u);
-                    cfg.color = Color::fromHex(
-                            get(*elemTbl, "color", std::string("#FFFFFF")));
-                    cfg.opacity = get(*elemTbl, "opacity", 1.0f);
-                    cfg.animation =
-                            get(*elemTbl, "animation", std::string("none"));
-                    cfg.animationSpeed = get(*elemTbl, "animation_speed", 1.0f);
-                    cfg.anchor = get(*elemTbl, "anchor", std::string("left"));
-                    cfg.visible = get(*elemTbl, "visible", true);
-                    elements.push_back(std::move(cfg));
-                }
+void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
+    cfg.elements.clear();
+    auto* overlay = tbl["overlay"].as_table();
+    if (!overlay)
+        return;
+
+    const OverlayConfig def{};
+    cfg.enabled = get(*overlay, "enabled", def.enabled);
+
+    if (auto elementsArr = (*overlay)["elements"].as_array()) {
+        for (const auto& elem : *elementsArr) {
+            if (auto elemTbl = elem.as_table()) {
+                OverlayElementConfig element;
+                element.id = get(*elemTbl, "id", std::string("element"));
+                element.text = get(*elemTbl, "text", std::string(""));
+                if (auto pos = (*elemTbl)["position"].as_table())
+                    element.position = parseVec2(*pos);
+                element.fontSize = get(*elemTbl, "font_size", 32u);
+                element.color = Color::fromHex(
+                        get(*elemTbl, "color", std::string("#FFFFFF")));
+                element.opacity = get(*elemTbl, "opacity", 1.0f);
+                element.animation =
+                        get(*elemTbl, "animation", std::string("none"));
+                element.animationSpeed =
+                        get(*elemTbl, "animation_speed", 1.0f);
+                element.anchor = get(*elemTbl, "anchor", std::string("left"));
+                element.visible = get(*elemTbl, "visible", true);
+                cfg.elements.push_back(std::move(element));
             }
         }
     }
@@ -333,6 +366,15 @@ void ConfigParsers::parseSuno(const toml::table& tbl, SunoConfig& cfg) {
     auto& obj = cfg;
     CHADVIS_SUNO_FIELDS(VC_PARSE_FIELD)
 
+    // Read-only. The serializer has no expansion reaching these two members,
+    // so this is the only place a raw Clerk credential is ever read.
+    CHADVIS_SUNO_LEGACY_SECRET_FIELDS(VC_PARSE_FIELD)
+    if (!cfg.token.empty() || !cfg.cookie.empty()) {
+        LOG_WARN("Config [suno] still carries a legacy {}: it is used once to migrate into "
+                 "secure storage, then the next settings save removes it from this file",
+                 cfg.cookie.empty() ? "token" : "cookie");
+    }
+
     auto pathStr = get(*t, "download_path", std::string());
     if (!pathStr.empty())
         cfg.downloadPath = expandPath(pathStr);
@@ -350,7 +392,7 @@ toml::table ConfigParsers::serialize(
         const KeyboardConfig& keyboard,
         const SunoConfig& suno,
         const KaraokeConfig& karaoke,
-        const std::vector<OverlayElementConfig>& overlayElements,
+        const OverlayConfig& overlay,
         bool debug) {
     toml::table root;
     root.insert("general", toml::table{{"debug", debug}});
@@ -375,27 +417,42 @@ toml::table ConfigParsers::serialize(
     }
 
     {
-        toml::table out;
+        // VC_SER_* expands to `out.insert(...)`, so the destination table has to
+        // be named `out` -- which is why the section table is `recordingOut` and
+        // each group shadows the name. This used to build the two encoder
+        // sub-tables in tables named `videoOut`/`audioOut`, which the macro never
+        // touched: both sub-tables were written EMPTY, and every encoder key went
+        // flat into [recording] instead, where video.codec and audio.codec
+        // collided on one key. The parser then read an empty [recording.video]
+        // and reset every encoder setting to its struct default, so no codec,
+        // crf, resolution, fps, preset or bitrate survived a save. Pinned by
+        // TestConfigLoader::roundTripPreservesEveryField.
+        toml::table recordingOut;
         {
-            toml::table videoOut;
+            toml::table out;
             auto& obj = recording.video;
             CHADVIS_VIDEO_FIELDS(VC_SER_FIELD)
-            out.insert("video", std::move(videoOut));
+            recordingOut.insert("video", std::move(out));
         }
         {
-            toml::table audioOut;
+            toml::table out;
             auto& obj = recording.audio;
             CHADVIS_REC_AUDIO_FIELDS(VC_SER_FIELD)
-            out.insert("audio", std::move(audioOut));
+            recordingOut.insert("audio", std::move(out));
         }
-        auto& obj = recording;
-        CHADVIS_RECORDING_FIELDS(VC_SER_FIELD)
-        out.insert("output_directory", recording.outputDirectory.string());
-        root.insert("recording", std::move(out));
+        {
+            toml::table out;
+            auto& obj = recording;
+            CHADVIS_RECORDING_FIELDS(VC_SER_FIELD)
+            out.insert("output_directory", recording.outputDirectory.string());
+            for (const auto& entry : out)
+                recordingOut.insert(entry.first, entry.second);
+        }
+        root.insert("recording", std::move(recordingOut));
     }
 
     toml::array elementsArr;
-    for (const auto& elem : overlayElements) {
+    for (const auto& elem : overlay.elements) {
         elementsArr.push_back(toml::table{
                 {"id", elem.id},
                 {"text", elem.text},
@@ -410,7 +467,8 @@ toml::table ConfigParsers::serialize(
                 {"visible", elem.visible}});
     }
     root.insert("overlay",
-                toml::table{{"enabled", true}, {"elements", elementsArr}});
+                toml::table{{"enabled", overlay.enabled},
+                            {"elements", elementsArr}});
 
     {
         toml::table out;

@@ -57,6 +57,31 @@ QString undecodableBearerReason() {
     return QStringLiteral("Clerk returned a bearer token that could not be decoded");
 }
 
+/// Why a bearer we decoded is still unusable, as secret-free prose. Same shape
+/// as noClerkCookieReason(): the caller must be able to tell which part of a
+/// credential was wrong, and no branch may quote any part of the credential.
+/// The 2026-08-25 capture shows Clerk issuing exp = iat + 3600, so every case
+/// here is a protocol mismatch rather than something to keep using until the
+/// server 401s -- which is exactly what the old `exp <= 0` fail-open did.
+QString unusableBearerReason(JwtUtils::ExpiryDefect defect) {
+    switch (defect) {
+        case JwtUtils::ExpiryDefect::Missing:
+            return QStringLiteral("Clerk returned a bearer token with no \"exp\" claim, so its "
+                                  "validity cannot be checked or refreshed");
+        case JwtUtils::ExpiryDefect::NotIntegral:
+            return QStringLiteral("Clerk returned a bearer token whose \"exp\" claim is not an "
+                                  "integer number of seconds");
+        case JwtUtils::ExpiryDefect::NotPositive:
+            return QStringLiteral("Clerk returned a bearer token whose \"exp\" claim is not a "
+                                  "positive epoch-seconds value");
+        case JwtUtils::ExpiryDefect::Elapsed:
+            return expiredBearerReason();
+        case JwtUtils::ExpiryDefect::None:
+            break;
+    }
+    return {};
+}
+
 EnvelopeParseError malformedResponse() {
     return {AuthFailureKind::MalformedResponse, unexpectedResponseShapeReason()};
 }
@@ -93,10 +118,20 @@ std::expected<BearerToken, EnvelopeParseError> decodeUsableBearer(const QString&
                 undecodableBearerReason(),
         });
     }
-    if (JwtUtils::isExpired(*claims)) {
+    // One classification, two questions answered. The 300 s grace is
+    // isExpired()'s historical default: a token inside it is stale, not dead,
+    // and must not be the one we keep -- but it is still a *known* lifetime.
+    // The fail-open this replaces was isExpired()'s `if (exp <= 0) return
+    // false;`, which read a missing "exp" (expiryEpochSecs() reports 0 for it)
+    // as "never expires" and installed the token with no refresh timer armed.
+    // Anything that is not exactly ExpiryDefect::None is now refused, and the
+    // reason names which clause failed.
+    const JwtUtils::ExpiryDefect defect =
+            JwtUtils::expiryDefect(*claims, JwtUtils::kDefaultExpiryGraceSecs);
+    if (defect != JwtUtils::ExpiryDefect::None) {
         return std::unexpected(EnvelopeParseError{
                 AuthFailureKind::ProtocolMismatch,
-                expiredBearerReason(),
+                unusableBearerReason(defect),
         });
     }
     return JwtUtils::fromJwt(jwt);
@@ -266,7 +301,13 @@ StoredCredentialClassification classifyStoredCredential(const QString& value) {
                 QStringLiteral("stored credential shape: Clerk cookie header; accepted")};
     }
     if (!hasNameValuePair) {
-        // Use exactly the same syntactic JWT acceptance as token restoration.
+        // Syntactic JWT acceptance only -- this function classifies shape, and
+        // an exp-less token is still recognisably a JWT. Whether it may actually
+        // be used is decided where it is installed, via
+        // JwtUtils::hasUsableLifetime(): SunoClient::setToken for a paste and
+        // SunoClient::applyRestoreResult for a stored one. Do not fold the
+        // lifetime check in here; that would make "shape" mean "usable" and
+        // change StoredCredentialShape::BearerToken's documented meaning.
         if (JwtUtils::claims(normalized).has_value()) {
             return {StoredCredentialShape::BearerToken,
                     AuthFailureKind::None,

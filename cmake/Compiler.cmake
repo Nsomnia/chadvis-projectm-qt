@@ -61,6 +61,13 @@ option(CHADVIS_NATIVE_ARCH
     "Optimize Release builds for the host CPU (-march=native); disables portable codegen"
     OFF)
 
+# Drop debug info and optimization to zero for the fastest possible edit/test
+# loop. See the note on the config-specific block below. `./build.sh --fast`
+# pairs this with its own build directory.
+option(CHADVIS_FAST_ITERATION
+    "Compile with -O0 -g0 for a fast edit/test loop (pairs with a dedicated build directory)"
+    OFF)
+
 if(MSVC)
     add_compile_options(
         /W4
@@ -76,10 +83,26 @@ else()
     )
 
     # Config-specific optimization levels (MSVC uses its own defaults).
-    add_compile_options(
-        "$<$<CONFIG:Debug>:-g3;-O0>"
-        "$<$<CONFIG:Release>:-O3>"
-    )
+    #
+    # CHADVIS_FAST_ITERATION replaces the Debug preset outright rather than
+    # appending to it: `-g3` emits macro tables for every header transitively
+    # included, which on this tree is the single largest cost in a Debug compile
+    # (Qt headers alone are thousands of macros) and it buys nothing for a test
+    # loop. Pair it with ccache (below) and a rebuild after an unrelated edit is
+    # a few seconds instead of a few minutes.
+    #
+    #   cmake -S . -B build-fast -DCMAKE_BUILD_TYPE=Debug \
+    #         -DCHADVIS_FAST_ITERATION=ON
+    #
+    # or simply `./build.sh --fast`, which sets both and owns the directory.
+    if(CHADVIS_FAST_ITERATION)
+        add_compile_options(-O0 -g0)
+    else()
+        add_compile_options(
+            "$<$<CONFIG:Debug>:-g3;-O0>"
+            "$<$<CONFIG:Release>:-O3>"
+        )
+    endif()
     if(CHADVIS_NATIVE_ARCH)
         add_compile_options("$<$<CONFIG:Release>:-march=native>")
     endif()
@@ -127,4 +150,29 @@ if(CHADVIS_SANITIZER)
     message(STATUS
         "Sanitizer lane: -fsanitize=${CHADVIS_SANITIZER} "
         "(pair this with a dedicated build directory, e.g. build-tsan)")
+endif()
+
+# ---------------------------------------------------------------------------
+# ccache
+#
+# Default ON when the launcher is already known to CMake, because a C++23 Qt
+# tree in which one header change invalidates a hundred translation units is
+# exactly the case ccache exists for. Correctness-neutral: the launcher only
+# memoizes the compiler invocation and CMake already knows how to spell one.
+#
+# Deliberately skipped for the sanitizer lane, whose purpose is to instrument
+# the exact translation units being compiled: its cache entries are large, keyed
+# on flags that change constantly, and hit essentially never across a run.
+# ---------------------------------------------------------------------------
+option(CHADVIS_CCACHE "Compile through ccache when available" ON)
+
+if(CHADVIS_CCACHE AND NOT CHADVIS_SANITIZER AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
+    find_program(_cv_ccache NAMES ccache sccache)
+    if(_cv_ccache)
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${_cv_ccache}" CACHE FILEPATH "" FORCE)
+        set(CMAKE_C_COMPILER_LAUNCHER "${_cv_ccache}" CACHE FILEPATH "" FORCE)
+        message(STATUS "ccache: ${_cv_ccache}")
+    else()
+        message(STATUS "ccache: not found (builds uncached)")
+    endif()
 endif()

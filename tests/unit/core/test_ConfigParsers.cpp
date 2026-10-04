@@ -49,7 +49,7 @@ private slots:
         KeyboardConfig keyboard;
         SunoConfig suno;
         KaraokeConfig karaoke;
-        std::vector<OverlayElementConfig> overlays;
+        OverlayConfig overlays;
 
         auto tbl = ConfigParsers::serialize(audio,
                                             visualizer,

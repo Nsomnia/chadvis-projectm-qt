@@ -43,6 +43,18 @@ struct OverlayElementConfig {
     bool visible{true};
 };
 
+// The [overlay] section: a master switch plus its ordered element list.
+//
+// `enabled` used to be written as a hardcoded literal `true` and never parsed,
+// so it could not be false and did not round-trip. It is a real config value
+// now, but note that no consumer reads it yet: OverlayBridge keeps its own
+// JSON store and the visualizer renders overlay elements from its own sources.
+// See TODO.md before assuming a `false` here hides anything on screen.
+struct OverlayConfig {
+    bool enabled{true};
+    std::vector<OverlayElementConfig> elements;
+};
+
 // Video encoding settings
 struct VideoEncoderConfig {
     std::string codec{"libx264"};
@@ -149,9 +161,12 @@ enum class SunoDownloadFormat {
 struct SunoConfig {
     // Non-secret install identity sent as the Device-Id header (plain UUID).
     std::string deviceId;
-    // Legacy secret fields - parsed only so startup can migrate them into
-    // CredentialStore; SunoClient blanks them after migration. Never written
-    // with new values.
+    // Legacy Clerk credentials, PARSE-ONLY. ConfigParsers reads them from a
+    // table that the serializer never expands, so there is no code path that can
+    // write them out; they exist only so SunoClient's one-time startup
+    // migration can move them into CredentialStore. Because serialize rebuilds
+    // the whole file, the first save after an upgrade deletes them from
+    // config.toml -- deliberately, and with a warning logged at parse time.
     std::string token;
     std::string cookie;
     fs::path downloadPath;

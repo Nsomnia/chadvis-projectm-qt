@@ -250,8 +250,39 @@ private:
   Result<void> initHWFrames(const EncoderSettings& settings);
   AVPixelFormat getHWPixelFormat(const EncoderSettings& settings) const;
 
-  bool encodeVideoFrame(AVFrame* frame, u64& bytesWritten);
-  bool encodeAudioFrame(AVFrame* frame, u64& bytesWritten);
+  /// What one avcodec_send_frame, plus the drain that follows it, actually did.
+  ///
+  /// A bool cannot carry this, and the case it could not carry was the one that
+  /// lied. `avcodec_receive_packet` returning `AVERROR(EAGAIN)` on the first
+  /// call means the encoder is still *holding* the frame, which every codec with
+  /// `AV_CODEC_CAP_DELAY` does for its first frames: measured against this
+  /// project's FFmpeg (libavcodec 63.1.102), the native `aac` encoder reports
+  /// `initial_padding = 1024` and emits zero packets for send #0, one for each
+  /// send after. "Every packet this frame produced is in the file" was therefore
+  /// vacuously true for a frame that produced nothing at all, and
+  /// `AudioResampleReport::anyFrameWritten` -- which is an *existential* claim,
+  /// "did any audio frame reach the file" -- was told yes by a frame that
+  /// reached nothing.
+  enum class FrameEncodeOutcome {
+    /// The encoder is still holding the frame: no packet came out, and nothing
+    /// is wrong. Neither progress nor a fault, which is why it is a third state
+    /// rather than a false.
+    Deferred,
+    /// At least one packet came out and every one of them is in the file.
+    Written,
+    /// Nothing this frame produced is known to be in the file: either a packet
+    /// the muxer would not take, or the encoder refused the frame outright.
+    Lost,
+  };
+
+  /// Send one frame and write everything the encoder gives back for it.
+  ///
+  /// One implementation for both streams. The two bodies were identical apart
+  /// from which codec context and time base they named -- exactly the shape that
+  /// lets two copies drift, and they had, on the return value.
+  FrameEncodeOutcome encodeOneFrame(AVCodecContext* codecCtx, AVStream* stream,
+                                    AVFrame* frame, u64& bytesWritten);
+
   /// One resample into audioFrame_.data, or a simulated failure. Everything
   /// downstream of the return value is the production path in both cases.
   int resampleIntoAudioFrame(AVFrame* frame, const u8* const* srcData,
@@ -329,9 +360,11 @@ private:
   /// is the point: a count only published at teardown cannot be told apart from
   /// "none dropped".
   std::atomic<u64> audioFramesDropped_{0};
-  /// Audio frames whose packets *all reached the file*, as opposed to
-  /// audioFrameCount_ below which counts every frame the encoder accepted. Read
-  /// only on the encoding thread, like audioFrameCount_.
+  /// Audio frames that produced at least one packet *and* whose packets all
+  /// reached the file, as opposed to audioFrameCount_ below, which counts every
+  /// frame the encoder accepted -- including the ones a delaying encoder is
+  /// still holding, which have written nothing. Read only on the encoding
+  /// thread, like audioFrameCount_.
   u64 audioFramesEncoded_{0};
   /// Remaining resample failures the test seam will simulate. Zero in production
   /// and on every build that is not a test.

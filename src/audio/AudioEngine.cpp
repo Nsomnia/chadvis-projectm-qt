@@ -1,10 +1,57 @@
 #include "AudioEngine.hpp"
+#include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
 
+// QAudioDevice is only forward-declared by qaudiooutput.h; QMediaDevices does
+// not pull the definition in, and Result<QAudioDevice> needs it complete.
+#include <QAudioDevice>
+#include <QMediaDevices>
+
 #include <QUrl>
 
+#include <algorithm>
+
 namespace vc {
+
+namespace {
+
+/// Resolves a configured device name to a real output device.
+///
+/// "" and "default" mean the system default. Any other name must match an
+/// output device's description **exactly**: a partial match would silently
+/// switch a user's output to a different device that happens to share a prefix,
+/// and a name that matches nothing is a reported failure rather than a quiet
+/// fall back. Two devices with identical descriptions resolve to the first,
+/// because Qt exposes no other way to tell them apart from a name.
+Result<QAudioDevice> resolveOutputDevice(std::string_view name) {
+    if (name.empty() || name == AudioEngine::kDefaultDeviceName) {
+        const QAudioDevice device = QMediaDevices::defaultAudioOutput();
+        if (device.isNull()) {
+            return Result<QAudioDevice>::err(
+                "no audio output device is available on this system");
+        }
+        return Result<QAudioDevice>::ok(device);
+    }
+
+    const auto outputs = QMediaDevices::audioOutputs();
+    for (const auto& candidate : outputs) {
+        if (candidate.description().toStdString() == name) {
+            return Result<QAudioDevice>::ok(candidate);
+        }
+    }
+
+    std::string available;
+    for (const auto& candidate : outputs) {
+        if (!available.empty()) available += ", ";
+        available += candidate.description().toStdString();
+    }
+    return Result<QAudioDevice>::err("configured audio device \"" + std::string(name) +
+                                     "\" is not available; available devices: " +
+                                     (available.empty() ? "none" : available));
+}
+
+} // namespace
 
 AudioEngine::AudioEngine(fs::path sessionPath)
     : QObject(nullptr), sessionPath_(std::move(sessionPath))
@@ -31,8 +78,13 @@ AudioEngine::~AudioEngine() {
     stop();
 }
 
-Result<void> AudioEngine::init() {
-    scratchBuffer_.resize(kMaxScratchSamples);
+Result<void> AudioEngine::init(std::optional<AudioConfig> config) {
+    // See the header: the default argument reads the Config singleton because
+    // Application::init() cannot pass it. This is the change that makes
+    // audio.device / audio.bufferSize / audio.sampleRate -- and the three CLI
+    // overrides -- mean anything at all.
+    const AudioConfig requested = config.value_or(Config::instance().audio());
+
     audioOutput_ = std::make_unique<QAudioOutput>();
     audioOutput_->setVolume(volume_);
 
@@ -52,13 +104,103 @@ Result<void> AudioEngine::init() {
     nextBufferOutput_ = std::make_unique<QAudioBufferOutput>();
     nextPlayer_->setAudioBufferOutput(nextBufferOutput_.get());
 
+    setupDeviceWatchers();
+
+    // Sized before applyAudioConfig(), which can fail on an unresolvable device
+    // and return early. Without this the window would stay zero-length, every
+    // callback would be refused as oversized, and a bad device name would take
+    // playback down with it instead of merely being ignored.
+    scratchBuffer_.resize(pcm::conversionWindow(requested.bufferSize));
+
+    if (auto applied = applyAudioConfig(requested); !applied) {
+        // Not fatal. A saved device name whose device has been unplugged is the
+        // common case, and refusing to start the player would be a worse answer
+        // than starting on the system default and saying so.
+        LOG_WARN("AudioEngine: {}; continuing on the system default output",
+                 applied.error().message);
+        // Both QAudioOutputs are default-constructed on the system default, so
+        // that is what audioConfig() must report: SettingsBridge reverts a
+        // rejected device to this value, and a half-defaulted struct would make
+        // the rate and buffer look unapplied too when the window was sized above.
+        audioConfig_ = requested;
+        audioConfig_.device = std::string(kDefaultDeviceName);
+        refreshOutputStatus();
+        emit errorSignal(applied.error().message);
+    }
+
     // Playlist signals
     playlist_.currentChanged.connect([this](std::optional<usize> index) { onPlaylistCurrentChanged(index); });
     playlist_.changed.connect([this] { sessionSaveTimer_.start(); });
 
     loadLastPlaylist();
 
-    LOG_INFO("Audio engine initialized with QAudioBufferOutput");
+    LOG_INFO("Audio engine initialized with QAudioBufferOutput ({})",
+             outputStatus_.toStdString());
+    return Result<void>::ok();
+}
+
+Result<void> AudioEngine::applyAudioConfig(const AudioConfig& config) {
+    if (!audioOutput_ || !nextAudioOutput_) {
+        return Result<void>::err("audio engine is not initialised");
+    }
+
+    auto device = resolveOutputDevice(config.device);
+    if (!device) {
+        // Still refresh: a failure during init happens long before any QML is
+        // connected, and the status line is where a caller attaching later will
+        // read what actually happened. deviceDescription_ keeps whatever is
+        // really open, which on the first init is nothing.
+        refreshOutputStatus();
+        return Result<void>::err(device.error());
+    }
+    const auto& sink = device.value();
+
+    // audio.bufferSize is a sample count, and Qt 6 gives no device-level
+    // equivalent, so it sizes the engine's per-callback conversion window.
+    // Clamped rather than obeyed, because a window below one platform callback
+    // would drop audio; the clamp is reported in the status line so the UI never
+    // claims a value the engine is not using.
+    const usize window = pcm::conversionWindow(config.bufferSize);
+    scratchBuffer_.resize(window);
+
+    // Assigned before setDevice(): setDevice emits deviceChanged synchronously,
+    // which lands in onOutputDeviceChanged and rebuilds the status. With this
+    // order that intermediate emission is already consistent with the new config
+    // rather than describing the new device with the old sample rate.
+    deviceDescription_ = sink.description();
+    deviceMinRate_ = sink.minimumSampleRate();
+    deviceMaxRate_ = sink.maximumSampleRate();
+    observedSinkRate_ = 0;
+    audioConfig_ = config;
+    // Counters are per-configuration, not per-process. A new device or window is
+    // the user answering a previous complaint, so the next fault must be able to
+    // be "the first" again -- both so the log re-states it and so a consumer that
+    // cleared the message has it handed back.
+    oversizedBufferCount_ = 0;
+    formatErrorCount_ = 0;
+    conversionFaulted_ = false;
+
+    audioOutput_->setDevice(sink);
+    nextAudioOutput_->setDevice(sink);
+
+    // Qt reports the sink's rate range as int while the config carries u32, and
+    // comparing the two directly converts the int to unsigned -- so a device
+    // reporting a negative minimum would become a huge bound and the check
+    // would silently pass. Clamp both to a non-negative u32 first, then compare.
+    const auto sinkMinRate = static_cast<u32>(std::max(deviceMinRate_, 0));
+    const auto sinkMaxRate = static_cast<u32>(std::max(deviceMaxRate_, 0));
+
+    if (config.sampleRate != 0 && sinkMaxRate > 0 &&
+        (config.sampleRate < sinkMinRate || config.sampleRate > sinkMaxRate)) {
+        // Warned, not refused: QMediaPlayer negotiates the sink format with the
+        // source, so an out-of-range preference is resampled rather than fatal.
+        // Silence about it is what made the setting look broken.
+        LOG_WARN("AudioEngine: requested {} Hz but \"{}\" reports {}-{} Hz",
+                 config.sampleRate, deviceDescription_.toStdString(), deviceMinRate_,
+                 deviceMaxRate_);
+    }
+
+    refreshOutputStatus();
     return Result<void>::ok();
 }
 
@@ -69,6 +211,94 @@ void AudioEngine::setupConnections(QMediaPlayer* player, QAudioBufferOutput* buf
     connect(player, &QMediaPlayer::errorOccurred, this, &AudioEngine::onErrorOccurred);
     connect(player, &QMediaPlayer::mediaStatusChanged, this, &AudioEngine::onMediaStatusChanged);
     connect(bufferOutput, &QAudioBufferOutput::audioBufferReceived, this, &AudioEngine::onAudioBufferReceived);
+}
+
+void AudioEngine::setupDeviceWatchers() {
+    // Connected once, here, and deliberately not from setupConnections(): that is
+    // re-run by swapPlayers() for the next player, and re-connecting the outputs
+    // there would double every device report.
+    connect(audioOutput_.get(), &QAudioOutput::deviceChanged,
+            this, &AudioEngine::onOutputDeviceChanged);
+    connect(nextAudioOutput_.get(), &QAudioOutput::deviceChanged,
+            this, &AudioEngine::onOutputDeviceChanged);
+
+    // Qt 6.11 has no QAudioOutput::errorChanged -- QAudioOutput was reduced to a
+    // device+volume holder and the error signal went with start()/stop(). What
+    // remains is the two signals that do exist and do fire on a real device
+    // change: the output's own deviceChanged (a platform handover, an unplug the
+    // backend absorbs) and QMediaDevices::audioOutputsChanged (hot-plug). Both
+    // reach the UI through errorSignal()/audioOutputStatusChanged().
+    mediaDevices_ = std::make_unique<QMediaDevices>();
+    connect(mediaDevices_.get(), &QMediaDevices::audioOutputsChanged,
+            this, &AudioEngine::onAudioOutputsChanged);
+}
+
+void AudioEngine::onOutputDeviceChanged() {
+    const QAudioDevice device = audioOutput_ ? audioOutput_->device() : QAudioDevice{};
+    if (device.isNull()) {
+        LOG_ERROR("AudioEngine: output device was cleared by the platform");
+        emit errorSignal("the audio output device was removed or could not be opened");
+        deviceDescription_.clear();
+        deviceMinRate_ = 0;
+        deviceMaxRate_ = 0;
+    } else {
+        LOG_INFO("AudioEngine: output moved to \"{}\"", device.description().toStdString());
+        deviceDescription_ = device.description();
+        deviceMinRate_ = device.minimumSampleRate();
+        deviceMaxRate_ = device.maximumSampleRate();
+    }
+    observedSinkRate_ = 0;
+    refreshOutputStatus();
+}
+
+void AudioEngine::onAudioOutputsChanged() {
+    LOG_DEBUG("AudioEngine: audio output list changed");
+    reapplyAfterDeviceListChange();
+}
+
+void AudioEngine::reapplyAfterDeviceListChange() {
+    // Hot-plug. If the configured device is gone, say so and move to the system
+    // default. The persisted name is deliberately left alone: rewriting it would
+    // make the setting silently disagree with what the user chose, and the
+    // SettingsBridge already reports the mismatch.
+    auto resolved = resolveOutputDevice(audioConfig_.device);
+    if (!resolved) {
+        LOG_WARN("AudioEngine: {}", resolved.error().message);
+        emit errorSignal(resolved.error().message);
+        auto fallback = resolveOutputDevice(kDefaultDeviceName);
+        if (fallback) {
+            audioOutput_->setDevice(fallback.value());
+            nextAudioOutput_->setDevice(fallback.value());
+            deviceDescription_ = fallback.value().description();
+            deviceMinRate_ = fallback.value().minimumSampleRate();
+            deviceMaxRate_ = fallback.value().maximumSampleRate();
+            LOG_INFO("AudioEngine: using system default output \"{}\"",
+                     deviceDescription_.toStdString());
+        }
+    }
+    observedSinkRate_ = 0;
+    refreshOutputStatus();
+}
+
+void AudioEngine::refreshOutputStatus() {
+    QString status = QStringLiteral("Output: %1").arg(
+        deviceDescription_.isEmpty() ? QStringLiteral("none") : deviceDescription_);
+    status += QStringLiteral(" · window: %1 samples").arg(interleavedWindow());
+    if (audioConfig_.sampleRate != 0) {
+        status += QStringLiteral(" · requested: %1 Hz").arg(audioConfig_.sampleRate);
+    }
+    if (deviceMaxRate_ > 0) {
+        status += QStringLiteral(" (device %1-%2 Hz)").arg(deviceMinRate_).arg(deviceMaxRate_);
+    }
+    status += observedSinkRate_ > 0
+                  ? QStringLiteral(" · sink: %1 Hz").arg(observedSinkRate_)
+                  : QStringLiteral(" · sink: not yet observed");
+
+    if (status == outputStatus_) {
+        return;
+    }
+    outputStatus_ = status;
+    emit audioOutputStatusChanged(outputStatus_);
 }
 
 void AudioEngine::play() {
@@ -234,23 +464,60 @@ void AudioEngine::saveLastPlaylist() {
 void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     if (!buffer.isValid()) return;
     const auto format = buffer.format();
-    const usize frameCount = static_cast<usize>(buffer.frameCount());
     const usize channels = static_cast<usize>(format.channelCount());
-    const usize totalSamples = frameCount * channels;
+    const usize totalSamples = static_cast<usize>(buffer.sampleCount());
+    if (channels == 0 || totalSamples == 0) return;
 
-    if (totalSamples > scratchBuffer_.size()) {
+    // The sink format is negotiated by the platform with the source, so the rate
+    // is observed rather than requested. Recording the first one is what turns
+    // audio.sampleRate from a setting with no observable effect into a setting
+    // whose outcome the user can be shown.
+    const auto sinkRate = static_cast<int>(format.sampleRate());
+    if (sinkRate != observedSinkRate_) {
+        observedSinkRate_ = sinkRate;
+        refreshOutputStatus();
+    }
+
+    // Read the buffer as raw bytes and let vc::pcm decide the width. The old code
+    // indexed scratchBuffer_ with a width implied by an if/else-if chain with no
+    // else, so an Int32 sink pushed the previous buffer's floats into both
+    // consumer queues -- stale audio, no log, no signal, no UI.
+    const std::span<const std::byte> source(buffer.constData<std::byte>(),
+                                            static_cast<usize>(buffer.byteCount()));
+    const std::span<f32> destination(scratchBuffer_.data(), scratchBuffer_.size());
+
+    auto converted = pcm::convertInterleaved(source, destination, format.sampleFormat());
+    if (!converted) {
+        const auto& error = converted.error();
+        switch (error.reason) {
+        case pcm::ConversionError::DestinationTooSmall:
+        case pcm::ConversionError::TooManySamples:
+            ++oversizedBufferCount_;
+            reportConversionFailure(error, oversizedBufferCount_, "oversized");
+            break;
+        default:
+            ++formatErrorCount_;
+            reportConversionFailure(error, formatErrorCount_, "undecodable format");
+            break;
+        }
         return;
     }
 
-    if (format.sampleFormat() == QAudioFormat::Float) {
-        std::copy(buffer.constData<f32>(), buffer.constData<f32>() + totalSamples, scratchBuffer_.begin());
-    } else if (format.sampleFormat() == QAudioFormat::Int16) {
-        const i16* data = buffer.constData<i16>();
-        for (usize i = 0; i < totalSamples; ++i) scratchBuffer_[i] = static_cast<f32>(data[i]) / 32768.0f;
+    if (conversionFaulted_) {
+        // One empty string is the documented recovery signal; without it a fault
+        // would be the last thing the user ever sees about their output.
+        conversionFaulted_ = false;
+        emit errorSignal(std::string());
     }
 
+    // The queue view is measured from the byte count the conversion actually
+    // consumed, not from QAudioBuffer::sampleCount(). For a buffer whose byte
+    // count and declared width disagree, the two differ, and taking the larger
+    // one would hand the queues scratch samples this callback never wrote.
     const AudioChunk chunk{
-        .samples = std::span<const f32>(scratchBuffer_.data(), totalSamples),
+        .samples = std::span<const f32>(scratchBuffer_.data(),
+                                        pcm::interleavedSampleCount(source.size(),
+                                                                    format.sampleFormat())),
         .channels = static_cast<u32>(channels),
         .sampleRate = static_cast<u32>(format.sampleRate()),
     };
@@ -259,6 +526,17 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     // repo-wide and copied the whole scratch buffer per audio callback for
     // nobody; consumers that want PCM read it from the AudioQueue, which is
     // already the single copy.
+}
+
+void AudioEngine::reportConversionFailure(const pcm::FormatError& error, u64 count,
+                                          const char* kind) {
+    conversionFaulted_ = true;
+    if (count != 1 && count % kConversionErrorReportInterval != 0) {
+        return;
+    }
+    LOG_ERROR("AudioEngine: {} audio callback dropped ({}/{}) -- {}", kind, count,
+              interleavedWindow(), error.describe());
+    emit errorSignal(error.describe());
 }
 
 } // namespace vc

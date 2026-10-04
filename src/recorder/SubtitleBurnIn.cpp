@@ -506,10 +506,17 @@ Result<void> burnInSubtitles(const BurnInOptions& options) {
     if (writeFailed) {
       return;
     }
+    // Read the length BEFORE the muxer runs. av_interleaved_write_frame takes
+    // ownership of the packet and blanks it on success (size -> 0,
+    // pts -> AV_NOPTS_VALUE), so reading afterwards yields 0 for every packet
+    // that actually reached the file -- which is why this pass logged
+    // "wrote <file> (0 bytes)" on every single success. Third instance of this
+    // defect; the recorder had the same one in writePacket.
+    const int payloadBytes = out->size;
     const int written =
         av_interleaved_write_frame(output.get(), out);
     if (classifyWriteResult(written) == WriteOutcome::Written) {
-      bytesWritten += out->size;
+      bytesWritten += payloadBytes;
       return;
     }
     if (classifyWriteResult(written) == WriteOutcome::Failed) {

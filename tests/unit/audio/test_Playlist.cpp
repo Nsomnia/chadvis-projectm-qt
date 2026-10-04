@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "audio/AudioEngine.hpp"
+#include "audio/AudioQueue.hpp"
 #include "audio/Playlist.hpp"
 
 using namespace vc;
@@ -123,6 +124,32 @@ struct CurrentTrace {
 
     [[nodiscard]] std::size_t count() const { return emissions.size(); }
 };
+
+/// Frames actually stored in one of AudioQueue's two consumer queues. Counted
+/// by SUMMING AudioFrame::sampleCount, not by counting dequeues: one AudioFrame
+/// carries up to AUDIO_FRAME_SAMPLES (8) frames, and the identity under test is
+/// about frames the producer offered.
+u64 drainFrames(AudioQueue& queue, bool viz) {
+    u64 frames = 0;
+    AudioFrame frame;
+    for (;;) {
+        const bool popped = viz ? queue.popViz(frame) : queue.popRec(frame);
+        if (!popped) break;
+        frames += frame.sampleCount;
+    }
+    return frames;
+}
+
+/// Stereo interleaved PCM of `frames` frames, with every sample distinct so a
+/// mis-indexed read or a stray zero would be visible rather than plausible.
+std::vector<float> makePcm(u32 frames) {
+    std::vector<float> pcm(static_cast<usize>(frames) * 2);
+    for (u32 i = 0; i < frames; ++i) {
+        pcm[i * 2] = static_cast<float>(i);
+        pcm[i * 2 + 1] = static_cast<float>(i) + 0.5f;
+    }
+    return pcm;
+}
 
 } // namespace
 
@@ -650,10 +677,31 @@ private slots:
         const auto sessionPath = fs::path(directory.path().toStdString()) / "last_session.m3u";
 
         {
+            // Two real files, so this is an actual round trip rather than a check
+            // that the writer spelled a URL correctly.
+            //
+            // It used `addUrl` with two https:// lines and asserted they came
+            // back as remote items -- which pinned the SSRF primitive as expected
+            // behaviour. loadM3U reads local paths only now, so a line beginning
+            // "http" is not classified as remote, it simply is not a path and the
+            // existence check refuses it. Remote tracks reach the queue through
+            // DownloadQueue, which validates the host against the captured
+            // allowlist. The refusal itself is covered by
+            // tests/unit/util/test_PathSafety.cpp; this test is about the flush.
+            const fs::path firstTrack =
+                fs::path(directory.path().toStdString()) / "first.mp3";
+            const fs::path secondTrack =
+                fs::path(directory.path().toStdString()) / "second.mp3";
+            for (const auto& track : {firstTrack, secondTrack}) {
+                QFile f(QString::fromStdString(track.string()));
+                QVERIFY(f.open(QIODevice::WriteOnly));
+                f.write("not audio");
+            }
+
             AudioEngine engine(sessionPath);
             QVERIFY(engine.init());
-            engine.playlist().addUrl("https://example.invalid/one");
-            engine.playlist().addUrl("https://example.invalid/two");
+            engine.playlist().addFile(firstTrack);
+            engine.playlist().addFile(secondTrack);
             QCOMPARE(engine.playlist().size(), usize{2});
             // Coalescing itself: the file must not exist yet, because no event
             // loop has run and the debounce has not elapsed.
@@ -667,11 +715,169 @@ private slots:
         QVERIFY(reloaded.loadM3U(sessionPath));
         QCOMPARE(reloaded.size(), usize{2});
         QVERIFY2(reloaded.itemAt(0).has_value(), why("the flushed playlist lost its first track"));
-        QVERIFY2(reloaded.itemAt(0)->url == "https://example.invalid/one",
-                 why(reloaded.itemAt(0)->url));
+        QVERIFY2(!reloaded.itemAt(0)->isRemote, why("a local file came back marked remote"));
         QVERIFY2(reloaded.itemAt(1).has_value(), why("the flushed playlist lost its second track"));
-        QVERIFY2(reloaded.itemAt(1)->url == "https://example.invalid/two",
-                 why(reloaded.itemAt(1)->url));
+        QVERIFY2(!reloaded.itemAt(1)->isRemote, why("a local file came back marked remote"));
+    }
+
+    // ------------------------------------------------------------------
+    // AudioQueue drop accounting
+    //
+    // pushInternal() enqueues AUDIO_FRAME_SAMPLES (8) frames at a time and
+    // returns on the first refused chunk, so the frames behind it are never
+    // offered to that queue at all. Counting only the refused chunk -- one
+    // chunk, i.e. 8 -- made 512 frames into a capacity-1 queue report
+    // "8 dropped / 504 accepted" while totalPushed() still counted all 512, so
+    // "pushed minus dropped" claimed 504 frames had reached the visualizer and
+    // the recorder when 8 had. The invariant the metrics have to carry, per
+    // queue, is therefore
+    //
+    //     frames_drained + dropCount == frames_offered_to_that_queue
+    //
+    // and totalPushed() counts offered frames once per queue, so after one
+    // pushAll() of F frames it reads 2F. That doubling is not a bug and is
+    // pinned here so a future "fix" does not quietly change what the number
+    // means; the per-queue identity is what is actually asserted.
+    // ------------------------------------------------------------------
+
+    void partialRefusalAccountsForEveryFrameOffered() {
+        AudioQueue queue(/*capacity=*/1);
+        constexpr u32 kOffered = 512;
+        const std::vector<float> pcm = makePcm(kOffered);
+
+        // A refusal is reported, not swallowed.
+        QVERIFY(!queue.pushAll(pcm.data(), kOffered, /*channels=*/2, 48000));
+
+        // totalPushed_ counts what was OFFERED and is untouched by the refusal:
+        // 512 offered to each of the two queues.
+        QCOMPARE(queue.totalPushed(), u64{kOffered} * 2);
+
+        const u64 vizAccepted = drainFrames(queue, /*viz=*/true);
+        const u64 recAccepted = drainFrames(queue, /*viz=*/false);
+
+        // A partial refusal really happened, so this is not "all in" and not
+        // "all out": neither of those would be the bug.
+        QVERIFY2(vizAccepted > 0, why("the visualizer queue accepted nothing at all"));
+        QVERIFY2(vizAccepted < kOffered,
+                 why("the visualizer queue accepted all " + std::to_string(vizAccepted) +
+                     " frames, so nothing was refused"));
+        QVERIFY2(recAccepted > 0, why("the recorder queue accepted nothing at all"));
+        QVERIFY2(recAccepted < kOffered,
+                 why("the recorder queue accepted all " + std::to_string(recAccepted) +
+                     " frames, so nothing was refused"));
+
+        // The defect itself: the un-attempted remainder was not counted. Pre-fix
+        // these read 8 + 8 = 16, not 512.
+        QCOMPARE(vizAccepted + queue.vizDropCount(), u64{kOffered});
+        QCOMPARE(recAccepted + queue.recDropCount(), u64{kOffered});
+        QVERIFY(queue.vizDropCount() > 0);
+        QVERIFY(queue.recDropCount() > 0);
+    }
+
+    void dropIdentityHoldsForEveryOfferedAndCapacity_data() {
+        QTest::addColumn<int>("offered");
+        QTest::addColumn<int>("capacity");
+
+        // Offer counts around the 8-frame chunk boundary, around whole frames,
+        // and far past both, crossed with capacities on both sides of a chunk,
+        // a frame and many frames -- so the walker's `remaining` is exercised at
+        // every alignment the chunk loop can produce. Deliberately no capacity
+        // is assumed of any pair: the invariant under test is the SUM, which
+        // holds whatever the underlying queue's real capacity turns out to be.
+        const int offered[] = {1, 8, 9, 16, 17, 64, 65, 512, 513};
+        const int capacity[] = {1, 2, 3, 8, 64};
+        for (int cap : capacity) {
+            for (int off : offered) {
+                const QByteArray tag = QStringLiteral("offered-%1-capacity-%2")
+                                               .arg(off)
+                                               .arg(cap)
+                                               .toLatin1();
+                QTest::newRow(tag.constData()) << off << cap;
+            }
+        }
+    }
+
+    void dropIdentityHoldsForEveryOfferedAndCapacity() {
+        QFETCH(int, offered);
+        QFETCH(int, capacity);
+        const auto frames = static_cast<u32>(offered);
+        const u64 offeredFrames = static_cast<u64>(offered);
+        AudioQueue queue(static_cast<u32>(capacity));
+        const std::vector<float> pcm = makePcm(frames);
+
+        const bool accepted = queue.pushAll(pcm.data(), frames, 2, 48000);
+
+        // Offered frames are counted in full, twice, whatever the queues did.
+        QCOMPARE(queue.totalPushed(), offeredFrames * 2);
+
+        const u64 vizAccepted = drainFrames(queue, /*viz=*/true);
+        const u64 recAccepted = drainFrames(queue, /*viz=*/false);
+        QCOMPARE(vizAccepted, recAccepted);
+
+        // The identity, for both queues.
+        QCOMPARE(vizAccepted + queue.vizDropCount(), offeredFrames);
+        QCOMPARE(recAccepted + queue.recDropCount(), offeredFrames);
+
+        // pushAll's result is the AND of the two queues, which are fed the same
+        // chunk and share a capacity, so it is exactly "did either refuse".
+        // Pinning it means the return value cannot drift from the counters.
+        QCOMPARE(accepted, vizAccepted == offeredFrames);
+    }
+
+    void fullyAcceptedPushReportsZeroDrops() {
+        AudioQueue queue(/*capacity=*/4096);
+        constexpr u32 kOffered = 512;
+        const std::vector<float> pcm = makePcm(kOffered);
+
+        QVERIFY(queue.pushAll(pcm.data(), kOffered, /*channels=*/2, 48000));
+        QCOMPARE(queue.vizDropCount(), u64{0});
+        QCOMPARE(queue.recDropCount(), u64{0});
+        QCOMPARE(queue.totalPushed(), u64{kOffered} * 2);
+        QCOMPARE(drainFrames(queue, /*viz=*/true), u64{kOffered});
+        QCOMPARE(drainFrames(queue, /*viz=*/false), u64{kOffered});
+
+        // Draining is not a drop, and an exhausted queue reports empty -- which
+        // is what makes the drain above a complete count rather than a partial
+        // one, so the identity is not resting on an under-read.
+        QCOMPARE(queue.vizDropCount(), u64{0});
+        QCOMPARE(queue.recDropCount(), u64{0});
+        AudioFrame frame;
+        QVERIFY(!queue.popViz(frame));
+        QVERIFY(!queue.popRec(frame));
+        QCOMPARE(drainFrames(queue, /*viz=*/true), u64{0});
+        QCOMPARE(drainFrames(queue, /*viz=*/false), u64{0});
+    }
+
+    // The invariant the identity rests on: totalPushed_ counts frames OFFERED,
+    // so it keeps counting while every subsequent push is refused outright. If
+    // it ever counted accepts instead, `drained + dropped == offered` would be
+    // true by construction and would prove nothing.
+    void totalPushedCountsOfferedFramesEvenWhenEverythingIsRefused() {
+        AudioQueue queue(/*capacity=*/1);
+        constexpr u32 kFirst = 64;
+        const std::vector<float> first = makePcm(kFirst);
+
+        QVERIFY(!queue.pushAll(first.data(), kFirst, /*channels=*/2, 48000));
+        QCOMPARE(queue.totalPushed(), u64{kFirst} * 2);
+        const u64 firstDrops = queue.vizDropCount();
+        QVERIFY(firstDrops > 0);
+
+        // The queue is now full and is never drained, so every following push is
+        // refused on its very first chunk and contributes its WHOLE frame count
+        // to the drop total -- 8 each, not 1.
+        for (int i = 0; i < 4; ++i) {
+            const std::vector<float> more = makePcm(8);
+            QVERIFY(!queue.pushAll(more.data(), 8, /*channels=*/2, 48000));
+        }
+        QCOMPARE(queue.totalPushed(), u64{kFirst} * 2 + u64{8} * 4 * 2);
+        QCOMPARE(queue.vizDropCount(), firstDrops + 8 * 4);
+        QCOMPARE(queue.recDropCount(), firstDrops + 8 * 4);
+
+        const u64 vizAccepted = drainFrames(queue, /*viz=*/true);
+        const u64 recAccepted = drainFrames(queue, /*viz=*/false);
+        QCOMPARE(vizAccepted, recAccepted);
+        QCOMPARE(vizAccepted + queue.vizDropCount(), u64{kFirst + 8 * 4});
+        QCOMPARE(recAccepted + queue.recDropCount(), u64{kFirst + 8 * 4});
     }
 };
 

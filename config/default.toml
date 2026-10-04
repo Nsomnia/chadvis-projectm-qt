@@ -49,10 +49,14 @@ enabled = true
         y = 0.05000000074505806
 
 [recording]
+auto_record = false
 container = 'mp4'
 default_filename = 'chadvis-projectm-qt_{date}_{time}'
 enabled = true
 output_directory = '~/Videos/ChadVis'
+record_entire_song = false
+restart_track_on_record = false
+stop_at_track_end = false
 
     [recording.audio]
     bitrate = 320
@@ -67,6 +71,16 @@ output_directory = '~/Videos/ChadVis'
     preset = 'medium'
     width = 1920
 
+[karaoke]
+active_color = '#FFFF00FF'
+bold = true
+enabled = true
+font_family = 'Arial'
+font_size = 32
+inactive_color = '#FFFFFFFF'
+shadow_color = '#000000FF'
+y_position = 0.5
+
 [ui]
 accent_color = '#00FF88FF'
 drawer_open = false
@@ -79,16 +93,28 @@ theme = 'dark'
 visualizer_background = '#000000FF'
 
 [visualizer]
+aspect_correction = true
 beat_sensitivity = 1.0
 force_preset = ''
 fps = 60
+hard_cut_sensitivity = 1.0
 height = 1080
+mesh_x = 32
+mesh_y = 24
 preset_duration = 30
 preset_path = ''
 shuffle_presets = true
 smooth_preset_duration = 5
+texture_paths = []
 use_default_preset = false
 width = 1920
 
 [suno]
+auto_download = false
+debug_lyrics = false
+debug_lyrics_file = ''
 device_id = ''
+download_format = 'mp3'
+download_path = ''
+embed_metadata = true
+save_lyrics = true

@@ -2,12 +2,93 @@
 
 #include "core/Logger.hpp"
 
+#include <QDateTime>
+#include <QFile>
+#include <QString>
+#include <QStringList>
+#include <QTimeZone>
 #include <QTimer>
 #include <QUrl>
 #include <algorithm>
+#include <array>
+#include <chrono>
+#include <format>
 #include <random>
 
+#ifdef Q_OS_WIN
+#include <io.h>
+#include <windows.h>
+#else
+#include <sys/file.h>
+#include <unistd.h>
+#endif
+
 namespace vc::suno {
+
+namespace {
+
+// ── Advisory-lock primitives ─────────────────────────────────────────────────
+//
+// Same shape as src/recorder/VideoRecorderFFmpeg.cpp:42-87, deliberately not
+// shared: the two callers need opposite halves of it. The recorder may
+// legitimately find its output path already present, so it needs the lock to
+// arbitrate two legitimate claimants. This queue refuses to touch a path that
+// exists at all (O_EXCL) and uses the lock only to tell a crashed leftover
+// apart from a live writer.
+//
+// The probe below is meaningful within one process and not just across
+// programs: BSD flock() treats two descriptors for the same file as
+// independent -- "an attempt to lock the file using one of these file
+// descriptors may be denied by a lock that the calling process has already
+// placed via another file descriptor".
+
+#ifdef Q_OS_WIN
+
+int nativeHandleOf(QFile& file) {
+    return _get_osfhandle(static_cast<int>(file.nativeHandle()));
+}
+
+bool lockExclusive(const int fd) {
+    OVERLAPPED overlapped{};
+    const HANDLE handle = reinterpret_cast<HANDLE>(static_cast<intptr_t>(fd));
+    return LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, MAXDWORD,
+                      MAXDWORD, &overlapped) != FALSE;
+}
+
+void unlockExclusive(const int fd) {
+    OVERLAPPED overlapped{};
+    LockFileEx(reinterpret_cast<HANDLE>(static_cast<intptr_t>(fd)), LOCKFILE_FAIL_IMMEDIATELY, 0,
+               MAXDWORD, MAXDWORD, &overlapped);
+}
+
+#else
+
+int nativeHandleOf(QFile& file) { return file.handle(); }
+
+bool lockExclusive(const int fd) { return flock(fd, LOCK_EX | LOCK_NB) == 0; }
+
+void unlockExclusive(const int fd) { flock(fd, LOCK_UN); }
+
+#endif
+
+/// Try to take an exclusive lock on `path` without creating or truncating it.
+/// True means nothing else holds it. A path that cannot be opened at all also
+/// reports true: an unopenable leftover cannot be an active writer, and the
+/// reclaim that follows surfaces the real reason.
+bool claimIfUnlocked(const fs::path& path) {
+    QFile probe(QString::fromStdString(path.string()));
+    if (!probe.open(QIODevice::ReadOnly)) return true;
+
+    const int fd = nativeHandleOf(probe);
+    if (fd < 0) return true;
+
+    const bool locked = lockExclusive(fd);
+    if (locked) unlockExclusive(fd);  // probe only; release immediately
+    probe.close();
+    return locked;
+}
+
+} // namespace
 
 FailureKind classifyFailure(const QNetworkReply::NetworkError err, const int httpStatus) {
     using NE = QNetworkReply::NetworkError;
@@ -41,6 +122,133 @@ std::int64_t backoffWithJitterMs(const int attemptZeroBased, std::mt19937& rng) 
     return base + jitter(rng);
 }
 
+namespace {
+
+/// Month spellings for the IMF-fixdate token set. RFC 9110 fixes these nine
+/// tokens; anything else is malformed, so this is an exact match, not a prefix.
+constexpr std::array<const char*, 12> kHttpMonths{"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+
+/// Parse an HTTP-date (RFC 9110 5.6.7) into a UTC epoch.
+///
+/// Hand-rolled on purpose, because Qt's own parser cannot be used here and the
+/// failure is silent. Measured against the Qt 6.11.1 on this machine:
+/// `QDateTime::fromString(s, Qt::RFC2822Date)` returns an invalid QDateTime for
+/// "Sun, 06 Nov 1994 08:49:37 GMT" -- the exact example in RFC 2822 -- and for
+/// every "GMT"/"UT" spelling, because RFC 2822's timezone token is a named zone
+/// that Qt does not accept in that position. It *does* accept "+0000", and then
+/// silently ignores it: "Thu, 01 Jan 2026 00:00:00 +0000" came back as
+/// 1767225600 where `QDateTime::fromString("2026-01-01T00:00:00", ISODate).toUTC()`
+/// gives 1767250800 -- exactly the machine's UTC-7 offset. A date parser that
+/// is 7 hours wrong on the one header a rate limit depends on is worse than no
+/// parser, because the ladder would then be chosen as though the server had
+/// sent nothing.
+///
+/// The weekday is required to be present and is then discarded: RFC 9110 5.6.7
+/// makes it redundant and requires recipients to accept a mismatched one.
+std::optional<std::int64_t> parseHttpDate(const QByteArray& value,
+                                          const std::int64_t nowEpochSecs) {
+    const QString text = QString::fromLatin1(value);
+    const qsizetype comma = text.indexOf(QLatin1Char(','));
+    if (comma <= 0) return std::nullopt;
+
+    const QStringList clock = text.mid(comma + 1).trimmed().split(QLatin1Char(' '),
+                                                                  Qt::SkipEmptyParts);
+    // "06 Nov 1994 08:49:37 GMT" -> four clock fields plus the zone.
+    if (clock.size() != 5) return std::nullopt;
+
+    const int day = clock[0].toInt();
+    const int month =
+        static_cast<int>(std::find_if(kHttpMonths.begin(), kHttpMonths.end(),
+                                      [&](const char* m) { return clock[1] == QLatin1String(m); }) -
+                         kHttpMonths.begin()) +
+        1;
+    const int year = clock[2].toInt();
+    const QStringList hms = clock[3].split(QLatin1Char(':'));
+    if (hms.size() != 3) return std::nullopt;
+    const int hour = hms[0].toInt();
+    const int minute = hms[1].toInt();
+    const int second = hms[2].toInt();
+
+    // Widths are lenient -- a hand-rolled server that emits "6 Nov" is common
+    // enough to be worth accepting. Ranges are not: measured, QTime accepts an
+    // hour of 99 and QDateTime happily turns "99:49:37" into a real instant, so
+    // an unchecked field yields a *plausible* wrong time rather than an invalid
+    // one. RFC 9110's time-hour is 00-23, time-minute 00-59, time-second 00-60
+    // (60 for a leap second, which QTime accepts and which we pass through).
+    if (day < 1 || day > 31 || month < 1 || month > 12 || hour > 23 || hour < 0 ||
+        minute > 59 || minute < 0 || second > 60 || second < 0) {
+        return std::nullopt;
+    }
+
+    // Zone: the four names RFC 9110 lists as accepted, or an explicit numeric
+    // offset. An unrecognised zone is malformed rather than assumed to be UTC --
+    // guessing here is the fail-open this class exists to avoid.
+    std::int64_t zoneOffsetSecs = 0;
+    const QString zone = clock[4];
+    if (zone.compare("GMT", Qt::CaseInsensitive) == 0 || zone.compare("UT", Qt::CaseInsensitive) == 0 ||
+        zone.compare("UTC", Qt::CaseInsensitive) == 0 || zone.compare("Z", Qt::CaseInsensitive) == 0) {
+        zoneOffsetSecs = 0;
+    } else if (zone.size() == 5 && (zone.at(0) == QLatin1Char('+') || zone.at(0) == QLatin1Char('-'))) {
+        bool ok = false;
+        const int offset = zone.mid(1).toInt(&ok);
+        if (!ok) return std::nullopt;
+        zoneOffsetSecs = (offset / 100) * 3600 + (offset % 100) * 60;
+        if (zone.at(0) == QLatin1Char('-')) zoneOffsetSecs = -zoneOffsetSecs;
+    } else {
+        return std::nullopt;
+    }
+
+    const QDateTime when{
+        QDate(year, month, day), QTime(hour, minute, second), QTimeZone::utc()};
+    if (!when.isValid()) return std::nullopt;  // e.g. 40 Nov, or hour 99
+    return std::optional<std::int64_t>{when.toSecsSinceEpoch() - zoneOffsetSecs - nowEpochSecs};
+}
+
+} // namespace
+
+std::optional<std::int64_t> parseRetryAfter(const QByteArray& headerValue,
+                                            const std::int64_t nowEpochSecs) {
+    const QByteArray trimmed = headerValue.trimmed();
+    if (trimmed.isEmpty()) return std::nullopt;
+
+    // delta-seconds form. QByteArray::toLongLong consumes the *whole* string or
+    // reports failure -- measured on this Qt: "5s" returns ok=false with 0, so
+    // trailing garbage cannot be silently read as a valid number, and a
+    // 23-digit overflow also returns ok=false rather than saturating. It does
+    // accept a leading '-', and RFC 9110's delta-seconds is 1*DIGIT with no
+    // sign, so a negative hint is treated as unparseable rather than clamped
+    // into a plausible-looking zero.
+    bool ok = false;
+    const qlonglong seconds = trimmed.toLongLong(&ok);
+    if (ok && seconds >= 0) return std::optional<std::int64_t>{static_cast<std::int64_t>(seconds)};
+
+    return parseHttpDate(trimmed, nowEpochSecs);
+}
+
+std::int64_t retryDelayMs(const int attemptZeroBased,
+                          const std::optional<std::int64_t> retryAfterSecs, std::mt19937& rng) {
+    if (!retryAfterSecs.has_value()) return backoffWithJitterMs(attemptZeroBased, rng);
+
+    const std::int64_t hint =
+        std::clamp(*retryAfterSecs * 1000, kMinRetryAfterMs, kMaxRetryAfterMs);
+    std::uniform_int_distribution<std::int64_t> jitter(0, hint / 5);
+    return hint + jitter(rng);
+}
+
+std::string byteCapReason(const std::string_view clipId, const qint64 limitBytes,
+                          const qint64 seenBytes) {
+    return std::format("{} exceeded the per-item byte cap of {} bytes ({} received)", clipId,
+                       limitBytes, seenBytes);
+}
+
+std::string shortWriteReason(const std::string_view clipId, const qint64 offsetBytes,
+                             const qint64 wantedBytes, const qint64 writtenBytes,
+                             const std::string_view deviceError) {
+    return std::format("{} could not be written: {} of {} bytes at offset {} ({})", clipId,
+                       writtenBytes, wantedBytes, offsetBytes, deviceError);
+}
+
 DownloadQueue::DownloadQueue(QNetworkAccessManager* adoptedManager, QObject* parent)
     : QObject(parent) {
     if (adoptedManager) {
@@ -52,12 +260,30 @@ DownloadQueue::DownloadQueue(QNetworkAccessManager* adoptedManager, QObject* par
 DownloadQueue::DownloadQueue(ReplyFactory factory, QObject* parent)
     : QObject(parent), factory_(std::move(factory)) {}
 
-DownloadQueue::~DownloadQueue() = default;
+DownloadQueue::DownloadQueue(ReplyFactory factory, PartOpener partOpener, QObject* parent)
+    : QObject(parent), factory_(std::move(factory)), partOpener_(std::move(partOpener)) {}
+
+DownloadQueue::~DownloadQueue() {
+    // A QFile unlinks nothing when it is destroyed, so an item still in flight at
+    // shutdown would leave its scratch file behind. Every non-success path
+    // unlinks, which is what lets the reclaim in openPart() treat a survivor as
+    // a crashed run -- so the queue has to honour that invariant on its own exit
+    // too, or the first thing a crashed run finds is a queue that leaks.
+    const auto release = [this](std::vector<std::shared_ptr<Item>>& container) {
+        for (auto& item : container) dropPart(*item);
+    };
+    release(active_);
+    release(waiting_);
+}
 
 void DownloadQueue::setMaxConcurrent(const int maxConcurrent) {
     maxConcurrent_ = std::max(1, maxConcurrent);
     pump();
 }
+
+void DownloadQueue::setTransferTimeoutMs(const int ms) { transferTimeoutMs_ = std::max(0, ms); }
+
+void DownloadQueue::setMaxBytesPerItem(const qint64 bytes) { maxBytesPerItem_ = bytes; }
 
 QNetworkReply* DownloadQueue::makeReply(const QNetworkRequest& request) {
     if (factory_) return factory_(request);
@@ -84,7 +310,7 @@ bool DownloadQueue::enqueue(std::string clipId,
         return false;
     }
 
-    auto item = std::make_unique<Item>();
+    auto item = std::make_shared<Item>();
     item->clipId = std::move(clipId);
     item->url = std::move(url);
     item->destPath = std::move(destPath);
@@ -109,6 +335,7 @@ bool DownloadQueue::cancel(const std::string& clipId) {
     const auto dequeueCancelled = [&](auto& container) {
         const auto it = std::find_if(container.begin(), container.end(), matches);
         if (it == container.end()) return false;
+        dropPart(**it);
         setState(**it, DownloadState::Cancelled);
         container.erase(it);
         checkIdle();
@@ -140,55 +367,226 @@ DownloadQueue::Item* DownloadQueue::findItem(const std::string& clipId) {
 
 void DownloadQueue::pump() {
     while (!pending_.empty() && static_cast<int>(active_.size()) < maxConcurrent_) {
-        auto item = std::move(pending_.front());
+        // One local owner for the whole iteration. startItem() can retire the
+        // item -- and retire() drops the containers' references -- so nothing
+        // here may depend on a container still holding it.
+        std::shared_ptr<Item> item = std::move(pending_.front());
         pending_.pop_front();
-        Item& ref = *item;
-        startItem(ref);
-        if (!isTerminal(ref.state)) {
+        startItem(item);
+        if (!isTerminal(item->state)) {
             active_.push_back(std::move(item));
         }
     }
     checkIdle();
 }
 
-void DownloadQueue::startItem(Item& item) {
-    item.finishing = false;
-    item.cancelRequested = false;
-    setState(item, DownloadState::Downloading);
+void DownloadQueue::startItem(const std::shared_ptr<Item>& item) {
+    item->finishing = false;
+    item->cancelRequested = false;
+    item->bytesReceived = 0;
+    item->ownsPart = false;
+    item->abortCause = AbortCause::None;
+    item->abortReason.clear();
+    setState(*item, DownloadState::Downloading);
 
-    QNetworkRequest request{QUrl(QString::fromStdString(item.url))};
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                         QNetworkRequest::ManualRedirectPolicy);
-    item.progressPercent = -1;
-
-    item.partFile.setFileName(QString::fromStdString(partPathFor(item.destPath).string()));
-    if (!item.partFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        LOG_WARN("DownloadQueue: cannot open part file for {}: {}", item.clipId,
-                 item.partFile.errorString().toStdString());
-        setState(item, DownloadState::FailedPermanent);
-        retire(item.clipId);
+    auto part = openPart(*item);
+    if (!part.has_value()) {
+        // No reply exists yet, so there is nothing to abort and nothing to
+        // classify: the claim itself is terminal.
+        LOG_ERROR("DownloadQueue: {}", item->abortReason);
+        setState(*item, DownloadState::FailedPermanent);
+        retire(item->clipId);
         return;
     }
+    item->partFile = std::move(*part);
+
+    QNetworkRequest request{QUrl(QString::fromStdString(item->url))};
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    // Stall deadline, not a wall-clock budget: Qt restarts this timer on every
+    // chunk, so a slow-but-progressing transfer is never cut off while a socket
+    // that has gone quiet is. Requires Qt >= 6.7 -- see kDefaultTransferTimeoutMs.
+    if (transferTimeoutMs_ > 0) request.setTransferTimeout(transferTimeoutMs_);
+    item->progressPercent = -1;
 
     QNetworkReply* reply = makeReply(request);
-    item.reply = reply;
+    item->reply = reply;
 
-    connect(reply, &QNetworkReply::readyRead, this, [this, &item]() { onData(item); });
+    // Weak, not raw. A reply outlives its item whenever the item is retired
+    // while the reply is still alive, and a transport really does emit one more
+    // downloadProgress after abort() -- which is how this queue tears its own
+    // attempts down. Capturing the address instead would be a use-after-free on
+    // every terminal path; locking here is what makes that impossible, and an
+    // expired pointer is also the honest answer for a callback about an item
+    // that no longer exists.
+    const std::weak_ptr<Item> weak = item;
+    connect(reply, &QNetworkReply::readyRead, this, [this, weak]() {
+        if (const auto held = weak.lock(); held) onData(*held);
+    });
     connect(reply, &QNetworkReply::downloadProgress, this,
-            [this, &item](qint64 rec, qint64 total) { onProgress(item, rec, total); });
-    connect(reply, &QNetworkReply::finished, this,
-            [this, reply, &item]() { onFinished(item, *reply); });
+            [this, weak](qint64 rec, qint64 total) {
+                if (const auto held = weak.lock(); held) onProgress(*held, rec, total);
+            });
+    connect(reply, &QNetworkReply::finished, this, [this, weak, reply]() {
+        if (const auto held = weak.lock(); held) onFinished(*held, *reply);
+    });
+}
+
+std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart(Item& item) {
+    const fs::path path = partPathFor(item.destPath);
+    const std::string pathStr = path.string();
+
+    // An injected opener owns the whole claim, so this is the only way to
+    // substitute a sink -- the production policy below cannot be bypassed by
+    // accident. It is only ever supplied by the test constructor.
+    if (partOpener_) {
+        auto injected = partOpener_(pathStr);
+        if (!injected) {
+            item.abortReason =
+                std::format("{} could not open its scratch file at {}", item.clipId, pathStr);
+            return std::unexpected(PartOpenError::Failed);
+        }
+        item.ownsPart = true;
+        return std::expected<std::unique_ptr<QIODevice>, PartOpenError>{std::move(injected)};
+    }
+
+    // WriteOnly|NewOnly maps to O_CREAT|O_EXCL|O_WRONLY on POSIX and CREATE_NEW
+    // on Win32: Qt's openModeToOpenFlags() adds QT_OPEN_CREAT for a writable
+    // mode and QT_OPEN_EXCL for NewOnly, independently of Truncate
+    // (qfsfileengine_p.h:230-248). That is the same claim
+    // VideoRecorderFFmpeg.cpp:71-73 makes with a raw ::open, and it is exactly
+    // what the old WriteOnly|Truncate lacked -- truncation follows a symlink,
+    // and O_EXCL fails on a dangling one.
+    std::string openError;
+    const auto openOnce = [&pathStr, &openError]() -> std::unique_ptr<QFile> {
+        auto file = std::make_unique<QFile>(QString::fromStdString(pathStr));
+        if (file->open(QIODevice::WriteOnly | QIODevice::NewOnly)) return file;
+        openError = file->errorString().toStdString();
+        return nullptr;
+    };
+    const auto lockCreated = [](QFile& file) {
+        const int fd = nativeHandleOf(file);
+        return fd < 0 || lockExclusive(fd);  // no native handle: nothing to lock
+    };
+
+    if (auto file = openOnce()) {
+        if (!lockCreated(*file)) {
+            // We hold the only exclusive claim on a path we just created, so a
+            // refusal here means a holder arrived in the gap between create and
+            // lock. Unlink what we made and report rather than share the file.
+            LOG_WARN("DownloadQueue: lost the race for {} immediately after creating it", pathStr);
+            std::error_code ec;
+            fs::remove(path, ec);
+            item.abortReason =
+                std::format("{} lost the race to create its scratch file at {}", item.clipId, pathStr);
+            return std::unexpected(PartOpenError::Failed);
+        }
+        item.ownsPart = true;
+        return std::expected<std::unique_ptr<QIODevice>, PartOpenError>{std::move(file)};
+    }
+
+    // The open failed. "Already exists" is the only failure this queue can
+    // reason about, and symlink_status does not follow links, so a dangling
+    // symlink -- which nothing legitimate here ever creates -- reports as
+    // symlink rather than not_found and is never mistaken for a crashed run.
+    std::error_code ec;
+    if (fs::symlink_status(path, ec).type() == fs::file_type::not_found) {
+        LOG_WARN("DownloadQueue: cannot open part file for {} at {}: {}", item.clipId, pathStr,
+                 openError);
+        item.abortReason = std::format("{} could not open its scratch file at {} ({})", item.clipId,
+                                       pathStr, openError);
+        return std::unexpected(PartOpenError::Failed);
+    }
+
+    // A path exists. Unlocked, it can only be a crashed run: every non-success
+    // path unlinks it, the retry path unlinks before re-queueing, and range
+    // resume is deliberately disabled so there is nothing to resume from.
+    // Refusing instead would wedge the item behind a file whose name is an
+    // implementation detail -- a silently disabled feature with no way back.
+    // So it is reclaimed. Locked, a live writer owns the path and removing it
+    // would destroy another run's work: that is a collision, and it is reported.
+    if (!claimIfUnlocked(path)) {
+        LOG_WARN("DownloadQueue: {} collides with a live writer at {}", item.clipId, pathStr);
+        item.abortReason =
+            std::format("{} found another download already writing {}", item.clipId, pathStr);
+        return std::unexpected(PartOpenError::Collision);
+    }
+
+    std::error_code removeEc;
+    fs::remove(path, removeEc);
+    if (removeEc) {
+        LOG_WARN("DownloadQueue: cannot reclaim stale part for {} at {}: {}", item.clipId, pathStr,
+                 removeEc.message());
+        item.abortReason = std::format("{} found a stale scratch file at {} that could not be "
+                                        "removed ({})",
+                                       item.clipId, pathStr, removeEc.message());
+        return std::unexpected(PartOpenError::Failed);
+    }
+
+    auto reclaimed = openOnce();
+    if (!reclaimed || !lockCreated(*reclaimed)) {
+        LOG_WARN("DownloadQueue: cannot reclaim stale part for {} at {}: {}", item.clipId, pathStr,
+                 reclaimed ? std::string("could not lock after reclaiming") : openError);
+        std::error_code cleanupEc;
+        fs::remove(path, cleanupEc);
+        item.abortReason = std::format("{} could not take over the stale scratch file at {}", item.clipId,
+                                       pathStr);
+        return std::unexpected(PartOpenError::Failed);
+    }
+
+    LOG_INFO("DownloadQueue: reclaimed stale part for {} at {}", item.clipId, pathStr);
+    item.ownsPart = true;
+    return std::expected<std::unique_ptr<QIODevice>, PartOpenError>{std::move(reclaimed)};
 }
 
 void DownloadQueue::onData(Item& item) {
     auto* reply = item.reply.data();
     if (!reply || item.finishing) return;
+    // abort() can re-enter through the transport's own signal handling; a cause
+    // already recorded means this attempt is being torn down, so nothing more
+    // may be appended to a file that is about to be unlinked.
+    if (item.abortCause != AbortCause::None) return;
+    if (!item.partFile) return;
 
     const QByteArray chunk = reply->readAll();
-    if (!chunk.isEmpty()) item.partFile.write(chunk);
+    if (chunk.isEmpty()) return;
+
+    const qint64 wanted = static_cast<qint64>(chunk.size());
+
+    // Byte cap, checked before the write so the overflowing chunk never lands.
+    // Strictly-greater is what makes "exactly at the limit" a success: an item
+    // whose total equals the cap is legal and completes.
+    if (maxBytesPerItem_ > 0 && item.bytesReceived + wanted > maxBytesPerItem_) {
+        failItem(item, AbortCause::ByteCap,
+                 byteCapReason(item.clipId, maxBytesPerItem_, item.bytesReceived + wanted));
+        return;
+    }
+
+    const qint64 written = item.partFile->write(chunk);
+    if (classifySinkWrite(written, wanted) != SinkWrite::Complete) {
+        // ENOSPC lands here. Discarding this return value is how a truncated
+        // file gets renamed into place and reported Completed -- and a
+        // plausible-looking short MP3 that plays to the break is worse than a
+        // visible failure, because no downstream consumer can tell it apart
+        // from a real download. Retryable: the scratch file is unlinked and the
+        // next attempt starts from byte zero, so a transient full disk recovers.
+        failItem(item, AbortCause::ShortWrite,
+                 shortWriteReason(item.clipId, item.bytesReceived, wanted, written,
+                                  item.partFile->errorString().toStdString()));
+        return;
+    }
+    item.bytesReceived += written;
 }
 
 void DownloadQueue::onProgress(Item& item, const qint64 received, const qint64 total) {
+    // A transport is free to emit one last downloadProgress after abort() -- and
+    // it does: the queue's own teardown path is triggered from inside readyRead,
+    // so the progress signal that the aborted reply emits next lands *after* the
+    // terminal state. Without this guard a failed item flips back to
+    // "downloading" in the UI, which is the phantom-state bug the itemStateChanged
+    // feed exists to avoid. `finishing` is exactly this flag; onData and
+    // onFinished already honour it.
+    if (item.finishing || item.abortCause != AbortCause::None) return;
     if (total <= 0) return;
     const qint64 absolute = received;
     const qint64 grand = total;
@@ -202,6 +600,16 @@ void DownloadQueue::onProgress(Item& item, const qint64 received, const qint64 t
 
 void DownloadQueue::onFinished(Item& item, QNetworkReply& reply) {
     if (item.finishing) return;
+
+    // A self-inflicted cause outranks whatever the transport reports. abort()
+    // sets OperationCanceledError, which classifies as Cancelled -- the exact
+    // lie this ordering exists to prevent, since the user cancelled nothing.
+    if (item.abortCause != AbortCause::None) {
+        const bool retryable = item.abortCause == AbortCause::ShortWrite;
+        LOG_WARN("DownloadQueue: {} tore its attempt down: {}", item.clipId, item.abortReason);
+        handleFailure(item, &reply, retryable ? FailureKind::Retryable : FailureKind::Permanent);
+        return;
+    }
 
     const int status = reply.attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const FailureKind kind = classifyFailure(reply.error(), status);
@@ -220,33 +628,61 @@ void DownloadQueue::onFinished(Item& item, QNetworkReply& reply) {
     }
 }
 
+void DownloadQueue::failItem(Item& item, const AbortCause cause, std::string reason) {
+    item.abortCause = cause;
+    item.abortReason = std::move(reason);
+    if (auto* reply = item.reply.data()) reply->abort();
+}
+
+void DownloadQueue::closeSink(Item& item) {
+    if (!item.partFile) return;
+    item.partFile->close();
+    item.partFile.reset();
+}
+
+void DownloadQueue::dropPart(Item& item) {
+    closeSink(item);
+    if (!item.ownsPart) return;
+    item.ownsPart = false;
+
+    std::error_code ec;
+    fs::remove(partPathFor(item.destPath), ec);
+    if (ec) {
+        LOG_WARN("DownloadQueue: could not remove part file for {}: {}", item.clipId, ec.message());
+    }
+}
+
 void DownloadQueue::finalizeSuccess(Item& item, QNetworkReply& reply) {
     item.finishing = true;
-    if (item.partFile.isOpen()) item.partFile.close();
+    // Close, never unlink: the bytes live under the scratch name until the
+    // rename below, and dropPart() here would delete them first -- which is
+    // precisely how a Completed item ends up with no file at all.
+    closeSink(item);
     reply.deleteLater();
     item.reply.clear();
 
+    // A rename failure is unrecoverable for this attempt: the sink was closed
+    // and there is no second copy of the bytes anywhere. Terminal, not retried.
     std::error_code ec;
     fs::rename(partPathFor(item.destPath), item.destPath, ec);  // atomic on POSIX
     if (ec) {
         LOG_WARN("DownloadQueue: rename failed for {}: {}", item.clipId, ec.message());
-        item.attempts = kMaxAttempts;  // nothing left to salvage
+        item.abortReason = std::format("{} downloaded but could not be moved into place ({})",
+                                       item.clipId, ec.message());
         setState(item, DownloadState::FailedPermanent);
         retire(item.clipId);
         return;
     }
 
     item.progressPercent = 100;
-    LOG_INFO("DownloadQueue: completed {}", item.clipId);
+    LOG_INFO("DownloadQueue: completed {} ({} bytes)", item.clipId, item.bytesReceived);
     setState(item, DownloadState::Completed);
     retire(item.clipId);
 }
 
 void DownloadQueue::finishCancelled(Item& item, QNetworkReply& reply) {
     item.finishing = true;
-    if (item.partFile.isOpen()) item.partFile.close();
-    std::error_code ec;
-    fs::remove(partPathFor(item.destPath), ec);
+    dropPart(item);
     reply.deleteLater();
     item.reply.clear();
 
@@ -256,29 +692,38 @@ void DownloadQueue::finishCancelled(Item& item, QNetworkReply& reply) {
 }
 
 void DownloadQueue::handleFailure(Item& item, QNetworkReply* reply, const FailureKind kind) {
-    if (item.partFile.isOpen()) item.partFile.close();
-
-    std::error_code ec;
-    fs::remove(partPathFor(item.destPath), ec);
+    dropPart(item);
     item.finishing = true;
+    ++item.attempts;
+
+    if (kind == FailureKind::Retryable && item.attempts < kMaxAttempts) {
+        // Read the hint before the reply is scheduled for deletion. Honouring
+        // Retry-After is strictly better than the ladder: it is the server
+        // telling us when it will be ready, and the ladder is a guess.
+        std::optional<std::int64_t> retryAfter;
+        if (reply) {
+            retryAfter = parseRetryAfter(
+                reply->rawHeader("Retry-After"),
+                std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count());
+        }
+        const std::int64_t delay = retryDelayMs(item.attempts - 1, retryAfter, rng_);
+        LOG_WARN("DownloadQueue: {} failed (attempt {}/{}), retrying in {} ms{}", item.clipId,
+                 item.attempts, kMaxAttempts, delay,
+                 retryAfter.has_value() ? " (Retry-After)" : "");
+        // The returned reference is the only owner between the erase and the
+        // push_back, so `item` cannot die mid-statement.
+        waiting_.push_back(takeFromActive(item.clipId));
+        setState(item, DownloadState::Queued);
+        QTimer::singleShot(delay, this, [this, id = item.clipId]() { resumeWaiting(id); });
+        return;
+    }
+
     if (reply) {
         reply->deleteLater();
         item.reply.clear();
     }
-    ++item.attempts;
-
-    if (kind == FailureKind::Retryable && item.attempts < kMaxAttempts) {
-        LOG_WARN("DownloadQueue: {} failed (attempt {}/{}), backing off", item.clipId,
-                 item.attempts, kMaxAttempts);
-        // Moving containers never relocates the Item itself, so `item` stays
-        // valid even after ownership hops over to waiting_.
-        waiting_.push_back(takeFromActive(item.clipId));
-        setState(item, DownloadState::Queued);
-        QTimer::singleShot(backoffWithJitterMs(item.attempts - 1, rng_), this,
-                           [this, id = item.clipId]() { resumeWaiting(id); });
-        return;
-    }
-
     setState(item, kind == FailureKind::Permanent ? DownloadState::FailedPermanent
                                                   : DownloadState::FailedRetryable);
     retire(item.clipId);
@@ -301,11 +746,11 @@ void DownloadQueue::setState(Item& item, const DownloadState state) {
                           state == DownloadState::Completed ? 100 : item.progressPercent);
 }
 
-std::unique_ptr<DownloadQueue::Item> DownloadQueue::takeFromActive(const std::string& clipId) {
+std::shared_ptr<DownloadQueue::Item> DownloadQueue::takeFromActive(const std::string& clipId) {
     const auto it = std::find_if(active_.begin(), active_.end(),
                                  [&clipId](const auto& ptr) { return ptr->clipId == clipId; });
     if (it == active_.end()) return nullptr;
-    auto owned = std::move(*it);
+    std::shared_ptr<Item> owned = std::move(*it);
     active_.erase(it);
     return owned;
 }

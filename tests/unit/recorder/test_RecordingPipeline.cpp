@@ -1933,6 +1933,184 @@ private slots:
         QCOMPARE(bytes, u64{0});
     }
 
+    void aFrameTheEncoderIsStillHoldingIsNeitherProgressNorAFault() {
+        // The contract encodeOneFrame now answers with three states, and the one
+        // the bool could not carry was this. avcodec_receive_packet returning
+        // AVERROR(EAGAIN) on the first call means the encoder is holding the
+        // frame -- measured on this project's FFmpeg (libavcodec 63.1.102), the
+        // native aac encoder reports initial_padding=1024 and emits 0 packets for
+        // send #0 and 1 for every send after. The old code initialised
+        // `allWritten = true` and left it there, so the first frame of every
+        // recording reported "written" having written nothing: audioFramesEncoded_
+        // incremented for a frame that reached no file, anyFrameWritten said yes
+        // on a completely empty audio track (the exact inversion the header
+        // comment on that field calls load-bearing), and composeStopReason
+        // inherited it through VideoRecorderThread.
+        //
+        // Observable one frame at a time, which is the only place it is
+        // observable: from outside, a four-frame batch reports Encoded either way.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        VideoRecorderFFmpeg encoder;
+        QVERIFY(encoder.init(testSettings(
+            QString::fromStdString(
+                (fs::path(dir.path().toStdString()) / "deferred.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+
+        // Exactly one AAC frame: 1024 samples at 48 kHz, stereo.
+        u64 bytes = 0;
+        std::vector<f32> oneFrame(1024 * 2, 0.05f);
+
+        QVERIFY2(encoder.encodeAudio(oneFrame, 2, bytes) ==
+                     VideoRecorderFFmpeg::AudioEncodeOutcome::NoProgress,
+                 "a frame the encoder was still holding reported progress; the "
+                 "audio track is empty at this point and the caller cannot tell "
+                 "it apart from one that reached the file");
+        QVERIFY2(!encoder.audioResampleReport().anyFrameWritten,
+                 "a frame that produced no packet was counted as a frame that "
+                 "reached the file");
+        QCOMPARE(bytes, u64{0});
+
+        // encodeAudio consumes its buffer by contract: the loop at
+        // VideoRecorderFFmpeg.cpp:580-583 erases each frame-sized block off the
+        // front, so one AAC frame in means an empty vector out. Asserted rather
+        // than assumed, because the next half of this test depends on it -- and
+        // because an empty buffer hits the `buffer.empty()` guard at :557 and
+        // returns NoProgress, which is indistinguishable from the deferral under
+        // test. Reusing the drained vector therefore asserted the right answer
+        // for entirely the wrong reason.
+        QVERIFY2(oneFrame.empty(), "encodeAudio must consume the frames it was given; a caller "
+                                   "cannot tell a drained buffer from a deferred frame");
+
+        // So the second *frame* is a second vector. All three sibling tests already
+        // hand encodeAudio a fresh one for their second call -- `more` at :1814,
+        // `more` at :1879, and a per-iteration `oneFrame` at :1918 -- which is what
+        // makes their `Encoded` assertions mean what they say.
+        std::vector<f32> secondFrame(1024 * 2, 0.05f);
+        QVERIFY(encoder.encodeAudio(secondFrame, 2, bytes) ==
+                VideoRecorderFFmpeg::AudioEncodeOutcome::Encoded);
+        QVERIFY(encoder.audioResampleReport().anyFrameWritten);
+        QVERIFY2(bytes > 0, "no audio packet was counted for a frame that reached "
+                            "the muxer");
+
+        encoder.cleanup();
+    }
+
+    void videoFramesAreNotHeldBackByTheEncodersThisProjectUses() {
+        // The pin on the assumption the video arm of encodeOneFrame rests on:
+        // `framesWritten` counts frames the encoder *accepted*, so a frame the
+        // encoder is still holding is counted rather than refused -- and the
+        // comment at the call site claims that cannot happen here. Measured:
+        // FFV1 and libx264 both declare AV_CODEC_CAP_DELAY, yet both emit a
+        // packet on the very first send (has_b_frames=0, initial_padding=0).
+        // That is why the deferral test above has to feed audio, not video: if
+        // this ever starts failing, the video mapping is claiming a false
+        // exemption and the distinction has moved.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const fs::path dirPath(dir.path().toStdString());
+
+        // One file per codec, each in the container the suite already exercises
+        // that codec in, so nothing new is introduced here that could fail for a
+        // reason other than the one under test. The extension matters as much as
+        // the field: init() hands the filename to avformat_alloc_output_context2
+        // and lets it pick the muxer.
+        struct Combo {
+            VideoCodec codec;
+            Container container;
+            const char* fileName;
+        };
+        const Combo combos[] = {
+            {VideoCodec::FFV1, Container::MKV, "encoder-delay-ffv1.mkv"},
+            {VideoCodec::H264, Container::MP4, "encoder-delay-h264.mp4"},
+        };
+
+        for (const auto& combo : combos) {
+            const QString name = QString::fromLatin1(combo.fileName);
+            VideoRecorderFFmpeg encoder;
+            QVERIFY(encoder.init(testSettings(
+                QString::fromStdString((dirPath / combo.fileName).string()),
+                combo.codec, AudioCodec::AAC, combo.container)));
+
+            u64 bytes = 0;
+            QVERIFY2(encoder.encodeVideo(solidFrame(11), bytes),
+                     qPrintable(QStringLiteral(
+                         "%1 returned false for its first frame, so the video "
+                         "path is now deferring and the call-site comment is "
+                         "wrong").arg(name)));
+            QVERIFY2(bytes > 0,
+                     qPrintable(QStringLiteral(
+                         "%1 wrote no bytes for its first frame, so it deferred "
+                         "after all").arg(name)));
+            encoder.cleanup();
+        }
+    }
+
+    void aSuccessfulWriteAdvancesBytesWritten() {
+        // The regression guard for the accounting bug. writePacket added
+        // `packet->size` *after* av_interleaved_write_frame had taken ownership
+        // of the packet and blanked it, so the addition was always 0 and
+        // bytesWritten never moved from the value it started at -- measured:
+        // size BEFORE=73, ret=0, size AFTER=0, and RecordingBridge::fileSize()
+        // reading that as "0 B". The write seam is why no test caught it: with
+        // the seam substituting the return value the muxer never runs, so the
+        // packet still has its length and the same expression looks right on the
+        // one path that never writes.
+        //
+        // The assertion is "moved, and keeps moving", not a magic number: what
+        // matters is that each packet that reaches the file adds its own payload,
+        // which is what makes a monotonic counter the right way to observe it.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const fs::path dirPath(dir.path().toStdString());
+
+        VideoRecorderFFmpeg encoder;
+        QVERIFY(encoder.init(testSettings(
+            QString::fromStdString((dirPath / "accounted.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+        const fs::path clip(encoder.getOutputPath());
+
+        u64 bytes = 0;
+        QVERIFY(encoder.encodeVideo(solidFrame(11), bytes));
+        const u64 afterFirstVideo = bytes;
+        QVERIFY2(afterFirstVideo > 0,
+                 "a video packet reached the muxer and the byte counter stayed at "
+                 "zero");
+
+        QVERIFY(encoder.encodeVideo(solidFrame(22, kIntervalUs), bytes));
+        const u64 afterVideo = bytes;
+        QVERIFY2(bytes > afterFirstVideo,
+                 "a second video packet reached the muxer and the byte counter "
+                 "did not advance");
+
+        std::vector<f32> samples(4096 * 2, 0.05f);
+        QVERIFY(encoder.encodeAudio(samples, 2, bytes) ==
+                VideoRecorderFFmpeg::AudioEncodeOutcome::Encoded);
+        const u64 afterAudio = bytes;
+        QVERIFY2(bytes > afterVideo,
+                 "audio packets reached the muxer and the byte counter did not "
+                 "advance");
+
+        // And the drain, which is a third write path with its own accounting: the
+        // delaying audio encoder is still holding one frame at this point, so
+        // flush() has a packet to write and the counter must move again. Measured
+        // on this fixture: 207 bytes after the batch, 219 after the drain.
+        encoder.flush(bytes);
+        QVERIFY2(bytes > afterAudio, "the drain wrote a packet and the byte "
+                                    "counter did not advance");
+        encoder.cleanup();
+
+        // What is counted is payload, not container bytes, so the total can never
+        // exceed the file and does not equal it: Matroska's own EBML header,
+        // segment size and cue block are on top of the packet payloads.
+        const u64 fileSize = fs::file_size(clip);
+        QVERIFY2(bytes > 0 && bytes < fileSize,
+                 qPrintable(QStringLiteral(
+                     "accounted %1 bytes into a %2-byte file")
+                                .arg(bytes).arg(fileSize)));
+    }
+
     void theFlushDrainStopsOnceTheMuxerHasRefusedAWrite() {
         // flush() was the one write path that ignored writeFailed_, while
         // encodeVideo and encodeAudio both short-circuit on it -- the same decision,

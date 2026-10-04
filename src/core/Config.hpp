@@ -65,8 +65,8 @@ public:
     const KaraokeConfig& karaoke() const {
         return karaoke_;
     }
-    const std::vector<OverlayElementConfig>& overlayElements() const {
-        return overlayElements_;
+    const OverlayConfig& overlay() const {
+        return overlay_;
     }
 
     // Section accessors (mutable)
@@ -98,9 +98,9 @@ public:
         markDirty();
         return karaoke_;
     }
-    std::vector<OverlayElementConfig>& overlayElements() {
+    OverlayConfig& overlay() {
         markDirty();
-        return overlayElements_;
+        return overlay_;
     }
 
     void addOverlayElement(OverlayElementConfig elem);
@@ -133,7 +133,7 @@ private:
     KeyboardConfig keyboard_;
     SunoConfig suno_;
     KaraokeConfig karaoke_;
-    std::vector<OverlayElementConfig> overlayElements_;
+    OverlayConfig overlay_;
 
     mutable std::mutex mutex_;
 };

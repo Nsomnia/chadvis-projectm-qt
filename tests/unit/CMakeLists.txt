@@ -2,11 +2,15 @@ add_executable(unit_tests
     test_main.cpp
     core/test_Logger.cpp
     core/test_ConfigParsers.cpp
+    core/test_ConfigLoader.cpp
     core/test_FileUtils.cpp
     core/test_Version.cpp
     core/test_Signal.cpp
     recorder/test_RecordingPipeline.cpp
+    recorder/test_AudioFileDecoder.cpp
+    recorder/test_RenderQueue.cpp
     audio/test_Playlist.cpp
+    audio/test_PcmFormat.cpp
     visualizer/test_PresetScanner.cpp
     suno/test_AuthModule.cpp
     suno/test_StoredCredentialClassification.cpp
@@ -21,6 +25,7 @@ add_executable(unit_tests
     suno/test_SunoEndpoints.cpp
     lyrics/test_LyricsPipeline.cpp
     lyrics/test_LyricsExport.cpp
+    util/test_PathSafety.cpp
 )
 
 set_target_properties(unit_tests PROPERTIES

@@ -13,6 +13,8 @@
 #include <QUrl>
 #include <fstream>
 #include <algorithm>
+#include <cctype>
+#include <ranges>
 #include <utility>
 
 // TagLib Includes
@@ -256,10 +258,30 @@ fs::path SunoDownloader::resolveDestPath(const SunoClip& clip) {
     // would make the answer depend on whether this clip's own bytes have
     // arrived yet -- so the transfer and the sidecar writers, which run on
     // either side of that moment, could disagree about the path.
-    if (destOwner_.contains(candidate.string())) {
-        candidate = dir / (stem + "-" + clip.id + std::string(kAudioExtension));
+    //
+    // The key is lowercased, because APFS and NTFS compare paths
+    // case-insensitively and this map does not: `Song.mp3` and `song.mp3` are
+    // the SAME file on both, but two different keys here, so the second clip
+    // would be handed a path the first one already owns and the first would be
+    // silently clobbered. The filesystem owns that comparison, not the
+    // sanitizer, which is why it is fixed here and not in sanitizeFilename.
+    const auto claim = [](const fs::path& path) {
+        std::string key = path.string();
+        std::ranges::transform(key, key.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return key;
+    };
+
+    if (destOwner_.contains(claim(candidate))) {
+        // clip.id is sanitized because it is interpolated into a path here, and
+        // ClipParser::parseClip validates only that it is non-empty -- so an id
+        // containing "../" would otherwise write outside the download directory.
+        // Remote data reaching a path unsanitized is the exact bar at which this
+        // matters; a hostile upstream is a real possibility for a scraped id.
+        candidate = dir / (stem + "-" + vc::file::sanitizeFilename(clip.id) +
+                           std::string(kAudioExtension));
     }
-    destOwner_.emplace(candidate.string(), clip.id);
+    destOwner_.emplace(claim(candidate), clip.id);
     destByClip_.emplace(clip.id, candidate);
     return candidate;
 }

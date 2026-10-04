@@ -359,7 +359,10 @@ Result<void> Application::init(const AppOptions& opts) {
 	// Initialize components
 	LOG_DEBUG("Initializing audio engine...");
 	audioEngine_ = std::make_unique<AudioEngine>();
-	if (auto result = audioEngine_->init(); !result) {
+	// Explicit rather than letting init() reach for the Config singleton: this is
+	// the only place the three --audio-* overrides have been folded into CONFIG,
+	// so passing it here is what makes them reach the output device at all.
+	if (auto result = audioEngine_->init(CONFIG.audio()); !result) {
 		LOG_ERROR("Audio engine init failed: {}", result.error().message);
 		return result;
 	}

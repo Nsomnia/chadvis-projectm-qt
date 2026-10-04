@@ -219,7 +219,17 @@ private:
             }
 
             if (!queue.try_enqueue(frame)) {
-                dropCount.fetch_add(chunkSize, std::memory_order_relaxed);
+                // The whole remainder is lost, not just the chunk that was
+                // refused: the loop returns here, so `remaining` samples never
+                // reach this queue and were never offered to it either.
+                // Counting only `chunkSize` (one AUDIO_FRAME_SAMPLES, i.e. 8)
+                // made a 512-frame push into a capacity-1 queue report 8 drops
+                // instead of 504, while totalPushed_ still counted all 512 --
+                // so "pushed minus dropped" claimed 504 samples had reached the
+                // visualizer and the recorder when 8 had. dropCount has to mean
+                // "frames this queue refused" to be comparable with
+                // totalPushed_ at all.
+                dropCount.fetch_add(remaining, std::memory_order_relaxed);
                 return false;
             }
 

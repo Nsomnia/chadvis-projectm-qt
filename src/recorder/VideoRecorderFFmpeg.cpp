@@ -444,7 +444,25 @@ bool VideoRecorderFFmpeg::encodeVideo(const GrabbedFrame& frame,
     }
   }
 
-  return encodeVideoFrame(encodeFrame, bytesWritten);
+  // Lost is the only failure: it is what VideoRecorderThread counts against, so
+  // a muxer that had been refusing packets for a minute cannot report a climbing
+  // frame count. The old code discarded writePacket's answer and returned true.
+  //
+  // Deferred is deliberately *not* a failure, because framesWritten does not
+  // claim that a frame's bytes are in the file -- it counts frames the encoder
+  // accepted, and a frame still inside the encoder has been accepted; it has
+  // simply not come out yet. audioFramesEncoded_ is the counter that makes the
+  // existential claim, and it is why the same helper serves both streams with
+  // two different mappings.
+  //
+  // Measured on this project's codecs, the video arm does not even arise: FFV1
+  // and libx264 with tune=zerolatency both declare AV_CODEC_CAP_DELAY yet emit
+  // one packet on the very first send (has_b_frames=0, initial_padding=0,
+  // 1 packet at send #0). It is stated anyway, because a bool that cannot tell
+  // it from Written is exactly what made the audio counter report an empty
+  // track as encoded.
+  return encodeOneFrame(videoCodecCtx_.get(), videoStream_, encodeFrame,
+                        bytesWritten) != FrameEncodeOutcome::Lost;
 }
 
 i64 VideoRecorderFFmpeg::presentationTimestampFor(i64 captureTimestampUs) {
@@ -553,8 +571,8 @@ VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
 
     bool encodedAny = false;
     // The encoder refusing a frame, as opposed to a packet not reaching the
-    // file. encodeAudioFrame reports both with one bool, so the muxer case is
-    // excluded by its own sticky flag: that fault has a one-shot report
+    // file. encodeOneFrame reports both as FrameEncodeOutcome::Lost, so the muxer
+    // case is excluded by its own sticky flag: that fault has a one-shot report
     // (reportWriteFailure) and must not also arrive here as a generic "the
     // encoder failed", which is how a full volume used to be reported twice.
     bool encoderRefused = false;
@@ -585,10 +603,19 @@ VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
         audioFrame_->pts = audioFrameCount_;
         audioFrameCount_ += frameSize;
 
-        if (encodeAudioFrame(audioFrame_.get(), bytesWritten)) {
+        const FrameEncodeOutcome outcome =
+            encodeOneFrame(audioCodecCtx_.get(), audioStream_, audioFrame_.get(),
+                           bytesWritten);
+        if (outcome == FrameEncodeOutcome::Written) {
             encodedAny = true;
             ++audioFramesEncoded_;
-        } else if (!writeFailed_) {
+        } else if (outcome == FrameEncodeOutcome::Lost && !writeFailed_) {
+            // Deferred is neither branch, and that is the entire point of it.
+            // It is the first frame of every recording for a codec with a delay:
+            // it wrote nothing, so counting it made anyFrameWritten true on an
+            // empty audio track, and calling it a fault made a healthy recording
+            // report an encoding error once per recording for a frame the
+            // encoder is merely holding.
             encoderRefused = true;
         }
     }
@@ -905,30 +932,41 @@ Result<void> VideoRecorderFFmpeg::initAudioStream(
     return Result<void>::ok();
 }
 
-bool VideoRecorderFFmpeg::encodeVideoFrame(AVFrame* frame, u64& bytesWritten) {
-    int ret = avcodec_send_frame(videoCodecCtx_.get(), frame);
-    if (ret < 0)
-        return false;
+VideoRecorderFFmpeg::FrameEncodeOutcome VideoRecorderFFmpeg::encodeOneFrame(
+    AVCodecContext* codecCtx, AVStream* stream, AVFrame* frame,
+    u64& bytesWritten) {
+    if (avcodec_send_frame(codecCtx, frame) < 0) {
+        return FrameEncodeOutcome::Lost;
+    }
 
-    // "Every packet this frame produced reached the file". The old code
-    // discarded writePacket's answer and returned true, and VideoRecorderThread
-    // incremented framesWritten on that true -- so a muxer that had been refusing
-    // packets for a minute still reported a climbing count.
+    // The drain is unbounded because the API is: one send can release several
+    // packets, and stopping at the first would leave the rest for the next frame
+    // to claim as its own. flush() drains what is left at stop().
+    bool producedPacket = false;
     bool allWritten = true;
-
-    while (ret >= 0) {
-        ret = avcodec_receive_packet(videoCodecCtx_.get(), packet_.get());
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+    while (true) {
+        const int ret = avcodec_receive_packet(codecCtx, packet_.get());
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
-        if (ret < 0)
-            return false;
+        }
+        if (ret < 0) {
+            return FrameEncodeOutcome::Lost;
+        }
 
-        if (!writePacket(packet_.get(), videoStream_, videoCodecCtx_->time_base,
+        producedPacket = true;
+        if (!writePacket(packet_.get(), stream, codecCtx->time_base,
                          bytesWritten)) {
             allWritten = false;
         }
     }
-    return allWritten;
+
+    // Order matters: a frame that produced nothing has satisfied "every packet it
+    // produced reached the file" without anything reaching the file, so the
+    // packet count has to be settled before the write verdict is read.
+    if (!producedPacket) {
+        return FrameEncodeOutcome::Deferred;
+    }
+    return allWritten ? FrameEncodeOutcome::Written : FrameEncodeOutcome::Lost;
 }
 
 int VideoRecorderFFmpeg::resampleIntoAudioFrame(AVFrame* frame,
@@ -968,30 +1006,6 @@ bool VideoRecorderFFmpeg::consumeInjectedWriteFailure() {
   return true;
 }
 
-bool VideoRecorderFFmpeg::encodeAudioFrame(AVFrame* frame, u64& bytesWritten) {
-    int ret = avcodec_send_frame(audioCodecCtx_.get(), frame);
-    if (ret < 0)
-        return false;
-
-    // Same contract as encodeVideoFrame: true only if every packet this frame
-    // produced is in the file.
-    bool allWritten = true;
-
-    while (ret >= 0) {
-        ret = avcodec_receive_packet(audioCodecCtx_.get(), packet_.get());
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-            break;
-        if (ret < 0)
-            return false;
-
-        if (!writePacket(packet_.get(), audioStream_, audioCodecCtx_->time_base,
-                         bytesWritten)) {
-            allWritten = false;
-        }
-    }
-    return allWritten;
-}
-
 bool VideoRecorderFFmpeg::writePacket(AVPacket* packet,
   AVStream* stream,
   AVRational sourceTimeBase,
@@ -1012,6 +1026,19 @@ bool VideoRecorderFFmpeg::writePacket(AVPacket* packet,
   av_packet_rescale_ts(packet, sourceTimeBase, stream->time_base);
   packet->stream_index = stream->index;
 
+  // Read the payload length BEFORE the packet is handed over, because on success
+  // av_interleaved_write_frame has taken ownership of it and blanked it: the
+  // packet comes back with size 0 and pts AV_NOPTS_VALUE. Measured against this
+  // project's FFmpeg (libavformat 63.1.102): size BEFORE=73, ret=0, size
+  // AFTER=0. So the addition that used to live in the Written arm below was a
+  // sum of zeroes, and bytesWritten -- and RecordingBridge::fileSize() with it
+  // -- read "0 B" for every recording the recorder has ever made.
+  //
+  // The write seam is why no test ever saw it: when it substitutes the return
+  // value the muxer never runs, so the packet still has its length afterwards
+  // and the same expression looks correct on the one path that never writes.
+  const int payloadBytes = packet->size;
+
   // The seam substitutes the return value, not a branch above it, so the
   // classification below is the production path. AVERROR(ENOSPC) because that is
   // the real cause the message names, and because a code the classifier maps to
@@ -1026,7 +1053,7 @@ bool VideoRecorderFFmpeg::writePacket(AVPacket* packet,
   // break, and is reported Completed.
   switch (classifyWriteResult(written)) {
     case WriteOutcome::Written:
-      bytesWritten += packet->size;
+      bytesWritten += payloadBytes;
       return true;
 
     case WriteOutcome::Backpressure:

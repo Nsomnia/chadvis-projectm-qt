@@ -3,13 +3,21 @@
 #include <QObject>
 #include <QtQml/qqml.h>
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 #include <QTimer>
 #include "QmlSingletonBridge.hpp"
 
+namespace vc {
+class AudioEngine;
+}
 namespace vc::suno {
 class SunoClient;
 }
+
+/// Live QMediaDevices instance, kept only for audioOutputsChanged(). Global
+/// namespace, which is where Qt declares it.
+class QMediaDevices;
 
 namespace qml_bridge {
 
@@ -39,6 +47,23 @@ friend class QmlSingletonBridge<SettingsBridge, SingletonPolicy::CachedQmlParent
     // Audio Settings
     Q_PROPERTY(int audioBufferSize READ audioBufferSize WRITE setAudioBufferSize NOTIFY audioBufferSizeChanged)
     Q_PROPERTY(int audioSampleRate READ audioSampleRate WRITE setAudioSampleRate NOTIFY audioSampleRateChanged)
+    // Output device by description, or "default" for the system default.
+    Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
+    // Selectable descriptions, always led by the system-default entry. Populated
+    // from QMediaDevices::audioOutputs() and kept current by its
+    // audioOutputsChanged signal, so plugging in headphones updates the list.
+    Q_PROPERTY(QStringList audioDevices READ audioDevices NOTIFY audioDevicesChanged)
+    Q_PROPERTY(bool audioDevicesAvailable READ audioDevicesAvailable NOTIFY audioDevicesChanged)
+    // Always non-empty. Why the device combo is disabled, or that a change is
+    // saved for the next start rather than applied live. A control that cannot
+    // do what it looks like it does has to say so.
+    Q_PROPERTY(QString audioDeviceNotice READ audioDeviceNotice NOTIFY audioDeviceNoticeChanged)
+    // Last engine failure. Mirrors AudioEngine::errorSignal, whose empty string
+    // is the documented "recovered" value.
+    Q_PROPERTY(QString audioError READ audioError NOTIFY audioErrorChanged)
+    // What the output is actually running: device, conversion window, requested
+    // rate against the device's range, and the observed sink rate.
+    Q_PROPERTY(QString audioOutputStatus READ audioOutputStatus NOTIFY audioOutputStatusChanged)
 
     // Visualizer Settings
     Q_PROPERTY(int visualizerFps READ visualizerFps WRITE setVisualizerFps NOTIFY visualizerFpsChanged)
@@ -91,6 +116,28 @@ public:
     void setAudioBufferSize(int size);
     int audioSampleRate() const;
     void setAudioSampleRate(int rate);
+    QString audioDevice() const;
+    void setAudioDevice(const QString& device);
+    QStringList audioDevices() const { return m_audioDevices; }
+    bool audioDevicesAvailable() const { return m_audioDevicesAvailable; }
+    QString audioDeviceNotice() const { return m_audioDeviceNotice; }
+    QString audioError() const { return m_audioError; }
+    QString audioOutputStatus() const { return m_audioOutputStatus; }
+
+    /// Re-reads the whole [audio] section from the config and pushes it to the
+    /// live engine.
+    ///
+    /// Exists because audioBufferSize and audioSampleRate are generated from the
+    /// SettingsBridgeSettings.inc X-macro table, whose setters cannot run a
+    /// post-set hook, so QML calls this after changing either of them. Once a
+    /// real post-set hook exists in SettingMacros.hpp, both int setters can push
+    /// themselves and this can go.
+    Q_INVOKABLE void applyAudioConfig();
+
+    /// Re-enumerates output devices. audioOutputsChanged() already covers
+    /// hot-plug; this is the manual retry for a platform that reported nothing
+    /// at startup.
+    Q_INVOKABLE void refreshAudioDevices();
 
     // Visualizer
     int visualizerFps() const;
@@ -163,10 +210,20 @@ public:
     // Performance Presets
     Q_INVOKABLE void setPerformancePreset(const QString& preset);
     static void setSunoClient(vc::suno::SunoClient* client);
+    /// Hands the bridge the playback engine so an audio setting takes effect
+    /// immediately. Until BridgeRegistration::registerBridges() calls this, a
+    /// change is persisted and applied on the next start, and audioDeviceNotice
+    /// says exactly that rather than pretending otherwise.
+    static void setAudioEngine(vc::AudioEngine* engine);
 
 signals:
     void audioBufferSizeChanged();
     void audioSampleRateChanged();
+    void audioDeviceChanged();
+    void audioDevicesChanged();
+    void audioDeviceNoticeChanged();
+    void audioErrorChanged();
+    void audioOutputStatusChanged();
     void visualizerFpsChanged();
     void visualizerMeshXChanged();
     void visualizerMeshYChanged();
@@ -207,6 +264,18 @@ private:
     void commitSunoCredential();
     void syncSunoCredentialFromClient();
 
+    void attachAudioEngine(vc::AudioEngine* engine);
+    void refreshAudioDeviceList();
+    void updateAudioDeviceNotice();
+    void setAudioError(const QString& message);
+    /// Pushes the whole [audio] section to the engine, reverting the persisted
+    /// device name if the engine refuses it, so the setting on disk and the open
+    /// output can never disagree.
+    void pushAudioConfigToEngine();
+    /// Whether @p device is one this platform currently reports, or the default
+    /// sentinel. Guards against persisting a name nothing can open.
+    [[nodiscard]] bool isSelectableAudioDevice(const QString& device) const;
+
     QTimer m_autoSaveTimer;
     QTimer m_sunoCredentialTimer;
     vc::suno::SunoClient* m_sunoClient{nullptr};
@@ -214,6 +283,18 @@ private:
 
     QString m_sunoTokenCache;
     bool m_sunoCredentialDirty{false};
+
+    vc::AudioEngine* m_audioEngine{nullptr};
+    static vc::AudioEngine* s_audioEngine;
+    /// Live QMediaDevices instance, kept only for audioOutputsChanged(). Null
+    /// until the first refresh, in which case hot-plug is simply not reported.
+    /// Parented to this bridge, so no manual teardown.
+    QMediaDevices* m_mediaDevices{nullptr};
+    QStringList m_audioDevices;
+    bool m_audioDevicesAvailable{false};
+    QString m_audioDeviceNotice;
+    QString m_audioError;
+    QString m_audioOutputStatus;
 };
 
 } // namespace qml_bridge

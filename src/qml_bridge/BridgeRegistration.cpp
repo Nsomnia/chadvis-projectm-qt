@@ -54,6 +54,12 @@ void registerBridges(QQmlApplicationEngine* engine,
     LyricsBridge::setLyricsSync(lyricsSync);
     LyricsBridge::connectSignals();
 
+    // Without this the audio device / buffer / sample-rate settings persist and
+    // apply on the next start, and SettingsBridge.audioDeviceNotice says exactly
+    // that rather than pretending they took effect. It is here so the panel is
+    // live, not so the feature works: the config reaches the engine at init.
+    SettingsBridge::setAudioEngine(audioEngine);
+
     // Suno integration
     if (sunoController) {
         SettingsBridge::setSunoClient(sunoController->client());
