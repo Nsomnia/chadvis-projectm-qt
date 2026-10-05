@@ -1007,17 +1007,26 @@ private slots:
 
     void everySwitchStartsOffAndGenerationIsTheHeadlineCase() {
         // `Generation` is the surface this whole file was built for: the route is
-        // `[T1]` and the gate is not evidence-blocked, so the only thing standing
-        // between the user and a working button is a deliberate switch. Before, that
-        // was a hardcoded `return false` in `SunoBridge::generationAvailable()` with
-        // no way to reach `Available` at all -- a well-built door to nowhere with
-        // no sentence explaining it.
+        // `[T1]` and the gate is not evidence-blocked, so nothing about the
+        // EVIDENCE stops a working button -- there is simply no implementation
+        // behind it. Before, that was a hardcoded `return false` in
+        // `SunoBridge::generationAvailable()` with no way to reach `Available` at
+        // all: a well-built door to nowhere with no sentence explaining it.
+        //
+        // WORDING CHANGED 2026-10-05, deliberately, and this assertion is the
+        // record of it. The sentence used to be "Available on the server but
+        // switched off in this build: ... One deliberate switch away." That
+        // describes a toggle somebody forgot to flip, which is a different claim
+        // from the truth -- and for a surface this build DOES ship it was simply
+        // false, because `SunoBridge` now enables the gates whose call sites
+        // exist. The switch encodes "there is an implementation behind this", so
+        // the honest sentence is about missing code.
         GateResolver resolver;
         const GateVerdict off = resolver.evaluate(FeatureGate::Generation);
         QCOMPARE(off.status, GateStatus::LocallyDisabled);
         QCOMPARE(off.reason,
-                 QStringLiteral("Available on the server but switched off in this build: "
-                                "\"Generation\". One deliberate switch away."));
+                 QStringLiteral("Suno offers this and the evidence supports it, but this "
+                                "build has no implementation for \"Generation\" yet."));
 
         QVERIFY(resolver.setLocallyEnabled(FeatureGate::Generation, true));
         const GateVerdict on = resolver.evaluate(FeatureGate::Generation);

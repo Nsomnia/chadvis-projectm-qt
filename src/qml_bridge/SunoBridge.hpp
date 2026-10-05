@@ -53,6 +53,21 @@ class SunoBridge : public QObject,
     // observable at all.
     Q_PROPERTY(bool generationAvailable READ generationAvailable NOTIFY generationAvailableChanged)
     Q_PROPERTY(QString generationUnavailableReason READ generationUnavailableReason NOTIFY generationAvailableChanged)
+    /// Every gated surface with its verdict and the reason it is held.
+    ///
+    /// This exists because `GateResolver::evaluateAll()` had **no caller** — it
+    /// was written for a diagnostics surface that did not exist, which made it
+    /// the most obvious first consumer and the least likely to be noticed as
+    /// dead. It is the honest answer to "why can't I use that": one row per
+    /// product surface, each naming the specific step of the six-step resolution
+    /// order holding it, instead of a silent omission.
+    ///
+    /// One `QVariantMap` per gate: `gate`, `title`, `area`, `status`,
+    /// `available`, `evidence`, `serverFlags`, `note`, `reason`. `status` is the
+    /// machine-readable verdict (`available` / `server-gated` /
+    /// `locally-disabled` / `evidence-blocked` / `excluded`) and `reason` is the
+    /// user-facing sentence, so a UI can filter on one and display the other.
+    Q_PROPERTY(QVariantList gateStatuses READ gateStatuses NOTIFY gateStatusesChanged)
     Q_PROPERTY(QString generationStatus READ generationStatus NOTIFY generationStatusChanged)
     Q_PROPERTY(bool audioUploadBusy READ audioUploadBusy NOTIFY audioUploadChanged)
     Q_PROPERTY(int audioUploadProgress READ audioUploadProgress NOTIFY audioUploadChanged)
@@ -98,6 +113,7 @@ public:
     /// Exists so the disabled Generate button can explain itself instead of
     /// being an unexplained dead control.
     QString generationUnavailableReason() const;
+    QVariantList gateStatuses() const;
     QString generationStatus() const;
     bool audioUploadBusy() const;
     int audioUploadProgress() const;
@@ -158,6 +174,10 @@ signals:
     /// The generation gate verdict (and therefore the reason string) may have
     /// changed, because the server flag map arrived or the account went away.
     void generationAvailableChanged();
+    /// The full gate verdict list may have changed (session flag map arrived, or
+    /// the account went away). Separate from `generationAvailableChanged` so a
+    /// diagnostics surface does not have to couple to one gate's verdict.
+    void gateStatusesChanged();
     void generationStatusChanged();
     void audioUploadChanged();
     void statusMessageChanged();

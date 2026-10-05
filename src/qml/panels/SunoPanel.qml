@@ -72,7 +72,14 @@ ColumnLayout {
                       false,
                       modelSelector.currentValue)
         ToolTip.visible: hovered
-        ToolTip.text: SunoBridge.generationStatus
+        // When generation is unavailable, the reason is the whole point: the
+        // button reads "Generation unavailable" and previously said nothing more,
+        // which is the dead-end this property exists to close. It names which
+        // step of the gate resolution is holding it (no implementation in this
+        // build, a server flag, a tier, or a deliberate exclusion) rather than
+        // restating the disabled state.
+        ToolTip.text: SunoBridge.generationAvailable ? SunoBridge.generationStatus
+                                                    : SunoBridge.generationUnavailableReason
         ToolTip.delay: 300
     }
 

@@ -1,5 +1,6 @@
 #include "SunoBridge.hpp"
 #include "core/Config.hpp"
+#include "core/Logger.hpp"
 #include "ui/controllers/SunoController.hpp"
 #include "suno/ClipParser.hpp"
 #include "suno/ClipResolver.hpp"
@@ -36,6 +37,36 @@ SunoBridge::~SunoBridge() {
 }
 
 namespace {
+
+/// The catalogued surfaces THIS BUILD actually implements — the only place that
+/// fact lives.
+///
+/// Without it every gate resolves `LocallyDisabled`, because the resolver's switch
+/// table starts all-off and nothing ever set one. That made a diagnostics panel
+/// claim the Library — which plainly works — was "switched off in this build",
+/// which is false. The switch now encodes "there is an implementation behind
+/// this", so the catalogued-but-unbuilt majority reads as missing code rather
+/// than as a forgotten toggle.
+///
+/// Each entry names a service that genuinely exists and is reached:
+///   Library        SunoLibraryManager      (POST /api/feed/v3 paging)
+///   Explore        SunoExploreService      (/api/unified/explore)
+///   Notifications  SunoNotificationService (list, badge, mark-read)
+///   Upload         SunoAudioUploadService  (3-step audio upload)
+///   Billing        /api/billing/info/      (credits + plan, read-only)
+///   AccountProfile /api/session/ user object
+///   MediaDelivery  SunoDownloader + DownloadQueue
+///
+/// Deliberately NOT enabled, because no call site exists: Generation, Playlists,
+/// Projects, CustomModels, Contests, Styles, LyricsCowrite, VideoGeneration,
+/// Stems, Sharing, ClipRelations, Rights, AppChrome, MusicPlayer. Their route
+/// constants exist and several are `[T1]`, which is not the same as having code
+/// — see the three-layer reachability rule in TODO.md.
+constexpr vc::suno::FeatureGate kGatesImplementedByThisBuild[]{
+        vc::suno::FeatureGate::Library,        vc::suno::FeatureGate::Explore,
+        vc::suno::FeatureGate::Notifications,  vc::suno::FeatureGate::Upload,
+        vc::suno::FeatureGate::Billing,        vc::suno::FeatureGate::AccountProfile,
+        vc::suno::FeatureGate::MediaDelivery};
 
 QString authFailureKindString(vc::suno::auth::AuthFailureKind kind) {
     using Kind = vc::suno::auth::AuthFailureKind;
@@ -393,7 +424,43 @@ void SunoBridge::wireControllerSignals() {
         connect(am, &vc::suno::SunoAccountManager::gatesChanged,
                 bridgeInstance, [bridgeInstance]() {
                     emit bridgeInstance->generationAvailableChanged();
+                    emit bridgeInstance->gateStatusesChanged();
                 });
+
+        // Declare, once, which catalogued surfaces THIS BUILD actually
+        // implements. This is the only place that fact lives.
+        //
+        // Without it every gate resolves `LocallyDisabled`, because the resolver's
+        // switch table starts all-off and nothing ever set one. That produced a
+        // panel claiming the Library — which plainly works — was "switched off in
+        // this build", which is false. The switch now means "there is an
+        // implementation behind this", so the catalogued-but-unbuilt majority
+        // reads as missing code rather than as a forgotten toggle.
+        //
+        // Each entry below names a service that genuinely exists and is reached:
+        //   Library        SunoLibraryManager   (POST /api/feed/v3 paging)
+        //   Explore        SunoExploreService   (/api/unified/explore)
+        //   Notifications  SunoNotificationService (list, badge, mark-read)
+        //   Upload         SunoAudioUploadService (3-step audio upload)
+        //   Billing        /api/billing/info/   (credits + plan, read-only)
+        //   AccountProfile /api/session/ user object
+        //   MediaDownload  SunoDownloader + DownloadQueue
+        //
+        // Deliberately NOT enabled, because no call site exists: Generation,
+        // Playlists, Projects, CustomModels, Contests, Styles, LyricsCowrite,
+        // VideoGeneration, Stems, Sharing, ClipRelations, Rights, AppChrome,
+        // MusicPlayer. Their route constants exist and several are `[T1]`, which
+        // is not the same as having code — see the three-layer reachability rule.
+        for (const vc::suno::FeatureGate gate : kGatesImplementedByThisBuild) {
+            // [[nodiscard]]: a refused enable must not be silent. It would mean
+            // this build implements the surface but the catalog's evidence floor
+            // or an exclusion contradicts that, which is a real inconsistency.
+            if (!am->gates().setLocallyEnabled(gate, true)) {
+                LOG_WARN("SunoBridge: gate {} is implemented here but the resolver "
+                         "refused to enable it; the catalog and the call sites disagree",
+                         vc::suno::toString(gate));
+            }
+        }
     }
     connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance, [bridge = bridgeInstance](const QString& response, const QString& workspaceId) {
         QVariantMap assistantMsg;
@@ -470,6 +537,49 @@ QString SunoBridge::generationUnavailableReason() const {
         return QStringLiteral("Suno is not connected.");
     }
     return accountManager->gates().evaluate(vc::suno::FeatureGate::Generation).reason;
+}
+
+QVariantList SunoBridge::gateStatuses() const {
+    QVariantList rows;
+    if (!s_controller) {
+        return rows;
+    }
+    const auto* accountManager = s_controller->accountManager();
+    if (!accountManager) {
+        return rows;
+    }
+    const auto& gates = accountManager->gates();
+
+    for (const vc::suno::GateVerdict& verdict : gates.evaluateAll()) {
+        QVariantMap row;
+        row.insert(QStringLiteral("gate"),
+                   QString::fromLatin1(vc::suno::toString(verdict.gate)));
+        row.insert(QStringLiteral("status"),
+                   QString::fromLatin1(vc::suno::toString(verdict.status)));
+        row.insert(QStringLiteral("available"),
+                   verdict.status == vc::suno::GateStatus::Available);
+        row.insert(QStringLiteral("reason"), verdict.reason);
+
+        // The catalog row supplies the human-facing metadata. A verdict whose
+        // gate has no catalog entry is reported as EvidenceBlocked by the
+        // resolver, and `findFeature` returning null here is handled rather than
+        // dereferenced — the row is still emitted, just without a title.
+        if (const vc::suno::FeatureDefinition* def =
+                    vc::suno::findFeature(verdict.gate)) {
+            row.insert(QStringLiteral("title"), QString::fromStdString(
+                                                       std::string(def->title)));
+            row.insert(QStringLiteral("area"), QString::fromStdString(
+                                                      std::string(def->area)));
+            row.insert(QStringLiteral("evidence"),
+                       QString::fromLatin1(vc::suno::hosts::toString(def->evidence)));
+            row.insert(QStringLiteral("serverFlags"),
+                       QString::fromStdString(std::string(def->serverFlags)));
+            row.insert(QStringLiteral("note"),
+                       QString::fromStdString(std::string(def->note)));
+        }
+        rows.append(row);
+    }
+    return rows;
 }
 
 QString SunoBridge::generationStatus() const { return generationStatus_; }

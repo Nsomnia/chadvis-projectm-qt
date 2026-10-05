@@ -622,10 +622,21 @@ GateVerdict GateResolver::evaluate(const FeatureGate gate) const {
     //    to remember.
     const auto index = static_cast<std::size_t>(gate);
     if (index >= locallyEnabled_.size() || !locallyEnabled_[index]) {
+        // Wording matters here, and it was wrong before this round. It used to
+        // read "switched off in this build ... One deliberate switch away", which
+        // describes a toggle somebody forgot to flip. That is a different claim
+        // from the truth, and for a surface this build DOES ship -- the Library,
+        // plainly -- it is simply false.
+        //
+        // What the switch actually encodes, now that `SunoBridge` sets it, is
+        // whether THIS BUILD HAS AN IMPLEMENTATION for the surface. The bridge
+        // enables the gates whose call sites exist; everything else is a
+        // catalogued capability with no code behind it. So the honest sentence
+        // is about missing code, not about a pending toggle.
         return {GateStatus::LocallyDisabled, gate,
                 QString::fromStdString(
-                        std::format("Available on the server but switched off in this build: "
-                                    "\"{}\". One deliberate switch away.",
+                        std::format("Suno offers this and the evidence supports it, but this "
+                                    "build has no implementation for \"{}\" yet.",
                                     def->title))};
     }
 
