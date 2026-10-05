@@ -26,6 +26,7 @@ add_executable(unit_tests
     suno/test_SunoDownloader.cpp
     suno/test_SunoEndpoints.cpp
     suno/test_BoundedBody.cpp
+    suno/test_SunoWorkspace.cpp
     lyrics/test_LyricsPipeline.cpp
     lyrics/test_LyricsExport.cpp
     lyrics/test_LyricTiming.cpp

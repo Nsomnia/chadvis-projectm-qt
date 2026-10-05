@@ -191,8 +191,13 @@ std::expected<RenderState, JobError> RenderQueue::enqueue(RenderJob job) {
     const std::string id = item->job.id;
     pending_.push_back(std::move(item));
 
+    // -1, not 0, when the frame count is unknown. `progressPercent()` is
+    // documented to answer -1 for an unknown denominator precisely so that
+    // "0% of nothing" and "0% of a lot" stay distinguishable; a hardcoded 0 here
+    // threw that away, and a batch whose first report is a fabricated 0% looks
+    // like a stall to whatever is drawing the bar.
     emit jobStateChanged(QString::fromStdString(id),
-                         static_cast<int>(RenderState::Queued), 0);
+                         static_cast<int>(RenderState::Queued), results_.back().progressPercent());
     idleEmitted_ = false;
     emitBatchProgress();
 
@@ -358,7 +363,48 @@ std::vector<std::string> RenderQueue::idsNotFullyRendered() const {
 }
 
 void RenderQueue::clearBatch() {
-    results_.clear();
+    // Compacting, NOT `results_.clear()`.
+    //
+    // `Item::resultIndex` is stamped once at enqueue and nine sites index
+    // `results_[item->resultIndex]` with no bounds check. So the previous
+    // implementation -- which emptied the vector -- left every LIVE job holding
+    // an index into freed storage, and the next `reportProgress` on one of them was
+    // an out-of-bounds read followed by an out-of-bounds write. The header
+    // documented "a job already in flight keeps writing into its slot" without
+    // noticing that after a clear there was no slot.
+    //
+    // Erasing only the settled entries and remapping what is left keeps both
+    // halves of the contract: the batch genuinely starts over for everything that
+    // had finished, and a live job keeps a slot to write into. A new batch
+    // therefore starts numbering from the jobs that are still running, which is
+    // the only place a batch can legitimately continue from.
+    std::vector<RenderResult> kept;
+    kept.reserve(results_.size());
+    // remap[i] is where slot i ends up, or results_.size() when it was dropped.
+    std::vector<std::size_t> remap(results_.size(), results_.size());
+    for (std::size_t i = 0; i < results_.size(); ++i) {
+        if (findItem(results_[i].jobId) != nullptr) {
+            remap[i] = kept.size();
+            kept.push_back(results_[i]);
+        }
+    }
+
+    // Unreachable by construction -- a live item's own slot is kept, because
+    // findItem() finds it -- but this is an unchecked index into a vector and the
+    // cost of being wrong is a wild write, so it is clamped rather than trusted.
+    const auto remapOne = [&remap](Item& item) {
+        if (item.resultIndex >= remap.size()) return;
+        const std::size_t target = remap[item.resultIndex];
+        item.resultIndex = target < remap.size() ? target : 0;
+    };
+    for (const auto& held : pending_) {
+        remapOne(*held);
+    }
+    for (const auto& held : active_) {
+        remapOne(*held);
+    }
+    results_ = std::move(kept);
+
     lastBatchPercent_ = -2;
     emitBatchProgress();
 }

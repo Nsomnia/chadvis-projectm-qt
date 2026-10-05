@@ -365,6 +365,16 @@ static constexpr int kDefaultMaxConcurrent = 1;
 
     /// Drop the accumulated batch and start a new one. Live jobs are untouched,
     /// and a job already in flight keeps writing into its slot.
+    ///
+    /// COMPACTING, not truncating, and the distinction is a memory-safety one.
+    /// `Item::resultIndex` is stamped once at enqueue and several sites index
+    /// `results_[item->resultIndex]` unchecked, so emptying the vector outright
+    /// left every live job holding an index into freed storage -- an
+    /// out-of-bounds read followed by an out-of-bounds write on the next progress
+    /// report. Only settled entries are dropped, and the surviving slots are
+    /// renumbered in place. A batch therefore continues from the jobs still
+    /// running rather than from zero, which is the only place it can honestly
+    /// continue from.
     void clearBatch();
 
 signals:

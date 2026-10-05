@@ -71,7 +71,13 @@ elseif(CPM_tomlplusplus)
     list(APPEND CPM_LIBS CPM_tomlplusplus)
 endif()
 
-list(APPEND CPM_LIBS PFFFT::PFFFT)
+# pffft used to be appended here. It was the only unconditional entry in this
+# list -- the three above are each guarded by an `if(TARGET ...)` system-first
+# probe -- so this line was the sole reason a configure step fetched over the
+# network for a library with no consumer. The empty list case is therefore no
+# longer reachable while spdlog/fmt/tomlplusplus resolve by either route, but
+# `set(CPM_LIBS "")` above already handles it rather than leaving an undefined
+# name in target_link_libraries.
 
 # ---------------------------------------------------------------------------
 # Static library with all application code

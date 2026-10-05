@@ -84,15 +84,22 @@ else()
     )
 endif()
 
-# PFFFT - high-performance SIMD FFT
-CPMAddPackage(
-    NAME pffft
-    GIT_REPOSITORY https://github.com/marton78/pffft.git
-    GIT_TAG e1dbebc9fbf74247d12f094accbbc470aaee8715
-    OPTIONS
-        "PFFFT_BUILD_TESTS OFF"
-        "PFFFT_BUILD_BENCHMARKS OFF"
-)
+# NOTE: pffft (SIMD FFT) was removed 2026-10-04. Its only consumer was
+# src/audio/AudioAnalyzer, which had no caller anywhere in the tree and was
+# retired in e058eab. Two things went with it, and both are worth recording:
+#
+#   * pffft was the one dependency here that BYPASSED the system-first
+#     find_package-then-CPM-fallback policy every header-only dep above
+#     follows -- it called CPMAddPackage unconditionally. So its removal also
+#     removes the last configure-time network fetch for a library that was
+#     linked and never called. readerwriterqueue below is now the only
+#     remaining unconditional CPMAddPackage, and it is header-only.
+#   * It contributed -DPFFFT_STATIC_DEFINE and its include dir to EVERY
+#     project TU, transitively through the PFFFT::PFFFT target rather than
+#     from an explicit target_compile_definitions/CMakeLists line -- which is
+#     why neither string appeared in cmake/ but both appeared in
+#     compile_commands.json. Verified: src/audio/AudioEngine.cpp's compile
+#     line carried exactly those two extra tokens and nothing else pffft-related.
 
 # moodycamel::ReaderWriterQueue - lock-free SPSC queue for audio
 CPMAddPackage(

@@ -1279,16 +1279,50 @@ private slots:
         QVERIFY(queue.enqueue(makeJob("queued")).has_value());
 
         queue.clearBatch();
-        QCOMPARE(queue.batchSize(), std::size_t{0});
-        // The live job is untouched and still owns its slot, and -- this is the
-        // half that used to lie -- it still REPORTS as rendering. Its state lives
-        // in its Item, and reading only the (now empty) batch array reported
-        // Queued for a job that was demonstrably mid-render.
+
+        // NOT zero, and the reason is the point. `Item::resultIndex` is stamped
+        // once at enqueue and several sites index `results_[item->resultIndex]`
+        // unchecked, so clearing the vector outright left every LIVE job holding an
+        // index into freed storage: the next progress report on one was an
+        // out-of-bounds read followed by an out-of-bounds write. clearBatch
+        // therefore COMPACTS -- dropping settled entries and renumbering the
+        // survivors -- so both jobs still here keep a slot to write into.
+        QCOMPARE(queue.batchSize(), std::size_t{2});
         QCOMPARE(queue.activeCount(), 1);
-        QCOMPARE(queue.stateOf("live"), RenderState::Rendering);
-        // A queued job likewise keeps its own answer.
-        QCOMPARE(queue.stateOf("queued"), RenderState::Queued);
         QCOMPARE(queue.queuedCount(), 1);
+
+        // The live job is untouched, still owns its slot, and still REPORTS as
+        // rendering. Its state lives in its Item, and reading only the batch array
+        // reported Queued for a job that was demonstrably mid-render.
+        QCOMPARE(queue.stateOf("live"), RenderState::Rendering);
+        QCOMPARE(queue.stateOf("queued"), RenderState::Queued);
+
+        // And the survivor index is actually usable -- this is the line that would
+        // have been the wild access.
+        QVERIFY(queue.reportProgress("live", 900));
+        QCOMPARE(queue.results()[0].framesDone, u64{900});
+        QCOMPARE(queue.stateOf("live"), RenderState::Rendering);
+    }
+
+    void clearingASettledBatchReallyDoesEmptyIt() {
+        // The other half, so the compaction above cannot degenerate into "never
+        // drops anything". A batch of finished jobs must go to zero.
+        RenderQueue queue([](RenderJob) {});
+        queue.setMaxConcurrent(2);
+        for (int i = 0; i < 4; ++i) {
+            QVERIFY(queue.enqueue(makeJob("done-" + std::to_string(i))).has_value());
+        }
+        RenderReceipt full;
+        full.outcome = RenderState::Completed;
+        full.framesExpected = 1800;
+        full.framesWritten = 1800;
+        for (int i = 0; i < 4; ++i) {
+            QVERIFY(queue.finish("done-" + std::to_string(i), full));
+        }
+        QCOMPARE(queue.batchSize(), std::size_t{4});
+        queue.clearBatch();
+        QCOMPARE(queue.batchSize(), std::size_t{0});
+        QVERIFY(queue.results().empty());
     }
 
     void anEmptyRunnerlessQueueIsNotConstructible() {
