@@ -27,6 +27,7 @@ int runTestSunoDownloader(int argc, char** argv);
 int runTestBoundedBody(int argc, char** argv);
 int runTestLyricsPipeline(int argc, char** argv);
 int runTestLyricsExport(int argc, char** argv);
+int runTestLyricTiming(int argc, char** argv);
 int runTestPcmFormat(int argc, char** argv);
 int runTestLoudnessAnalysis(int argc, char** argv);
 int runTestPathSafety(int argc, char** argv);
@@ -61,6 +62,7 @@ int main(int argc, char* argv[]) {
     status |= runTestBoundedBody(argc, argv);
     status |= runTestLyricsPipeline(argc, argv);
     status |= runTestLyricsExport(argc, argv);
+    status |= runTestLyricTiming(argc, argv);
     status |= runTestPcmFormat(argc, argv);
     status |= runTestLoudnessAnalysis(argc, argv);
     status |= runTestPathSafety(argc, argv);

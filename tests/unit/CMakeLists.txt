@@ -28,6 +28,7 @@ add_executable(unit_tests
     suno/test_BoundedBody.cpp
     lyrics/test_LyricsPipeline.cpp
     lyrics/test_LyricsExport.cpp
+    lyrics/test_LyricTiming.cpp
     util/test_PathSafety.cpp
 )
 
@@ -239,22 +240,6 @@ target_link_libraries(test_ClerkAuthClient PRIVATE
 
 add_test(NAME test_ClerkAuthClient COMMAND test_ClerkAuthClient)
 
-add_executable(test_AudioAnalyzer
-    audio/test_AudioAnalyzer.cpp
-)
-
-set_target_properties(test_AudioAnalyzer PROPERTIES
-    AUTOMOC ON
-)
-
-target_link_libraries(test_AudioAnalyzer PRIVATE
-    Qt6::Core
-    Qt6::Test
-    project_lib
-)
-
-add_test(NAME test_AudioAnalyzer COMMAND test_AudioAnalyzer)
-
 # ---------------------------------------------------------------------------
 # Sanitizer lane environment.
 #
@@ -284,7 +269,6 @@ if(CHADVIS_SANITIZER)
         test_SunoExploreService
         test_SunoNotificationService
         test_ClerkAuthClient
-        test_AudioAnalyzer
         PROPERTIES ENVIRONMENT
         "TSAN_OPTIONS=abort_on_error=0:halt_on_error=0:exitcode=66:suppressions=${CMAKE_SOURCE_DIR}/cmake/tsan.supp"
     )

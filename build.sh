@@ -30,12 +30,23 @@ RESET=$'\033[0m'
 # device and no drawable. integration_tests constructs a real AudioEngine and
 # integration_gl_tests needs a real GL context, so neither gates a check here.
 #
-# This list is ALSO the --tests build target list, which makes it a load-bearing
-# allow-list rather than documentation: a ctest entry missing from it is never
-# built by `./build.sh --fast --tests` and never run by `--test`. That is the same
-# silent-omission class as the undeclared cmake source, one level up -- test_RenderExecutor
-# existed, was registered, and was invisible for exactly this reason. When you add a
-# ctest entry, add it here or verify it by building its target by hand.
+# This list is ALSO the --tests build target list -- it is passed straight to
+# `cmake --build --target` -- which makes it a load-bearing allow-list rather than
+# documentation, and it cuts BOTH ways:
+#
+#   * A ctest entry missing from it is never built by `--tests` and never run by
+#     `--test`. test_RenderExecutor existed, was registered with ctest, and was
+#     invisible for exactly that reason: the same silent-omission class as the
+#     undeclared cmake source, one level up.
+#   * An entry LEFT in it after its target is deleted fails the build outright
+#     with `ninja: unknown target 'test_AudioAnalyzer'`. Which happened the day
+#     AudioAnalyzer was retired.
+#
+# So this list has to be edited in the same commit as any add_executable/
+# add_test or any removal of one. Verify with:
+#   comm -3 <(ctest --test-dir build-fast/tests -N | sed -n 's/.*: //p' | grep -v '^Total') \
+#           <(printf '%s\n' unit_tests "${SAFE_TESTS[@]}")
+# which should print nothing.
 SAFE_TESTS=(
     unit_tests
     test_SunoAudioUploadService
@@ -43,7 +54,6 @@ SAFE_TESTS=(
     test_SunoExploreService
     test_SunoNotificationService
     test_ClerkAuthClient
-    test_AudioAnalyzer
     test_HttpPolicy
     test_RenderExecutor
 )
@@ -210,6 +220,12 @@ configure_build() {
     )
     [[ -n "$SANITIZER" ]] && args+=(-DCHADVIS_SANITIZER="$SANITIZER")
     [[ -n "$QT_OVERRIDE" ]] && args+=(-DCMAKE_PREFIX_PATH="$QT_OVERRIDE")
+    # Recorded so sdk_is_stale() can notice the SDK being replaced under us.
+    # Deliberately NOT passed as CMAKE_OSX_SYSROOT: adding the SDK the compiler
+    # already reports for itself drops /usr/local/include from /usr/bin/c++'s
+    # search list (6 entries -> 5), stripping this project's only route to
+    # fmt/spdlog/toml++/glm/taglib. That has been measured twice now.
+    args+=("-DCHADVIS_SDK_AT_CONFIGURE=$(xcrun --show-sdk-path 2>/dev/null || true)")
     if [[ -n "$ccache_bin" ]]; then
         args+=(-DCMAKE_CXX_COMPILER_LAUNCHER="$ccache_bin")
         args+=(-DCMAKE_C_COMPILER_LAUNCHER="$ccache_bin")
@@ -225,8 +241,54 @@ ensure_configured() {
     fi
 }
 
+# A build directory remembers the SDK that existed when it was configured, and
+# nothing re-validates it. Measured 2026-10-05: the Release profile stopped
+# building entirely because `build/` was configured against
+# /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk and updating the command
+# line tools replaced CommandLineTools with Xcode-beta, which removed that path.
+#
+# The symptom is maximally misleading: libc++ headers missing, `map` not found,
+# `__stddef_rsize_t.h` not found. That reads like a broken toolchain, and the two
+# compile lines differed only in -O3 versus -O0, so it is very easy to start
+# debugging the wrong thing. The one real diagnostic is ninja's:
+#
+#   '/Library/.../MacOSX.sdk/System/.../OpenGL.framework', needed by
+#   chadvis-projectm-qt, missing and no known rule to make it
+#
+# Note that CMAKE_OSX_SYSROOT in the cache is EMPTY even in a build broken this
+# way -- the stale SDK reached the link line through find_library(OpenGL) and the
+# projectm submodule, not through that variable. So the SDK is recorded
+# explicitly at configure time (CHADVIS_SDK_AT_CONFIGURE below) and compared
+# against what `xcrun` resolves NOW. Reconfigure rather than nuke: it is seconds
+# and it preserves the object files that are still valid.
+sdk_is_stale() {
+    local recorded resolved
+    # The cache TYPE is UNINITIALIZED, not INTERNAL: the variable is not declared
+    # in any CMakeLists, it is only ever passed with -D. Match any type rather
+    # than guessing one -- the first version of this looked for INTERNAL and so
+    # silently matched nothing, which is the failure mode this whole function
+    # exists to prevent.
+    recorded="$(sed -n 's/^CHADVIS_SDK_AT_CONFIGURE:[A-Z]*=//p' "$BUILD_DIR/CMakeCache.txt")"
+    # No recorded SDK means this cache predates the check; treat as fresh rather
+    # than reconfiguring a build that might be perfectly good.
+    [[ -z "$recorded" ]] && return 1
+    resolved="$(xcrun --show-sdk-path 2>/dev/null || true)"
+    [[ "$recorded" == "$resolved" ]] && return 1
+    if [[ -n "$resolved" && ! -d "$recorded" ]]; then
+        printf 'build.sh: the SDK this build was configured against (%s) no longer exists;\n' \
+            "$recorded" >&2
+        printf 'build.sh: xcrun now resolves %s. Reconfiguring %s.\n' \
+            "$resolved" "$BUILD_DIR" >&2
+    fi
+    return 0
+}
+
 do_build() {
-    ensure_configured
+    if [[ -f "$BUILD_DIR/CMakeCache.txt" ]] && sdk_is_stale; then
+        configure_build
+    else
+        ensure_configured
+    fi
     # macOS ships bash 3.2, where "${arr[@]}" on an *empty* array is an unbound
     # variable under `set -u`. The ${arr[@]+...} guard expands to nothing when the
     # array is empty and to the quoted expansion when it is not, so a plain

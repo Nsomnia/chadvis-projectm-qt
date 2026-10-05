@@ -30,8 +30,6 @@ set(CORE_SOURCES
 set(AUDIO_SOURCES
     src/audio/AudioEngine.hpp
     src/audio/AudioEngine.cpp
-    src/audio/AudioAnalyzer.hpp
-    src/audio/AudioAnalyzer.cpp
     src/audio/AudioQueue.hpp
     src/audio/AudioChunk.hpp
     src/audio/Playlist.hpp
@@ -529,4 +527,27 @@ list(APPEND AUDIO_SOURCES
 list(APPEND LYRICS_SOURCES
     src/lyrics/LyricsExport.cpp
     src/lyrics/LyricsFactory.cpp
+)
+
+# ─────────────────────────────────────────────────────────────
+# LYRIC TIMING CORRECTION LAYER — src/lyrics/LyricTiming.{hpp,cpp}
+# (appended 2026-10-05)
+#
+# The correction half of karaoke: an anchored, undoable, f64 word-timing document.
+# The tree can already RENDER word timings (LyricsExport::toAssDocument, muxed and
+# burned in by VideoRecorderFFmpeg) and cannot fix one — timings are write-once
+# from a capture, which is the #1 karaoke complaint.
+#
+# Appended to LYRICS_SOURCES rather than merged into its literal, for the same
+# non-globbing reason as the seven blocks above: TargetSetup.cmake names each
+# set() variable explicitly in add_library(project_lib STATIC ...) and does NOT
+# glob, so a fresh set(LYRIC_TIMING_SOURCES ...) would be silently dropped and
+# LyricTiming.cpp would never be compiled.
+#
+# Not gated on anything. It has no Qt widget, no audio device and no network, so
+# there is no configuration in which the correction model silently does not exist.
+# ─────────────────────────────────────────────────────────────
+list(APPEND LYRICS_SOURCES
+    src/lyrics/LyricTiming.hpp
+    src/lyrics/LyricTiming.cpp
 )

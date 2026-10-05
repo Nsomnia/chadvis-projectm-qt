@@ -200,7 +200,23 @@ LyricsData fromSunoJson(const std::string& json, const std::string& prompt) {
         if (word.text.empty()) {
             // If the word was JUST a tag (e.g. "[Verse]", "[Instrumental]"), check for instrumental
             std::string lowerRaw = w["word"].toString().toStdString();
-            std::transform(lowerRaw.begin(), lowerRaw.end(), lowerRaw.begin(), ::tolower);
+            // The `static_cast<unsigned char>` is load-bearing, not pedantic. `char` is signed
+            // here (measured: CHAR_MIN == -128), so 128 of 256 byte values promote to a negative
+            // `int`; 127 of those are neither `unsigned char`-representable nor `EOF`, which is
+            // exactly the case [cctype.syn] leaves undefined -- in practice an out-of-bounds
+            // index into the ctype table. This libc happens to answer all 256 correctly today, so
+            // it is one libc away from wrong rather than live-wrong.
+            //
+            // It is reachable, not theoretical: the bracket strip above empties the word, and this
+            // branch runs *before* the timing check, so any non-ASCII tag in a word slot lands
+            // here. Measured -- "[Verse <U+1F3B5>]" (4 high bytes) and "[Instrumental <U+FE0F>]"
+            // (3 high bytes, and it does match, so the placeholder below is emitted).
+            //
+            // The two normalisation loops above already cast; this one was the odd one out, which
+            // reads as "this is the mistake" rather than "this is right and the others are wrong".
+            std::transform(lowerRaw.begin(), lowerRaw.end(), lowerRaw.begin(), [](char c) {
+                return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            });
             if (lowerRaw.find("instrumental") != std::string::npos) {
                 word.text = "\xF0\x9F\x8E\xB5"; // 🎵 placeholder for instrumental sections
             } else {
@@ -407,7 +423,34 @@ LyricsData fromText(const std::string& text) {
 
 LyricsData fromDatabase(const std::string& json) {
     // Database stores in same format as Suno JSON
-    return fromSunoJson(json, "");
+    //
+    // `source` is overwritten after the call, because `fromSunoJson` sets it to "suno"
+    // unconditionally and would otherwise stamp our own stored copy with the *wire* origin.
+    // "database" is a transport, not a format, and that is the whole point of the value: the
+    // first consumer that branches on provenance (a timing-correction workflow must not
+    // re-fetch lyrics it has already edited) needs to tell "came off Suno" from "came out of
+    // our own store", and until this line the two were indistinguishable.
+    //
+    // Deliberately still a `std::string` rather than the enum + slug pair `RenderJob.hpp` uses
+    // for `RenderState`/`JobErrorKind`. Two reasons, and the second is the decisive one:
+    //
+    //  1. Nothing reads `source` for any production decision today -- it is written in five
+    //     places and asserted once, in test_LyricsPipeline.cpp. An enum would buy a name table
+    //     and a round-trip test for zero consumers, which is `AGENTS.md` §3's failure dressed as
+    //     a type rather than a declaration.
+    //  2. An enum cannot fix what actually blocks provenance: **nothing serialises `source`.**
+    //     `LyricsExport::toJson` writes only the flat word array, so a database round trip loses
+    //     the field regardless of how it is typed. The blocker is the wire, not the type, so
+    //     freezing a vocabulary here would buy nothing and cost a breaking change later.
+    //
+    // Also note the value set already conflates two axes -- "srt"/"lrc"/"txt" are formats, "suno"
+    // is an origin that also has a format, "database" is a transport -- which is the shape that
+    // argues *against* freezing it as one closed vocabulary until a consumer says which axis it
+    // wants. `src/suno/SunoLyrics.cpp:162` writes a fifth site as a bare `"suno"` literal; the
+    // vocabulary is not centralised yet, and `LyricsData.hpp` is where it should live.
+    LyricsData data = fromSunoJson(json, "");
+    data.source = "database";
+    return data;
 }
 
 } // namespace LyricsFactory
