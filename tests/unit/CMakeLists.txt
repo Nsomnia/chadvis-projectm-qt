@@ -11,6 +11,7 @@ add_executable(unit_tests
     recorder/test_RenderQueue.cpp
     audio/test_Playlist.cpp
     audio/test_PcmFormat.cpp
+    audio/test_LoudnessAnalysis.cpp
     visualizer/test_PresetScanner.cpp
     suno/test_AuthModule.cpp
     suno/test_StoredCredentialClassification.cpp
@@ -107,6 +108,52 @@ add_test(NAME test_OffscreenRenderSpike COMMAND test_OffscreenRenderSpike)
 # The spike drives projectM in a loop; the default ctest timeout would otherwise
 # report a hang where there is only slowness.
 set_tests_properties(test_OffscreenRenderSpike PROPERTIES TIMEOUT 180)
+
+# test_RenderExecutor.cpp carries its own QTEST_MAIN, so it is a standalone
+# target rather than a unit_tests member -- the deciding reason is the app object
+# QTEST_MAIN constructs, which is NOT QCoreApplication here: RenderExecutor is a
+# GUI-thread QObject driving a QTimer, and the suite is written against that shape.
+# Same reason test_OffscreenRenderSpike is separate from unit_tests.
+#
+# Qt6::Gui below is NOT redundant-looking-by-accident and not a "reason": it
+# arrives transitively because cmake/TargetSetup.cmake puts it in COMMON_LIBS and
+# links it PUBLIC on project_lib, which is why QTEST_MAIN selects QGuiApplication
+# regardless of this list. It is written out so the app-object choice is a
+# decision on the page rather than an accident of project_lib's link line.
+#
+# Qt6::OpenGL is deliberately absent and is not a false reason: RenderExecutor.hpp
+# and its .cpp reach no GL header. The GL half of the design sits behind
+# RenderFrameBackend, which has NO implementation -- see the header's
+# @section What is not here. So unlike test_OffscreenRenderSpike this suite needs
+# no drawable and is genuinely headless-safe.
+#
+# QT_QPA_PLATFORM=offscreen is therefore load-bearing in the same way it is for any
+# Qt GUI suite: a QGuiApplication on the cocoa plugin needs a window server, so a
+# ctest entry run from a session without one fails before reaching an assertion.
+# Naming the plugin explicitly makes the entry honest about what it needs.
+add_executable(test_RenderExecutor
+    recorder/test_RenderExecutor.cpp
+)
+
+set_target_properties(test_RenderExecutor PROPERTIES
+    AUTOMOC ON
+)
+
+target_include_directories(test_RenderExecutor PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(test_RenderExecutor PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_RenderExecutor COMMAND test_RenderExecutor)
+
+set_tests_properties(test_RenderExecutor PROPERTIES
+    TIMEOUT 180
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
 
 add_executable(test_SunoAudioUploadService
     suno/test_SunoAudioUploadService.cpp

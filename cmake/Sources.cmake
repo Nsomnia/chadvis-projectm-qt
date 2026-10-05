@@ -454,3 +454,79 @@ list(APPEND RECORDER_SOURCES
     src/recorder/OffscreenRenderSpike.hpp
     src/recorder/OffscreenRenderSpike.cpp
 )
+
+# ─────────────────────────────────────────────────────────────
+# RENDER EXECUTOR (appended 2026-10-04)
+#
+# THE SIXTH INSTANCE of this project's undeclared-source trap, and the first one
+# that failed SILENTLY. The five loud ones (PcmFormat.cpp, Color.cpp,
+# AudioFileDecoder.cpp, ResamplerEngine.cpp, one RECORDER_SOURCES append) each
+# surfaced as an undefined symbol at link time, naming the CALLER rather than
+# the forgotten file. This one produced NO ERROR AT ALL, because nothing
+# referenced the symbol: 1,424 lines were written, committed and never compiled.
+# The loud cases were the lucky ones.
+#
+# Recording that here is the only mitigation that has ever worked, because the
+# failure mode is invisible: there is no diagnostic to notice, and "the tests
+# passed" is true. Verify with `ls build-fast/CMakeFiles/project_lib.dir/src/
+# recorder/RenderExecutor.cpp.o` — assert on the object file, never on exit 0.
+#
+# The header declares three classes and four structs in one file (FrameInterleaver,
+# RenderFrameBackend, RenderExecutor; ScheduleSlot, ScheduleStep, RenderTopology,
+# FrameCalibration, ConcurrencyDecision) and RenderExecutor is a Q_OBJECT, so the
+# .hpp is listed too: AUTOMOC only sees Q_OBJECT in headers that are target
+# sources, not in headers reached by an include.
+# ─────────────────────────────────────────────────────────────
+list(APPEND RECORDER_SOURCES
+    src/recorder/RenderExecutor.hpp
+    src/recorder/RenderExecutor.cpp
+)
+
+# ─────────────────────────────────────────────────────────────
+# LOUDNESS ANALYSIS (appended 2026-10-04)
+#
+# The seventh declaration for the same non-globbing reason as the block above.
+#
+# BS.1770-4 loudness with NO spectral stage: K-weighting biquads, gated mean
+# square, and a 4x-oversampled true-peak detector. The K-weighting coefficients
+# are DERIVED from the normative analogue parameters (shelf f0/Q/G, highpass f0/Q)
+# rather than transcribed from Table 1 — and that choice is load-bearing, because
+# a transcribed Table-1 literal was wrong in the 7th digit (0.73248022221538
+# against the published 0.73248077421585). Deriving and then comparing against the
+# published table agrees to 8.88e-16, which a hand-copied coefficient cannot.
+#
+# Placement note for whoever wires this to a mixer: BS.1770 SUMS per-channel
+# energies, so a mono file duplicated at unity reads 3.0103 LU LOUDER than the
+# stereo case. AudioFileDecoder duplicates mono at unity, so that offset is real
+# and will be observed here.
+# ─────────────────────────────────────────────────────────────
+list(APPEND AUDIO_SOURCES
+    src/audio/LoudnessAnalysis.hpp
+    src/audio/LoudnessAnalysis.cpp
+)
+
+# ─────────────────────────────────────────────────────────────
+# LYRICS DATA SPLIT — DECLARED BY THE BUILD OWNER, NOT THE REFACTORER
+# (appended 2026-10-04, 01:40)
+#
+# The eighth instance of the same trap, and the SECOND SILENT one, hit live while
+# this session was already fixing the first. src/lyrics/LyricsData.cpp was split
+# into three translation units — LyricsData.cpp (the value type),
+# LyricsFactory.cpp and LyricsExport.cpp — and only the first was declared.
+#
+# Why this one is worse than a loud link error: project_lib is a STATIC library,
+# so an archive step tolerates a missing translation unit with no complaint at
+# all. Nothing surfaces until an *executable* references a symbol that lived in
+# the omitted file. And had every consumer also been inside the archive, it would
+# never have surfaced at all — the omission would have shipped as a class whose
+# linker is silently missing.
+#
+# Declared here rather than by the refactoring agent because that agent's
+# invocation had already ended when the breakage was found. This is an append to
+# the file this block already lives in; it adds no declaration for code that did
+# not exist and modifies no line of the refactor itself.
+# ─────────────────────────────────────────────────────────────
+list(APPEND LYRICS_SOURCES
+    src/lyrics/LyricsExport.cpp
+    src/lyrics/LyricsFactory.cpp
+)

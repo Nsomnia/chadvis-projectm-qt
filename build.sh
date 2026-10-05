@@ -29,6 +29,13 @@ RESET=$'\033[0m'
 # Every ctest entry that is safe to run headless on a machine with no audio
 # device and no drawable. integration_tests constructs a real AudioEngine and
 # integration_gl_tests needs a real GL context, so neither gates a check here.
+#
+# This list is ALSO the --tests build target list, which makes it a load-bearing
+# allow-list rather than documentation: a ctest entry missing from it is never
+# built by `./build.sh --fast --tests` and never run by `--test`. That is the same
+# silent-omission class as the undeclared cmake source, one level up -- test_RenderExecutor
+# existed, was registered, and was invisible for exactly this reason. When you add a
+# ctest entry, add it here or verify it by building its target by hand.
 SAFE_TESTS=(
     unit_tests
     test_SunoAudioUploadService
@@ -38,6 +45,7 @@ SAFE_TESTS=(
     test_ClerkAuthClient
     test_AudioAnalyzer
     test_HttpPolicy
+    test_RenderExecutor
 )
 
 usage() {
@@ -56,7 +64,7 @@ ${BOLD}Profiles${RESET} ${YELLOW}(each keeps its own build directory; switch fre
 ${BOLD}Actions${RESET}
   ${GREEN}--tests${RESET}          build only the test binaries (skips app + QML tooling)
   ${GREEN}--test [name]${RESET}    run ctest in <profile>/tests; ${GREEN}name${RESET} is a test-name regex
-  ${GREEN}--safe${RESET}           run only the 7 headless-safe entries (default for --test)
+  ${GREEN}--safe${RESET}           run only the headless-safe entries (default for --test)
   ${GREEN}--run [qtest args]${RESET} run unit_tests directly, e.g. --run aHealthyRecording
   ${GREEN}--rebuild${RESET}        archive this profile's build directory, then full rebuild
   ${GREEN}-c, --clean${RESET}      archive this profile's build directory and stop
@@ -68,7 +76,7 @@ ${BOLD}Tuning${RESET}
   ${GREEN}--qt PATH${RESET}        Qt6 prefix (else \$CHADVIS_QT_PATH, then Homebrew prefixes)
 
 ${BOLD}Examples${RESET}
-  ./build.sh --fast --tests --test       # tight loop: build tests, run the 7 safe suites
+  ./build.sh --fast --tests --test       # tight loop: build tests, run the headless-safe suites
   ./build.sh --fast --run aHealthy       # tightest loop: one QTest function, no ctest
   ./build.sh                              # Release, everything, for a real check
   ./build.sh --test unit_tests            # Release tests only, ctest all entries
