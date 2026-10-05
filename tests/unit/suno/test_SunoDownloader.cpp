@@ -431,7 +431,7 @@ private slots:
 
         auto opus = downloader.download(opusOnlyClip("opus-only"));
         QVERIFY(!opus.has_value());
-        QVERIFY2(opus.error().contains(QStringLiteral("captured media host"), Qt::CaseInsensitive),
+        QVERIFY2(opus.error().contains(QStringLiteral("will not fetch"), Qt::CaseInsensitive),
                  qPrintable(opus.error()));
         QCOMPARE(server.replies.size(), std::size_t{0});
         QCOMPARE(saved.count(), 0);

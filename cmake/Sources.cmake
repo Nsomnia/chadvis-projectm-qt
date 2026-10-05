@@ -551,3 +551,40 @@ list(APPEND LYRICS_SOURCES
     src/lyrics/LyricTiming.hpp
     src/lyrics/LyricTiming.cpp
 )
+
+# ─────────────────────────────────────────────────────────────
+# CAPTURED HOSTS + FEATURE GATES — the gate subsystem (appended 2026-10-05)
+#
+# The ninth and tenth instances of this project's undeclared-source trap, recorded
+# here because the failure mode is invisible and the list is the only mitigation
+# that has ever worked: nothing surfaces, and "the tests passed" stays true.
+#
+# CapturedHosts.{hpp,cpp} — the one owner of outbound-host policy. Before it, the
+# host list was duplicated in three files with no shared owner and no notion of
+# tier: isAllowedStudioApiUrl() (AuthHeaders.cpp), isUsableCapturedUrl()
+# (SunoDownloader.cpp), isCapturedImageUrl() (ClipParser.cpp). Two hosts existed
+# only as constants in SunoEndpoints.hpp. A staging tier could not be expressed
+# without editing a host literal, which is the shape of mistake AGENTS.md §1
+# exists to prevent.
+#
+# FeatureFlags.{hpp,cpp} — the one owner of "may this client use this surface, and
+# why not". /api/session/ is already called by SunoAccountManager and returned 47
+# prod / 57 authenticated / 58 staging server flags plus roles,
+# statsig_custom_properties, experiments and configs.gen-endpoint (the
+# server-selected generate route). Every one of them was parsed and discarded. The
+# gating plane was being fetched and thrown away, and generationAvailability was a
+# hardcoded `return false` sitting behind a real model dropdown.
+#
+# .hpp listed for both: neither is a Q_OBJECT today, but CapturedHosts.hpp is
+# included by AuthHeaders.cpp and FeatureFlags.hpp by the account manager, and
+# AUTOMOC only sees Q_OBJECT in headers that are target sources.
+#
+# SUNO_SOURCES specifically, for the same non-globbing reason as the eight blocks
+# above. Merge both into the literal when the tree is next normalised.
+# ─────────────────────────────────────────────────────────────
+list(APPEND SUNO_SOURCES
+    src/suno/CapturedHosts.hpp
+    src/suno/CapturedHosts.cpp
+    src/suno/FeatureFlags.hpp
+    src/suno/FeatureFlags.cpp
+)

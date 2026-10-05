@@ -127,6 +127,49 @@ bool isUsableCapturedUrl(const std::string& value) {
                                 Qt::CaseInsensitive);
 }
 
+/// The server's own answer to "may this account save this clip", consulted
+/// BEFORE any host or format reasoning.
+///
+/// This is the first gate on purpose. It was previously never read at all, so
+/// every refusal this function produced was attributed to a `content_type`
+/// filter — meaning a clip the server had already declined was reported to the
+/// user as "no playable audio on the captured media host". That is the wrong
+/// diagnosis of a real fault, and the same class of mistake as reporting a
+/// library-sync failure for an unrelated subsystem error.
+///
+/// Only an explicit `false` refuses. An **absent** field deliberately does not,
+/// which is the opposite of the reflexive "unknown is not permission" rule and
+/// needs its justification, because it is a real judgement call:
+///
+///  * The same payload carries `audio_url` set to the `/api/forbidden` sentinel.
+///    The server therefore *does* express denial explicitly when it means to —
+///    absence of the flag is absence of a denial, not a denial.
+///  * A refusal is issued *alongside* a usable `media_urls` entry, so the field
+///    is not what withholds access to the bytes; the host and content-type
+///    filters already do that, and they are unchanged by this gate.
+///  * Requiring an explicit `true` would refuse every clip persisted before
+///    this field was parsed — including a signed-in user's existing library.
+///    That is a regression in exchange for no additional safety.
+///
+/// Every observed refusal (36 of 40 captured clips carry
+/// `is_download_unlocked: false`) is still honoured.
+///
+/// Deliberately NOT said: that the cause is a download quota. A metered
+/// server-side allowance appears in third-party material and is `[LEAD]`-grade,
+/// so it is not asserted to a user as the explanation.
+std::optional<QString> downloadEntitlementRefusal(const SunoClip& clip) {
+    if (clip.is_download_unlocked.value_or(true)) {
+        return std::nullopt;
+    }
+    if (!clip.download_disabled_reason.empty()) {
+        return QStringLiteral("Suno does not allow this clip to be downloaded (%1).")
+            .arg(QString::fromStdString(clip.download_disabled_reason));
+    }
+    return QStringLiteral(
+        "Suno does not allow this clip to be downloaded. This can be a monthly "
+        "download allowance rather than anything to do with this clip.");
+}
+
 }
 
 bool SunoDownloader::isSupportedMediaUrl(const QString& url)
@@ -150,6 +193,17 @@ SunoDownloader::selectDownloadUrl(const SunoClip& clip,
     return std::nullopt;
 }
 
+// Deliberately says nothing about which media types exist or might be usable:
+// it only restates the fail-closed decision selectDownloadUrl() already made, so
+// that a dead button is at least an explained one. It also no longer claims
+// "the captured media host" — there is more than one, and this client accepts
+// only one of them, so that phrasing named a thing the user has no way to know
+// about. The mp3-only predicate is an internal filter, not a user-facing
+// concept, and is logged rather than shown.
+//
+// Reached only after the download-entitlement gate has already passed, so the
+// remaining causes are genuinely local: the clip is unfinished, or its media
+// entries are not ones this client will fetch.
 QString SunoDownloader::noUsableMediaMessage(const SunoClip& clip) {
     if (clip.status != "complete") {
         return QStringLiteral("This clip is not finished (status: %1), so there is no audio to "
@@ -157,12 +211,9 @@ QString SunoDownloader::noUsableMediaMessage(const SunoClip& clip) {
             .arg(clip.status.empty() ? QStringLiteral("unknown")
                                      : QString::fromStdString(clip.status));
     }
-    // Deliberately says nothing about which media types exist or might be
-    // usable: it only restates the fail-closed decision selectDownloadUrl()
-    // already made, so that a dead button is at least an explained one.
     return QStringLiteral(
-        "This clip has no playable audio on the captured media host, so there is "
-        "nothing to save.");
+        "This clip's audio is served in a format or from a host this client "
+        "will not fetch, so there is nothing to save.");
 }
 
 std::expected<DownloadStarted, QString> SunoDownloader::download(const SunoClip& clip,
@@ -179,6 +230,15 @@ std::expected<DownloadStarted, QString> SunoDownloader::download(const SunoClip&
         return std::unexpected(
             QStringLiteral("WAV download is unavailable: the conversion route is not "
                            "capture-backed."));
+    }
+
+    // Entitlement first, and before any host/format work: it is the server's own
+    // decision, it is captured, and checking it last would misattribute a
+    // server refusal to a local filter.
+    if (const auto refusal = downloadEntitlementRefusal(clip)) {
+        LOG_WARN("SunoDownloader: clip {} refused by server download entitlement: {}",
+                 clip.id, refusal->toStdString());
+        return std::unexpected(*refusal);
     }
 
     const auto selectedUrl = selectDownloadUrl(clip, format);

@@ -8,6 +8,36 @@ Popup {
 
     property var clipData: null
 
+    // Save outcome for the clip on show, owned by the view that opened the
+    // sheet (LibraryView). Held here rather than read from the bridge because
+    // downloadStatus is one string describing the most recent event across all
+    // clips, so it cannot answer "did THIS one land".
+    property string saveState: "idle"
+    property string savedPath: ""
+    property string saveErrorText: ""
+
+    signal saveRequested(string clipId)
+
+    readonly property bool canSave: !!clipData
+                                   && clipData.status === "complete"
+                                   && clipData.has_media !== false
+
+    function fileName(path) {
+        if (!path)
+            return ""
+        const parts = String(path).split(/[\\/]/)
+        return parts.length > 0 ? parts[parts.length - 1] : path
+    }
+
+    // QML's url type has no toLocalFile(); build the URL by hand the same way
+    // PlaylistPanel does. Opening the file (not its directory) is what makes a
+    // file manager select it.
+    function localFileUrl(path) {
+        const p = String(path).replace(/\\/g, "/")
+        return p.startsWith("/") ? "file://" + encodeURI(p)
+                                 : "file:///" + encodeURI(p)
+    }
+
     function formatDuration(raw) {
         if (raw === undefined || raw === null || raw === "")
             return "0:00"
@@ -184,6 +214,18 @@ Popup {
                     }
                 }
 
+                // Destination, stated again beside the body rather than only in the footer,
+                // because the footer's line is elided and a path is the one
+                // string here that must not be guessed at.
+                Text {
+                    Layout.fillWidth: true
+                    visible: root.saveState === "saved" && root.savedPath.length > 0
+                    text: root.savedPath
+                    color: Theme.textDisabled
+                    font: Theme.fontTiny
+                    elide: Text.ElideMiddle
+                }
+
                 // Prompt
                 ColumnLayout {
                     visible: !!root.clipData && !!(root.clipData.metadata ? root.clipData.metadata.prompt : "")
@@ -252,31 +294,115 @@ Popup {
             color: Theme.border
         }
 
-        RowLayout {
+        ColumnLayout {
             Layout.fillWidth: true
             Layout.margins: Theme.spacingMedium
-            spacing: Theme.spacingSmall
+            Layout.bottomMargin: Theme.spacingSmall
+            spacing: Theme.spacingTiny
 
+            // Where a save lands, before the user commits to one. A save button
+            // whose destination is invisible is a save button nobody trusts.
+            // Empty sunoDownloadPath means SunoDownloader::getDownloadDir falls
+            // back to the system music folder, so the copy says that rather than
+            // showing an empty path.
             Text {
-                text: SunoBridge.errorMessage.length > 0
-                      ? SunoBridge.errorMessage
-                      : (SunoBridge.downloadStatus.length > 0
-                         ? SunoBridge.downloadStatus
-                         : "ChadVis selects captured clip media and plays it through the local audio engine.")
-                visible: text.length > 0
-                color: SunoBridge.errorMessage.length > 0
-                       ? Theme.error : Theme.textDisabled
-                font: Theme.fontCaption
-                elide: Text.ElideRight
                 Layout.fillWidth: true
+                visible: root.canSave
+                text: {
+                    const dir = String(SettingsBridge.sunoDownloadPath)
+                    return dir.length > 0 ? "Saves to " + dir
+                                          : "Saves to your music folder"
+                }
+                color: Theme.textDisabled
+                font: Theme.fontTiny
+                elide: Text.ElideMiddle
             }
 
-            AppButton {
-                text: "Download & Play"
-                enabled: !!root.clipData
-                         && root.clipData.status === "complete"
-                         && root.clipData.has_media !== false
-                onClicked: SunoBridge.playClip(root.clipData.id)
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spacingSmall
+
+                // The save result for THIS clip. Two lines' worth of honesty:
+                // the actual filename on success, and the downloader's own
+                // refusal sentence on failure, rather than a generic error.
+                Text {
+                    Layout.fillWidth: true
+                    text: {
+                        if (root.saveState === "saving")
+                            return "Saving " + (root.clipData ? (root.clipData.title || "clip") : "clip")
+                        if (root.saveState === "saved")
+                            return "Saved " + root.fileName(root.savedPath)
+                        if (root.saveState === "refused")
+                            return root.saveErrorText
+                        if (SunoBridge.errorMessage.length > 0)
+                            return SunoBridge.errorMessage
+                        if (SunoBridge.downloadStatus.length > 0)
+                            return SunoBridge.downloadStatus
+                        return ""
+                    }
+                    visible: text.length > 0
+                    color: root.saveState === "refused"
+                           || (root.saveState === "idle" && SunoBridge.errorMessage.length > 0)
+                           ? Theme.error
+                           : (root.saveState === "saved" ? Theme.success : Theme.textSecondary)
+                    font: Theme.fontCaption
+                    // A refusal is a sentence the downloader wrote on purpose,
+                    // explaining exactly which media rule refused the clip. One
+                    // elided line throws that away, so a refusal is allowed
+                    // three; every other state is a filename and stays on one.
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: root.saveState === "refused" ? 3 : 1
+                    elide: Text.ElideRight
+                    Layout.maximumHeight: Theme.fontCaption.pixelSize * 3.4
+                }
+
+                AppButton {
+                    visible: root.saveState === "saved"
+                    text: "Show file"
+                    flat: true
+                    implicitHeight: Theme.buttonHeight
+                    onClicked: Qt.openUrlExternally(root.localFileUrl(root.savedPath))
+                    ToolTip.visible: hovered
+                    ToolTip.text: root.savedPath
+                    ToolTip.delay: 300
+                    Accessible.name: "Show " + root.savedPath + " in the file manager"
+                }
+
+                // Play and save are two verbs and now two buttons. The old
+                // single "Download & Play" button promised a download and only
+                // ever played, which is the kind of label that teaches a user
+                // the UI is lying.
+                AppButton {
+                    text: "Play"
+                    flat: true
+                    enabled: !!root.clipData
+                             && root.clipData.status === "complete"
+                             && root.clipData.has_media !== false
+                    onClicked: SunoBridge.playClip(root.clipData.id)
+                    Accessible.name: "Play " + (root.clipData ? (root.clipData.title || "this clip") : "this clip")
+                }
+
+                AppButton {
+                    text: {
+                        if (root.saveState === "saving") return "Saving…"
+                        if (root.saveState === "saved") return "Save again"
+                        if (root.saveState === "refused") return "Retry save"
+                        return "Save"
+                    }
+                    enabled: root.canSave && root.saveState !== "saving"
+                    highlighted: root.saveState === "refused"
+                    onClicked: root.saveRequested(root.clipData.id)
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 400
+                    ToolTip.text: {
+                        if (root.saveState === "refused")
+                            return root.saveErrorText
+                        if (root.saveState === "saved")
+                            return "Already at " + root.savedPath
+                        return "Save a copy to your downloads folder"
+                    }
+                    Accessible.name: "Save " + (root.clipData ? (root.clipData.title || "this clip") : "this clip")
+                }
             }
         }
     }

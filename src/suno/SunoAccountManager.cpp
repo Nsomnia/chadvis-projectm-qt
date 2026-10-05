@@ -183,6 +183,13 @@ void SunoAccountManager::clearSnapshots() {
     user_.reset();
     models_.clear();
     billing_.reset();
+    // Drop the flag map with the account it described. Leaving it behind would
+    // keep every gate reading as it did for the signed-out user, so a UI could
+    // show a surface as available to an account that no longer exists — and the
+    // empty set is the honest one, since it makes every flag-gated surface read
+    // `ServerGated` rather than stale-available.
+    gates_.setCapabilities(SessionCapabilities{});
+    emit gatesChanged();
     if (hadSnapshot) {
         emit accountInfoReady();
         emit billingInfoReady();
@@ -228,6 +235,20 @@ void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
     }
 
     const QJsonObject root = QJsonDocument::fromJson(*body).object();
+
+    // Capture the gating plane BEFORE the user parse, and unconditionally.
+    //
+    // Two reasons for the ordering. First, this is the whole point of the call:
+    // the envelope carries 47 server flags anonymously, 57 authenticated, 58 on
+    // staging, plus roles, statsig custom properties, `experiments` and
+    // `configs.gen-endpoint` — and all of it was being discarded, so every gate
+    // in the tree had to be a hardcoded `false`. Second, doing it before the
+    // `parseUser` early-return means an envelope that carries a flag map but no
+    // usable user object still yields the flag map. Losing the account because
+    // one optional field was absent would lose the gating plane with it.
+    gates_.setCapabilities(parseSessionCapabilities(root));
+    emit gatesChanged();
+
     auto user = parseUser(root);
     if (!user) {
         LOG_WARN("SunoAccountManager: session envelope had no usable user object");
@@ -236,8 +257,10 @@ void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
     }
     user_ = std::move(*user);
     models_ = parseModels(root);
-    LOG_INFO("SunoAccountManager: session loaded ({} model(s), user '{}')",
-             static_cast<i64>(models_.size()), user_->display_name);
+    LOG_INFO("SunoAccountManager: session loaded ({} model(s), {} server flag(s), user '{}')",
+             static_cast<i64>(models_.size()),
+             static_cast<i64>(gates_.capabilities().flagCount()),
+             user_->display_name);
     emit accountInfoReady();
 }
 

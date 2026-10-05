@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import ChadVis
 
@@ -11,7 +12,38 @@ Rectangle {
 
     readonly property bool isReady: clipData ? clipData.status === "complete" : false
     readonly property bool canPlay: isReady && clipData && clipData.has_media !== false
+    readonly property bool canSave: canPlay
     readonly property bool isHovered: cardMouse.containsMouse
+
+    // ── Save / selection state ────────────────────────
+    // Supplied by the view rather than kept here. A GridView recycles its
+    // delegates, so a card that remembered "already on disk" in its own
+    // properties would forget it the moment the tile scrolled off and back.
+    // The owning view holds the facts; the card renders them.
+    //
+    // saveState is "idle" | "saving" | "saved" | "refused". It is never an
+    // empty string: "idle" is a real state, and the refusal text lives in
+    // saveErrorText so the button can offer a retry without inventing a
+    // reason of its own.
+    property string saveState: "idle"
+    property string savedPath: ""
+    property string saveErrorText: ""
+
+    property bool selectionMode: false
+    property bool selected: false
+
+    signal saveRequested(string clipId)
+    signal selectionToggled(var clip)
+    /// Global (window) coordinates, so the view can popup a Menu without
+    /// needing a handle on this delegate.
+    signal contextRequested(var clip, point globalPos)
+
+    function fileName(path) {
+        if (!path)
+            return ""
+        const parts = String(path).split(/[\\/]/)
+        return parts.length > 0 ? parts[parts.length - 1] : path
+    }
 
     function formatDuration(raw) {
         if (raw === undefined || raw === null || raw === "")
@@ -207,14 +239,50 @@ Rectangle {
                 font: Theme.fontCaption
             }
         }
+
+        // Save / selection result, and only when there is something to say.
+        // A refused save is the case that matters: the refusal already arrives
+        // as a sentence written by SunoDownloader (noUsableMediaMessage), so it
+        // is shown as-is rather than replaced with a generic failure.
+        //
+        // Sized to one line and elided because a refusal sentence is long and
+        // the card's height is fixed by the grid cell. The full sentence is on
+        // the button's tooltip and in the Library footer.
+        Text {
+            Layout.fillWidth: true
+            visible: root.saveState !== "idle"
+            text: {
+                if (root.saveState === "saving")
+                    return "Saving " + (root.clipData ? (root.clipData.title || "clip") : "clip")
+                if (root.saveState === "saved")
+                    return "Saved " + root.fileName(root.savedPath)
+                if (root.saveState === "refused")
+                    return root.saveErrorText
+                return ""
+            }
+            color: root.saveState === "refused" ? Theme.error
+                    : (root.saveState === "saved" ? Theme.success : Theme.textSecondary)
+            font: Theme.fontTiny
+            elide: Text.ElideRight
+            wrapMode: Text.NoWrap
+        }
     }
 
     MouseArea {
         id: cardMouse
         anchors.fill: parent
         hoverEnabled: true
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: Qt.PointingHandCursor
         onClicked: function(mouse) {
+            if (mouse.button === Qt.RightButton) {
+                root.contextRequested(root.clipData, root.mapToGlobal(mouse.x, mouse.y))
+                return
+            }
+            if (root.selectionMode) {
+                root.selectionToggled(root.clipData)
+                return
+            }
             const dx = mouse.x - root.width / 2
             const dy = mouse.y - artClipper.height / 2
             if (root.canPlay && dx * dx + dy * dy <= 26 * 26) {
@@ -223,6 +291,95 @@ Rectangle {
             }
             root.opened(root.clipData)
         }
+    }
+
+    // ── Selection marker ─────────────────────────
+    // Occupies the save button's corner (top-right) and only exists while
+    // selecting, so the two never overlap and a card in selection mode has one
+    // obvious thing its corner does. Declared after the card-wide MouseArea, so
+    // it takes the click rather than needing a hit-test rectangle.
+    Rectangle {
+        visible: root.selectionMode
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.margins: Theme.spacingSmall
+        width: 22
+        height: 22
+        radius: Theme.radiusRound
+        color: root.selected ? Theme.accent : Theme.withAlpha(Theme.background, 0.75)
+        border.width: 1
+        border.color: root.selected ? Theme.accentLight : Theme.glassBorder
+
+        Text {
+            anchors.centerIn: parent
+            visible: root.selected
+            text: "✓"
+            color: Theme.textOnAccent
+            font: Theme.fontTiny
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.selectionToggled(root.clipData)
+        }
+
+        Accessible.role: Accessible.CheckBox
+        Accessible.checked: root.selected
+        Accessible.name: root.clipData ? (root.clipData.title || "Untitled") : "Clip"
+    }
+
+    // ── Save button ──────────────────────────────
+    // Top-right of the cover. AppButton rather than a bespoke rectangle: the
+    // press animation, focus ring and Accessible wiring are already there, and
+    // a hand-rolled one would be a fourth copy of that behaviour.
+    AppButton {
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.margins: Theme.spacingSmall
+        implicitWidth: 28
+        implicitHeight: 28
+        buttonRadius: Theme.radiusSmall
+        // Not flat: over cover art the button needs its own surface to read as
+        // a control, which is exactly what AppButton's non-flat treatment is.
+        flat: false
+        // Hidden while selecting: in that mode a click means "add to the
+        // selection", and a corner button that quietly does something else is
+        // the ambiguity this mode exists to remove.
+        visible: root.canSave && !root.selectionMode
+        text: {
+            if (root.saveState === "saving") return "…"
+            if (root.saveState === "saved") return "✓"
+            if (root.saveState === "refused") return "↻"
+            return "↓"
+        }
+        // Deliberately NOT `highlighted` on refusal, unlike the detail sheet's
+        // retry button: AppButton's highlight runs a looping PropertyAnimation,
+        // and a batch save can mark a dozen cards refused at once. The glyph
+        // and the caption's red already say it failed.
+        //
+        // AppButton derives Accessible.name from `text`, which here is a glyph.
+        Accessible.name: {
+            const title = root.clipData ? (root.clipData.title || "this clip") : "this clip"
+            if (root.saveState === "saving")
+                return "Saving " + title
+            if (root.saveState === "saved")
+                return title + " is saved. Save again"
+            if (root.saveState === "refused")
+                return "Could not save " + title + ". Try again"
+            return "Save " + title + " to your downloads folder"
+        }
+        ToolTip.visible: hovered
+        ToolTip.delay: 400
+        ToolTip.text: {
+            if (root.saveState === "refused")
+                return root.saveErrorText
+            if (root.saveState === "saved")
+                return "Saved " + root.savedPath
+            const dir = String(SettingsBridge.sunoDownloadPath)
+            return dir.length > 0 ? "Save to " + dir : "Save to your music folder"
+        }
+        onClicked: root.saveRequested(root.clipData ? root.clipData.id : "")
     }
 }
 

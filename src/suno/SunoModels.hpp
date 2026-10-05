@@ -67,6 +67,39 @@ struct SunoClip {
     bool is_trashed{false};
     bool is_public{false};
 
+    // ── Download entitlement (captured, and previously discarded) ─────────────
+    // Both fields ride on the same clip object as `media_urls`, and both were
+    // being dropped on the floor. They are the server's OWN answer to "may this
+    // account save this clip", which makes them a strictly better gate than
+    // inferring permission from a media `content_type`.
+    //
+    // Evidence (2026-10-05, measured against two authenticated captured feed
+    // bodies, 40 clips): `is_download_unlocked` was **false in 36 of 40**, and
+    // `download_disabled_reason` was `"remix_contest"` on 4 of those 40. Note
+    // the shape of that: 32 clips are locked carrying NO reason at all. A
+    // per-clip property would be expected to explain itself; a silent majority
+    // fits a *server-authoritative download quota* far better — and a separate
+    // third-party report documents exactly that (a metered per-plan monthly
+    // allowance, "one song = one download, regardless of format", counted
+    // server-side). That quota is `[LEAD]`-grade, so it is recorded as a
+    // hypothesis here and NOT acted on; but it is the reason this gate must be
+    // consulted BEFORE any attempt to fetch bytes.
+    //
+    // `std::optional` rather than a plain bool on purpose. A plain `bool`
+    // cannot distinguish "the server said no" from "this payload never carried
+    // the field", and those two warrant different handling. Absent is NOT read
+    // as a refusal — see `downloadEntitlementRefusal` in SunoDownloader.cpp,
+    // which carries the full argument. Briefly: `audio_url` on the same object
+    // is the `/api/forbidden` sentinel, so the server states denial explicitly
+    // when it means to; and requiring an explicit `true` would make every clip
+    // persisted before this field was parsed unsaveable, which is a regression
+    // bought with no additional safety. Every observed refusal is honoured.
+    std::optional<bool> is_download_unlocked;
+
+    /// Why the server refused, when it says. Empty means either "unlocked" or
+    /// "locked with no stated reason" — `is_download_unlocked` disambiguates.
+    std::string download_disabled_reason;
+
     SunoMetadata metadata;
 
     /// Progressive delivery variants (m4a-opus/mp3); may be empty.

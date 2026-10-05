@@ -45,7 +45,14 @@ class SunoBridge : public QObject,
     Q_PROPERTY(int credits READ credits NOTIFY billingInfoChanged)
     Q_PROPERTY(QString planName READ planName NOTIFY billingInfoChanged)
     Q_PROPERTY(QString userName READ userName NOTIFY accountInfoChanged)
-    Q_PROPERTY(bool generationAvailable READ generationAvailable CONSTANT)
+    // Was CONSTANT, which was honest only while the getter was a literal
+    // `return false`. The verdict now depends on the server flag map that
+    // /api/session/ returns, and that arrives after the bridge exists — so
+    // CONSTANT would freeze the first (empty-map) answer and the fix would be
+    // invisible to every QML binding. NOTIFY is required for the change to be
+    // observable at all.
+    Q_PROPERTY(bool generationAvailable READ generationAvailable NOTIFY generationAvailableChanged)
+    Q_PROPERTY(QString generationUnavailableReason READ generationUnavailableReason NOTIFY generationAvailableChanged)
     Q_PROPERTY(QString generationStatus READ generationStatus NOTIFY generationStatusChanged)
     Q_PROPERTY(bool audioUploadBusy READ audioUploadBusy NOTIFY audioUploadChanged)
     Q_PROPERTY(int audioUploadProgress READ audioUploadProgress NOTIFY audioUploadChanged)
@@ -87,6 +94,10 @@ public:
     bool googleLoginAvailable() const;
     QVariantList models() const;
     bool generationAvailable() const;
+    /// Why generation is unavailable, naming which resolution step is holding it.
+    /// Exists so the disabled Generate button can explain itself instead of
+    /// being an unexplained dead control.
+    QString generationUnavailableReason() const;
     QString generationStatus() const;
     bool audioUploadBusy() const;
     int audioUploadProgress() const;
@@ -144,6 +155,9 @@ signals:
     void googleLoginCallbackReceived();
     void authenticationFailed(const QString& reason);
     void modelsChanged();
+    /// The generation gate verdict (and therefore the reason string) may have
+    /// changed, because the server flag map arrived or the account went away.
+    void generationAvailableChanged();
     void generationStatusChanged();
     void audioUploadChanged();
     void statusMessageChanged();
@@ -163,6 +177,15 @@ signals:
     /// describing the most recent event, this fires for every clip of a batch
     /// and carries the path that was written.
     void clipSaved(const QString& clipId, const QString& savedPath);
+    /// One clip was REFUSED, with the reason, carrying the id.
+    ///
+    /// The counterpart `clipSaved` was missing. Without it a batch refusal
+    /// collapses into a single aggregate error string with no id attached, so a
+    /// UI cannot tell which clips failed and every rejected card sits on
+    /// "Saving" forever while one of them silently did nothing. `reason` is the
+    /// download layer's own sentence — including the server's download
+    /// entitlement decision — passed through verbatim rather than summarised.
+    void clipSaveRefused(const QString& clipId, const QString& reason);
 
 private slots:
     void onLibraryUpdated();

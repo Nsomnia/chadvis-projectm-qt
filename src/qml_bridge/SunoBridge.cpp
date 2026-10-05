@@ -386,6 +386,14 @@ void SunoBridge::wireControllerSignals() {
                 bridgeInstance, [bridgeInstance](const QString& message) {
                     bridgeInstance->setErrorMessage(message);
                 });
+        // The generation gate's verdict and reason both move when the server flag
+        // map changes, so both properties notify from this one signal. Without it
+        // the properties would be correct but never re-read — the same
+        // invisibility the old CONSTANT declaration had.
+        connect(am, &vc::suno::SunoAccountManager::gatesChanged,
+                bridgeInstance, [bridgeInstance]() {
+                    emit bridgeInstance->generationAvailableChanged();
+                });
     }
     connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance, [bridge = bridgeInstance](const QString& response, const QString& workspaceId) {
         QVariantMap assistantMsg;
@@ -431,7 +439,38 @@ QVariantList SunoBridge::chatHistory() const { return chatHistory_; }
 
 QVariantList SunoBridge::models() const { return modelCatalog_; }
 
-bool SunoBridge::generationAvailable() const { return false; }
+bool SunoBridge::generationAvailable() const {
+    // Was `return false` — unconditional, with no reason anywhere. That made it
+    // a well-built door to nowhere: SunoPanel.qml renders a real model dropdown
+    // and a permanently disabled Generate button, and nothing in the tree could
+    // say why. It is now a real verdict from the gate resolver.
+    //
+    // Default-off is still the correct shipped answer, and now for a reason a
+    // user can be shown: generation is gated on an explicit client switch that
+    // stays closed pending a human decision on the captcha. The difference is
+    // that this can now become `true` when that decision is made, and
+    // `generationUnavailableReason()` can say which of the six resolution steps
+    // is actually holding it.
+    if (!s_controller) {
+        return false;
+    }
+    const auto* accountManager = s_controller->accountManager();
+    if (!accountManager) {
+        return false;
+    }
+    return accountManager->gates().isAvailable(vc::suno::FeatureGate::Generation);
+}
+
+QString SunoBridge::generationUnavailableReason() const {
+    if (!s_controller) {
+        return QStringLiteral("Suno is not connected.");
+    }
+    const auto* accountManager = s_controller->accountManager();
+    if (!accountManager) {
+        return QStringLiteral("Suno is not connected.");
+    }
+    return accountManager->gates().evaluate(vc::suno::FeatureGate::Generation).reason;
+}
 
 QString SunoBridge::generationStatus() const { return generationStatus_; }
 
@@ -592,6 +631,9 @@ void SunoBridge::downloadInto(const QStringList& clipIds) {
                                                 clipId.toStdString());
         if (!clip) {
             ++unknown;
+            emit clipSaveRefused(
+                    clipId, QStringLiteral("This clip is no longer in the library, so it "
+                                           "cannot be saved."));
             continue;
         }
         auto result = downloader->download(*clip);
@@ -600,6 +642,11 @@ void SunoBridge::downloadInto(const QStringList& clipIds) {
             if (firstRejection.isEmpty()) {
                 firstRejection = result.error();
             }
+            // Per-clip, carrying the id. Without it a batch refusal collapses
+            // into one aggregate string and the UI cannot tell WHICH clips
+            // failed — so every rejected card stays stuck on "Saving" while one
+            // of them silently did nothing.
+            emit clipSaveRefused(clipId, result.error());
             continue;
         }
         ++accepted;

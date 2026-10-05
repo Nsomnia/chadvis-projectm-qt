@@ -165,6 +165,22 @@ std::expected<SunoClip, QString> ClipParser::parseClip(const QJsonObject& obj) {
     clip.is_trashed = optBool(obj, "is_trashed", false);
     clip.is_public = optBool(obj, "is_public", false);
 
+    // Download entitlement — captured, and previously read by nobody.
+    //
+    // Presence is separated from value deliberately. `optBool` alone cannot tell
+    // "the server said no" from "this payload never carried the field", and those
+    // two need different user-facing sentences; absent must fail closed rather
+    // than inherit a permissive default. Reusing `optBool` for the value keeps
+    // its string-tolerant reading (captured filters also arrive as "True"/
+    // "False" strings) without duplicating that logic.
+    const QJsonValue unlockedValue = obj.value(QStringLiteral("is_download_unlocked"));
+    if (!unlockedValue.isUndefined() && !unlockedValue.isNull()) {
+        clip.is_download_unlocked =
+                optBool(obj, QStringLiteral("is_download_unlocked"), false);
+    }
+    clip.download_disabled_reason =
+            optString(obj, QStringLiteral("download_disabled_reason")).toStdString();
+
     parseMetadata(obj, clip);
     parseMediaUrls(obj, clip);
     return clip;
