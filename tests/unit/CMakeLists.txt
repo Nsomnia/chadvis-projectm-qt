@@ -83,6 +83,78 @@ target_link_libraries(test_HttpPolicy PRIVATE
 
 add_test(NAME test_HttpPolicy COMMAND test_HttpPolicy)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# CAPTURED HOSTS — the outbound-host and deployment-tier policy (2026-10-05)
+#
+# A standalone target rather than a unit_tests member, for the same reason as
+# test_HttpPolicy above: this file carries its own main().
+#
+# Qt6::Network is deliberately NOT linked. CapturedHosts is pure policy over
+# QUrl, and QUrl lives in Qt6::Core. A comment that misstates the build is worse
+# than no comment, and test_HttpPolicy's block is not a licence to copy its
+# dependency list — it needs Network for a reason this one does not have.
+#
+# These are the only tests covering the tree's fail-closed host policy
+# (AGENTS.md §1). Before this, `mayReceiveCredential` had zero ctest coverage and
+# was verified only by a standalone out-of-suite harness, which proves the code
+# works on one machine and proves nothing about regressions. One assertion here
+# is specifically the regression guard for a credential hole closed this round:
+# the realtime push origin must stay graded ResponseValue, so no future edit can
+# let the Suno bearer be sent to third-party realtime infrastructure.
+# ─────────────────────────────────────────────────────────────────────────────
+add_executable(test_CapturedHosts
+    suno/test_CapturedHosts.cpp
+)
+
+set_target_properties(test_CapturedHosts PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_CapturedHosts PRIVATE
+    Qt6::Core
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_CapturedHosts COMMAND test_CapturedHosts)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FEATURE GATES — the surface gate resolver (2026-10-05)
+#
+# A standalone target rather than a unit_tests member, for the same reason as
+# test_HttpPolicy and test_CapturedHosts: this file carries its own main().
+# Adding it to unit_tests would be a duplicate-main link error.
+#
+# Qt6::Network is deliberately absent, verified by linking against Qt6::Core
+# only: QUrl lives in QtCore, and CapturedHosts' own Network use is already
+# resolved inside project_lib. Do not add a false reason here.
+#
+# This is the first ctest coverage of the gate resolver, and it is the only
+# enforcement that the six-step resolution order cannot be quietly reordered or
+# widened. Its mutation results are the reason to trust it: folding a `false`
+# flag into "enabled", disabling the evidence floor, double-counting
+# flagCount(), inventing a gen-endpoint, reading a non-bool as false, letting
+# the client switch ignore the evidence floor, and evaluating exclusions after
+# the evidence floor were each injected into a scratch copy and each was caught.
+# ─────────────────────────────────────────────────────────────────────────────
+add_executable(test_FeatureFlags
+    suno/test_FeatureFlags.cpp
+)
+
+set_target_properties(test_FeatureFlags PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_FeatureFlags PRIVATE
+    Qt6::Core
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_FeatureFlags COMMAND test_FeatureFlags)
+
+
+
 # The offscreen-render spike needs a QGuiApplication (a GL context requires the
 # GUI stack) while unit_tests' main() is a QCoreApplication, so it must be a
 # standalone target rather than a unit_tests member -- the same reason
@@ -270,6 +342,8 @@ if(CHADVIS_SANITIZER)
         test_SunoExploreService
         test_SunoNotificationService
         test_ClerkAuthClient
+        test_CapturedHosts
+        test_FeatureFlags
         PROPERTIES ENVIRONMENT
         "TSAN_OPTIONS=abort_on_error=0:halt_on_error=0:exitcode=66:suppressions=${CMAKE_SOURCE_DIR}/cmake/tsan.supp"
     )

@@ -413,11 +413,19 @@ std::optional<Refusal> classifyRefusal(const QUrl& url, const Tier activeTier) n
     if (url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) != 0) {
         return Refusal::SchemeNotHttps;
     }
-    // QUrl::port() returns qint16 and yields -1 for the default port, so this is the
-    // same idiom the tree already uses at AuthHeaders.cpp:55.
-    if (!(url.port() < 0 || url.port() == 443)) {
-        return Refusal::NonDefaultPort;
-    }
+// `QUrl::port()` returns **int** in Qt 6.11 and yields -1 for the default port.
+// An earlier revision of this comment claimed `qint16`, and that false belief
+// was a live landmine rather than a typo: under it, a port at or above 32768
+// would wrap negative, take the `port() < 0` "default port" branch, and SILENTLY
+// ALLOW a credential to a captured host on an attacker-chosen port. The code
+// below is correct and `test_CapturedHosts.cpp` pins ports 40000 and 65535 as
+// refused -- so the behaviour is guarded. Do not narrow this to a 16-bit type
+// on the strength of a comment like this one; that is precisely how the hole
+// would be reintroduced. The old idiom this replaced (`AuthHeaders.cpp`, before
+// it delegated here) had the same `port() < 0 || port() == 443` shape.
+if (!(url.port() < 0 || url.port() == 443)) {
+    return Refusal::NonDefaultPort;
+}
     if (!url.userInfo().isEmpty()) {
         return Refusal::UserInfoPresent;
     }
