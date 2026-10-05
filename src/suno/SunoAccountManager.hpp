@@ -33,6 +33,28 @@ public:
     // Last-known values; empty/nullopt until the first successful reply.
     [[nodiscard]] const std::optional<SunoUserSummary>& user() const { return user_; }
     [[nodiscard]] const QList<SunoModelInfo>& models() const { return models_; }
+
+    /// The model catalogue to actually show a user.
+    ///
+    /// Prefers `/api/billing/info/` over `/api/session/`, and the reason is not a
+    /// preference. Measured against the captured bodies: `/api/session/`
+    /// `models` is an **empty array** in every capture, while
+    /// `/api/billing/info/` `models` carries the real catalogue with the same
+    /// field shape the existing parser already reads — `name`, `external_key`,
+    /// `major_version`, `description`, `can_use`, `is_default_model`,
+    /// `capabilities`, `features`, `badges`, `max_lengths`. The session list is
+    /// also keyed by client identity and its web branch was measured serving a
+    /// **stale** set, whereas billing independently confirms the account's own
+    /// model rights, so it is the one place the entitlement is authoritative.
+    ///
+    /// Falls back to the session list when billing yielded none, so a failed
+    /// billing fetch cannot blank a catalogue that was otherwise working. Note
+    /// the billing body also carries `accessible_features` — the 22-entry
+    /// `PlanFeature` entitlement plane — which is not yet parsed.
+    [[nodiscard]] const QList<SunoModelInfo>& preferredModels() const
+    {
+        return billingModels_.isEmpty() ? models_ : billingModels_;
+    }
     [[nodiscard]] const std::optional<SunoBillingInfo>& billing() const { return billing_; }
 
     /// The gate resolver, fed from the SAME `/api/session/` reply this manager
@@ -72,6 +94,10 @@ private:
     SunoClient* client_;
     std::optional<SunoUserSummary> user_;
     QList<SunoModelInfo> models_;
+    /// The catalogue from `/api/billing/info/`, which is the authoritative
+    /// source; see `preferredModels()`. Kept separate rather than overwriting
+    /// `models_` so a failed billing fetch cannot blank a working catalogue.
+    QList<SunoModelInfo> billingModels_;
     std::optional<SunoBillingInfo> billing_;
     GateResolver gates_;
 };

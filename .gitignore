@@ -92,6 +92,17 @@ moc_*
 ui_*
 qrc_*
 
+# Render-job receipts. `RenderJob::kReceiptSuffix` (.chadrjob, RenderJob.hpp:129)
+# is a render-job SIDECAR, written next to the encoded output. Tests drive the
+# encoder against paths in CWD, so running ctest litters the working directory --
+# and because these are 22 of the 26 untracked files in the tree, a stray
+# `git add -A` would commit a pile of binary artifacts. The build-artifact rules
+# above cover `build-*/`, but ctest's working directory is the repo root, not the
+# build dir, so they did not.
+*.chadrjob
+*.chadtiming
+*.part
+
 # IDE and tooling
 .cache/
 .compile_commands/

@@ -413,6 +413,16 @@ void SunoBridge::wireControllerSignals() {
                     bridgeInstance->updateModelCatalog();
                     emit bridgeInstance->accountInfoChanged();
                 });
+        // The catalogue comes from `/api/billing/info/`, so a billing-only
+        // refresh (which happens after a generation) also changes it. This is the
+        // honest signal for that: `accountInfoReady` means the user object, and
+        // emitting it from the billing path would make a billing refresh
+        // masquerade as an account refresh.
+        connect(am, &vc::suno::SunoAccountManager::billingInfoReady,
+                bridgeInstance, [bridgeInstance]() {
+                    bridgeInstance->updateModelCatalog();
+                    emit bridgeInstance->billingInfoChanged();
+                });
         connect(am, &vc::suno::SunoAccountManager::accountError,
                 bridgeInstance, [bridgeInstance](const QString& message) {
                     bridgeInstance->setErrorMessage(message);
@@ -1142,7 +1152,13 @@ void SunoBridge::onNotificationsErrorChanged(const QString& reason) {
 void SunoBridge::updateModelCatalog() {
     QVariantList catalog;
     if (s_controller && s_controller->accountManager()) {
-        catalog = toQVariantModels(s_controller->accountManager()->models());
+        // `preferredModels()` reads `/api/billing/info/`, not `/api/session/`.
+        // Measured against the captured bodies, session `models` is an EMPTY
+        // array in every capture, while billing carries the real catalogue with
+        // the identical field shape — and billing is the one place the account's
+        // own model entitlement is authoritative. The session list is keyed by
+        // client identity and its web branch was measured serving a stale set.
+        catalog = toQVariantModels(s_controller->accountManager()->preferredModels());
     }
     if (modelCatalog_ == catalog) {
         return;

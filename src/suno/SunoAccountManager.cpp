@@ -182,6 +182,7 @@ void SunoAccountManager::clearSnapshots() {
                              billing_.has_value();
     user_.reset();
     models_.clear();
+    billingModels_.clear();
     billing_.reset();
     // Drop the flag map with the account it described. Leaving it behind would
     // keep every gate reading as it did for the signed-out user, so a UI could
@@ -292,12 +293,32 @@ void SunoAccountManager::handleBillingReply(QNetworkReply* reply) {
     }
 
     const QJsonObject root = QJsonDocument::fromJson(*body).object();
+
+    // The model catalogue lives here, not in `/api/session/`. Measured against
+    // the captured bodies, the session `models` array is EMPTY in every capture
+    // while this one carries the real catalogue with the identical field shape —
+    // so `parseModels` is reused verbatim rather than a second parser being
+    // written. It is parsed before the billing parse below so a billing envelope
+    // that fails to yield a plan still yields a catalogue, which is the more
+    // useful half.
+    billingModels_ = parseModels(root);
+
     auto info = parseBilling(root);
     if (!info) {
+        LOG_WARN("SunoAccountManager: billing envelope had no usable plan; kept the "
+                 "{} model(s) it did carry",
+                 static_cast<i64>(billingModels_.size()));
         emit accountError(QStringLiteral("billing envelope was empty"));
         return;
     }
     billing_ = *info;
+    // `billingInfoReady` alone. An earlier revision of this also emitted
+    // `accountInfoReady` so the model catalogue would reach the UI, which is
+    // wrong on two counts: that signal means the USER object, not the model
+    // list, and it made a billing-only refresh masquerade as an account
+    // refresh -- `test_BoundedBody` caught it counting two emissions where the
+    // envelope produced one. The catalogue is re-read on `billingInfoReady`,
+    // which is the honest signal for "this reply changed account-derived data".
     emit billingInfoReady();
 }
 
