@@ -32,6 +32,10 @@ scratch/
 *.swp
 *.swo
 *~
+kilo.jsonc
+kilo.json
+opencode.jsonc
+opencode.json
 
 # Prerequisites
 *.d
