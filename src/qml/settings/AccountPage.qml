@@ -339,19 +339,34 @@ Flickable {
         // the delegate rather than as the delegate itself, and naming its own
         // property `modelData` would shadow the Repeater role of that name in the
         // caller's scope for no benefit.
-        required property var entryData
+        //
+        // NOT `required`, and the reason is a bug this panel shipped with. The
+        // Repeater is driven by one flat list that holds BOTH area headers and
+        // surface rows, so a header entry supplies `undefined` here. QML
+        // evaluates bindings regardless of `visible`, so `visible: false` did
+        // NOT stop these properties being computed — every header threw a
+        // "TypeError: Value is undefined and could not be converted to an
+        // object" plus three "Unable to assign [undefined] to QString/bool"
+        // warnings on startup. Found by actually running the app, which is the
+        // first time anything in this panel had ever been executed.
+        property var entryData: ({})
+
+        /// The one place that normalises it. Every derived property reads `row`,
+        /// so a missing or non-object `entryData` degrades to an empty object
+        /// instead of throwing.
+        readonly property var row: entryData || ({})
         // Precomputed by buildGateModel — see the note on gateStatusLabel.
         property string statusText: ""
         property bool notesVisible: false
         property bool showDivider: false
 
         readonly property string surfaceTitle: {
-            const title = entryData.title
+            const title = row.title
             return title !== undefined && String(title).length > 0
-                   ? String(title) : String(entryData.gate)
+                   ? String(title) : String(row.gate)
         }
         readonly property string reasonText: {
-            const reason = entryData.reason
+            const reason = row.reason
             // Empty is not expected — the resolver writes a sentence for all six
             // verdicts — but a bare "Disabled" would be a worse answer than an
             // honest admission that nothing was reported.
@@ -359,20 +374,20 @@ Flickable {
                    ? String(reason)
                    : "No reason was reported for this surface."
         }
-        readonly property string metaText: {
-            const evidence = entryData.evidence
+readonly property string metaText: {
+            const evidence = row.evidence
             let meta = "Evidence: "
-                       + (evidence !== undefined && String(evidence).length > 0
-                          ? String(evidence) : "unknown")
-            const flags = entryData.serverFlags
+                   + (evidence !== undefined && String(evidence).length > 0
+                      ? String(evidence) : "unknown")
+            const flags = row.serverFlags
             if (flags !== undefined && String(flags).length > 0)
                 meta += "  ·  Flags: " + String(flags)
             return meta
         }
-        readonly property string noteText: entryData.note !== undefined
-                                           ? String(entryData.note) : ""
+readonly property string noteText: row.note !== undefined
+                                   ? String(row.note) : ""
         readonly property color statusColor: {
-            switch (String(entryData.status)) {
+            switch (String(row.status)) {
             case "available":
                 return Theme.successDim
             case "evidence-blocked":
@@ -403,7 +418,12 @@ Flickable {
                 spacing: Theme.spacingSmall
 
                 GateStatusMarker {
-                    status: entry.entryData.status
+                    // Through `row`, not `entry.entryData` — see the note on
+                    // `entryData`. A header entry supplies undefined here, and
+                    // `status` is a plain `string` property, so an undefined
+                    // assignment was one of the startup warnings.
+                    status: entry.row.status !== undefined
+                            ? String(entry.row.status) : ""
                 }
 
                 Text {
@@ -754,7 +774,11 @@ Flickable {
 
                         Text {
                             Layout.fillWidth: true
-                            text: sectionItem.modelData.label
+                            // Coalesced for the same reason as the row bindings:
+                            // `label` exists only on a header entry, so on a row
+                            // it is undefined and `text` is a typed string.
+                            text: sectionItem.modelData.label !== undefined
+                                  ? String(sectionItem.modelData.label) : ""
                             color: Theme.textPrimary
                             font: Theme.fontSubtitle
                             elide: Text.ElideRight
@@ -780,10 +804,18 @@ Flickable {
 
                     width: parent.width
                     visible: sectionItem.modelData.kind === "row"
-                    entryData: sectionItem.modelData.data
-                    statusText: sectionItem.modelData.statusText
-                    notesVisible: sectionItem.modelData.notes
-                    showDivider: sectionItem.modelData.divider
+                    // Every one of these is coalesced, because `flat` holds BOTH
+                    // headers and rows in one list and every entry instantiates
+                    // both halves. On a header, `data`/`statusText`/`notes`/
+                    // `divider` are all undefined, and assigning undefined into a
+                    // typed `string`/`bool` property is what produced 115 startup
+                    // warnings. QML evaluates these bindings regardless of
+                    // `visible: false`, so the guards have to be in the
+                    // assignment rather than in the consumer.
+                    entryData: sectionItem.modelData.data || ({})
+                    statusText: sectionItem.modelData.statusText || ""
+                    notesVisible: sectionItem.modelData.notes || false
+                    showDivider: sectionItem.modelData.divider || false
                 }
             }
         }

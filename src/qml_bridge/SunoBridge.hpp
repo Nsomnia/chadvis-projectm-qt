@@ -16,6 +16,7 @@ class SunoDownloader;
 class SunoExploreService;
 class SunoNotificationService;
 class SunoAudioUploadService;
+class SunoLibraryMutations;
 }
 }
 
@@ -86,6 +87,20 @@ class SunoBridge : public QObject,
     Q_PROPERTY(bool notificationsLoading READ notificationsLoading NOTIFY notificationsLoadingChanged)
     Q_PROPERTY(QString notificationsError READ notificationsError NOTIFY notificationsErrorChanged)
 
+    /// Can this build change the library at all? Both layers must permit: the
+    /// client switch inside `SunoLibraryMutations` (off until a success response
+    /// is captured) and the owning `FeatureGate` verdict.
+    ///
+    /// Exists so a UI shows an *explained* disabled control. `clipSaved`/
+    /// `clipSaveRefused` established the per-subject result channel; this is its
+    /// read-only counterpart and it is what stops the mutation buttons from
+    /// being a well-built door to nowhere.
+    Q_PROPERTY(bool mutationsAvailable READ mutationsAvailable NOTIFY mutationsAvailableChanged)
+    /// Names which of the two layers refused, and why. Never a bare "disabled".
+    Q_PROPERTY(QString mutationsUnavailableReason READ mutationsUnavailableReason NOTIFY mutationsAvailableChanged)
+    /// True while at least one mutation is waiting for its reply.
+    Q_PROPERTY(bool mutationsBusy READ mutationsBusy NOTIFY mutationsBusyChanged)
+
 public:
     explicit SunoBridge(QObject* parent = nullptr);
     ~SunoBridge() override;
@@ -131,6 +146,9 @@ public:
     int unreadCount() const;
     bool notificationsLoading() const;
     QString notificationsError() const;
+    bool mutationsAvailable() const;
+    QString mutationsUnavailableReason() const;
+    bool mutationsBusy() const;
 
 public slots:
     Q_INVOKABLE void generate(const QString& prompt, const QString& tags, bool instrumental, const QString& model);
@@ -152,6 +170,46 @@ public slots:
     Q_INVOKABLE void loadMoreDiscover();
     Q_INVOKABLE void refreshNotifications();
     Q_INVOKABLE void markAllNotificationsRead();
+
+    // ── Library & playlist mutations ──────────────────────────────────────
+    // Request bodies are built by `SunoLibraryMutations` from the captured
+    // contracts in docs/suno_api/ENDPOINT-INVENTORY.md §5.9. These are thin
+    // forwarders: no body is assembled here, so there is exactly one owner of
+    // the wire format.
+    //
+    // **There are deliberately no like/unlike and no trash/restore invokables.**
+    // No captured request contract exists for either — see the header of
+    // SunoLibraryMutations.hpp and the named-absence block in
+    // SunoEndpoints.hpp. Adding one would require inventing a route.
+    //
+    // Every one of these is a no-op that settles as `refused` while
+    // `mutationsAvailable` is false, and each says why. Note that none of them
+    // returns a result synchronously: the per-subject signals below are the
+    // result channel, for the same reason `clipSaved` exists.
+    Q_INVOKABLE void setClipVisibility(const QString& clipId, bool isPublic);
+    Q_INVOKABLE void setClipRemixPermission(const QString& clipId, bool canRemix);
+    Q_INVOKABLE void setClipShowRemixes(const QString& clipId, bool showRemix);
+    /// `feedbackReason` is passed through verbatim. The capture establishes the
+    /// field's type and no member list, so nothing here validates it.
+    Q_INVOKABLE void setClipFeedback(const QString& clipId, const QString& reason);
+    /// Mints a share link server-side. **Nothing reads a URL out of the
+    /// response**, because no success response was ever captured — so this
+    /// reports that the request was accepted and the UI must not present a link.
+    Q_INVOKABLE void shareClip(const QString& clipId, const QString& contentType);
+    Q_INVOKABLE void setPlaylistMetadata(const QString& playlistId, const QString& name,
+                                         const QString& description);
+    /// `updateType` is one of the four captured enum members, as a string:
+    /// `"add"`, `"remove"`, `"remove_by_id"`, `"reorder"`. Anything else is
+    /// refused rather than guessed.
+    ///
+    /// `metadata` is forwarded verbatim. Its contents were **not** captured, so
+    /// no key inside it is named or defaulted here.
+    Q_INVOKABLE void updatePlaylistClips(const QString& playlistId, const QString& updateType,
+                                         const QVariantMap& metadata);
+    Q_INVOKABLE void addClipsToPlaylist(const QString& playlistId, const QStringList& clipIds);
+    Q_INVOKABLE void removeClipsFromPlaylist(const QString& playlistId, const QStringList& clipIds);
+    Q_INVOKABLE void reorderPlaylistTracks(const QString& playlistId, const QVariantList& positions);
+    Q_INVOKABLE void setPlaylistCoverImage(const QString& playlistId, const QString& imageId);
 
 signals:
     void loadingChanged();
@@ -207,6 +265,36 @@ signals:
     /// entitlement decision — passed through verbatim rather than summarised.
     void clipSaveRefused(const QString& clipId, const QString& reason);
 
+    // ── Mutation result channel ───────────────────────────────────────────
+    // ONE signal per subject, carrying the id, mirroring `clipSaved` /
+    // `clipSaveRefused`. A batch of 40 clips added to a playlist produces one
+    // `playlistMutationSettled` carrying the playlist id and an outcome naming
+    // what happened to the batch; the per-clip verbs produce one per clip. There
+    // is deliberately NO aggregate "N of M failed" string, for the reason
+    // recorded on `clipSaveRefused`: an unattributable summary leaves every
+    // failing card stuck while one of them silently did nothing.
+
+    /// One clip-scoped mutation reached a terminal state.
+    /// `verb` is the machine-readable name (`set-visibility`, `toggle-remixes`,
+    /// ...); `outcome` is `accepted` / `refused` / `rejected` / `failed`.
+    ///
+    /// **`accepted` means the server returned 2xx. It does NOT mean the clip's
+    /// state is now what was asked for** — no success response body has ever
+    /// been captured, so nothing was read from it and nothing was written
+    /// locally. A UI must re-read the library rather than assume.
+    void clipMutationSettled(const QString& clipId, const QString& verb,
+                             const QString& outcome, const QString& reason);
+    /// The same, for the six playlist-scoped verbs, keyed by playlist id.
+    void playlistMutationSettled(const QString& playlistId, const QString& verb,
+                                 const QString& outcome, const QString& reason);
+    /// Fired alongside an `accepted` result. The honest consequence of not
+    /// knowing the server's response shape: the only way to learn the real state
+    /// is to re-read the library, and a UI should be told to do it rather than
+    /// left showing a value it guessed.
+    void libraryRefreshRecommended();
+    void mutationsAvailableChanged();
+    void mutationsBusyChanged();
+
 private slots:
     void onLibraryUpdated();
     void onLibraryFetchFailed(const QString& reason);
@@ -234,6 +322,28 @@ private:
     void destroyNotificationService();
     void ensureAudioUploadService();
     void destroyAudioUploadService();
+    /// Owns the one `SunoLibraryMutations`. Created lazily like the other
+    /// services, and **destroyed on sign-out** for the same reason the
+    /// notification service is: an object that outlives the account must not
+    /// keep a resolver pointer into a destroyed `SunoAccountManager`.
+    void ensureMutationService();
+    void destroyMutationService();
+    /// Re-publishes `mutationsAvailable` after the resolver's verdict moves.
+    void onMutationsAvailabilityChanged();
+    /// The single place a settled mutation becomes a QML signal. Routes by verb
+    /// so a clip id and a playlist id never land on the same signal, and pairs
+    /// every `accepted` with `libraryRefreshRecommended`.
+    ///
+    /// Takes primitives rather than `vc::suno::MutationResult` so this header
+    /// keeps its convention of forward-declaring the `vc::suno` types instead of
+    /// including them. The one `MutationResult` is read in the lambda that
+    /// connects the service signal.
+    void onMutationSettled(int verb, const QString& subjectId, int outcome,
+                           const QString& reason);
+    /// Invoked by the mutation invokables. Ensures the service exists and then
+    /// reports the one reason nothing can be sent, so a QML call on a signed-out
+    /// app produces a sentence instead of silence.
+    [[nodiscard]] vc::suno::SunoLibraryMutations* ensureMutations();
     void downloadInto(const QStringList& clipIds);
     /// The single SunoDownloader, borrowed from SunoController. Null (and the
     /// caller must fail closed) when no controller is attached.
@@ -264,6 +374,9 @@ private:
     vc::suno::SunoExploreService* exploreService_{nullptr};
     vc::suno::SunoNotificationService* notificationService_{nullptr};
     vc::suno::SunoAudioUploadService* audioUploadService_{nullptr};
+    /// The one `SunoLibraryMutations`, or null. Null is the fail-closed answer
+    /// and is also what a signed-out app sees.
+    vc::suno::SunoLibraryMutations* mutationService_{nullptr};
     /// Not owned here. Re-resolved from the QObject tree by ensureDownloader()
     /// whenever the controller changes, so a controller swap cannot leave a
     /// dangling pointer or a stale signal connection behind.

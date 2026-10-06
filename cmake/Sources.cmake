@@ -588,3 +588,32 @@ list(APPEND SUNO_SOURCES
     src/suno/FeatureFlags.hpp
     src/suno/FeatureFlags.cpp
 )
+
+# ─────────────────────────────────────────────────────────────
+# LIBRARY MUTATIONS — the request side, fail-closed (appended 2026-10-05)
+#
+# The eleventh instance of this project's undeclared-source trap, and the
+# loud kind: without this entry the build fails at link naming `SunoBridge.cpp`
+# rather than the forgotten file.
+#
+# Eleven verbs whose request contracts are [T1] in ENDPOINT-INVENTORY.md §5.9.
+# The RESPONSE shapes were never captured — every observed response for these
+# routes is a rejection — so `MutationResult` carries no field for a new state of
+# the subject, a 2xx means "accepted" and nothing more, and the switch stays off
+# until a human captures one success response per verb. That is the honest
+# completion state, not a gap.
+#
+# Two verbs were deliberately NOT built and the reason is recorded in
+# SunoEndpoints.hpp as a named-absence block, so nobody "completes" them from a
+# bundle string later: LIKE/UNLIKE has no route at any confidence (`is_liked` is a
+# filter key and a response field, not a verb), and TRASH/RESTORE has only
+# [LEAD] bundle strings plus one POST that answered 404. No DELETE was ever
+# probed on anything.
+#
+# .hpp listed: it declares no Q_OBJECT, but TargetSetup names sources explicitly
+# and the header is reached by SunoBridge.cpp.
+# ─────────────────────────────────────────────────────────────
+list(APPEND SUNO_SOURCES
+    src/suno/SunoLibraryMutations.hpp
+    src/suno/SunoLibraryMutations.cpp
+)

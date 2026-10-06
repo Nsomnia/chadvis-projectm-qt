@@ -1,0 +1,186 @@
+# ===========================================================================
+# windows.yml -- Windows build signal. Reports; does NOT block a PR.
+#
+# WHY IT EXISTS AND WHY IT IS NON-BLOCKING
+#   Windows 10/11 is the major userbase (AGENTS.md §7) and it is also the
+#   platform with the worst current credential story: the TODO records that
+#   `CHADVIS_HAS_KEYCHAIN` was only ever defined inside `if(APPLE ...)`, so
+#   Windows fell through to the file backend and wrote the Clerk credential —
+#   a `token_type: "refresh"` credential with `Max-Age=31536000`, i.e. a
+#   ONE-YEAR secret — in the clear. CredentialStoreWin32.cpp now exists, but
+#   "the code is written" is not "the code has ever been compiled on the
+#   platform it targets", and a lane that has never run is indistinguishable
+#   from a lane that would have passed.
+#
+#   So: `continue-on-error: true` at the job level. A Windows failure is
+#   visible on the check, it shows up in the Actions tab, and it does not stop
+#   a PR from merging.
+#
+#   THE TRADE-OFF, STATED PLAINLY: a non-blocking job rots unnoticed. If this
+#   workflow is failing on every push and nobody reads it, it has stopped
+#   being a signal and become decoration — the same fate as a permanently
+#   failing gate, only quieter. Whoever owns this needs to watch it for a few
+#   pushes after it first goes green. The honest fix is to get it green and
+#   then make it blocking; until then it is a smoke alarm with the battery out.
+#
+# EXPECT IT TO FAIL ON THE FIRST RUN
+#   There is no vcpkg.json in this repository, and creating one is outside the
+#   scope of this change, so the native dependencies below are installed by
+#   explicit `vcpkg install` lines. vcpkg's ffmpeg port in particular builds
+#   most of the world on first use, which is minutes, not seconds. The job is
+#   non-blocking precisely so that a slow or incomplete first run is signal
+#   rather than breakage.
+#
+# WHAT IS ACTUALLY WORTH DOING HERE
+#   1. Does it CONFIGURE? That is the highest-value question on this platform,
+#      because it is the one that has never been asked: the `FileBackend` ->
+#      `CredWrite` path, the OpenGL lookup, and the Qt component list have all
+#      been written by inference.
+#   2. Does it BUILD?
+#   3. Do the headless suites LINK and RUN?
+#   Not the drawable suites. A GitHub Windows runner has no GPU and no
+#   meaningful GL driver, so `integration_gl_tests` would fail for
+#   environmental reasons and tell us nothing.
+# ===========================================================================
+
+name: windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUILD_DIR: build-ci
+  CMAKE_BUILD_TYPE: Debug
+  # MSVC 19.3x+ is Compiler.cmake's floor (>= 19.29). windows-latest ships
+  # VS 2022.
+  VCPKG_ROOT: C:\vcpkg
+
+jobs:
+  windows:
+    name: windows-latest / MSVC (signal only, non-blocking)
+    runs-on: windows-latest
+    # See the header. Do not remove this without reading it first.
+    continue-on-error: true
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # No vcpkg.json exists, so the ports are named explicitly. Keeping them
+      # in one block means the diff when someone does add a manifest is
+      # readable.
+      - name: Install native dependencies (vcpkg)
+        run: |
+          set -b
+          & "$env:VCPKG_ROOT\vcpkg.exe" install `
+            spdlog:x64-windows-static `
+            fmt:x64-windows-static `
+            tomlplusplus:x64-windows-static `
+            glm:x64-windows-static `
+            taglib:x64-windows-static `
+            ffmpeg:x64-windows-static
+        # ffmpeg is the long pole and the likeliest single point of failure.
+        # It is allowed to miss on its own without taking the Qt install with
+        # it: cmake/Dependencies.cmake falls back to a manual
+        # find_path/find_library search, so a missing port surfaces as a clear
+        # configure-time error rather than as a confusing link failure later.
+        continue-on-error: true
+
+      - name: Report vcpkg's view of the dependency set
+        if: always()
+        run: "& \"$env:VCPKG_ROOT\vcpkg.exe\" list"
+
+      - name: Install Qt 6.8.3
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          cache: true
+          cache-key-prefix: qt-windows-6.8.3
+
+      - name: Configure
+        run: |
+          cmake -S . -B $env:BUILD_DIR `
+            -DCMAKE_BUILD_TYPE=$env:CMAKE_BUILD_TYPE `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR;$env:VCPKG_ROOT\installed\x64-windows-static" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build $env:BUILD_DIR --config $env:CMAKE_BUILD_TYPE --parallel
+
+      - name: Assert ctest discovered the expected entries
+        shell: pwsh
+        run: |
+          $dir = "$env:BUILD_DIR/tests"
+          if (-not (Test-Path "$dir/CTestTestfile.cmake")) {
+            Write-Error "::error title=zero tests discovered::${dir} has no CTestTestfile.cmake; ctest would report 0 tests and exit 0."
+            exit 1
+          }
+          $list = ctest --test-dir $dir -N -C $env:CMAKE_BUILD_TYPE | Out-String
+          Write-Host $list
+          if ($list -notmatch 'Total Tests:\s*(\d+)') {
+            Write-Error "::error::Could not read a test count from ctest -N."
+            exit 1
+          }
+          $total = [int]$Matches[1]
+          if ($total -lt 10) {
+            Write-Error "::error::ctest reported $total tests; expected at least 10."
+            exit 1
+          }
+          foreach ($t in @('unit_tests','test_HttpPolicy','test_CapturedHosts','test_FeatureFlags',
+                          'test_RenderExecutor','test_SunoAudioUploadService','test_SunoRequestEpoch',
+                          'test_SunoExploreService','test_SunoNotificationService','test_ClerkAuthClient')) {
+            $pattern = "Test\s+#\d+:\s+$([regex]::Escape($t))(\s|$)"
+            if ($list -notmatch $pattern) {
+              Write-Error "::error::ctest entry '$t' is built but was not discovered."
+              exit 1
+            }
+          }
+          Write-Host "All 10 gating entries discovered; ctest reports $total."
+
+      # Same 10 entries build.yml gates on. The three runtime-environment
+      # entries are deliberately absent: no GPU, no meaningful GL driver, and
+      # AudioEngine with no output device. Nothing here would be signal.
+      - name: Run the headless gate (10 entries)
+        run: |
+          ctest --test-dir $env:BUILD_DIR/tests --output-on-failure -C $env:CMAKE_BUILD_TYPE `
+            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
+
+      - name: Report the credential backend this build selected
+        # The one question this platform can uniquely answer. `CHADVIS_HAS_KEYCHAIN`
+        # is Apple-only and `CHADVIS_HAS_WIN32_CREDENTIALS` is the Windows arm;
+        # if neither reaches the compile line, Windows is writing the one-year
+        # refresh credential to a plaintext file and no test on any other
+        # platform would ever have noticed.
+        shell: pwsh
+        run: |
+          $defs = Get-Content -Recurse -Include '*.vcxproj','flags.make','*.rsp' `
+            -Path "$env:BUILD_DIR" -ErrorAction SilentlyContinue |
+            Select-String -Pattern 'CHADVIS_HAS_(WIN32_CREDENTIALS|KEYCHAIN|SECRET_SERVICE)' |
+            Select-Object -ExpandProperty Line -Unique
+          if (-not $defs) {
+            Write-Warning "No credential-backend macro found in the build files."
+            Write-Warning "Windows may be falling through to the plaintext FileBackend."
+          } else {
+            $defs | ForEach-Object { Write-Host $_ }
+          }

@@ -13,6 +13,7 @@
 #include "suno/SunoNotificationService.hpp"
 #include "suno/SunoAudioUploadService.hpp"
 #include "suno/SunoLibraryManager.hpp"
+#include "suno/SunoLibraryMutations.hpp"
 #include "suno/SunoModels.hpp"
 #include <QStringList>
 #include <QVariantMap>
@@ -24,6 +25,7 @@ vc::suno::SunoClient* SunoBridge::s_client = nullptr;
 
 SunoBridge::~SunoBridge() {
     destroyAudioUploadService();
+    destroyMutationService();
     delete notificationService_;
     notificationService_ = nullptr;
     delete exploreService_;
@@ -284,6 +286,15 @@ void SunoBridge::wireControllerSignals() {
     ensureNotificationService();
     ensureExploreService();
     ensureAudioUploadService();
+    ensureMutationService();
+    // Re-point rather than construct: the resolver lives inside
+    // SunoAccountManager, which is replaced on every sign-in, so a pointer
+    // captured at construction would dangle. Called here because this function
+    // runs whenever the controller is attached, which is exactly when the
+    // account manager may have been swapped.
+    if (mutationService_ && s_controller->accountManager()) {
+        mutationService_->setGateResolver(&s_controller->accountManager()->gates());
+    }
     // Resolved rather than constructed: the downloader (and its one
     // DownloadQueue) belongs to the controller, so this only wires the
     // saved-file signal. Fails closed to a null borrow if it is ever absent.
@@ -435,6 +446,12 @@ void SunoBridge::wireControllerSignals() {
                 bridgeInstance, [bridgeInstance]() {
                     emit bridgeInstance->generationAvailableChanged();
                     emit bridgeInstance->gateStatusesChanged();
+                    // The mutation surface consults the same resolver, so its
+                    // availability moves on the same signal. Without this the
+                    // property would be correct but never re-read by a QML
+                    // binding — the same invisibility the old CONSTANT
+                    // declaration had.
+                    bridgeInstance->onMutationsAvailabilityChanged();
                 });
 
         // Declare, once, which catalogued surfaces THIS BUILD actually
@@ -986,6 +1003,12 @@ void SunoBridge::signOutSuno() {
             coordinator->signOutSuno();
         }
     }
+    // Dropped on sign-out, alongside the notification state, for the same reason
+    // `FeatureFlags` resets its flag map there: leaving the old service alive
+    // would keep a borrowed pointer into an `SunoAccountManager` that is about to
+    // be replaced, and would let a mutation surface read as available to an
+    // account that no longer exists.
+    destroyMutationService();
 }
 
 void SunoBridge::refreshAccount() {
@@ -1352,6 +1375,288 @@ void SunoBridge::updateFilteredClips() {
         }
     }
     emit clipsChanged();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Library & playlist mutations
+//
+// Thin forwarders. Every request body is built inside
+// `SunoLibraryMutations` from the captured contracts in master §5.9, so there
+// is exactly one owner of the wire format and this file cannot drift from it.
+//
+// What this layer adds and nothing else:
+//   * service lifetime, torn down on sign-out;
+//   * routing a settled result to the clip-scoped or playlist-scoped signal;
+//   * turning "nothing is attached" into a sentence instead of silence.
+//
+// It deliberately does NOT assemble JSON, validate enum members that were never
+// captured, or write anything to the local database.
+namespace {
+
+using vc::suno::MutationOutcome;
+using vc::suno::MutationResult;
+using vc::suno::MutationVerb;
+using vc::suno::PlaylistUpdateType;
+
+/// True for the five clip-scoped verbs. The remaining six act on a playlist.
+///
+/// This is the routing table that keeps `clipMutationSettled` and
+/// `playlistMutationSettled` honest: a playlist id must never arrive on a
+/// signal a card delegate is listening to, or a clip card would update from a
+/// playlist write.
+[[nodiscard]] bool isClipScoped(const MutationVerb verb) noexcept
+{
+    switch (verb) {
+        case MutationVerb::SetVisibility:
+        case MutationVerb::ToggleRemixPermission:
+        case MutationVerb::ToggleShowRemixes:
+        case MutationVerb::UpdateFeedbackState:
+        case MutationVerb::ShareLink:
+            return true;
+        case MutationVerb::PlaylistSetMetadata:
+        case MutationVerb::PlaylistUpdateClips:
+        case MutationVerb::PlaylistTracksAdd:
+        case MutationVerb::PlaylistTracksRemove:
+        case MutationVerb::PlaylistTracksReorder:
+        case MutationVerb::PlaylistCoverImage:
+            return false;
+    }
+    return false;
+}
+
+/// `update_type` arrives from QML as a string. The four members ARE captured, so
+/// this map is evidence-backed — and an unrecognised string returns nullopt
+/// rather than defaulting to one of them, because a silent `add` where the user
+/// asked for something else is the worst available outcome.
+[[nodiscard]] std::optional<PlaylistUpdateType> playlistUpdateTypeFrom(
+        const QString& text)
+{
+    if (text == QLatin1String("add")) {
+        return PlaylistUpdateType::Add;
+    }
+    if (text == QLatin1String("remove")) {
+        return PlaylistUpdateType::Remove;
+    }
+    if (text == QLatin1String("remove_by_id")) {
+        return PlaylistUpdateType::RemoveById;
+    }
+    if (text == QLatin1String("reorder")) {
+        return PlaylistUpdateType::Reorder;
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+vc::suno::SunoLibraryMutations* SunoBridge::ensureMutations()
+{
+    if (mutationService_ && s_client) {
+        return mutationService_;
+    }
+    ensureMutationService();
+    return mutationService_;
+}
+
+void SunoBridge::ensureMutationService()
+{
+    if (mutationService_ || !s_client) {
+        return;
+    }
+    mutationService_ = new vc::suno::SunoLibraryMutations(s_client, this);
+    // Borrowed, not owned, and it must follow the account: the resolver lives in
+    // SunoAccountManager, which is replaced on sign-in. Re-pointing on every
+    // wireControllerSignals() means a stale pointer is impossible, and a null
+    // one (no account manager yet) fails closed inside the service.
+    if (s_controller && s_controller->accountManager()) {
+        mutationService_->setGateResolver(&s_controller->accountManager()->gates());
+    }
+    connect(mutationService_, &vc::suno::SunoLibraryMutations::availabilityChanged,
+            this, &SunoBridge::onMutationsAvailabilityChanged);
+    connect(mutationService_, &vc::suno::SunoLibraryMutations::mutationSettled,
+            this, [this](const MutationResult& result) {
+                onMutationSettled(static_cast<int>(result.verb), result.subjectId,
+                                  static_cast<int>(result.outcome), result.reason);
+            });
+}
+
+void SunoBridge::destroyMutationService()
+{
+    if (mutationService_) {
+        disconnect(mutationService_, nullptr, this, nullptr);
+        delete mutationService_;
+        mutationService_ = nullptr;
+        emit mutationsBusyChanged();
+        emit mutationsAvailableChanged();
+    }
+}
+
+void SunoBridge::onMutationsAvailabilityChanged()
+{
+    emit mutationsAvailableChanged();
+    // The resolver's verdict moved, so `mutationsBusy` did not necessarily move
+    // with it; this is only about the availability pair, and the busy signal is
+    // driven by the service's own completion. Deliberately not emitted here —
+    // a NOTIFY with no value change would make QML bindings re-read for nothing.
+}
+
+void SunoBridge::onMutationSettled(const int verb, const QString& subjectId, const int outcome,
+                                   const QString& reason)
+{
+    const auto verbEnum = static_cast<MutationVerb>(verb);
+    const auto outcomeEnum = static_cast<MutationOutcome>(outcome);
+    const QString verbName = QString::fromLatin1(vc::suno::toString(verbEnum));
+    const QString outcomeName = QString::fromLatin1(vc::suno::toString(outcomeEnum));
+
+    if (isClipScoped(verbEnum)) {
+        emit clipMutationSettled(subjectId, verbName, outcomeName, reason);
+    } else {
+        emit playlistMutationSettled(subjectId, verbName, outcomeName, reason);
+    }
+
+    if (outcomeEnum == MutationOutcome::Accepted) {
+        // The one thing an `accepted` can honestly tell the UI: the library must
+        // be re-read. Nothing was parsed out of the response and nothing was
+        // written locally, so the displayed state is stale until a fetch.
+        emit libraryRefreshRecommended();
+    } else if (!reason.isEmpty()) {
+        // A refusal or rejection also deserves a visible home, or the control
+        // just silently does nothing. Reuses the existing single-error slot
+        // rather than inventing a second status channel a UI would have to poll.
+        setErrorMessage(reason);
+    }
+    emit mutationsBusyChanged();
+}
+
+bool SunoBridge::mutationsAvailable() const
+{
+    return mutationService_ && mutationService_->isAvailable();
+}
+
+QString SunoBridge::mutationsUnavailableReason() const
+{
+    if (!mutationService_) {
+        return QStringLiteral(
+                "Library changes need a signed-in Suno account.");
+    }
+    return mutationService_->unavailableReason();
+}
+
+bool SunoBridge::mutationsBusy() const
+{
+    return mutationService_ && mutationService_->isBusy();
+}
+
+// ── The invokables ───────────────────────────────────────────────────────────
+// Each is `if (auto* m = ensureMutations()) m->…`, so a signed-out app gets the
+// service's own one-sentence refusal on `clipMutationSettled` rather than a
+// silent no-op. Returning the `[[nodiscard]] bool` is deliberate and ignored
+// here: the result already arrived as a signal, so the bool carries no
+// information the caller lacks — and discarding it here is safe precisely
+// because the settlement path is unconditional.
+
+void SunoBridge::setClipVisibility(const QString& clipId, const bool isPublic)
+{
+    if (auto* m = ensureMutations()) {
+        (void)m->setClipVisibility(clipId, isPublic);
+    }
+}
+
+void SunoBridge::setClipRemixPermission(const QString& clipId, const bool canRemix)
+{
+    if (auto* m = ensureMutations()) {
+        (void)m->setClipRemixPermission(clipId, canRemix);
+    }
+}
+
+void SunoBridge::setClipShowRemixes(const QString& clipId, const bool showRemix)
+{
+    if (auto* m = ensureMutations()) {
+        (void)m->setClipShowRemixes(clipId, showRemix);
+    }
+}
+
+void SunoBridge::setClipFeedback(const QString& clipId, const QString& reason)
+{
+    if (auto* m = ensureMutations()) {
+        (void)m->setClipFeedbackState(clipId, reason);
+    }
+}
+
+void SunoBridge::shareClip(const QString& clipId, const QString& contentType)
+{
+    if (auto* m = ensureMutations()) {
+        (void)m->requestShareLink(clipId, contentType);
+    }
+}
+
+void SunoBridge::setPlaylistMetadata(const QString& playlistId, const QString& name,
+                                     const QString& description)
+{
+    if (auto* m = ensureMutations()) {
+        (void)m->setPlaylistMetadata(playlistId, name, description);
+    }
+}
+
+void SunoBridge::updatePlaylistClips(const QString& playlistId, const QString& updateType,
+                                     const QVariantMap& metadata)
+{
+    auto* m = ensureMutations();
+    if (!m) {
+        return;
+    }
+    // An unrecognised updateType is refused by the service, which is where the
+    // captured member list lives. Refusing here instead would duplicate that
+    // list in a second file, and the two would drift.
+    const auto type = playlistUpdateTypeFrom(updateType);
+    if (!type) {
+        (void)m->updatePlaylistClips(playlistId, PlaylistUpdateType::Add, {});
+        return;
+    }
+    // QVariantMap -> QJsonObject, forwarded verbatim: nothing inside is named,
+    // defaulted or interpreted, because the capture establishes only that
+    // `metadata` is an object.
+    QJsonObject json;
+    for (auto it = metadata.constBegin(); it != metadata.constEnd(); ++it) {
+        json.insert(it.key(), QJsonValue::fromVariant(it.value()));
+    }
+    (void)m->updatePlaylistClips(playlistId, *type, json);
+}
+
+void SunoBridge::addClipsToPlaylist(const QString& playlistId, const QStringList& clipIds)
+{
+    if (auto* m = ensureMutations()) {
+        (void)m->addClipsToPlaylist(playlistId, clipIds);
+    }
+}
+
+void SunoBridge::removeClipsFromPlaylist(const QString& playlistId, const QStringList& clipIds)
+{
+    if (auto* m = ensureMutations()) {
+        (void)m->removeClipsFromPlaylist(playlistId, clipIds);
+    }
+}
+
+void SunoBridge::reorderPlaylistTracks(const QString& playlistId,
+                                       const QVariantList& positions)
+{
+    auto* m = ensureMutations();
+    if (!m) {
+        return;
+    }
+    // Elements forwarded as given. The capture says `positions` is an array and
+    // nothing about its elements, so no element is validated or reshaped here.
+    QJsonArray json;
+    for (const QVariant& position : positions) {
+        json.append(QJsonValue::fromVariant(position));
+    }
+    (void)m->reorderPlaylistTracks(playlistId, json);
+}
+
+void SunoBridge::setPlaylistCoverImage(const QString& playlistId, const QString& imageId)
+{
+    if (auto* m = ensureMutations()) {
+        (void)m->setPlaylistCoverImage(playlistId, imageId);
+    }
 }
 
 } // namespace qml_bridge

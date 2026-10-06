@@ -1,0 +1,358 @@
+# ===========================================================================
+# build.yml -- the required gate.
+#
+# Answers one question: does this commit still build, and do the tests that
+# need no hardware still pass? Ubuntu x {gcc, clang} plus macOS 14.
+#
+# WHY THIS DOES NOT CALL ./build.sh
+#   build.sh has no CI mode, and its --tests action is an ALLOW-LIST of eight
+#   targets (SAFE_TESTS, build.sh:50-59) that exists to make the local edit loop
+#   fast. Two of its consequences make it wrong here:
+#     * it builds and runs 8 of the 13 ctest entries. test_CapturedHosts,
+#       test_FeatureFlags, test_OffscreenRenderSpike and both integration
+#       entries are outside it, so CI built on it would never compile or run
+#       them;
+#     * --clean / --rebuild move the build directory into .backup_graveyard/
+#       (AGENTS.md §4), which is a local tidiness behaviour, not a CI one.
+#   So the CMake command line is spelled out here instead, and the cost of that
+#   duplication is accepted deliberately: it is the only way to run all 13
+#   entries. If build.sh ever grows a --ci flag, delete this comment and the
+#   command lines with it.
+#
+# TWO DEPENDENCY PATHS ON PURPOSE
+#   macOS installs spdlog / fmt / tomlplusplus from Homebrew, which is the
+#   SYSTEM branch of cmake/Dependencies.cmake and is the link line the
+#   maintainer actually builds (this repo is developed on Homebrew Qt).
+#   Ubuntu leaves those three to CPM, so the two jobs cover both branches of
+#   every `find_package(... QUIET) -> else CPMAddPackage` in that file. A CI
+#   matrix that exercised only one branch would leave the other untested
+#   forever, which is the exact failure this file exists to prevent.
+#
+# LINUX QT VERSION IS NOT THE SAME QT AS macOS
+#   Ubuntu 24.04's apt ships Qt 6.4.2, and cmake/Dependencies.cmake:20-25
+#   FATAL_ERRORs below 6.7, so apt is not an option at all. install-qt-action
+#   pins 6.8.3 (the current LTS). macOS uses Homebrew's current Qt. That is a
+#   feature: the matrix brackets the supported range instead of testing one
+#   point in it. Raise the Linux version here if the tree ever starts using an
+#   API newer than 6.8.
+# ===========================================================================
+
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One run per ref. A newer push supersedes an in-flight run for the same ref,
+# which is most of the value: nobody wants to wait out three queued Qt builds.
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUILD_DIR: build-ci
+  # Deliberately NOT the project's --fast profile. -O0 -g0 compiles this tree
+  # in a fraction of the time, which is exactly wrong for a gate: -O0 can hide
+  # a missing #include through a transitively-pulled header, and the shipping
+  # configuration is the one a release is cut from. Debug is chosen only
+  # because RelWithDebInfo would triple the runner time for no extra signal;
+  # release.yml builds Release.
+  CMAKE_BUILD_TYPE: Debug
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            compiler: gcc
+          - os: ubuntu-24.04
+            compiler: clang
+          - os: macos-14
+            compiler: apple-clang
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # ---------------------------------------------------------------------
+      # Dependencies
+      # ---------------------------------------------------------------------
+
+      # Package -> probe map, so a missing dependency is diagnosable from the
+      # workflow file instead of from a configure error:
+      #   libgl1-mesa-dev      find_package(OpenGL REQUIRED)        (Deps:32)
+      #   libgl1-mesa-dri      llvmpipe, for the xvfb step below
+      #   xvfb                 a display for the same step
+      #   libtag1-dev          pkg_check_modules(taglib), else FATAL_ERROR
+      #   libav{codec,format,util}-dev, libsw{scale,resample}-dev
+      #                         the five CHADVIS_FFMPEG_COMPONENTS; missing any
+      #                         one is a FATAL_ERROR (Deps:141-170)
+      #   libavfilter-dev      CHADVIS_POSTPROCESS, optional. Ubuntu's
+      #                         libavfilter has no `ass`/`subtitles` filter
+      #                         without libass, so burn-in is expected to build
+      #                         and then report itself unsupported at runtime.
+      #   libglm-dev           find_package(glm REQUIRED)
+      #   libdbus-1-3          Qt6::DBus, linked on Linux for Secret Service
+      #   libxkbcommon0, libxcb-cursor0   dlopened by Qt's platform plugins
+      #
+      # NO COMMENTS INSIDE THE COMMAND. A `#` line inside a backslash-continued
+      # command terminates the logical line: `bash -n` accepts it, but apt is
+      # then handed only the packages before the comment and every package after
+      # it runs as a command (`libgl1-mesa-dev: command not found`, exit 127).
+      # The syntax check does not catch this, only running it does.
+      - name: Install Linux system dependencies (apt)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ninja-build \
+            pkg-config \
+            ccache \
+            libgl1-mesa-dev \
+            libgl1-mesa-dri \
+            xvfb \
+            libtag1-dev \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libswresample-dev \
+            libavfilter-dev \
+            libglm-dev \
+            libdbus-1-3 \
+            libxkbcommon0 \
+            libxcb-cursor0
+
+      - name: Install Qt 6.8.3 (Linux)
+        if: runner.os == 'Linux'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux'
+          target: 'desktop'
+          # Qt's own Linux build deps (xcb, EGL, fontconfig, ...). Leaving this
+          # false is a guaranteed runtime failure in the GL entries.
+          install-deps: true
+          # Cached: ~2 GB that would otherwise be re-downloaded on every push.
+          cache: true
+          cache-key-prefix: qt-linux-6.8.3
+
+      - name: Install macOS system dependencies (Homebrew)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew update
+          # Each of these maps to a probe in cmake/Dependencies.cmake:
+          #   qt            find_package(Qt6 ...) -- KEG-ONLY, so CMAKE_PREFIX_PATH
+          #                 must be set explicitly or find_package misses it.
+          #   spdlog fmt    find_package(<x> CONFIG QUIET) -> "Using system <x>"
+          #   tomlplusplus  idem. (formula name, not "toml++")
+          #   taglib        pkg_check_modules(taglib) -> libtag.so
+          #   ffmpeg        pkg_check_modules(libavcodec ...) + libavfilter.
+          #                 KEG-ONLY.
+          #   glm           find_package(glm REQUIRED)
+          #   ccache        Compiler.cmake auto-detects it, which is what makes
+          #                 the cache below possible.
+          brew install cmake ninja ccache qt spdlog fmt tomlplusplus taglib ffmpeg glm
+          # CMake config packages for spdlog/fmt/tomlplusplus/glm are not
+          # keg-only, so /usr/local is already on CMake's search path and no
+          # prefix hint is needed for them. The two pkg-config consumers are
+          # keg-only and must be pointed at explicitly.
+          echo "PKG_CONFIG_PATH=$(brew --prefix ffmpeg)/lib/pkgconfig:$(brew --prefix taglib)/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
+
+      # ---------------------------------------------------------------------
+      # ccache
+      #
+      # A C++23/Qt tree is the case ccache exists for: one header change
+      # invalidates ~100 translation units. This is the difference between a
+      # gate that costs minutes and one that costs an hour, so the stats are
+      # reported rather than left implicit.
+      # ---------------------------------------------------------------------
+
+      - name: Reset ccache statistics
+        run: ccache --zero-stats
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ccache
+            ~/Library/Caches/ccache
+          # Keyed on the build system, not the sources. ccache already keys
+          # each entry on the preprocessed source, so a source-only change is a
+          # correct miss; what must bust the cache wholesale is a changed
+          # compile line or toolchain. Sources are deliberately NOT in the key,
+          # which is what lets restore-keys walk back to the last good entry
+          # instead of evicting everything on every push.
+          key: ccache-${{ matrix.os }}-${{ matrix.compiler }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: |
+            ccache-${{ matrix.os }}-${{ matrix.compiler }}-
+            ccache-${{ matrix.os }}-
+
+      # ---------------------------------------------------------------------
+      # Configure + build
+      # ---------------------------------------------------------------------
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          args=(
+            -G Ninja
+            -S . -B "$BUILD_DIR"
+            -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE"
+          )
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            # Keg-only. Recorded rather than passed as CMAKE_OSX_SYSROOT: that
+            # variable is actively unsafe here -- it drops /usr/local/include
+            # from the compiler's search list, stripping the project's only
+            # route to spdlog/fmt/toml++/glm/taglib. See build.sh:224-228.
+            args+=(-DCMAKE_PREFIX_PATH="$(brew --prefix qt)")
+          else
+            args+=(-DCMAKE_PREFIX_PATH="$QT_ROOT_DIR")
+          fi
+          printf 'cmake %s\n' "${args[*]}"
+          cmake "${args[@]}"
+
+      - name: Build
+        run: cmake --build "$BUILD_DIR" --parallel
+
+      # ---------------------------------------------------------------------
+      # Test discovery guard -- see the dedicated step's own comment.
+      # ---------------------------------------------------------------------
+
+      - name: Assert ctest discovered the expected entries
+        run: |
+          set -u
+          DIR="$BUILD_DIR/tests"
+
+          # THE TRAP THIS STEP EXISTS TO CLOSE.
+          # AGENTS.md §3: `ctest --test-dir build` discovers ZERO tests and
+          # still exits 0, because enable_testing() lives in
+          # tests/CMakeLists.txt and not in the root. A green run that ran
+          # nothing is indistinguishable from a green run that passed
+          # everything, so "0 tests" has to be a hard failure rather than a
+          # quiet success. The CTestTestfile check is the belt to that
+          # suspenders: it catches the wrong directory before ctest is even
+          # invoked.
+          if [ ! -f "$DIR/CTestTestfile.cmake" ]; then
+            echo "::error title=zero tests discovered::$DIR has no CTestTestfile.cmake. ctest would report 0 tests and exit 0."
+            exit 1
+          fi
+
+          LIST="$(ctest --test-dir "$DIR" -N)"
+          printf '%s\n' "$LIST"
+
+          TOTAL="$(printf '%s\n' "$LIST" | sed -n 's/^Total Tests: *//p')"
+          TOTAL="${TOTAL:-0}"
+          if [ "$TOTAL" -lt 10 ]; then
+            echo "::error title=zero tests discovered::ctest reported $TOTAL tests in $DIR; expected at least 10."
+            exit 1
+          fi
+
+          # Every entry the tree registers must be present. This catches the
+          # second silent class -- an add_test that stopped being registered --
+          # and it does NOT break when a test is ADDED, because only absence
+          # fails. (A strict equality check would need editing in lockstep with
+          # every add_executable/add_test, which is the same footgun
+          # build.sh's SAFE_TESTS list already documents.)
+          MISSING=0
+          for t in \
+            unit_tests \
+            test_HttpPolicy \
+            test_CapturedHosts \
+            test_FeatureFlags \
+            test_OffscreenRenderSpike \
+            test_RenderExecutor \
+            test_SunoAudioUploadService \
+            test_SunoRequestEpoch \
+            test_SunoExploreService \
+            test_SunoNotificationService \
+            test_ClerkAuthClient \
+            integration_tests \
+            integration_gl_tests
+          do
+            if ! printf '%s\n' "$LIST" | grep -Eq "^ *Test +#[0-9]+: ${t}\$"; then
+              echo "::error title=missing ctest entry::'$t' is built but ctest did not discover it"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+          [ "$MISSING" -eq 0 ] || exit 1
+
+          echo "All 13 expected entries discovered; ctest reports $TOTAL."
+
+      - name: Run the headless gate (10 entries)
+        run: |
+          ctest --test-dir "$BUILD_DIR/tests" --output-on-failure \
+            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
+
+      # ---------------------------------------------------------------------
+      # Runtime-environment entries: reported, not gating.
+      #
+      # These three need a QGuiApplication with a real drawable, and one of them
+      # needs a real audio device. They are 13/13 green on the maintainer's
+      # desktop, which is the only place they have been observed running. No
+      # GitHub-hosted runner guarantees either, so making them gate would buy a
+      # red badge for an environment reason and train people to ignore red --
+      # which is worse than having no gate at all. They still gate nothing, so
+      # they are reported in the summary rather than dropped.
+      #
+      # macOS runners have a live WindowServer, so these run natively. Linux
+      # gets xvfb + llvmpipe. QT_QPA_PLATFORM is deliberately NOT exported:
+      # integration_gl_tests has no ENVIRONMENT override and needs a plugin
+      # that can create a GL context, and integration_tests carries
+      # QT_QPA_PLATFORM=offscreen in its own ctest property.
+      # ---------------------------------------------------------------------
+      - name: Run the runtime-environment entries (reported, non-gating)
+        id: runtime_env
+        continue-on-error: true
+        run: |
+          set -u
+          RE='^(integration_tests|integration_gl_tests|test_OffscreenRenderSpike)$'
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            xvfb-run -a -s "-screen 0 1280x1024x24" \
+              env LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
+              ctest --test-dir "$BUILD_DIR/tests" --output-on-failure -R "$RE"
+          else
+            ctest --test-dir "$BUILD_DIR/tests" --output-on-failure -R "$RE"
+          fi
+
+      - name: Summarise the runtime-environment entries
+        if: always()
+        run: |
+          {
+            echo "### Runtime-environment entries (non-gating)"
+            echo
+            if [ "${{ steps.runtime_env.outcome }}" = "success" ]; then
+              echo "Passed: integration_tests, integration_gl_tests, test_OffscreenRenderSpike."
+            else
+              echo "Outcome: \`${{ steps.runtime_env.outcome }}\`."
+              echo
+              echo "These three need a drawable (and integration_tests a real audio"
+              echo "device). They are known green on a desktop session; a failure here"
+              echo "is usually the runner, not the commit. See the comment above the step."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report ccache statistics
+        if: always()
+        run: |
+          set -u
+          {
+            echo "### ccache -- ${{ matrix.compiler }}"
+            echo
+            echo '```'
+            ccache --show-stats 2>/dev/null || ccache -s
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

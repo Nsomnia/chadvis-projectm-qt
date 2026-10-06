@@ -5,7 +5,9 @@
 // lives in the QML bridge - these stay plain PODs.
 
 #include <optional>
+#include <algorithm>
 #include <string>
+#include <string_view>
 #include <vector>
 #include "util/Types.hpp"
 
@@ -166,7 +168,39 @@ struct SunoBillingInfo {
     std::string renews_on;         // ISO date string
     SunoPlanInfo plan;
     i64 credit_pack_count{0};
+
+    // ── The PlanFeature entitlement plane ─────────────────────────────────────
+    // `accessible_features` from the SAME `/api/billing/info/` reply. This is one
+    // of seven independent gating planes and it was being discarded, like the
+    // server flag map was two rounds ago.
+    //
+    // It is NOT redundant with `credits`, `plan`, or any server flag: it is the
+    // per-plan feature entitlement, and the corpus shows the three plan tiers
+    // carry genuinely different sets (a Premier account holds 20; `convert_audio`
+    // is in the Pro set and absent from Premier's, while Premier adds `studio`).
+    // That makes it the one plane that can say "your plan does not include this"
+    // rather than "this is switched off right now".
+    //
+    // Kept as raw strings rather than a closed enum deliberately. It is
+    // SERVER-OWNED DATA, not code: a hardcoded list would miss any feature Suno
+    // adds, which is the same stale-snapshot mistake as baking in the flag names.
+    // The catalog is `constexpr`; this is the account's answer to it.
+    ///
+    /// Measured shape (2026-10-05, one authenticated body): a flat array of
+    /// objects each carrying a single `name` string. **20 entries**, not the 22
+    /// earlier summaries claimed — the number came from a secondary description
+    /// and the bytes disagree, so the bytes won.
+    std::vector<std::string> accessible_features;
+
+    [[nodiscard]] bool hasFeature(std::string_view feature) const;
 };
+
+inline bool SunoBillingInfo::hasFeature(const std::string_view feature) const
+{
+    return std::ranges::any_of(accessible_features, [feature](const std::string& held) {
+        return held == feature;
+    });
+}
 
 // ── GET /api/billing/eligible-discounts payload ──────────────
 

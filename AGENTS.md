@@ -63,7 +63,9 @@ installed if/when needed via brew, via port (setup on fish config for sure), fro
 - Tests: `ctest --test-dir build/tests --output-on-failure`.
   **Not** `--test-dir build` — that directory has no `CTestTestfile.cmake`,
   discovers zero tests, and still exits 0.
-- Binary: `build/chadvis-projectm-qt`. **Not** `build/src/...`.
+- Binary: `build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt`
+  on macOS (the target is a real `MACOSX_BUNDLE` as of 2026-10-05), or
+  `build/chadvis-projectm-qt` elsewhere. **Not** `build/src/...`.
 - If a doc and `src/` disagree, `src/` wins and the doc is a bug worth fixing.
 
 ### 4. Never `rm`

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ChadVis macOS bundle Info.plist -- TEMPLATE.
+
+  Consumed by cmake/TargetSetup.cmake through configure_file(... @ONLY), which
+  substitutes every @VAR@ below. Nothing in this file may hardcode a version, a
+  target name or an identifier: version.txt is the single source of the version
+  (validated into PROJECT_VERSION by the root CMakeLists), TARGET_NAME is the
+  single source of the executable name, and CHADVIS_BUNDLE_IDENTIFIER is defined
+  once in TargetSetup.cmake. A plist is not compiled and nothing in this tree
+  would notice a stale literal in it -- which is exactly the AGENTS.md §3 failure
+  this template exists to make impossible.
+
+  The generated file lands at ${CMAKE_BINARY_DIR}/Info.plist, i.e. in the build
+  tree and never in the source tree, so a reconfigure rewrites it in place.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Required by every consumer of the bundle: LaunchServices reads this to
+         decide what the thing is and what to exec. CFBundleExecutable MUST match
+         the target name or `open` reports a corrupt bundle. -->
+    <key>CFBundleExecutable</key>
+    <string>@CHADVIS_BUNDLE_EXECUTABLE@</string>
+
+    <!-- Reverse-DNS identifier. MACOSX_BUNDLE_GUI_IDENTIFIER is set to the same
+         variable in TargetSetup.cmake, so CMake's own generator and this key can
+         never disagree: both read one value. -->
+    <key>CFBundleIdentifier</key>
+    <string>@CHADVIS_BUNDLE_IDENTIFIER@</string>
+
+    <!-- Short name (max 15 chars for CFBundleName) and the user-facing one.
+         "ChadVis" is what Finder, Spotlight and the notification centre show;
+         the bundle directory name comes from MACOSX_BUNDLE_BUNDLE_NAME. -->
+    <key>CFBundleName</key>
+    <string>ChadVis</string>
+    <key>CFBundleDisplayName</key>
+    <string>ChadVis</string>
+
+    <!-- APPL is what marks the directory as an application rather than a
+         document bundle; without it Finder treats it as a plain folder. -->
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <!-- Two version keys with different jobs: ShortVersionString is the
+         human-facing dotted version and is what Gatekeeper and the App Store
+         show, Version is the monotonically increasing build number. Both come
+         from version.txt, so a release bump is one edit in one file. -->
+    <key>CFBundleShortVersionString</key>
+    <string>@PROJECT_VERSION@</string>
+    <key>CFBundleVersion</key>
+    <string>@PROJECT_VERSION@</string>
+
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <!-- LC_VERSION_MIN / LC_BUILD_VERSION floor. Read from
+         CMAKE_OSX_DEPLOYMENT_TARGET when the user set one, else the measured Qt
+         floor -- see CHADVIS_MACOS_MIN_VERSION in TargetSetup.cmake. Claiming a
+         floor LOWER than the linked Qt's is the one version-related bug worth
+         being careful about: dyld would refuse to load on the very systems the
+         bundle advertises. -->
+    <key>LSMinimumSystemVersion</key>
+    <string>@CHADVIS_MACOS_MIN_VERSION@</string>
+
+    <!-- Without this the app renders on the 1x grid and looks soft next to every
+         other native app; Qt sets it for a QGuiApplication but a bundle that is
+         inspected before launch (About This Mac, Gatekeeper, some installers)
+         reads only the plist. -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- Do NOT let LaunchServices force the native Aqua appearance: the UI is
+         Quick Controls 2 with a hand-written dark theme, and the native macOS
+         style silently discards the custom background/contentItem on every
+         control. This is the plist half of the decision src/core/Application.cpp
+         records when it calls QQuickStyle::setStyle("Fusion"). -->
+    <key>NSRequiresAquaSystemAppearance</key>
+    <false/>
+
+    <!-- NSPrincipalClass is deliberately ABSENT. This is a Qt application, not a
+         Cocoa one; naming NSApplication here makes LaunchServices and some
+         installer paths look for a nib and a delegate that do not exist. Qt
+         creates the QGuiApplication itself in main(). -->
+</dict>
+</plist>

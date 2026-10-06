@@ -90,6 +90,63 @@ constexpr std::string_view SESSION_CATALOG = "/session/"; // [T1] alias for SESS
 // T1: playlists.md (Burp 2026-08-25).
 constexpr std::string_view PLAYLIST_ME = "/playlist/me"; // [T1] GET
 
+// ── Studio API: Library & playlist MUTATIONS ────────────────
+// [T1] REQUEST contracts only, recovered 2026-09-30 by reading server
+// validation errors during a write-route probe. Docs:
+// docs/suno_api/ENDPOINT-INVENTORY.md §5.9 (master) and §1.5 (why the bodies
+// must stay flat).
+//
+// READ THAT SECTION BEFORE USING ANY CONSTANT HERE. Two facts govern all of it:
+//
+//   1. NO SUCCESS RESPONSE BODY WAS EVER CAPTURED for any route below. Every
+//      observed response is a *rejection*. A caller must therefore treat a 2xx
+//      as "accepted, shape unverified" and must not assert any returned field.
+//      The client-side owner is SunoLibraryMutations, which reads exactly one
+//      key — a string `detail`, and only on a failure.
+//
+//   2. A required-field list is a MINIMUM, not a maximum. Unlisted optional
+//      fields may exist. Do not read the absence of a key as "the server does
+//      not accept it".
+constexpr std::string_view GEN_SET_VISIBILITY = "/gen/{}/set_visibility/"; // [T1] POST
+constexpr std::string_view GEN_UPDATE_FEEDBACK_STATE = "/gen/{}/update_feedback_state/"; // [T1] POST
+constexpr std::string_view CLIP_TOGGLE_REMIXES = "/clips/{}/toggle_remixes/"; // [T1] POST
+// Captured WITHOUT a trailing slash and reproduced exactly that way. A trailing
+// slash is a different path, and no capture shows which spelling the router
+// accepts, so "tidying" this one would be an unevidenced guess. The two
+// toggle routes above/below it are the only pair in the file where this differs,
+// which is itself a hint that it was copied by hand rather than generated.
+constexpr std::string_view CLIP_TOGGLE_SHOW_REMIXES = "/clips/{}/toggle_show_remixes"; // [T1] POST
+constexpr std::string_view SHARE_LINK = "/share/link"; // [T1] POST
+constexpr std::string_view PLAYLIST_SET_METADATA = "/playlist/set_metadata"; // [T1] POST
+constexpr std::string_view PLAYLIST_UPDATE_CLIPS = "/playlist/update_clips/"; // [T1] POST
+constexpr std::string_view PLAYLIST_V2_TRACKS_ADD = "/playlist/v2/{}/tracks/add"; // [T1] POST
+constexpr std::string_view PLAYLIST_V2_TRACKS_REMOVE = "/playlist/v2/{}/tracks/remove"; // [T1] POST
+constexpr std::string_view PLAYLIST_V2_TRACKS_REORDER =
+        "/playlist/v2/{}/tracks/reorder-by-index"; // [T1] POST
+constexpr std::string_view PLAYLIST_V2_COVER_IMAGE = "/playlist/v2/{}/cover-image"; // [T1] POST
+
+// ── Deliberately ABSENT from the mutation set above ─────────
+// Named so a future reader does not "complete" the list from a bundle string.
+// Every one of these is the shape AGENTS.md §1 exists to refuse:
+//
+//   * LIKE / UNLIKE.  There is no like verb in the corpus at any confidence.
+//     `is_liked` appears only as a *feed filter key* (§5.2) and as a *response
+//     ownership field* (§5.x). A state is not a verb. Adding
+//     `/clips/{}/toggle_like` would be constructing a path and then calling it
+//     [T1].
+//   * TRASH / RESTORE.  `POST /api/gen/trash` and `POST /api/playlist/trash/`
+//     are client-bundle route strings that were NEVER PROBED — [LEAD] on both
+//     axes. `POST /api/clips/delete/` WAS exercised and answered 404. No
+//     `DELETE` verb was probed on any route, so a DELETE spelling of any of
+//     these is entirely unproved. `is_trashed` is likewise a response field,
+//     not a verb.
+//   * PLAYLIST CREATE / RENAME-BY-ID / TRASH, `gen/{id}/set_metadata/`,
+//     `gen/{id}/update_reaction_type/`.  Never probed. [LEAD].
+//
+// If a capture lands for one of these, add the constant HERE with its evidence
+// label — never in the calling file — and add the verb to SunoLibraryMutations
+// with the same request/response discipline the existing eleven carry.
+
 // ── Studio API: Billing ────────────────────────────────────
 // T1: billing-suite.md (Burp 2026-08-25).
 constexpr std::string_view BILLING_INFO = "/billing/info/"; // [T1] GET

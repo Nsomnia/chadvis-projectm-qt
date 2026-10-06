@@ -164,8 +164,12 @@ constexpr std::array<FeatureDefinition, kFeatureGateCount> kCatalog{{
          "is about throttling notices, not about the surface existing."},
         {FeatureGate::Playlists, "Playlists", "library", hosts::Evidence::Captured,
          "playlists,playlist-condition", hosts::Tier::Production, ExclusionReason::None,
-         "GET /api/playlist/me is [T1]; no playlist mutation is captured at all, so "
-         "this is a viewer gate and must not be read as playlist management. "
+         "GET /api/playlist/me is [T1]. CORRECTION 2026-10-05: this note used to "
+         "say \"no playlist mutation is captured at all\", which became false when "
+         "ENDPOINT-INVENTORY.md 5.9 recovered the request schemas for six of them. "
+         "What is still uncaptured is every mutation RESPONSE -- only rejections "
+         "were ever observed -- so the request side is built and fail-closed and "
+         "the client cannot yet confirm what Suno does with a result. "
          "`playlist-condition` is account-gated -- one of the ten flags an anonymous "
          "read never sees -- and matches PlanFeature.PLAYLIST_CONDITION, which makes "
          "it the flag that actually decides."},
@@ -252,9 +256,11 @@ constexpr std::array<FeatureDefinition, kFeatureGateCount> kCatalog{{
          "realtime-share-asset-status", hosts::Tier::Production, ExclusionReason::None,
          "GET /api/share/stats is [T1] but has zero hits across the recon's 95 "
          "chunks; drifted spelling is the likely explanation rather than deletion, so "
-         "re-probe before demoting it. Creating a share link is not captured at all "
-         "(section 4.8), so this gate covers a statistics read only. "
-         "`enable-sharelist-and-share-notifications` is staging-only."},
+         "re-probe before demoting it. CORRECTION 2026-10-05: this note used to say "
+         "creating a share link is not captured at all, which became false when "
+         "ENDPOINT-INVENTORY.md 5.9 recovered the REQUEST schema for POST "
+         "/api/share/link. The response is still uncaptured, so no URL is read out "
+         "of it. `enable-sharelist-and-share-notifications` is staging-only."},
         {FeatureGate::RealtimePush, "Realtime push", "library", hosts::Evidence::ResponseValue, "",
          hosts::Tier::Production, ExclusionReason::None,
          "GET /api/realtime/discover is [T1] and its body is modelled exactly "

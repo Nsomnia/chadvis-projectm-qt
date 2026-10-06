@@ -144,6 +144,26 @@ std::optional<SunoBillingInfo> parseBilling(const QJsonObject& root) {
     const QJsonValue packs = root.value(QStringLiteral("credit_packs"));
     info.credit_pack_count = packs.isArray() ? static_cast<i64>(packs.toArray().size()) : 0;
 
+    // `accessible_features` — the 22-entry PlanFeature entitlement plane, and the
+    // last of the seven gating planes this client was fetching and discarding.
+    // Each element is an object carrying a single `name`, so both the object form
+    // and a bare string are accepted: the wire has been seen only in the object
+    // form, and accepting a bare string costs nothing while surviving a shape
+    // change. A non-object element is skipped rather than coerced.
+    const QJsonValue features = root.value(QStringLiteral("accessible_features"));
+    if (features.isArray()) {
+        for (const auto& entry : features.toArray()) {
+            if (entry.isObject()) {
+                const QJsonValue name = entry.toObject().value(QStringLiteral("name"));
+                if (name.isString() && !name.toString().isEmpty()) {
+                    info.accessible_features.push_back(name.toString().toStdString());
+                }
+            } else if (entry.isString() && !entry.toString().isEmpty()) {
+                info.accessible_features.push_back(entry.toString().toStdString());
+            }
+        }
+    }
+
     return info;
 }
 

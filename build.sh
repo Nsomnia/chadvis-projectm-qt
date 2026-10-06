@@ -365,5 +365,13 @@ case "$ACTION" in
 esac
 
 if [[ "$ACTION" == "build" && "$WANT_TESTS_ONLY" -eq 0 ]]; then
-    printf '%sDONE%s %s\n' "$GREEN" "$RESET" "$BUILD_DIR/chadvis-projectm-qt"
+    # The macOS target is a real MACOSX_BUNDLE as of 2026-10-05, so the binary
+    # lives inside the .app rather than at the top of the build dir. Print the
+    # path that actually exists instead of the one that used to.
+    BUNDLED="$BUILD_DIR/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt"
+    if [[ -x "$BUNDLED" ]]; then
+        printf '%sDONE%s %s\n' "$GREEN" "$RESET" "$BUNDLED"
+    else
+        printf '%sDONE%s %s\n' "$GREEN" "$RESET" "$BUILD_DIR/chadvis-projectm-qt"
+    fi
 fi

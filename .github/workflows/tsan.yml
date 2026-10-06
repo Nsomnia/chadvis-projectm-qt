@@ -1,0 +1,232 @@
+# ===========================================================================
+# tsan.yml -- ThreadSanitizer lane. Reports; does not gate.
+#
+# WHY THIS IS A CACHE OPTION AND NOT A TARGET
+#   cmake/Compiler.cmake:112-153 sets CHADVIS_SANITIZER as directory-global
+#   -fsanitize=thread. It has to be: `unit_tests` links libproject_lib.a, which
+#   holds every line of application code. A sanitizer applied to the test
+#   target alone would link uninstrumented application objects, find nothing,
+#   and exit 0 -- a false-negative generator, which is worse than no lane. So
+#   this job builds the WHOLE project instrumented, in its own directory, and
+#   says so in the configure line rather than adding a target here.
+#
+#   RelWithDebInfo, not Release: Release sets NDEBUG, which compiles out the
+#   Q_ASSERT thread-affinity guards in Playlist and LyricsSync -- exactly the
+#   fail-loud instrumentation a race hunt wants.
+#
+# WHY THE STEP IS continue-on-error
+#   The documented state of this lane is that it exits 66 on 39 reports, all of
+#   one class inside Qt's own event dispatch
+#   (QtPrivate::QCallableObject<...>::impl, qobjectdefs_impl.h:548): a queued
+#   functor's payload is written when the event is posted and read when it is
+#   invoked, and the queue's mutex is a real happens-before edge TSan cannot
+#   see because Homebrew/Debian Qt is built without sanitizer support and has
+#   zero __tsan_* symbols.
+#
+#   cmake/tsan.supp is deliberately EMPTY. A suppression that hides a real race
+#   is worse than a red lane, so the judgement of which reports are benign was
+#   left explicit rather than taken automatically -- and no one has yet written
+#   down which of the 39 is which.
+#
+#   Gating on this job being clean would therefore produce a permanently red
+#   badge on day one, and a permanently red badge is a badge nobody reads. So
+#   the job runs, counts the reports, distinguishes "found races" from "the lane
+#   itself broke" from "genuinely clean", and writes all three to the summary.
+#   Three outcomes, because conflating the second with the first is how a
+#   sanitizer lane dies quietly:
+#     exit 0        -> nothing reported. The only genuinely good outcome.
+#     exit 66       -> findings. Counted and reported. Expected today.
+#     anything else -> the lane is broken (SIGABRT 134 on an unannotated
+#                      entry, or a TSan runtime init failure). NOT clean, and
+#                      not a race. Reported as such, because "no signal" and
+#                      "no races" must never look alike.
+#
+# WHAT THIS LANE COVERS
+#   The regex below is the eight names in the
+#   `if(CHADVIS_SANITIZER) set_tests_properties(...)` block at
+#   tests/unit/CMakeLists.txt:339-350, which is where TSAN_OPTIONS
+#   (abort_on_error=0:exitcode=66:suppressions=cmake/tsan.supp) is applied.
+#   Running the other five here would mean running them WITHOUT those options:
+#   Darwin aborts on the first finding, and on Linux the default exitcode is
+#   66 only by coincidence of halt_on_error, so an unannotated entry would
+#   either SIGABRT or exit 0 and neither outcome is a measurement.
+#   Known gap, recorded rather than hidden: test_HttpPolicy,
+#   test_OffscreenRenderSpike and test_RenderExecutor are instrumented (they
+#   link the instrumented project_lib) but are NOT in that block, so they are
+#   excluded here. Fixing it means editing tests/unit/CMakeLists.txt, which
+#   this change does not touch.
+#
+# GCC, NOT CLANG
+#   ubuntu-24.04's default GCC 13 satisfies Compiler.cmake's >=13 floor and
+#   ships libtsan, so this needs no extra runtime package. If the lane dies with
+#   "FATAL: ThreadSanitizer: unexpected memory mapping" -- a known GCC/PIE
+#   interaction on some kernels -- switch to clang-18 and add
+#   `libclang-rt-18-dev`, which carries the TSan runtime. The outcome
+#   classification below already reports that case as "lane broken" rather than
+#   "clean", which is the main reason it is worth having.
+#
+# WHY NO ccache HERE
+#   Compiler.cmake:169 deliberately skips the ccache launcher when a sanitizer
+#   is on: the cache entries are large, keyed on flags that change constantly,
+#   and hit essentially never across a run. This job therefore builds from cold
+#   every time, and that is the intended behaviour rather than an oversight.
+# ===========================================================================
+
+name: tsan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tsan-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUILD_DIR: build-tsan
+
+jobs:
+  tsan:
+    name: ThreadSanitizer (ubuntu / gcc, reporting only)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # See build.yml for the full package -> cmake/Dependencies.cmake probe map.
+      # Same list, minus ccache: Compiler.cmake:169 deliberately skips the
+      # ccache launcher on a sanitizer build, so installing it here would be
+      # dead weight in the image.
+      #
+      # NO COMMENTS INSIDE THE COMMAND -- a `#` line inside a backslash
+      # continuation ends the logical line, and bash only fails at RUN time,
+      # not under `bash -n`.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ninja-build \
+            pkg-config \
+            libgl1-mesa-dev \
+            libgl1-mesa-dri \
+            libtag1-dev \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libswresample-dev \
+            libavfilter-dev \
+            libglm-dev \
+            libdbus-1-3 \
+            libxkbcommon0 \
+            libxcb-cursor0
+
+      - name: Install Qt 6.8.3
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux'
+          target: 'desktop'
+          install-deps: true
+          cache: true
+          cache-key-prefix: qt-linux-6.8.3
+
+      - name: Configure the instrumented tree
+        run: |
+          set -euo pipefail
+          cmake -G Ninja -S . -B "$BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DCHADVIS_SANITIZER=thread
+          # Assert the lane actually engaged. Without this a typo in the option
+          # value produces a normal uninstrumented build whose tests pass, which
+          # is precisely the false-negative the whole design exists to avoid.
+          if ! grep -q '^CHADVIS_SANITIZER:STRING=thread$' "$BUILD_DIR/CMakeCache.txt"; then
+            echo "::error::CHADVIS_SANITIZER is not 'thread' in the cache -- this build is NOT instrumented."
+            exit 1
+          fi
+
+      - name: Build
+        run: cmake --build "$BUILD_DIR" --parallel
+
+      - name: Run the sanitizer lane (reports; does not gate)
+        id: tsan
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          RE='^(unit_tests|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient|test_CapturedHosts|test_FeatureFlags)$'
+
+          set +e
+          ctest --test-dir "$BUILD_DIR/tests" --output-on-failure -R "$RE" 2>&1 | tee tsan-run.log
+          rc="${PIPESTATUS[0]}"
+          set -e
+
+          reports="$(grep -c 'WARNING: ThreadSanitizer' tsan-run.log || true)"
+          reports="${reports:-0}"
+
+          if [ "$rc" -eq 0 ]; then
+            verdict="CLEAN -- 0 ThreadSanitizer reports"
+          elif [ "$rc" -eq 66 ]; then
+            verdict="FINDINGS -- $reports ThreadSanitizer report(s), exit 66 (the configured TSAN exitcode)"
+          else
+            verdict="LANE BROKEN -- exit $rc, $reports report(s). This is NOT 'clean' and NOT a race: expect SIGABRT on an unannotated entry, or a TSan runtime failure."
+          fi
+
+          {
+            echo "### ThreadSanitizer"
+            echo
+            echo "**$verdict**"
+            echo
+            echo "Entries run: the 8 ctest entries carrying TSAN_OPTIONS in"
+            echo "\`tests/unit/CMakeLists.txt\`. Suppressions: \`cmake/tsan.supp\`"
+            echo "(deliberately empty). Known state: 39 reports, one class, inside Qt's own"
+            echo "event dispatch -- \`qobjectdefs_impl.h:548\`, uninstrumented Qt, so the queue's"
+            echo "mutex is a happens-before edge TSan cannot see."
+            echo
+            echo '<details><summary>Full output</summary>'
+            echo
+            echo '```'
+            cat tsan-run.log
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "$verdict"
+          # Always exit 0. The verdict is in the summary and the log; a
+          # permanently failing gate is the thing being avoided here.
+          exit 0
+
+      - name: Report the lane verdict, and fail only if it never ran
+        if: always()
+        run: |
+          set -u
+          reports="$(grep -c 'WARNING: ThreadSanitizer' tsan-run.log 2>/dev/null || true)"
+          reports="${reports:-0}"
+          {
+            echo
+            echo "| Metric | Value |"
+            echo "|---|---|"
+            echo "| ThreadSanitizer reports | ${reports} |"
+            echo "| log size | $(wc -c < tsan-run.log 2>/dev/null || echo 0) bytes |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "ThreadSanitizer reports: $reports"
+
+          # Fail ONLY when the lane produced nothing at all -- it died before
+          # executing a single test. That is worth a red build, once and
+          # loudly, because "no signal" must never be mistaken for "clean".
+          # A lane that reports 39 known-benign races every week is not: that is
+          # the state being deliberately tolerated above.
+          if [ ! -s tsan-run.log ]; then
+            echo "::error title=ThreadSanitizer lane never ran::tsan-run.log is absent or empty. This is not a clean lane; it is a lane that produced no measurement."
+            exit 1
+          fi
