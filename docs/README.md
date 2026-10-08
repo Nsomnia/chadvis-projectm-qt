@@ -63,6 +63,8 @@ question by reading it.
 | :--- | :--- |
 | [Roadmap and pivot plan](PIVOT_PLAN.md) | The Suno-first product direction, binding rules, and phase plan. Includes the considered-pathways note on JUCE. |
 | [Backlog](../TODO.md) | The live work tracker. Single source for task state. |
+| [Agent rules](../AGENTS.md) | Build/test commands, the task claim protocol, and the evidence and secret-handling rules. |
+| [Superseded planning docs](archive/README.md) | The previous generation of `TODO.md` and `AGENTS.md`. Provenance only — do not work from them. |
 | [PII scrub plan](PII_SCRUB_PLAN.md) | **Proposed, not executed.** Review artifact for rewriting account identifiers out of git history. |
 | [Changelog](../CHANGELOG.md) | Released changes. |
 | [Legacy changelog](CHANGELOG_LEGACY.md) | Pre-1.1.0 history. |

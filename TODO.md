@@ -1,675 +1,1085 @@
-# TODO — ChadVis (Suno client first, projectM second)
+---
+schema: 1
+updated: 2026-10-07
+---
 
-> State marks: `[ ]` todo · `[~]` in progress · `[x]` done, awaiting verification ·
-> `[?]` needs a capture or a human decision before it can *ship* · `[!]` needs user attention now
-> Roadmap: [`docs/PIVOT_PLAN.md`](docs/PIVOT_PLAN.md) · API authority:
-> [`docs/suno_api/ENDPOINT-INVENTORY.md`](docs/suno_api/ENDPOINT-INVENTORY.md) ·
-> docs hub: [`docs/README.md`](docs/README.md) · operating rules: [`AGENTS.md`](AGENTS.md)
->
-> **Nothing in this file is blocked.** A `[?]` mark means a *ship gate*, not a stop: the
-> surrounding engineering is still ours to do, and an item marked `[?]` is expected to be
-> worked up to the gate and left fail-closed rather than parked. Where a capture would
-> unblock something, the item says exactly which capture and what the code does until then.
-> The one thing that does not bend is the evidence rule: an unverified route or host is
-> never wired, and a `[LEAD]` is never promoted by inference.
+# ChadVis backlog
 
-This file is the single backlog. Rules live in `AGENTS.md`; do not add work items there.
+Canonical ranked backlog. Rules that govern how to edit it live in
+[`AGENTS.md`](AGENTS.md); the claim/lease mechanism is
+[`scripts/task.sh`](scripts/task.sh).
+
+## How to read this file
+
+**Line grammar**
+
+```
+- [<mark>] <ID> <title> (<files>) [P] #tags (after: <IDs>)
+```
+
+* `<ID>` — stable, never reused. Survives renames and reordering.
+* `(<files>)` — the write set. **Two claims whose file lists intersect are a
+  conflict**; the audit reports it. This is the same-file rule made static.
+* `[P]` — parallelizable: disjoint from every live claim's files.
+* `#tags` — cost-of-delay, as tags rather than a fake-precise score.
+  `#risk-high #cod-high #blocks-ui #security #data-loss`.
+* `(after: T####)` — dependency. `task.sh next` honours it.
+
+**Status marks**
+
+| Mark | Meaning |
+| --- | --- |
+| `[ ]` | todo, unclaimed |
+| `[~]` | claimed — an agent is on it |
+| `[?]` | **code written, NOT verified** |
+| `[x]` | **done and verified.** The only finished state |
+| `[!]` | blocked — reason inline |
+| `[-]` | dropped, decided against |
+
+**Only `[x]` means finished.** Code that compiles is `[?]`. An item reaches `[x]`
+only when the verification command in `STATUS/<id>.log` passed. `task.sh audit`
+fails the build if `[x]` has no `VERIFY` line.
+
+**Ranking is positional** within each tier. Appending a P2 renumbers nothing, so
+concurrent agents never invalidate each other's arithmetic. Tiers are P0–P3;
+there is no computed score.
+
+**Size cap: 96 KB, and the board is at it.** A board you cannot read in one glance has
+stopped being a board. The cap is enforced by `./scripts/task.sh audit`, which fails the repo
+when it is exceeded. **Adding an item at the cap means displacing one.** Finished work moves
+to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.md` is the archive.
 
 ---
 
-## P0 — Critical: bugs, data loss, security
+## P0 — the product is broken, data is corrupted, or a secret is exposed
 
-### Memory & thread safety
-- [ ] **Playlist::addFile reads metadata synchronously** — blocks the UI thread on tag reads; move to a worker.
-- [x] **Two shipped claims about ThreadSanitizer are unreproducible — the sanitizer lane does not exist** — found 2026-09-29, **fixed and measured the same day**. `CHANGELOG.md:92` stated "AudioAnalyzer concurrency tests pass under ThreadSanitizer" and the PFFFT item above claimed "normal and ThreadSanitizer tests". **Verified: there was no `-fsanitize` anywhere in `CMakeLists.txt`, `cmake/`, `tests/` or `scripts/`, and all 29 `sanitize` matches were `sanitizeFilename`** — so both claims described an ad-hoc build that was never captured, which per `AGENTS.md` §3 is not a verification a future session can check. **Now delivered as a `CHADVIS_SANITIZER` cache option** (`cmake/Compiler.cmake`) paired with `cmake/tsan.supp` and a `TSAN_OPTIONS` block on the ctest entries. **Built and run: 320/320 targets, zero errors, and the lane executes.** Three design points were load-bearing, and all three were measured rather than assumed. (1) It is a **cache option, not a target**: `unit_tests` links `libproject_lib.a` holding all app code, so a `unit_tests_tsan` target would link uninstrumented objects, report nothing and exit 0 — a false-negative generator worse than no lane. (2) Darwin defaults to `abort_on_error=1`, so a ctest entry without `TSAN_OPTIONS=abort_on_error=0` dies with SIGABRT on the *first* finding; `halt_on_error=0` does **not** suppress it. (3) `CMAKE_OSX_SYSROOT` is **actively unsafe** here, verified independently: adding the SDK the compiler already reports for itself drops `/usr/local/include` from `/usr/bin/c++`'s search list (6 entries → 5), stripping the project's only route to fmt/spdlog/toml++/glm/taglib. **Also corrected a prediction:** the pre-build probes suggested "1 report, the genuine race, zero Qt noise", and the real run produced **39**. Every one is the same class and the summary line names it — `qobjectdefs_impl.h:548` in `QtPrivate::QCallableObject<...>::impl` — i.e. the race is inside **Qt's own event dispatch**: a queued functor's captured payload is written when the event is posted and read when it is invoked, and the queue's mutex is a real happens-before edge that TSan cannot see because Qt is uninstrumented (Homebrew qtbase has zero `__tsan_*` symbols). Our code appears only as the lambda Qt carries. **So the lane is not yet a clean gate: it exits 66 on 39 reports of one known-benign plumbing class.** Closing that needs either a sanitizer-built Qt or a reviewed suppression list, and `cmake/tsan.supp` is deliberately left a **starter with nothing suppressed** — a suppression that hides a real race is worse than a red lane, so that judgement is left explicit rather than taken automatically. **Not covered, honestly:** `VideoRecorderThread`, the one production thread with a hand-rolled mutex+condvar queue, is reachable from **no** unit test, so a lane does not reach it.
-- [ ] **A test that blocks a worker thread can turn any failed assertion into an unrecoverable hang** — found 2026-09-29 by the sanitizer lane, and it is **build-independent**. `concurrentRestoresCoalesceInsteadOfDoubleReading` blocks the credential backend in `releaseBackend.acquire()` and releases it only *after* several `QVERIFY`s. If one of those fails, `QVERIFY` early-returns, the release never happens, the worker thread stays blocked forever, and `~CredentialStoreWorker`'s `quit()` + `wait()` hangs — the `quit` cannot take effect because the loop is blocked *inside* the lambda. Observed as a 300 s QTest timeout and SIGABRT, which buried the real one-line message. Fixed with a scope-guard that releases on every exit path. **The general rule this establishes, worth applying to the other hand-rolled-thread tests in the tree:** any test that holds a worker thread in a blocking wait must arm its release before the first assertion that could fail. A `QVERIFY` is not cleanup, and a destructor that joins turns a missing release into a hang rather than a failure.
-- [ ] **Recording video/audio settings persist — the `[x]` was WRONG and the settings never have** — reopened 2026-10-04. **The previous text on this item was false in both halves, and it is recorded here rather than deleted so the failure is legible.** It claimed a re-verification that concluded "No bug", and concluded the opposite: **`ConfigParsers::serialize` never wrote `[recording.video]` or `[recording.audio]` at all.** It built both sub-tables in locals named `videoOut`/`audioOut`, but `VC_SER_FIELD` expands to `out.insert(...)` — a name the macro never sees. Both sub-tables were emitted **empty**, every encoder key landed **flat** in `[recording]`, and `video.codec`/`audio.codec` collided on one key where toml++ keeps the first, so the **audio codec was silently lost**. On the way back in, the parser read an empty `[recording.video]` and reset codec/crf/preset/pixel_format/width/height/fps/bitrate to defaults. **No encoder setting has ever survived a save.** Present at `HEAD`, so it predates the 2026-10-04 wave entirely. **Fixed** at `ConfigParsers.cpp:419` by shadowing `out` per group inside a `recordingOut` section table, guarded by `TestConfigLoader::roundTripPreservesEveryField`, and confirmed in `config/default.toml` (both sub-tables now appear, `aspect_correction` too). **The lesson, which is why this is a `[ ]` and not an `[x]`:** a `[x]` nobody re-derived is exactly the `AGENTS.md` §3 failure, and it survived *because* it read as settled — the previous note cited line numbers and a config shape, which is what a verified item looks like, so nothing prompted a second look. **A `[x]` that names specific lines deserves exactly as much suspicion as a `[ ]` that does not.**
+- [ ] T0001 **The Settings window cannot open, so the app has no sign-in path** (`src/qml/main.qml:60`) #blocks-ui #risk-high
+      `settingsWindowApi["open"]()` — `QQuickWindow` exposes `show()`, `raise()`,
+      `requestActivate()`; there is no `open()`. Every `navigate("settings")` throws
+      `TypeError: settingsWindowApi.open is not a function` (main.qml:45,60; reached from
+      `NavRail.qml:25` and the account chip `main.qml:308-310`). Sign-in exists **only**
+      behind that window (`SettingsWindow.qml:102` → `AccountPage.qml:516-524`), so
+      neither Google sign-in nor manual cookie paste is reachable. Verify by launching and
+      clicking Settings; the window must appear.
+- [ ] T0002 **Every preset click operates on preset #0 regardless of the row** (`src/qml/panels/PresetsPanel.qml:48,96`) #data-loss
+      `PresetBridge::presetToVariant` (`PresetBridge.cpp:268-280`) emits exactly
+      `name, path, author, category, favorite, blacklisted, playCount, rating` — **no
+      `index` key** — while the panel passes `modelData.index`, which is `undefined`
+      and is coerced to `0` by the `int` parameter. Verified by reading both sides.
+      Fix: emit an `index` key, or use the already-existing `selectByName`
+      (`PresetBridge.hpp:60`). (after: T0002)
+- [ ] T0003 **Preset ratings can only ever be written to slot 0** (`src/qml/panels/PresetsPanel.qml:84-98`) #data-loss
+      The star `Repeater { model: 5 }` makes `modelData` the **number** 0–4, so
+      `modelData.index` at :96 is `undefined`; `setRating` then indexes
+      `(*presets)[index].name`. Fix: pass the outer preset's name.
+- [ ] T0004 **Preset favourite/blacklist and overlay delete are impossible** (`src/qml/panels/PresetsPanel.qml:100-103`, `src/qml/panels/OverlayPanel.qml:302-315`) #blocks-ui
+      A trailing full-bleed `MouseArea { anchors.fill: parent }` declared **last** is
+      stacked on top of the per-item buttons and eats every click. `ClipCard.qml:299-300`
+      documents this exact trap and is correct; these two are not. Fix: declare the
+      delegate `MouseArea` before the controls, or use `z`/`acceptedButtons`.
+- [ ] T0005 **`isAuthFailure` treats any text containing "401" as an auth failure** (`src/suno/SunoAuthFailure.hpp:15`) #risk-high #blocks-ui
+      `return errorMessage.contains("Unauthorized") || errorMessage.contains("401");`
+      Called with `httpStatus == -1` at `SunoLyricsManager.cpp:96` (raw server text) and
+      `SunoClient.cpp:1288`. A byte count, track id or path segment containing `401`
+      flips the client to `NeedsReauth`, drops the bearer and emits `needsReauth()` —
+      **a self-inflicted sign-out.** Fix: gate on `httpStatus == 401 || == 403` only.
+      **Zero tests cover this function.**
+- [ ] T0006 **A short download is renamed into place and reported `Completed`** (`src/suno/DownloadQueue.cpp:669-695`) #data-loss
+      `finalizeSuccess` never compares `bytesReceived` against `Content-Length`, and
+      `classifyFailure` returns `None` for any 2xx (:105). A connection closing at 90 %
+      yields a plausible short MP3 that is renamed, tagged, sidecarred and announced via
+      `fileSaved` (`SunoDownloader.cpp:395-406`) — precisely the failure this repo has
+      shipped before. Fix: record `total` from `downloadProgress` and fail before rename.
+- [ ] T0007 **Every retryable download failure leaks the `QNetworkReply`** (`src/suno/DownloadQueue.cpp:708-744`) #risk-high
+      The retry branch returns without `deleteLater()` or clearing `item.reply`; only the
+      terminal path does. `startItem` overwrites `item.reply` next attempt (:427), so up
+      to `kMaxAttempts-1 = 2` replies per item are dropped with no owner, each still
+      holding its connection and buffers.
+- [ ] T0008 **Use-after-free in `DownloadQueue::cancel`** (`src/suno/DownloadQueue.cpp:361-366`) #risk-high
+      `reply->abort()` **synchronously** emits `finished()`, landing in `onFinished` →
+      `finishCancelled` → `reply->deleteLater()` (:700) and `retire()`. `findItem` /
+      `takeFromActive` return raw `Item*` documented as valid "only while one of the
+      containers still holds a reference" (:371-380) — both pointers are invalidated by
+      the re-entrant call. The same pattern is already handled correctly elsewhere
+      (`SunoClient.cpp:729-730`). Fix: mirror `SunoClient::abortTrackedReplies` (:855-865).
+- [ ] T0009 **`opencode.yml` runs a secret-bearing action for any commenter** (`.github/workflows/opencode.yml:3-33`) #security #risk-high
+      No `author_association` filter, no `if:` on the commenter, and the job holds
+      `id-token: write` plus `secrets.OPENCODE_API_KEY`. Triggered by `/oc` in a comment
+      body, from **any** GitHub account. The action is also pinned to `@latest` (:29),
+      contradicting `dependabot.yml:16`. Fix: require
+      `OWNER|MEMBER|COLLABORATOR|MEMBER` and pin to a SHA.
+- [ ] T0010 **An unrecognised playlist `updateType` silently adds tracks** (`src/qml_bridge/SunoBridge.cpp:1611`) #data-loss
+      ```cpp
+      if (!type) { (void)m->updatePlaylistClips(playlistId, PlaylistUpdateType::Add, {}); return; }
+      ```
+      sitting directly under a comment claiming "An unrecognised updateType is refused by
+      the service" and a header claim of "Anything else is **refused** rather than
+      guessed" (`SunoBridge.hpp:202-203`). A typo or future QML value issues
+      `POST /playlist/update_clips/` with `update_type:"add"`. Fix: return early and emit
+      a refusal through `playlistMutationSettled`.
 
-### Provenance and evidence integrity
-- [ ] **The recon needs a `[REGISTERED]` evidence grade, distinct from `[T1]`** — found 2026-09-28. The corpus proves route *existence* for **62 endpoints that returned 401 unauthenticated** (and 4 that 404 until re-probed with a real UUID and return `{"detail":"Not found."}` from the *resource* handler, proving the route is live). But a 401 observes **no request and no response body**, so those routes have no contract. This is exactly the `[LEAD]` definition, reached by a much better oracle (`x-matched-path` plus probe verdicts) — so it must **not** be promoted to `[T1]`, and nothing may be wired on it alone. Three axes must stay separate and are currently conflated: **existence** (is a handler registered?), **contract** (what are the shapes?), and **entitlement** (may *this* account do it?). The recon states the third explicitly: "route existence ≠ entitlement". Worth noting the methodology correction it contributes — 4 apparent 404s were template artifacts, so a 404 from a naive probe does not mean dead.
-- [ ] **The recon contradicts itself in two places; record the resolution rather than picking silently** — found 2026-09-28. (a) `/marketplace`: `FINDINGS.md` says it 307s to `/community-collab` and is real (262 KB shell, 7 refs in shipped JS), while `endpoints.md` says it is "not a route at all — catch-all". `FINDINGS.md` explicitly retracts the earlier claim, so use `FINDINGS.md` and note the retraction. (b) The server flag count is **47** in `FINDINGS.md` and **51** in `endpoints.md`; unresolved in-corpus, so quote 47–51 and do not pin it. The master is unaffected by (a) — `/marketplace` appears in no route row — but a future session reading the corpus will hit both.
-- [ ] **The recon is silent on every auth question, so the 2026-08-25 capture remains the sole authority** — found 2026-09-28, recorded as a negative result so nobody re-litigates §3.3/§3.4/§5.1. The corpus contains **no `auth.suno.com` artifact at all** — zero hits for `client/verify`, `handshake`, `/v1/client`, `sign_ins`, or `last_active_session_id` in any report or in the 95 chunks. It is silent on the Clerk token lifetime (it restates `exp = iat + 3600` rather than observing it), on `tokens` vs `touch` preference, on the refresh flow, on `/v1/environment`, and on loopback acceptance. It restates a stale password and adds a plan-claim decode, but that is not an auth capture. **Do not revise the auth sections on this corpus.**
-- [!] **The 2026-09-24 corpus is gone; the hash manifest is unverifiable** — found 2026-09-28. [`docs/suno_api/raw/README.md`](docs/suno_api/raw/README.md) publishes a SHA-256 manifest for a 432-item corpus plus 13 sibling files, and most `[T1]` promotions in the master rest on it. On the current disk that corpus **no longer exists**: `~/Documents/suno-burp-exports/sept-09-2026/` now holds one file named `was-base64-need-real-text` of **0 bytes** (SHA-256 `e3b0c442…`, the digest of the empty string), and `audiophile.suno.ai`, `clerk.suno.com`, and `studio-api.prod.suno.com` are well-formed Burp XML with **zero** `<item>` elements. The surviving `auth.suno.com` hashes `1b19e06d…`, not the `fdf9794b…` the manifest claims. Consequences: (a) no manifest entry can be re-verified, and (b) the file the user believed contained the new endpoint facts is a 0-byte placeholder. The manifest is the *only* record of what was reviewed, so **do not delete it** — record the observed on-disk state alongside it. This is a documentation-integrity defect, not a reason to demote any existing `[T1]`. **Partly repaired 2026-09-28 by a new, verifiable corpus** at `~/Documents/suno-recon/` (18 MB: 235 endpoints, 246 probed paths with existence verdicts, the leaked Sentry App Router table, sitemaps, robots directives, PWA recon, and a 29 KB `FINDINGS.md`). That corpus is *on disk* and re-readable, so it can carry new `[T1]` promotions legitimately. What it does **not** repair is the 2026-09-24 Studio/upload/feed captures, which nothing has replaced — those `[T1]` rows still rest on the unverifiable manifest. Record the new corpus in the raw README with its own manifest and hashes.
-- [ ] **Capture hygiene: never let an export be truncated in place** — the `sept-09-2026` directory kept its name while its contents were replaced by an empty placeholder, which is how a manifest silently stopped matching. Raw captures live outside the repo, so nothing in the tree can detect this. Make the retention rule concrete: write a new dated directory per capture, never overwrite, and have the manifest record a *locatable* path per entry so a missing file is obvious rather than silent.
-- [ ] **The 2026-09-30 audit found 18 backlog items that are stale, wrong, or describe code that does not exist — re-audit P1/P2 against `src/`** — the single most consequential finding of the audit, because the failures are **asymmetric**: nearly every stale item *understates* what already ships, so a future session either re-derives finished work or trusts a declaration as an implementation. Verified corrections, all re-checked by direct grep this session: `pts = frameCount++` is **stale** (`presentationTimestampFor` at `VideoRecorderFFmpeg.cpp:272` ships with 18 tests); `VisualizerRenderer::setTargetFps` has **zero callers**; `emitting_` is **not** a `bool` and the `std::erase_if` sweep **is** already gated (`Signal.hpp:52,77`); "triple PCM queue" is **done** (two queues); "analyzer worker busy-wait" **never existed** (`analyzerWorker` is a local in a test only); `AudioSpectrum` is carried by **no signal** and `analyze()` has **no production caller**; "all sources in one `CMakeLists.txt`" is **stale** (57-line root + 7 cmake modules); "CPM downloaded at configure time" is **fixed** (`cmake/CPM.cmake` is tracked); "6 of 15 deps pinned" has a **wrong denominator** (6 pinned, **5 entirely unpinned** — Qt, OpenGL, taglib, glm, FFmpeg); "install rules / CPack missing" is **false**; `AVFormatContextDeleter` "segfaults" is **fixed** (In/Out split); "g_app double-delete" is **overstated** (real issue is a non-atomic read from a signal handler); `build.log`/`.DS_Store` are **already gitignored**. **Suggested standing rule:** every `[x]` re-audited against source, plus a periodic "is this still true" sweep — and the P1 "Suno integration" section explicitly **allowed to shrink**, because a 92 KB backlog whose length is itself the risk (`AGENTS.md` §9) taxes every future session that reads it.
-- [x] **The master contradicted itself on the generation captcha provider, and the backlog hardened the wrong reading into fact** — found 2026-09-30. `docs/suno_api/ENDPOINT-INVENTORY.md:407` says "**Resolved to `[LEAD]`: Cloudflare Turnstile v2**"; `:846` says "The provider behind `/api/c/check` is **not captured and is deliberately left unstated**"; `:1080` says "**Unresolved — provider uncaptured**". The P1 generation item quotes **only** `:407` and asserts as established fact that "the provider, the widget, and the 'off by default' behaviour are all known". That is a `[LEAD]` restated as certainty — an `AGENTS.md` §1 violation — and it is the most dangerous kind of stale documentation, because a future agent could read it as authorization to automate a challenge. **Fix:** reconcile all three locations to the conservative reading, then correct the backlog item. Highest-leverage single edit in the audit. Note the two *other* captcha surfaces are separately `[T1]` (Clerk auth = Turnstile, web sign-in UI = hCaptcha) and neither is evidence about this one. **RESOLVED 2026-10-05 in `fb2349d`** (one file, [`docs/suno_api/ENDPOINT-INVENTORY.md`](docs/suno_api/ENDPOINT-INVENTORY.md)). **The conservative reading was the wrong one, and the fix was the opposite of what this item prescribed — recorded rather than deleted because a future agent must be able to see that.** This item said "reconcile all three locations to *the conservative reading*". They were reconciled to the **captured** reading instead, because the response body *was* in fact captured: `200` with `{"required": <bool>, "captcha_version": 2}`, and `captcha_version` maps to a provider directly (`1` = hCaptcha, `2` = Turnstile). All three locations now read `[T1]` Cloudflare Turnstile v2. **What that does *not* buy is the thing this item feared.** The one captured `required: false` is a **per-account trust-threshold answer** — not universal, not durable, and explicitly not authorisation to solve a challenge. The terms-of-service decision stays with the user, in the proposals section, and the switch stays off. So the hazard was real and the resolution does not open the door; it just stops a `[LEAD]` from being restated as certainty in a fourth place. **The meta-lesson, which is the durable half:** the danger was never a wrong fact, it was a *confident* wrong fact sitting next to a real one. A `[LEAD]` quoted without its label reads as a finding.
-- [ ] **Active-scan traffic is mixed into the zap corpus and is not evidence** — found 2026-09-30. `~/Documents/zap-suno.com-suno.ai-recon/` is **not an export**: it is a live, crashed, locked **ZAP HSQLDB session database** (637 MB `session.data` row store, 53 MB uncommitted write-ahead `.log`, `.lck` present, `.script.new` never committed — ZAP was killed mid-write). There is no HAR, no Burp XML, and no ZAP XML, so the final captures exist only in the `.log` and require ZAP recovery to read; **do not rely on this directory as a durable artifact.** `HISTORY` holds ~13,194 messages and `ALERT` ~2,135 — the latter proving an **active scan ran against the session**, so ~2k rows are requests ZAP invented. Any extraction **must** filter to browser-originated rows and discard `ALERT`/`ALERT_TAG`, or a future session will "discover" routes that only exist because a scanner sent them. This is the concrete second half of the capture-hygiene item above: **export HAR, never retain the vendor DB, and keep active-scan noise out of the evidence corpus.** Also note the tail of `.log` is anonymous marketing browsing (locale-prefixed `music-library` taxonomy, `X-Matched-Path: /[lang]/music-library/[taxonomy]/[slug]`) from **Chrome 141 on Windows**, a different machine — so do not assume the session is reusable, and do not mine it for upload facts (`suno-uploads.s3.amazonaws.com` never appears).
-- [ ] **Credential material sits outside the repo in three places, where no in-tree check can see it** — found 2026-09-30. `~/Documents/suno-recon/cookies.txt` (4.2 KB, live `__session`/`__client`), the zap `.log` above (Cookie headers, `Authorization: Bearer`, `statsig_stable_id`, `ajs_anonymous_id`, `suno_auth_bucket`, plus account/clip identifiers), and `~/Documents/suno-power-exporter-development-dir/scratchpad/` (raw `suno.com.har`, `suno.har`, `captured_endpoints.json` with JWT-shaped strings, and a **plaintext Datadog `dd-api-key`** in `captured_endpoints.txt`). This is *outside* the repository, so `AGENTS.md` §2 does not apply as written — which is exactly why it needs a standing rule rather than a `.gitignore` entry, because the history scrub was caused by precisely this class of material. Treat all three as hot: keep out of any commit, branch push, and agent context dump, and produce **sanitized derivatives** (hosts, paths, field names, status codes) before any durable use. The value as a lesson: `suno-power-exporter` deliberately ships **no captures, tokens, cookies, or account ids** — that privacy discipline is worth copying verbatim into `docs/suno_api/raw/README.md`.
+## P1 — correctness, robustness, and debt that will bite
 
+- [ ] T0011 **The whole 11-route library/playlist mutation surface is runtime-unreachable and unobservable** (`src/suno/SunoLibraryMutations.hpp:493`, `src/suno/SunoLibraryMutations.cpp:394-397`) #risk-high
+      `bool enabled_{false}` and `dispatch()` always refuses. `setEnabled` is declared
+      (:281) and defined (:141) with **zero production callers**. Separately, **no QML
+      file** connects `clipMutationSettled`, `playlistMutationSettled`, `clipSaveRefused`
+      or `libraryRefreshRecommended`, nor reads `mutationsAvailable` /
+      `mutationsUnavailableReason` / `mutationsBusy`. ~727 LOC plus 11 `Q_INVOKABLE`s can
+      neither run nor be seen. Decide: wire it behind an explicit user setting **and** add
+      the QML handlers, or delete it and mark the constants `declared-unused`.
+- [ ] T0012 **`--headless` makes recording unreachable, not merely silent** (`src/core/Application.cpp:383`) #blocks-ui
+      `VisualizerWindow`, the `frameCaptured` → `VideoRecorder::submitVideoFrame` connect
+      (:419-425) and `RecordingBridge::setVisualizer` (:429) all live inside
+      `if (!opts.headless)`. No window ⇒ no frame. `--record`
+      (`CliArgs.inc:36` → `opts.startRecording`) is then **never read anywhere**. Fix:
+      reject `--headless` + `--record` at parse time, or hoist the visualizer out.
+- [ ] T0013 **Two `PresetManager` instances: UI favourites never reach projectM** (`src/core/Application.cpp:388,406`, `src/visualizer/projectm/Bridge.cpp:53,98`) #data-loss
+      `Application` owns one and scans the tree on a worker; `pm::Bridge` owns a **second
+      by value** and synchronously re-scans the same directory. `PresetBridge` is wired to
+      the Application-owned one (`BridgeRegistration.cpp:75`) while
+      `VisualizerWindow::loadPresetFromManager` drives the Bridge-owned one
+      (`VisualizerWindow.cpp:120-123`). Fix: inject one manager into `pm::Bridge`.
+- [ ] T0014 **Ratings are lost every session — `RatingManager::save()` is never called** (`src/visualizer/RatingManager.cpp:44-56`) #data-loss
+      `load()` is called once (`Application.cpp:378`); `save()` has zero callers.
+      `PresetBridge::setRating` (`PresetBridge.cpp:201`) mutates only the in-memory map.
+      Fix: call it from `Application::quit()`.
+- [ ] T0015 **projectM is fed 48 kHz PCM while the config says 44.1 kHz** (`src/visualizer/VisualizerRenderer.hpp:98`, `.cpp:71`) #risk-high
+      `audioSampleRate_` is hardcoded 48000 with no setter; it sizes the batch fed to
+      projectM. The shipped `[audio] sample_rate = 44100` (`config/default.toml:4`) is
+      ignored, **misaligning beat detection by ~9 %**. Fix: read the live rate off the
+      audio queue.
+- [ ] T0016 **Unbounded lyrics-fetch queue fed by an O(n²) loop over a full sync** (`src/ui/controllers/SunoController.cpp:133-144`) #risk-high
+      `libraryUpdated` carries the **whole accumulated list after every page**
+      (`SunoLibraryManager.cpp:163`) while auto-paging the entire library at 1.1 s/page
+      (:171), so page *k* issues *k*×20 `getAlignedLyrics` queries; `lyricsQueue_` has no
+      capacity bound (`SunoLyricsManager.cpp:24`). Fix: iterate the page, dedup by id, cap.
+- [ ] T0017 **The lyrics concurrency counter is corrupted by unrelated errors, and leaks permanently when signed out** (`src/suno/SunoLyricsManager.cpp:16-18,83-84`) #risk-high
+      The global `errorOccurred` broadcast decrements the lyrics counter, so any unrelated
+      error frees a slot and `processQueue()` (:34) overshoots its cap of 3. Conversely
+      `SunoClient::fetchAlignedLyrics` returns **silently** when unauthenticated
+      (`SunoClient.cpp:1401`) emitting nothing, so the counter never decrements and **the
+      queue wedges permanently at 3 after three such drops.** Fix: give lyrics its own
+      reply signal and decrement exactly once per issued request.
+- [ ] T0018 **`markAllRead` reports a legitimate `204 No Content` to the user as a failure** (`src/suno/SunoNotificationService.cpp:432-437`) #risk-high
+      The code requires a JSON object on a 2xx. `SunoEndpoints.hpp:100-105` states no
+      success body was ever captured for the mutation set and a 2xx must be treated as
+      "accepted, shape unverified". A 204 takes the error path, so **all notifications
+      stay unread although the server marked them.** `SunoLibraryMutations::handleReply`
+      (:488-493) gets this right. Fix: accept any 2xx without parsing.
+- [ ] T0019 **`SunoDatabase` has no indexes, no WAL, no `busy_timeout`, and discards transaction results** (`src/suno/SunoDatabase.cpp:83-120,295,303`) #risk-high
+      No `CREATE INDEX` anywhere; `getAllClips` (:311, `ORDER BY created_at DESC`) and
+      `searchClips` (:409-415, five `LIKE`) are full scans on a table with no retention
+      policy. No `journal_mode=WAL` / `synchronous` / `busy_timeout`, so a crash-held
+      write lock blocks every later `open()` for the default 5 s. `db_.transaction()` and
+      `db_.commit()` results are **discarded**, so `saveClips` reports ok even when
+      nothing was persisted. `addDatabase("suno_db")` (:84) has no `contains()` guard and
+      the destructor never calls `removeDatabase`.
+- [ ] T0020 **Raw `this` captured in `SunoAccountManager` request callbacks** (`src/suno/SunoAccountManager.cpp:185,197`) #risk-high
+      The manager is a `unique_ptr` member of `SunoController` (:66); destroy it before
+      the reply lands and the lambda runs on freed memory. Three sibling services already
+      use the correct `QPointer` guard for this exact hazard (`SunoExploreService.cpp:226`,
+      `SunoNotificationService.cpp:259`, `SunoAudioUploadService.cpp:230`).
+- [ ] T0021 **`vc::Signal<>` subscriptions capture raw `this` and are never disconnected** (`src/suno/SunoLibraryManager.cpp:13-15,22-30`) #risk-high
+      `vc::Signal` (`src/util/Signal.hpp:112`) stores a plain `std::function` with no
+      lifetime tracking and no `disconnect`; the connection id is discarded and the
+      destructor is `= default` (.cpp:60). A `SunoClient` outliving the manager calls a
+      freed `this`. Same in `SunoLyricsManager.cpp:12-18`. Fix: retain the `SlotId` and
+      disconnect in the destructor.
+- [ ] T0022 **`Config`'s mutex protects almost nothing, and any read marks it dirty** (`src/core/Config.hpp:73-104,110-121`) #risk-high
+      `mutex_` is taken only by load/save/loadDefault/addOverlayElement/removeOverlayElement;
+      every section accessor bypasses it and returns a **non-const** reference, so
+      `CONFIG.suno().x = y` races `Config::save`. All eight accessors call `markDirty()`
+      unconditionally, so pure readers dirty the config (`EncoderSettings.cpp:272`,
+      `VisualizerRenderer.cpp:27,222`, `SunoDownloader.cpp:79,226`, `SunoClient.cpp:383`).
+      The header comment at :5 ("Thread-Safe: Mutex-protected access") **overstates the
+      code.** (after: T0023)
+- [ ] T0023 **`Config::save()` never clears the dirty flag** (`src/core/Config.cpp:23-26`) #risk-high
+      `ConfigLoader::save` succeeds (:299) but nothing calls `markClean()`, so with T0022
+      the file is rewritten on every quit regardless of change.
+- [ ] T0024 **`setFavorite`/`setBlacklisted` mutate the published generation in place** (`src/visualizer/PresetManager.cpp:474-494`) #risk-high
+      `publishGeneration` documents "Swap, never clear-and-refill: a Snapshot pinned by any
+      reader keeps the old storage alive **and unmodified**" (:209-211). The toggle writes
+      `liveList()[index].favorite` (:477), violating the invariant documented 265 lines
+      earlier in the same file. Fix: copy-on-write the generation.
+- [ ] T0025 **`Logger::get()` races on a non-atomic static** (`src/core/Logger.cpp:7,59-64`) #risk-high
+      `logger_` is a `static std::shared_ptr`. Two threads logging before
+      `Application::init` reaches `Logger::init` (`Application.cpp:275`) race on the
+      pointer assignment and on `spdlog::register_logger`. Fix: Meyers singleton +
+      `std::call_once`.
+- [ ] T0026 **projectM can be destroyed with no current GL context — and it WILL issue GL calls** (`src/visualizer/projectm/Engine.cpp:56-61`, `src/visualizer/VisualizerWindow.cpp:30-35`) #risk-high
+      `~VisualizerWindow` only cleans up if `makeCurrent` **succeeds** (:31); if it fails,
+      `~VisualizerRenderer` (`:17-19`) cleans up anyway with no context, then
+      `projectm_destroy()` runs contextless. Verified upstream: `projectm_destroy` →
+      `~ProjectM()` → `Texture::~Texture()` unconditionally calls **`glDeleteTextures`** on
+      every owned texture (`Texture.cpp:63` @ master), and `~ProjectM()` is an **empty body**
+      that clears no state. There is no context check and no upstream documentation of the
+      requirement. Worse on macOS: with the Qt Quick context current instead, a no-context
+      `glDeleteTextures` can delete names in the **wrong namespace**. FIX: assert
+      `makeCurrent` succeeded, and if it did **not, leak the handle deliberately** — a leak is
+      strictly better than deleting GL objects in the wrong context. `RenderTarget::destroy()`
+      has the matching hole (zeroes names, leaks them, `RenderTarget.cpp:109-116`).
+- [ ] T0027 **GL state is set but never saved or restored around projectM — upstream will not fix it** (`src/visualizer/VisualizerRenderer.cpp:88-106`) #risk-high
+      Sets viewport, scissor, `GL_SCISSOR_TEST`, `glColorMask`; never reads the previous
+      values, and `GL_BLEND`/`GL_DEPTH_TEST` are neither set nor restored. Contained today
+      only **by accident** of separate-surface ownership. This is a genuine upstream gap, not an
+      integration error: upstream PR #981 ("preserve gl state of calling application") was
+      written and reviewed, then **closed unmerged** on 2026-03-10 — maintainer `kblaschke`,
+      verbatim: *"Can't test it currently so someone else would have to do it."* `GLStateGuard.hpp`
+      is absent from master. libprojectM resets only FBO 0 and viewport, and its own GLES
+      comment warns that per-FBO draw-buffer state *"leaks into FBO 0 on some drivers"*. The
+      host must therefore guard viewport + scissor + colour mask + blend + depth itself. FIX:
+      save and restore all of it around the projectM call.
+- [ ] T0028 **CLI overrides bypass the parser's clamps** (`src/core/Application.cpp:318-320`) #risk-high
+      `applyOverride` writes raw values **after** `clamp(fps,10,240)`
+      (`ConfigParsers.cpp:259`). `--visualizer-fps 0` → `fps=0` → `VisualizerRenderer.cpp:28`
+      skips its guard and keeps `targetFps_{60}` (`VisualizerRenderer.hpp:99`), so the flag
+      silently does nothing.
+- [ ] T0029 **`FileBackend::store` leaves a 0644 window on the refresh secret** (`src/suno/auth/CredentialStore.cpp:284-290`) #security
+      `file.commit()` renames the temp file into place; `setPermissions(0600)` runs
+      **after**. Under `umask 022` the secret is world-readable in between. Gated to
+      `Backend::File` / `CHADVIS_NO_KEYCHAIN` only (:634), both of which `LOG_WARN` — so P1,
+      not P0. Fix: open the temp file with the permissions (QSaveFile inherits them).
+- [ ] T0030 **Full request URLs reach the log** (`src/suno/SunoClient.cpp:1169-1170,1296-1297`, `src/suno/CapturedHosts.cpp:308`) #security
+      `url().toString()` is logged; `reply->errorString()` is logged and Qt populates it
+      with the full URL on transfer errors; `describeRefusal` embeds `url.toString()` in
+      every refusal sentence. `refusalSentence` echoing a **query string** is a latent leak
+      — the loopback callback carries `state`. Fix: log `url.path()`.
+- [ ] T0031 **`tokenChanged` carries a live bearer and has zero subscribers** (`src/suno/SunoClient.hpp:239`) #security
+      Emits `token.jwt.toStdString()` (:883) and nothing ever connects. One careless future
+      `connect` from QML or a log away from a leak. Fix: delete, or send a redacted form.
+- [ ] T0032 **Failed worker-thread join leaves a use-after-free window** (`src/suno/SunoClient.cpp:189-194`) #risk-high
+      On `wait()` failure the destructor only logs, sets `worker_=nullptr`, and the object
+      dies — while queued lambdas at :215/:219 capture **raw `this`**. The comment at
+      :186-188 claims destruction joins the thread, which a failed join does not deliver.
+- [ ] T0033 **Duplicate host allowlists survive outside the registry** (`src/suno/SunoDownloader.cpp:121`, `src/suno/ClipParser.cpp:72-73`, `src/suno/SunoAudioUploadService.cpp:163`) #risk-high #security
+      `CapturedHosts.hpp:11-14` documents replacing three per-file predicates as the reason
+      the registry exists; three remain hand-rolled, so `hostsForRole` has **no production
+      caller** and editing a registry row changes nothing. All three are anonymous fetches
+      today, so no bearer leaks — but the fail-closed guarantee is triplicated.
+- [ ] T0034 **Recursive preset scan has no depth or breadth cap** (`src/util/FileUtils.cpp:242-247`) #risk-high
+      `recursive_directory_iterator` with no `max_depth`. Symlink loops are safe and
+      permission errors handled, but a user-supplied tree is walked unboundedly.
+- [ ] T0035 **No upload size limit, no cancel, no retry, wrong content type** (`src/suno/SunoAudioUploadService.cpp:206-212,329-330,341-343`) #risk-high
+      Validates `size() <= 0` but sets no maximum and offers no `cancel()` — the only aborts
+      are private and destructor-driven, so a 2 GB upload cannot be stopped. Exactly one
+      storage POST, no retry, no `Retry-After`, and on failure the S3 ticket is dropped
+      (:390) leaving orphaned parts. Content type is hardcoded `application/octet-stream`
+      although only `m4a` is accepted, so it should be `audio/mp4` — and the validated
+      `ticket_->fields["Content-Type"]` (:150-154) is ignored.
+- [ ] T0036 **`SunoController` fans every client error into `libraryFetchFailed`** (`src/ui/controllers/SunoController.cpp:160-168`) #risk-high
+      A failing Explore page, a 429 on the badge endpoint, or a blocked upload **clears the
+      library spinner and sets the library error** (`SunoBridge.cpp:315-318`;
+      `SunoLibraryManager.cpp:22-30`). The comment in `SunoWorkspace.hpp:83-90` names this
+      exact anti-pattern and leaves it in the one place it survives.
+- [ ] T0037 **Blocking TagLib and file I/O on the GUI thread in the download completion path** (`src/suno/SunoDownloader.cpp:419,543,576`) #risk-high
+      `tagAudioFile` opens and rewrites the file in place; two `ofstream`s and two
+      `fs::exists` run synchronously inside `DownloadQueue::finished` on the GUI thread. A
+      40-clip batch tags and writes 80 sidecars in one event-loop turn.
+- [ ] T0038 **`scripts/build-fast.sh` hijacks the Release build directory with a `-O0` Debug config** (`scripts/build-fast.sh:1`) #risk-high
+      Directly contradicts `build.sh:7-10` ("every profile gets its OWN directory"). No
+      shebang, no `set -e`, hardcodes `sccache` while `Compiler.cmake:170` probes both, and
+      reuses `CMAKE_CXX_FLAGS` so it sticks in the cache. Fix: delete it, or make it a
+      two-line wrapper over `./build.sh --fast`.
+- [ ] T0039 **`release.yml` misstates macOS signing and believes `MACOSX_BUNDLE` is unset** (`.github/workflows/release.yml:19-42,190-192,300-306`) #risk-high
+      It passes the CMake signing variables and the notes claim the `.app` is unsigned,
+      but `cmake/TargetSetup.cmake:868` always ad-hoc-signs (`_chadvis_sign_identity`
+      defaults to `"-"` at :855-856). It also asserts `MACOSX_BUNDLE` is **not** set — it
+      **is** (`TargetSetup.cmake:263`) — so the macOS release leg is `required: false`
+      (:93,:96) and can never block a release.
+- [ ] T0040 **`SAFE_TESTS` silently omits three registered ctest entries** (`build.sh:50-59`) #risk-high
+      `test_CapturedHosts`, `test_FeatureFlags` and `test_OffscreenRenderSpike` are
+      registered but absent, so `--tests` does not build them and `--safe` does not run
+      them — including the suites `tests/unit/CMakeLists.txt:98-105` calls "the only tests
+      covering the tree's fail-closed host policy". The comment at `build.sh:37-40`
+      documents this failure having happened before. Make `build.yml:271-291` the single
+      source of truth. (after: T0041)
+- [ ] T0041 **Three ctest entries are instrumented but carry no `TSAN_OPTIONS`** (`tests/unit/CMakeLists.txt:339-350`) #risk-high
+      `test_HttpPolicy`, `test_RenderExecutor` and `test_OffscreenRenderSpike` are missing
+      from the block `tsan.yml:53-57` records as a known gap. `test_RenderExecutor` is
+      documented headless-safe (:203) and belongs there.
+- [ ] T0042 **The TSan lane cannot distinguish a new race from the old ones** (`.github/workflows/tsan.yml:191-193,163,207`) #risk-high
+      Non-gating, and "expected to report 39 races" since it was written. Add a report-count
+      threshold so regressions bite while known noise stays tolerated. **Do not** fill
+      `cmake/tsan.supp` — a suppression that hides a real race is worse than a red lane.
+- [ ] T0043 **A failed worker-thread join in `SunoClient` is compounded by no ASan/UBSan lane** (`.github/workflows/`) #risk-high
+      `CHADVIS_SANITIZER` accepts `address`/`undefined` (`Compiler.cmake:139-140`) and
+      `build.sh:167-168` exposes `--asan`/`--ubsan`, but only TSan has a workflow — and the
+      PCM/decoder/encoder code is exactly what the unexercised lanes would catch.
+- [ ] T0044 **A stale Clerk failure reply can tear down a healthy session** (`src/suno/SunoClient.cpp:950-953`) #risk-high
+      `onClerkAuthFailedInternal` clears the bearer and bumps the request epoch **without**
+      the epoch guard its sibling has at :926. A failure from an exchange invalidated by a
+      credential change signs out a live session. No test covers the failure path.
+- [ ] T0045 **`LyricsBridge::setSearchQuery` is not `Q_INVOKABLE`, so lyrics search never fires** (`src/qml_bridge/LyricsBridge.hpp:61`, `src/qml/panels/LyricsPanel.qml:54`) #blocks-ui
+      A plain `public:` member, outside the `public slots:` block starting at :63. QML can
+      only invoke slots/`Q_INVOKABLE`s, so this fails at runtime and the panel's search
+      field never sends its query.
+- [ ] T0046 **`SettingsWindow.onClosing` is shadowed on the instance — accent edits are lost** (`src/qml/main.qml:484-490`) #data-loss
+      Declaring `onClosing` on the instance **replaces** the component-level handler, so
+      `appearancePage.apply(); SettingsBridge.save()` (`SettingsWindow.qml:67-70`) never
+      runs. Fix: merge into a `Connections { target: settingsWindow }`.
+- [ ] T0047 **Theme accent and background are not persisted although the UI says they are** (`src/qml/panels/settings/AppearanceSettings.qml:23-26`) #data-loss
+      `Theme.applyAccent/applyBackground` write only the in-memory singleton
+      (`Theme.qml:296-316`); `SettingsBridge.hpp` declares no such property. The claims at
+      `SettingsView.qml:39` ("auto-saved as you tweak") and `SettingsPanel.qml:8` are false.
+- [ ] T0048 **No qmllint configuration and no lint gate** (`.qmllint.ini`, `.github/`) #risk-high
+      Zero `.qmllint.ini` and no `all_qmllint` in CI. `qt_add_qml_module` auto-creates a
+      `<target>_qmllint` target — wire it with `-W 0 --json -`, and turn on
+      `CompilerWarnings=warning` (qmlsc diagnostics, disabled by default),
+      `UnusedImports=error`, `UnqualifiedAccess=error`,
+      `TranslationFunctionMismatch=error`. This is the single highest-value guard
+      available against the runtime-only QML class. (after: T0049)
+- [ ] T0049 **Qt 6.12 can convert missing `required property` into a load-time error — not used** (`src/qml/`, `src/core/Application.cpp`) #risk-high
+      "When instantiating a component with missing required properties, the engine now
+      reports an error instead of silently constructing an incomplete object." Marking
+      C++-injected QML dependencies `required` and supplying them via
+      `setInitialProperties` converts a whole class of runtime-only bug into a load-time
+      failure. Also connect `QQmlApplicationEngine::objectCreationFailed` (since 6.4) — it
+      is the difference between "the app showed no window" and a diagnosable error.
+- [ ] T0050 **The Qt floor is 6.7, which is EOL** (`cmake/Dependencies.cmake:20-25`) #risk-high
+      Standard support ended 2025-03-26. **Target Qt 6.8 LTS at minimum (6.8.8 current,
+      supported to 2029-10-08, and it receives the backported screen-reader fixes), and plan
+      6.12 LTS** (released 2026-09-30, supported to 2031-09-30). The only API gating the
+      floor is `QNetworkRequest::setTransferTimeout` (6.7), which both satisfy. Qt 7 does
+      not exist and no migration cliff is scheduled.
 
-### Security & credentials
-- [~] **Native OAuth security** — target architecture is system browser plus an app-owned `127.0.0.1` loopback callback for Google/Facebook social login; the offline scaffold covers state/nonce/PKCE/transaction ownership. Outstanding: capture-backed proof of Clerk's loopback acceptance, plus session persistence/refresh and sign-out behavior, before the live handshake is trusted.
-- [x] **History scrubbing for committed PII** — *executed and force-pushed 2026-09-28.* A secrets audit found permanent personal data in pushed history: account identifiers, a handle, a clip UUID with copyrighted lyrics, a user upload filename, complete media URLs, OAuth transaction material, and expired JWTs (in *code*, not just prose). Every credential found is expired, so nothing is replayable today; the reason to rewrite is that account identifiers do not expire. The live tree was already clean on 2026-09-26 — this was history only. **What was done:** 22 dead PII-bearing paths removed and one literal handle replacement via `git-filter-repo` 2.47.0, after a full dry run on a throwaway mirror, then force-pushed to `origin` with `--force-with-lease` for both branches and `--force` for all three tags. Handle, real JWTs, upload filename, clip UUIDs, and OAuth sign-in ids are now **0** across every ref a client can clone; `HEAD`'s tree is byte-identical to the pre-scrub mirror; 454 commits and 6 refs were preserved; old tag trees show pure deletions with 0 files added. Confirmed from a fresh ordinary clone of the remote. **Residual, and it is not fixable from the client:** GitHub's server-managed `refs/pull/{4,5,6,9}/head` still reach pre-scrub commits (all four PRs are merged or closed, and **0** real JWTs remain even there). Every deletion was refused with `deny updating a hidden ref`; an ordinary clone does not fetch them, but the PR diff pages remain on github.com and clearing them needs GitHub Support. **The account email was deliberately retained** by owner decision (285 occurrences) — do not re-scrub it without asking, and do not read its presence as an oversight. **The plan was wrong about the scope:** it assumed ~5 blobs, but **26 files** carried PII, including `docs/deepwiki/` generated exports, `.backup_graveyard/`, and `.agent/`. It also repeated a "13 commits" figure across `CHANGELOG.md:98` and the plan that disagreed with reality; commits was the wrong axis, since one commit can carry many PII files. Full record, including two `filter-repo` corrections and the false-positive audit: [`docs/PII_SCRUB_PLAN.md`](docs/PII_SCRUB_PLAN.md).
-- [x] **Credential storage audit** — tokens in the OS keychain via `CredentialStore` (macOS Security.framework, atomic 0600 fallback); TOML→keychain migration on first init; secrets never written to TOML or logs.
-- [!] **The OS keychain is Apple-only, and `Config::save()` can write the credential to TOML anyway — both platforms' `[x]` above are unsafe as written** — found 2026-09-30, verified by direct grep, **and this item is now two items' worth of news: half (b) is fixed and half (a) is not.** The `[!]` stays, because the half that remains is the one that puts a one-year secret in plaintext on the primary development target. **(b) The serializer emitting the secret — FIXED 2026-10-04, structurally.** `token` and `cookie` have been moved out of the shared `CHADVIS_SUNO_FIELDS` table into a parse-only `CHADVIS_SUNO_LEGACY_SECRET_FIELDS`, which `parseSuno` expands and `serialize` does not — so the guarantee `AGENTS.md` §2 demands is now a compile-time property rather than a comment. The fix that was prescribed in this item is the one that shipped. **(a) No keychain on Windows or Linux — STILL OPEN, unchanged.** `cmake/TargetSetup.cmake:178-182` sets `CHADVIS_HAS_KEYCHAIN` *only* inside `if(APPLE AND NOT CHADVIS_NO_KEYCHAIN)`, so both platforms fall to `FileBackend` (`CredentialStore.cpp:288-294`) and write the raw Clerk credential to `QStandardPaths::AppDataLocation/secrets/chadvis_suno_default`, and that cookie carries the **`token_type: "refresh"` credential with `Max-Age=31536000`**. Implement the Windows backend (`CredWrite`/`CredRead`) and a Linux Secret Service D-Bus client; the macOS `KeychainBackend` at `:157` is already the correct template and just needs siblings. **Two consequences of (b) that need owning, and one of them is a behaviour change a user could notice:** because `serialize` rebuilds the whole file, **the first save after a failed keychain migration now deletes the legacy secret from `config.toml`**, leaving it in memory only — so `SunoClient.cpp`'s "keeping legacy TOML values in place" log line is no longer true, and the honest behaviour is to surface "keychain unavailable — re-paste your credential" rather than claim the TOML copy survives. `parseSuno` warns when a legacy value is present, so its presence is never silent. Still open from this item: `SettingsBridge::sunoToken()` returns the cookie cache verbatim as a readable `Q_PROPERTY`; make it write-only (`submitSunoCredential(QString)` + a boolean `sunoCredentialPresent`) and clear the cache on handoff.
-- [x] **`loadM3U` turned any line starting with `http` into an unauthenticated remote fetch — a local-file-open SSRF primitive** — found 2026-09-30, **fixed 2026-10-04**. The premise was exactly right: `Playlist::loadM3U` built a `PlaylistItem` with `isRemote = true` and handed the string to `QMediaPlayer::setSource`, while the path-traversal guard applied only to the local branch, so an `.m3u` from any download, shared drive or forum post could make the client issue a request to an arbitrary host. **The remote branch is deleted outright and no replacement classifier was added**, which is the point worth recording: every legitimate remote track already arrives through `DownloadQueue`, which validates the host, so a second path into a URL has no user to serve. `starts_with("http")` also misclassified a local file literally named `httpdemo.mp3`, and that misclassification is gone with the branch. **A URL-shaped predicate still exists and that is deliberate** — it touches **only the log message**, deciding how a skipped line is described rather than what is done with one. Keep it that way: a URL-shaped predicate that can reach nothing but a log line cannot be an SSRF primitive, and the next person to "restore remote M3U" should read the captured-host allowlist in `AGENTS.md` §1 first. One pre-existing test asserted the *old* behaviour as intended (`sessionPlaylistIsFlushedOnDestruction` round-tripped an `https://` entry and pinned a remote item); it now asserts the line is skipped. **If remote M3U is ever wanted it must go through the same captured-host allowlist as everything else.**
-- [x] **A JWT with no `exp` is accepted as valid forever, and no refresh is ever armed** — found 2026-09-30, **fixed 2026-10-04**. `JwtUtils::expiryEpochSecs` returned `0` when `exp` was absent and `isExpired` then did `if (exp <= 0) { return false; }`, i.e. **never expired**. **There were FOUR dependent call sites, not the three this item named, and the fourth is the one users actually hit.** `applyRestoreResult`'s `StoredCredentialShape::BearerToken` arm (`SunoClient.cpp:412`, was `:411`) took a pasted or stored JWT straight to `applyBearer(fromJwt(value))` with **no expiry check at all** — that is the live paste path (`SunoSettings.qml` → `SettingsBridge.setSunoToken` → `setCookie` → restore → `classifyStoredCredential` sees a bare JWT), so a token with no `exp` was installed as `ActiveValid`, persisted to `suno/bearer`, and armed no refresh timer. It is now gated with a refusal shaped exactly like the sibling `Unsupported` arm. The other three were `ClerkAuthClient.cpp:96-101` (accepted a Clerk envelope bearing an `exp`-less token), `scheduleProactiveRefresh` (returns early on an invalid `expiresAt`, so the refresh timer never armed) and `setToken` (gated only on the JWT parsing as base64 JSON, so `aaa.bbb.ccc` was "valid" — note `setToken` has **zero production callers**, the documented paste path is `setCookie`). New `JwtUtils::hasUsableLifetime` requires `exp` present, integral and `> now`, and `expiryDefect` returns one of four named reasons so a rejected paste can say **why**, mirroring the existing `noClerkCookieReason` pattern. `hasUsableLifetime` is grace 0 on purpose; only Clerk's bearer exchange uses a 300 s grace, because only there can we ask for a better token. **The design instruction in the original item was followed and is right: no signature verification.** A native client cannot verify RS256 against Clerk's JWKS without shipping a key-distribution dependency, and TLS plus the captured-host boundary is the correct substitute. The defect was the fail-open on a *missing* claim, and that is what closed.
-- [ ] **The OAuth loopback listener aborts the whole transaction on any malformed request, and accepts IdP error responses as success** — found 2026-09-30, and **latent**: the native path is dead in the shipped build (`setCaptureApprovedLaunch` has no production caller, so `beginGoogleSignIn` always refuses at `AuthCoordinator.cpp:110`). Fix all three **before** anyone flips the capture gate, not after. (a) `LoopbackListener.cpp:226-233` `rejectAndClose` → `OAuthLoginService.cpp:184-189` resets the transaction, so a hostile page doing `<img src="http://127.0.0.1:PORT/">` — a path that simply does not match `expectedPath_` — kills a sign-in for the full `kLoginTimeoutMs = 7 * 60 * 1000`. Respond `400` and keep waiting; only the deadline or a genuine `cancel()` should end a transaction. (b) `OAuthLoginService.cpp:138-166` validates state, path, URL cap and deadline but **never checks for a `code` parameter and never handles `error`/`error_description`** — so `?error=access_denied&state=<valid>` reaches `Authenticated`, telling a user who denied that they signed in. (c) `stop()` calls only `server_->close()`, closing the *listening* socket; accepted `QTcpSocket` children are swept only on a socket event, so a peer that connects and sends nothing holds an fd for the process lifetime (byte-capped, but not time-capped). Track accepted sockets and abort them on `stop()` plus a 30 s idle timer. **What is genuinely correct and should not be "fixed":** 256-bit `state` from `QRandomGenerator::system()`, constant-time compare with length-leak-free padding (`OAuthLoginService.cpp:22-33`), single-use via `std::exchange`, duplicate-`state` and duplicate-query-key rejection, `Host` pinned to the bound port, `GET`-only, `Content-Length: 0`-only, ephemeral port on `127.0.0.1` — **better than RFC 8252's fixed-port variant**, since a local process cannot pre-bind it and cannot forge the callback without `state`. Note for accuracy: `pkceVerifier`/`s256Challenge` are **generated but never used**, so PKCE is scaffolded, not wired — do not read the offline scaffold as PKCE being active.
-- [x] **SQL injection risk in `search_db.sh`** — queries use SQLite `.param` binding.
-- [x] **Raw capture removed from the tree** — `docs/suno_api/raw/endpoints_sniffed.list` (721 KB) held DSN keys in userinfo position, a real clip UUID with copyrighted lyrics, and a user upload artifact. Archived out of the repository; the sanitized recon is the only retained raw artifact. The graveyard was purged (546 MB, 0 tracked files).
+Carried over from the superseded backlog and **confirmed by re-reading the tree**:
 
----
+- [ ] T0166 **The OAuth loopback accepts an IdP error response as success** (`src/suno/auth/oauth/OAuthLoginService.cpp:138-163`) #risk-high
+      `acceptCallback` validates path, URL cap, state presence, a 256-byte state cap,
+      `constantTimeEquals`, and the deadline — then goes straight to `State::CallbackReceived`
+      and emits `callbackReceived()`. It **never checks for a `code` parameter and never
+      handles `error`/`error_description`**, so `?error=access_denied&state=<valid>` reaches
+      the authenticated state. Verified by reading the whole function. Also in that function's
+      blast radius: any non-matching path (a hostile `<img src="http://127.0.0.1:PORT/">`)
+      calls `rejectAndClose`, which resets the transaction and kills an in-flight sign-in for
+      the full 7-minute timeout; and `stop()` closes only the listening socket, leaving
+      accepted `QTcpSocket`s alive with no idle timer.
+      **The lane is deliberately gated, so this is not a live exploit — but it is a
+      precondition for flipping that gate (T0145), not something to do after.**
+- [ ] T0167 **A short library sync is indistinguishable from a complete one** (`src/suno/SunoLibraryManager.cpp`, `src/suno/DownloadQueue.cpp`) #risk-high
+      Neither layer reports *completeness*, so a truncated sync is presented as a finished
+      library. Prescribed shape: `{complete: false, projects, errors, stats: {pagesFetched,
+      expectedTotal, elapsedMs}}`, and a short page must not be treated as proof of completion
+      when the reported total disagrees.
+- [ ] T0168 **Transfer failure is matched by clip *title*, not id** (`src/qml/views/LibraryView.qml`) #risk-high #data-loss
+      `downloadStatus` is the only terminal channel, and the view parses `"Download failed for "`
+      then matches the remainder against `clip.title` **by exact equality** — so a rename or a
+      duplicate title attributes the failure to the wrong clip. `downloadStatus` is also never
+      cleared, so an hour-old failure still reads as current. Fix: a
+      `downloadStateChanged(clipId, state, reason)` signal.
+- [ ] T0169 **`resolveDestPath` reuses a plain-named file left by an earlier session** (`src/suno/SunoDownloader.cpp:301-347`) #data-loss
+      A different clip whose title matches still collides with a stale plain-named file. The
+      `SUNO_ID` TXXX frame the tagger already writes is the discriminating value; reading it
+      closes the collision without changing the filename.
+- [ ] T0170 **Overlays and karaoke cannot appear in recorded video at all** (`src/visualizer/VisualizerWindow.cpp`, `src/recorder/`) #risk-high #blocks-feature
+      The recorder captures inside the *native* `VisualizerWindow` GL context; the QML scene
+      graph is a sibling on top in the `QQuickWindow`. **The entire overlay system is invisible
+      to the entire video output.** GL compositing is structurally impossible (projectM draws
+      to FBO 0, the one Qt Quick owns), so the recorded decision is an FFmpeg post-pass —
+      which is exactly what T0108/T0114 add. Recorded here as the product fact that makes the
+      post-pass mandatory rather than optional.
+- [ ] T0171 **The first captured frame is silently discarded and `pixelFormat` is decorative** (`src/recorder/`) #risk-high
+      The PBO readback gates on `pboAvailable_`, so frame 0 never reaches the encoder — every
+      recording is one frame short. Separately `AV_PIX_FMT_YUV420P` is hardcoded while
+      `EncoderSettings::pixelFormat` exists and `validate()` never checks that the chosen
+      format is supported. Both are one-liners and both fail silently.
+- [ ] T0172 **The audio pre-buffer computes the wrong next track when shuffle is on** (`src/audio/AudioEngine.cpp:201`) #risk-high
+      It derives the linear `index+1` while `shuffleOrder_` is the real traversal order, so
+      pre-buffering after a shuffle plays the wrong track. Independent of the re-entrancy
+      defect the encoder lane found on the same path. Small and low-risk.
+- [ ] T0173 **projectM's broken-preset retry loop is dead** (`src/visualizer/projectm/Bridge.cpp:8-14`) #risk-medium
+      Registering `projectm_set_preset_switch_requested_event_callback` **overrides** projectM's
+      own single-slot handler, killing its 5-retry recovery. A behavioural regression against
+      stock projectM rather than a safety bug, but it means a preset that fails to load is
+      simply lost. Distinct from T0057, which is about the never-emitted `presetLoading` flag.
 
-## P1 — High: broken behavior, major architecture
+## P2 — robustness, cleanup, and debt
 
-### Suno integration
-- [~] **Suno core correctness** — credential storage, lossless asynchronous restore readiness, debounced Settings ownership through `SunoClient`, credential/request epochs with reply aborts, no-replay mutation policy, queued authenticated requests, feed/clip/account parsing, exact Clerk active-session selection, method-specific Studio headers, and isolated persistence seams are implemented. Route preference, sign-out, and authorized runtime behavior remain `[VERIFY]`.
-- [ ] **A feature needs three layers, and "the API captures far more than the client calls" is a reachability problem, not a discovery problem** — found 2026-10-05, and no item in this file states the model, which is why the same gap has been described four different ways. Three independent layers must all exist: **(a) a C++ call site** that issues the request, **(b) a `SunoBridge` `Q_PROPERTY`/`Q_INVOKABLE`** or equivalent bridge surface, **and (c) a QML reference** to it. A surface can be missing at any one and read identically from the others: the library has every capture and no verbs (missing at (a)); **download was fully implemented in C++ and reached QML zero times (missing at (b) and (c))**; chat has a bridge surface and a QML-ready signal chain but **no sender at all** — `SunoOrchestrator`'s public methods emit an error and return, and its `onMessageFinished`/`onHistoryFinished` have no caller anywhere, so `SunoOrchestrator::messageReceived` → `SunoController::chatMessageReceived` → `SunoBridge` is a chain that can never fire (missing at (a)). **The measurement that makes this concrete:** `SunoEndpoints.hpp` declares **77** `constexpr std::string_view` constants and `src/` references **13** of them — of which **11 are routes** and two are a base URL and a storage host, which is also the reconciliation of the "exactly 12" figure in the audit item above (the twelfth was not a route). Note the same imprecision in the other direction: 4 of those 77 constants are base URLs rather than routes (`API_BASE`, `MODAL_BASE`, `CDN_BASE`, `CDN_CLOUDFRONT_BASE`), so "77 route constants" is really 73 routes plus 4 bases. Roughly one route in seven is reachable, and the unreachable ones are not missing from the client; they are missing from *one layer* of it. **The fourth state, and the one that makes reachability insufficient on its own:** a surface can be present at all three layers and still be a refusal. `SunoClient::generate` exists, is implemented, and has a real reply parser (`onGenerateReply`); `SunoBridge::generate` is a `Q_INVOKABLE`; `SunoPanel.qml:69` calls it — and the bridge stub never calls the client at all, it only publishes `generationUnavailableMessage()`. **That also corrects the third layer of the `[!] SunoWorkspaceBridge` item below**, which asserts "`SunoClient` has no generation method whatsoever, so there is nothing for `SunoWorkspace` to call". There *is* one; it is gated, and the gate is a deliberate switch, not an absence. **Why this matters more than any single missing surface:** it means "the corpus proves route X exists" has never been the blocker for anything in this file, and a future session that treats the capture list as a work list will keep re-deriving it. The cheap audit is per-surface and mechanical: for each captured route, name the layer it is missing at.
-- [~] **Fail closed on unverified routes and hosts** — active Orpheus/Modal, WAV conversion, legacy Clerk-host fallback, constructed media, and user-reachable lead routes are disabled; QML artwork is restricted to exact captured Suno CDN origins; the synthetic Browser-Token is removed; declaration-only fetch surfaces are retired. Never reintroduce an unverified header without a fresh capture. **Corroborated 2026-09-28 by the 18 MB recon, which added zero usable hosts.** That is the rule working, not the recon falling short: it was static analysis plus read-only `GET`s to Suno's own origins, so it structurally could not have captured a media-CDN request. Specifically, `cdn-o.suno.com` (favicons/manifest icons) appears **8× and every occurrence is a string literal** — zero direct requests — and the master already excludes it by name, so **do not wire it**; author native icons instead. `main.realtime.ably.net` likewise appears only inside a response body. The `cdn1`/`cdn2` artwork allowlist is unaffected: its `[T1]` basis is the 2026-09-24 Burp corpus, not this recon, which never mentions them as a media role.
-- [x] **The realtime host was graded `Registered`, which permitted a credential, with a prose note as the only thing stopping it** — found 2026-10-05 while building `CapturedHosts`. `AGENTS.md` §1 says fail closed on unverified hosts, and it did not: `Evidence::Registered` **permits** a credential, and the only host the table graded that way was the realtime push origin — the other ten rows are `Captured`, `ResponseValue` or `Lead` — whose sole appearance in the entire corpus is a `stream_url` **value inside another host's response** — a `GET /api/realtime/discover` body. Zero requests were ever sent there by any capture. **The reasoning that makes the old grade wrong rather than merely loose:** `Registered` is established *by* sending a request and being answered `401`, which means a `Registered` host has demonstrably **already received** a credential and refused it. A response-value host has received nothing, so inheriting `Registered` granted permission on the strength of a URL string the API handed us — and the Suno bearer is not ours to mail to a third party's realtime infrastructure. **Fixed structurally, not by prose.** `Evidence` gained a fourth grade, `ResponseValue`, meaning *seen only as a value inside another host's response, never as a request target*, and `mayReceiveCredential` refuses it in code. A `static_assert` pins that refusal with a message naming the only thing that could lift it: a captured request to that host. The row's `note` still explains the grade, but **a note is not a control** — notes get truncated by editors and refactored away, and this one had been carrying a security decision alone. Five `static_assert`s now guard the whole table (sortedness and uniqueness, role/tier partition, `Lead` refuses, `ResponseValue` refuses, Experimental unselectable), so a future edit cannot silently widen any of the three.
-- [~] **Authentication** — exact `last_active_session_id` matching, captured `touch`/`client` envelope shapes, credential-prefix normalization, and fail-closed host policy are implemented. Outstanding: route preference and preference order, sign-out evidence, and the Clerk `tokens` route — it is captured as `[T1]` but **not implemented**; the string `tokens` appears nowhere in `src/suno/`.
-- [ ] **The whole token hierarchy is now captured; only the refresh half is unwired** — *found 2026-09-28 from a 2026-08-25 `auth.suno.com` Burp export (13 API items), and the *shapes* are now documented in the master as §3.3.* Three distinct credentials are directly observable, and the docs previously described only the first: the **access token** is the JWT we already send as `Authorization: Bearer` (RS256, `kid: suno-api-rs256-key-1`, `aud: "suno-api"`, `azp: "https://suno.com"`, measured lifetime **exactly 3600 s**); the **refresh token** is a *separate* credential in the `__client` cookie (`token_type: "refresh"`, `client_id` + `secret` claims, ~1 year, matching the observed `Max-Age=31536000`); and the **handshake nonce** is a one-shot `Max-Age=0` JWT whose payload carries a literal array of `Set-Cookie` directives, which is the sanctioned mechanism for exchanging a refresh credential for a session credential. None of `aud`, `azp`, `suno/did`, `suno/handle`, `suno/user_id`, `plan`, `jit`, `x-ably-token`, or the refresh/handshake shapes appear anywhere in `src/`. The 1-hour access lifetime independently **confirms** the existing 55-minute proactive-refresh cap (`SunoClient.cpp:32-34, 672-681`) is correct rather than arbitrary. Remaining work is the wiring, not the documentation.
-- [~] **Library** — cursor pagination, local filtering, DB merge, and error states are wired. Authorized-account pagination and captured-host playback still need runtime verification. Range resume is intentionally disabled.
-- [ ] **The Library covers 2 of 13 account areas, and it is anchored to a retired route name** — found 2026-09-28 from the recon's App Router table. Suno's real account area is `/me/*`: **26 routes**, but the client maps to roughly **2 of 13** top-level areas (`/me` and `/me/playlists`). Unbuilt: `albums`, `history`, `trash`, `styles`, `personas`, `lyrics`, `hooks`, `liked-hooks`, `liked-playlists`, `followers`, `following`, `cover-art`, `studio-projects`, `workspaces` — plus the entire parallel `/me/v2/*` namespace. Two renames bite if we port naively, both proven as 307-to-named-sibling so a real redirect rule exists: **`/library` → `/me`** (our "Library" surface is the retired name) and **`/persona` → `/voice/`** (Personas became Voices, and 11 `/me/*personas*` routes post-date that rename). **Anchor any work to `/me/v2/*`,** which is where new routes are landing, and check the inventory for the old path before trusting it. Note the recon counts `/me/*` as *registered* routes; several call `notFound()` and are flag-gated, so existence is not entitlement — the same rule the master already states.
-- [ ] **43% of Suno's route table is internal or unlaunched — a standing guard against gold-plating** — found 2026-09-28. Of 254 App Router routes, **84** are `/b-side/*` staff backoffice and **26** are `/labs/*` experiments. That is 110 of 254. Three independent signals converge on `/labs/*` being "not product": every probed one is **404 *and* `noindex`**, and none appears in any of the 4,575 sitemap URLs. `/b-side/*` is separately a **hard exclusion** — the recon documents 77 such routes compiled into the public bundle including `/b-side/impersonate`, and deliberately requested none. It is an information-disclosure finding for responsible disclosure, never a surface to build on. Recording the ratio so a future session that "discovers" 26 Labs names does not read it as 26 features to add.
-- [~] **Account and models** — runtime model catalog and numeric account/model fields are wired. Account/billing contract fixtures and limit behavior still need capture-backed tests. **The catalogue now comes from `/api/billing/info/` rather than `/api/session/`, and the reason is stronger than "fresher".** Measured against the captured bodies 2026-10-05: **`/api/session/` `models` is an EMPTY array in every capture**, while `/api/billing/info/` `models` carries the real catalogue with the *identical* field shape the existing parser already reads — `name`, `external_key`, `major_version`, `description`, `can_use`, `is_default_model`, `capabilities`, `features`, `badges`, `max_lengths`. The captured set is `v6`/`chirp-hawk`, `v6-wild`/`chirp-hawk-wild`, `v6-mini`/`chirp-goose` plus one account's custom model, all `can_use: true` at `major_version: 6`; `remaster_model_types` carries `chirp-halibut`. So `parseModels` is reused verbatim rather than a second parser being written, and billing is the one place the account's own model entitlement is authoritative. `SunoAccountManager::preferredModels()` prefers billing and falls back to the session list so a failed billing fetch cannot blank a working catalogue. **A signal-semantics bug this surfaced and an existing test caught:** the first attempt emitted `accountInfoReady` from the billing handler so the catalogue would reach the UI, and `test_BoundedBody` failed on the emission count. That was the right failure — `accountInfoReady` means the *user object*, and reusing it makes a billing-only refresh masquerade as an account refresh. The bridge now listens to `billingInfoReady` for the catalogue, which is the honest signal. **Still open:** the billing body also carries `accessible_features` — the 22-entry `PlanFeature` entitlement plane, captured verbatim — which is the fourth gating plane and is **not yet parsed**. `x-suno-client` is left unsent: the value is `[VERIFY]` (it came from a third-party repo, which `AGENTS.md` §1 forbids as a contract source) and the catalogue no longer needs it.
-- [x] **\`/api/session/\` was already called but its server feature flags were thrown away** — found 2026-09-28, and this was the cheapest unexploited fact in the entire evidence corpus. *Everything to the "DONE" marker below is quoted as found on 2026-09-28 and superseded by it; do not quote "nothing reads flags" as current state.* `SunoAccountManager.cpp:163` already calls `SESSION` and `:78-80` parses `models` from it, but nothing reads `flags`. The 2026-09-28 recon captured that route as a **literal unauthenticated 200** returning all **47 live server flags**, plus `roles` and `statsig_custom_properties` — the single most valuable endpoint found. Flags include `studio`, `studio-v2`, `studio-clip-editor`, `editing-stems`, `generative-stems`, `stem-dryer`, `negative-tags`, `video-to-song`, `crop-remove`, `control-sliders`, `max-mode`, `remix`, `playlists`, `song-duration-control`, `agentic-simple`, `contest-hub`, `v3_alpha`, `v3p5`, and `custom-model-v6-cutover`. Parsing them buys three things cheaply: a gate-aware UI that can honestly explain *why* a Suno capability is absent instead of silently omitting it, a diagnostics panel, and a way to tell which surfaces are live for the signed-in account. **Scope honestly:** gating is **four independent planes** — 47 server flags, 28 Statsig gates, 60 `ParameterStore` params, and 22 server-supplied `PlanFeature` entitlements (via `/api/billing/usage-plans`) — plus a fifth, `access_group_attrs` on `/api/user/metadata` (the account is in the Voices early-access bucket). None can be flipped client-side and the server enforces entitlements independently, so this is **visibility, not access**. Also note the recon's headline number is deliberately *not* adopted: the real Statsig project is 1,311 gates, but their names are opaque numeric IDs with no ID→name mapping, so "gate X controls feature Y" is unsupportable from this data and must not be written down as though it were. **DONE 2026-10-05.** `src/suno/FeatureFlags.{hpp,cpp}` is now the single owner of "may this client use this surface, and why": `parseSessionCapabilities()` reads the envelope the client was already fetching, a **27-row `constexpr` feature catalog** names which server flag each product surface keys on, and `GateResolver` resolves a six-step order — Excluded → EvidenceBlocked → tier → server flag → client switch → Available. `SunoAccountManager` feeds it `flags`, `roles`, `statsig_custom_properties`, `experiments`, `configs.gen-endpoint` and `data_sharing_consent`, and emits a new `gatesChanged()`. **Two ordering decisions are load-bearing and were chosen deliberately.** Capabilities are parsed *before* the user-object early-return, so an envelope carrying a flag map but no usable `user` still yields the flag map — losing the account over one absent optional field must not lose the gating plane with it. And they are **reset on sign-out**, because leaving the old flag map behind would let a UI show a surface as available to an account that no longer exists. The headline symptom is gone too: `SunoBridge::generationAvailable()` was a hardcoded `return false` and is now a real verdict, with `generationUnavailableReason()` beside it so the disabled Generate button can explain itself. **It had to change from `CONSTANT` to `NOTIFY generationAvailableChanged`** or the fix would have been invisible to every QML binding — the same class of mistake as the `VisualizerRenderer::setTargetFps` caller-count item below. **The count needed three numbers, not one, and the old headline was wrong twice over:** **47** anonymous production, **57** authenticated, **58** staging. The 10-flag gap is account-gated flags an anonymous request never sees (`voices-ui`, `vocal-gender-toggle`, `create-sounds`, `custom-model-ui`, `auk-model`, `bluejay-model`, and four more), so the anonymous map is a strict *subset* of a real account's. That is precisely why the catalog is **code** and the flag map is **data**: `SessionCapabilities` keeps `flags`/`flagsFalse`/`flagsNonBool`/`flagsRaw`/`raw` and knows the name of no flag at all, because a flag list baked into a `constexpr` table would miss those 10 for every signed-in user *and* age into a snapshot that silently over-reports availability. `custom-model-ui` proved that inside one observation window — staging-only on 2026-10-04, already present in an authenticated read on 2026-09-30. Presence and truth are stored **separately**, because a single `false` read as "present" would *unlock* a surface the server just switched off. **Also: the master's plane count moved from four to seven** — `experiments` is a first-class plane distinct from both Statsig and `flags` (captured as an empty object for a real account, which is not an absent plane), and `configs.gen-endpoint` is the server telling the client which generation route to call, which was written down nowhere before `fb2349d`. The Statsig refusal above still stands verbatim: opaque numeric IDs with no ID→name mapping. **Not done, and honestly so: no tests, and no diagnostics panel** — see the gate-subsystem item below.
-- [~] **The gate subsystem has four known sharp edges; the tests landed 2026-10-05** — found 2026-10-05 while building `CapturedHosts` and `FeatureFlags`. **The "zero tests" half of this item was TRUE when written and is now FALSE — recorded rather than deleted, because it is the second time in this file that a `[ ]` nobody re-derived outlived the thing it described.** As written it said: "**Both are new, load-bearing, and completely unpinned by ctest:** a tree-wide grep for `CapturedHosts`, `FeatureFlags`, `parseSessionCapabilities` or `GateResolver` across `tests/` returns **zero hits**, and no test source was added this round." **TESTS NOW EXIST.** `tests/unit/suno/test_CapturedHosts.cpp` (**54 cases**) and `tests/unit/suno/test_FeatureFlags.cpp` (**60 cases**), each a standalone `add_executable` target with its own `main()` — *not* `unit_tests` members, because a second `main()` there is a duplicate-`main` link error. Both are in the `CHADVIS_SANITIZER` `set_tests_properties` list. `ctest` is **13/13**. **The reason to trust the FeatureFlags suite is its mutation results, not its case count:** seven defects were injected into a scratch copy of the source and **all seven were caught** — folding a `false` flag into "enabled", disabling the evidence floor, `flagCount()` double-counting, inventing a `gen-endpoint`, reading a non-bool as false, letting the client switch ignore the evidence floor, and evaluating exclusions *after* the evidence floor. A suite that has never killed a mutant is a suite that has not been shown to work. **A security policy with no test is a policy that decays; the policy now has teeth.** **Four sharp edges REMAIN, and the sharpest is one the tests exposed rather than covered.** Four things are named rather than left for a reader to find: (1) `TierPolicy` is **deliberately not thread-safe**, and the justification is a design decision rather than an oversight — it is configured once before requests start, and making it atomic would only invite flipping it mid-flight, which is the one moment where narrowing the reachable host set could strand an in-flight request. That is a good reason, and it is also an invariant with no compile-time or test enforcement. (2) **Tier matching in `mayReceiveCredential` is exact, not a floor**, so raising the tier to Staging *excludes* Production rather than adding to it: a production host is reachable only while the active tier is Production. This is the fail-closed reading and it is documented at length in the header, but it is the kind of decision a future reader will read as a bug. (3) `describeRefusal()` returns an **empty string for "permitted"**, deliberately, so a caller can show nothing without a special case — which means the same function answers "no reason" and "allowed" identically. Worth renaming to something that says permitted, because an empty string is a weak signal to hand to a diagnostics surface. (4) `GateResolver::evaluateAll()` exists and is deterministic. **It had no caller — now it has exactly one, and the reason it is worth recording is that the fix exposed a design error rather than closing a gap.** `SunoBridge::gateStatuses` (a `Q_PROPERTY` of `QVariantList`, `NOTIFY gateStatusesChanged`) exposes every gate with its verdict and reason to QML, and a diagnostics panel in `settings/AccountPage.qml` consumes it. **That panel immediately revealed that nothing could ever report `available`:** `setLocallyEnabled` had **zero callers**, so the switch table stayed all-off and every gate fell to `LocallyDisabled` — which printed *"Library — switched off in this build. One deliberate switch away"* for the Library, which plainly works. **That is a false statement printed by our own code, and it came from a design error in the resolver, not from a missing wire-up.** I had made the client switch mean *"has someone enabled this"*; the honest meaning is *"does this build implement it"*. Fixed by having `SunoBridge` declare, in one place, the seven gates whose call sites exist (`Library`, `Explore`, `Notifications`, `Upload`, `Billing`, `AccountProfile`, `MediaDelivery`) and rewording the `LocallyDisabled` sentence from *"one deliberate switch away"* to **"this build has no implementation for it yet."** The refused-enable return is logged rather than swallowed — it is `[[nodiscard]]` precisely so a refused enable cannot be mistaken for an accepted one. **Deliberately NOT added: a `setSurfaceLocallyEnabled` Q_INVOKABLE.** It was requested, and it would let a UI flip gates at runtime, re-introducing exactly the "one toggle from shipping an unwired surface" hazard `AGENTS.md` §1 exists to prevent. The switch encodes an implementation fact, not a user preference. Note `TierPolicy::raiseTo` and `classifyRefusal`'s counterfactual tier parameter remain the two deliberately-dormant affordances.
-- [ ] **Writing the gate tests found a live landmine in the port check, and three things that are open questions rather than defects** — found 2026-10-05, and recorded because the landmine was in code **I** had written two hours earlier, which is the whole reason it is worth writing down. **`CapturedHosts.cpp` carried the comment "QUrl::port() returns qint16".** That is false: Qt 6.11 declares `int port(int defaultPort = -1) const`. The *code* was correct — `port() < 0 || port() == 443` — and the behaviour is now pinned by `aPortAboveTheSignedSixteenBitRangeIsStillRefused`, which asserts 40000 and 65535 are both refused. But under the recorded belief, a port at or above 32768 would wrap negative, take the `port() < 0` **"default port"** branch, and **silently allow a credential to a captured host on an attacker-chosen port.** That is the failure mode `AGENTS.md` §1 exists to prevent, produced by a comment rather than by a line of code. **The general rule this earns: a comment that records a platform fact is a test that never runs.** Two smaller staleness fixes rode along — `CapturedHosts.hpp` said "eight at Production" when the census is **9** (the upload origin was added and the sentence was not updated), now corrected and pinned. **Open, and deliberately NOT resolved by this round:** (1) `mayReceiveCredential` returns **true** for `cdn1.suno.ai`/`cdn2.suno.ai`, but the registry comment says those "must still be fetched anonymously" — the predicate is a *credential* allowlist, so presence in it is read as a grant, and a caller instruction is not enforced. Either reading could be right; asserting one would silently make a policy decision, so it is left named. (2) **`GateResolver`'s tier step (step 3) is unreachable through the public API.** The only catalog row with `minTier > Production` is `AccountDeletion`, which is also `Lead`-graded, so step 2 refuses it first, and no synthetic row can be injected. It is guarded by an invariant assertion rather than by a reaching test — if a row ever becomes tier-gated *and* adequately evidenced, the suite fails as the signal to add a case. (3) **UNVERIFIED, and recorded as such rather than believed:** a report that a *failing* `QCOMPARE` on a scoped enum `SIGABRT`s on this Qt 6.11.1/macOS 14.8.8 inside `QTestResult::reportResult` (`malloc: pointer being freed was not allocated`), reproduced in 12 lines with no project code — while a failing `QCOMPARE(int,int)` reports cleanly and exits 1. **I could not reproduce it**: this machine's Qt is an Intel-prefix install whose headers are not resolvable from the build's own compile flags, so my probe never built. If true it is repo-wide and consequential — `test_HttpPolicy.cpp` compares a scoped `PolicyError` and `unit_tests` does the same, so a real failure in either would abort instead of printing expected-vs-actual, which is exactly when the diagnostic matters. **Do not act on this until someone reproduces it on a machine where the Qt headers resolve.**
-- [~] **The download-entitlement gate is real, tested, and four things about it are worth knowing before anyone calls it enforcement** — found 2026-10-05 while testing the gate added this round. `tests/unit/suno/test_DownloadEntitlement.cpp` (**32 cases**, a `unit_tests` member, so instrumented by the existing sanitizer entry) pins the parser, the three refusal branches, their ordering ahead of format reasoning, their zero-network cost, and that a refusal leaks no host or filter name. **Nine mutants were injected and all nine killed**, including the one-character `value_or(true)` → `value_or(false)` regression. The load-bearing judgement is pinned from both directions: an **absent** `is_download_unlocked` must NOT refuse, and the assertion that proves it is not "not refused" (both outcomes are refusals) but that an absent clip comes back with the *format* gate's exact sentence, which can only come from a function running strictly later. **What four things are worth knowing:** (1) **The gate is session-scoped.** `SunoDatabase` neither persists nor restores either field — `CREATE TABLE` has no column and `clipFromQuery` does not set them — so any clip loaded from the local DB reads as *absent* → ungated. Not a hole (the media filter still rejects 100% of observed URLs) but "the server's own answer" only lives from parse to download inside one session, and it should not be described as enforcement until a column exists. (2) **Present-but-unreadable reads as locked**, not absent: `1` or `"yes"` yields present-**false**, i.e. a refusal. Defensible as the complement of the absent rule, but if Suno changes the wire form, downloads go silent product-wide rather than failing loudly. (3) The gate precedes the already-on-disk shortcut, so a user legitimately holding a file from an earlier session is told Suno forbids the download and gets no `fileSaved`. Both readings are arguable; the test says so rather than picking silently. (4) **A comment I wrote this round stated the OPPOSITE of the shipped rule** — `ClipParser.cpp` said "absent must fail closed rather than inherit a permissive default" while the code does `value_or(true)`. A future agent trusting it would "fix" the gate into fail-closed and silently make every pre-existing library unsaveable. Corrected, with the reasoning moved next to the gate that implements it. This is the third instance in this file of a comment being a landmine rather than a typo, and the second one written *me*.
-- [!] **moc 6.11.1 cannot lex a raw string literal containing `//`, and it fails silently** — found 2026-10-05. Its preprocessor strips `//…` to end-of-line without knowing it sits inside a string, the raw string never closes, and moc then emits a **0-byte `.moc`** plus one `note: No relevant classes found` on stderr. The only user-visible symptom is a compile error at `#include "test_X.moc"` that **never names the offending line**. Measured: both one-line and multi-line `R"({"u": "https://x"})"` yield 0 bytes, while the same bytes in a normal escaped string are fine. This will bite again, and the diagnosis cost a bisection. **Workaround in use:** build JSON fixtures from `QJsonObject` initialisers rather than raw string literals in any file that AUTOMOC processes. The measurement is recorded in the test's doc comment so it is not re-derived.
-- [~] **Media and download** — playback selects only HTTPS media-array entries on the exact captured `audiopipe.suno.ai` origin, rejects forbidden sentinels, userinfo, fragments, and nondefault ports, and uses manual redirects. Unpromoted Range resume is disabled; retries restart from byte zero. **The `m4a-opus`/`progressive` item being unplayable is no longer a defect to fix — it is the filter working.** The `content_type == "mp3"` refusal is now closed by measurement rather than pending a capture; see the ciphertext measurement on the `content_type` item below.
-- [x] **An unplayable clip failed silently — no message reached the user** — found 2026-09-28, **fixed 2026-10-05, and the honest fix turned out to be the opposite of the obvious one.** `SunoDownloader::selectDownloadUrl` returned an empty result unless an entry had `content_type == "mp3"` *and* passed `isUsableCapturedUrl`, with **no** user-visible message anywhere in `src/` for a clip that resolves to nothing. `SunoDownloader::noUsableMediaMessage` now exists and is reached from the real refusal path, so the dead button is at least an explained one. **The bigger finding is that the filter was never the bug — it was the last line of defence working correctly, and removing it would have shipped 3.9 MB of noise.** `is_download_unlocked` + `download_disabled_reason` are now parsed (`ClipParser`, `SunoModels`) and consulted **first**, before any host or format reasoning, because a clip the server has already declined was previously reported to the user as "no playable audio on the captured media host" — the wrong diagnosis of a real fault, and the same class as the phantom library-sync-failure item below. **See the ciphertext measurement on the `content_type` item: widening that filter is now closed, not merely gated.** What is deliberately *not* built: the Mango decryptor. The recon's `POST /api/mango/rights` → `{key, iv, glt}` and the web client's per-user key derivation (SHA-256 of the JWT → AES-GCM, then AES-CTR) at `/_sw-mango` remain `[LEAD]`, and shipping it would be circumvention of a protection measure rather than a client feature. `MANGO_RIGHTS` stays `declared-unused` permanently, and that is a decision rather than a gap.
-- [ ] **Download follow-ups: a `findChild` coupling, a stale-filename collision, and a duplicated test double** — three real items left open by the 2026-09-29 download/playback split; none is behavioural, all are cheap. `SunoBridge` reaches the downloader via `findChild<SunoDownloader*>()`, a coupling wart that one accessor on `SunoController` would remove and that would fail silently rather than loudly if the QObject parent ever changed. `resolveDestPath` reuses a plain-named file from an earlier session, so a *different* clip with the same title can still collide; reading the `SUNO_ID` TXXX the tagger already writes would close it, at the cost of one file open per hit. And a second `FakeReply` copy exists in `test_DownloadQueue.cpp` — a test-side copy of a rule is exactly how the two drift. **Deliberately not bundled with the `content_type == "mp3"` filter**, which is an evidence question and already carries its own item.
-- [~] **Upload lifecycle** — initialize → direct multipart → finish is implemented for the captured `.m4a` flow. **The fourth leg now has existence evidence:** the recon confirms `POST /api/uploads/audio/{id}/initialize-clip/` exists (2 refs in the bundle), where the master held it at `[LEAD]`/`[VERIFY]`. That is the step that links an uploaded audio file to a clip — the piece that would turn the audio-upload service into a usable "make a song from this file" feature instead of an upload that goes nowhere. Existence only; the contract is uncaptured, so build against the fail-closed default. Status, generation linkage, limits, and full validation remain uncaptured.
-- [ ] **Do not wire the money-moving and legal-consent routes, even though they now exist** — found 2026-09-28. The recon proves a large billing-mutation surface the master previously recorded as uncaptured: `cancel-sub`, `cancel-sub/undo`, `change-plan`, `change-plan/preview`, `pause-sub`, `unpause-sub`, `create-session`, `accept-sub-coupon`, and `billing/auto-reload/enable|disable`. Separately, `PUT /api/privacy/data-sharing-consent` and `POST /api/user/vip_program_acceptance` record **legal and privacy consent on the user's behalf**. Neither belongs in a desktop client: a client that can cancel a subscription or apply a coupon is a support burden and a terms-of-service surface, and one that writes consent records is a legal-terms problem with real consequences. Keep the existing read-only billing service and add none of these. Recording the exclusion now, while the routes are known, is the point — "captured" and "safe to implement" are different axes.
-- [ ] **Generation surface** — bind typed model/catalog/limit data and the captured captcha decision to the request; add fake-request contract tests and durable queued/processing/failed UI state. Generation stays disabled until a supported CAPTCHA token flow exists. **The provider is now `[T1]`, not the bundle constant this item used to cite.** The 2026-09-28 recon removes the biggest unknown here: the generation captcha is Cloudflare Turnstile v2, because the **captured response body** was `200` with `{"required": <bool>, "captcha_version": 2}` and `captcha_version` maps to a provider directly. The bundle's `TURNSTILE_GENERATION_CAPTCHA_VERSION = 2` and `FORCE_ENABLE_CAPTCHA = false` are `[LEAD]` corroboration of that, not its evidence — see the corrected P0 item, which records that citing the bundle constant is what hardened the wrong reading into fact. **The one captured `required: false` is per-account, not durable, and is not authorisation to solve anything.** So the provider is known, and the terms-of-service decision is not. That makes a managed Turnstile solve tractable in an embedded web view, but it does **not** make it appropriate: a managed challenge is non-interactive for a human, and automating it is a terms-of-service decision, not an engineering one. Keep the human decision in the proposals section and leave this switch off.
-- [ ] **Header drift capture** — reconcile route-specific Authorization/Browser-Token/Device-Id requirements from a fresh sanitized capture before changing shared header policy. Two specific drift signals to resolve while capturing: the code sends `GET /v1/client` with **no** `__clerk_api_version`/`_clerk_js_version` query keys and hardcodes `intent=focus` (the 2026-09-24 variant), while the 2026-08-25 capture used version query keys and an **empty** body on `touch`; and the version values are **route-specific** (`handshake` used `__clerk_api_version=2025-04-10`, `/v1/client` used `2025-11-10` in the same capture), so a single constant would be wrong.
-- [ ] **The `x-suno-client` verdict: the header is real, the value is not ours, and the catalogue it unlocks is a trap** — found 2026-10-05. Two facts must be kept apart, because merging them is how this becomes an `AGENTS.md` §1 violation. **(1) The plane is `[T1]`.** The header is a real server-side feature plane, measured live and read-only against the account's own account, 2 runs each, fully deterministic: it changes the **model catalogue** `/api/session/` returns and toggles two flags. The web identity yields one model set; a mobile identity yields a *different, newer* set plus a mobile-only trial-counter flag. **(2) The value is `[VERIFY]` and may not be shipped.** The string itself — an Android prerelease build id plus a version — was surfaced by a third-party client repository, and `AGENTS.md` §1 forbids importing API shapes from external rewrite repositories. So the observation stands and the constant does not. **What is defensible:** read the true model catalogue from **`/api/billing/info/`** instead. That is the clean substitute for the entire mechanism, because the billing payload independently confirms the account's own model rights — so the header is not withholding an entitlement, it is only changing which catalogue a client is shown. A second defensible option is to send a **truthful** `x-suno-client: ChadVis <version> (desktop)`, which is honest and requires no claim to be anyone. **What is explicitly out of bounds:** adopting a mobile identity *in order to reach* the mobile-only generation counter that appears only under that identity. Adopting an identity to obtain a surface the web client is not offered is circumvention, not a client feature, and it is the same judgement that keeps the Mango decryptor unbuilt. **Why this belongs in the backlog rather than in a header file:** the same header pair that makes the mobile branch work — `X-Requested-With: com.suno.android` and `sec-ch-ua-platform: "Android"` — is a signed assertion "I am Suno's Android app", which an unaffiliated desktop client should not make and should not ship. **And the finding that actually costs us something:** the current catalogue the client displays is read from `/api/session/` `models`, which is client-identity-keyed and whose web branch was measured serving a **stale** list. So the honest fix is to source the catalogue from billing, not to spoof a platform — see the `[~] Account and models` item above. Note also that no generation was attempted under any identity; the generation path was left alone deliberately.
-- [ ] **Video URL origin guard** — `ClipParser` stores `video_url` raw and persists it to SQLite with no origin check, unlike the image fields, and no video host is documented in the inventory. Add a captured-host allowlist or drop the field.
-- [x] **There was no way to save a clip from the UI — the batch primitive existed and had no button** — found 2026-09-30, **fixed 2026-10-05**. `SunoBridge::downloadClip`/`downloadClips` (`SunoBridge.cpp:562-573`, routed to `downloadInto`) and the per-clip `clipSaved(clipId, savedPath)` result channel (`:165`) have **zero QML callers**; `SettingsBridge::sunoDownloadPath` is also unreferenced, so the user cannot see or change where clips land. The only clip action in the UI is play (`ClipCard.qml:221`, `ClipDetailSheet.qml:279`), and the detail sheet's sole button is labelled **"Download & Play"** (`:275`) — a label promising two things and doing one. So the 2026-09-29 download/playback split shipped **unreachable**, and for a Suno client this is the single largest product hole: there is no batch download and no save at all. Also `SunoBridge::generationAvailable()` returns a hardcoded `false` (`:434`) while `SunoPanel.qml:35-67` renders a real model dropdown and a permanently disabled Generate button — a well-built door to nowhere. **Scope honestly:** `SunoBridge` exposes 41 properties and **zero** signals are connected for `discover*`/`notifications*`/`clipSaved`/`downloadStatusChanged`; 12 of its members have no QML caller. Expose the download surface deliberately, then decide whether to delete the rest. Note `signOutSuno` is reached only via a reflective `bridgeApi["signOutSuno"]()` at `AccountPage.qml:76` guarded by a `bridgeSupports()` probe — brittle for a method known to exist, and the whole `bridgeApi["…"]` bracket pattern appears 6× in that file. **What shipped, and the honest headline: the C++ already existed and only the QML layer was missing.** Every defect above was a missing reference, not a missing capability — `downloadClip`/`downloadClips`/`clipSaved` were already implemented and already correct, so this was never an engine problem wearing a UI costume. Now: a per-clip save affordance on every card and in the detail sheet; selection mode with multi-select and a batch bar that names the count it acts on ("Save 7 clips"); per-clip result feedback (`idle`/`saving`/`saved`/`refused`) with the destination path and a "Show saved file" action; a right-click menu on every card; the download destination made visible and changeable, including a folder picker; and the "Download & Play" compound-promise label split into what it actually does. **`SunoBridge::clipSaveRefused(clipId, reason)` was added** because a batch refusal previously collapsed into one unattributable string, which is why a rejected card could sit on "Saving" forever while one of the clips silently did nothing. **Two design points worth keeping.** The per-clip save state lives in `LibraryView`, **not** in the delegate: `GridView` recycles delegates, so a card that remembered "already on disk" in its own properties would forget it on scroll and claim a saved track was never saved. And the batch path deliberately does *not* paint one aggregate refusal string onto every card — that would mark clips which are in fact transferring as refused; the batch reason goes to the footer and per-clip outcomes arrive on `clipSaved`. **`generationAvailable()`'s half of this item is also fixed** — see the `/api/session/` flags item above; the well-built door to nowhere now at least says why it is shut.
-- [ ] **Three rough edges the download-UI pass left, one of which is a real matching bug** — found 2026-10-05 by a design pass that **correctly refused to fake any of them** in QML, which is the right call and the reason they are recorded rather than papered over. All three are small; none is cosmetic-only. **(a) `downloadStatus` is never cleared**, so the Library footer and the detail sheet show the last transfer event forever — including a failure from an hour ago, which reads as *this* clip failing now. There is no idle/reset signal and the bridge exposes none; either a timeout or an explicit clear on the next request. **(b) Transfer failure/cancel is reported by clip *title*, not id** — `downloadStatus` is the only string that reports a terminal outcome, so `LibraryView` parses the `"Download failed for "` / `"Download cancelled for "` prefixes and matches the remainder against `clip.title` by **exact equality**. Two saving clips sharing a title both get marked, which is the safe direction, but it is a guess, and a **per-clip `downloadStateChanged(clipId, state, reason)` signal would remove the guess entirely**. This is the same gap `clipSaveRefused` closed for the *rejection* path; the *transfer* path is still title-matched. Note that the refusal text is deliberately shown verbatim on the card rather than replaced with a generic failure, because the sentence already names the cause — including the server's download entitlement decision. **(c) Three things are UNVERIFIED and cannot be verified without a human running the app:** `Menu.popup(point)` under a `GridView` delegate (the map is window → parent-item and the arithmetic is easy to get wrong, so the menu may open in the wrong place or not at all), `FolderDialog.currentFolder` on open (the download-destination picker may start somewhere arbitrary when the setting is empty), and the `↓` / `✓` / `↻` save-state glyph choices on an `AppButton` whose `Accessible.name` is overridden because the label is a glyph. None of these is a claim that they are broken — they are claims that nobody has looked.
-- [!] **One `errorOccurred` from any subsystem fakes a library-sync failure** — found 2026-09-30, verified. `SunoController.cpp:152-169` connects `SunoClient::errorOccurred` to a lambda that emits **both** `sunoError(qmsg)` **and** `libraryFetchFailed(qmsg)` for *every* string. So a blocked notification route, a WAV refusal (`SunoClient.cpp:1112`), a failed billing fetch, or a blocked host (`:843-846`) all clear the library spinner and paint a library error. Worse, `SunoLibraryManager.cpp:22-30` consumes `libraryFetchFailed` to reset `isSyncing_`, so an unrelated failure also **cancels an in-flight page**. Fix by carrying an error class on the signal (or giving each subsystem its own channel) rather than broadcasting one string to every consumer. This is a real "phantom sync failed" bug that will otherwise be misdiagnosed as a library problem.
-- [~] **The Library has no mutations at all — it is a viewer, not a library** — *the C++ request layer landed 2026-10-05; the QML layer did not, and the switch is deliberately off.* `src/suno/SunoLibraryMutations.{hpp,cpp}` now implements **11 verbs** whose request contracts are `[T1]` in master §5.9 — `set_visibility`, `toggle_remixes`, `toggle_show_remixes`, `update_feedback_state`, `share/link`, the playlist v2 track add/remove/reorder-by-index and cover-image set, `playlist/set_metadata`, `playlist/update_clips/` — plus a `SunoBridge` surface (3 properties, 11 invokables, 5 signals). **Two verbs were deliberately NOT built, and the reason is the important part of this update:** LIKE/UNLIKE and TRASH/RESTORE have **no captured route at any confidence**. `is_liked` exists only as a feed-filter key and a response field — *a state is not a verb* — and trash is `[LEAD]` bundle strings plus one `POST /api/clips/delete/` that answered 404, with no `DELETE` ever probed. A named-absence block in `SunoEndpoints.hpp` records this so nobody "completes" them from a bundle string later. **Why the switch is off, stated plainly:** response shapes were **never** captured for any of these — every observed response is a rejection — so `MutationResult` carries no field for a new state of the subject, a 2xx means "accepted" and nothing more, and exactly one key (`detail`, a **string** containing a Python `repr()`, per §1.5) is read. `content_type` for share links, `metadata` keys, `positions` elements and the `feedback_reason` vocabulary were all never captured, so they are forwarded verbatim and never validated against an invented schema. Fail-closed in two independent layers: a C++-only `setEnabled(false)` on construction, **with no QML-reachable switch** — the Round 3 decision that a runtime-toggleable gate re-introduces the "one toggle from shipping an unwired surface" hazard is preserved — and the `GateResolver` verdict for each verb's owning surface. Enabling later is one line in one place, after a human captures one success response per verb. **Still missing: the entire QML layer**, so no UI reaches any of it. The DB already persists `is_liked`/`is_trashed`/`is_public` (`SunoDatabase.cpp:57-59`) and the feed *request* already carries `liked`/`trashed` filters (master §5.2), so both halves of the vocabulary exist — only the verbs are missing. `ClipCard.qml` has exactly one `onClicked` (`:217`) and `ClipDetailSheet.qml` has Play (`:279`) and Close (`:78`); there is no context menu, no sort, no multi-select, no bulk action. **This is the largest product gap in the Suno half and it is not in this file as a gap.** The gate is one capture session: like/unlike, trash/restore, add-to-playlist, share-link, follow — all read-only-ish verbs, ~30 minutes in a signed-in tab. **Partly falsified 2026-10-05: the capture was effectively taken, and it took the *request* side.** `fb2349d` added master §5.9 with the recovered write schemas, because the recon probed each write route with an empty object and re-sent with wrong-typed values and let the server's own validator name the fields: `POST /api/gen/{id}/set_visibility/` → `is_public: boolean`, `POST /api/clips/{id}/toggle_remixes/` → `can_remix: boolean`, `toggle_show_remixes` → `show_remix: boolean`, `update_feedback_state/` → `feedback_reason: string`, and the full `/api/playlist/v2/*` set including `update_type` ∈ `{add, remove, remove_by_id, reorder}` plus a **1–100 `clip_ids` bound** and a server rule the schema cannot express ("cannot make trashed clips public"). Nothing was created — every payload was rejected by validation or by a lookup on a non-existent id. **Four limits decide how far this may be taken, and none of them is "build it".** (1) **Response shapes are still uncaptured** — the only response facts are the rejections, so a client would be inventing its success path. (2) Bodies are **flat**; the error's `loc` chain is a manufactured projection (§1.5), and a nested body fails where the flat one reaches the handler. (3) A required-field list is a **minimum**, not a maximum. (4) `fb2349d` deliberately **did not** claim the five routes that are client-bundle strings only — `playlist/create/`, `playlist/trash/`, `gen/{id}/set_metadata/`, `gen/{id}/update_reaction_type/`, `gen/trash` — and `DELETE` was never probed on anything, while the probed `POST /api/clips/delete/` answered `404`. So the verbs are half-captured and no mutation is wired; the capture gate is now narrower (one authenticated success response per verb), not lifted.
-- [ ] **Honest partial-failure reporting for library sync — a short list is not a total** — found 2026-09-30. `SunoLibraryManager` and `DownloadQueue` both report *completion* and never *completeness*: a crawl that stops early at a page boundary, an error, or a repeated cursor produces a list that looks identical to a finished one. A third-party client on this machine (`suno-power-exporter/extension/lib/api.js:344-356`) returns `{complete: false, projects, errors, stats: {pagesFetched, expectedTotal, elapsedMs}}` and **refuses to hand back a partial list as if it were total**, rendering "filtered vs unavailable" and "expected vs loaded" side by side; its pagination state machine (`lib/feed.js:186`) is a pure function with 270 lines of tests that handles both cursor and page modes and treats a short page as *not* proof of completion when the total disagrees. Port that result shape and that state machine — it is the difference between a diagnosable sync and a silently short library, and it is the durable state half of the render-job model below. `DownloadQueue.cpp:183-189` additionally never checks `write()`'s return value, so an ENOSPC mid-download renames a truncated `.part` into place and reports `Completed`.
-- [x] **The captured `content_type` enum is wider than `mp3`, and the client already parses the fields it needs** — found 2026-09-30 in `~/Documents/suno-recon`, **and the premise was measured false on 2026-10-05.** The bundle's own selector matches on **`encoding`, `delivery`, *and* `content_type`** (encrypted items prefer `webm-opus`/`m4a-opus`; unencrypted accepts `mp3 | m4a-opus | webm-opus`), and `SunoModels.hpp:17-19` / `ClipParser.cpp:93-95` **already model `encoding` and `delivery`** — the repo parsed the right fields and then discarded them at the selection step. So the fix looked like a *predicate*, not a schema change. **It is not a predicate. The bytes on the other side are not audio.** One CloudFront media URL — returned by the API itself inside a captured authenticated feed body, so the host is `[T1]` and no inference was involved — was fetched and put through `ffprobe`: **`200`, 3,967,956 bytes, no `ftyp` box in the first 16 bytes, `moov atom not found`, `Invalid data found when processing input`.** That is **ciphertext, not a playable file.** **So widening the `content_type == "mp3"` filter is CLOSED, not gated, and it must not be "finished" later.** Widening it would have downloaded 3,967,956 bytes of noise to a `.mp3` filename, failed TagLib's own validity check (`TagLib::MPEG::File::isValid()`), left the file untagged, and still reported `Completed` — the identical lie class as the recorder's truncated-MP4-reported-`Completed` item in P1, arriving by a different route. **And the correct first gate is `is_download_unlocked`**, which is captured, was being discarded, and is now parsed and consulted before any host or format reasoning. The measured shape is worth keeping: **`is_download_unlocked` is false in 36 of 40 clips, and only 4 of those 40 carry a `download_disabled_reason` at all** (`"remix_contest"`). Thirty-two clips are locked with no stated reason, which fits a server-side download allowance far better than a per-clip rule — that quota is a `[LEAD]`, so it is **not** asserted to users as the explanation, only the refusal itself. **Two honest limits on this measurement, both one-sided.** (a) The CloudFront `.m4a` is the only body actually probed; `mp3` and `webm-opus` over `streaming` remain `[T1]` *response values in the 2026-09-24 clip objects*, a different corpus, and nothing here disproves them. (b) A *refutation of the width of the enum* is not a refutation of `audiopipe.suno.ai`, which the 2026-09-24 basis rests on — and note the correction the earlier drafts of this file needed: `audiopipe.suno.ai` is **not** absent from the corpus, it occurs roughly 70 times across 13 files, but as a hostname *regex* and a *constructed* `?item_id=` template. "Zero occurrences" is true only of captured *response values*, and those are `[LEAD]`. **The master does not yet record the ciphertext measurement** (`fb2349d` recorded the taxonomy — 40/40 `m4a-opus`/`progressive` on CloudFront, zero `mp3`, and that the client's filter rejects 100% of observed media URLs — but not what the bytes *are*); that belongs in §5.3, since §1 is the API-spec owner. Also from the same bundle, still uncaptured: the 9-tier model map (`chirp-v3-0` … `chirp-hawk`) and **24 distinct `chirp-*` ids**; the *ids* need no capture, per-tier pricing and limits do.
-- [ ] **Library sync is O(n²) in DB probes and QML rebuilds** — found 2026-09-30. `SunoLibraryManager.cpp:163` emits the **entire accumulated vector** on every page; `SunoController.cpp:137-143` then runs `db_.getAlignedLyrics(clip.id)` **per clip, per page**, on the GUI thread. A 2,000-clip library is 2,000 synchronous SQLite queries per full sync, plus a full `QVariantList` rebuild per page (`SunoBridge.cpp:691+`). Fix with one `SELECT … WHERE id IN (…)` (or a `has_lyrics` column) and a dirty-range model. Related and cheap: `SunoLibraryManager.cpp:125-128` `setSearchText` stores `searchText_` and does nothing else, so typing in the search box does not narrow until a manual refresh; and `SunoExploreService.cpp:190-205` calls `feeds_.clear()` **before** the credential round-trip, so Discover blanks and refills on every refresh.
-- [ ] **Duplicated JSON scalar/tolerant parsing across four Suno services** — found 2026-09-30. `scalarString` is independently defined in `SunoNotificationService.cpp:19-31` **and** `SunoExploreService.cpp:21-32` (identical, including the `'g', 15` precision); `booleanValue`/`integerValue`/`firstString` (`:33-76`) exist only in the notification service but describe the same wire tolerance; `SunoAccountManager.cpp:18-42` defines a *third* variant (`stringOrNumber`) plus `optStringList`. `ClipParser::optString/optBool/optInt` already exist and are used for object fields but not for the envelope probes. Four services currently drift independently on how tolerant to be — which is exactly the tolerance that decides whether a remote payload is understood or silently dropped. One shared helper, then delete the other three.
-- [ ] **`SunoOrchestrator` is 60 lines of permanently-unreachable parsing** — found 2026-09-30. `SunoOrchestrator.cpp:14-22` — both public methods emit an error and return; `onMessageFinished` (`:24`) and `onHistoryFinished` (`:43`) have **no caller anywhere**. `SunoController.cpp:85-88` wires three signals that can never fire and holds a `unique_ptr` for it, and the master's own conflict register (`:1076`) notes `ORCHESTRATOR_CHAT`/`ORCHESTRATOR_HISTORY` are `[LEAD]` and not even the paths the client uses. **Correction to the capture-gated item below:** keeping the *constants* `declared-unused` is defensible, but the class and its two dead parsers have no such justification. Delete the class; keep the constants as a record.
-- [x] **Settings credential ownership** — `SunoClient` is the sole durable credential writer; edits are debounced off the GUI thread; clearing removes live and persisted credentials together.
-- [x] **Explore and notifications** — read-only Explore and notification list/badge/mark-all-read are wired from direct captures. Following-feed pagination remains `[VERIFY]`.
-- [ ] **The notification surface has no corroboration in the current web client — treat `wired` as a risk, not a strength** — found 2026-09-28, and this is the most serious thing the recon says about our own code. `GET /api/notification/v2`, `/api/notification/v2/badge-count` and `POST /api/notification/v2/read` are all `[T1]` + `wired` in the master, and `SunoNotificationService.cpp:261, 270, 368` makes all three calls live. But grepping the recon's 95 chunks (7.3 MB) returns **zero** occurrences of any `/api/notification*` route; the only `notification` strings in the corpus are i18n keys, `notification-feed-v3-enabled`, and `notification-settings`. **This does not prove the routes are dead.** It is a static negative, and the master's own §6.2 rule applies symmetrically: absence from the current bundle is evidence of *client-side disuse*, not server removal — the 2026-08-25 capture was a real request/response. What changed is our risk posture: three live calls against a surface with **zero** current client corroboration, on a Notifications surface the user can reach at any time. One authenticated probe settles it. **Do not delete `SunoNotificationService` on a static negative** — degrade it to a visible error state instead, so a dead route becomes a diagnosable symptom rather than a silent empty list.
-- [ ] **Several `[T1]` routes have drifted spelling and should drop to `[VERIFY]` pending a probe** — found 2026-09-28. At least six `[T1]` paths have **zero** hits across the 95 chunks: `/api/clips/{id}/attribution`, `/api/clips/remixes`, `/api/clips/remixes/count`, `/api/clips/get_similar/`, `/api/personalization/memory`, `/api/labs/configs`, `/api/challenge/progress`, `/api/onboarding/*`, `/api/share/stats`. The likely explanation is **drifted spelling, not deletion** — the live client calls `/api/clips/{clip_id}/toggle_remixes/` and `/api/gen/{id}/comments`, not `/api/clips/remixes`. Same class of drift renamed Orpheus: the bundle's only path from the Modal host is `/session-history`, so `ORCHESTRATOR_CHAT`/`ORCHESTRATOR_HISTORY` are **not what the client uses** and the master's conflict row claiming "claims range from `/session-history` to orchestrator paths" resolves *against* those two constants. Re-probe before demoting; do not conclude dead.
-- [x] **2026-09-24 capture and docs audit** — 432 Burp items reviewed; only directly observed contracts promoted.
-- [x] **`Implemented` column re-audited against source** — *found 2026-09-28.* `SunoEndpoints.hpp` has 77 route constants of which exactly **12 are referenced**; the master's §1.3 figure is confirmed correct and no `Implemented` value is contradicted. Worth keeping as a periodic re-audit, because the ratio (65 dead constants) is the real measure of how much captured surface is unwired.
-- [ ] **vcpkg integration** — an LLM suggesed vcpkg could replace some of the means of compiling external sources and be cross-platform compatability or improve cross-platform workflows. If in agreeance then either implement or ask the user with a multi-choice select tool call for means of implementing vcpkg. CPM is also another potential if needed and may already be in the CMake files.
+- [ ] T0051 `QTP0004` is deliberately disabled while 58 QML files live away from the `qt_add_qml_module` call (`cmake/TargetSetup.cmake:129-134`) #risk-medium
+      Qt calls this layout "a frequent source of mistakes" and 6.8 can generate per-directory
+      `qmldir`s (`NO_GENERATE_EXTRA_QMLDIRS`). Either enable it and fix the relative imports,
+      or flatten the QML tree beside the CMake call.
+- [ ] T0052 All four `.qss` files are **100 % dead** and target classes that cannot exist (`resources/styles/*.qss`, `resources/dark-theme.qss`) #cleanup
+      The app is a `QGuiApplication` (`Application.cpp:353`) and **no `setStyleSheet` call
+      exists anywhere**; grep for "qss" in `src/`/`cmake/` returns only the three `<file>`
+      entries in the `.qrc`. `dark.qss` selects 27 Qt **Widgets** classes — none of which
+      exist in a pure-QtQuick app. They are a fork of a different app ("VibeChad",
+      "VibeVisuals"). Fix: delete both `dark-theme.qss` and the four styles.
+- [ ] T0053 `src/qml/shaders/shadow.frag` is dead, uncompilable, and not even in the binary (`src/qml/shaders/`) #cleanup
+      No `qt_add_shaders` anywhere, zero `ShaderEffect` in QML. It is GLSL ES 1.00
+      (`varying`, `gl_FragColor`, `texture2D`, no `#version`) and **cannot compile on any
+      Qt 6 backend** (RHI compiles GLSL ES 3.00); it also declares a `lowp sampler2D`,
+      which is invalid. Fix: delete the directory.
+- [ ] T0054 Six orphaned QML files (`src/qml/views/SettingsView.qml`, `panels/SettingsPanel.qml`, `panels/PlaybackPanel.qml`, `components/AccordionContainer.qml`, `AccordionPanel.qml`, `ComingSoonPage.qml`) #cleanup
+      `ComingSoonPage.qml` is real content loss (the roadmap surface). `PlaybackPanel.qml`
+      also carries a latent bug: it overwrites `AppButton`'s own `buttonRadius` binding.
+- [ ] T0055 `ThemeBridge` is compiled, linked, and entirely unreachable (`src/qml_bridge/ThemeBridge.{hpp,cpp}`, `cmake/Sources.cmake:188-189`) #cleanup
+      59 properties and two `Config::save()` calls, zero QML references, deliberately
+      unregistered at `BridgeRegistration.cpp:34-37`. A complete duplicate theme system.
+- [ ] T0056 `SunoWorkspaceBridge` is compiled and unregistered by design (`cmake/Sources.cmake:196-197`, `src/qml_bridge/BridgeRegistration.cpp:41-64`) #cleanup
+      ~190 header + 622 cpp LOC, 16 properties, zero QML references. `CreateView.qml` uses
+      `SunoBridge.generate` instead. Decide: wire it or delete it.
+- [ ] T0057 `pm::Bridge::presetLoading` is declared, connected, branched on, and **never emitted** (`src/visualizer/projectm/Bridge.hpp:45`, `src/visualizer/VisualizerRenderer.cpp:32,92-94`) #cleanup
+      `presetLoading_` is permanently false, so the "clear to black while loading" path is
+      dead. **Research settles the options:** projectM v4 has **no async/preload API in any
+      released version** — loading is synchronous inside `projectm_load_preset_file()`, and
+      an integrator measured a **600–1200 ms** stall at exactly the crossfade moment, with
+      ~177 ms of that being HLSL→GLSL transpile (projectm discussion #1008, 2026-07-06).
+      A preload API was offered upstream and is **not merged**. So either emit the flag around
+      the genuinely-blocking load (honest about blocking, which the UI can at least respond to)
+      or delete the flag and the branch. Do not invent a two-phase load the library cannot do.
+- [ ] T0164 **projectM is pinned two releases stale — 4.1.8 fixes an out-of-bounds read** (`cmake/FindProjectM4.cmake:62`) #risk-high
+      The pin is `GIT_TAG v4.1.6` (2025-11-28). **v4.1.7** (2026-07-14) and **v4.1.8**
+      (2026-10-06) are both newer. 4.1.8 fixes `projectm_pcm_get_max_samples()` returning a
+      wrong value (**invalidate any cached value on upgrade**), an **out-of-bounds read in
+      custom waveform code**, an infinite loop on self-referential shader macros, and four
+      HLSLParser correctness bugs, plus a large shader-transpile speedup. 4.1.7 fixed a
+      `nullptr` deref in the texture sampler, inverted Y/angle to per-pixel expressions, and
+      **"reset to default framebuffer (FBO 0) after rendering presets and transitions"** —
+      which is directly relevant to T0027. The 4.1.7→4.1.8 public API delta is
+      **byte-identical** (`core.h`, `parameters.h`, `render_opengl.h` unchanged), so this is a
+      free, low-risk upgrade.
+- [ ] T0165 **Preset discovery will miss `.milk7`/`.milkdrop` packs, and `.pmesh` is not a thing** (`src/visualizer/PresetScanner.cpp`) #risk-medium
+      The official scan is `projectm_playlist_add_path`, whose implementation tests
+      `entry.path().extension() == ".milk"` — **exact and case-sensitive**, so `.Milk`,
+      `.MILK`, `.milk7`, `.milkdrop` are all **skipped**. Packs in the wild ship all of those.
+      A host that globs `*` will silently load fewer presets than the official player. Note
+      projectM v4 has **no `milkdrop.ini` / `*.tex` model** at all — texture resolution goes
+      through `projectm_set_texture_search_paths()`, and calling it per-frame is a performance
+      bug (it clears and reloads every texture). Also: `.pmesh` is a projectM **3.x-era
+      frontend** file and does **not** exist in v4 — do not write a migration for it.
+- [ ] T0058 `RatingManager` is a process-wide, mutex-less singleton keyed on preset **name** (`src/visualizer/RatingManager.cpp:9-25`) #blocks-feature
+      One global `ratings.toml` keyspace means two preset banks containing the same preset
+      name share a rating — **structurally blocks multiple banks.** `ratings_` is a bare
+      `std::map` with no lock. Fix: inject it, key on path, and add a mutex. (after: T0014)
+- [ ] T0059 `RatingManager::save()` and `PresetPersistence::saveState` are non-atomic (`src/visualizer/RatingManager.cpp:51-54`, `src/visualizer/PresetPersistence.cpp:42-52`) #data-loss
+      Plain truncate-and-write, unlike `ConfigLoader::save`'s temp+rename. `saveState` runs
+      on **every favourite toggle** (`PresetManager.cpp:556`), so it is a hot path, not a
+      once-per-session one.
+- [ ] T0060 Dead members and methods with grep proof (`src/`) #cleanup
+      `Config::addOverlayElement`/`removeOverlayElement`/`findOverlayElement` (zero callers),
+      `VisualizerRenderer::setTargetFps`, `VisualizerWindow::feedAudio` (deprecated empty
+      body), `BridgeRegistration::getThemeBridge`, `main.cpp`'s `g_app` (written twice, read
+      never), `SunoClient::cancelledPolls_` (inserted at :1422, never read),
+      `DownloadQueue::Item::cancelRequested` (set :363, reset :399, never read) and
+      `Item::metadata` (written :331, never read), `SunoLibraryManager::setSearchText`,
+      `SunoDatabase::searchClips`/`getAllClips`, `GateResolver::setTierPolicy`.
+- [ ] T0061 `Result<T>`'s monadic surface is unused **and non-compiling** (`src/util/Result.hpp:106-159,211-224`) #cleanup
+      `map`/`andThen`/`orElse`/`operator->`/`operator*` have zero users; `TRY`/`TRY_VOID`
+      have zero users **and** expand `::value_type`, which a member `Result<T>` does not
+      define (:83-99). `Result<void>::error()` dereferences unconditionally (:192-194) —
+      UB on the success path, safe only because callers guard with `isErr()`. Fix: adopt
+      `std::expected` as `SunoWorkspace` already does, and delete the rest.
+- [ ] T0062 `SunoBridge` is a god object: 1662 cpp + 405 hpp, 37 properties, 40 invokables (`src/qml_bridge/SunoBridge.cpp`) #cleanup
+      Mixes service lifetime, QVariant translation, list caching, download orchestration,
+      chat and 11 mutation forwarders. **~60 % of the file (:1380-1662) is mutation
+      forwarding `SunoLibraryMutations` already owns.** Split into `SunoExploreBridge`,
+      `SunoNotificationsBridge`, `SunoUploadBridge`, `SunoMutationsBridge` (~200 LOC each).
+- [ ] T0063 ~120 LOC of tolerant-JSON accessors duplicated across four files, with **disagreeing** tolerance rules (`src/suno/SunoNotificationService.cpp:19-76`, `SunoExploreService.cpp:21-32`, `SunoAccountManager.cpp:19-43`, `ClipParser.cpp:14-59`) #risk-high
+      `scalarString` is byte-identical in two files. `optBool` accepts `"True"`/`"False"`
+      but `booleanValue` accepts only `"true"`/`"1"` — **the two disagree on the captured
+      filter strings.** Fix: one `JsonCoerce` helper in `ClipParser.hpp`.
+- [ ] T0064 Duplicated enum→string and auth-failure maps, with three owners of one vocabulary (`src/qml_bridge/SunoBridge.cpp:73-88,90-106,333-374`) #cleanup
+      Two `AuthFailureKind` switches in the same file plus a third in `AuthCoordinator`
+      (:404-405 admits it); and the bridge re-implements `toString(DownloadState)`
+      (`DownloadQueue.hpp:45-55`) so adding a state leaves the `switch` non-exhaustive.
+- [ ] T0065 `SunoOrchestrator` is a permanently-failing stub with unreachable members (`src/suno/SunoOrchestrator.cpp:14-44`) #cleanup
+      Both methods only `emit errorOccurred`; `onMessageFinished`/`onHistoryFinished` are
+      private and never called; `client_` is written and never read. It **is** instantiated
+      (`SunoController.cpp:85`) but `SunoBridge` bypasses it, so its signals are
+      unreachable from QML.
+- [ ] T0066 `searchText` is threaded three layers and dropped at the bottom (`src/suno/SunoLibraryManager.cpp:106,122`, `src/suno/SunoClient.cpp:1310`) #cleanup
+      `Q_UNUSED(searchText)`, and `setSearchText` has no callers, so the field is always
+      empty. `SunoLibraryManager.hpp:76` ("it is not sent to the feed") contradicts the two
+      `fetchLibraryPage(…, searchText_)` calls. Real filtering is client-side in
+      `SunoBridge::updateFilteredClips`.
+- [ ] T0067 `SunoNotificationService` has no polling timer, no dedup, and discards a successful list when the badge fails (`src/suno/SunoNotificationService.cpp:248,313-315,349-352,486`) #risk-high
+      Zero `QTimer` hits, so `unreadCountChanged` never fires on its own. `enqueueRefresh`
+      requires **both** requests; a badge failure routes through `failRefresh`, which
+      throws away `pendingResponse_` — a fully successful notification list is dropped
+      because a decorative counter 404'd.
+- [ ] T0068 ~15 dead model structs in `SunoModels.hpp`, including a **second parallel schema for notifications** (`src/suno/SunoModels.hpp:207-337`) #cleanup
+      No producer or consumer. `SunoNotification` (:240) duplicates
+      `SunoNotificationService::Notification` (:28 of its header), which is the type the
+      live parser actually uses.
+- [ ] T0069 Eleven endpoints are wired in code but recorded `not-in-code` in the inventory (`docs/suno_api/ENDPOINT-INVENTORY.md:610-620,1206-1216`) #data-loss
+      `GEN_SET_VISIBILITY`, `GEN_UPDATE_FEEDBACK_STATE`, `CLIP_TOGGLE_REMIXES`,
+      `CLIP_TOGGLE_SHOW_REMIXES`, `SHARE_LINK`, `PLAYLIST_SET_METADATA`,
+      `PLAYLIST_UPDATE_CLIPS`, `PLAYLIST_V2_TRACKS_ADD/REMOVE/REORDER`, `PLAYLIST_V2_COVER_IMAGE`.
+      All are sent from `SunoLibraryMutations.cpp`. The inventory is **wrong about the code
+      and right about the behaviour** (T0011); both halves need recording. Also 8
+      constants exist in `SunoEndpoints.hpp` with no inventory row at all.
+- [ ] T0070 `preset_path` and path-typed `[suno]` keys are rewritten absolute on save (`src/core/ConfigParsers.cpp:456,223,533`) #data-loss
+      The shipped `preset_path = ''` becomes e.g. `/usr/share/projectM/presets` on first
+      save, converting a portable template into a machine-pinned file **and defeating the
+      auto-detect fallback documented at `docs/user/CONFIG.md:126`. Fix: serialize `~/`-relative.
+- [ ] T0071 ~120 dead QML-facing bridge properties/invokables, including word-level karaoke timing that is implemented in C++ but never surfaced (`src/qml_bridge/LyricsBridge.hpp:32,34,101,111,91`) #cleanup
+      `currentWordIndex`, `wordProgress`, `getUpcomingLines`, `getContextLines`,
+      `assDocument` have **zero QML readers** — the karaoke feature exists below the UI.
+      Also dead: `VisualizerBridge.fps` (no FPS readout anywhere), `SettingsBridge.karaokeFont`
+      (font not user-settable), `drawerOpen`, `refreshAudioDevices` (no button),
+      `RecordingBridge.currentFile`, 9 `PresetBridge` members, and 11 unreferenced
+      `SunoBridge` mutation invokables. (after: T0001)
+- [ ] T0072 No `reuseItems` anywhere; a nested non-interactive `GridView` inside a virtualized `ListView` (`src/qml/`) #performance
+      Zero occurrences across 7 views. `DiscoverView.qml:115-127` materialises every clip of
+      every feed. Also 16 `layer.enabled` sites, and `KaraokeMaster.qml:117-126` re-evaluates
+      a two-`MultiEffect` stack on **every `lineProgress` change**.
+- [ ] T0073 Per-item buttons inside delegates are killed by a trailing full-bleed `MouseArea` — same class as T0004 (`src/qml/panels/OverlayPanel.qml:310-315`) #blocks-ui
+      Kept separate from T0004 because it is a different panel and the fix is the same
+      pattern.
+- [ ] T0074 `Escape` closes the whole Settings window while the "Reset all settings?" dialog is up (`src/qml/SettingsWindow.qml:156-160`) #risk-high
+      Window-scope `Esc` outranks the modal dialog, so a user backing out of a destructive
+      confirmation instead dismisses the window — losing unsaved edits per T0046. Directly
+      contradicts `main.qml:560-561`.
+- [ ] T0075 Destructive actions with no confirmation (`src/qml/panels/PlaylistPanel.qml:268,262`, `src/qml/panels/SettingsPanel.qml:83`) #risk-high
+      "Clear All" destroys the whole playlist in one right-click. The live path
+      (`SettingsWindow.qml:141-146`) does have a dialog — copy it.
+- [ ] T0076 Views with no loading, empty, or error state (`src/qml/views/VideoView.qml:18-53`, `panels/PresetsPanel.qml:45-54`, `panels/PlaylistPanel.qml:87`, `components/TransportBar.qml`) #blocks-ui
+      `VideoView` shows a black rectangle captioned "Ready". **Model correctly on
+      `LibraryView.qml:397-448`, `DiscoverView.qml:207-261`, `NotificationsView.qml:191-243`
+      and `AccountPage.qml:700-746` — those are the template.**
+- [ ] T0077 `NotificationsView` renders the literal string `@undefined` (`src/qml/views/NotificationsView.qml:154,163,172,181`) #risk-high
+      `x !== ""` guards a possibly-`undefined` map key, and `undefined !== ""` is true. A
+      direct sibling of the flat-`Repeater` class. Also `VisualizerOverlay.qml:15-16,20,28,38-41,61-91`
+      has **9 unguarded `modelData` dereferences per overlay** over JSON-persisted state, so
+      schema drift is guaranteed.
+- [ ] T0078 Pseudo-reactive bindings that never update (`src/qml/components/KaraokeMaster.qml:195`, `components/VisualizerOverlay.qml:33`) #risk-high
+      `Math.sin(Date.now()/500 + index)` inside a binding — `Date.now()` is not a bindable
+      property, so the "animation" is computed once and frozen.
+- [ ] T0079 The `"M"` shortcut has no text-entry guard, unlike `"F"` (`src/qml/main.qml:598-602`) #risk-high
+      Typing "m" in the Library search box collapses the nav rail on every keystroke. The
+      guard already exists at `main.qml:144-165`; this shortcut just forgot it.
+- [ ] T0080 Two writes to a bound `value` on `AppSlider` fight each other (`src/qml/panels/settings/KaraokeSettings.qml:52`, `panels/RecordingPanel.qml:180,264`) #risk-high
+      Qt explicitly recommends interaction signals (`onMoved`) over `onValueChanged`, which
+      "can lead to event cascades where the value is constantly changed because it is
+      rounded or normalized".
+- [ ] T0081 `AppSlider` is keyboard- and screen-reader-inaccessible (`src/qml/components/AppSlider.qml`) #risk-high
+      `Item` + `MouseArea` only (:127-151): no `activeFocusOnTab`, no arrow-key handling, no
+      `Accessible.*`. It **is** the seek bar, volume, CRF, beat sensitivity and karaoke
+      position. Also a division by zero at :37 if `from == to`, guarded at the only two
+      call sites.
+- [ ] T0082 34 `Accessible.*` properties across 11 of 58 files; 47 files have none (`src/qml/`) #risk-high
+      Zero in PresetsPanel, OverlayPanel, PlaylistPanel, LyricsPanel and `AppSlider`. Focus
+      rings exist on 2 of 8 interactive primitives. `ClipCard.qml:327-329` sets
+      `Accessible.role: CheckBox` on a `Rectangle` with no `activeFocusOnTab`, so batch
+      selection has no accessible path.
+- [ ] T0083 Contrast failures are real but not where the old claim said (`src/qml/styles/Theme.qml`) #cleanup
+      **`textPrimaryVariant` is fine** (6.53–9.26:1, AAA). The actual failures: `textDisabled`
+      **1.95–2.77:1**, `recording` 3.07:1, `textSecondary` 3.46:1, `error` 3.60:1. **And the
+      real defect is text over the projectM canvas** — `TransportBar.qml:123` uses text
+      over `glassBackground`, which is only 85 % opaque (`Theme.qml:48`), so a white frame
+      collapses the ratio to ≈1.3:1; `VideoView.qml:50-52` uses text at `opacity 0.55` over
+      raw video. Unmeasurable by construction.
+- [ ] T0084 ~58 raw unthemed QtQuick.Controls where an `App*` wrapper exists (`src/qml/`) #cleanup
+      Raw `Slider`, `TextField`, `ComboBox`, `SpinBox`, `CheckBox`, `RadioButton`, `Label`
+      across 10 files, bypassing the theme and the focus rings. **Colour tokens themselves
+      are disciplined** — 38 hex literals tree-wide, 25 of them in `Theme.qml`; do not
+      "fix" colours.
+- [ ] T0085 `TextAccessible` names are hardcoded English (`src/qml/`) #cleanup
+      An `Accessible.name` literal is a translation bug and an accessibility bug at once.
+- [ ] T0086 Remote art fetched with no `sourceSize` and sometimes not `asynchronous` (`src/qml/components/ClipDetailSheet.qml:83-88`, `ClipCard.qml:109-116`, `SunoPanel.qml:140-145`) #performance
+      `ClipDetailSheet` has neither, so it blocks the GUI thread and downloads full-resolution
+      art on every open. No image caching policy anywhere; zero `@2x`/`devicePixelRatio` handling.
+- [ ] T0087 Icons: two duplicate copies, neither used, and three destinations share one glyph (`resources/icons/`) #cleanup
+      `lyrics.svg` and `recording.svg` exist twice; the registered copies are referenced by
+      **no** QML file. `NavRail.qml:20,21,22` renders Notifications, Explore **and** Create
+      with `iconUrl("suno")`.
+- [ ] T0088 The macOS bundle ships no icon (`cmake/Info.plist.in`, `cmake/TargetSetup.cmake:262-290`) #cleanup
+      No `CFBundleIconFile`, no `MACOSX_BUNDLE_ICON_FILE`, and no `.icns` in the tree, so
+      Finder, the Dock and Spotlight show a generic glyph. Linux installs only a `scalable`
+      icon with no `gtk-update-icon-cache` hook (`cmake/Install.cmake:29-32`, `scripts/PKGBUILD:44-50`).
+- [ ] T0089 `file(DOWNLOAD)` of CPM.cmake at configure time into the **source tree**, unverified (`cmake/Dependencies.cmake:38-42`) #risk-medium
+      No `STATUS`/`TIMEOUT`, so a failure leaves a zero-byte file and an unreadable-error
+      message; writing into `CMAKE_SOURCE_DIR` mutates a read-only CI checkout.
+- [ ] T0090 Nine of fifteen dependencies are unpinned, and two bypass the system-first fallback (`cmake/Dependencies.cmake`) #risk-medium
+      `readerwriterqueue` has no system-first probe (unlike spdlog/fmt/toml++ at :50-85),
+      `CPM_SOURCE_CACHE` defaults OFF (`CPM.cmake:157`) so projectM is re-cloned per fresh
+      build dir, and every pin is a mutable tag rather than a SHA.
+- [ ] T0091 The Windows lane passes `CMAKE_BUILD_TYPE` to a multi-config generator (`.github/workflows/windows.yml:123-126`) #risk-medium
+      No `-G` is given, so VS2022 is selected where the variable is inert — the root
+      `CMakeLists.txt:58` explicitly guards this — and is papered over with `-C` at :139,:166.
+      No `vcpkg.json`, so the six `vcpkg install` lines are unpinned and CI reproducibility
+      there is zero.
+- [ ] T0092 `Qt6::OpenGL` is linked by two test targets but `OpenGL` is never a requested component (`tests/unit/CMakeLists.txt:176`, `tests/integration/CMakeLists.txt:18`) #risk-medium
+      It resolves only transitively through qtdeclarative's config loading — an undeclared
+      dependency, not a guarantee. `DBus` is likewise required unconditionally
+      (`Dependencies.cmake:13`) though only linked for Linux Secret Service
+      (`TargetSetup.cmake:916-921`).
+- [ ] T0093 No warnings-as-errors, and clang-format/clang-tidy enforced nowhere (`cmake/Compiler.cmake:80-83`, `.github/`) #risk-medium
+      `-Wno-unused-parameter` is unconditional and grep finds no `Werror` anywhere.
+      `.clang-format:33-35` explicitly says do **not** add `--dry-run -Werror` to CI and
+      `.clang-tidy:221` sets `WarningsAsErrors: ''`. Fix: add a non-blocking
+      `git clang-format --diff main` report step now.
+- [ ] T0094 macOS CI pays full bundle deployment on every push (`.github/workflows/build.yml:65`, `cmake/TargetSetup.cmake:372-381`) #performance
+      The suppression needs **both** `CHADVIS_FAST_ITERATION` and a Debug build type;
+      build.yml sets only the latter, so `_chadvis_do_deploy` stays ON at a measured
+      **5–7 minutes per link** (:358-362).
+- [ ] T0095 Every CI `ctest` invocation is serial (`.github/workflows/build.yml:297,229`) #performance
+      Add `--parallel $(nproc)`. `release.yml:121-123` admits it has no dependency caching
+      while still installing ccache.
+- [ ] T0096 Recorder tests write receipts into the repository root (`.gitignore:99-108`, `tests/recorder/test_RenderExecutor.cpp`, `test_RecordingPipeline.cpp`) #risk-high
+      The ignore rule is a **guard, not a repair**: `RenderJob::kReceiptSuffix` sidecars land
+      in CWD because the tests point the encoder at relative paths. 17 of 45 test files use
+      `QTemporaryDir` correctly — copy them. **This recurs on every full ctest run.**
+- [ ] T0097 `unit_tests` is one binary with one `QCoreApplication` running 31 suites sequentially (`tests/unit/test_main.cpp:38,41-72`) #risk-medium
+      A crash or hang in suite 30 loses suites 1–29's results, and config-singleton mutators
+      are unisolated.
+- [ ] T0098 Tautological assertions in the offscreen suite (`tests/unit/recorder/test_OffscreenRenderSpike.cpp:92-94,225-226`) #cleanup
+      `QCOMPARE(f(report_.verdict), f(report_.verdict))` compares an expression to itself and
+      can never fail; the surrounding comment claims it verifies agreement with the verdict.
+      Also brittle: :338-363 asserts **seven literal substrings** of a human-readable report.
+- [ ] T0099 Four duplicate reply fakes, and no fake `QNetworkAccessManager` at all (`tests/unit/suno/`) #risk-high
+      `FakeNetworkReply.hpp` is adequate but its `factory()` takes one `QNetworkRequest`
+      while `SunoClient::ReplyFactory` takes three, so it is unusable for SunoClient suites.
+      **Worse: no `FakeNetworkAccessManager` exists**, so a new suite that forgets to inject
+      a factory makes a **real DNS lookup** (`test_LyricsPipeline.cpp:1163` gets away with it
+      by luck). Consolidate into `tests/support/` as an INTERFACE library.
+- [ ] T0100 `SunoLibraryMutations` — 26 KB of write-path logic — has zero tests (`src/suno/`) #risk-high #data-loss
+      The single highest-value coverage gap in the tree. Also untested with **no test file**:
+      `SunoDatabase`, `SunoBridge`, `SunoController`, `ClipResolver`, `PresetPersistence`,
+      `RatingManager`, `CliUtils`/`CliArg`, and **every QML bridge**. **The entire UI has
+      zero tests** — `integration_tests::mainQmlLoadsAndRenders` would pass with a blank window.
+- [ ] T0101 `FFmpeg 9.0`: the `AVFrame::channels` → `ch_layout` migration is **already done** — verify and close (`src/recorder/`) #cleanup
+      **REFUTES the obvious task.** The old fields are gone at FFmpeg 7.0 (lavu 59), but this
+      tree already uses `ch_layout` throughout (`VideoRecorderFFmpeg.cpp:823,888,906,909`;
+      `AudioFileDecoder.cpp:182,186`) and `av_hwdevice_ctx_create` is **not** deprecated in
+      9.0.2 (`hwcontext.h:294` carries no `attribute_deprecated`, and the doc comment
+      *recommends* alloc+init for callers needing control). The only `channels`-shaped hit is
+      Qt metadata (`src/audio/analysis/MediaMetadata.cpp:86`). Action: confirm by compiling,
+      then close this item so nobody "migrates" working code. Note
+      `VideoRecorderFFmpeg.cpp:29-32` blanket-suppresses `-Wdeprecated-declarations`, which
+      will hide a real deprecation on upgrade — narrow it.
+- [ ] T0102 `FFmpeg`: the `AVFormatContextDeleter` crash is **already fixed**; two residuals remain (`src/recorder/FFmpegUtils.hpp`) #risk-medium
+      **REFUTES the obvious task.** The single deleter that dereferenced `c->oformat` (null on
+      a demuxer) is gone; it is now split into `AVFormatContextInDeleter` (`:65-70`,
+      `avformat_close_input`) and `AVFormatContextOutDeleter` (`:57-63`, close `pb` then free),
+      and the choice is enforced by the pointer type. The custom-IO opt-out correctly tests
+      `c->flags & AVFMT_FLAG_CUSTOM_IO` (`FFmpegUtils.hpp:52`) — a field of the context, not
+      `oformat->flags` — which is precisely the old bug. `VideoRecorderFFmpeg::cleanup`
+      follows the correct muxer order (`:319` → `:342` → `:353` → `:360`). Residual work:
+      (a) `hwFramesCtx_`/`hwDeviceCtx_` survive `cleanup()` and are never freed, so a re-`init()`
+      after a partial HW failure keeps the old device; (b) return `AVERROR_EXIT` from
+      `read_packet` to unwind an in-flight read *before* joining the worker thread.
+- [ ] T0153 **The resampler never rate-converts: `in_rate` is set to the encoder's rate** (`src/recorder/VideoRecorderFFmpeg.cpp:911`) #risk-high #data-loss
+      `swr_alloc_set_opts2` is called with `settings.audio.sampleRate` as *both* `in_rate` and
+      `out_rate`, while the queue carries the **observed sink rate**
+      (`src/audio/AudioEngine.cpp:522`). The file is self-documented as "a real bug and it is
+      not fixed here" at `:925-931`. A 44.1 kHz sink encoded as 48 kHz plays at the wrong
+      speed. Fix: thread the queue's real rate through `VideoRecorderThread` → `encodeAudio`
+      into `in_rate`. **This is the same class as T0015** (projectM fed 48 kHz against a
+      44.1 kHz config) and both must be fixed from one source of truth.
+- [ ] T0154 **The audio callback thread mutates GUI-affine state without atomics** (`src/audio/AudioEngine.cpp:476-479,507-511,533,537-539`) #risk-high
+      `processAudioBuffer` runs on the Qt audio thread (the `QAudioBufferOutput` connection at
+      :213 is auto/direct) and writes plain `int observedSinkRate_` (`AudioEngine.hpp:213`),
+      plain `bool conversionFaulted_` (:220), plain counters (:216-217) and **`QString`
+      `outputStatus_` (:215)** via `refreshOutputStatus()` — all read on the GUI thread by
+      `SettingsBridge::attachAudioEngine` → `audioOutputStatus()` (`SettingsBridge.cpp:315,322`).
+      **`QString` assignment is a non-atomic multi-word mutation, so a torn read is UB, not a
+      stale value.** Fix: atomics for the scalars, and marshal the status string through a
+      queued invocation.
+- [ ] T0155 **`LOG_ERROR` and `emit errorSignal` from the real-time audio callback** (`src/audio/AudioEngine.cpp:537-539`) #risk-high
+      `reportConversionFailure` formats, writes the log, and emits from the RT thread;
+      `SettingsBridge`'s slot (`SettingsBridge.cpp:310-312`) then mutates a QML singleton
+      property — **a GUI-thread write from an audio thread.** Fix: post the report.
+- [ ] T0156 **Encoder teardown (`flush` + `av_write_trailer`) blocks the GUI thread** (`src/recorder/VideoRecorderCore.cpp:168`, `src/qml_bridge/RecordingBridge.cpp:323`, `src/recorder/RenderExecutor.cpp:802-807`) #risk-high
+      `RecordingBridge::stopRecording` is a QML-invoked slot, so `stop` → `flush()` +
+      `cleanup()` (which writes the trailer at `VideoRecorderFFmpeg.cpp:353`) blocks on the
+      encoder drain and final I/O. `RenderExecutor::teardownSlot` likewise runs inside a
+      `QTimer::PreciseTimer` timeout (`:553`) and joins the pump thread. Fix: finalise on a
+      worker, post the completion.
+- [ ] T0157 **GUI-thread reentrancy: the render runner can join its own worker while the queue is mid-pump** (`src/recorder/RenderExecutor.cpp:516-518` inside `RenderQueue::runJob` at `RenderQueue.cpp:468`) #risk-high
+      `enqueue` → `pump()` → `runner_()` runs **synchronously on the caller's (GUI) thread**;
+      the `ensureBackend` failure path calls `retireSlot` → `teardownSlot` → `pump.join()`,
+      blocking the GUI thread on a worker inside `nextChunk`/`pushChunkTo`. The subsequent
+      `fail` → `settle` → `pump` is a no-op because `pumping_` is set, so **the queue makes no
+      progress while the GUI thread is blocked.** Fix: post the runner to a thread.
+- [ ] T0158 **`RenderQueue::settle` runs the receipt write (open + `fsync` + `rename`) on the caller's thread** (`src/recorder/RenderQueue.cpp:515` → `src/recorder/RenderJob.cpp:252`) #risk-medium
+      Reached from `finish`/`fail`/`cancel`; the production path for `finish`/`fail` is
+      `renderTurn` on the GUI thread, so every render completion does three blocking syscalls
+      on the GUI thread. Fix: queue the receipt write.
+- [ ] T0159 **`retireSlot` holds a `JobSlot&` across a call that re-enters `jobRunner`** (`src/recorder/RenderExecutor.cpp:844-854`) #risk-medium
+      `queue_->fail` at :853 reaches `settle` → `pump` → `runner_` → `jobRunner`, which does
+      `slots_.push_back` (:512); if that reallocates, `slot` and `index` are stale before
+      `slots_.erase` at :854. Survives today only because the queue's own `pumping_` guard
+      suppresses re-entry on this exact path. Fix: erase the slot before reporting failure.
+- [ ] T0160 **`sws_getContext` return is unchecked, then dereferenced; and the context is keyed on the first frame only** (`src/recorder/VideoRecorderFFmpeg.cpp:413-426`) #risk-high
+      The result is `reset()` into `swsCtx_` with **no null test**, and `sws_scale(swsCtx_.get(), …)`
+      runs on the next line. Every other allocation in this file is checked, and the comment at
+      :771-783 explains exactly why this one must be too. Separately, the context is created
+      once (`if (!swsCtx_)`) from the *first* frame's dimensions, so a mid-recording resize feeds
+      `sws_scale` a source linesize of 0 for the new width while the scaler strides by the old
+      one. Fix: null-check, and key the context on `(frame.width, frame.height)`.
+- [ ] T0161 **`av_hwframe_get_buffer` failure leaves a half-built `hwFrame_`** (`src/recorder/VideoRecorderFFmpeg.cpp:790-793`) #risk-high
+      On failure only a `LOG_WARN` is emitted, but `hwFramesCtx_` stays non-null, so
+      `encodeVideo:438` takes the `hwFramesCtx_ && hwFrame_` branch and calls
+      `av_hwframe_transfer_data` on a frame whose buffers are null. Fix: reset the context on
+      failure. Also `av_buffer_ref` at :1420 is unchecked, and `avcodec_parameters_from_context`
+      is ignored at three sites (`:761, :879, :1311`), leaving an `AVStream` with an unpopulated
+      `codecpar` — exactly the failure the surrounding comments call fatal to
+      `avformat_write_header`.
+- [ ] T0162 **`encodeAudio` is O(n²) and strided by the wrong channel count** (`src/recorder/VideoRecorderFFmpeg.cpp:581-588`) #performance #risk-medium
+      Each iteration builds a `std::vector<f32>` from the front of `buffer` then
+      `buffer.erase(buffer.begin(), …)`, shifting the whole tail — ~47 allocations and 47
+      full-tail memmoves per second of audio at 48 kHz stereo. Use a cursor, as
+      `AudioFileDecoder::Impl::pendingHead` (`AudioFileDecoder.cpp:125`) already does. The same
+      loop strides by the caller's `channels` (hardcoded `2` at `VideoRecorderThread.cpp:163`)
+      while `swr_convert` reads `frameSize` samples from the layout — for a 1-channel encoder
+      (`EncoderSettings.hpp:108` allows any `u32`) the slice is twice the input and mis-strided.
+      Derive the stride from `audioCodecCtx_->ch_layout.nb_channels`.
+- [ ] T0163 **Stereo→mono downmix leaves libswresample's default matrix** (`src/recorder/AudioFileDecoder.cpp:211`) #risk-medium
+      `swr_set_matrix` is applied only for `inChannels == 1 && spec.channels == 2`; the mirror
+      case (stereo source, `job.audioChannels == 1`, which `RenderJob.cpp:444` explicitly
+      permits) gets the library's default coefficients — a different gain than the
+      `AudioQueue::pushInternal` mono path this decoder is compared against. Set an explicit
+      matrix for 2→1 too.
+- [ ] T0103 `FFmpeg 9.0`: add the `swr_convert` flush loop (`src/recorder/ResamplerEngine.hpp`) #risk-high #data-loss
+      `doc/examples/resample_audio.c` omits it. Loop
+      `swr_convert(ctx, out, cap, nullptr, 0)` until it returns 0, or **the tail samples are
+      silently lost** and the output length will not match. Size with `swr_get_out_samples`
+      (an upper bound, invalidated by any intervening call), not `swr_get_delay`.
+- [ ] T0104 `FFmpeg`: `swr_alloc_set_opts` → `swr_alloc_set_opts2`; `av_init_packet` → `av_packet_alloc`/`av_packet_unref` (`src/recorder/`) #risk-high
+      `swr_alloc_set_opts` is **removed** (swr 4.5.100). `av_init_packet` still exists in
+      9.0.2 but is deprecated and **gone in FFmpeg 10** (gate `FF_API_INIT_PACKET` is
+      `<64`). **`avcodec_close` is already removed** (8.0) and `AVStream::codec`/`av_register_all`/
+      `avcodec_decode_audio4` since 5.0.
+- [ ] T0105 **Do not** "migrate" `av_hwdevice_ctx_create` (`src/recorder/VideoRecorderFFmpeg.cpp`) #risk-high
+      It is **current, not deprecated** (verified in 9.0.2 `hwcontext.h:294`, and upstream
+      `doc/examples/hw_decode.c:53`). `av_hwdevice_ctx_alloc` is **not** a replacement: it only
+      allocates a shell and does not open the device — using it without populating
+      `ref->data` and calling `av_hwdevice_ctx_init` is a regression.
+- [ ] T0106 Loudness: momentary/short-term are unimplemented, and surround weighting is absent (`src/audio/LoudnessAnalysis.hpp:452-465`) #risk-medium
+      **The integrated path is verified correct** against BS.1770-4 / libebur128 v1.2.6:
+      `kAbsoluteGateLufs = -70.0` (:457), `kRelativeGateOffsetLu = 10.0` (:460),
+      `kLoudnessOffset = -0.691` (:463), `kBlockSeconds = 0.400` (:452), `kStepSeconds = 0.100`
+      (:455), 4× true-peak oversampling (:616), and the gate order is eq.(7) after eq.(6)
+      after the absolute half (`LoudnessAnalysis.cpp:527,545,554`). K-weighting coefficients are
+      **derived** by bilinear transform from the f0/G/Q tables (:324,331) rather than
+      transcribed. Two gaps remain: (a) `kChannelWeight = 1.0` (:465) — correct for stereo, but
+      **BS.1770 weights surround channels by ×1.41**, so this is wrong for 5.1; (b) **momentary
+      (400 ms) and short-term (3000 ms) loudness do not exist** — the public struct (:387-427)
+      has `integratedLufs`, `ungatedLufs`, LRA fields, `truePeakDbfs`, `samplePeakDbfs` and
+      counters, and no M/S. That is a feature gap, not a bug: decide whether ReplayGain needs
+      M/S or whether integrated-only is a documented limitation.
+- [ ] T0107 `AV_VERSION_INT` is an untyped `int` with no `uint32_t` overload (`cmake/`, `src/`) #risk-medium
+      `avcodec_version()` returns `unsigned`, so a widened comparison warns and past major 127
+      sign-extends. `AV_VERSION_MICRO` is **meaningless across branches** — never gate on it.
+      Use `pkg_check_modules(... libavcodec>=62.28 ...)` at configure time and extract
+      `AV_VERSION_MAJOR`/`MINOR` at runtime. **Never parse `av_version_info()`** — its own
+      documentation says it "should never be parsed by code".
+- [ ] T0108 Muxed subtitle tracks: `libavfilter` + `libass`, behind a CMake option (`cmake/Dependencies.cmake`, `src/recorder/SubtitleBurnIn.cpp`) #feature
+      `subtitles=filename=subs.ass:fontsdir=…` or the `ass` filter. **Subtitle encoders do
+      not use `send_packet`/`receive_packet`** — `avcodec_encode_subtitle` is still the only
+      path. Codec/container matrix: `mov_text` for MP4, **`webvtt` for WebM** (Matroska has no
+      other text subtitle). Beware: `AVSubtitle.start_display_time`/`end_display_time` are
+      **milliseconds** while `AVSubtitle.pts` is in `time_base` units. The local FFmpeg
+      already has libass/libfontconfig/libfreetype/libharfbuzz.
+- [ ] T0109 `suno.token`/`cookie` are documented in `CONFIG.md` as not-written — keep that honest, and stop logging clip identifiers (`src/suno/DownloadQueue.cpp:323,508-703`, `src/suno/SunoDownloader.cpp:246,409,412`) #security
+      The serializer is **structurally** incapable of emitting them (`ConfigParsers.cpp:186-203`)
+      — preserve that guarantee. Separately, a dozen log sites interpolate `clipId`, which is
+      the account-linked half of the scrub plan.
+- [ ] T0110 Fix the documented wrong executable path (`README.md:41`, `docs/user/INSTALL.md:111`, `docs/dev/manual-qa.md:37`) #risk-medium
+      The target is a real `MACOSX_BUNDLE` (`cmake/TargetSetup.cmake:263`), so the binary is
+      `build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt`. `build.sh:371-376`
+      was already corrected; the docs were not.
+- [ ] T0111 `release.yml` believes macOS bundle packaging is broken and `.desktop`/dependabot comments are stale (`.github/workflows/release.yml:19-42`, `.github/dependabot.yml:7,16`) #cleanup
+      The workflow asserts `MACOSX_BUNDLE` is unset (it is set) and its macOS leg is
+      `required: false`. `dependabot.yml` says "the single workflow" when there are five, and
+      still lists `pffft` among pinned deps although it was removed 2026-10-04.
+- [ ] T0112 Delete three dead scripts and two empty dirs (`scripts/`) #cleanup
+      `install_projectm_v4_local.sh` is both dead **and destructive** — it `sed -i`s a line
+      that no longer exists (silent no-op), `rm -rf build` (:130), pins v4.1.1 against
+      FindProjectM4's v4.1.6, and rewrites `config/default.toml`'s `preset_path` to an in-tree
+      relative path that would ship. `check_deps.sh` reports false negatives for every Qt
+      component (Qt6 ships no `.pc` files). `run_debug.sh` and `setup-arch.sh` point at the
+      pre-bundle binary path. `skills/` and `tests/manual/` are empty.
+- [ ] T0113 `.gitignore` gaps beyond the ones already fixed (`.gitignore`) #risk-medium
+      Stale build-artifact comments reference "22 of the 26 untracked files"; the root
+      `build.log` (41 KB) is now ignored but the file is still present in the working tree.
+      `.DS_Store` files remain in `tests/`, `tests/unit/`, `resources/`, and the docs root.
+- [ ] T0114 `AVSubtitle`/subtitle research and libavfilter dependency gating — confirm `libavfilter` is NOT currently linked (`cmake/Dependencies.cmake`) #risk-medium
+      `Dependencies.cmake:142` links avcodec/avformat/avutil/swscale/swresample only. Burn-in
+      currently relies on the `burnInBlockedReason` gate in the UI; adding a post-pass must
+      degrade to "no post pass" on a stripped distro rather than failing to launch.
+- [ ] T0115 Song/preset import must work with **no Suno account** (`docs/PIVOT_PLAN.md` direction) #feature
+      The renderer is the defensible half of the product; a local-file path is the cheapest
+      insurance against the upstream client disappearing, and it is a prerequisite for
+      batch rendering. Currently the download/import surface is Suno-shaped only.
+- [ ] T0116 A render-job model and queue exists but has no producer (`src/visualizer/projectm/Bridge.hpp:59-68`, `src/suno/SunoWorkspace.hpp`) #feature
+      `SunoWorkspace` already models `renderMode`/`renderDuration` with `renderProgress`/
+      `renderCompleted` signals that nothing emits. `DownloadQueue` is an already-tested
+      template for the same machine (bounded concurrency, backoff, atomic `.part` rename,
+      cancel, idle signal).
 
-### Core infrastructure
-- [!] **`SunoWorkspaceBridge` is registered by nothing because `SunoWorkspace` has no producers — the registration is a trap, not a one-line fix** — *reinvestigated 2026-09-28, and the original "one registration line away" claim is wrong in the way that matters.* The bridge itself does carry **18 public members** and is absent from `qmlRegisterSingletonType` in `BridgeRegistration.cpp:27-39`, and no QML file references it. But the blocker is **two layers deeper**, and registering the bridge anyway would ship a UI that lies. `vc::suno::SunoWorkspace*` is never assigned to anything: `SunoWorkspace` has **zero constructors** anywhere outside its own `.cpp`, and the bridge's `workspace_` member (`:94`) has no setter at all. Underneath that, `SunoWorkspace` (`SunoWorkspace.cpp`, 184 LOC) is a hollow shell: **6 of its 12 signals have no emitter** — `generationCompleted`, `generationFailed`, `stemsReady`, `renderCompleted`, `renderFailed`, and `errorOccurred` are emitted nowhere. `startGeneration` sets `state_.isGenerating = true`, emits `generationStarted`, and returns; nothing ever clears the flag or completes. `state_.generatedClips` is only ever **read** — by `saveWorkspace` at `:121` — and is never written, so `generatedClips` is permanently empty. `state_.stems` is never written *or* read, so `requestStems` is a log line. `state_.isEditing` is never assigned. `startRender` emits `renderProgress(0.0f, "initializing")` exactly once and is then silent forever, so `renderProgress` is pinned at 0. **Registering it today would give a Generate button that spins permanently, a Render button stuck at 0%, and empty stems and clip lists** — the exact `AGENTS.md` §3 failure of counting a declaration as implementation. The third layer: `SunoClient` has **no generation method whatsoever**, so there is nothing for `SunoWorkspace` to call. `GENERATE` and `COWRITE_LYRICS` are route constants in `SunoEndpoints.hpp:53,55` that nothing references, and generation is separately captcha-gated, so wiring it would need a live decision, not a code change. **The 22 Studio endpoints the recon found are therefore not the near-term unlock the previous entry claimed** — they are Studio *project* routes, a different feature from generation, and only their existence is known. **Honest sequencing:** the reachable, non-gated parts are the *local* ones — regions, lyrics text, and workspace JSON persistence are real and already work. So the correct order is (1) make `SunoWorkspace` honest, or build nothing; (2) make the **local render** path real, because that is the product's primary end goal and needs no Suno route at all; (3) leave generation wired to nothing until there is a captcha decision. A separate TODO item already covers the render job model.
-- [ ] **~570 LOC of fully orphaned duplicate settings UI** — `src/qml/views/SettingsView.qml`, `src/qml/panels/SettingsPanel.qml`, and all 8 `src/qml/panels/settings/*.qml` duplicate the live `SettingsWindow.qml` + `settings/*Page.qml` path, and **no `Loader` can reach them**. `panels/settings/SunoSettings.qml` is the one deliberate exception (shared with the live `AccountPage`). Either delete the dead path or re-point the shell at it; carrying two settings systems is how they drift, and it already has — see the version-string and i18n items under P2.
-- [~] **Sidebar panel migration** — `PlaylistBridge` and `RecordingBridge` APIs fixed; LyricsBridge search/export and karaoke persistence are now complete. Remaining: verify each panel against the seven-surface shell.
-- [x] Refactor `main.qml` with responsive layout
-- [x] Refactor `AudioEngine` for granular responsibility
-- [x] Throttled bridge updates in `VisualizerBridge`/`AudioBridge`
-- [x] Config parser defaults derive from default-constructed `ConfigData` (single source of truth)
-- [x] `Config::save()` errors log actionable failures at their call sites
-- [ ] **`pm::Bridge` startup preset scan is still synchronous** — `Bridge.cpp:98` runs a full `presetManager_.scan()` on the GUI thread inside `init()`. The scan itself was made async in `f121901` and `Application.cpp:391` was converted to `scanAsync` with a publish context, but this instance **cannot** be, and that is a property of `init()`'s contract rather than an oversight: it reads `presetManager_.empty()` at `:69` and then `selectByIndex(0)`/`selectByName` at `:71,:75` before returning, and gates native-playlist population on the same pass at `:103-108`. An async scan would silently skip first-preset selection — no error, just an empty library and no preset. Needs the selection logic deferred to the publish callback, which is a behaviour change, so it stays a separate item rather than a drive-by. **Moved here from "Audio engine" 2026-09-30:** preset scanning is not an audio concern, and the misfiled placement is what made this read as a playout issue.
+## P3 — polish and speculative
 
-### Music video creator — the primary end goal
+- [ ] T0117 Localization: zero `qsTr` across 58 QML files, ~200 user-visible literals (#feature) #cod-high
+      Wiring is `qt_add_translations(project_lib SOURCE_TARGETS … RESOURCE_PREFIX /qt/qml/ChadVis/i18n
+      TS_FILE_BASE qml)` plus `engine.retranslate()`. **Plurals are
+      `qsTr(sourceText, disambiguation, n)` with `%n`** — the second argument is a comment,
+      not the plural form — and every plural form must be filled even when identical. Add
+      `TranslationFunctionMismatch=error` so `qsTr` and `qsTrId` are never mixed.
+- [ ] T0118 A dark/light theme pair bound to `Application.styleHints.colorScheme` (`src/qml/styles/Theme.qml`) #feature
+      `colorScheme()` is on `QStyleHints` since **Qt 6.8**; `Qt.Unknown` must be handled.
+      `Theme.applyBackground` (:309-316) recomputes only `background…surfaceOverlay`, leaving
+      `border`/`borderLight`/`textDisabled` `readonly` at dark values, so a light accent hex
+      yields 1.0–1.4:1 text. The three `.qss` files are dead (T0052) so there is no light path.
+- [ ] T0119 Fix the accessible-contrast failures for real (`src/qml/styles/Theme.qml`) #feature
+      Raise `textDisabled`, `recording`, `textSecondary` and `error` to ≥4.5:1, and give text
+      over the projectM canvas a real scrim (`glassBackground` is only 85 % opaque) or move
+      it onto `surfaceRaised`. Do **not** touch `textPrimaryVariant`.
+- [ ] T0120 A waveform lyric-timing correction editor (`src/qml/`) #feature
+      The repo can render word timings (`LyricsData::words` carries per-word
+      `startTime`/`endTime`) but timings are write-once from a capture — there are zero
+      `waveform` hits in `src/qml/`. Click-a-character-to-pin, drag-to-reflow, full undo.
+      No ML. This is the missing half of karaoke and the highest-value retention feature.
+- [ ] T0121 Karaoke render strategies as swappable producers (`src/qml/`) #feature
+      Wipe / bouncing-ball / scroll / dual-line as an enum plus one function each — the only
+      way one strategy can serve both the live overlay and the FFmpeg burn-in pass.
+- [ ] T0122 A render receipt, shipped **with** the job model (`src/recorder/RenderJob.hpp:129`) #feature
+      Nothing persists "this output was 1800 frames at 60 fps from these presets", so "render
+      it at 4K instead" means re-rendering three minutes in real time. A versioned sidecar
+      (audio path + hash, scene list, karaoke source, encoder profile, projectM version)
+      makes iteration cheap. Design it as a **public schema with a version field from the first
+      byte** — the first schema wins forever.
+- [ ] T0123 A cheap proof render before committing to the encode (`src/recorder/EncoderSettings.cpp`) #feature
+      A 6-second, quarter-res, no-audio proof costs 6 seconds. This is the correct answer to
+      "watch the render live" — prove it cheap first.
+- [ ] T0124 Wire up the eight dead encoder presets (`src/recorder/EncoderSettings.cpp`) #feature #cleanup
+      The project history says 8 static presets exist with **zero callers** — dead code that
+      is obviously a UI feature. 9:16 / 4:5 / 1:1 are the interesting additions.
+      *Risk:* projectM's aspect correction has never been exercised at 9:16.
+- [ ] T0125 Poster-frame export (`src/visualizer/RenderTarget.cpp`, `src/recorder/FrameGrabber.cpp`) #feature
+      `RenderTarget` already reads pixels out of framebuffer 0 and `FrameGrabber::flipImage`
+      is the exact row-flip a `QImage` needs. Ship "frame at N seconds"; do not pretend it is
+      scene detection.
+- [ ] T0126 Cut on real downbeats (`src/suno/SunoEndpoints.hpp:60`) #feature #blocks-capture
+      `POST /api/gen/{id}/downbeats_streaming/v2` is captured and `declared-unused`, so a
+      server-computed beat source already exists. Prefer it to a local detector and cache per
+      clip. Availability and rate-limit behaviour are **not** established.
+- [ ] T0127 Cut on real frame pacing from the timestamps already in hand (`src/recorder/`) #risk-high
+      The data is captured and discarded. Cheap now, and every downstream feature
+      (batch, templates, concat) inherits a correct timeline instead of compounding drift.
+- [ ] T0128 Library sort, filter, multi-select and a context menu (`src/qml/views/LibraryView.qml`) #feature
+      Local text search only; no sort, no multi-select, no bulk action; `ClipCard.qml` has
+      exactly one `onClicked`. **This is the difference between a viewer and something you can
+      organise a library with.** The remote-verb half is capture-gated; the local half is not.
+- [ ] T0129 ReplayGain presented honestly (`src/audio/LoudnessAnalysis.cpp`) #feature #retention
+      The retention feature: it is what makes the app worth keeping open between render jobs,
+      and the one thing that still works if every Suno surface dies.
+- [ ] T0130 A `--diagnostics` report (`src/`) #feature
+      Every number already exists: encoder fallback warnings, queue depths, drop counters,
+      preset counts, the GL renderer string. **Secret handling is the entire risk** — the
+      config holds token and cookie fields, so the collector needs an explicit allowlist
+      rather than a deny-list, and must write only to a user-chosen path, never upload.
+- [ ] T0131 DI over singletons; separate audio processing from the UI (`src/core/Config.hpp`, `src/audio/AudioEngine.cpp`) #blocks-feature
+      Every global mutable singleton is enumerated in the audit; `Config`'s mutex is nominal
+      only (T0022) and `RatingManager` blocks preset banks (T0058). The audio engine is not yet
+      a headless library consumed via bridges.
+- [ ] T0132 Consolidate the QML bridge singletons into one namespaced backend (`src/qml_bridge/`) #cleanup
+      Twelve files, each with its own static back-pointer and registration entry.
+- [ ] T0133 Modernise the deployment path (`cmake/Install.cmake`, `cmake/TargetSetup.cmake`) #cleanup
+      Hand-rolled `macdeployqt` + `codesign` `POST_BUILD` steps predate
+      `qt_generate_deploy_app_script` / `qt_deploy_runtime_dependencies`, and
+      **`qt_finalize_executable` is deprecated** — use `qt_add_executable`/`qt_finalize_target`.
+      Add `NSDocumentsFolderUsageDescription` since the app writes recordings.
+- [ ] T0134 `macdeployqt` is a hard requirement of any default macOS configure (`cmake/TargetSetup.cmake:397-410`) #risk-medium
+      A Qt installed without deployment tools cannot even **configure**, not merely deploy.
+      This bites vcpkg/conda Qt users and is undocumented in the README.
+- [ ] T0135 `qt_add_qml_module` and `QTP0004` (see T0051) plus a QML test harness (`tests/`) #risk-high
+      `qmltestrunner` is still the right answer in 2026 and there is **no** QML test today.
+      ⚠️ The module is declared on `project_lib` (a STATIC lib), so a test binary must link
+      **`project_lib` AND `project_libplugin`** or every test fails with
+      `module "ChadVis" is not installed`. Use `waitForPolish` (Qt 6.5+) to settle bindings
+      before asserting, and set `QT_QPA_PLATFORM=offscreen` **per test**, not globally.
+- [ ] T0136 A GPU CI lane, or an honest "no GL coverage" badge (`.github/workflows/`) #risk-high
+      `integration_gl_tests`, `test_OffscreenRenderSpike` and the burn-in test all **skip on a
+      headless runner and ctest counts a skip as success.** Today that is three subsystems at
+      zero coverage reported as green. Either add a GPU runner or make the skip visible.
+- [ ] T0137 Preset categories are always "Uncategorized" (`src/visualizer/PresetScanner.cpp`) #feature
+      Infer from directory structure.
+- [ ] T0138 Standard modern C++ where the tree still reaches for older idioms (`src/`) #cleanup
+      `std::mdspan` for FFT, concepts on unconstrained templates, `std::array` for
+      `CircularBuffer`, a configurable shuffle seed for deterministic tests, `std::variant`
+      for lyric sources and CLI args, `std::jthread` in the audio pipeline.
+- [ ] T0139 Hook up the off-hooks keys (`src/qml/main.qml`) #feature #risk-high
+      `main.qml:511-545` documents a fullscreen design and `:598-602` binds shortcuts, but a
+      whole family of documented bindings has no handler. **Grep every key in
+      `panels/settings/ShortcutsSettings.qml` (9 entries) against `main.qml` and wire or
+      delete the ones with no effect.**
+- [ ] T0140 Remove the stale dead-code comment in `ConfigLoader` and other drifted comments (`src/core/ConfigLoader.cpp:120-123`) #cleanup
+      The comment claims a fixed null deref that is already correct. Harmless but misleading.
 
-Recon 2026-09-26. The **encoder is done and real** (`VideoRecorderCore` state machine, genuine `avformat`/`avcodec`/`sws`/`swr` in `VideoRecorderFFmpeg.cpp:88-328`, a `JThread` worker with a bounded queue, exclusive-create + `flock` output claiming, and 1920×1080@60/CRF18/AAC defaults), and per-frame capture of the live projectM state works via an **undocumented** path: `VisualizerRenderer::renderFrame` → FBO → `captureAsync` (PBO) → `frameCaptured` → `VisualizerWindow::frameCaptured` → `Application.cpp:419-425` → `VideoRecorderThread::threadLoop`. `test_RecordingPipeline.cpp` really does run (called from `test_main.cpp:30`) and covers frames-before-and-after worker creation. Everything below is what stands between that encoder and a batch music-video creator.
+## Refuted claims — do not re-investigate these
 
-- [!] **`projectm_set_frame_time` and `projectm_opengl_render_frame_fbo` exist upstream and are built for exactly our use case — do NOT fork `TimeKeeper`** — found and independently verified 2026-09-30 against the raw upstream header. This re-scopes the single largest architectural bet in this file. The item below states "no `projectm_set_time` or synthetic clock exists in any public header"; that is **true of the vendored 4.1.6 tree and false of upstream `master`**. Verified: `projectm_set_frame_time(projectm_handle, double seconds_since_first_frame)` is declared `@since 4.2.0`, and its own doc comment reads *"can be used to render visualizations at non-realtime frame rates, e.g. encoding a video as fast as projectM can render frames"*, with `< 0` selecting the system clock and a recommendation to set the first frame to `0.0`. A companion `projectm_get_last_frame_time` returns the time actually used. Alongside it, `projectm_opengl_render_frame_fbo(instance, fbo_id)` is `@since 4.2.0` and was merged specifically so embedders can render into their own draw target — **PR #815's body names Qt as the motivating case**, which dissolves the "GL compositing is structurally impossible" conclusion *for 4.1.x*. Both landed in **June 2024** and upstream states the use case verbatim (issue #740 "which is important when rendering a video", issue #816, PR #817). **The trade-offs are real and must be recorded:** (a) 4.2.0 is **unreleased and the milestone is overdue**, so this requires pinning a `master` SHA, not a tag, plus regression budget for ~2 years of unrelated churn; (b) a local fork would also have been incomplete — upstream had to move the preset **transition** class onto the same clock, or crossfades desync from animation phase, so the "20 lines in a 118-line self-contained class" estimate understates it; (c) this does **not** make the FFmpeg post-pass wrong — QML overlay content still cannot reach a foreign GL context, and `projectm_opengl_burn_texture` is preset-texture burn-in, not a QML scene compositor. **Decide the pin policy deliberately**; if unreleased pins are unacceptable, stay on 4.1.6, ship realtime-throttled v1 as planned, and revisit at 4.2.0 — but record 4.2.0 as a *known, purpose-built* solution rather than an unknown.
-- [ ] **The frame clock is the actually hard problem, not `isExposed`** — corrected 2026-09-26. The earlier claim that an unexposed window blocks offline rendering is a **red herring**: `projectm_set_window_size` is an int stash (`ProjectM.cpp:219-224`) and `libprojectM` has no window-system dependency (the SDL UI is `ENABLE_SDL_UI OFF`, `cmake/FindProjectM4.cmake:66`), so projectM needs only a current GL 3.3 context. The real constraint: **projectM v4.1.x is wall-clock only.** `TimeKeeper::UpdateTimers` (`build/_deps/projectm-src/src/libprojectM/TimeKeeper.cpp:17-26`) computes `m_secondsSinceLastFrame` from `high_resolution_clock::now()`, and that value drives `PCM::UpdateFrameAudioData` → `Loudness::AdjustRateToFps` (`Audio/Loudness.cpp:53-56`); `ctx.time` (`ProjectM.cpp:435`) is a standard milkdrop per-frame variable, so **preset animation phase is wall-clock bound.** No `projectm_set_time` or synthetic clock exists in any public header; `projectm_set_fps` only sets a shader uniform. So 30 frames in 0.1 s is 0.1 s of projectM time, not 0.5 s. **v1 must be realtime-throttled** (sleep to each frame's correct virtual instant; a 3-minute song takes 3 minutes, recovered by running N jobs in parallel, one GL context each). **Do not pay a `TimeKeeper` fork** — see the `[!]` item above; upstream shipped the seam. Note a constant 12 ms projectM analysis latency (`AudioBufferSamples = 576` at 48 kHz, `Audio/AudioConstants.hpp:8`) — an offset, not drift, so sync holds, but beat-reactive visuals sit behind the audio.
-- [ ] **Overlays and karaoke cannot appear in recorded video at all** — the single most product-critical finding after the P0 above. `VideoView.qml` embeds the visualizer as a **native `QWindow` as a texture** (`WindowContainer`, `:18-23`) and paints `VisualizerOverlay` (`:25`) and `KaraokeMaster` (`:30`) as **QML siblings on top in the `QQuickWindow` scene**. The recorder captures inside the *native* `VisualizerWindow`'s GL context. The QML scene is never rendered there, so **no overlay text, no karaoke lyric, and none of `OverlayPanel`'s work can ever reach an encoded file** — 100% of the overlay system is invisible to 100% of the video output. **Decision 2026-09-26: post-process with FFmpeg, not GL compositing.** GL compositing is not merely harder, it is *structurally* impossible here: `ProjectM.cpp:170` forces DRAW to framebuffer 0, which is precisely the framebuffer Qt Quick's scene graph owns, so projectM and Quick would fight over the same draw target every frame (upstream's own `ToDo` confirms the design does not admit it). The `QQuickWindow::grabWindow` → upload idea is worse: a ~8 MB GPU→CPU→GPU round trip at 60 fps on top of a Quick render that cannot be paced deterministically, and it is not even WYSIWYG. The FFmpeg route is a pure function of (encoded file + ASS file) → output — deterministic, re-runnable, testable headlessly, and it makes the batch product *composable* (render → attach subtitles → optionally burn text; change the font and re-run a 2-second pass, not a 3-minute render). `libavfilter` must be added in **two** places: `src/recorder/FFmpegUtils.hpp:3-10` and `CHADVIS_FFMPEG_COMPONENTS` at `cmake/Dependencies.cmake:123`.
-- [!] **Spike a GL context on a background thread before building any render worker** — the one unknown that decides whether offline rendering is cheap or realtime-throttled, and it is still unanswered. Everything else on the offline path is now in the tree: the file→PCM decoder shipped 2026-10-04, `VideoRecorderCore` is a real state machine on a `JThread`, and `RenderQueue` will hand out a job. What none of that answers is whether a GL context created and made current on a **non-main** thread actually renders on macOS, i.e. the CGL / `NSOpenGLContext` thread-affinity question. **Do this in two days before writing the executor, not after.** The reason it is `[!]` rather than a task to schedule: if the answer is no, the whole batch design changes shape (one long-lived context on the GUI thread, jobs interleaved rather than parallel, or the upstream 4.2.0 `projectm_opengl_render_frame_fbo` seam plus a pinned `master` SHA), and discovering that *after* the executor exists means rewriting it. If the answer is yes, `kDefaultMaxConcurrent = 2` is the right number for the wrong reason and can be re-measured. What a spike needs to demonstrate, in order: a context created off the main thread; `projectm_*` initialized and driven from there; a frame read back out of framebuffer 0 on that thread; and **teardown**, because a leaked context is a resource leak per job and a batch renderer creates thousands of them. Also record the measured frame cost while you are there — the queue's concurrency default was chosen from an 8.3 MB readback, not from a measurement of two live contexts, so it is an argument rather than a result.
-- [~] **No frame pacing between render fps and record fps** — *corrected 2026-09-30: the `pts = frameCount++` premise below is **stale**.* `frameCount` has **zero** hits in `src/recorder/`. It was replaced by `presentationTimestampFor` (`VideoRecorderFFmpeg.cpp:272-347`), which anchors the origin to 0, rescales real capture microseconds, floors to strictly-increasing values, and represents a dropped frame as a **timeline gap** rather than a speed change — 18 tests pin it (`test_RecordingPipeline.cpp:310,351,407,436,481`). What genuinely remains open is narrower: (a) no **drop compensation** — a `FrameGrabber` overflow at `MAX_QUEUE_SIZE=30` leaves a visible freeze where a duplicated frame would read as intentional; (b) a capture rate above the record fps **clamps to the record fps** (`:345`), so a 120→60 setup loses half the visual smoothness. `startRecording` correctly refuses a zero or **odd** record resolution and **warns loudly when `recording.video.fps != visualizer.fps`**. One stale sub-claim inside this item: `targetFps_` is **not** fed from `VisualizerWindow::setRenderRate` — `VisualizerRenderer::setTargetFps` (`VisualizerRenderer.hpp:57`) has **zero callers**, so a runtime fps change silently does not update the warn check at `:211-227`. It is seeded once from config at `VisualizerRenderer.cpp:28-29`.
-- [x] **The recorder reports a successful start it never had, and "completes" files it failed to write** — found 2026-09-30, fixed 2026-09-29. Two independent lies in the one component whose entire job is producing a correct file. **(a)** `VideoRecorderThread::start()` returned `void` and **swallowed** an `ffmpeg_.init()` failure, so `VideoRecorderCore::start` set `state_ = Recording` and returned `ok()` regardless. An unwritable output directory, a missing codec, or a bad container/codec pairing yielded a UI showing an **active recording** with a running timer, no file, and no error. It now returns `Result<void>`, and `VideoRecorderCore` only enters `Recording` on genuine success — setting a **reachable, recoverable `Error`** state and zeroing the counters *before* announcing the transition, because `RecordingBridge::onStateChanged` snapshots the stats at exactly that moment. A state nobody could recover from would have been a worse bug than the one being fixed, so `start` and `stop` both accept `Error` and perform normal transitions. No bridge change was needed: it already reports both failure paths, and it never switches on a `RecordingState` value, so `Error` is purely additive. **(b)** `writePacket`'s return was discarded by both callers while `framesWritten` incremented regardless, so disk-full at 90% produced a truncated MP4 that **opens and plays to the break point** and was reported `Completed` — worse than a failed recording, because it is a plausible-looking one. The muxer return is now classified into `Written` / `Backpressure` / `Failed`; `Failed` sets a sticky flag, the loop stops producing and reports **once**, and `stop()` returns "failed at N frames, file incomplete" naming the likely cause. **The judgement call worth recording: `EAGAIN` is `Backpressure`, not `Failed`.** Folding it into failure would mark a merely-slow recording as broken — the same class of lie in the opposite direction — so a backpressured packet is not counted (it is genuinely not in the file) but is not treated as damage, and it logs once rather than once per frame. Also fixed: both `av_frame_get_buffer` returns (a failure left `videoFrame_->data[0]` null for `sws_scale` to write through, and the audio path skipped allocation entirely when `nb_samples` was 0), both `swr_*` returns (discarded while `swrCtx_.get()` was dereferenced by the next call), and `av_write_trailer` (a failure meant no `moov` atom and a file that will not open). **A latent null-deref surfaced en route and was fixed:** after a failed init the destructor's `stop()` reached `flush()` → `writePacket` → `av_interleaved_write_frame` on a context with either no `pb` at all (failed at `avio_open`) or a `pb` and no header (failed at `write_header`), so the `headerWritten_` gate was extended from the subtitle path to `flush()` and the trailer. **Deliberately left open, and honest about it:** `encodeAudio`'s `swr_convert` failure still `continue`s, dropping the sample frame silently. It is not file corruption and it is logged, but it should be counted and surfaced at `stop()` like the write failures — that wants its own change rather than a drive-by. Also unprovable in-process: four of the five production fixes are guarded by reasoning about what cannot fire, not by a test, because there is no portable way to induce OOM or a null resampler without a fault seam per check. The two tests that *are* real — a failed start not becoming an active recording, and a write failure not being counted — both fail on the old code.
-- [ ] **The first captured frame is silently discarded, and `pixelFormat` is a decorative field** — found 2026-09-30. `VisualizerRenderer.cpp:171` gates the PBO readback on `pboAvailable_`, so the **first** frame never reaches the encoder — every recording is one frame shorter than its duration, which will read as an off-by-one in any duration assertion. Separately `VideoRecorderFFmpeg.cpp:496` hardcodes `AV_PIX_FMT_YUV420P` even though `EncoderSettings::pixelFormat` exists and `pixelFormatName()` is declared: `VideoSettings::pixelFormat` is **never read**, the whole field is decorative, and `validate()` (`:236-268`) never checks the requested format is even supported. Both are one-liners, both are silent, and both will be misread in the field as "the encoder is slow".
-- [ ] **`libavfilter` as a hard dependency would break the build on stripped distros** — found 2026-09-30, and this is a **prerequisite** for the burn-in work, not a detail. `cmake/Dependencies.cmake:123` is `set(CHADVIS_FFMPEG_COMPONENTS avcodec avformat avutil swscale swresample)` and `:138-143` issues a **`FATAL_ERROR` if any is missing**, with no `option()`. So simply adding `avfilter` to that list converts every FFmpeg-4-era container and every stripped distro into a **build failure of the entire application** — including the Suno client, which has nothing to do with video. Required shape: `option(CHADVIS_POSTPROCESS "FFmpeg post-pass (burn-in, concat, loudnorm)" ON)`, probe `avfilter` with `pkg_check_modules` into a boolean, gate the post-pass *source files* behind it, and degrade at runtime to a visible "unsupported" state. Never a link error. Note libass is a **separate library, not an FFmpeg component**, so it needs its own `find_package` — and its absence is not an FFmpeg problem.
-- [ ] **Mux the ASS as a soft subtitle track *before* any burn-in** — found 2026-09-30, and the ordering is the point. The writer is done (see the karaoke item below) and muxing is **`libavformat` only** — no libass, no libavfilter, no new dependency — so it is the cheapest genuinely shippable artifact in the whole product, and it is a strict prerequisite for the burn-in item. Two smaller halves are ungated and unwritten: (a) **no QML caller for the exporter at all** — `LyricsPanel.qml:126-135` offers only SRT and LRC, so the finished, libass-verified `exportToAss`/`assDocument` is unclickable; (b) a second stream in the muxer. **Container constraint:** WebM has no subtitle stream, so that output must drop the track and say so rather than fail. Start here; the burn-in filter comes after.
-- [~] **Build the offscreen render worker — the decoder half shipped 2026-10-04, the worker half is still the blocker** — found 2026-09-30, updated 2026-10-04. **This item's central premise is now half wrong: "the only missing class is a decoder" is false.** `src/recorder/AudioFileDecoder.{hpp,cpp}` is the decoder the item prescribed — `avformat_open_input` → `avcodec` → `swresample` → `pushAll` — and it makes **three** of this item's claims stale at once: `avformat_open_input` no longer "appears only in tests" (`SubtitleBurnIn.cpp:225` and `AudioFileDecoder.cpp:430` are both production demuxers), there is now a production decoder in the tree, and the class's own header is a PIMPL carrying no FFmpeg includes, so it can be handed to `VideoRecorderCore` with no new dependency. Four measured libav traps are recorded in the decoder itself and are worth reading before writing the worker: **swr's default mono→stereo rematrix is −3 dB, not unity** (a mono `0.5f` arrives as exactly `0.353553385f`, so every mono source would be 3 dB quieter through a decode path than through playback; fixed with `swr_set_matrix`, which must precede `swr_init`), **a fully drained resample yields exactly `av_rescale(inFrames, outRate, inRate)` frames** so the final flush is load-bearing rather than hygiene, and **a truncated WAV is indistinguishable from a short one** — libavformat returns a clean EOF and *rewrites* the duration from the bytes it read, so there is no truncation verdict to expose. What remains is exactly what this item called the real work: the worker. `VisualizerRenderer` is still a plain class with no window, no QML and no `QQuickWindow` (`isExposed` is a *parameter*, so an offscreen worker passes `true`), `AudioQueue::pushAll` is still the producer seam, and `VideoRecorderCore` is still a real state machine on a `JThread` with a bounded queue — so the remaining piece is the thing that owns a GL context, feeds it, and retires it. **One constraint the queue tests just proved rather than assumed:** a worker that drains only the `viz` queue is **not** lossless and `lossless()` will report drops, because `pushAll` fills both `viz` and `rec`; drain both. Also note `--record` (`CliArgs.inc:36`) sets `Application::startRecording` and still has **no consumer**, and `--headless` gates the entire visualizer+connect block, so today it makes recording *impossible*, exactly as claimed.
-- [~] **`aspect_correction` is parsed and applied but absent from `config/default.toml`** — found 2026-09-30; **the config half is fixed 2026-10-04, the vertical-render question is not.** `aspect_correction` is now genuinely present in `[visualizer]`, added alongside about a dozen other keys the serializer emits and the shipped default never mentioned — which was its own round-trip gap: a first run wrote a file `config/default.toml` did not describe. **What remains from this item is the spike it was always for:** nobody has yet encoded a 9:16 frame, so whether projectM's aspect correction **letterboxes or squashes** is still unmeasured. Related and still open: the 8 `EncoderSettings` static presets (`EncoderSettings.hpp:145-152`) have **zero callers**, and `twoPass`/`extraOptions` (`:89,:96`) have **zero readers and no config keys** — declarations counted as features. Two-pass x264 is ~30 lines and would remove the biggest quality complaint about a visualizer render.
-- [ ] **Record the encode-side stats so a job can be re-rendered cheaply** — found 2026-09-30. Nothing persists "this output was 1800 frames at 60 fps from these presets", so "render it at 4K instead" means re-rendering three minutes in real time. A small versioned sidecar per job is what makes iteration cheap — see the render-job proposal below, which must ship the schema *with* the queue rather than after it.
-- [~] **Batch automation is entirely absent — the job model and queue shipped 2026-10-04; the executor and the GUI did not** — `src/recorder/RenderJob.{hpp,cpp}` and `RenderQueue.{hpp,cpp}` are real and tested, so "no render queue, no job model" is now false for the model and true for everything that *runs* one. What is still missing is exactly the part this item warned about being last: **an executor that owns a GL context and actually renders**, the batch **GUI**, and a frozen public schema for the render receipt. Three decisions in the shipped code are load-bearing and should not be casually "simplified": `kDefaultMaxConcurrent` is **2, not `DownloadQueue`'s 3**, because one job is one GL context plus an 8.3 MB per-frame readback; `isTerminal` includes `FailedRetryable` because `fail()` only settles into it once attempts are spent; and batch progress is **frame-weighted**, because per-job progress makes a 1-of-4-jobs batch read 25% while 98% of the frames are on disk. `DownloadQueue` (`src/suno/DownloadQueue.hpp`, `setMaxConcurrent`, already tested) was the template and the two queues now share a shape. Ship the executor first, the batch GUI last — a polished queue over a broken render loop is a trap, and that trap is now one layer further away rather than gone.
-- [x] **`SunoBridge` reached the downloader by `findChild`, which fails silently** — fixed 2026-09-29 as part of the download/playback split. `ensureDownloader()` resolved the controller's `SunoDownloader` through `s_controller->findChild<SunoDownloader*>()`. That is a QObject-tree lookup, so it returns `nullptr` without a diagnostic if the parent ever changes — and the failure mode is a **silently disabled feature**, not an error. It would also match any *other* downloader parented anywhere under the controller. `SunoController` now exposes `downloader()`, matching the four accessors it already has for its other subsystems (`client()`, `authCoordinator()`, `libraryManager()`, `accountManager()`), and the bridge asks for it directly. The defensive re-resolve and the `disconnect`-before-re-point logic are kept: they guard against a controller swap leaving a dangling pointer or a duplicate `clipSaved` connection, which the accessor does not address.
-- [ ] **The `content_type == "mp3"` filter makes a captured clip unplayable, and widening it is an evidence question** — found 2026-09-28, refined 2026-09-29. `selectDownloadUrl` refuses unless an entry has `content_type == "mp3"` and passes `isUsableCapturedUrl`, so the captured `m4a-opus`/`progressive` item is unplayable. The download layer now *reports* which predicate fired, so this is a visible error rather than a silent dead button, and `aClipWithNoCapturedMp3IsRefusedAndSaysWhy` pins the current shape so a future widening fails deliberately. **Do not widen it on inference.** It needs a capture showing whether Suno serves Opus on `audiopipe.suno.ai` without the web-side decryptor the recon documented (Mango, `/_sw-mango`) — the same open question that gates any real client-side decryption.
-- [ ] **Scene composition, keyframes, transitions, timeline: 0% built** — verified absent: zero hits for `keyframe` across all 150 sources; every `transition` hit is projectM's own unrelated soft-cut; every `timeline` hit is a Suno *mashup* field. The word "scene" is not a domain concept anywhere. **Ship "presets-as-scenes" (a preset per segment with a duration + crossfade) before real keyframes** — the hard part is the authoring UX and interpolation semantics, not the C++, and projectM's existing soft-cut (`Engine.hpp:110-132`) is a free, working crossfade primitive.
-- [x] **Karaoke burn-in path** — *writer, muxing and burn-in are all now done.* Writer: `LyricsBridge::exportToAss` emits Advanced SubStation Alpha with per-word `\kf` karaoke timing from the captured aligned-lyrics payload, sitting alongside `exportToSrt`/`exportToLrc` so there is still exactly one owner of lyrics serialization. The ASS semantics were settled by rendering probe files through **real libass 0.17.5**, which corrected three assumptions: **backslash is deliberately not escaped** (doubling renders two glyphs — escaping would corrupt every lyric containing one), **`\kf` not `\k`** (the payload is per-word, and `\kf` interpolates across each word's span, matching what `KaraokeMaster.qml:67,133` already draws), and **`WrapStyle: 0`** (measured: style 0 reflows an overlong line readably, style 2 clips it unreadably at both ends). Durations are differences of two *absolute* centisecond stamps rather than independently-rounded spans, because a player accumulates preceding durations and per-word rounding compounds — 200 words of 0.333s sum to 6660cs where the naive form gives 6600cs. Muxing: the document is a real subtitle stream, gated so **only Matroska** carries it (see the measurement in the subtitle-muxing entry). Burn-in: a re-runnable post-pass that renders the text into the pixels with **libavfilter optional**. **What remains is wiring and product decisions, not capability:** no QML entry point, no bridge method, no config key, and where the `.ass` comes from at burn time — re-reading the existing sidecar needs no lyrics at all and keeps the pass re-runnable after the app has moved on. Two known edges recorded in the burn-in entry: script resolution is 1920×1080 while the encode may be any size, and an unresolvable font renders nothing with a non-obvious diagnosis. **Container constraint, measured not assumed:** `avformat_query_codec` returns **`1` for Matroska and `0` for MP4, MOV, WebM and AVI** on this FFmpeg 9.0.1 / libavformat 63.1.101. So **only MKV carries an ASS stream**, and without the gate MP4 — the project's *default* output — would gain a subtitle stream that `avformat_write_header` rejects, failing every MP4 recording. That was verified by standalone probes, not inferred from the `ffmpeg` CLI, because the CLI fails in `init_muxer`'s tag lookup at write time which is a *different* code path from the query. **There is deliberately no `mov_text` fallback:** MP4 answers `mov_text=1, ass=0`, so its only text codec is 3GPP timed text with no override-tag syntax — a `\kf` cue would be flattened to plain text, i.e. the feature appearing to work while being precisely what it must not be. The gate lives at `VideoRecorderFFmpeg.cpp:883` and `initSubtitleStream` returns **`void`**: no subtitle outcome can ever fail a recording. **A real production bug the tests caught, recorded because the shape is instructive:** the centisecond→millisecond conversion was written as `cs / 10` where the constant `kMillisecondsPerCentisecond = 10` names a **multiplication** — so every cue's `pts` and `duration` was **100× too small**, and a three-minute song's entire lyric sheet would have collapsed into its first 1.8 seconds. Two sites divided, so they agreed with each other and disagreed with reality, which is why nothing upstream could see it; and `timingsMs[0].first == 0` passed by coincidence because `0/10 == 0*10`. **Only an exact-value assertion could catch that class** — "the duration is non-zero" or "roughly 2 s" would have passed on every version of the bug. The conversion is now a single named `toMilliseconds()` used by all three call sites. **Layering:** the assembler moved out of `LyricsBridge` into `src/lyrics/LyricsData.{hpp,cpp}` as `LyricsExport::toAssDocument`, because `src/recorder/` must not reach up into a QML bridge — and `VideoRecorderFFmpeg.hpp` still names no lyrics type, taking the document as opaque bytes. Production wiring runs `RecordingBridge → VideoRecorderCore → VideoRecorderThread → init(settings, assSubtitle)`, every hop defaulted to `{}` so all pre-existing call sites are untouched, and the ASS bytes are copied into the encoder before the `JThread` is created so no borrowed view can cross the thread boundary. Still to do: burn in with the `subtitles=` filter, which needs `libavfilter` added to both `FFmpegUtils.hpp` and `CHADVIS_FFMPEG_COMPONENTS` behind a CMake option so a stripped distro does not fail the whole build.
-- [~] **Karaoke: ASS writer** — *done 2026-09-29.* `LyricsBridge::exportToAss` emits an Advanced SubStation Alpha file `LyricsBridge::exportToAss` emits an Advanced SubStation Alpha file with per-word `\kf` karaoke timing from the captured aligned-lyrics payload, sitting alongside `exportToSrt`/`exportToLrc` so there is still exactly one owner of lyrics serialization. The ASS semantics were settled by rendering probe files through **real libass 0.17.5**, which corrected three assumptions: **backslash is deliberately not escaped** (doubling renders two glyphs — escaping would corrupt every lyric containing one), **`\kf` not `\k`** (the payload is per-word, and `\kf` interpolates across each word's span, matching what `KaraokeMaster.qml:67,133` already draws), and **`WrapStyle: 0`** (measured: style 0 reflows an overlong line readably, style 2 clips it unreadably at both ends). Durations are differences of two *absolute* centisecond stamps rather than independently-rounded spans, because a player accumulates preceding durations and per-word rounding compounds — 200 words of 0.333s sum to 6660cs where the naive form gives 6600cs. **The writer is a sidecar only:** nothing in `src/recorder/` was touched, so no `.ass` track is ever muxed into an encoded file yet. Still to do: mux as a soft subtitle track (muxer only, no libass — the writer exists now, so this is the smaller remaining half), then burn in with the `subtitles=` filter once `libavfilter` is linked in both `FFmpegUtils.hpp` and `CHADVIS_FFMPEG_COMPONENTS`.
-- [ ] **Scene-graph compositing is the one genuinely hard overlay option** — rendering overlays into the *same* GL context as projectM is architecturally cleaner (one surface, true WYSIWYG) but means driving Qt Quick into a foreign GL context. Deferred behind the FFmpeg route deliberately.
-- [~] **Recorded video/audio settings persist** — see P0 for the full re-verification and the bug it found; this mirror was reopened with it, because the `[x]` it pointed at was wrong. Not otherwise part of this section.
+Recorded so they are not re-audited. Each was checked against the source, not assumed.
 
-### Audio engine
-- [~] **`setSource()` runs inside the `mediaStatusChanged` emission** — *confirmed real, but the obvious fix is worse than the bug; do not queue a hop.* `onMediaStatusChanged` (`:122-132`) → `playlist_.next()` (`:127`) → `currentChanged` → `loadCurrentTrack` (`:154`) → `player_->setSource()` (`:158`), synchronously inside the emit. **Evidence recorded 2026-09-26:** in the normal gapless path this is usually a *no-op*, because `prepareNextTrack` (`:162-170`) already set the next URL on `nextPlayer_` before `swapPlayers` (`:144-152`) promoted it. The hazard only fires on the non-pre-buffered branch at `:128`. Queueing the hop with `Qt::QueuedConnection` would demote an already-decoded pre-buffer that *has data ready* until the next event-loop turn — trading a source-less teardown for a **guaranteed gap on every track transition**, which is the main quality feature of a music player. **Still open:** whether Qt documents the prohibition (the locally installed Qt 6.11.1 headers are comment-stripped, so the claim could be neither confirmed nor refuted offline — verify upstream before citing it), and whether a non-queued fix exists (defer only the *reconfiguration*, not the swap). No test drives a track transition today; `QtMultimediaTestLib` is present in the install, and only call *ordering* is assertable headless (no audio device in CI), so per `AGENTS.md` §3 this needs a manual listening pass regardless.
-- [ ] **projectM's broken-preset retry path is dead** — `Bridge.cpp:53-54` calls `projectm_set_preset_switch_requested_event_callback`, which **overrides** projectM's own handler (documented at `build/_deps/projectm-src/src/playlist/api/projectM-4/playlist_callbacks.h:88-91`; single-slot, last-writer-wins). That kills `PlaylistCWrapper::OnPresetSwitchFailed`'s 5-retry recovery loop (`PlaylistCWrapper.cpp:74-103`), so a broken preset now aborts the chain permanently instead of retrying. ChadVis never registers `m_presetSwitchFailedEventCallback` either, so even if it ran it would go nowhere. Behaviour is preserved *by accident* on the happy path via a `pending*` latch drained on the next frame (`Bridge.cpp:150-153`, `:132-134`), which also costs a real ~16 ms switch delay. Behavioural regression vs stock projectM, not a safety bug.
-- [ ] **`LyricsSync` position triggers and dead slots** — *the single-writer fix (`f10f87d`, 2026-09-26) closed the two-writer defect but deliberately left three loose ends, and each is a trap for the next person to "finish the wiring".* `AudioEngine::positionChanged` is still **not** consumed by `LyricsSync`, so lyrics keep polling at 16 ms while the transport pushes; that is unchanged behaviour, and adding the second trigger would re-open the exact second-writer hazard the fix removed, so it needs a design answer rather than a one-line connect. `LyricsBridge::onLineChanged`/`onWordChanged` (`LyricsBridge.cpp:180-189`) are dead slots never connected in `connectSignals` (`:96-124`); wiring them would be a **third** writer of the five position members, and they must stay dead until the single-writer design changes. The `Seeking → Syncing/Paused` double `stateChanged` in `LyricsSync::seek` also remains: cosmetically wrong on the UI state and harmless to the lyrics, so it was not worth perturbing a verified fix. No mutex is wanted here either — two writers plus an unguarded `lyrics_.vector` would be strictly worse than the single-writer design.
-- [x] ~~Triple queue redundancy~~ — **already done, delete this item.** `AudioQueue.hpp:1-8` documents the removal of the third (`ana`) consumer queue; exactly two remain (`viz`, `rec`).
-- [x] ~~Analyzer worker busy-wait~~ — **never existed, delete this item.** A repo-wide grep for `analyzerWorker` returns exactly two hits, both a *local variable* in `tests/unit/audio/test_AudioAnalyzer.cpp:153,183`. There is no such member and no such spin.
-- [!] **`AudioAnalyzer` is entirely dead in production — the visualizer is fed raw PCM, so every DSP item below is hypothetical** — found 2026-09-30, verified by direct grep. `rg "AudioAnalyzer" src` returns **only its own `.cpp`/`.hpp`**; its sole consumer tree-wide is `test_AudioAnalyzer.cpp`. The real chain is `AudioEngine::processAudioBuffer` (`AudioEngine.cpp:234-262`) → `AudioQueue::pushAll` → `VisualizerRenderer.cpp:75` `popVizBatch` → straight into projectM. So **there is no beat detection, no spectrum, and no `leftLevel`/`rightLevel` in the running product.** That makes the "naive beat detection", "no FFT windowing", "`AudioSpectrum` passed by value in a signal" (4 KB per emission — carried by **no** signal) and "`pcmData()` returns a full copy per frame" items below all *hypothetical performance/quality* items, not real ones. **What the product actually needs is not a visualizer DSP fix but a render-time analysis pass over a decoded file** — onset detection for scene cuts, reusing the pffft setup already in `AudioAnalyzer.cpp:128`. Do **not** wire the spectrum to a UI slider; that is the trap. Rehome or delete the class, and make the rehome decision in the same change, because the pffft setup and FFT constants are what the onset pass needs.
-- [~] **`QAudioDevice` is never used, so every `[audio]` config key and UI control is a lie** — found 2026-09-30, **substantially fixed 2026-10-04, and the prescribed fix named an API that does not exist.** `rg "QAudioDevice|setAudioDevicesList|defaultAudioOutput|setPreferredSampleRate"` across `src/` returned **zero hits** while the UI rendered a device field, a sample-rate combo and a buffer-size slider. A new `src/audio/PcmFormat.{hpp,cpp}` (`vc::pcm`) centralises sample-format handling, `AudioEngine::init(std::optional<AudioConfig>)` takes the config explicitly, and device enumeration plus status reach `SettingsBridge` and `AudioSettings.qml`. **But `QAudioOutput::errorChanged` does not exist in Qt 6.11** — verified in the installed header: Qt 6 exposes only `device`/`volume`/`muted` with their three `…Changed` signals, and `error()`, `state()`, `setBufferSize()`, `setSampleRate()` and `start()`/`stop()` were all removed with the Qt 5 redesign. So the "connect `errorChanged`" half was impossible; `deviceChanged` and `QMediaDevices::audioOutputsChanged` are connected instead, which covers a device being unplugged but **not** a device erroring. The consequence is structural and cannot be coded around: **`audio.bufferSize` has no device-level home in Qt 6 at all**, so it now sizes the engine's conversion window (clamped 4096–16384) and `sampleRate` is range-validated with the actually-delivered sink rate observed and shown rather than requested. `Int32` is now handled, which previously fell through holding the **previous** buffer's contents and pushed stale PCM into both the visualizer and the recorder with no diagnostic. **Still open:** `SettingsBridge::setAudioEngine` is registered but **no runtime path has been exercised**, so `unit_tests` being green does not prove the device list ever reaches the QML page; and `audioBufferSize`/`audioSampleRate` are generated from `SettingMacros.hpp`, whose setters cannot run a post-set hook, so QML must remember to call `applyAudioConfig()` afterwards — a hook in that macro, or moving the two audio ints out of the table, removes the footgun.
-- [ ] **The pre-buffer computes the wrong next track whenever shuffle is on** — found 2026-09-30. `AudioEngine.cpp:201` derives the next item as the **linear** `index+1`, but `shuffleOrder_` is the actual traversal. This is an independent real bug: the pre-buffered track is simply the wrong one, independent of the re-entrancy hazard in the item above. Fix by having `Playlist` expose the *traversal* successor (respecting `shuffleOrder_`/`repeatMode_`) rather than `index+1` — this also shrinks the surface where `setSource()`-inside-`mediaStatusChanged` can actually fire. Do this first; it is S, low risk, and fixes a wrong-track bug.
-- [ ] **Tag reads *and* writes block the GUI thread on download completion** — found 2026-09-30; the P0 item above covers only the read side. `SunoDownloader::addAndPlay` (`:411-418`) calls `addFile` on *every* completed download, and `tagAudioFile` (`:337-409`) opens, rewrites and `save()`s ID3/XiphComment **synchronously on the completion signal** (`:317`), immediately before `addAndPlay` — i.e. a full file rewrite between "download done" and "audio starts". `saveMetadataSidecar` (`:489-498`) and `saveLyricsSidecar` (`:437-487`) are two more synchronous writes in the same hook. A 10-clip download queue does 10 blocking TagLib opens interleaved with network completions. **Constraint to respect:** the move to a worker must not break `SunoDatabase`'s fixed `QSqlDatabase` connection, which is bound to its creating thread — so the worker may not touch `db_`.
-- [ ] **ReplayGain / loudness normalisation** — zero hits for `replaygain`/`ebur128`/`loudnorm` across the entire tree. Suno's web player has no loudness normalisation and a real transition gap, so this is the cheapest "you feel the difference in ten seconds" feature and the one that survives if every Suno surface dies. Read tags → store per-track gain in the existing SQLite → apply a scalar on the `viz` path (`swresample` is already linked; a gain needs no filter graph). Add a "match Suno / normalise / off" control.
-- [ ] **No true gapless playback** — `swapPlayers()` introduces an audible gap. **Correct the framing first:** the two-`QMediaPlayer` scheme does **not** buy gaplessness — `QMediaPlayer` has no gapless API, and two `QAudioOutput` devices opened at different times on the same device are a guaranteed discontinuity. It buys a pre-roll and an earlier `setSource()`. Keep the pre-buffer (it reduces stalls), delete the claim, and do not queue a hop. The honest version of this item for *this* product is a **sample-domain crossfade in the recorder's PCM input** (`VideoRecorderThread.cpp:96-99` already owns a decoded-audio queue), which needs no player support at all and is what a batch creator actually needs between jobs.
-- [~] **No sample format validation** — see the `QAudioDevice` item above; the specific defect is that `processAudioBuffer` silently passes stale data for any unhandled format, so this is P0-adjacent rather than a plain tidy-up.
-- [ ] **No error recovery in `loadLastPlaylist`** — a missing or corrupt file yields a silent empty playlist. The subtler half: if the M3U exists and is corrupt the user gets an **empty playlist with no way to tell "nothing was saved" from "it failed to load"**, and `loadM3U` emits only `changed` (never `currentChanged`), so a restored session has no selection. Also `saveM3U` writes `#EXTINF` duration/artist while `loadM3U` **ignores `#EXTINF` entirely** (`:467` skips all `#` lines) and re-reads every file — so the session file is neither round-tripped nor a valid interchange file.
-- [ ] **Playback filetypes limited** — MP3/FLAC/WAV only; add OGG, M4A, OPUS via taglib or FFmpeg.
-- [ ] **Album art limited to MP3/FLAC** — no WAV, OGG, or M4A cover extraction.
+- **Items carried over from the superseded backlog that are ALREADY FIXED — do not re-file them.** Checked
+  against the current tree during the 2026-10-07 merge: `AudioAnalyzer` is dead code no longer present (no
+  matching file in `src/`; resolved in `e058eab`); `DownloadQueue` **does** check `write()`'s return and routes
+  ENOSPC to `failItem(AbortCause::ShortWrite)` (`DownloadQueue.cpp:580-592`, with the rationale inline);
+  `LyricsBridge::exportToAss` **does** have a QML caller (`RecordingPanel.qml:358`); `video_url`'s missing origin
+  check is already a documented gate (`FeatureFlags.cpp:244`), not an undiscovered defect; and the "no keychain on
+  Windows or Linux" claim is long stale — QtDBus Secret Service (`CredentialStore.cpp:25-83`) and Windows
+  `CredRead`/`CredWrite` (`:214+`) are both implemented.
+- **The `moc` raw-string trap is real but NOT currently triggered.** moc 6.11.1 cannot lex a raw string literal
+  containing `//`: the preprocessor strips the comment without knowing it is inside a string, the raw string never
+  closes, and moc emits a **0-byte `.moc`** plus `note: No relevant classes found`. The only symptom is an error
+  at `#include "test_X.moc"` that **never names the offending line**. Measured against this tree's moc; no current
+  `R"(…//…)"` literal triggers it. Workaround when it does: build fixtures from `QJsonObject` initialisers.
+- **`LyricsSync`'s dead slots must STAY dead.** `onLineChanged`/`onWordChanged` are deliberately unconnected;
+  wiring them creates a third writer of five position members. This is a trap-warning, not a defect.
+- **There is no undeclared-source defect.** All 83 `src/**/*.cpp` and all 58 `.qml` files are declared in the
+  CMake lists, `main.cpp` separately, and there are **zero dangling declarations**.
+- **`textPrimaryVariant` has no contrast bug.** 6.53–9.26:1 against every background token (AAA). The comment at
+  `Theme.qml:57-59` records the real past bug — the property was *missing*, causing an implicit `undefined`
+  colour — and that is genuinely repaired.
+- **Colour tokens are disciplined.** 38 hex literals tree-wide, 25 in `Theme.qml`. The inconsistency is in
+  *control chrome* (58 raw Controls), not in colour.
+- **Config has zero key drift.** Parser, `config/default.toml` and `docs/user/CONFIG.md` agree across every section,
+  including nested `[recording.video]`/`[recording.audio]`. Only `[suno] token`/`cookie` are absent from the
+  template, which is correct.
+- **Config write is atomic** — temp → completeness check → close → chmod 0600 → `fsync` → atomic rename, with a
+  Windows `MoveFileExW` fallback. A crash cannot truncate the live file. (Gap: the containing directory is never
+  fsynced, so the rename itself may not survive power loss.)
+- **Config round-trip is lossless by design**, with bounded documented loss. Unknown keys are dropped on save by
+  design; the four historical casualties are now both tabulated and consumed; the only remaining drop is the two
+  secrets, which is a **structural** guarantee.
+- **Download no longer auto-plays on batch save.** `handleItemState:401` gates `addAndPlay` on
+  `SaveAndPlay`; pinned by `saveOnlyBatchDoesNotTouchThePlaylist` and `aLiveRequestIsEscalatedNotDiscarded`.
+- **There is no credential-exfiltration path.** `Authorization` is stamped only under
+  `auth::isAllowedStudioApiUrl`; `Cookie` only on the hardcoded `AUTH_BASE`; Production-tier CDN/CloudFront/S3
+  hosts **cannot** receive a bearer because `isAllowedStudioApiUrl` requires `Role::StudioApi`. No `LOG_*` call
+  prints a token, cookie or `Authorization` header.
+- **There is no TLS relaxation and no proxy path.** Zero hits for `ignoreSslErrors`, `sslErrors`, `setPeerVerify`,
+  `QSslSocket`, `QNetworkProxy`. Redirects are `ManualRedirectPolicy` everywhere and never followed.
+- **The OAuth lane is correctly gated and must not be "fixed".** `setCaptureApprovedLaunch` has no production
+  caller; the gate is owned by `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md`.
+- **Every non-idempotent POST already passes `retryOnUnauthorized=false`** — no mutation can be silently doubled.
+- **401 retry is bounded to one and epoch-guarded** at four separate points.
+- **Bounded bodies are enforced during the read, not after** — one byte past the cap into a bounded probe, never
+  appended. `test_BoundedBody.cpp` even source-scans the tree for the `readAll()` misuse class.
+- **projectM calls are all on the render thread** with the context current; cross-thread requests go through
+  atomics + one mutex. The projectM-unavailable path degrades gracefully rather than crashing.
+- **FBO creation is validated and the texture format agrees** (`GL_RGBA8`/`GL_RGBA` both ways — no RGB/RGBA
+  mismatch), with alpha forced opaque before readback.
+- **The Logger is thread-safe in steady state and its output is bounded** (rotating sink, 5 MB × 3).
+- **`PresetScanner`'s `static const std::regex` is not a defect** (thread-safe function-local static).
+- **No test hits the network, touches the real app-support DB, touches the keychain, or shells out to ffmpeg.**
+- **`qmllint` never caught this project's QML bugs, and that is not a tooling failure** — it is a static analyzer
+  over types and syntax with no knowledge of runtime values, lifetimes, or dynamic properties. Do not treat it as
+  the verification gate for runtime behaviour; see T0048/T0049.
+- **The separate-`QWindow`, own-context, render-to-FBO-0 projectM architecture is CORRECT — do not "fix" it.**
+  Maintainer `kblaschke`, projectM discussion #820 (2024-06-22), verbatim: *"I was never successful in getting Qt
+  and projectM to work well together... some objects projectM allocates in OpenGL (VBOs, FBOs and textures)
+  randomly vanish after the first frame... **I've never seen this behaviour with any other OpenGL integration —
+  just in Qt.**"* and *"**The only way of getting projectM to work is using a plain `QOpenGLWindow`, and drawing
+  directly into the native surface.**"* Do not migrate to `QOpenGLWidget` or share the Qt Quick scene-graph
+  context. This is exactly the arrangement `VisualizerWindow` already uses.
+- **All projectM calls must be on the thread that created the instance and its GL context** — this is the official
+  documented rule, so the current single-render-thread design is right. Two *separate* instances in two threads are
+  safe; touching *one* instance from two threads is not. Caveat worth knowing: the GL resolver is a process-global
+  singleton, not per-instance, so two threads only work if their contexts are compatible. Audio ingress is
+  explicitly **not** mutex-protected upstream, so feed PCM *between* frames, never during `render_frame`.
+- **`projectm_set_frame_duration()` does not exist** in any version — not 4.1.6, 4.1.7, 4.1.8, not master. Do not
+  plan against it. The time-override entry point is `projectm_set_frame_time()`, and it is `@since 4.2.0` —
+  **master-only and unreleased**, which is what makes offline rendering a pin-policy question rather than a task.
 
-### Application architecture
-- [ ] **Application god object** — 150+ line `init()` owns everything; split into subsystem managers.
-- [ ] **`g_app` raw pointer** — should be `unique_ptr` or stack-allocated; risk of double-delete or leak.
-- [ ] **CLI X-macro pattern fragile** — poor IDE support; consider codegen or reflection.
-- [ ] **TRY macro shadows `std::expected`** — migrate to the C++23 monadic idiom.
-- [ ] **`Result.hpp` → `std::expected`** — the custom type has `map`/`andThen`/`orElse`; migrate to the full standard monadic API and add `[[nodiscard]]` to Result-returning functions.
+## Capture-gated — ship the gate, not the blocker
 
-### Namespace, types, and dead code
-- [ ] **Controllers in the wrong namespace** — some use `vc` instead of `vc::ui`.
-- [ ] **Inconsistent namespace usage** — `vc::ui`, `vc`, and top-level all appear; standardize.
-- [ ] **Missing `<cmath>` include in `LyricsRenderer`** — uses `std::sin`/`std::cos` without it.
-- [ ] **Dangling pointers from `getContextLines`/`getUpcomingLines`** — the maps were made owned, so verify no raw-pointer variant survives; the original finding is partly resolved.
-- [ ] **`OverlayElementConfig` animation fields unused** — declared, never applied.
-- [ ] **Unused includes** — five or more files include types they never reference.
-- [x] **Stale-header and unused-declaration purge** — `GLIncludes.hpp` no longer exists in the tree, `setupStyle()`/`setupQmlStyle()` are gone (0 hits repo-wide), `CircularBuffer::getSpans()` is gone, and `AudioEngine.hpp` carries no `projectM.h` include.
-
-### Build system
-- [!] **A new source file that is never added to `cmake/Sources.cmake` fails as a *link* error, not a build error — and this trap was hit three times in one session** — found 2026-10-04. `cmake/TargetSetup.cmake` names each `set()` variable **explicitly** (`${UTIL_SOURCES}`, `${AUDIO_SOURCES}`, `${RECORDER_SOURCES}`, …) and **does not glob**. A new `.cpp` in an existing directory is therefore never compiled, no warning is printed, and the only symptom is an undefined symbol at link time naming the *caller* rather than the file that was forgotten. Three sources hit it on 2026-10-04: `PcmFormat.cpp`, `Color.cpp`, and one `RECORDER_SOURCES` append. The correct shape is a `list(APPEND …)` block **at the end** of `Sources.cmake` — which is what `cmake/Sources.cmake:284-361` now carries, one per group, each with the reason in a comment. **Two things that make it worse than it looks.** (1) The append must run *before* `TargetSetup.cmake` consumes the list, so a future refactor that moves the includes around can silently turn working appends back into dropped ones — and it will still build, right up until it links. (2) The build owner's proof that `PcmFormat.cpp` was compiled was not "the configure succeeded" but the existence of `CMakeFiles/project_lib.dir/src/audio/PcmFormat.cpp.o`, which is the only check that actually answers the question. **Standing rule: after adding a source file, assert on the `.o`, not on the exit code.**
-- [x] **Default build type is Debug** — should default to `ReleaseWithDebInfo` for distribution. **DONE 2026-10-05**: the default is now `ReleaseWithDebInfo` (`-O2 -g -DNDEBUG`), guarded by `NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES` so a user-specified value still wins and `build.sh --fast` is untouched. Worth recording *why* not `Release`: `cmake/Compiler.cmake` keys an `-O3` genex on `Release`, so `ReleaseWithDebInfo` gets CMake's own `-O2 -g -DNDEBUG` instead — which is the intended trade for a distribution build that keeps symbols.
-- [x] **No release pipeline** — *delivered 2026-10-05 as `.github/workflows/release.yml`, and it is UNRUN.* No CI/CD for tagged releases; only `opencode.yml` exists. Add GitHub Actions for build, package, and publish. (The README previously carried a CI badge for a workflow that does not exist; it has been removed.) **What was built:** tag-triggered on `v*`, verifies the tag against `version.txt`, configures Release, runs ctest, `cpack -G TGZ|DragNDrop`, uploads the artifact, then `gh release create` (`--clobber` on re-run). **Three things that are honestly unproven, and the first is the one to read:** (1) **nothing has ever executed.** No push, no run, no log. Every one of these workflows carries at least one untested assumption. (2) The macOS leg **depends on the `MACOSX_BUNDLE` change landing** — it is present in the working tree but uncommitted, so `main` still lacks it. That leg is `required: false` so a missing bundle fails loudly, names the one-line fix, and does **not** block the Linux artifact; the generated release notes state in plain words that no macOS artifact is attached. (3) **Nothing is signed**, and none is faked: `CMAKE_OSX_CODE_SIGN_IDENTITY=""` with signing required/allowed both `NO`. The consequence is the first section of the release notes, because Gatekeeper will block an unsigned build on any other machine.
-- [ ] **CPM.cmake downloaded at configure time** — a network fetch during build; vendor it or use `FetchContent`.
-- [ ] **CPM target-name guessing fragile** — use `CPMFindPackage` with explicit targets.
-- [ ] **All sources in one `CMakeLists.txt`** — split into per-module `add_subdirectory` trees.
-- [ ] **`PKGBUILD` missing deps / wrong description**.
-
----
-
-## P2 — Medium: performance, code quality, maintainability
-
-### Performance
-- [ ] `std::rand()` instead of `<random>` — not thread-safe, poor distribution.
-- [ ] **`Signal` still allocates and copies on every emit** — the 2026-09-29 forwarding fix removed the per-subscriber *frame-sized* copy, and the residue is small moves plus real bookkeeping, but all of it runs at 60 fps on the GUI thread. **Re-verified 2026-09-30: two of the three costs named in earlier drafts are already fixed and should be struck.** `emitting_` is **not** a `bool` — `Signal.hpp:52` is `std::size_t emitDepth_` with an `EmitGuard` RAII at `:87-99` — and the `std::erase_if` sweep **is** already gated on `cleanupPending_` (`:57,77-81`), exactly as a lazy-sweep fix would have it. The comment at `:46-51` documents the old bug, which is presumably how the stale claim survived. **What remains real is only the allocation and the copy:** `emitSignal` constructs and `reserve()`s a fresh `std::vector<Slot>` on **every** emit (`:199-202`, 60 malloc/free pairs per second) and `push_back(conn.callback)` copies every `std::function` (`:205`). Fix: a `mutable std::vector<Slot> scratch_` reused across emits, and hold `const Slot&` in the snapshot (safe, because `slots_` is only mutated by mark-only paths during an emit). Effort S, risk low — but it is a **hot GUI-thread** path, so measure. **The 6 MB inside `captureAsync` itself** (`std::vector<u8> buffer(ptr, ptr+size)`, `VisualizerRenderer.cpp:175` — 8.3 MB at 1080p RGBA, ~500 MB/s of malloc/free) is inherent to reading a mapped PBO and is a **buffer-pooling** question, not a `Signal` question — `FrameGrabber` already moves `std::vector<u8>`, so a pool of N pre-allocated vectors recycled by the encoder is a small contained change. Worth stating plainly, because it is the load-bearing fact: `frameCaptured` has exactly **one** production subscriber (`VisualizerWindow.cpp:83`), which is the only reason the forwarding fix pays off at all; a second production subscriber would put a full-frame copy straight back on the hot path.
-- [ ] `PresetBridge` rebuilds `QVariantList`s on every access — use `QAbstractListModel`.
-- [ ] `PresetPanel` resets the whole model on a single change — use `beginInsertRows`/`beginRemoveRows`.
-- [ ] `LyricsData::search()` allocates on every call — return a view or cache.
-- [ ] `flipImageGPU()` allocates textures/FBOs per frame — pool them.
-- [ ] `AudioAnalyzer::pcmData()` returns a full copy per frame — return a span.
-- [ ] `threadLoop()` spin-waits at ~100 fps idle — use a condition variable.
-- [ ] `parseDuration()` uses `std::regex` for trivial parsing.
-- [ ] `AudioSpectrum` passed by value in a signal — 4 KB copied per emission.
-- [ ] `AudioFrame alignas(64)` wastes 52 bytes per ring-buffer entry.
-- [ ] **Pin the `AudioQueue` counter semantics — a future "fix" here would silently redefine a number that is already read as a fact** — found 2026-10-04 while fixing the 64x drop under-count. `totalPushed()` increments **once per queue**, not once per `pushAll`, because `pushInternal` bumps it independently for `viz` and `rec`. So a `pushAll` of F frames advances it by **2F**, and it is deliberately *not* on the same scale as the drop counters — which is why "pushed minus dropped" is not a meaningful subtraction here and must not be written as one. `dropCount` means **frames that queue refused**, which is per-queue and per-call-accumulated, not "frames that never arrived". Both readings are individually defensible and jointly confusing, which is exactly the condition under which someone tidies them; record the meanings in the header so a cleanup has to change the doc and the tests, not just the arithmetic. The real arithmetic bug this session found was adjacent: on the first refused 8-frame chunk the old loop counted those 8 and returned **without accounting for the remainder**, so 512 frames into a capacity-1 queue reported *8 dropped / 504 accepted* while `totalPushed_` counted 512.
-- [ ] **`swr_set_engine` is never called, so resampling is libswresample's default and it is audible** — found 2026-10-04. Nothing in the tree selects a `SwrEngine`, so `AudioFileDecoder` and the recorder's `swr` contexts all use libswresample's own resampler. That is a defensible default (it ships everywhere `libswresample` does, no extra dependency, bit-exact and fully deterministic) but it is the lowest-fidelity of the three options, and for **this product** that is a quality claim rather than a footnote: a batch music-video renderer is asked to resample an arbitrary source rate to whatever the encoder wants, and soxr is measurably better in both passband and imaging. `swr_set_engine` requires the soxr library to be present, so it belongs behind the same shape the post-process pass uses — probe, gate the source, degrade with a reason — rather than becoming a hard dependency that breaks the build on a stripped distro. **Do this alongside, not instead of, the loudness work:** soxr and a ReplayGain scalar are the same user-visible improvement and the second is cheaper.
-- [ ] `MediaMetadata::formatLine` does repeated `QString::replace()`.
-- [ ] No meaningful `constexpr` usage.
-- [ ] `downloadAudio()` always writes `.mp3` — detect from content-type.
-- [ ] `onWavConversionReady()` redundant if/else.
-- [ ] `AudioEngine::analyzerWorker` and `VisualizerRenderer::initialized_` never reset.
-
-### Code organization
-- [ ] **Dead subsystems audit, re-verified 2026-09-28** — *found by a full-tree sweep.* Each of these is a declaration or a duplicate with no consumer; together they are most of a day's cheap cleanup and they hide real features from QML. `VisualizerWindow::feedAudio` (`VisualizerWindow.cpp:198`, zero callers — the renderer pulls PCM from `AudioQueue::popViz` instead); `VisualizerWindow::frameReady` (`:33`, declared and never emitted); `LyricsSync::eventOccurred` (emitted at `LyricsSync.cpp:237,243`, zero `.connect()`); `Playlist::itemAdded`/`itemRemoved` (emitted `Playlist.cpp:96,117`, zero connects); `Signal::hasConnections`/`connectionCount` (`Signal.hpp:102,107`); `FrameGrabber::queueSize` (`FrameGrabber.cpp:54`); `EncoderSettings::VideoSettings::twoPass`/`extraOptions` (`EncoderSettings.hpp:83,88`); and `ThemeBridge` (60+ color properties, deliberately unregistered at `BridgeRegistration.cpp:34-37`, and architecturally out of sync with the QML `Theme.qml` singleton, which has no persistence path). Unreferenced resources: `components/ComingSoonPage.qml`, `icons/qml/lyrics.svg`, `icons/qml/recording.svg`. Keep the 8 `EncoderSettings` static presets (`EncoderSettings.hpp:145-152`) — they are a finished UI feature, not dead code; see the proposals section.
-- [ ] **The test suite has a measured coverage-gap map, and two integration entries are decorative on any headless runner** — found 2026-09-30. **The title's second half was refuted 2026-10-04: both integration entries pass on this machine.** `ctest --test-dir build-fast/tests --output-on-failure` is green on **9 of 9**, including `integration_tests` (which constructs a real `AudioEngine` and asserts `audio.init()`) and `integration_gl_tests` (which needs a real drawable). The extrapolation below was reasonable and it was wrong; do not gate a decision on it. **Two ranked entries are also now closed:** `ConfigLoader` gained `tests/unit/core/test_ConfigLoader.cpp` with 11 round-trip tests — which is how the `[recording.video]` never-written bug was found, so the map's top-ranked risk was the right one — and `Color::fromHex` moved to a non-throwing `parseHexColor` with four verdicts. **Still live from this item:** `Result<T>`, `JThread` (so the `__cpp_lib_jthread` fallback path may never be compiled on this machine at all), `pm::Bridge` (the whole visualizer subscription layer), `PresetPersistence`/`RatingManager`, `ClipResolver`, `SunoWorkspace`, `MediaMetadata`, `CliArg`, and `tests/unit/projectm/` which is **empty and in no CMakeLists**. Of the ranked list, (2) `Config::save` atomicity is done, (3) `Application::parseArgs` is untouched and the `configAccessor` column in `CliArgs.inc` is still **dead**, (5) `JThread` fallback and (6) `Result<void>::orElse` + `TRY_VOID` are untouched — and note `TRY` (`Result.hpp:211-217`) references `decltype(_result)::value_type`, which **`Result` does not define**, so the macro cannot compile as written; verify with a one-line grep before spending anything on it.
-- [~] **Bound the network path: no timeouts, no size caps, and an unchecked `write()`** — found 2026-09-30. **The `DownloadQueue` half landed 2026-10-04 and is `[x]`; the other four sites and every JSON service remain `[ ]`, so the item stays open.** Verified by grep this session. What shipped in `DownloadQueue`: `write()`'s return is **checked**, so an ENOSPC mid-download can no longer rename a truncated `.part` into place and report `Completed` (a `ShortWrite` abort is classified **Retryable**, and the retry restarts from byte zero, so a transient full disk recovers); the scratch file is opened `WriteOnly|NewOnly` — **`NewOnly` *is* the cross-platform `O_EXCL`/`CREATE_NEW`,** so no raw `::open` is needed, and measured here `NewOnly` fails on an existing file and on a symlink where `WriteOnly|Truncate` succeeds and **clobbers the symlink target**, i.e. the old code was a real clobber primitive; a per-item byte cap of **256 MiB** (`kDefaultMaxBytesPerItem`, configurable, checked **before** the write with strict `>` so exactly-at-the-limit succeeds, ≈13× the largest sane payload); every scratch unlink gated on an `ownsPart` flag set only by a successful exclusive open; a transfer timeout; `Retry-After` parsing for both delta-seconds and HTTP-date; and `408`/`429` classified `Retryable`. **A use-after-free found under ASan en route is the reason the item is worth reading even though the code is done:** the old `[this, &item]` connection pattern left a *guaranteed* window, because tearing an attempt down from inside `readyRead` runs abort → finished → terminal state → the reply's next `downloadProgress` after the item is freed. Containers now hold `shared_ptr` and connections capture `weak_ptr`. **Two corrections to this item's own prescription, both measured.** (1) **`QNetworkRequest::TransferTimeoutAttribute` does not exist** in Qt 6.11 — there is no such enumerator. The API is `setTransferTimeout(int)`/`transferTimeout()`, **Qt 6.7+**, and `cmake/Dependencies.cmake:12` pins no minimum, so adopting it raises the project's real floor. Its documented semantics are "abort if *no data is exchanged*", i.e. an **idle/stall deadline, not a total-transfer deadline**, which is the only reason it is safe for media; unset means zero means no timer, which is why the tree genuinely had none. (2) **`Qt::RFC2822Date` is not usable for HTTP-date.** Measured on Qt 6.11.1 it returns an *invalid* `QDateTime` for `"Sun, 06 Nov 1994 08:49:37 GMT"` — RFC 2822's own example, the exact spelling IMF-fixdate mandates — and it silently ignores numeric offsets (`"+0000"` came back 7 h off). An RFC2822Date path would have failed open-to-ladder on 100% of real headers while a "malformed falls back" test still passed, so `Retry-After` is hand-parsed instead, with explicit range checks because **`QTime` accepts hour 99**. **Still open, and it is the same defect in five other places:** the four non-`DownloadQueue` sites that already set `ManualRedirectPolicy` (`AuthHeaders.cpp:10`, `SunoAudioUploadService.cpp:176`, `ClerkAuthClient.cpp:386`, and `DownloadQueue.cpp:405` which is done) plus **every JSON service's unbounded `reply->readAll()`** (`SunoClient.cpp:972`, `SunoExploreService.cpp:254`, `SunoNotificationService.cpp:261,389`, `SunoAudioUploadService.cpp:248`). Grep this session confirms `setTransferTimeout` appears in `src/` **only** in `DownloadQueue`. A hung endpoint there holds a slot forever, and for `DownloadQueue` that slot was `maxConcurrent_ = 3` — after which the entire download queue is wedged. Apply the same `setTransferTimeout` (30 s JSON, 120 s media) and a response-size cap at those sites; nobody owns the policy today, which is exactly why it is missing in five places.
-- [ ] **Port the three good algorithms from `suno-power-exporter`, the only mature Suno client on this machine** — found 2026-09-30. A shipped, tested MV3 extension (`~4.5k` LOC + `~700` LOC of tests) documents real pagination. **Take the algorithms, never the routes** — per `AGENTS.md` §1 nothing it knows may be wired without a capture. (a) `lib/feed.js:186` `getFeedPaginationState`: a pure function, no I/O, handling both cursor mode (`has_more`/`next_cursor`) and legacy page mode (`current_page`/`num_total_results`), returning `{done, error}` rather than guessing and treating a short page as *not* proof of completion when the total disagrees (`:219` "Feed ended at N of M results"). 270 lines of tests already pin it. (b) `lib/api.js:55,145` `parseRetryAfter` + transient classification — see the network-bound item above. (c) `lib/engine.js:281` `downloadBatch`: a **pre-allocated results array indexed by input position** (`{id, status, reason, error}`) rather than a completion-ordered signal stream — the right shape for the future `RenderJob`, and worth copying into the job model. (d) `lib/feed.js:54` `createRequestPacer` takes `wait` as a dependency, so tests drive it with a fake clock instead of sleeping — that is what makes "≤1 rps sustained" testable rather than aspirational. **Also worth copying, as discipline rather than code:** the project deliberately ships **no captures, tokens, cookies, or account ids**, which is the privacy standard `docs/suno_api/raw/README.md` should adopt. **Do not port:** the Mango decryptor (`lib/m4a-decrypt.js:29`) is `[LEAD]` at best and its two counter widths are a guess encoded as a `catch`; the hand-rolled ID3/MP4 writer is strictly worse than the TagLib already in `src/`; and `suno-master-utility-browser-extension` is sloppier code with a `try`-every-host loop that violates the fail-closed host rule outright — mine it for route *strings* only, and treat the fact that the two extensions **disagree on the HTTP verb for `POST /api/mango/rights`** as the proof that neither is evidence.
-- [ ] **Unused includes, 7 sites** — found 2026-09-28. `src/audio/AudioEngine.cpp:2` (`core/Config.hpp`), `:6` (`<QAudioDevice>`), `:7` (`<QMediaDevices>`); `src/lyrics/LyricsSync.hpp:17` (`<functional>`), `:18` (`<deque>`); `src/core/Application.cpp:19` (`<QDir>`), `:20` (`<QFile>`), `:21` (`<QFontDatabase>`). Mechanical, and a cheap way to prove include-what-you-use adoption.
-- [ ] **`SunoBridge` exposes 41 properties and zero signals, and QML uses 10 of `PlaylistBridge`'s 14 members** — found 2026-09-28. Bridge surfaces have grown by accretion with no owner pruning them. Not a bug, but every unconsumed property is a maintenance cost and a lie to a future reader. Note the one real style inconsistency found: `LyricsPanel.qml:54` calls `LyricsBridge.setSearchQuery` as a method when it is declared as a property `WRITE` setter — it resolves, and it is the only such call in the tree.
-- [ ] **`LyricsExport::toJson` is dead** — zero callers tree-wide, and the only thing that makes it look live is that `fromDatabase` is its *inverse* while the SRT/LRC/ASS sidecar work is real, so the instinct is "DB storage will want this". Maybe, and that is exactly why it is **not** a cleanup: deleting a serialization half whose consumer is a plausible next feature is a product call, and it is what `AGENTS.md` §6's one-fact-one-owner rule exists to prevent. It now stands as the only member of `LyricsExport`'s surface after the dead `toSrt`/`toLrc` pair was removed, so leaving it is one dead function rather than a second formatter that drifts from `LyricsBridge`. **Deliberately not done:** neither deleting it nor wiring it to a store — neither half is verifiable until a real consumer exists.
-- [ ] **Sample the engine clock, not `QMediaPlayer::position()`, for lyric sync — the app's headline karaoke feature has a baked-in ~35 ms lag** — found 2026-09-30. `LyricsSync::updatePosition` (`LyricsSync.cpp:193`) applies `lerp(smoothedTime_, playerPosition, 0.3)` on a **16 ms timer**, i.e. a low-pass filter on a value that is already a quantized, occasionally-stalled clock. The consequence is a constant ~2-frame highlight lag. **Do not fix this by connecting `positionChanged`** — that re-opens the exact two-writer hazard the single-writer design closed. Instead sample an engine clock (`QElapsedTimer` anchored to a known `positionChanged`) and drop the timer to a 33 ms repaint cadence. Pair it with a user `lyricsOffsetMs` setting plus a ± nudge in `LyricsPanel` (~15 lines): captured timings always drift against a re-encoded local file, and that is the #1 karaoke complaint. Effort M, and it is the highest-value karaoke-quality change available.
-- [ ] **The lyrics context-line query has three implementations and only one of them is production** — found 2026-09-29. `LyricsData::getTimeRange`, `LyricsSync::getContextLines`/`getUpcomingLines`, and `LyricsBridge::getContextLines` are three copies. The first two now share `checkedIndex` and agree exactly; the bridge agrees on window arithmetic and ordering **but differs on the anchor rule** — it clamps a `currentLineIndex_` of −1 to 0 and always shows at least line 0, while `LyricsSync` returns empty. That difference is deliberate, pre-existing, and test-pinned. **It is not "reachable in production" as an earlier revision of this entry claimed** — both bridge functions are `Q_INVOKABLE` (reachable) but a tree-wide grep finds **no QML caller of either**; the panel reads `getLine(i±1)` directly. The lazy-singleton scenario that motivated the claim is real but hypothetical, since nothing calls the functions at all. What is *not* hypothetical is the sign flip: **`getUpcomingLines` diverges in the opposite direction.** For `getContextLines` the bridge is the forgiving one (index −1 → shows line 0) and `LyricsSync` returns nothing; for `getUpcomingLines` `LyricsSync` reads −1 as "line 0 is current" and starts *after* it, while the bridge reads it as "the whole song is still to come" and includes line 0. So the two anchors cannot be unified by one decision, and delegating `getUpcomingLines` would silently drop line 0 from the pre-render buffer. `bridgeContextLinesMatchLyricsSyncExceptAtTheAnchor` and `bridgeAndSyncUpcomingLinesAgreeExceptAtTheAnchor` now pin both the agreement and the single disagreement each, so nobody "fixes" one into the other. Their signatures differ too — the bridge takes a signed `int` (a negative is expressible), `LyricsSync` a `size_t` — so the pair is not interchangeable; two `static_assert`s pin both. Unifying needs a per-function product decision plus a new `LyricsSync` overload, so it is backlog rather than a cleanup. Note `LyricsSync::getContextLines`/`getUpcomingLines` have **zero production callers — tests only** — so that duplicate pair is the cheapest of the three to retire, though it is also the natural future home for a delegating bridge, so it should be kept. The sibling `LyricsSync::getUpcomingLines` had the same unbounded walk, found later and now also fixed: `for (i = 0; i < count; ++i)` with no early exit, so `count == SIZE_MAX` runs 2^64 iterations. **An earlier revision of this entry called that a hang, which is nearly but not exactly right, and the correction is the interesting part.** A 16-bit simulation of the pre-fix loop shows that for `anchor >= 1` it *does* terminate and returns the correct lines **plus one spurious duplicate** of an already-passed early line (anchor 1 on an 8-line song gives `2,3,4,5,6,7,0`), while only `anchor == 0` runs to exhaustion. So the real defect is "returns a corrupted result after an unbounded walk" rather than "returns garbage" or "never returns" — and the duplicate is a *worse* bug than a hang, because a hang is noticed. The fix clips the walk to the real distance to the last line and routes the anchor and every subscript through `checkedIndex`; the regression guard does not return on the pre-fix code. Equivalence for every input the old loop could survive was proven exhaustively (175 875 cases over line count 0–24 × anchor −4–30 × count 0–200, zero mismatches) and 6 125 oversized cases verified against the closed form. Note its `size_t` signature makes the negative case unrepresentable rather than clamped, which is why the bridge's `int` and this `size_t` are not interchangeable.
-- [x] `VideoRecorder.hpp` is a pointless facade — inline or remove. **The file does not exist.** Verified by listing `src/recorder/`: there is no `VideoRecorder.hpp` and no `VideoRecorder.cpp`, only `VideoRecorderCore`, `VideoRecorderThread` and `VideoRecorderFFmpeg`. Stale item; nothing to do.
-- [ ] `PlaylistBridge` takes the address of a reference parameter — possible dangling pointer.
-- [ ] `loadM3U` appends rather than replaces — should clear first.
-- [ ] SQLite FTS5 not enabled — add a virtual table for lyrics and clip search.
-- [ ] `PresetPersistence`/`RatingManager` lack atomic writes — a crash corrupts the file.
-- [x] **`sanitizeFilename()` incomplete — no Unicode, reserved names, or path separators** — found 2026-09-30, **largely fixed 2026-10-04**, and the interesting defect was not the one this item named. All four of its findings were real and all four are closed: **NFC normalisation** through Qt's own tables (APFS stores NFD, so a composed title round-trips to different bytes and two visually identical titles could collide); a **byte budget that never splits a UTF-8 sequence**, so a 300-byte title no longer produces an `ENAMETOOLONG` on ext4/APFS; **Win32 reserved device names checked last and after trailing-space-and-dot removal** — which is the whole reason `CON .mp3` survived a check `CON` did not, because Win32 strips those from every path component before it reads the name, and because truncating `COM11` to three characters can *create* a reserved name; and **NUL mapped rather than truncated**. 17 exact-value tests in a new `tests/unit/util/test_PathSafety.cpp` prove the helper single-component and traversal-proof. **The two `SunoDownloader` halves are also done, and the serious one was never in `FileUtils`:** `clip.id` was interpolated into a filesystem path **unsanitized** while `ClipParser::parseClip` validates only non-empty, so an id containing `../` wrote outside the download directory and needed nothing more than two clips sharing a title — the normal case for generated music. `destOwner_` is now keyed case-insensitively (`Song.mp3`/`song.mp3` are different map keys and the same file on APFS and NTFS, so the first was silently clobbered). **Remaining and small:** `DownloadQueue`'s length warning previously had no user-visible reason; it now reports one. **No hidden second path into a filename was found** — `safeStem`'s `safe.empty() ? clipId : safe` fallback is dead, because `sanitizeFilename` never returns empty.
-- [ ] LRC metadata tags (`[ar:]`, `[al:]`) not parsed.
-- [ ] `CliUtils::findClosestMatch` truncated; `CliArg` stringly typed.
-- [ ] `isatty()` not portable.
-- [ ] `Color::fromHex` uses allocating `std::stoi` — use `std::from_chars`; and its home in `FileUtils` belongs in a `Color.hpp`.
-- [ ] Duration has several representations — unify behind a strong typedef.
-- [ ] `Application::printHelp` is 80+ hardcoded lines.
-- [ ] `SunoBridge::onLibraryUpdated()` hand-builds a map that a shared converter could build.
-- [ ] `#pragma once` on `.inc` files; missing include guards in `CliArgs.inc` and friends.
-- [ ] `PKGBUILD` hardcoded path removed — `output_directory` now uses `~/Videos/ChadVis`.
-- [ ] **Large files are accumulating, but the pattern is three distinct shapes and only two of them are worth refactoring** — surveyed 2026-10-04. **22 production `.cpp`/`.hpp` exceed the ~500 LOC soft ceiling, and 14 test files do**, against 77 `.cpp` on disk. Largest by far: `test_RecordingPipeline.cpp` at **2,620** (the single biggest file in the tree, 1.8× the next), then `VideoRecorderFFmpeg.cpp` and `SunoClient.cpp` tied at **1,429**, `test_BoundedBody.cpp` at 1,357, `SunoBridge.cpp` at 1,184. **The ceiling is being missed, but "refactor the big files" is the wrong instruction, and the reason is worth more than the refactors.**
-  - **Documentation artefact, not a monolith.** `RenderExecutor.hpp` is 568 lines of which **60.4% is comment** — only 160 code lines. Same for `VideoRecorderFFmpeg.cpp`, where 406 of 1,429 lines are measured-fact prose. Splitting these buys nothing and costs a header.
-  - **Genuinely structural, and narrow.** Four named extractions: (a) **`LyricsData.cpp` (870) holds three namespaces** — `LyricsData` 93 lines, `LyricsFactory` 372, `LyricsExport` 379 — and **it is the cleanest split in the tree: three `.cpp` files, no header change, zero behavioural risk.** `src/lyrics/` is 4 files total and is the *least* split module in the project. (b) **`SunoClient.cpp` implements two classes** — `CredentialStoreWorker` and `SunoClient` are both declared in `SunoClient.hpp:54,:122`, and **192 lines (13%) are keychain worker I/O, not HTTP**; it is least at home there. (c) **`RenderExecutor.hpp` declares 3 classes + 4 structs.** (d) **`SunoBridge.cpp` is the only file in the top 30 at 4% comment** — 1,012 real code lines, 82 members of which ~28 are one-line `Q_PROPERTY` getters, plus four `ensure*/destroy*` service-pair lifetime methods. That is **a facade that became a second controller**, and it is the clearest instance.
-  - **Already split, and this should be copied not repeated.** `src/recorder/` is 25 files with a clean Core/Thread/Backend layering; `src/suno/` splits by service and `src/suno/auth/` by mechanism, with `CredentialStoreWin32.cpp` / `CredentialStoreSecretService.cpp` as per-platform **siblings** — the pattern the rest of the tree should follow. All eight recent extractions (`RenderJob`, `RenderQueue`, `AudioFileDecoder`, `ResamplerEngine`, `HttpPolicy`, `PcmFormat`, `Color`, `OffscreenRenderSpike`) are correctly scoped.
-  - **The real outlier is test size, and the honest fix may be "leave it".** 8 of the top 10 largest files are tests, and `test_RecordingPipeline.cpp` is one `QObject` class with ~40 cases and no separable block. For a QTest class that is usually correct as-is; splitting it would trade one navigable suite for several with shared fixtures. **Decide deliberately rather than by reflex** — and note the counter-example: the `DownloadQueue` hardening introduced a **second `FakeReply` copy** in `test_DownloadQueue.cpp`, so one "split" made two things drift.
-  - **Method caveat if this is ever re-measured:** the survey counted comment-*only* lines, so trailing `// …` prose is counted as code and the percentages are **understated** — good for ranking, not quotable as absolute.
-- [ ] **A `.cpp` on disk that no `set()` declares now fails SILENTLY — a sixth instance, and the only one that produced no error at all** — 2026-10-04. `RenderExecutor.{hpp,cpp}` (1,424 lines) and `test_RenderExecutor.cpp` (292) were written and committed while nothing referenced them, so `cmake/Sources.cmake` never named them, they never compiled, and **no undefined-symbol link error appeared** — because nothing referenced the symbol. Every prior instance (`PcmFormat.cpp`, `Color.cpp`, `AudioFileDecoder.cpp`, `ResamplerEngine.cpp`, one `RECORDER_SOURCES` append) failed loudly at link time naming the *caller* instead of the forgotten file. **The trap is worse than recorded, not the same:** the loud cases are the lucky ones. A file nothing references is invisible in every way. Counts as of this survey: **75 `.cpp` declared in `Sources.cmake`, 77 on disk** (one is `main.cpp`, declared separately at `TargetSetup.cmake:171`; `RenderExecutor.cpp` is the gap).
-
-### QML / UI
-- [x] **Fullscreen shortcut `F` is not wired** — *closed 2026-09-29 by the same work that closed the F11 item, and the premise of both was wrong in an instructive way.* The backlog claimed `VisualizerWindow::toggleFullscreen` was "unwired" and that adding a binding was the fix. Both halves are false: the C++ side **already** dispatches `F` and `F11` (`VisualizerWindow.cpp:229-230`), plus `Escape` (`:239`) and left-double-click (`:243`) — and **`VisualizerWindow` is never shown**, so it exists only as a `QQuickWindowContainer` child, which means its `keyPressEvent` can never see a key and its `showFullScreen()` is inert. The defect was not a missing binding; the C++ handler was pointed at the wrong window. Fullscreen is now the QML `ApplicationWindow`, for two independent reasons: the native window is a non-top-level container child (so a fullscreen request on it is inert), and the nav rail, header, footer, `VisualizerOverlay` and `KaraokeMaster` are QML *siblings* in the scene and would stay on screen regardless — "fullscreen" that still shows the whole app shell is worse than none. The C++ slot is deliberately **not** called from QML even though `VisualizerBridge` exposes the pointer, because that would add a third path fighting the double-click one over an inert flag.
-- [x] **F11 declared but not wired.** *Same root cause as above, now closed with it.* `KeyboardConfig` declares `toggleFullscreen: "F"` and `main.qml:424` was the single `TODO`/`FIXME` in the entire non-Suno source tree. Both keys are now bound to one action, as **two bindings rather than primary/fallback**: `F` is the discoverable, configurable one and stands down while a text field has focus; `F11` is unconditional, which is exactly what keeps fullscreen reachable *while typing*, because no text field can consume a function key as text. They cannot double-fire (distinct key events, and the native `F`/`F11` branch is unreachable while embedded). `Escape` exits, enabled only while fullscreen so it cannot shadow a dialog's own `Escape`. The typing guard walks `activeFocusItem` and 3 ancestors against `TextInput`/`TextEdit`/`TextField`/`TextArea` so it covers both focus models (control-focused vs inner-input-focused, e.g. `SpinBox`), and is applied **only when the configured key is a bare character** (`^[A-Za-z0-9]$`), so a user who rebinds to `Ctrl+Shift+F` does not lose the shortcut inside text fields. `fullscreenActive` is *derived* from `visibility === Window.FullScreen` rather than stored, so a window-manager exit (macOS green button, Escape) cannot desync the UI into a state where the shortcut refuses to re-enter. The Video-page reveal turned out to be **related, not a leftover** — a placeholder reading "reveal the surface this belongs to" — so it is kept as a precondition and exit now returns to the prior view, guarded so a stale `"settings"` cannot reopen a window. **Not verified by a test and cannot be:** fullscreen needs a real window, and GL-backed assertions need the native QPA plugin (the documented `integration_gl_tests` split). This needs a manual pass; the nine steps are recorded in the work log. **The dead code this exposed is now gone too:** `VisualizerWindow::toggleFullscreen`, its `fullscreen_`/`normalGeometry_` members, the `public slots:` section that held it, the `F`/`F11` and `Escape` branches, the `mouseDoubleClickEvent` override, and three now-unreferenced includes are all deleted, and the trap is documented as an `@section Embedding` block on the class. The premise that the double-click was "harmless" was wrong in a way that justified the deletion: it was the one path that really did fire, and it latched `fullscreen_ = true` permanently while the container fought the geometry and the QML chrome stayed on screen anyway. The double-click *gesture* is therefore gone — `F`/`F11` is the supported way in, and `VideoView.qml` has no double-click handler that would cover it. `keyPressEvent` itself was **kept**: it still carries the preset bindings, and `R`/`L` have no QML equivalent, so deleting them on the same inference would have been a silent capability loss.
-- [ ] **No internationalization, and there is no infrastructure at all** — the P2 item understates this. There are **zero `qsTr` calls in all 56 QML files**; every user-visible string is a raw literal. A full-tree sweep enumerated ~200 such literals by file and line (worst offenders: `OverlayPanel.qml` 14, `AccountSessionCard.qml` 10, `LyricsPanel.qml` 9). Also 7 sites use emoji as a label glyph (`LyricsPanel.qml:34`, `ClipCard.qml:90,149`, `PlaybackPanel.qml:86`, `KaraokeMaster.qml:182`, `ClipDetailSheet.qml:241`), which needs different treatment from translatable text. Note `Logger.hpp` uses fmt-style `{}` placeholders throughout, so the logging vocabulary and `qsTr` need one shared answer decided up front. A partial job is worse than none, so do this after the UI stops moving.
-- [ ] **Color picker present but unimplemented.**
-- [ ] **Settings panel reuses the playback icon** for a different action.
-- [ ] **Theme.qml missing `textPrimaryVariant`** — a real contrast bug, not just a completeness gap; fix it before claiming any accessibility work.
-- [ ] **"Show in Folder" unreliable on Linux** — `xdg-open` handling breaks on some desktops.
-- [ ] **The `textPrimaryVariant` contrast claim is refuted, but a worse adjacent bug exists** — found 2026-09-30. `Theme.qml:59` *does* define the token (`#bdbdbd`, `readonly`) with a comment recording that it was fixed, and it is used correctly at 10 call sites; against `#1a1a1a` it measures ~8.9:1, comfortably AA. The remaining bug is that `AppearanceSettings.qml:24-25` lets the user set `background` to **any** hex while every text token above it is a hardcoded literal — so choosing a light background makes the entire app unreadable. Guard token derivation on the chosen background; that is the real accessibility defect, and it is not the one this file records.
-- [ ] **`AccountPage.qml` reaches `signOutSuno` through a reflective `bridgeApi["signOutSuno"]()` bracket call** — found 2026-09-30. Six such call sites in that file (`:18,22,26,59,64,76`), each guarded by a `bridgeSupports()` probe because the author was unsure the method existed. It does exist, it is a plain `Q_INVOKABLE`, and the pattern defeats type checking, IDE completion, and `qmllint` at once. The probe was compensating for uncertainty the header resolves.
-- [ ] **Structured logging** — add a JSON sink for agent and log-aggregation parsing.
-- [ ] ~~`ThemeBridge` writable colors~~ — moot: `ThemeBridge` is deliberately not registered as a QML singleton, because it would shadow the QML `Theme` singleton.
-
-### Tooling
-- [ ] `.clang-tidy` variable-naming rules do not match project convention — false positives.
-- [x] **`.clang-format` is unusable as a gate** — *fixed 2026-09-29.* Measured 2026-09-26: it wanted `BraceWrapping.AfterFunction: true` (Allman) while the whole tree uses attached braces, so `clang-format --dry-run -Werror` reported violations in *untouched* files. It has been regenerated from the code rather than the code forced to match a wrong config: attached braces, `IndentWidth 4`, `ContinuationIndentWidth 8` (47 of 146 files break after `(` then indent 8), `ColumnLimit 100`, left pointers, and **Qt-first include ordering** (46 of 53 mixed std/Qt files put Qt first). It also had to be made to parse under *both* Homebrew clang-format 23 and Apple clangd 16's clang-format 16, which cost `Standard: c++23` and `AllowShortRecordOnASingleLine` — clangd silently falls back to LLVM formatting when it cannot parse the file, which would have given the editor a different formatter than the gate. Violations across 15 representative untouched files fell from **946 to 423**; the whole `src/` tree from 6526 to 4667. **The honest caveat, stated in the file header rather than hidden:** a whole-repo `--dry-run -Werror` gate is unreachable today, not merely noisy. 19 files indent with tabs, 5 use 2 spaces, 1 uses Allman (`SunoExploreService.cpp`), **83 files carry trailing whitespace on blank lines** (clang-format always strips it and no option preserves it), and ~1456 continuation lines are wrapped well before column 100. The config is therefore documented as a **diff-scoped** gate (`git clang-format`), and explicitly *not* as a blocking CI check yet. `ColumnLimit: 0` was evaluated and rejected: only 184 of ~26 000 `src/` lines exceed 100 chars, so the extra 1456 findings are real over-wrapping, and a `ColumnLimit: 0` formatter can never enforce width. **Follow-up, real and now measurable:** the tab/space and trailing-whitespace split means a one-time `src/` normalization pass is a prerequisite for a whole-repo gate.
-- [ ] **A one-time `src/` normalization pass is a prerequisite for a whole-repo `clang-format` gate** — this is the measured reason the gate is diff-scoped (`git clang-format`) rather than a blocking check, recorded so the difference is a known step and not a permanent exemption. 19 files indent with tabs, 5 use 2 spaces, 1 uses Allman (`SunoExploreService.cpp`), **83 files carry trailing whitespace on blank lines** (clang-format always strips it and **no option preserves it**), and ~1456 continuation lines are wrapped well before column 100. The first three are exactly the class of finding a `--dry-run -Werror` gate cannot separate from real violations, so a whole-repo gate is unreachable until the tree is normalized once — not merely noisy. `ColumnLimit: 0` is **not** the escape hatch and was already evaluated and rejected: only 184 of ~26 000 `src/` lines exceed 100 chars, so the extra 1456 findings are genuine over-wrapping, and a zero-limit formatter can never enforce width. Order of work: tabs→4 spaces, strip blank-line trailing whitespace, settle `SunoExploreService.cpp`'s braces, then re-measure and promote the gate if the residue is small enough to act on.
-- [ ] `.clang-tidy` missing `modernize`, `bugprone`, and concurrency checks — enable incrementally. *Superseded 2026-09-29: all three families are enabled, plus 21 noisy checks disabled each with a reason, as recorded in [`CHANGELOG.md`](CHANGELOG.md).* Kept as a marker only.
-- [ ] `.clangd` config is minimal — missing compilation-database hints and header search paths. *Closed 2026-09-29: it gained `CompilationDatabase: build`, verified loading all 266 entries with 0 errors.* Kept as a marker only in case a regression is later reported.
-- [ ] **`docs/dev/TESTING.md` documented a pre-fix state as current** — *found 2026-09-28, and being corrected.* It claimed 8 ctest suites (there are 9; `integration_gl_tests` was undocumented entirely), claimed `test_PresetScanner` had no `runTest*` entry point, and claimed `test_SunoEndpoints` ran at static-initialization time — all three contradicted by `tests/unit/test_main.cpp:10,11,33`. That is the doc which owns test inventory asserting the exact bug `AGENTS.md` §3 warns about. **Lesson worth keeping:** a doc that describes a *bug* as current state is the highest-risk stale documentation, because a future agent reading it will re-diagnose a fixed defect. **Still uncorrected as of 2026-09-30** — `:31` says 19 sources, `:35,:57,:121,:136` say 18 suites; actual is **21 sources / 21 suites** (`tests/unit/CMakeLists.txt` is 186 lines). **Two sub-claims in this item are now themselves stale, 2026-10-04:** `test_main.cpp` **does** enumerate `Signal`, `SunoDownloader` and `LyricsExport` (the file carries 52 `runTest*` references today, and the wave added `ConfigLoader`, `PcmFormat`, `AudioFileDecoder` and the three recorder-regression suites), so that half of the note is wrong and must not be "fixed" a second time. And **the two integration entries are no longer decorative on a headless runner** — `ctest --test-dir build-fast/tests` is green on **9 of 9** entries on this machine, `integration_tests` (which constructs a real `AudioEngine` and asserts `audio.init()`) and `integration_gl_tests` (which needs a real drawable) both pass. Delete the "neither integration entry is safe to gate a PR on today" conclusion from that companion P2 item; it was a reasonable extrapolation and it was wrong. The doc's own numbers still need fixing against whatever the current counts are.
-- [ ] **QML module and resource drift** — found 2026-09-28. `QML_SOURCES` (`cmake/Sources.cmake:188-247`) and the on-disk set are in sync at 56/56, but `src/qml/shaders/shadow.frag` is not declared, `icons/qml/lyrics.svg` and `recording.svg` are declared but unreferenced, `panels/PlaylistPanel.qml:15` uses the technology-preview `Qt.labs.platform` while the rest of the tree uses `QtQuick.Dialogs`, and 3 of the 7 nav entries (`NavRail.qml:20-22`) all render `suno.svg`. **Re-verified 2026-09-30: `QML_SOURCES` is exact at 58/58 — that part of the claim is stale and false.** The real drift is the icon set, and the cause is now identified: `resources/icons/qml/suno.svg` and `playback.svg` are **byte-identical** (verified with `diff` — the same Feather "play-circle" path pasted twice), so `NotificationsView`, `DiscoverView` and `CreateView` all render a generic play button, and **none of the three has an icon at all.** You need bell, compass, and sparkles. `lyrics.svg` and `recording.svg` already ship unused (the Lyrics panel and Record tab use `text:` labels instead) and are free to wire. `refresh.svg` does not exist, so a chevron does refresh, collapse, and open-drawer duty across 5 call sites.
-- [x] **No build CI whatsoever** — `.github/workflows/` contained only `opencode.yml`, a comment-triggered agent workflow. **DELIVERED 2026-10-05 as four new workflows, and NONE of them has ever been executed — no push, no run, no log.** Every one carries at least one untested assumption, and the honest list is longer than the workflow files. **Verified 2026-09-30 that 7 of 9 ctest entries are CI-ready *today*:** `unit_tests` plus the 6 standalone binaries link only `Qt6::Core`/`Network`/`Test` and construct no GUI, so they run headless with no QPA plugin. Only the 2 integration entries are blocked — `integration_tests` constructs a real `AudioEngine` and asserts `audio.init()` (`tests/integration/test_main.cpp:23-45`), which fails or hangs with no audio device; `integration_gl_tests` needs a real drawable (Ubuntu needs `xvfb-run` + `LIBGL_ALWAYS_SOFTWARE=1` + `GALLIUM_DRIVER=llvmpipe`). **Neither should gate a PR until fixed**, and neither is a reason to delay the workflow. Structure it as a wide build matrix (`ubuntu-24.04` × {gcc, clang} + `macos-14`) gating on the cheap one, plus a `tsan` job that is nearly free given the lane already exists. **A second required job is needed for the system-deps path:** on macOS with Homebrew, `Dependencies.cmake:38-73` takes the *system* branch for spdlog/fmt/toml++, so a CI job that only tests the CPM path would leave the link line the user actually builds untested forever.
-- [ ] **`enable_testing()` is in `tests/CMakeLists.txt:1`, not the root — this is the `AGENTS.md` §3 zero-test trap** — found 2026-09-30. That single placement is *why* `ctest --test-dir build` discovers zero tests and still exits 0, a trap the operating rules already warn about. Move it to the root `CMakeLists.txt` alongside the existing `add_subdirectory(tests)` and gate the CI job with `-L unit`.
-- [x] **`MACOSX_BUNDLE` is set nowhere, so the configured .dmg is a trap** — found 2026-09-30, **fixed 2026-10-05, and the fix required one fix more than the property itself.** The target at `TargetSetup.cmake:162` is now a real `MACOSX_BUNDLE` (APPLE only — it is an Apple-only property) with a generated `cmake/Info.plist.in` (`CFBundleExecutable` interpolated from the target's own name, version from `version.txt`, `NSHighResolutionCapable`), `INSTALL_RPATH "@executable_path/../Frameworks"`, and a POST_BUILD chain of deploy → `macdeployqt` → verify → codesign. `cpack -G DragNDrop` now produces a working **83 MB `.dmg`** from a 224 MB bundle, verified by mounting it and running the binary to `QML window created successfully`. **The part that was not obvious, and it is the whole reason a .dmg is worse than nothing if you skip it:** `macdeployqt` discovers QML imports by **parsing `.qml` files on disk**, and this project compiles every QML file into the executable's resource system — so it deployed **zero** QML modules, while still writing a `qt.conf` with `Imports = Resources/qml`. That combination turns a packaging omission into a **hard startup failure** (`plugin "qtquickcontrols2plugin" not found` → `Failed to create QML window`) rather than a silent fallback to the build machine's Qt. The fix is `-qmldir=${CMAKE_SOURCE_DIR}/src/qml`. **Verified relocatable:** before, `otool -l` had **no `LC_RPATH` at all** and all 19 non-system deps were absolute `/usr/local/opt/...`; now every one is `@executable_path/../Frameworks/…`, checked across the executable, all 70 `Frameworks` dylibs and all 13 plugin categories. **Still honest gaps:** notarization is **not** implemented (documented as a manual post-`cpack` step; nothing is signed with a real identity, ad-hoc only, so Gatekeeper blocks the artifact elsewhere); relocatability is proven structurally and from three paths **on one machine**, never a second Mac; the bundle is 224 MB because Homebrew FFmpeg pulls x264/x265/aom/opus/libass and the fix is static linking or a trimmed FFmpeg in `Dependencies.cmake`.
-- [x] **`Config` round-trip is lossy and `save()` is broken on Windows** — found 2026-09-30, **fixed 2026-10-04**. All three defects landed. `[overlay] enabled` is a real round-tripping field rather than a hardcoded `true`. `ConfigLoader::save` is atomic **and portable**: `MoveFileExW(MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)` on Windows and `fsync` + `rename` elsewhere — the rename-over-existing case is exactly the one that fails on the major userbase, and there is still no `fsync` on the POSIX path, so that half is *improved*, not proven durable against power loss. A new `tests/unit/core/test_ConfigLoader.cpp` (11 tests) owns the round-trip, including the `recordingOut` sub-table below. **The serializer also dropped about a dozen keys `config/default.toml` never mentioned, including `aspect_correction`** — so a first run wrote a file the shipped default did not describe, and `aspect_correction` is the one that silently decides whether a vertical render is letterboxed or squashed. **What this item did NOT find, and what a fresh `ConfigLoader` suite did: `[recording.video]` and `[recording.audio]` were never written at all**, every encoder key landed flat in `[recording]`, and the two codecs collided on one key with toml++ keeping the first. See the reopened P0 item; it is a `[x]` that read as verified and was not. **Still open from this item:** the `Config.hpp:15-16` "Thread-Safe: Mutex-protected" comment is still a lie, because every accessor returns a raw reference and `findOverlayElement` does not take the lock. That needs the comment deleted or the accessors redesigned, and it was deliberately not folded into a data fix.
-- [ ] **The cheap way to catch the round-trip bug is a `--print-effective-config` diff** — found 2026-09-30. There is no reflection, no enumerate, and no `--print-config`; `docs/user/CONFIG.md` (19.1 KB) is a hand-maintained mirror of the tables and is the thing that will drift. The honest cheap version: a flag that dumps `ConfigParsers::serialize(...)` and *diffs it against the loaded file*. ~30 lines, no new machinery, and it doubles as the regression test the round-trip fix needs. Do this alongside the fix above, not after.
-- [x] **`Color::fromHex` throws on a hand-edited config, and the throw escapes** — found 2026-09-30, **fixed 2026-10-04, and the premise was wrong about the common case.** `accent_color = "blue"` does **not** throw: `fromHex` only called `std::stoi` for length 6 or 8, so a 4-character word fell through to the default-constructed `Color`, which is **opaque white** (`{255,255,255,255}`) — **not** the opaque black this item claimed, a detail two agents reached independently before either had read the other's note. The throw needs 6 or 8 characters of non-hex (`'zzzzzz'`, `'#gggggg'`), so the defect was real but reachable by a much narrower input than "a hand-edited config" implies. It is fixed anyway: `Color` moved out of `src/util/FileUtils.cpp` into `src/util/Color.{hpp,cpp}` as the item asked, and `parseHexColor` returns a `std::expected<Color, ColorParseFailure>` with **four distinct verdicts** instead of a silent fallback or a throw. `fromHex` remains as a documented shim. `ConfigLoader::load` additionally gained a `catch (const std::exception&)` backstop, so the throw is now a diagnostic rather than a termination even where it is reachable.
-- [ ] **Dependency reproducibility** — `cmake/Dependencies.cmake` pins 6 of 15 dependencies; the other 9 are unpinned `find_package`/`pkg_check_modules` system lookups, so builds are non-reproducible across machines by design. `pffft` and `moodycamel/readerwriterqueue` bypass the system-first fallback every other header-only dep follows, and `CPM.cmake` itself is `file(DOWNLOAD)`-ed unconditionally at `:27-29` even when no fallback is needed.
-- [ ] **Orphaned files, verified 2026-09-28** — `scripts/build-fast.sh` (no doc, script, or README reference), `skills/cpp-coding-standards/SKILL.md` (referenced by nothing), `.agent/CODEBASE_EXPLORATION_PROMPT.md` (0 references), two `.DS_Store` files, and a 41.5 KB `build.log` sitting in the repo root.
-- [ ] **The render-job tests litter the repository root with 26 receipts, and `.gitignore` did not cover them** — found 2026-10-05. `RenderJob::kReceiptSuffix` (`.chadrjob`, `RenderJob.hpp:129`) is a render-job *sidecar* written next to the encoded output, which is correct. The defect is that the recorder tests point the encoder at paths in **CWD**, so a `ctest` run deposits 26 `.chadrjob` files in the **repo root** — and `.gitignore:80`'s `build-*/` rule did not catch them, because ctest's working directory is the repo root rather than the build directory. Of 26 untracked files in the tree, 22 were these, so **one stray `git add -A` would have committed a pile of binary artifacts.** Two layers, only one of them shipped: `.gitignore` now covers `*.chadrjob`, `*.chadtiming` and `*.part`, and the 26 strays were moved to `.backup_graveyard/` per `AGENTS.md` §4. **The real fix is not the ignore rule — it is that the tests should write into a temporary directory**, the way `test_DownloadEntitlement.cpp` does with `QTemporaryDir`. Until then this recurs on every full ctest run, and the ignore rule is a guard rather than a repair.
-- [ ] `CMakeLists.txt` still carries multiple `// TODO` comments.
-- [x] `docs/suno_api/README.md` carries the unofficial/support disclaimer, authority boundary, evidence labels, and secret-handling rules.
-
----
-
-## P3 — Low: polish and future-proofing
-
-- [ ] TOML-based "Chad Config" — expose every UI constant and engine parameter.
-- [ ] Profile support — save and load UI themes and visualizer preset banks.
-- [ ] qss themes and a switching UI section; custom user themes auto-populated; live theme reload instead of restart-required.
-- [ ] "Modern Visualizer Overlay" with reactive text and graphics.
-- [ ] "Karaoke Master" mode with custom aesthetic overrides.
-- [ ] `std::mdspan` for FFT; concepts/constraints on unconstrained templates; `std::array` for `CircularBuffer`; configurable shuffle seed for deterministic tests; `std::variant` for lyric sources and CLI args.
-- [ ] `PresetScanner` categories default to "Uncategorized" — infer from directory structure.
-- [!] **`PresetBridge` calls pass `modelData.index` for a key that does not exist — select/favourite/blacklist/rating all silently hit preset #0** — found 2026-09-30, verified. `PresetBridge::presetToVariant` (`PresetBridge.cpp:268-280`) emits `name, path, author, category, favorite, blacklisted, playCount, rating` — **there is no `index` key** — yet `PresetsPanel.qml:48` calls `PresetBridge.selectByIndex(modelData.index)`, `toggleFavorite(modelData.index)` and `toggleBlacklist(modelData.index)`, and `:96` calls `setRating(modelData.index, index + 1)`. Every one passes `undefined`, coerced to `0` by the `int` parameter, so **all four interactions operate on preset #0 regardless of which row you click.** `setRating` even indexes `(*presets)[index].name` with it (`PresetBridge.cpp:202`). This is silent data corruption rather than a dead affordance, and it is not in this file. Two siblings in the same panel share the class of bug: the search field and the category combo bind to local QML properties (`PresetsPanel.qml:19-29`) and never call the bridge's `searchQuery`/`selectedCategory`, so **typing filters nothing**; and the `__blacklisted__` category (`PresetsPanel.qml:36`) is never special-cased by `PresetBridge::filteredPresets()` (`:220-228`), so it always returns an empty list. `rescan()` is implemented off-thread with coalescing (`PresetBridge.cpp:242-254`) and has no button. All S, all low risk, and together they are the difference between a working preset panel and one that quietly corrupts ratings.
-- [ ] **~360 LOC of genuinely orphaned QML — 4 files, not "~570"** — found 2026-09-30, and the existing claim is **wrong in the useful direction**. The 8 `src/qml/panels/settings/*.qml` are **not** dead: every one is instantiated by a `settings/*Page.qml` wrapper that `SettingsWindow.qml:102-110` puts in a `StackLayout` (`AudioPage.qml:44` → `AudioSettings`, `AccountPage.qml:151` → `SunoSettings`, and six more), and they are the *single owner* of the settings controls — the `*Page.qml` files are 48-line titles-and-blurbs around them. The "deliberate exception" framing is also wrong: `SunoSettings` is simply the only one of the 8 with a bespoke wrapper, because credential UX needs state. **What is actually orphaned is 4 files: `views/SettingsView.qml` (57 L), `panels/SettingsPanel.qml` (86 L), and `components/AccordionContainer.qml` + `AccordionPanel.qml` (which only reference each other).** `components/ComingSoonPage.qml` and `panels/PlaybackPanel.qml` are also unreachable, and TODO does not list either. So this is a **deletion, not a migration** — but confirm `PlaybackPanel.qml` first, as it holds 200+ lines of working transport UI with a repeat/shuffle cluster and a file dialog that `TransportBar.qml` did not absorb. The Save/Apply + Reset semantics in `SettingsPanel.qml:70-84` are already preserved and better in the live window (`SettingsWindowFooter.qml:35-60` has a confirm dialog and a status message), so nothing needs porting.
-- [ ] **No internationalization, and there is no infrastructure at all** — the P2 item understates this. There are **zero `qsTr` calls in all 56 QML files**; every user-visible string is a raw literal. A full-tree sweep enumerated ~200 such literals by file and line (worst offenders: `OverlayPanel.qml` 14, `AccountSessionCard.qml` 10, `LyricsPanel.qml` 9). Also 7 sites use emoji as a label glyph (`LyricsPanel.qml:34`, `ClipCard.qml:90,149`, `PlaybackPanel.qml:86`, `KaraokeMaster.qml:182`, `ClipDetailSheet.qml:241`), which needs different treatment from translatable text. Note `Logger.hpp` uses fmt-style `{}` placeholders throughout, so the logging vocabulary and `qsTr` need one shared answer decided up front. A partial job is worse than none, so do this after the UI stops moving.
-- [ ] **README humor still displaces information, though Quick Start now carries the real build and test commands.**
-- [x] Root `CHANGELOG.md` is canonical with the legacy archive in `docs/CHANGELOG_LEGACY.md`. *Note 2026-09-28: the legacy file still carries two different `1.1.0` entries (2026-09-26 and 2026-01-28) and both changelogs acknowledge the overlap without resolving it. This `[x]` also absorbed the duplicate `docs/suno_api/README.md` item that stood here separately; the surviving copy is the fuller one under Tooling, per the one-fact-one-owner rule.*
-
----
-
-## P4 — Features and architecture
-
-- [ ] **DI over singletons** — replace global singletons with dependency injection.
-- [ ] **Separate audio processing from UI** — make the audio engine a headless library consumed via bridges.
-- [ ] **`std::execution`/`std::jthread`** — C++23 parallel algorithms and join-aware threads in the audio pipeline.
-- [ ] **QML bridge consolidation** — many bridge singletons into one namespaced backend interface.
-- [ ] **Build system improvements** — per-module CMake subdirs, vendored CPM, optional Conan/vcpkg.
-- [ ] **Audio mastering workstation pathway (JUCE under evaluation)** — P7 defers lightweight-DAW features until the export pipeline is stable. JUCE is the leading candidate for the audio engine because it supplies multi-stop `AudioFormatReader`/`Writer`, MIDI, and device-agnostic realtime I/O that would otherwise be hand-rolled. The `origin/experiments/juce-refactor` branch is retained deliberately for this reason, but none of its 2026-02 code is portable. See the considered-pathways note in `docs/PIVOT_PLAN.md`; revisit only after P5 and P6 conclude.
-- [x] Accordion height animations; expanded settings with engine and recorder controls; persistent state for all toggles and view modes.
-
----
-
-## P5 — Testing and QA
-
-- [ ] **Authorized-account smoke** — Library, Create, Listen, Explore, Notifications, Video, and Settings against a real session. The only item from the 2026-09-24 verification pass still open.
-- [ ] **Capture-backed contract fixtures** — fake-request tests for account, billing, and limit behavior.
-- [ ] **Health-check tests for agentic workflows** — fast signal for development cycles.
-
----
-
-## Codebase audit (2026-04-28) — remaining
-
-Full audit of 19,294 LOC across 10 modules: 24 issues found, 18 fixed across five phases, net −894 LOC (38 files changed).
-
-- [ ] **#14** `OverlayBridge` uses separate JSON persistence instead of the config system — deliberate, since JSON suits list data. Revisit for debouncing.
-- [x] **#1/#12** lyrics unification; **#2** `SunoDatabase::clipFromQuery`; **#3** `SettingsBridge` X-macro table; **#4** broken QML theme references; **#5/#13** CLI argument table; **#6/#23** lyrics dedup; **#7/#8** download helpers; **#9/#22** format helpers; **#10** `VisualizerBridge` stubs; **#11** namespace migration; **#15** `vc::lerp()`; **#16** orphaned license block; **#17** duplicate include; **#18** duplicate GL state; **#19** archived `LyricsLoader.hpp`; **#21** orphaned forward declaration; **#24** stale CMake variable; **#25** native visualizer toggle; **#26** LyricsBridge SRT/LRC export and search.
-
----
-
-## Capture-gated — ship gates, not blockers
-
-Every item here is **actionable engineering**, not a wait. Each states the capture
-that would upgrade it *and* the fail-closed behaviour the code ships in the
-meantime, so the work is never parked. Do not read a `[?]` here as "cannot
+These are engineering tasks with a stated dependency, not waiting items. Do not read `[!]` here as "cannot
 proceed"; read it as "proceed, and leave the switch off".
 
-- [~] **Native sign-in loopback** — every observed callback and final redirect in the current captures is Suno-owned HTTPS. **Now much sharper after the 2026-08-25 capture:** `POST /v1/client/sign_ins` is directly observed carrying `redirect_url=https://suno.com/sso-callback?auth_mode=sign-in`, and `GET /v1/client/handshake` is directly observed taking an arbitrary **absolute** `redirect_url` and appending a one-shot `__clerk_handshake` nonce JWT to it. That reduces the open question to one specific thing: *does Clerk validate `redirect_url`, or will it honour a `http://127.0.0.1:<port>` target?* Until a capture answers it, the native path stays correctly disabled. Meanwhile the **offline** scaffold is real work with no capture dependency: `AuthCoordinator::beginGoogleSignIn` still refuses because `launch_` is `std::nullopt` (`AuthCoordinator.cpp:110-114`) and `installCredentials_` is never populated (`AuthCoordinator.cpp:24-36`), so even a successful callback is a no-op (`AuthCoordinator.cpp:80-82`). Close those two gaps behind the gate so that flipping the gate later is a one-line change, not a feature. The gate itself is owned solely by [`docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md`](docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md) and must not be restated elsewhere.
-- [ ] **Clerk route selection** — `POST .../tokens` and `POST .../touch` are both directly observed; requiredness and preference order are not established. Still true, and the 2026-08-25 capture does **not** settle it: that capture exercised `touch` (empty form body, matching the inventory's 2026-08-25 variant) and never called `tokens`. Both remain `[T1]`. Ship `touch`-first with a 401-retry fallback and keep the preference configurable, rather than picking a winner on inference. This is the largest `[T1]`-without-code gap in the inventory.
-- [ ] **Server feed search** — no reviewed request contains `searchText`; use local filtering. **Updated 2026-09-28:** the recon proves a server-side search surface *does* exist — `POST /api/unified/search/omnisearch`, plus `/api/unified/search/users` and `POST /api/search/` — so the rule is not contradicted, but the reason changes. It is not that search is absent; it is that the request field name is still uncaptured, and the route is `POST` rather than a `searchText` query. The local filter already exists and is the shipped behaviour, so this is a watch item, not a gap. Adopt the real contract only from a capture.
-- [ ] **Following-feed pagination** — the first page is observed, but no next-page token or cursor was captured. There is currently no following-feed surface in the client at all, so nothing is blocked; `SOCIAL_FOLLOWING_FEED` is declared-unused and correctly so. Build the surface only against a captured cursor.
-- [ ] **Orpheus/B-Side/VIP/hidden features** — remain disabled unless a new direct capture and a product decision promote them. The engineering that must exist regardless: the fail-closed host guard already refuses the Modal host, so keep it, and keep `ORCHESTRATOR_CHAT`/`ORCHESTRATOR_HISTORY` declared-unused rather than deleting them.
-- [ ] **Fresh captures** — playlist mutation, error and rate-limit envelopes, direct generation drift, upload status and clip initialization, and other `[LEAD]` routes. Add error/rate-limit envelope handling now: it is a parser and a UI state, both of which we need for every route regardless of which routes exist.
-- [ ] **Ranked human-capture shortlist (2026-09-30)** — the audit produced an ordered, costed capture list, because the backlog's largest category is *unresolved evidence* rather than unwritten code. **Setup first, ~10 min, and it affects every capture below:** use Burp or mitmproxy and **export HAR** — do **not** retain a vendor session DB, for the reasons in the P0 capture-hygiene item. Disable active scanning. Sanitize at ingest: keep hostnames, route paths, field *names*, status codes and header *names*; strip values, tokens, cookies, account/clip ids and complete media URLs. **Tier 0 (~45 min, closes five backlog items):** (1) one clip's `media_urls[]` with hosts and every `content_type`/`encoding`/`delivery` — closes the mp3-only filter, the silent-unplayable-clip P0, and the media-host allowlist in one capture, and is the highest value-per-minute item in the entire backlog. **Item (1) was taken 2026-10-05, and it closed the question rather than the filter.** 40/40 `media_urls` entries are `m4a-opus`/`progressive` on the CloudFront origin, `mp3` never occurs, `audio_url` is the `/api/forbidden` sentinel in 40/40 and `video_url` is empty in 40/40 — and a fetched CloudFront body is **ciphertext, not audio** (`ffprobe`: 200, 3,967,956 bytes, no `ftyp`, "moov atom not found"). So the mp3-only filter is *closed* rather than waiting for this capture, the silent-unplayable-clip item is *fixed*, and the media-host allowlist answered "CloudFront" — but the answer came back as "these bytes are not playable", which is a different outcome than the one this entry was written to produce. What it did **not** settle, and what is now the whole of item (5)'s gate: the **success response shape** of every mutation verb. Their request schemas were recovered in the same pass (master §5.9).; (2) library + playlist pagination — two scrolls, settles `current_page`/`start_index` vs cursors; (3) the error and rate-limit envelope — three cheap triggers, and the broadest win because it is a parser plus a UI state needed for *every* route regardless; (4) the three notification routes — decides whether a `wired` surface is real or a 404 generator, which is the one open risk in the notification item below; (5) the library mutation verbs — like, trash, add-to-playlist, share — which is the gate on the largest product gap. **Tier 1 (auth, slower, gates the product):** Clerk `tokens` vs `touch` on a fresh sign-in with both query keys and the per-route `__clerk_api_version` values; and **loopback acceptance** — the only capture that can unblock a P0-class gate, and a rejection is an equally valuable negative that would settle the native-sign-in question permanently. Also Tier 1: `POST /api/c/check` request *and* response, for both captcha decisions, which is the single fact that unblocks a *human* decision on generation. **New host leads from the recon, all zero hits in the master, all needing a capture:** `content.suno.run` (3,290 occurrences in the zap host histogram), `cdn3.suno.ai` (1,239), and `suno.sng.link` (194) — plus a CloudFront allowlist and an `audiopipe-dev` staging origin the corpus host sweep missed because it only matched `*.suno.com|*.suno.ai`. **Record as deliberately excluded, do not wire:** the money-moving and consent routes (above), `/b-side/*` (77 staff routes incl. `impersonate` — disclosure material only), contest downloads (the `remix-contest-disable-downloads` flag means contest clips are download-restricted, a ToS surface), and `/labs/*` (expect little; every probed lab was 404 + `noindex` and absent from all sitemaps).
-- [ ] **Orpheus model-name claims** — retired; `chirp-v4` and `chirp-auk` appear only in a deleted fork. Captured evidence shows `chirp-v3.5`. No action; kept so the retirement is not silently undone.
+- [ ] T0141 **Clerk route selection — `tokens` vs `touch`** (`docs/suno_api/ENDPOINT-INVENTORY.md`) #blocks-capture
+      Both `POST .../tokens` and `POST .../touch` are `[T1]`-observed; requiredness and preference order are not
+      established, and the 2026-08-25 capture exercised only `touch`. Ship `touch`-first with a 401-retry fallback
+      and keep the preference configurable. **The largest `[T1]`-without-code gap in the inventory.**
+- [ ] T0142 **Error and rate-limit envelope handling** (`src/suno/`) #risk-high
+      No reviewed request contains a rate-limit or error envelope shape. This is one parser plus one UI state
+      needed for **every** route regardless of which routes exist — the broadest capture win.
+- [ ] T0143 **Library mutation success-response shapes** (`src/suno/SunoLibraryMutations.cpp`) #blocks-capture #data-loss
+      Request schemas were recovered; the **success** shape of every mutation verb was not, which is why the
+      surface stays disabled (T0011). A 2xx must be treated as "accepted, shape unverified" — see T0018 for the
+      case where the code gets this wrong.
+- [ ] T0144 **Fresh notification captures** (`src/suno/SunoNotificationService.cpp`) #blocks-capture
+      Decides whether the three wired notification routes are real or a 404 generator — the one open risk in the
+      notification surface.
+- [ ] T0145 **Loopback acceptance capture** (`docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md`) #blocks-capture
+      The only capture that can unblock a P0-class gate; **a rejection is an equally valuable negative** that would
+      settle the native-sign-in question permanently. Before it, T0011's offline scaffold gap
+      (`beginGoogleSignIn` still refuses because `launch_` is `std::nullopt`) is worth closing so flipping the gate
+      is a one-line change.
+- [ ] T0146 **New host leads need a capture before they are wired** (`src/suno/CapturedHosts.cpp`) #security
+      `content.suno.run`, `cdn3.suno.ai`, `suno.sng.link`, plus a CloudFront allowlist and an `audiopipe-dev`
+      staging origin. **Record as deliberately excluded, do not wire:** the money-moving and consent routes,
+      `/b-side/*` (77 staff routes including `impersonate` — disclosure material only), contest downloads, and
+      `/labs/*`.
+- [ ] T0147 **Keep excluded on purpose** (`src/suno/`) #security
+      `ORCHESTRATOR_CHAT`, `ORCHESTRATOR_HISTORY`, `MODAL_BASE` and the `MODAL_BASE` host refusal
+      (`CapturedHosts.cpp:444-446`) are intentionally unreferenced. Do not wire them and do not delete them
+      without a decision.
+- [ ] T0148 **Capture hygiene before any capture** (`docs/suno_api/raw/README.md`) #security
+      Use Burp or mitmproxy and **export HAR** — do not retain a vendor session DB. Disable active scanning.
+      Sanitize at ingest: keep hostnames, route paths, field *names*, status codes and header *names*; strip
+      values, tokens, cookies, account/clip ids and complete media URLs.
+- [ ] T0174 **The 2026-09-24 capture corpus is gone and its SHA-256 manifest cannot be verified** (`docs/suno_api/raw/`) #risk-high
+      The published directory now holds a **0-byte** placeholder, three Burp XMLs have zero
+      `<item>` elements, and the surviving `auth.suno.com` artifact hashes differently from the
+      manifest entry. **This is not a reason to demote any `[T1]`** — a `[T1]` records what was
+      observed, not what is still on disk. But the manifest is the only record of *what was
+      reviewed*, so **do not delete it**; record the on-disk state alongside it instead. This
+      was invisible to a fresh source audit by construction: no code change can surface it.
+- [ ] T0175 **A `[REGISTERED]` evidence grade is needed, distinct from `[T1]`** (`docs/suno_api/`) #risk-medium
+      Roughly 62 endpoints are *proved to exist* by a 401 response, but a 401 observes **no
+      request and no response body**. Three axes — existence, contract, entitlement — are
+      currently conflated under one grade, and `Implemented` is a second axis on top. Splitting
+      existence from contract is what lets the inventory say honestly "we know this route is
+      real and we know nothing about its shape." Sits directly under AGENTS.md §1.
+- [ ] T0176 **Credential material lives outside the repository in three places** (`~`, not the repo) #security
+      A live `__session` cookie file, a ZAP log containing `Authorization: Bearer`, and a
+      directory of HAR exports. The repo's secret rules govern what is *committed*; they do not
+      reach files outside the worktree, so this needs a standing operating rule rather than a
+      `.gitignore` entry. Confirm what still exists on this machine before acting.
+- [ ] T0177 **Nine `[T1]` route spellings have drifted and should be re-probed** (`docs/suno_api/ENDPOINT-INVENTORY.md`) #risk-medium
+      This is the **opposite direction from T0069**: where T0069 records routes the code sends
+      that the inventory under-claims, this records routes the inventory *over*-claims as
+      captured when the spelling no longer resolves. Caveat: a static negative is weak evidence —
+      re-probe before demoting anything.
 
----
+## Human decisions — not tasks
 
-## Proposals — NOT USER APPROVED
+Phrased as forks with real cost on one side. None should be resolved by an agent inferring intent from the code.
 
-> **Nothing in this section is approved, scheduled, or promised.** These are
-> ideas gathered from a full exploration of the tree on 2026-09-28, grounded in
-> real files and in the facts recovered from the 2026-08-25 capture. They are
-> recorded so the thinking is not lost, **not** so that anyone can pick one up
-> and start building. Only the user promotes an item out of this section into a
-> real priority tier, and only then does it become backlog.
->
-> The one hard rule that survives promotion: a proposal may not be built on a
-> `[LEAD]`-only or unverified Suno contract. Items that need a capture say so.
-
-### Highest leverage first
-
-> **Added 2026-09-30 from a dedicated product-strategy pass.** That pass's uncomfortable
-> conclusion, which reorders this whole file: *the Suno client is the wedge, not the point.*
-> A desktop client whose features are library/generation/downloads/account is worth ~nothing,
-> because a desktop client is a strictly worse place to browse a music library than the web app
-> that owns the server and ships daily. The defensible half is the one Suno structurally cannot
-> do — desktop + local render engine + real encoder = **transformation, not access**. suno.com
-> hands you a 30-second stream in a tab; ChadVis can turn a track into a finished video file.
-> The product sentence should be *"ChadVis is a music-video renderer and karaoke studio that
-> imports from Suno."* Read every P1 item through that lens: does it make the **output** better,
-> or the **input list** longer? Corollary: generation stays off permanently — the browser
-> hand-off proposal is the answer and it costs an afternoon. Corollary 2: `--render song.flac`
-> must work with **no Suno account at all**, because that is the cheapest insurance against
-> Suno disappearing, and it argues for designing the download/import surface as a first-class
-> local-file path from day one rather than a Suno-shaped convenience.
-
-1. **Register `SunoWorkspaceBridge` and build the music-video UI on it.** This is not a
-   proposal so much as a correction — see the `[!]` item in P1. It is listed here because
-   the *feature set* it unlocks (regions, stems, render progress, workspace save/load) is
-   the product, and nobody has ever seen it run.
-2. **Download is not play.** `SunoDownloader::processDownloadedFile` is a one-line alias
-   for `addAndPlay`, so fetching N clips audibly plays them one after another, and
-   `SunoBridge` has no `downloadClip` at all. Splitting the two is small, fixes a real
-   behaviour, and is the input side of every batch feature below.
-3. **Frame pacing from the timestamps already in hand.** Covered as a P0 item above
-   because the data is already captured and discarded. Cheap, and everything downstream
-   (batch, templates, concat) inherits a correct timeline instead of compounding drift.
-4. **A render job model and queue.** `DownloadQueue` is an already-tested template for
-   exactly this machine (bounded concurrency, backoff, atomic `.part` rename, cancel,
-   idle signal), and `SunoWorkspace` already models `renderMode`/`renderDuration` with
-   `renderProgress`/`renderCompleted` signals that currently have no producer. The product
-   goal is a *batch* creator; there is no job model at all today.
-5. **A build-and-test CI.** The repo has no build CI whatsoever — `.github/workflows/`
-   contains only a comment-triggered agent workflow. Nine ctest entries are already
-   registered. This is the only item that makes every other item cheaper to verify, and
-   it is small. One caveat: the GL suite needs the native QPA plugin on a real or
-   software GL stack, or the entry is decorative.
-
-### Music video creator
-
-- **Karaoke as a muxed subtitle track before burn-in.** `LyricsData::words` already
-  carries per-word `startTime`/`endTime` from the captured aligned payload, so a `toAss()`
-  writer emitting `\kf` centisecond durations is the bulk of the work, and `libavformat` is
-  already linked. Muxing gives real, selectable, searchable lyrics in any player, and makes
-  burn-in an opt-in second pass. *Risk:* the subtitle codec is container-chosen — WebM has
-  no subtitle stream, so that output must drop the track and say so rather than fail.
-  Depends on fixing `AVFormatContextDeleter`, which segfaults on any read.
-- **A `--render` headless mode.** Today `--headless` skips the window *and* the
-  `frameCaptured` wiring, so it makes recording impossible rather than merely silent. A
-  real render mode makes the video pipeline scriptable and CI-testable. *Honest cost
-  note:* the window plumbing is the easy half; the real work is decoding input audio
-  without `QMediaPlayer`, which does not exist yet.
-- **Encoder preset gallery, including vertical profiles.** The eight `EncoderSettings`
-  static presets already exist with **zero callers** — dead code that is obviously a UI
-  feature. 9:16 / 4:5 / 1:1 are the interesting additions. *Risk:* projectM's aspect
-  correction has never been exercised at 9:16, so the first vertical encode is where you
-  find out whether it letterboxes or squashes.
-- **Poster-frame export.** `RenderTarget` already reads pixels out of framebuffer 0 and
-  `FrameGrabber::flipImage` is the exact row-flip a `QImage` needs. Small, and every upload
-  form wants a thumbnail. *Risk:* picking the *best* frame is a product decision; ship
-  "frame at N seconds" and do not pretend it is scene detection.
-- **Presets-as-scenes, shipped before real keyframes.** The existing "ship presets-as-
-  scenes before keyframes" call stands, with one sharpening: projectM's soft-cut is already
-  plumbed and is a working crossfade, and `SunoMetadata` already carries `bpm` and `key`.
-  The cost is the authoring UX and the interpolation semantics, not the C++.
-- **Cut on real downbeats.** `POST /api/gen/{id}/downbeats_streaming/v2` is captured and
-  declared-unused, so beat-accurate cuts have a *server-computed* source already available.
-  Prefer it over a local detector, and cache per clip so a downloaded MP3 with no clip id
-  still works. Note this shares a boundary with the `downbeats_streaming` capture, which
-  is currently `[T1]`; the availability and rate-limit behaviour are not established.
-- **A render receipt, shipped *with* the job model rather than after it.** Found 2026-09-30.
-  Nothing persists "this output was 1800 frames at 60 fps from these presets", so "render it at
-  4K instead" means re-rendering three minutes in real time. A small versioned sidecar per job
-  (audio path + hash, scene list, karaoke source, encoder profile, projectM version) is what
-  makes iteration cheap, and it *is* the durable state half of the job model. Design it as a
-  **public schema with a version field from the first byte**, not a serialization of internal
-  structs — the first schema wins forever.
-- **A cheap proof render before committing to the encode.** Found 2026-09-30, and it is a
-  direct consequence of the wall-clock constraint rather than a fight with it: a 6-second,
-  quarter-res, no-audio proof costs 6 seconds. This is the correct answer to "watch the render
-  live" — *prove it cheap first.* One scaled-down `EncoderSettings`.
-- **A `--render` mode that needs no Suno account at all.** The cheapest insurance against Suno
-  disappearing, and it makes the renderer a standalone product with the client as an optional
-  input source. Do it on day one, from a local file. This also argues for the download/import
-  surface being a first-class local-file path rather than a Suno-shaped convenience.
-- **An FFmpeg post-render pass: burn-in, loudness, concat.** The route is already decided
-  and for a hard reason (projectM binds DRAW to framebuffer 0, which is exactly the
-  framebuffer Qt Quick owns, so GL compositing is structurally impossible). *Cost is
-  dominated by packaging, not code:* `libavfilter` and `libass` must be added to
-  `Dependencies.cmake` **and** `FFmpegUtils.hpp`, and a stripped distro must not stop the
-  app from launching. Ship behind a CMake option that degrades to "no post pass".
-
-### Suno client
-
-- **Read your own plan, handle, and device id out of the bearer.** `JwtUtils` already
-  decodes claims and already tail-matches slash-prefixed vendor claims, so `suno/handle`,
-  `suno/username`, `plan`, and `suno/did` are available from a token the client already
-  holds, with zero extra requests. *Do not* silently swap the token's `suno/did` for the
-  locally generated `device_id` config value — the header requirement is captured for the
-  value in use today, and changing it invalidates that policy. Show `did` as diagnostic only.
-- **Loopback sign-in via the captured handshake, not `sign_ins`.** The handshake takes an
-  arbitrary absolute `redirect_url` and 302s back to it with a one-shot nonce, and the
-  entire receiving half already exists and is tested (`LoopbackListener`, `OAuthTransaction`,
-  constant-time state comparison). `AuthCoordinator` currently hardwires Google; that
-  becomes a provider list. *This is still behind the capture gate* — see
-  [`docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md`](docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md),
-  which is the only place that gate may be stated.
-- **Generation via browser hand-off, then import from the captured library.** The Create
-  page authors a prompt against the real captured catalog, opens suno.com with it
-  pre-filled, and the client picks the finished clip up from `feed/v3` and hydrates it in
-  bulk via the captured `clips/get_songs_by_ids` — which is `[T1]`, `declared-unused`, and
-  a ready-made import primitive. **This is a product and terms-of-service decision, not a
-  technical one**, and it needs a human before any code is written. Nothing in this
-  section should be read as "solve the captcha".
-- **Realtime push instead of polling.** *Materially advanced 2026-09-28.* The
-  2026-09-28 recon captured `GET /api/realtime/discover` as a **literal
-  unauthenticated 200**: `stream_url` is
-  `https://main.realtime.ably.net/sse?v=1.2&enveloped=false`, `auth.credential` is
-  `embedded_token`, and `jwt_header_param` is `x-ably-token` — the same key already
-  sitting in the JOSE header of the bearer we hold. Three of the four unknowns are
-  therefore closed: protocol (Ably over SSE, not WebSocket — no `wss://` literal in
-  7.4 MB of chunks), auth mechanism, and credential provenance. `SunoRealtimeDiscover`
-  (`src/suno/SunoModels.hpp:243-247`) already models all three fields and matches the
-  captured body exactly, so there is no schema work. **The gate is nevertheless
-  unchanged, and this is the one proposal that could violate fail-closed:** the recon
-  sent **zero** requests to `main.realtime.ably.net` (0 matches across all three probe
-  files), so the host is still a *response value*, never a captured request host.
-  What remains is one small, well-scoped capture — a real SSE connection showing the
-  frame format, channel names, and whether the embedded token is user- or session-
-  scoped, which is the safety question that actually matters. Do not send the bearer
-  until then, and note the value stays low until generation lands.
-- **Per-track preset matching.** `bpm` and `key` are already captured on `SunoMetadata`,
-  and the preset hand-off is already deferred safely to the next frame drain. *Honest
-  limit:* those fields are absent on locally imported files, so the feature must degrade
-  to "unchanged" rather than guess.
-- **Preset banks with export/import.** Ratings, favourites, blacklist and categories are
-  all modelled already. The blocker is that `RatingManager` is a process-wide singleton,
-  which must be un-singletoned before two banks can exist at once. Decide early whether a
-  bank is a curated list (portable, empty elsewhere) or a bundled archive (portable, huge);
-  the first is right and the second is a much larger feature.
-- **A mood / occasion / use-case browse axis.** Suno's public sitemap is dominated by a
-  marketing taxonomy — `music-library` alone is genres 119, collections 54, use-cases 46,
-  moods 34, occasions 31, instruments 17. Our Library is organised by recency and
-  generation status. Those are **different information architectures**, not a missing
-  page, so this is net-new product rather than parity work. *Honest limit:* the sitemap
-  enumerates a taxonomy, not a queryable API, so the first task is finding whether a
-  browse/search route exists behind it.
-- **Inbound deep links (`/song/*`, `/playlist/*`, `/create`, …).** Suno publishes
-  `/.well-known/apple-app-site-association` (3 App IDs × 23 claimed paths) and
-  `assetlinks.json` (4 Android packages, all asserting `get_login_creds`), plus two
-  Singular deeplink hosts. **Structural note, and it matters:** these are an *inbound*
-  surface (OS dispatches a shared link → app opens), which shares no machinery with the
-  app-owned-callback direction and is **not** evidence about it. The native-callback gate
-  has exactly one owning document and is not restated here. *Risk:* the Android side would
-  require Suno to add our signing fingerprint, so it is not actionable unilaterally — this
-  is Suno's move, and the honest value is "a shared Suno link opens in ChadVis", which is
-  small until the library surface grows.
-- **A waveform lyric-timing editor — the missing half of karaoke.** Found 2026-09-30. The repo
-  can *render* word timings (`LyricsData::words` carries per-word `startTime`/`endTime` from the
-  captured payload) but has **zero** `waveform` hits in `src/qml/`, so timings are write-once from
-  a capture. A correction workflow — click a character while it plays to pin an anchor, neighbours
-  auto-reflow; drag a bead and the chain shifts; full undo — is M and needs no ML. The ML aligner
-  (BS-RoFormer + forced alignment) is **L and separately gated**; treat it as a later proposal, not
-  a dependency. Note `Nsomnia/SunoLyricsSync` is an existing local prior art for the *correction*
-  workflow specifically.
-- **Karaoke render strategies as swappable producers.** Wipe / bouncing-ball / scroll / dual-line
-  as an enum plus one render function each. This is also the only sane way to make one strategy
-  usable by *both* the live QML overlay and the FFmpeg burn-in pass, which is the real constraint
-  behind the overlay problem. M.
-- **Server-computed waveform and song structure instead of client DSP.** `/api/gen/{id}/waveform-aggregates`
-  and `/novelty-sections` are cached server analyses (recon, `[LEAD]` until captured). These would
-  replace the ring-buffer waveform work already on the P2 backlog with two GETs. Cheapest
-  "the server already did it" find in the corpus; capture before wiring.
-
-### Player and retention (the feature that outlives Suno)
-
-- **ReplayGain, honestly presented.** Already proposed under P1 as a backlog item. In strategic
-  terms it is the *retention* feature: it is what makes the app worth keeping open between render
-  jobs, and it is the one that still works if every Suno surface dies. Suno's own web player has
-  no loudness normalisation, so this is a cheap and visible difference.
-- **A karaoke-first Listen surface as the daily-driver hook.** Given the muxed-subtitle bet, the
-  Listen view can simply be better than suno.com at showing what is being sung, per word. Nearly
-  free once the ASS path exists, and it is what turns a render tool you open once into an app you
-  keep open.
-- **Library sort, filter, multi-select and a context menu.** Local text search only today, no sort,
-  no multi-select, no bulk action; `ClipCard.qml` has exactly one `onClicked`. This is the
-  difference between a viewer and something you can actually organise a library with. M. Note the
-  remote-verb half is capture-gated above; the *local* half is not and can ship today.
-
-### Visualizer, platform, and quality of life
-
-- **There is no offline parity to port — a recorded negative result.** The recon's
-  `manifest.json` is a stub (no `scope`, `shortcuts`, `screenshots`, or
-  `related_applications`) and, more decisively, the 232 KB `/sw.js` is **not** a workbox
-  precache — it is the Mango DRM audio decryptor for `/_sw-mango`. `caches.` appears
-  exactly once in it and no workbox strategy string appears at all; 15
-  offline-adjacent paths (`/workbox.js`, `/offline.html`, `/service-worker.js`, …) all
-  404 against a genuinely-absent matched path. Suno caches nothing. So any offline
-  capability in ChadVis is **net-new product** whose business case comes from the
-  desktop medium (local files, local projectM rendering), not from matching Suno.
-  *One free thing:* `display: standalone` with `theme_color: #000000` is a deliberate
-  design statement Suno makes to native shells, and it is a validated black-chrome
-  target for taskbar/dock theming. Author native icons — do **not** fetch them from
-  `cdn-o.suno.com`, which is deliberately excluded from the host allowlist.
-- **A `--diagnostics` report.** Every number already exists: encoder fallback warnings,
-  queue depths, drop counters, preset counts, the GL renderer string, and a redaction
-  helper. *Secret handling is the entire risk* — the config holds token and cookie fields,
-  so the collector needs an explicit allowlist rather than a deny-list, and it must be
-  written to a path the user chooses, never uploaded.
-- **Keyboard and screen-reader accessibility.** The `F`/F11 fullscreen machinery exists
-  and is unwired; the shortcuts page already exists to display bindings; `AppButton` and
-  friends are centralized so `Accessible.name` is one line per component rather than per
-  use. Fix the `Theme.qml` `textPrimaryVariant` contrast bug *before* claiming
-  accessibility work.
-- **Localization.** Kept as a proposal rather than a commitment because a partial job is
-  worse than none: half-translated UI is more annoying than untranslated. It also touches
-  ~50 QML files and the logging vocabulary, and every string churned afterwards is a
-  re-translation. Do it after the UI stops moving.
-- **Apple Sign In via `AuthenticationServices`.** The environment capture shows
-  `oauth_token_apple` is an enabled strategy, and on macOS the framework can produce that
-  credential natively with no browser round trip. This is a design decision enabled by
-  evidence, not evidence of a design — which is why it sits here and not in P1.
-
----
-
-## Human decisions — the questions only the user can answer
-
-> **Added 2026-09-30.** These are not tasks; they are forks with real cost on one side.
-> Each is phrased as a question with realistic options. None should be resolved by an
-> agent inferring intent from the code, and none is captured by a proxy.
-
-- **Generation / Turnstile.** *Never solve it — hand off to the browser and import the result*
-  (recommended) · *embedded-webview managed solve* · *drop the Create surface entirely.*
-  Option 1 costs an afternoon and keeps the project clean. Option 2 is a terms-of-service
-  exposure. Option 3 costs the "Suno client" label, which may be clarifying rather than costly.
-- **Third-party client posture.** Ship as explicitly unofficial and unaffiliated, with no
-  redistribution of audio, no money-moving routes, and no legal/privacy-consent writes
-  (recommended) · *something more assertive.* This is a legal judgement only the user can make,
-  and it constrains marketing, packaging, and the support burden permanently.
-- **Auth: one more capture session, or manual credentials forever?** Spend a few hours on a
-  scoped authenticated capture to settle Clerk loopback acceptance, sign-out, and
-  `touch`-vs-`tokens` (recommended — it unblocks native sign-in permanently) · *accept manual
-  credential paste as the shipping 1.1.x path.* The offline scaffold is already built, so option 1
-  is a gate flip later rather than a feature.
-- **The scope call.** Is the Suno client accepted as **download manager + library view + account**,
-  with the renderer as the product (recommended)? This is *the* decision, because it determines
-  which half gets the next six months and it is the one answer that reorders the whole backlog.
-- **Vertical/social output.** A real use case the user personally has, or speculative? Determines
-  whether presets-as-scenes gets a one-day 9:16 spike or nothing.
-- **The projectM pin policy.** Pin an unreleased `master` SHA for `projectm_set_frame_time` now
-  (recommended, per the P1 item) · *stay on 4.1.6 and ship realtime-throttled v1, revisiting at
-  4.2.0.* 4.2.0 is overdue with no announced date, so the first option buys offline rendering at
-  the cost of a permanent upgrade obligation.
-- **CI on Windows.** Add `windows-latest` as `continue-on-error` to collect signal (recommended) ·
-  *omit Windows entirely.* Windows is the major userbase and its credential storage is a
-  plaintext file, so silence there is the worst option.
-
----
-
-## Roadmap order
-
-1. Scrub committed PII from git history and rotate the exposed account identifiers.
-2. Authorized-account smoke across all seven surfaces.
-3. Library, account, and media correctness against that session.
-4. Captcha-backed generation and the bounded upload lifecycle.
-5. End-to-end aligned-lyrics karaoke.
-6. Recording review, deterministic export, scene/keyframes, batch automation.
+- **Generation / Turnstile.** *Never solve it — hand off to the browser and import the result* (recommended) ·
+  *embedded-webview managed solve* · *drop the Create surface entirely.* Option 1 costs an afternoon; option 2 is a
+  terms-of-service exposure; option 3 costs the "Suno client" label.
+- **Third-party client posture.** Ship as explicitly unofficial and unaffiliated, with no redistribution of audio,
+  no money-moving routes, no legal/privacy-consent writes (recommended) · *something more assertive.* A legal
+  judgement only the user can make, and it constrains packaging and marketing permanently.
+- **Auth: one more capture session, or manual credentials forever?** Spend a few hours on a scoped authenticated
+  capture to settle Clerk loopback acceptance, sign-out, and `touch` vs `tokens` (recommended — it unblocks native
+  sign-in permanently) · *accept manual credential paste as the shipping 1.1.x path.*
+- **The scope call.** Is the client accepted as **download manager + library view + account**, with the renderer as
+  the product (recommended)? This is *the* decision, because it determines which half gets the next six months.
+- **Windows in CI.** Add `windows-latest` as `continue-on-error` to collect signal (recommended) · *omit Windows.*
+  Windows is the major userbase and its credential storage is a plaintext file, so silence there is the worst option.
+- **The projectM pin policy.** Stay on 4.1.6 and ship realtime-throttled v1 · *pin an unreleased master SHA for
+  offline render support now.* The first is free; the second buys offline rendering at the cost of a permanent
+  upgrade obligation.
+- **Burn-in dependency policy.** Add `libavfilter` + `libass` as a hard dependency · *add them behind a CMake
+  option that degrades to "no post pass"* (recommended) so a stripped distro can still launch the app.
 
 ## Verification bar
 
-A task is not complete from a stale binary, a declaration, a scan string, or a
-historical commit. Verify the current source with a fresh configure/build, the
-relevant tests, focused lint/format checks, and a real runtime path; record
-observed results in `CHANGELOG.md`.
+A task is not complete from a stale binary, a declaration, a scan string, or a historical commit.
 
----
-
-## Verified 2026-10-04 — for checking, not for trusting
-
-Recorded so the next session can re-run rather than take this on faith. **Every mark changed in this pass was changed because of something on this list or a direct grep against `src/`.**
-
-- `ctest --test-dir build-fast/tests --output-on-failure` → **100% tests passed, 9 of 9 entries.** This **refutes** the long-standing claim, in two places in this file, that `integration_tests` and `integration_gl_tests` are unrunnable without special hardware. Both passed.
-- `build-fast/tests/unit/unit_tests` → **518 passed, 0 failed, 1 skipped** across 26 suites. The one skip is pre-existing and names its own reason (`TestPlaylist::reachingTheEndOfATrackKeepsPlaying`, "audio backend does not advance the playhead in this environment"). Read it; do not "fix" it.
-- The `build-fast` profile is **Debug `-O0 -g0` with ccache**, driven by the rewritten `build.sh`. Measured iteration: first full `--fast --tests` build **11m41s**, incremental after one `.cpp` **8.2s**, unchanged tree **4.5s**.
-- `git log -L` on `VideoRecorderFFmpeg.cpp` → `bytesWritten += packet->size` was written that way **when the file was created**. The four tests that caught it are new in `1e3c0fa`. It is a decade-old latent bug caught by new tests, **not** a regression from that commit.
-- Release configuration built clean at the W1–W3 integration point (**9m34s, 0 errors**), but `build/chadvis-projectm-qt` **predates the final source wave**, so a Release build of the finished tree is **pending**. Do not report a Release result that has not been run.
-- **Nothing requiring a runtime path was verified.** `unit_tests` being green does not prove `SettingsBridge::setAudioEngine` is *called*; the device list, the download caps, the burn-in byte accounting and the render queue have each been verified by test or by measurement, never by a person watching the app. The manual nine-step fullscreen pass still needs a human, a real window and a GL-capable QPA plugin.
-- **The TSan lane still exits 66 on 39 reports**, all inside Qt's own event dispatch (`qobjectdefs_impl.h:548`), and `cmake/tsan.supp` is **still deliberately empty**. Do not "fix" that by suppressing: a suppression that hides a real race is worse than a red lane.
-
----
-
-## Verified 2026-10-05 — the host/gate round, and the media measurement
-
-Same purpose as the section above: recorded so the next session can re-run it. **Read both blocks; the 10-04 numbers are not wrong, they are a day older.**
-
-- `cmake --build build-fast` → **"ninja: no work to do"** on the finished tree, i.e. the wave was already fully compiled and linked. Per the standing rule in the build-system item, the proof that the two new files were actually compiled is the object files, not the exit code: `build-fast/CMakeFiles/project_lib.dir/src/suno/CapturedHosts.cpp.o` (400.5K) and `…/FeatureFlags.cpp.o` (518.5K) both exist. **This was the ninth and tenth instance of the undeclared-source trap**, and the `list(APPEND SUNO_SOURCES …)` block at the end of `cmake/Sources.cmake` is the mitigation.
-- `ctest --test-dir build-fast/tests --output-on-failure` → **100% tests passed out of 11** (86.46 s). **The count moved 9 → 11 since 10-04** because two standalone binaries were added in the intervening wave (`test_OffscreenRenderSpike`, `test_RenderExecutor`), not because anything was reclassified.
-- **`tests/` contains nothing for `CapturedHosts` or `FeatureFlags`.** A tree-wide grep for `CapturedHosts`, `FeatureFlags`, `parseSessionCapabilities` and `GateResolver` across `tests/` returns **zero hits**. The behaviour was checked with standalone compile-and-run harnesses outside the suite: that proves the code works on this machine and proves nothing about a regression. See the gate-subsystem item.
-- **Exactly one capture-shaped measurement was performed this round, and it was the media one**: one CloudFront media URL, returned by the API itself inside a captured authenticated feed body, fetched and put through `ffprobe`. 200, 3,967,956 bytes, no `ftyp` box in the first 16 bytes, "moov atom not found", "Invalid data found when processing input". **That is the whole of it — one body, one probe.** The `mp3` and `webm-opus`-over-`streaming` observation rests on the *other* corpus and is untouched by it. Everything else this round was read off the existing recon artifacts and `fb2349d`, not measured afresh.
-- **Nothing requiring a runtime path was verified, and nobody ran the app.** Every QML change in the download pass — the per-clip save button, the batch bar, the right-click menu, the folder picker, the save-state glyphs — is green in the sense that `qmllint`/the build accept it and **not one line has been executed on a screen**. `Menu.popup(point)` under a `GridView` delegate, `FolderDialog.currentFolder` on open, and the `↓`/`✓`/`↻` glyph choices remain UNVERIFIED for exactly that reason.
-- **The 11 ctest entries include two that instantiate real subsystems** (`integration_tests` builds an `AudioEngine` and asserts `init()`; `integration_gl_tests` needs a real drawable). Both pass here, and that is still not a substitute for a person watching the app: green does not prove `generationUnavailableReason()` renders, that a refusal paints on the right card, or that the batch bar's count matches what it saves.
-- The two `[x]` marks above that are *designated* awaiting verification are the download-UI pass and the silent-unplayable-clip fix. Neither has a runtime observation behind it. **Do not read `[x]` here as "a human saw it work".**
-
----
-
-## Verified 2026-10-05 (late) — THE APP WAS RUN, and it found a bug
-
-**This supersedes the "nothing requiring a runtime path was verified, and nobody ran the app" line in the block above.** Six rounds had closed with that sentence, and it was the largest hole in this project's verification. It is now closed for the startup path, and running it immediately paid for itself.
-
-**The app runs.** `./build-fast/chadvis-projectm-qt --headless` observed:
-
-- Logger and config load, from the real user config (`~/Library/Preferences/chadvis-projectm-qt/config.toml`)
-- **Audio engine initialized on real hardware**: `QAudioBufferOutput`, output `MacBook Air Speakers`, window 4096 samples, requested 44100 Hz against a device range of 8000–192000 Hz, sink not yet observed
-- `PresetScanner` walking the real preset directory
-- `Suno database initialized at ~/Library/Application Support/chadvis-projectm-qt/suno_library.db`
-- `Initialization complete.` then a clean `Shutting down...` on SIGTERM
-
-`--help` also exits 0, which proves the binary and its dylibs resolve. **This closes the P0 item that has stood since 2026-09-30** — "no runtime path has been exercised, so `unit_tests` being green does not prove the device list ever reaches the QML page" — at least for engine initialization. A device list reaching the *page* is still unverified.
-
-**AND IT CAUGHT A REAL BUG THAT NO TEST COULD.** Launching the GUI produced **115 QML warnings on startup**, all from the diagnostics panel added this round in `settings/AccountPage.qml`: six `TypeError: Value is undefined and could not be converted to an object` plus a stream of `Unable to assign [undefined] to QString/bool`.
-
-The cause is a design error in the panel, and it is worth recording because `qmllint` reported it **clean**. The `Repeater` is driven by one flat list holding **both area headers and surface rows**, so every entry instantiates both halves; on a header, `data`/`statusText`/`notes`/`divider` are all `undefined`, and on a row `label` is `undefined`. **QML evaluates those bindings regardless of `visible: false`**, so the visibility guard was not a guard at all. Two of the three clusters are fixed by coalescing at the assignment (`|| ({})`, `|| ""`, `|| false`) and normalising through one `readonly property var row`; the third is fixed but **its verification is outstanding** (see below).
-
-**The general lesson, and it is the fourth instance of this shape in this file:** *a QML file that compiles is not a QML file that runs.* `qmllint` passed, the build passed, 13/13 ctest passed, and the panel was still broken on screen. Only executing it found the fault.
-
-**What remains UNVERIFIED, and must not be read as verified:**
-- **RESOLVED 2026-10-05: the third cluster is fixed and the fix is verified — 115 warnings down to ZERO.** All three clusters were the same root cause: one flat `Repeater` list carrying both area headers and surface rows, so every entry instantiated both halves and the meaningless bindings were still evaluated. Fixed by normalising through one `readonly property var row` inside `GateStatusRow` and coalescing every cross-boundary assignment (`|| ({})`, `|| ""`, `|| false`). Re-measured on the **bundled** binary: `QML window created successfully`, `Initialization complete`, **0** `QML Warning`/`TypeError`/`Unable to assign` lines, 0 load failures.
-- **Two of my own measurements were invalid and are retracted rather than quietly dropped.** The intermediate "55 warnings" figure came from `build-fast/chadvis-projectm-qt`, which — once `MACOSX_BUNDLE` landed — was a **stale pre-bundle binary whose mtime was older than its own object file**. `qmllint` and the build were both green throughout. **Verify the artifact's mtime before quoting a number from it.**
-- **The app runs, and no test could have told you so.**
-- `Menu.popup(point)` under a `GridView` delegate, `FolderDialog.currentFolder` on open, and the `↓`/`✓`/`↻` glyph choices are still unobserved on a screen.
-- No Suno account was signed in, so every account-gated surface read its signed-out verdict. The 27-row panel rendered, but with no flag map.
-- The GL visualizer path, playback, and recording were not exercised — `--headless` deliberately gates the visualizer block.
+1. `./build.sh --fast --tests` builds the test targets; the app itself is not needed for most work.
+2. `ctest --test-dir build-fast/tests --output-on-failure -j"$(sysctl -n hw.ncpu)"`.
+   **Not** `--test-dir build` — that directory has no `CTestTestfile.cmake`, discovers zero tests, and exits 0.
+3. Record the exact command and its result as a `VERIFY` line in `STATUS/<id>.log`, then flip `[?]` → `[x]`.
+   `task.sh audit` fails the repo if an `[x]` has no `VERIFY` line.
+4. Sanitizers before merge for anything touching the recorder or session threads:
+   `./build.sh --tsan --tests && ./build.sh --tsan --safe`, and the `--asan` equivalents.
+5. **A green run is not evidence for GL, burn-in, or audio.** Those tests skip on a headless runner and ctest
+   counts a skip as success. Anything in those subsystems needs a real runtime observation or a human on a screen.
+6. Record user-visible or behavioural outcomes in [`CHANGELOG.md`](CHANGELOG.md).

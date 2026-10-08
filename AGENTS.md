@@ -1,152 +1,141 @@
-# AGENTS.md — Operating Rules for ChadVis
+# AGENTS.md
 
-> **Read this first. It is short on purpose.** Every chat session in this
-> repository operates on this document, so it contains *rules*, not work items.
-> **All tracked work lives in [`TODO.md`](TODO.md).** The docs hub is
-> [`docs/README.md`](docs/README.md). Release history is
-> [`CHANGELOG.md`](CHANGELOG.md).
+Operating rules for this repository. **Rules, not work items** — the ranked backlog is
+[`TODO.md`](TODO.md); the claim mechanism is [`scripts/task.sh`](scripts/task.sh). If a
+rule and a task disagree, the task is wrong and should be fixed.
 
-## Product identity
+## Build & test
 
-**Product pivot ADOPTED 2026-08-26.** This repo ships the **Suno.com desktop
-frontend** (library, generation, downloads, playlists, account) with **projectM
-as a secondary** visualizer / music-video engine (keyframe scene composition,
-karaoke, batch automation, future lightweight DAW). Plan: `docs/PIVOT_PLAN.md`.
+Profiles: `--fast` `--debug` `--release` `--tsan` `--asan` `--ubsan`.
+Actions: `--tests` (build test targets only) `--test` `--safe` (headless-safe entries)
+`--run <ctest-regex>` `--rebuild` `--clean`. Also `-j/--jobs N`, `--no-ccache`, `--qt PATH`.
 
-Do not import API shapes from external rewrite repositories, frontend bundle
-strings, or historical topic prose. Suno facts are capture-driven and carry only
-the repository's `[T1]` / `[LEAD]` / `[VERIFY]` labels.
+```bash
+./build.sh --fast --tests                  # build tests; the app is usually unnecessary
+ctest --test-dir build-fast/tests --output-on-failure -j"$(sysctl -n hw.ncpu)"
+./build.sh --tsan --tests && ./build.sh --tsan --safe    # before merging recorder/session work
+./build.sh --asan --tests && ./build.sh --asan --safe
+./scripts/task.sh audit                    # marks, ids, deps, VERIFY evidence, size cap
+```
 
-## The rules
+* Every profile gets **its own build directory** (`build/`, `build-fast/`, `build-tsan/`).
+  Never point one profile's flags at another's directory.
+* `--test-dir build` finds zero tests and still exits 0. Always name the profile directory.
+* The binary is a `MACOSX_BUNDLE`: `build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt`
+  on macOS, `build/chadvis-projectm-qt` elsewhere.
+* **A green run is not evidence for GL, burn-in, or audio.** Those suites skip on a headless
+  runner and ctest counts a skip as success. Only a real runtime observation counts there.
+* Verify the artifact's mtime before quoting a number from it — this tree has produced a
+  measurement from a stale pre-bundle binary.
 
-### 1. Evidence discipline (non-negotiable)
+## Work coordination
 
-- `docs/suno_api/ENDPOINT-INVENTORY.md` is the **sole API-spec master**.
-- `docs/suno_api/README.md` is the **navigation boundary**.
-- `docs/suno_api/OBSERVED-LEADS.md` is **non-contractual** — research and capture
-  planning only. Never wire a route from it.
-- `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` is the **native-callback gate**.
-- `docs/suno_api/raw/README.md` is **provenance only**.
-- `src/suno/SunoEndpoints.hpp` is an **implementation mirror, not evidence**.
-- **Never promote `[LEAD]` to `[T1]`** without a direct human capture.
-- `[T1]` means "directly captured". It does **not** mean "shipped" — the
-  inventory's `Implemented` column (`wired` / `declared-unused` / `not-in-code`)
-  is an independent axis.
-- **Fail closed on unverified hosts.** Never send cookies, bearers, or automatic
-  remote image requests to an absolute host absent from a captured allowlist.
-- Never hand-roll the Clerk handshake. Never put a Google ID token into
-  `SunoClient` code, ensure tokens are always captured of the unique *end-users*.
+`TODO.md` is the ranked backlog. `STATUS/` holds volatile claim state. Read both before
+starting anything.
 
-### 2. Secret handling (non-negotiable)
+1. Pick the highest-priority `[ ]` task whose `(after: …)` deps are all `[x]` and whose
+   `(<files>)` list intersects no live claim. `./scripts/task.sh next` does this for you.
+2. **Claim before you work:**
+   ```sh
+   ./scripts/task.sh claim T0042 "one-line plan"
+   ```
+   The claim is `open(O_CREAT|O_EXCL)` — atomic. Exit code 3 means someone holds it; take the
+   next task instead of forcing.
+3. **Heartbeat about every 30 minutes:** `./scripts/task.sh heartbeat T0042`. Leases last 4 h
+   and expire by comparison at read time, so a crashed session never blocks the backlog.
+4. `./scripts/task.sh peers` — who is on what, and when it expires.
+5. `./scripts/task.sh release T0042` when done. Claims are logged, so releasing is the trail.
 
-- Never commit raw network captures, credentials, cookies, tokens, account or
-  clip identifiers, pasted private text, or complete media URLs.
-- Raw captures stay **outside** the repository. The only retained raw artifact is
-  the sanitized recon, governed by `docs/suno_api/raw/README.md`.
-- User secrets go to the OS keychain, as appropriate on Windows, Mac OSx, and 
-  GNU/Linux (well actually... gnu is hehe) alike, via `CredentialStore`, never
-  to logs and if needed for some strange reason in a TOMl config file, then good
-  evidence as to why must be formed.
+**Ownership.** You may edit only your own task's mark and your own `.claim`/`.log`. Never
+delete or rewrite another agent's `.claim`; if it is stale, claim it and the script logs a
+`STALE-STOLEN` line for you. Never reformat `TODO.md` to "tidy" it. `TODO.md` holds only
+terminal states (`[x]`, `[-]`); `STATUS/` holds only in-flight state. Never write findings
+into `TODO.md` prose — put them in `STATUS/<id>.log` so the board stays diffable.
 
-### 3. Verification bar
+**Same-file conflicts are the failure mode to fear.** The `(<files>)` list exists so you can
+check statically. If two claims would touch the same file, pick a different task, or serialize
+behind the live claim. `git worktree add` per task when a genuine overlap is unavoidable.
 
-A task is **not** complete from a stale binary, a declaration, a scan string, or
-a historical commit. Verify the current source with a fresh configure/build
-(only do a clean re-build when absolutely nessecary due to the users limited
-compute power), the relevant tests, focused lint/format checks, and a real
-runtime path. Record observed results, if/when deemed needed, in `CHANGELOG.md`.
+## Task state
 
-For Qt/QML checking/linting tools available but not limnited to are: qmlformat,
-qmllint, qmlls, qmlpreview, qmlprofiler, and qmltc. Any tooling may be agent
-installed if/when needed via brew, via port (setup on fish config for sure), from source, or downloading a binary.
- 
-- Tests: `ctest --test-dir build/tests --output-on-failure`.
-  **Not** `--test-dir build` — that directory has no `CTestTestfile.cmake`,
-  discovers zero tests, and still exits 0.
-- Binary: `build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt`
-  on macOS (the target is a real `MACOSX_BUNDLE` as of 2026-10-05), or
-  `build/chadvis-projectm-qt` elsewhere. **Not** `build/src/...`.
-- If a doc and `src/` disagree, `src/` wins and the doc is a bug worth fixing.
+`[ ]` todo · `[~]` claimed · `[?]` code written, **not verified** · `[x]` done **and verified**
+· `[!]` blocked (reason inline) · `[-]` dropped.
 
-### 4. Never `rm`
+**Only `[x]` means finished.** Code that compiles is `[?]`. Flip to `[x]` only after the
+verification command passed *and* its output is recorded as a `VERIFY` line in
+`STATUS/<id>.log`; `task.sh audit` fails on an `[x]` without one. Never mark `[x]` to make the
+board look tidy. Use `[!]` for genuinely blocked, not merely parked — that distinction is what
+lets another agent know whether a task is available.
 
-Append a date-time string to the filename and move it into
-`.backup_graveyard/`, which is gitignored. Committing the move is optional.
-Prune the graveyard when it is large and holds nothing of value — git history
-already preserves the source.
+Ranking is **positional** within `## P0`–`## P3`. Append; never renumber. Keep `TODO.md` under
+15 KB: move finished work to `CHANGELOG.md`, delete the line, and let `git log -p TODO.md` be
+the archive.
 
-### 5. Git
+Commit with trailers so the next session can see what a session produced:
 
-Commit frequently so `git log --oneline` gives future agents a parseable history.
-Use detailed messages for session completions and other major changes. Git
-history is the primary memory for future sessions, when exceeding context limits.
+```
+Refs: T0042
+Agent-Signature: <model> (2026-10-07)
+Verified-By: ctest --test-dir build-fast/tests -R test_DownloadQueue
+Baseline-Revision: 3d0e77f
+Final-Revision: 9f2c1ab
+```
 
-Anything deemed extremly unsafe should be confirmed with user approval despite
-being a novice git user.
+`git log <baseline>..<final>` must list exactly your commits. Equal SHAs mean you changed
+nothing, which is a valid outcome only if you said so.
 
-### 6. Documentation
+## Evidence discipline (Suno client)
 
-One fact, one owning document. If two files claim the same thing, that is a bug.
-Every pointer to a document is a **link**, not backticked text. Keep the docs
-hub table of contents in `docs/README.md` and nowhere else of which the root
-README.md may link to it or any other docs for most front-facing information.
+This is an **unofficial** client for suno.com. Suno publishes no supported API, so the client
+works from capture-derived evidence and **fails closed rather than guessing**.
 
-### 7. Code style
+* `docs/suno_api/ENDPOINT-INVENTORY.md` is the sole API-spec master.
+  `docs/suno_api/OBSERVED-LEADS.md` is non-contractual — research only, never wire from it.
+  `docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md` owns the native-callback gate and nothing else
+  restates it.
+* `src/suno/SunoEndpoints.hpp` is an implementation mirror, **not evidence**.
+* `[T1]` means directly captured. It does **not** mean shipped — the inventory's `Implemented`
+  column (`wired` / `declared-unused` / `not-in-code`) is an independent axis.
+* **Never promote `[LEAD]` to `[T1]`** without a direct human capture.
+* **Fail closed on unverified hosts.** Never send a cookie, bearer, or automatic remote image
+  request to a host absent from the captured allowlist. New host leads need a capture first;
+  record them as deliberately excluded instead of wiring them.
+* The OAuth sign-in lane is **deliberately gated** and unreachable in production. Do not
+  "fix" it. A 2xx on a mutation route means "accepted, shape unverified" — parse nothing.
+* **If a doc and `src/` disagree, `src/` wins and the doc is the bug worth fixing.**
 
-- **Standard:** C++23 is the minimum, enforced at configure time.
-- **I/O:** prefer `std::println`; not `std::cout`, not `printf`, not `fmt`.
-- **Errors:** prefer `std::expected` with monadic `.and_then()` / `.or_else()`.
-  Expected failures return `vc::Result<T>`; `catch` is for genuinely exceptional
-  paths.
-- **Targets:** Arch Linux (latest GCC/Clang) is the primary development target;
-  macOS is the platform this is run and verified on by the user currently
-  however, and Windows (10/11) is also helpful being the major userbase.
-- ~500 LOC is a soft ceiling for a C++23 class. Use best judgment.
-- Production-ready, maintainable, no slop. Follow industry standards.
-- Use appropriate coding paradignms as they best fit: object, functional, etc.
+## Secrets
 
-### 8. TODO.md Task state
+* Never commit raw captures, credentials, cookies, tokens, account or clip identifiers, pasted
+  private text, or complete media URLs. Raw captures stay outside the repository.
+* User secrets go to the OS keychain through `CredentialStore` — macOS, Windows and Linux
+  Secret Service. The plaintext file backend is a last resort that must stay loudly gated.
+* **Never put a bearer, cookie, `Authorization` header, or a full URL with a query string into
+  a log, a refusal message, or an error string.** Log `url.path()`, not `url.toString()`.
+* If a TOML config ever holds a secret, that needs formed evidence — not a default.
 
-Marks: `[ ]` todo · `[~]` in progress · `[x]` done, awaiting verification ·
-`[?]` blocked or requires human input · `[!]` needs immediate user attention.
+## House rules
 
-Only the user removes tasks. Agents may freely refactor, add, and reorganize.
-Record new tasks when instructed or found during operations in `TODO.md`
-rather than in this file.
+* **Never `rm`.** Append a date-time suffix and move it into `.backup_graveyard/` (gitignored).
+* **Git history is the primary memory** for future sessions. Commit frequently; use real
+  messages for session completions. Anything unusually destructive gets user approval first.
+* **One fact, one owning document.** Two files claiming the same thing is a bug. Pointers to
+  documents are links, never backticked text. The docs hub is `docs/README.md`.
+* **Update docs in the same commit as the code they describe.**
+* **C++23 minimum**, enforced at configure time. Prefer `std::println`; prefer
+  `std::expected` with `.and_then()`/`.or_else()`, or `vc::Result<T>` for expected failures.
+  `catch` is for genuinely exceptional paths.
+* ~500 LOC is a soft ceiling for a class. Choose the paradigm that fits rather than defaulting.
+* **Add tests where they let logic be verified** or prevent future breakage — especially for
+  anything touching threads, raw memory, or FFmpeg return codes. A seam that cannot inject a
+  libav error is why a whole class of bug recurs silently.
+* **Sanitizers before merging** work that touches the recorder or session threads.
+* Keep the "Chad / Arch, BTW" register in prose — Linus orchestrating. It is the project's
+  voice, never a substitute for fact. Don't be tacky.
 
-### 9. Working style
+## Self-driven loop
 
-- Unlimited tool calls and full access to user-system packages (`gh`, `git`,
-  `ddgr`, `pacman -Qq`). If a needed tool is missing, they may be installed via
-  brew or from source unless major or requiring user work, then say so.
-- Prefer parallel bounded lanes and decisive commits over gold-plating.
-- Keep the "Chad" and "Arch, BTW" register: Linus Torvalds and Linus Tech Tips
-  orchestrating while Richard Stallman dispenses GNU kung-fu in the background.
-  Humor is the project's unique "easter egg" voice, but not a substitute for
-  fact or information. Don't be tacky.
-- Self-prioritize. Unless otherwise stated, you are given free rein. Improve
-  code when your context shows room for improvment, add found tasks or ideas to
-  the TODO.md, and otherwise keep development moving rapidly as-if it were a
-  vertically oriented and aligned company starting out from venture seed funds.
-  Write tests where they genuinely let logic be verified programmatically or
-  may avoid future headaches.
-
-### 10. Self-driven loop
-
-You have freedom to keep working on `TODO.md` while tasks remain or improvements
-are evident. Use a simple self-harness for repetition, and end with an explicit
-statement of what is done, compiled, tested, verified, and committed — or the
-step that is fatally blocked and cannot be amended. If operating on any model
-with `free` in it's name then you are free to go above and beyond in unlimited
-token allowance usage.
-
-## Environment notes
-
-- Lint with `cline`; `clangd` is also available, and any other tools mentioned,
-  found on the users system, or installable whether from brew, sourfe, or
-  otherwise.
-- Some more tools installed with brew and thus available: include-what-you-use
-  shellcheck pre-commit cmake-lint ccache catch2 nlohmann-json yaml-cpp eigen
-  boost (newer version env var set in bash/zsh/fish rc) cli11 flatbuffers
-  msgpack vcpkg glfw samply hyperfine gitui eza zoxide git-delta
-- cmake language server and cmake-lint are also available on brew
+Keep working while tasks remain or improvements are evident. Prefer parallel bounded lanes and
+decisive commits over gold-plating. Record new tasks in `TODO.md` with evidence, not here.
+End every session by stating what was built, tested, verified and committed — or the exact step
+that is blocked and cannot be amended.

@@ -143,3 +143,14 @@ Thumbs.db
 *.files
 *.includes
 *.config
+
+# Task-claim state. `STATUS/<id>.claim` is VOLATILE, not history: its presence IS
+# the claim (created O_CREAT|O_EXCL by scripts/task.sh), and peer sessions on this
+# machine see it through the filesystem, so it never needs committing. The
+# append-only trail `STATUS/<id>.log` IS committed and is the durable record.
+STATUS/*.claim
+
+# Local-only artifact. Must never be committed: `build.log` is a stale 41KB log.
+# (The former `user-eyes-only/` ignore rule was removed once its contents were moved
+# into git-managed `docs/archive/` — see the commit that added that directory.)
+build.log
