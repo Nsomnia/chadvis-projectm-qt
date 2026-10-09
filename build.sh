@@ -63,10 +63,10 @@ usage() {
 ${BOLD}ChadVis build${RESET}
 
 ${BOLD}Profiles${RESET} ${YELLOW}(each keeps its own build directory; switch freely)${RESET}
-  ${GREEN}(no flags)${RESET}       Release, ./build            the shipping configuration
-  ${GREEN}-f, --fast${RESET}       -O0 -g0 + ccache, ./build-fast  the edit/test loop
+  ${GREEN}(no flags)${RESET}       -O0 -g0 + ccache, ./build-fast  ${YELLOW}default${RESET}: the fastest possible edit/test loop
+  ${GREEN}-f, --fast${RESET}       same as no flags
   ${GREEN}-d, --debug${RESET}      Debug with debug info, ./build-debug
-  ${GREEN}-r, --release${RESET}    same as no flags
+  ${GREEN}-r, --release${RESET}    optimized Release, ./build    the shipping configuration ${YELLOW}(explicit)${RESET}
   ${GREEN}--tsan${RESET}           ThreadSanitizer, ./build-tsan  ${YELLOW}(exits 66 on Qt-internal reports; see cmake/tsan.supp)${RESET}
   ${GREEN}--asan${RESET}           AddressSanitizer, ./build-asan
   ${GREEN}--ubsan${RESET}          Undefined+AddressSanitizer, ./build-ubsan
@@ -86,10 +86,11 @@ ${BOLD}Tuning${RESET}
   ${GREEN}--qt PATH${RESET}        Qt6 prefix (else \$CHADVIS_QT_PATH, then Homebrew prefixes)
 
 ${BOLD}Examples${RESET}
-  ./build.sh --fast --tests --test       # tight loop: build tests, run the headless-safe suites
-  ./build.sh --fast --run aHealthy       # tightest loop: one QTest function, no ctest
-  ./build.sh                              # Release, everything, for a real check
-  ./build.sh --test unit_tests            # Release tests only, ctest all entries
+  ./build.sh --tests --test             # tight loop: build tests, run the headless-safe suites
+  ./build.sh --run aHealthy             # tightest loop: one QTest function, no ctest
+  ./build.sh                            # default fast build, everything
+  ./build.sh --release                  # optimized Release, everything, for a real check
+  ./build.sh --release --test unit_tests # Release tests only, ctest all entries
 EOF
 }
 
@@ -105,7 +106,10 @@ warn() {
 # --------------------------------------------------------------------------
 # Option parsing
 # --------------------------------------------------------------------------
-PROFILE="release"
+# Default profile is `fast`: -O0 -g0 in build-fast/ with ccache. An optimized
+# build is the explicit opt-in (--release), not the thing you get by accident
+# when you just wanted the edit/test loop to turn around quickly.
+PROFILE="fast"
 BUILD_DIR=""
 BUILD_TYPE=""
 SANITIZER=""
