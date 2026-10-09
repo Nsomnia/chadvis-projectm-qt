@@ -42,7 +42,6 @@ ApplicationWindow {
 
     property string activeView: "library"
     property string returnView: "library"
-    readonly property var settingsWindowApi: settingsWindow
 
     onActiveViewChanged: {
         if (activeView !== "settings")
@@ -57,9 +56,19 @@ ApplicationWindow {
             if (activeView !== "settings")
                 returnView = activeView
             activeView = "settings"
-            settingsWindowApi["open"]()
-            settingsWindow.raise()
-            settingsWindow.requestActivate()
+            // A window is shown with show(); QWindow has no open(). The window
+            // is Qt.ApplicationModal, so show() may run a nested event loop and
+            // not return until it closes — which makes a raise()/
+            // requestActivate() after it a no-op on an already-hidden window.
+            // Branching on visibility is correct under either ordering, and
+            // re-activating a window that is already up is the case that
+            // actually needs the calls.
+            if (settingsWindow.visible) {
+                settingsWindow.raise()
+                settingsWindow.requestActivate()
+            } else {
+                settingsWindow.show()
+            }
             return
         }
 
@@ -479,6 +488,10 @@ ApplicationWindow {
 
     SettingsWindow {
         id: settingsWindow
+        // Named so C++ can address this window by identity rather than by
+        // position: VideoView's native container is a QQuickWindow too, and
+        // "the second window in the tree" is not a fact that survives an edit.
+        objectName: "settingsWindow"
         transientParent: mainWindow
         modality: Qt.ApplicationModal
         onClosing: {

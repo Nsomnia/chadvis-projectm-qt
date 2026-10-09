@@ -147,8 +147,12 @@ Thumbs.db
 # Task-claim state. `STATUS/<id>.claim` is VOLATILE, not history: its presence IS
 # the claim (created O_CREAT|O_EXCL by scripts/task.sh), and peer sessions on this
 # machine see it through the filesystem, so it never needs committing. The
-# append-only trail `STATUS/<id>.log` IS committed and is the durable record.
+# append-only trail `STATUS/<id>.log` IS committed and is the durable record —
+# the negation below is load-bearing: the blanket `*.log` rule at the top of this
+# file would otherwise swallow it, and every `VERIFY` line the audit demands
+# would stay on one machine.
 STATUS/*.claim
+!STATUS/*.log
 
 # Local-only artifact. Must never be committed: `build.log` is a stale 41KB log.
 # (The former `user-eyes-only/` ignore rule was removed once its contents were moved

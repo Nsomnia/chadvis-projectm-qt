@@ -53,7 +53,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
 
 ## P0 — the product is broken, data is corrupted, or a secret is exposed
 
-- [ ] T0001 **The Settings window cannot open, so the app has no sign-in path** (`src/qml/main.qml:60`) #blocks-ui #risk-high
+- [x] T0001 **The Settings window cannot open, so the app has no sign-in path** (`src/qml/main.qml:60`) #blocks-ui #risk-high
       `settingsWindowApi["open"]()` — `QQuickWindow` exposes `show()`, `raise()`,
       `requestActivate()`; there is no `open()`. Every `navigate("settings")` throws
       `TypeError: settingsWindowApi.open is not a function` (main.qml:45,60; reached from
