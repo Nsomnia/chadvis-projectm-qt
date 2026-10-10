@@ -102,7 +102,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       containers still holds a reference" (:371-380) — both pointers are invalidated by
       the re-entrant call. The same pattern is already handled correctly elsewhere
       (`SunoClient.cpp:729-730`). Fix: mirror `SunoClient::abortTrackedReplies` (:855-865).
-- [ ] T0009 **`opencode.yml` runs a secret-bearing action for any commenter** (`.github/workflows/opencode.yml:3-33`) #security #risk-high
+- [x] T0009 **`opencode.yml` runs a secret-bearing action for any commenter** (`.github/workflows/opencode.yml:3-33`) #security #risk-high
       No `author_association` filter, no `if:` on the commenter, and the job holds
       `id-token: write` plus `secrets.OPENCODE_API_KEY`. Triggered by `/oc` in a comment
       body, from **any** GitHub account. The action is also pinned to `@latest` (:29),
