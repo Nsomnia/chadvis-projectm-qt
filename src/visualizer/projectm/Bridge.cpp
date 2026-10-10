@@ -13,21 +13,16 @@ static void presetSwitchRequested(bool is_hard_cut, void* user_data) {
     }
 }
 
-Bridge::Bridge() {
-    playlist_.switched.connect([this](bool hard, u32 index) {
-        onPlaylistSwitched(hard, index);
-    });
+Bridge::Bridge(PresetManager& presetManager) : presetManager_(presetManager) {
+    playlist_.switched.connect([this](bool hard, u32 index) { onPlaylistSwitched(hard, index); });
 }
 
-Bridge::~Bridge() {
-    shutdown();
-}
+Bridge::~Bridge() { shutdown(); }
 
 Result<void> Bridge::init(const ProjectMConfig& config) {
     LOG_INFO("Bridge: Initializing projectM components");
-    
-    if (isInitialized())
-        shutdown();
+
+    if (isInitialized()) shutdown();
 
     EngineConfig eCfg;
     eCfg.width = config.width;
@@ -50,30 +45,29 @@ Result<void> Bridge::init(const ProjectMConfig& config) {
     }
     playlist_.setShuffle(config.shufflePresets);
 
-    projectm_set_preset_switch_requested_event_callback(
-            engine_.handle(), &presetSwitchRequested, this);
+    projectm_set_preset_switch_requested_event_callback(engine_.handle(), &presetSwitchRequested,
+                                                        this);
 
-    presetManager_.presetChanged.connect([this](const PresetInfo* p) {
-        onPresetManagerChanged(p);
-    });
+    presetManager_.presetChanged.connect(
+            [this](const PresetInfo* p) { onPresetManagerChanged(p); });
 
     if (auto result = scanPresets(config.presetPath); !result) {
         return result;
     }
-    if (auto result = presetManager_.loadState(file::configDir() / "preset_state.txt"); !result) {
-        LOG_WARN("Bridge: Failed to load preset state: {}", result.error().message);
-    }
+    // Preset state (favourites/blacklist) is loaded by the Application, BEFORE
+    // it launches the manager's async scan: the worker snapshots the favourite
+    // name sets at request time, so a scan started without them would publish
+    // a generation that clobbers every favourite with the empty sets.
 
     if (config.useDefaultPreset) {
         engine_.setPresetDuration(0);
-    } else if (!presetManager_.empty()) {
-        if (!config.forcePreset.empty()) {
-            presetManager_.selectByName(config.forcePreset);
-        } else if (config.shufflePresets) {
-            randomPreset(false);
-        } else {
-            presetManager_.selectByIndex(0);
-        }
+    } else if (!config.forcePreset.empty()) {
+        // The shared manager's scan may still be in flight; selectByName
+        // stores a pending name the worker applies at publish time. Initial
+        // playback order needs no manager call at all: the engine's own
+        // playlist starts at position 0 (shuffled where configured, set
+        // above), and onPlaylistSwitched back-fills the manager selection.
+        presetManager_.selectByName(config.forcePreset);
     }
 
     return Result<void>::ok();
@@ -85,20 +79,22 @@ void Bridge::shutdown() {
 }
 
 Result<void> Bridge::scanPresets(const fs::path& path) {
-    bool managerEmpty = presetManager_.empty();
     bool playlistEmpty = !playlist_.handle() || playlist_.size() == 0;
 
-    if (path == lastPresetPath_ && !managerEmpty && !playlistEmpty) {
+    if (path == lastPresetPath_ && !playlistEmpty) {
         return Result<void>::ok();
     }
 
-    LOG_INFO("Bridge: Scanning presets in '{}'", path.string());
-    
-    if (managerEmpty || path != lastPresetPath_) {
-        if (auto result = presetManager_.scan(path); !result) {
-            return result;
-        }
+    // The manager is shared with the QML side and its scan is owned by the
+    // manager's own worker: never walk the tree synchronously from here.
+    // scanAsync coalesces with a walk already in flight, and falls back to a
+    // synchronous scan only for a manager with no publish context — the
+    // standalone/test shape.
+    if (presetManager_.empty() && !presetManager_.scanInFlight()) {
+        presetManager_.scanAsync(path, true);
     }
+
+    LOG_INFO("Bridge: Scanning presets in '{}'", path.string());
 
     if (playlist_.handle() && (playlistEmpty || path != lastPresetPath_)) {
         playlist_.clear();
@@ -174,8 +170,7 @@ std::string Bridge::currentPresetName() const {
 }
 
 void Bridge::onPresetManagerChanged(const PresetInfo* preset) {
-    if (!preset || syncingFromNative_)
-        return;
+    if (!preset || syncingFromNative_) return;
 
     if (playlist_.handle() && playlist_.size() > 0) {
         for (u32 i = 0; i < playlist_.size(); ++i) {

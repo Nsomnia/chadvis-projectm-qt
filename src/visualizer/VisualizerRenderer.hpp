@@ -33,6 +33,7 @@
 namespace vc {
 
 class AudioQueue;
+class PresetManager;
 
 } // namespace vc
 
@@ -40,7 +41,7 @@ namespace vc {
 
 class VisualizerRenderer : protected QOpenGLFunctions_3_3_Core {
 public:
-    VisualizerRenderer();
+    explicit VisualizerRenderer(PresetManager& presetManager);
     ~VisualizerRenderer();
 
     void initialize(u32 width, u32 height);
@@ -60,17 +61,11 @@ public:
     void setRecordingSize(u32 width, u32 height);
     void startRecording();
     void stopRecording();
-    bool isRecording() const {
-        return recording_;
-    }
+    bool isRecording() const { return recording_; }
 
     // ProjectM access
-    pm::Bridge& projectM() {
-        return projectM_;
-    }
-    const pm::Bridge& projectM() const {
-        return projectM_;
-    }
+    pm::Bridge& projectM() { return projectM_; }
+    const pm::Bridge& projectM() const { return projectM_; }
 
     // Signals (proxied via parent window or custom)
     Signal<std::vector<u8>, u32, u32, i64> frameCaptured;

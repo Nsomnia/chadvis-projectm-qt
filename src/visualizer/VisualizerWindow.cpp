@@ -5,7 +5,8 @@
 
 namespace vc {
 
-VisualizerWindow::VisualizerWindow(QWindow* parent) : QWindow(parent) {
+VisualizerWindow::VisualizerWindow(PresetManager& presetManager, QWindow* parent)
+    : QWindow(parent) {
     QSurfaceFormat format;
     format.setVersion(3, 3);
     format.setProfile(QSurfaceFormat::CoreProfile);
@@ -20,7 +21,7 @@ VisualizerWindow::VisualizerWindow(QWindow* parent) : QWindow(parent) {
     context_->setFormat(format);
     setSurfaceType(QWindow::OpenGLSurface);
 
-    renderer_ = std::make_unique<VisualizerRenderer>();
+    renderer_ = std::make_unique<VisualizerRenderer>(presetManager);
 
     fpsTimer_.setInterval(1000);
     connect(&fpsTimer_, &QTimer::timeout, this, &VisualizerWindow::updateFPS);
@@ -37,15 +38,13 @@ VisualizerWindow::~VisualizerWindow() {
 void VisualizerWindow::exposeEvent(QExposeEvent* event) {
     Q_UNUSED(event);
     if (isExposed()) {
-        if (!initialized_)
-            initialize();
+        if (!initialized_) initialize();
         render();
     }
 }
 
 void VisualizerWindow::resizeEvent(QResizeEvent* event) {
-    if (!initialized_)
-        initialize();
+    if (!initialized_) initialize();
     if (context_ && context_->makeCurrent(this)) {
         if (isExposed()) {
             const QSize fb = framebufferSize();
@@ -72,15 +71,13 @@ void VisualizerWindow::initialize() {
     const QSize fb = framebufferSize();
     renderer_->initialize(fb.width(), fb.height());
 
-    renderer_->projectM().presetChanged.connect(
-            [this](const std::string& name) {
-                emit presetNameUpdated(QString::fromStdString(name));
-            });
+    renderer_->projectM().presetChanged.connect([this](const std::string& name) {
+        emit presetNameUpdated(QString::fromStdString(name));
+    });
 
-    renderer_->frameCaptured.connect(
-            [this](std::vector<u8> data, u32 w, u32 h, i64 ts) {
-                emit frameCaptured(std::move(data), w, h, ts);
-            });
+    renderer_->frameCaptured.connect([this](std::vector<u8> data, u32 w, u32 h, i64 ts) {
+        emit frameCaptured(std::move(data), w, h, ts);
+    });
 
     updateSettings();
     renderTimer_.start();
@@ -97,8 +94,7 @@ void VisualizerWindow::initialize() {
 }
 
 void VisualizerWindow::render() {
-    if (!initialized_ || !isExposed())
-        return;
+    if (!initialized_ || !isExposed()) return;
     if (context_->makeCurrent(this)) {
         const QSize fb = framebufferSize();
         renderer_->render(fb.width(), fb.height(), isExposed());
@@ -115,8 +111,7 @@ void VisualizerWindow::updateFPS() {
 }
 
 void VisualizerWindow::loadPresetFromManager() {
-    if (!initialized_)
-        return;
+    if (!initialized_) return;
     const auto* preset = renderer_->projectM().presets().current();
     if (preset) {
         renderer_->projectM().presets().selectByName(preset->name);
@@ -124,39 +119,26 @@ void VisualizerWindow::loadPresetFromManager() {
 }
 
 void VisualizerWindow::updateSettings() {
-    if (!initialized_)
-        return;
+    if (!initialized_) return;
     const auto& vizConfig = CONFIG.visualizer();
     setRenderRate(vizConfig.fps);
 
     if (context_ && context_->makeCurrent(this)) {
-        renderer_->projectM().engine().setBeatSensitivity(
-                vizConfig.beatSensitivity);
+        renderer_->projectM().engine().setBeatSensitivity(vizConfig.beatSensitivity);
         renderer_->projectM().lockPreset(false);
         renderer_->projectM().engine().setPresetDuration(
                 vizConfig.useDefaultPreset ? 0 : vizConfig.presetDuration);
-        renderer_->projectM().engine().setSoftCutDuration(
-                vizConfig.smoothPresetDuration);
-        renderer_->projectM().engine().setHardCutSensitivity(
-                vizConfig.hardCutSensitivity);
-        renderer_->projectM().engine().setAspectCorrection(
-                vizConfig.aspectCorrection);
+        renderer_->projectM().engine().setSoftCutDuration(vizConfig.smoothPresetDuration);
+        renderer_->projectM().engine().setHardCutSensitivity(vizConfig.hardCutSensitivity);
+        renderer_->projectM().engine().setAspectCorrection(vizConfig.aspectCorrection);
         context_->doneCurrent();
     }
 }
 
-void VisualizerWindow::nextPreset(bool smooth) {
-    renderer_->projectM().nextPreset(smooth);
-}
-void VisualizerWindow::previousPreset(bool smooth) {
-    renderer_->projectM().previousPreset(smooth);
-}
-void VisualizerWindow::randomPreset(bool smooth) {
-    renderer_->projectM().randomPreset(smooth);
-}
-void VisualizerWindow::lockPreset(bool locked) {
-    renderer_->projectM().lockPreset(locked);
-}
+void VisualizerWindow::nextPreset(bool smooth) { renderer_->projectM().nextPreset(smooth); }
+void VisualizerWindow::previousPreset(bool smooth) { renderer_->projectM().previousPreset(smooth); }
+void VisualizerWindow::randomPreset(bool smooth) { renderer_->projectM().randomPreset(smooth); }
+void VisualizerWindow::lockPreset(bool locked) { renderer_->projectM().lockPreset(locked); }
 
 void VisualizerWindow::setRecordingSize(u32 width, u32 height) {
     renderer_->setRecordingSize(width, height);
@@ -164,8 +146,7 @@ void VisualizerWindow::setRecordingSize(u32 width, u32 height) {
 
 void VisualizerWindow::startRecording() {
     recordingRequested_ = true;
-    if (!initialized_)
-        return;
+    if (!initialized_) return;
 
     if (context_ && context_->makeCurrent(this)) {
         renderer_->startRecording();
@@ -175,8 +156,7 @@ void VisualizerWindow::startRecording() {
 
 void VisualizerWindow::stopRecording() {
     recordingRequested_ = false;
-    if (!initialized_)
-        return;
+    if (!initialized_) return;
 
     if (context_ && context_->makeCurrent(this)) {
         renderer_->stopRecording();
@@ -192,10 +172,7 @@ void VisualizerWindow::setRenderRate(int fps) {
         renderTimer_.stop();
 }
 
-void VisualizerWindow::feedAudio(const f32*,
-                                  u32,
-                                  u32,
-                                  u32) {
+void VisualizerWindow::feedAudio(const f32*, u32, u32, u32) {
     // DEPRECATED: Audio now flows through lock-free AudioQueue.
     // AudioEngine pushes to queue, VisualizerRenderer pops during render.
     // This method exists for backward compatibility but does nothing.
@@ -204,8 +181,7 @@ void VisualizerWindow::feedAudio(const f32*,
 void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
     const auto& keys = CONFIG.keyboard();
     QString key = event->text().toUpper();
-    if (key.isEmpty())
-        key = QKeySequence(event->key()).toString();
+    if (key.isEmpty()) key = QKeySequence(event->key()).toString();
     std::string keyStr = key.toStdString();
 
     if (keyStr == keys.nextPreset || event->key() == Qt::Key_Right)

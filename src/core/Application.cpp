@@ -427,6 +427,15 @@ Result<void> Application::init(const AppOptions& opts) {
         // Create QML-specific managers
         LOG_DEBUG("Initializing preset manager for QML...");
         presetManager_ = std::make_unique<PresetManager>();
+        // Favourites/blacklist state must be loaded BEFORE the async scan
+        // launches: the worker snapshots the favourite name sets at request
+        // time, so a scan started without them would publish a generation
+        // that clobbers every favourite. This used to run inside pm::Bridge's
+        // init on a second, privately-owned manager.
+        if (auto result = presetManager_->loadState(file::configDir() / "preset_state.txt");
+            !result) {
+            LOG_WARN("Failed to load preset state: {}", result.error().message);
+        }
         if (auto presetDir = CONFIG.visualizer().presetPath; !presetDir.empty()) {
             // Scanning a real preset library is thousands of stat() calls plus a
             // parse per file, which is far too slow to run before the window even
@@ -448,7 +457,7 @@ Result<void> Application::init(const AppOptions& opts) {
         }
 
         LOG_DEBUG("Creating VisualizerWindow for QML embedding...");
-        visualizerWindow_ = std::make_unique<VisualizerWindow>();
+        visualizerWindow_ = std::make_unique<VisualizerWindow>(*presetManager_);
         visualizerWindow_->setMinimumSize(QSize(640, 480));
         // Renderer owns the visualizer PCM consumer; wire it to the engine queue.
         visualizerWindow_->renderer().setAudioQueue(&audioEngine_->audioQueue());

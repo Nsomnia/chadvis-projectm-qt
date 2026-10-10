@@ -134,7 +134,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       `if (!opts.headless)`. No window ⇒ no frame. `--record`
       (`CliArgs.inc:36` → `opts.startRecording`) is then **never read anywhere**. Fix:
       reject `--headless` + `--record` at parse time, or hoist the visualizer out.
-- [ ] T0013 **Two `PresetManager` instances: UI favourites never reach projectM** (`src/core/Application.cpp:388,406`, `src/visualizer/projectm/Bridge.cpp:53,98`) #data-loss
+- [x] T0013 **Two `PresetManager` instances: UI favourites never reach projectM** (`src/core/Application.cpp:388,406`, `src/visualizer/projectm/Bridge.cpp:53,98`) #data-loss
       `Application` owns one and scans the tree on a worker; `pm::Bridge` owns a **second
       by value** and synchronously re-scans the same directory. `PresetBridge` is wired to
       the Application-owned one (`BridgeRegistration.cpp:75`) while

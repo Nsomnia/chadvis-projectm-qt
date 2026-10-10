@@ -3,20 +3,18 @@
 // Description: Visualizer renderer implementation with lock-free queue
 
 #include "VisualizerRenderer.hpp"
+#include <chrono>
 #include "audio/AudioQueue.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "recorder/FrameGrabber.hpp"
-#include <chrono>
 
 
 namespace vc {
 
-VisualizerRenderer::VisualizerRenderer() = default;
+VisualizerRenderer::VisualizerRenderer(PresetManager& presetManager) : projectM_(presetManager) {}
 
-VisualizerRenderer::~VisualizerRenderer() {
-    cleanup();
-}
+VisualizerRenderer::~VisualizerRenderer() { cleanup(); }
 
 void VisualizerRenderer::initialize(u32 width, u32 height) {
     if (!initializeOpenGLFunctions()) {
@@ -25,16 +23,13 @@ void VisualizerRenderer::initialize(u32 width, u32 height) {
     }
 
     const auto& vizConfig = CONFIG.visualizer();
-    if (vizConfig.fps > 0)
-        targetFps_ = vizConfig.fps;
+    if (vizConfig.fps > 0) targetFps_ = vizConfig.fps;
     const auto pmConfig = pm::ProjectMConfig::fromVisualizer(vizConfig, width, height);
 
-    projectM_.presetLoading.connect(
-            [this](bool loading) { presetLoading_ = loading; });
+    projectM_.presetLoading.connect([this](bool loading) { presetLoading_ = loading; });
 
     if (auto result = projectM_.init(pmConfig); !result) {
-        LOG_ERROR("VisualizerRenderer: projectM init failed: {}",
-            result.error().message);
+        LOG_ERROR("VisualizerRenderer: projectM init failed: {}", result.error().message);
         return;
     }
 
@@ -51,18 +46,16 @@ void VisualizerRenderer::cleanup() {
 }
 
 void VisualizerRenderer::render(u32 width, u32 height, bool isExposed) {
-render(0, 0, width, height, isExposed);
+    render(0, 0, width, height, isExposed);
 }
 
 void VisualizerRenderer::render(u32 x, u32 y, u32 width, u32 height, bool isExposed) {
-if (!initialized_ || !isExposed)
-return;
-renderFrame(x, y, width, height);
+    if (!initialized_ || !isExposed) return;
+    renderFrame(x, y, width, height);
 }
 
 void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
-    if (w == 0 || h == 0 || !projectM_.isInitialized())
-        return;
+    if (w == 0 || h == 0 || !projectM_.isInitialized()) return;
 
     projectM_.syncState();
 
@@ -105,8 +98,7 @@ void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
 
     glDisable(GL_SCISSOR_TEST);
 
-    if (recording_)
-        captureDefaultFramebuffer(w, h);
+    if (recording_) captureDefaultFramebuffer(w, h);
 }
 
 void VisualizerRenderer::setupPBOs() {
@@ -123,8 +115,7 @@ void VisualizerRenderer::setupPBOs() {
 }
 
 void VisualizerRenderer::destroyPBOs() {
-    if (pbos_[0])
-        glDeleteBuffers(2, pbos_);
+    if (pbos_[0]) glDeleteBuffers(2, pbos_);
     pbos_[0] = pbos_[1] = 0;
 }
 
@@ -133,18 +124,14 @@ void VisualizerRenderer::destroyPBOs() {
 // first: projectM cannot render into an FBO, so a size change has to be a copy
 // taken after the fact rather than a different render target.
 void VisualizerRenderer::captureDefaultFramebuffer(u32 width, u32 height) {
-    if (recordWidth_ == 0 || recordHeight_ == 0 || width == 0 || height == 0)
-        return;
+    if (recordWidth_ == 0 || recordHeight_ == 0 || width == 0 || height == 0) return;
 
     GLuint source = 0;
     if (recordWidth_ != width || recordHeight_ != height) {
-        if (captureTarget_.width() != recordWidth_ ||
-            captureTarget_.height() != recordHeight_) {
-            const auto created =
-                    captureTarget_.create(recordWidth_, recordHeight_, false);
+        if (captureTarget_.width() != recordWidth_ || captureTarget_.height() != recordHeight_) {
+            const auto created = captureTarget_.create(recordWidth_, recordHeight_, false);
             if (!created) {
-                LOG_ERROR("VisualizerRenderer: capture target failed: {}",
-                          created.error().message);
+                LOG_ERROR("VisualizerRenderer: capture target failed: {}", created.error().message);
                 return;
             }
         }
@@ -161,13 +148,7 @@ void VisualizerRenderer::captureAsync(GLuint readFramebuffer) {
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[pboIndex_]);
-    glReadPixels(0,
-                 0,
-                 recordWidth_,
-                 recordHeight_,
-                 GL_RGBA,
-                 GL_UNSIGNED_BYTE,
-                 nullptr);
+    glReadPixels(0, 0, recordWidth_, recordHeight_, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     if (pboAvailable_) {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[nextIndex]);
         auto* ptr = static_cast<u8*>(glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY));
@@ -178,13 +159,10 @@ void VisualizerRenderer::captureAsync(GLuint readFramebuffer) {
             // up; the encoder uploads them as-is, so the picture would land in
             // the file upside down without this.
             FrameGrabber::flipImage(buffer, recordWidth_, recordHeight_);
-            frameCaptured.emitSignal(
-                    std::move(buffer),
-                    recordWidth_,
-                    recordHeight_,
-                    std::chrono::duration_cast<std::chrono::microseconds>(
-                            std::chrono::steady_clock::now().time_since_epoch())
-                            .count());
+            frameCaptured.emitSignal(std::move(buffer), recordWidth_, recordHeight_,
+                                     std::chrono::duration_cast<std::chrono::microseconds>(
+                                             std::chrono::steady_clock::now().time_since_epoch())
+                                             .count());
         }
     }
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
@@ -204,8 +182,7 @@ void VisualizerRenderer::startRecording() {
         return;
     }
     if (recordWidth_ == 0 || recordHeight_ == 0) {
-        LOG_ERROR("VisualizerRenderer: Refusing to record at {}x{}", recordWidth_,
-                  recordHeight_);
+        LOG_ERROR("VisualizerRenderer: Refusing to record at {}x{}", recordWidth_, recordHeight_);
         return;
     }
     if (recordWidth_ % 2 != 0 || recordHeight_ % 2 != 0) {

@@ -50,26 +50,17 @@ class VisualizerWindow : public QWindow {
 signals:
     void presetNameUpdated(const QString& name);
     void frameReady();
-    void frameCaptured(std::vector<u8> data,
-                       u32 width,
-                       u32 height,
-                       i64 timestamp);
+    void frameCaptured(std::vector<u8> data, u32 width, u32 height, i64 timestamp);
     void fpsChanged(f32 actualFps);
 
 public:
-    explicit VisualizerWindow(QWindow* parent = nullptr);
+    explicit VisualizerWindow(PresetManager& presetManager, QWindow* parent = nullptr);
     ~VisualizerWindow() override;
 
-    VisualizerRenderer& renderer() {
-        return *renderer_;
-    }
+    VisualizerRenderer& renderer() { return *renderer_; }
 
-    pm::Bridge& projectM() {
-        return renderer_->projectM();
-    }
-    const pm::Bridge& projectM() const {
-        return renderer_->projectM();
-    }
+    pm::Bridge& projectM() { return renderer_->projectM(); }
+    const pm::Bridge& projectM() const { return renderer_->projectM(); }
 
     void loadPresetFromManager();
     void updateSettings();
@@ -82,9 +73,9 @@ public:
     void setRecordingSize(u32 width, u32 height);
     void startRecording();
     void stopRecording();
-	void setRenderRate(int fps);
-	[[nodiscard]] f32 actualFps() const { return actualFps_; }
-	void feedAudio(const f32* data, u32 frames, u32 channels, u32 sampleRate);
+    void setRenderRate(int fps);
+    [[nodiscard]] f32 actualFps() const { return actualFps_; }
+    void feedAudio(const f32* data, u32 frames, u32 channels, u32 sampleRate);
 
 protected:
     void exposeEvent(QExposeEvent* event) override;
