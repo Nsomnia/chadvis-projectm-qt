@@ -9,12 +9,12 @@
 
 #pragma once
 
-#include "util/Types.hpp"
-#include "AudioChunk.hpp"
 #include <atomic>
 #include <cstddef>
-#include <readerwriterqueue.h>
 #include <cstring>
+#include <readerwriterqueue.h>
+#include "AudioChunk.hpp"
+#include "util/Types.hpp"
 
 namespace vc {
 
@@ -29,9 +29,9 @@ inline constexpr u32 DEFAULT_QUEUE_CAPACITY = 36000;
 // Cache-line aligned audio frame for optimal SPSC performance
 struct alignas(64) AudioFrame {
     float samples[AUDIO_FRAME_SAMPLES * 2]; // Stereo interleaved
-    u32 sampleCount;  // Number of valid samples (may be < 8 at boundaries)
-    u32 channels;     // Always 2 (stereo) after conversion
-    u32 sampleRate;   // Sample rate (typically 48000)
+    u32 sampleCount;                        // Number of valid samples (may be < 8 at boundaries)
+    u32 channels;                           // Always 2 (stereo) after conversion
+    u32 sampleRate;                         // Sample rate (typically 48000)
 
     AudioFrame() : sampleCount(0), channels(2), sampleRate(48000) {
         std::memset(samples, 0, sizeof(samples));
@@ -51,12 +51,8 @@ struct alignas(64) AudioFrame {
 class AudioQueue {
 public:
     explicit AudioQueue(u32 capacity = DEFAULT_QUEUE_CAPACITY)
-        : vizQueue_(capacity)
-        , recQueue_(capacity)
-        , vizDropCount_(0)
-        , recDropCount_(0)
-        , totalPushed_(0)
-    {}
+        : vizQueue_(capacity), recQueue_(capacity), vizDropCount_(0), recDropCount_(0),
+          totalPushed_(0) {}
 
     // Non-copyable, non-movable (atomic members)
     AudioQueue(const AudioQueue&) = delete;
@@ -75,6 +71,12 @@ public:
      * @return true if pushed successfully, false if dropped or empty input
      */
     bool pushAll(const AudioChunk& chunk) {
+        // Publish the rate the producer observed the sink running at, so the
+        // visualizer's per-tick batch sizer stops assuming 48 kHz. Relaxed:
+        // an off-audio-thread reader gets a value at worst one push stale.
+        if (chunk.sampleRate > 0) {
+            lastPushedSampleRate_.store(chunk.sampleRate, std::memory_order_relaxed);
+        }
         const bool a = pushInternal(vizQueue_, vizDropCount_, chunk);
         const bool b = pushInternal(recQueue_, recDropCount_, chunk);
         return a && b;
@@ -84,9 +86,9 @@ public:
     bool pushAll(const float* data, u32 frames, u32 channels, u32 sampleRate) {
         if (!data || frames == 0 || channels == 0) return false;
         return pushAll(AudioChunk{
-            .samples = {data, data + static_cast<usize>(frames) * channels},
-            .channels = channels,
-            .sampleRate = sampleRate,
+                .samples = {data, data + static_cast<usize>(frames) * channels},
+                .channels = channels,
+                .sampleRate = sampleRate,
         });
     }
 
@@ -99,18 +101,14 @@ public:
      * @param frame Output frame
      * @return true if frame was popped, false if queue empty
      */
-    bool popViz(AudioFrame& frame) {
-        return vizQueue_.try_dequeue(frame);
-    }
+    bool popViz(AudioFrame& frame) { return vizQueue_.try_dequeue(frame); }
 
     /**
      * Pop a frame from recorder queue.
      * @param frame Output frame
      * @return true if frame was popped, false if queue empty
      */
-    bool popRec(AudioFrame& frame) {
-        return recQueue_.try_dequeue(frame);
-    }
+    bool popRec(AudioFrame& frame) { return recQueue_.try_dequeue(frame); }
 
     /**
      * Pop multiple frames from visualizer queue into a flat buffer.
@@ -138,30 +136,24 @@ public:
     // ========================================================================
 
     /** Get approximate depth of visualizer queue */
-    u32 vizDepth() const {
-        return static_cast<u32>(vizQueue_.size_approx());
-    }
+    u32 vizDepth() const { return static_cast<u32>(vizQueue_.size_approx()); }
 
     /** Get approximate depth of recorder queue */
-    u32 recDepth() const {
-        return static_cast<u32>(recQueue_.size_approx());
-    }
+    u32 recDepth() const { return static_cast<u32>(recQueue_.size_approx()); }
 
     /** Get total frames dropped from visualizer queue */
-    u64 vizDropCount() const {
-        return vizDropCount_.load(std::memory_order_relaxed);
-    }
+    u64 vizDropCount() const { return vizDropCount_.load(std::memory_order_relaxed); }
 
     /** Get total frames dropped from recorder queue */
-    u64 recDropCount() const {
-        return recDropCount_.load(std::memory_order_relaxed);
-    }
-
+    u64 recDropCount() const { return recDropCount_.load(std::memory_order_relaxed); }
     /** Get total frames pushed (for diagnostics) */
-    u64 totalPushed() const {
-        return totalPushed_.load(std::memory_order_relaxed);
-    }
+    u64 totalPushed() const { return totalPushed_.load(std::memory_order_relaxed); }
 
+    /** The sample rate of the most recent push, as the producer observed the
+     *  sink running. The 48 kHz default only survives until the first push;
+     *  a 44.1 kHz sink must not be batch-sized as 48 kHz or projectM is
+     *  misfed ~9% of each second's PCM and beat detection drifts. */
+    u32 sampleRate() const { return lastPushedSampleRate_.load(std::memory_order_relaxed); }
     /** Reset all counters */
     void resetCounters() {
         vizDropCount_.store(0, std::memory_order_relaxed);
@@ -172,8 +164,10 @@ public:
     /** Clear both queues */
     void clear() {
         AudioFrame frame;
-        while (vizQueue_.try_dequeue(frame)) {}
-        while (recQueue_.try_dequeue(frame)) {}
+        while (vizQueue_.try_dequeue(frame)) {
+        }
+        while (recQueue_.try_dequeue(frame)) {
+        }
     }
 
 private:
@@ -185,6 +179,7 @@ private:
     std::atomic<u64> vizDropCount_;
     std::atomic<u64> recDropCount_;
     std::atomic<u64> totalPushed_;
+    std::atomic<u32> lastPushedSampleRate_{48'000};
 
     bool pushInternal(Queue& queue, std::atomic<u64>& dropCount, const AudioChunk& chunk) {
         const float* data = chunk.samples.data();

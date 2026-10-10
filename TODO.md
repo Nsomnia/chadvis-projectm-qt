@@ -144,7 +144,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       `load()` is called once (`Application.cpp:378`); `save()` has zero callers.
       `PresetBridge::setRating` (`PresetBridge.cpp:201`) mutates only the in-memory map.
       Fix: call it from `Application::quit()`.
-- [ ] T0015 **projectM is fed 48 kHz PCM while the config says 44.1 kHz** (`src/visualizer/VisualizerRenderer.hpp:98`, `.cpp:71`) #risk-high
+- [x] T0015 **projectM is fed 48 kHz PCM while the config says 44.1 kHz** (`src/visualizer/VisualizerRenderer.hpp:98`, `.cpp:71`) #risk-high
       `audioSampleRate_` is hardcoded 48000 with no setter; it sizes the batch fed to
       projectM. The shipped `[audio] sample_rate = 44100` (`config/default.toml:4`) is
       ignored, **misaligning beat detection by ~9 %**. Fix: read the live rate off the

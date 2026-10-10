@@ -614,6 +614,18 @@ private slots:
         QVERIFY2(nonZeroBytes(captured) > 0,
                  "scaling the readback produced a fully transparent-black frame");
     }
+
+    // The renderer's per-tick PCM batch must follow the rate the audio queue
+    // actually carries — the observed sink rate — not a hardcoded 48 kHz, and
+    // must clamp to the 4096-frame pop buffer: a 48 kHz stream at the
+    // config-minimum 10 fps asks for 4800 frames, which would run the stack
+    // buffer off its end.
+    void batchSizingFollowsTheQueuesRateAndClampsToThePopBuffer() {
+        QCOMPARE(VisualizerRenderer::framesPerRenderTick(44'100, 60, 4096), u32{735});
+        QCOMPARE(VisualizerRenderer::framesPerRenderTick(48'000, 60, 4096), u32{800});
+        QCOMPARE(VisualizerRenderer::framesPerRenderTick(48'000, 10, 4096), u32{4096});
+        QCOMPARE(VisualizerRenderer::framesPerRenderTick(44'100, 10, 4096), u32{4096});
+    }
 };
 
 int runTestProjectMFramebuffer(int argc, char** argv) {

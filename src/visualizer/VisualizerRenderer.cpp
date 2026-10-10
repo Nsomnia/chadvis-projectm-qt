@@ -59,11 +59,15 @@ void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
 
     projectM_.syncState();
 
-    // Pop audio from lock-free queue (no mutex)
+    // Pop audio from lock-free queue (no mutex). The batch is sized from the
+    // rate the audio thread actually pushed — the observed sink rate, 44.1
+    // kHz included — not a hardcoded constant: a wrong rate misfeeds projectM
+    // a proportional slice of each second's PCM and misaligns beat detection.
     if (audioQueue_) {
-        u32 framesToFeed = (audioSampleRate_ + targetFps_ - 1) / targetFps_;
-        static constexpr usize BATCH_BUFFER_SIZE = 4096;
+        static constexpr u32 BATCH_BUFFER_SIZE = 4096;
         alignas(64) float batchBuffer[BATCH_BUFFER_SIZE * 2];
+        const u32 framesToFeed =
+                framesPerRenderTick(audioQueue_->sampleRate(), targetFps_, BATCH_BUFFER_SIZE);
 
         u32 popped = audioQueue_->popVizBatch(batchBuffer, framesToFeed);
         if (popped > 0) {

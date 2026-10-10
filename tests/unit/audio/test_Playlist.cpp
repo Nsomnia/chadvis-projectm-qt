@@ -1,7 +1,7 @@
-#include <QtTest>
 #include <QFile>
 #include <QObject>
 #include <QTemporaryDir>
+#include <QtTest>
 #include <cmath>
 #include <cstddef>
 #include <set>
@@ -102,24 +102,22 @@ struct CurrentTrace {
     std::vector<usize> sizeDuringEmit;
 
     void attach(Playlist& playlist) {
-        playlist.currentChanged.connect(
-                [this, &playlist](std::optional<usize> index) {
-                    emissions.push_back(index);
-                    indexDuringEmit.push_back(playlist.currentIndex());
-                    sizeDuringEmit.push_back(playlist.size());
+        playlist.currentChanged.connect([this, &playlist](std::optional<usize> index) {
+            emissions.push_back(index);
+            indexDuringEmit.push_back(playlist.currentIndex());
+            sizeDuringEmit.push_back(playlist.size());
 
-                    const auto current = playlist.currentItem();
-                    currentTitleDuringEmit.push_back(
-                            current ? current->title() : std::string("<none>"));
+            const auto current = playlist.currentItem();
+            currentTitleDuringEmit.push_back(current ? current->title() : std::string("<none>"));
 
-                    std::string atIndex = "<none>";
-                    if (index) {
-                        if (const auto item = playlist.itemAt(*index)) {
-                            atIndex = item->title();
-                        }
-                    }
-                    itemAtTitleDuringEmit.push_back(atIndex);
-                });
+            std::string atIndex = "<none>";
+            if (index) {
+                if (const auto item = playlist.itemAt(*index)) {
+                    atIndex = item->title();
+                }
+            }
+            itemAtTitleDuringEmit.push_back(atIndex);
+        });
     }
 
     [[nodiscard]] std::size_t count() const { return emissions.size(); }
@@ -281,7 +279,7 @@ private slots:
             const std::size_t before = trace.count();
             operation();
             if (trace.count() == before) {
-                return;  // announced nothing, so there is nothing to settle
+                return; // announced nothing, so there is nothing to settle
             }
             QVERIFY2(playlist.size() == trace.sizeDuringEmit.back(),
                      why(std::string(label) + ": size after the call is " +
@@ -529,9 +527,8 @@ private slots:
         QCOMPARE(engine.playlist().currentIndex(), std::optional<usize>{0});
 
         engine.pause();
-        QVERIFY(QTest::qWaitFor([&engine] {
-            return engine.state() == PlaybackState::Paused;
-        }, 3000));
+        QVERIFY(QTest::qWaitFor([&engine] { return engine.state() == PlaybackState::Paused; },
+                                3000));
 
         QVERIFY(engine.playlist().next());
         QCOMPARE(engine.playlist().currentIndex(), std::optional<usize>{1});
@@ -579,8 +576,7 @@ private slots:
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         const fs::path sessionPath = directory.path().toStdString() + "/session.m3u";
-        const fs::path first =
-                writeToneWav(directory.path().toStdString() + "/a.wav", 44100, 0.4f);
+        const fs::path first = writeToneWav(directory.path().toStdString() + "/a.wav", 44100, 0.4f);
         const fs::path second =
                 writeToneWav(directory.path().toStdString() + "/b.wav", 44100, 0.4f);
         QVERIFY(fs::exists(first) && fs::exists(second));
@@ -607,8 +603,7 @@ private slots:
 
         QVERIFY2(QTest::qWaitFor(
                          [&engine] {
-                             return engine.playlist().currentIndex() ==
-                                        std::optional<usize>{1} &&
+                             return engine.playlist().currentIndex() == std::optional<usize>{1} &&
                                     engine.isPlaying();
                          },
                          10000),
@@ -638,8 +633,7 @@ private slots:
 
             QCOMPARE(visited.size(), usize{3});
             std::set<usize> once(visited.begin(), visited.end());
-            QVERIFY2(once.size() == 3,
-                     why("a shuffled pass skipped a track: " + show(visited)));
+            QVERIFY2(once.size() == 3, why("a shuffled pass skipped a track: " + show(visited)));
         }
     }
 
@@ -688,10 +682,8 @@ private slots:
             // DownloadQueue, which validates the host against the captured
             // allowlist. The refusal itself is covered by
             // tests/unit/util/test_PathSafety.cpp; this test is about the flush.
-            const fs::path firstTrack =
-                fs::path(directory.path().toStdString()) / "first.mp3";
-            const fs::path secondTrack =
-                fs::path(directory.path().toStdString()) / "second.mp3";
+            const fs::path firstTrack = fs::path(directory.path().toStdString()) / "first.mp3";
+            const fs::path secondTrack = fs::path(directory.path().toStdString()) / "second.mp3";
             for (const auto& track : {firstTrack, secondTrack}) {
                 QFile f(QString::fromStdString(track.string()));
                 QVERIFY(f.open(QIODevice::WriteOnly));
@@ -788,10 +780,8 @@ private slots:
         const int capacity[] = {1, 2, 3, 8, 64};
         for (int cap : capacity) {
             for (int off : offered) {
-                const QByteArray tag = QStringLiteral("offered-%1-capacity-%2")
-                                               .arg(off)
-                                               .arg(cap)
-                                               .toLatin1();
+                const QByteArray tag =
+                        QStringLiteral("offered-%1-capacity-%2").arg(off).arg(cap).toLatin1();
                 QTest::newRow(tag.constData()) << off << cap;
             }
         }
@@ -878,6 +868,19 @@ private slots:
         QCOMPARE(vizAccepted, recAccepted);
         QCOMPARE(vizAccepted + queue.vizDropCount(), u64{kFirst + 8 * 4});
         QCOMPARE(recAccepted + queue.recDropCount(), u64{kFirst + 8 * 4});
+    }
+
+    // The renderer sizes its per-tick PCM batch from this value: a 44.1 kHz
+    // sink batch-sized as 48 kHz misfeeds projectM ~9% of each second's PCM
+    // and misaligns beat detection. The default only survives until the
+    // first push.
+    void theQueueCarriesThePushedSampleRate() {
+        AudioQueue queue;
+        QCOMPARE(queue.sampleRate(), u32{48'000});
+
+        const std::vector<float> frame = makePcm(1);
+        QVERIFY(queue.pushAll(frame.data(), 1, /*channels=*/2, 44'100));
+        QCOMPARE(queue.sampleRate(), u32{44'100});
     }
 };
 

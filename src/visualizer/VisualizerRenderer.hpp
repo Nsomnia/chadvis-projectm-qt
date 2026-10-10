@@ -57,6 +57,17 @@ public:
     // audio batch size and the recording frame-rate guardrail.
     void setTargetFps(u32 fps) { targetFps_ = fps; }
 
+    /// PCM frames to pop per render tick: one tick's worth of audio at the
+    /// rate the queue actually carries — the observed sink rate, 44.1 kHz
+    /// included — clamped to the pop buffer. The clamp is load-bearing: the
+    /// stack buffer holds 4096 stereo frames, and a 48 kHz stream at the
+    /// config-minimum 10 fps asks for 4800.
+    [[nodiscard]] static constexpr u32
+    framesPerRenderTick(const u32 sampleRate, const u32 targetFps, const u32 bufferFrames) {
+        const u32 wanted = (sampleRate + targetFps - 1) / targetFps;
+        return wanted < bufferFrames ? wanted : bufferFrames;
+    }
+
     // Recording
     void setRecordingSize(u32 width, u32 height);
     void startRecording();
@@ -90,7 +101,6 @@ private:
     bool pboAvailable_{false};
 
     AudioQueue* audioQueue_{nullptr};
-    u32 audioSampleRate_{48000};
     u32 targetFps_{60};
 
     bool initialized_{false};
