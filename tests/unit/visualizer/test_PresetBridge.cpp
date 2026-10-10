@@ -8,6 +8,7 @@
 #include "qml_bridge/PresetBridge.hpp"
 #include "visualizer/PresetData.hpp"
 #include "visualizer/PresetManager.hpp"
+#include "visualizer/RatingManager.hpp"
 
 using namespace vc;
 
@@ -43,6 +44,7 @@ private slots:
     void filteredRowsCarryFullListIndicesNotVisiblePositions();
     void selectingThroughAFilteredRowSelectsThatRow();
     void favoritingThroughAFilteredRowTogglesThatRow();
+    void ratingThroughAFilteredRowWritesThatRow();
 
 private:
     QTemporaryDir dir_;
@@ -145,6 +147,28 @@ void TestPresetBridge::favoritingThroughAFilteredRowTogglesThatRow() {
     // not.
     QVERIFY((*generation)[2].favorite);
     QVERIFY(!(*generation)[0].favorite);
+}
+
+void TestPresetBridge::ratingThroughAFilteredRowWritesThatRow() {
+    // The QML half of the rating path is the star Repeater, where modelData
+    // is the star number 0-4 and the click must reach the bridge carrying the
+    // ROW's index — which is what PresetDelegate.presetIndex exists to carry.
+    // This is the bridge half: setRating(index, stars) must write onto the
+    // preset that index addresses, never slot 0. RatingManager is a
+    // process-wide in-memory singleton, so slot 0 is compared against its own
+    // before-value rather than an assumed zero.
+    const PresetManager::Snapshot generation = manager_->allPresets();
+    const std::string victim = (*generation)[3].name;
+    const std::string slotZero = (*generation)[0].name;
+    const int slotZeroBefore = RatingManager::instance().getRating(slotZero);
+    bridge_->setSearchQuery(QString::fromStdString(victim));
+
+    const QVariantList rows = bridge_->filteredPresets();
+    QCOMPARE(rows.size(), qsizetype(1));
+    bridge_->setRating(rows.first().toMap().value(QStringLiteral("index")).toInt(), 4);
+
+    QCOMPARE(RatingManager::instance().getRating(victim), 4);
+    QCOMPARE(RatingManager::instance().getRating(slotZero), slotZeroBefore);
 }
 
 #include "test_PresetBridge.moc"

@@ -68,7 +68,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       and is coerced to `0` by the `int` parameter. Verified by reading both sides.
       Fix: emit an `index` key, or use the already-existing `selectByName`
       (`PresetBridge.hpp:60`).
-- [ ] T0003 **Preset ratings can only ever be written to slot 0** (`src/qml/panels/PresetsPanel.qml:84-98`) #data-loss
+- [x] T0003 **Preset ratings can only ever be written to slot 0** (`src/qml/panels/PresetsPanel.qml:84-98`) #data-loss
       The star `Repeater { model: 5 }` makes `modelData` the **number** 0–4, so
       `modelData.index` at :96 is `undefined`; `setRating` then indexes
       `(*presets)[index].name`. Fix: pass the outer preset's name.

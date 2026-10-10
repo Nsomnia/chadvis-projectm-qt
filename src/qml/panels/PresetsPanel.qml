@@ -58,6 +58,12 @@ ColumnLayout {
         property bool isFavorite: modelData ? modelData.favorite : false
         property bool isBlacklisted: modelData ? modelData.blacklisted : false
         property int rating: modelData ? modelData.rating : 0
+        // The row's identity for index-based bridge calls. The star Repeater
+        // below shadows `modelData` with the star number 0-4, so its click
+        // handler must reach the row through this property: modelData.index
+        // there is undefined, coerces to 0, and wrote every rating onto
+        // preset #0.
+        readonly property int presetIndex: modelData ? modelData.index : 0
         signal selected(); signal favoriteToggled(); signal blacklistToggled()
 
         RowLayout {
@@ -93,7 +99,7 @@ ColumnLayout {
                 colorization: 1.0
                 colorizationColor: index < delegate.rating ? Theme.accent : Theme.textSecondary
             }
-            MouseArea { anchors.fill: parent; onClicked: PresetBridge.setRating(modelData.index, index + 1) }
+            MouseArea { anchors.fill: parent; onClicked: PresetBridge.setRating(delegate.presetIndex, index + 1) }
         }
                 }
             }
