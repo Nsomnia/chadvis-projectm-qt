@@ -622,7 +622,7 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [ ] T0095 Every CI `ctest` invocation is serial (`.github/workflows/build.yml:297,229`) #performance
       Add `--parallel $(nproc)`. `release.yml:121-123` admits it has no dependency caching
       while still installing ccache.
-- [ ] T0096 Recorder tests write receipts into the repository root (`.gitignore:99-108`, `tests/recorder/test_RenderExecutor.cpp`, `test_RecordingPipeline.cpp`) #risk-high
+- [x] T0096 Recorder tests write receipts into the repository root (`.gitignore:99-108`, `tests/unit/recorder/test_RenderQueue.cpp`) #risk-high
       The ignore rule is a **guard, not a repair**: `RenderJob::kReceiptSuffix` sidecars land
       in CWD because the tests point the encoder at relative paths. 17 of 45 test files use
       `QTemporaryDir` correctly — copy them. **This recurs on every full ctest run.**

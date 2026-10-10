@@ -13,9 +13,9 @@
 // the muxer had blanked it — so the conventions here are QCOMPARE on exact
 // counts and bit_cast on floats.
 
-#include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QtTest>
 
 #include "recorder/RenderJob.hpp"
 #include "recorder/RenderQueue.hpp"
@@ -42,18 +42,30 @@ namespace fs = std::filesystem;
 // Fixture
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// The default job directory: a process-lifetime QTemporaryDir, so fixture
+/// outputs — and the `.chadrjob` receipts RenderQueue writes next to them —
+/// land somewhere that removes itself instead of ctest's working directory.
+fs::path scratchDir() {
+    static QTemporaryDir dir;
+    return fs::path(dir.path().toStdString());
+}
+
 /// A job that passes validate() with nothing left at its defaults, so a test
 /// only has to state the one field it is about.
 RenderJob makeJob(std::string id, const fs::path& dir = {}) {
+    // An empty `dir` used to mean CWD, which ctest leaves at the repository
+    // root: every fixture output was a relative path, and the receipts
+    // written beside them littered the tree on every full run (T0096).
+    const fs::path base = dir.empty() ? scratchDir() : dir;
     RenderJob job;
     job.id = std::move(id);
     job.label = "job " + job.id;
     job.createdUtc = "2026-10-04T00:00:00Z";
-    job.audioPath = (dir / (job.id + ".flac")).string();
+    job.audioPath = (base / (job.id + ".flac")).string();
     job.audioSha256 = std::string(64, 'a');
     job.durationSeconds = 30.0;
     job.expectedFrames = 1800;
-    job.outputPath = (dir / (job.id + ".mp4")).string();
+    job.outputPath = (base / (job.id + ".mp4")).string();
     job.projectmVersion = "4.1.6";
     job.scenes = {RenderScene{"preset-a", 15.0, 0.0}, RenderScene{"preset-b", 15.0, 2.5}};
     return job;
@@ -116,8 +128,7 @@ private slots:
         // and for every table entry, so errno really is dominant.
         for (const auto& rule : renderErrnoRules()) {
             for (const auto guess : {RenderFailureKind::None, RenderFailureKind::Transient,
-                                     RenderFailureKind::Permanent,
-                                     RenderFailureKind::Cancelled}) {
+                                     RenderFailureKind::Permanent, RenderFailureKind::Cancelled}) {
                 RenderFailure failure;
                 failure.kind = guess;
                 failure.osErrno = rule.osErrno;
@@ -131,10 +142,10 @@ private slots:
         // osErrno == 0 is the documented "this did not come from the OS" signal,
         // and then the worker's own kind is the answer.
         const std::array<std::pair<RenderFailureKind, RenderFailureKind>, 4> rows{{
-            {RenderFailureKind::None, RenderFailureKind::None},
-            {RenderFailureKind::Transient, RenderFailureKind::Transient},
-            {RenderFailureKind::Permanent, RenderFailureKind::Permanent},
-            {RenderFailureKind::Cancelled, RenderFailureKind::Cancelled},
+                {RenderFailureKind::None, RenderFailureKind::None},
+                {RenderFailureKind::Transient, RenderFailureKind::Transient},
+                {RenderFailureKind::Permanent, RenderFailureKind::Permanent},
+                {RenderFailureKind::Cancelled, RenderFailureKind::Cancelled},
         }};
         for (const auto& [guess, expected] : rows) {
             RenderFailure failure;
@@ -146,8 +157,8 @@ private slots:
 
     void everyFailureKindHasADistinctName() {
         const std::array<RenderFailureKind, 4> kinds{
-            RenderFailureKind::None, RenderFailureKind::Cancelled,
-            RenderFailureKind::Transient, RenderFailureKind::Permanent};
+                RenderFailureKind::None, RenderFailureKind::Cancelled, RenderFailureKind::Transient,
+                RenderFailureKind::Permanent};
         std::set<std::string> names;
         for (const auto kind : kinds) {
             const std::string name(renderFailureKindName(kind));
@@ -174,9 +185,10 @@ private slots:
 
     void terminalRetryableAndPartialOutputAreThreeDifferentQuestions() {
         const std::array<RenderState, 7> all{
-            RenderState::Queued, RenderState::Rendering, RenderState::Completed,
-            RenderState::CompletedPartial, RenderState::FailedRetryable,
-            RenderState::FailedPermanent, RenderState::Cancelled};
+                RenderState::Queued,          RenderState::Rendering,
+                RenderState::Completed,       RenderState::CompletedPartial,
+                RenderState::FailedRetryable, RenderState::FailedPermanent,
+                RenderState::Cancelled};
 
         std::vector<RenderState> terminal;
         std::vector<RenderState> retryable;
@@ -197,12 +209,11 @@ private slots:
         // is correct: a job that has burned its last attempt is done, and
         // re-running it is a fresh enqueue carrying the user's unchanged intent.
         QCOMPARE(terminal.size(), std::size_t{5});
-        QVERIFY(std::find(terminal.begin(), terminal.end(), RenderState::Queued) ==
-                terminal.end());
+        QVERIFY(std::find(terminal.begin(), terminal.end(), RenderState::Queued) == terminal.end());
         QVERIFY(std::find(terminal.begin(), terminal.end(), RenderState::Rendering) ==
                 terminal.end());
-        QVERIFY(std::find(terminal.begin(), terminal.end(),
-                          RenderState::FailedRetryable) != terminal.end());
+        QVERIFY(std::find(terminal.begin(), terminal.end(), RenderState::FailedRetryable) !=
+                terminal.end());
 
         // Retryable: exactly one state. Cancelled is a decision, not a fault.
         QCOMPARE(retryable.size(), std::size_t{1});
@@ -212,8 +223,7 @@ private slots:
         // render had already been muxing frames when it stopped, so it leaves
         // bytes a user could mistake for the whole render.
         QCOMPARE(partial.size(), terminal.size() - 1);
-        QVERIFY(std::find(partial.begin(), partial.end(), RenderState::Completed) ==
-                partial.end());
+        QVERIFY(std::find(partial.begin(), partial.end(), RenderState::Completed) == partial.end());
         for (const auto state : terminal) {
             if (state == RenderState::Completed) continue;
             QVERIFY2(std::find(partial.begin(), partial.end(), state) != partial.end(),
@@ -224,9 +234,10 @@ private slots:
 
     void stateNamesAndSlugsRoundTrip() {
         const std::array<RenderState, 7> all{
-            RenderState::Queued, RenderState::Rendering, RenderState::Completed,
-            RenderState::CompletedPartial, RenderState::FailedRetryable,
-            RenderState::FailedPermanent, RenderState::Cancelled};
+                RenderState::Queued,          RenderState::Rendering,
+                RenderState::Completed,       RenderState::CompletedPartial,
+                RenderState::FailedRetryable, RenderState::FailedPermanent,
+                RenderState::Cancelled};
 
         std::set<std::string> names;
         std::set<std::string> slugs;
@@ -253,9 +264,7 @@ private slots:
 
     void aDefaultShapedJobValidates() {
         const auto result = makeJob("valid").validate();
-        QVERIFY2(result.has_value(), result.has_value()
-                                         ? ""
-                                         : result.error().describe().c_str());
+        QVERIFY2(result.has_value(), result.has_value() ? "" : result.error().describe().c_str());
     }
 
     void validateNamesTheFieldItRejected() {
@@ -282,44 +291,41 @@ private slots:
         {
             RenderJob j = makeJob("x");
             j.audioPath.clear();
-            rows.push_back({"empty audio", j, JobErrorKind::EmptyAudioPath,
-                            "source.audio_path"});
+            rows.push_back({"empty audio", j, JobErrorKind::EmptyAudioPath, "source.audio_path"});
         }
         {
             RenderJob j = makeJob("x");
             j.outputPath.clear();
-            rows.push_back({"empty output", j, JobErrorKind::EmptyOutputPath,
-                            "video.output_path"});
+            rows.push_back({"empty output", j, JobErrorKind::EmptyOutputPath, "video.output_path"});
         }
         {
             RenderJob j = makeJob("x");
             j.projectmVersion.clear();
-            rows.push_back({"no projectm", j, JobErrorKind::EmptyProjectMVersion,
-                            "projectm.version"});
+            rows.push_back(
+                    {"no projectm", j, JobErrorKind::EmptyProjectMVersion, "projectm.version"});
         }
         {
             RenderJob j = makeJob("x");
             j.audioSha256 = "NOTHEX";
-            rows.push_back({"bad hash", j, JobErrorKind::BadContentHash,
-                            "source.audio_sha256"});
+            rows.push_back({"bad hash", j, JobErrorKind::BadContentHash, "source.audio_sha256"});
         }
         {
             RenderJob j = makeJob("x");
             j.durationSeconds = 0.0;
-            rows.push_back({"no duration", j, JobErrorKind::BadDuration,
-                            "source.duration_seconds"});
+            rows.push_back(
+                    {"no duration", j, JobErrorKind::BadDuration, "source.duration_seconds"});
         }
         {
             RenderJob j = makeJob("x");
             j.durationSeconds = std::numeric_limits<f64>::infinity();
-            rows.push_back({"infinite duration", j, JobErrorKind::BadDuration,
-                            "source.duration_seconds"});
+            rows.push_back(
+                    {"infinite duration", j, JobErrorKind::BadDuration, "source.duration_seconds"});
         }
         {
             RenderJob j = makeJob("x");
             j.width = 0;
-            rows.push_back({"zero width", j, JobErrorKind::BadDimension,
-                            "video.width/video.height"});
+            rows.push_back(
+                    {"zero width", j, JobErrorKind::BadDimension, "video.width/video.height"});
         }
         {
             // yuv420p is subsampled 2x2, so an odd extent is not representable
@@ -327,8 +333,8 @@ private slots:
             // avformat_write_header with the encoder already committed.
             RenderJob j = makeJob("x");
             j.width = 1921;
-            rows.push_back({"odd width", j, JobErrorKind::BadDimension,
-                            "video.width/video.height"});
+            rows.push_back(
+                    {"odd width", j, JobErrorKind::BadDimension, "video.width/video.height"});
         }
         {
             RenderJob j = makeJob("x");
@@ -353,8 +359,7 @@ private slots:
         {
             RenderJob j = makeJob("x");
             j.scenes = {RenderScene{"", 5.0, 0.0}};
-            rows.push_back({"nameless scene", j, JobErrorKind::BadScene,
-                            "scenes.preset_name"});
+            rows.push_back({"nameless scene", j, JobErrorKind::BadScene, "scenes.preset_name"});
         }
         {
             RenderJob j = makeJob("x");
@@ -373,14 +378,12 @@ private slots:
             // frozen vocabulary exists to remove.
             RenderJob j = makeJob("x");
             j.videoCodec = "H264";
-            rows.push_back({"uppercase codec", j, JobErrorKind::UnknownToken,
-                            "video.codec"});
+            rows.push_back({"uppercase codec", j, JobErrorKind::UnknownToken, "video.codec"});
         }
         {
             RenderJob j = makeJob("x");
             j.container = "ogg";
-            rows.push_back({"unknown container", j, JobErrorKind::UnknownToken,
-                            "video.container"});
+            rows.push_back({"unknown container", j, JobErrorKind::UnknownToken, "video.container"});
         }
         {
             RenderJob j = makeJob("x");
@@ -391,8 +394,7 @@ private slots:
         {
             RenderJob j = makeJob("x");
             j.audioChannels = 3;
-            rows.push_back({"5.1 is not representable", j, JobErrorKind::BadAudioSpec,
-                            "audio.*"});
+            rows.push_back({"5.1 is not representable", j, JobErrorKind::BadAudioSpec, "audio.*"});
         }
         {
             RenderJob j = makeJob("x");
@@ -462,8 +464,7 @@ private slots:
         job.karaokeMode = "muxed";
         job.karaokeAssPath = "/tmp/sheet.ass";
         job.projectmVersion = "4.2.0";
-        job.scenes = {RenderScene{"alpha", 4.25, 0.0},
-                      RenderScene{"beta", 8.25, 1.5}};
+        job.scenes = {RenderScene{"alpha", 4.25, 0.0}, RenderScene{"beta", 8.25, 1.5}};
 
         RenderReceipt receipt;
         receipt.outcome = RenderState::Completed;
@@ -513,13 +514,10 @@ private slots:
 
         QCOMPARE(r.scenes.size(), std::size_t{2});
         QCOMPARE(r.scenes[0].presetName, std::string("alpha"));
-        QCOMPARE(std::bit_cast<u64>(r.scenes[0].durationSeconds),
-                 std::bit_cast<u64>(4.25));
-        QCOMPARE(std::bit_cast<u64>(r.scenes[0].crossfadeSeconds),
-                 std::bit_cast<u64>(0.0));
+        QCOMPARE(std::bit_cast<u64>(r.scenes[0].durationSeconds), std::bit_cast<u64>(4.25));
+        QCOMPARE(std::bit_cast<u64>(r.scenes[0].crossfadeSeconds), std::bit_cast<u64>(0.0));
         QCOMPARE(r.scenes[1].presetName, std::string("beta"));
-        QCOMPARE(std::bit_cast<u64>(r.scenes[1].crossfadeSeconds),
-                 std::bit_cast<u64>(1.5));
+        QCOMPARE(std::bit_cast<u64>(r.scenes[1].crossfadeSeconds), std::bit_cast<u64>(1.5));
 
         // The receipt is the thing that makes a re-render cheap, so the receipt
         // has to carry the outcome too, not just the settings.
@@ -542,9 +540,8 @@ private slots:
         QVERIFY(bytes.size() >= kReceiptHeaderBytes);
         QCOMPARE(static_cast<u8>(bytes[0]), kFormatTag);
         QCOMPARE(static_cast<u8>(bytes[1]), static_cast<u8>(kSchemaMajor));
-        const u16 headerBytes =
-            static_cast<u16>(static_cast<u8>(bytes[4])) |
-            (static_cast<u16>(static_cast<u8>(bytes[5])) << 8);
+        const u16 headerBytes = static_cast<u16>(static_cast<u8>(bytes[4])) |
+                                (static_cast<u16>(static_cast<u8>(bytes[5])) << 8);
         QCOMPARE(headerBytes, static_cast<u16>(kReceiptHeaderBytes));
         // Both reserved bytes must be zero, and decodeReceipt refuses otherwise.
         QCOMPARE(static_cast<u8>(bytes[3]), u8{0});
@@ -567,8 +564,7 @@ private slots:
         std::set<std::string> statusNames;
         for (const auto status : {ReceiptStatus::Ok, ReceiptStatus::Missing,
                                   ReceiptStatus::BadMagic, ReceiptStatus::TruncatedHeader,
-                                  ReceiptStatus::BadHeader,
-                                  ReceiptStatus::UnsupportedVersion,
+                                  ReceiptStatus::BadHeader, ReceiptStatus::UnsupportedVersion,
                                   ReceiptStatus::BadBody, ReceiptStatus::WriteFailed}) {
             const std::string name(receiptStatusName(status));
             QVERIFY(!name.empty());
@@ -585,7 +581,7 @@ private slots:
             QTemporaryDir dir;
             QVERIFY(dir.isValid());
             const auto absent =
-                readReceipt(fs::path(dir.path().toStdString()) / "never-written.receipt");
+                    readReceipt(fs::path(dir.path().toStdString()) / "never-written.receipt");
             QVERIFY(!absent.has_value());
             QCOMPARE(absent.error().status, ReceiptStatus::Missing);
         }
@@ -640,8 +636,8 @@ private slots:
 
         const auto refused = writeReceipt(job, dirPath / "lying.receipt");
         QVERIFY2(!refused.has_value(), refused.has_value()
-                                          ? "writeReceipt certified a 400-of-1800 render"
-                                          : refused.error().describe().c_str());
+                                               ? "writeReceipt certified a 400-of-1800 render"
+                                               : refused.error().describe().c_str());
         QVERIFY(!fs::exists(dirPath / "lying.receipt"));
 
         // And the honest spelling is accepted, because the partial outcome is a
@@ -709,8 +705,7 @@ private slots:
 
         // No orphaned temp anywhere beside it.
         for (const auto& entry : fs::directory_iterator(dirPath)) {
-            QVERIFY2(entry.path().extension() != ".tmp",
-                     "an atomic write leaked its temp file");
+            QVERIFY2(entry.path().extension() != ".tmp", "an atomic write leaked its temp file");
         }
     }
 
@@ -983,8 +978,7 @@ private slots:
                 QCOMPARE(after, before + 1);
             }
         }
-        QCOMPARE(static_cast<int>(runner.handedOut.size()),
-                 RenderQueue::kMaxAttempts);
+        QCOMPARE(static_cast<int>(runner.handedOut.size()), RenderQueue::kMaxAttempts);
         QCOMPARE(queue.stateOf("flaky"), RenderState::FailedRetryable);
         QCOMPARE(queue.isEmpty(), true);
     }
