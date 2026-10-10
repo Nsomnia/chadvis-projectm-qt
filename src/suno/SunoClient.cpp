@@ -1366,10 +1366,24 @@ void SunoClient::onGenerateReply(QNetworkReply* reply) {
 }
 
 void SunoClient::fetchAlignedLyrics(const std::string& clipId) {
-    if (!isAuthenticated()) return;
+    if (!isAuthenticated()) {
+        // The lyrics manager pairs one increment with exactly one outcome
+        // signal; the silent return here is what wedged its queue permanently
+        // at full concurrency after three unauthenticated drops.
+        lyricsFetchFailed.emitSignal(clipId, "Not authenticated");
+        return;
+    }
     const QString url =
             qstr(vc::suno::endpoints::ALIGNED_LYRICS).replace("{}", QString::fromStdString(clipId));
     enqueueAuthenticatedRequest(url, "GET", {}, [this, clipId](QNetworkReply* reply) {
+        // Every issued lyrics request must land in exactly one of
+        // alignedLyricsFetched / lyricsFetchFailed — the manager sizes its
+        // concurrency from these alone. handleJsonReply still broadcasts the
+        // generic errorOccurred and runs the 401 machinery; this is the
+        // scoped twin, not a replacement.
+        if (reply->error() != QNetworkReply::NoError) {
+            lyricsFetchFailed.emitSignal(clipId, "Lyrics request failed");
+        }
         handleJsonReply(reply, [this, clipId](const QJsonDocument& doc) {
             alignedLyricsFetched.emitSignal(clipId,
                                             doc.toJson(QJsonDocument::Compact).toStdString());

@@ -6,20 +6,20 @@
 #include "lyrics/LyricsSync.hpp"
 
 #include "suno/ClipResolver.hpp"
-#include "suno/auth/AuthCoordinator.hpp"
 #include "suno/SunoAccountManager.hpp"
-#include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoDownloader.hpp"
+#include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoLyricsManager.hpp"
+#include "suno/auth/AuthCoordinator.hpp"
 #include "util/FileUtils.hpp"
 
-#include <QNetworkAccessManager>
-#include <QStandardPaths>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QStandardPaths>
 #include <QUuid>
 
 namespace vc::suno {
@@ -42,177 +42,184 @@ QString resolveOrCreateDeviceId() {
 
 } // namespace
 
-SunoController::SunoController(AudioEngine* audioEngine,
-	LyricsSync* lyricsSync,
-	QObject* parent)
-: QObject(parent),
-	audioEngine_(audioEngine),
-	lyricsSync_(lyricsSync),
-	client_(std::make_unique<SunoClient>(resolveOrCreateDeviceId())),
-	// The controller is created on the GUI thread; parent the coordinator
-	// there so its loopback/QTimer children share that thread and lifetime.
-	authCoordinator_(std::make_unique<auth::AuthCoordinator>(client_.get(), this)) {
-    
+SunoController::SunoController(AudioEngine* audioEngine, LyricsSync* lyricsSync, QObject* parent)
+    : QObject(parent), audioEngine_(audioEngine), lyricsSync_(lyricsSync),
+      client_(std::make_unique<SunoClient>(resolveOrCreateDeviceId())),
+      // The controller is created on the GUI thread; parent the coordinator
+      // there so its loopback/QTimer children share that thread and lifetime.
+      authCoordinator_(std::make_unique<auth::AuthCoordinator>(client_.get(), this)) {
     // Initialize Database
     fs::path dataDir = file::dataDir();
     (void)file::ensureDir(dataDir);
     fs::path dbPath = dataDir / "suno_library.db";
     if (auto result = db_.init(dbPath.string()); !result) {
-        LOG_ERROR("SunoController: Failed to initialize Suno database: {}",
-                  result.error().message);
+        LOG_ERROR("SunoController: Failed to initialize Suno database: {}", result.error().message);
     }
 
     // Initialize Managers
     accountManager_ = std::make_unique<SunoAccountManager>(client_.get(), this);
     libraryManager_ = std::make_unique<SunoLibraryManager>(client_.get(), db_, this);
-    
-    auto networkManager = new QNetworkAccessManager(this); // Owned by SunoController (or QObject tree)
-    downloader_ = std::make_unique<SunoDownloader>(client_.get(), db_, audioEngine_, networkManager, this);
+
+    auto networkManager =
+            new QNetworkAccessManager(this); // Owned by SunoController (or QObject tree)
+    downloader_ = std::make_unique<SunoDownloader>(client_.get(), db_, audioEngine_, networkManager,
+                                                   this);
 
     // Forward queue progress so bridges/QML can consume it later.
-    connect(downloader_.get(), &SunoDownloader::downloadStateChanged,
-            this, &SunoController::downloadStateChanged);
-    connect(downloader_.get(), &SunoDownloader::downloadQueueIdle,
-            this, &SunoController::downloadQueueIdle);
-    connect(downloader_.get(), &SunoDownloader::playbackReady, this,
-            [this](const QString& clipId) {
-                activeClipId_ = clipId.toStdString();
-                activateClipLyrics(activeClipId_);
-            });
-    
+    connect(downloader_.get(), &SunoDownloader::downloadStateChanged, this,
+            &SunoController::downloadStateChanged);
+    connect(downloader_.get(), &SunoDownloader::downloadQueueIdle, this,
+            &SunoController::downloadQueueIdle);
+    connect(downloader_.get(), &SunoDownloader::playbackReady, this, [this](const QString& clipId) {
+        activeClipId_ = clipId.toStdString();
+        activateClipLyrics(activeClipId_);
+    });
+
     lyricsManager_ = std::make_unique<SunoLyricsManager>(client_.get(), db_, this);
 
     orchestrator_ = std::make_unique<SunoOrchestrator>(client_.get(), this);
-    connect(orchestrator_.get(), &SunoOrchestrator::messageReceived, this, &SunoController::chatMessageReceived);
-    connect(orchestrator_.get(), &SunoOrchestrator::historyFetched, this, &SunoController::chatHistoryFetched);
-    connect(orchestrator_.get(), &SunoOrchestrator::errorOccurred, this, &SunoController::chatError);
+    connect(orchestrator_.get(), &SunoOrchestrator::messageReceived, this,
+            &SunoController::chatMessageReceived);
+    connect(orchestrator_.get(), &SunoOrchestrator::historyFetched, this,
+            &SunoController::chatHistoryFetched);
+    connect(orchestrator_.get(), &SunoOrchestrator::errorOccurred, this,
+            &SunoController::chatError);
 
-	// --- Connect Signals ---
+    // --- Connect Signals ---
 
-	// Auth state (client runs restore/migrate in its constructor)
-	connect(client_.get(), &SunoClient::needsReauth, this, [this]() {
-		emit authenticationRequired();
-	});
-	connect(client_.get(), &SunoClient::authFailureKindChanged,
-	        this, &SunoController::authFailureKindChanged);
-	connect(client_.get(), &SunoClient::authStateChanged, this, [this]() {
-		switch (client_->authState()) {
-		case auth::AuthState::ActiveValid:
-			emit statusMessage("Suno authentication active");
-			emit authenticationSuccess();
-			// Session catalog + billing bootstrap (once per activation).
-			if (accountManager_) {
-				accountManager_->refreshAll();
-			}
-			break;
-		case auth::AuthState::NeedsReauth:
-			if (accountManager_) {
-				accountManager_->clearSnapshots();
-			}
-			break;
-		case auth::AuthState::Disconnected:
-			if (accountManager_) {
-				accountManager_->clearSnapshots();
-			}
-			break;
-		}
-	});
+    // Auth state (client runs restore/migrate in its constructor)
+    connect(client_.get(), &SunoClient::needsReauth, this,
+            [this]() { emit authenticationRequired(); });
+    connect(client_.get(), &SunoClient::authFailureKindChanged, this,
+            &SunoController::authFailureKindChanged);
+    connect(client_.get(), &SunoClient::authStateChanged, this, [this]() {
+        switch (client_->authState()) {
+            case auth::AuthState::ActiveValid:
+                emit statusMessage("Suno authentication active");
+                emit authenticationSuccess();
+                // Session catalog + billing bootstrap (once per activation).
+                if (accountManager_) {
+                    accountManager_->refreshAll();
+                }
+                break;
+            case auth::AuthState::NeedsReauth:
+                if (accountManager_) {
+                    accountManager_->clearSnapshots();
+                }
+                break;
+            case auth::AuthState::Disconnected:
+                if (accountManager_) {
+                    accountManager_->clearSnapshots();
+                }
+                break;
+        }
+    });
 
-	// Cheap billing refresh after a generation kicks off (credits change as
-	// the clip is submitted); delayed so the backend has settled its ledger.
-	// generationStarted is a custom Signal<> (not Qt), so use .connect().
-	client_->generationStarted.connect([this](const std::vector<SunoClip>&) {
-		if (!accountManager_) return;
-		QTimer::singleShot(std::chrono::seconds(15), this,
-		                   [this]() { accountManager_->refreshBilling(); });
-	});
+    // Cheap billing refresh after a generation kicks off (credits change as
+    // the clip is submitted); delayed so the backend has settled its ledger.
+    // generationStarted is a custom Signal<> (not Qt), so use .connect().
+    client_->generationStarted.connect([this](const std::vector<SunoClip>&) {
+        if (!accountManager_) return;
+        QTimer::singleShot(std::chrono::seconds(15), this,
+                           [this]() { accountManager_->refreshBilling(); });
+    });
 
-	// Library Manager
-	connect(libraryManager_.get(), &SunoLibraryManager::statusMessage,
-		this, &SunoController::statusMessage);
-	connect(libraryManager_.get(), &SunoLibraryManager::libraryUpdated,
-		this, [this](const std::vector<SunoClip>& clips) {
-			emit libraryUpdated(clips);
+    // Library Manager
+    connect(libraryManager_.get(), &SunoLibraryManager::statusMessage, this,
+            &SunoController::statusMessage);
+    connect(libraryManager_.get(), &SunoLibraryManager::libraryUpdated, this,
+            [this](const std::vector<SunoClip>& clips) {
+                emit libraryUpdated(clips);
 
-			// Check for missing lyrics in newly fetched clips
-			for (const auto& clip : clips) {
-				auto lyricsRes = db_.getAlignedLyrics(clip.id);
-				if (lyricsRes.isErr() || lyricsRes.value().empty()) {
-					lyricsManager_->queueLyricsFetch(clip.id);
-				}
-			}
-		});
-	connect(libraryManager_.get(), &SunoLibraryManager::authenticationRequired,
-		this, &SunoController::authenticationRequired);
-	connect(libraryManager_.get(), &SunoLibraryManager::libraryFetchFailed,
-		this, &SunoController::libraryFetchFailed);
+                // Lyrics are requested for the NEW slice only: libraryUpdated
+                // carries the whole accumulated list after every page, and the
+                // list is append-ordered during a sync, so scanning from the
+                // previously seen size issues exactly one pass per clip — the
+                // old whole-list scan re-issued every prior page's queries on
+                // every page (k×20 getAlignedLyrics calls by page k). A smaller
+                // list means a fresh sync cleared it: rescan from zero.
+                const std::size_t firstNew =
+                        clips.size() < lastLyricsScanSize_ ? std::size_t{0} : lastLyricsScanSize_;
+                lastLyricsScanSize_ = clips.size();
+                for (std::size_t i = firstNew; i < clips.size(); ++i) {
+                    const auto& clip = clips[i];
+                    auto lyricsRes = db_.getAlignedLyrics(clip.id);
+                    if (lyricsRes.isErr() || lyricsRes.value().empty()) {
+                        lyricsManager_->queueLyricsFetch(clip.id);
+                    }
+                }
+            });
+    connect(libraryManager_.get(), &SunoLibraryManager::authenticationRequired, this,
+            &SunoController::authenticationRequired);
+    connect(libraryManager_.get(), &SunoLibraryManager::libraryFetchFailed, this,
+            &SunoController::libraryFetchFailed);
 
-	// Forward SunoClient custom errorOccurred to a Qt signal so Bridges
-	// can clear spinners on any terminal network/auth failure.
-	client_->errorOccurred.connect([this](const std::string& err) {
-		// ClerkAuthClient's AuthFailureKind is not exposed by the
-		// public SunoClient API.  SunoClient has already sanitized the
-		// failure text, so preserve that reason instead of relabeling
-		// every NeedsReauth transition as an expired session.
-		const bool authFailure =
-			client_->authState() == auth::AuthState::NeedsReauth;
-		// Emit on the Qt thread; queued to avoid re-entrancy with managers.
-		QMetaObject::invokeMethod(this,
-			[this, qmsg = QString::fromStdString(err), authFailure]() {
-				emit sunoError(qmsg);
-				emit libraryFetchFailed(qmsg);
-				if (authFailure) {
-					emit authenticationFailed(qmsg);
-				}
-			},
-			Qt::QueuedConnection);
-	});
+    // Forward SunoClient custom errorOccurred to a Qt signal so Bridges
+    // can clear spinners on any terminal network/auth failure.
+    client_->errorOccurred.connect([this](const std::string& err) {
+        // ClerkAuthClient's AuthFailureKind is not exposed by the
+        // public SunoClient API.  SunoClient has already sanitized the
+        // failure text, so preserve that reason instead of relabeling
+        // every NeedsReauth transition as an expired session.
+        const bool authFailure = client_->authState() == auth::AuthState::NeedsReauth;
+        // Emit on the Qt thread; queued to avoid re-entrancy with managers.
+        QMetaObject::invokeMethod(
+                this,
+                [this, qmsg = QString::fromStdString(err), authFailure]() {
+                    emit sunoError(qmsg);
+                    emit libraryFetchFailed(qmsg);
+                    if (authFailure) {
+                        emit authenticationFailed(qmsg);
+                    }
+                },
+                Qt::QueuedConnection);
+    });
 
-	// Lyrics Manager
-	connect(lyricsManager_.get(), &SunoLyricsManager::statusMessage,
-		this, &SunoController::statusMessage);
-    connect(lyricsManager_.get(), &SunoLyricsManager::lyricsFetched,
-		this, [this](const std::string& id, const std::string& json) {
-			QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(json));
-			const auto lyrics = parseLyricsForClip(id, json);
+    // Lyrics Manager
+    connect(lyricsManager_.get(), &SunoLyricsManager::statusMessage, this,
+            &SunoController::statusMessage);
+    connect(lyricsManager_.get(), &SunoLyricsManager::lyricsFetched, this,
+            [this](const std::string& id, const std::string& json) {
+                QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(json));
+                const auto lyrics = parseLyricsForClip(id, json);
 
-			if (auto result = db_.saveAlignedLyrics(id, json); !result) {
-				LOG_WARN("SunoController: Failed to persist aligned lyrics for {}: {}",
-				         id, result.error().message);
-			}
-			emit clipUpdated(id);
+                if (auto result = db_.saveAlignedLyrics(id, json); !result) {
+                    LOG_WARN("SunoController: Failed to persist aligned lyrics for {}: {}", id,
+                             result.error().message);
+                }
+                emit clipUpdated(id);
 
-			if (lyrics) {
-				directLyricsCache_.try_emplace(id, *lyrics);
-				if (id == activeClipId_ && !CONFIG.suno().debugLyrics) {
-					publishLyrics(id, *lyrics);
-					LOG_INFO("SunoController: Immediately displayed lyrics for current track {}", id);
-				}
-			}
+                if (lyrics) {
+                    directLyricsCache_.try_emplace(id, *lyrics);
+                    if (id == activeClipId_ && !CONFIG.suno().debugLyrics) {
+                        publishLyrics(id, *lyrics);
+                        LOG_INFO(
+                                "SunoController: Immediately displayed lyrics for current track {}",
+                                id);
+                    }
+                }
 
-			if (CONFIG.suno().saveLyrics) {
-				downloader_->saveLyricsSidecar(id, json, doc, libraryManager_->accumulatedClips());
-			}
-		});
+                if (CONFIG.suno().saveLyrics) {
+                    downloader_->saveLyricsSidecar(id, json, doc,
+                                                   libraryManager_->accumulatedClips());
+                }
+            });
 
-	// Connect to track changes. The payload is an optional index: a nullopt
-	// emission means the selected track was removed or the queue was cleared, and
-	// dropping the lyrics is the correct response to that too.
-	audioEngine_->playlist().currentChanged.connect([this](std::optional<size_t>) {
-		onTrackChanged();
-	});
-    
+    // Connect to track changes. The payload is an optional index: a nullopt
+    // emission means the selected track was removed or the queue was cleared, and
+    // dropping the lyrics is the correct response to that too.
+    audioEngine_->playlist().currentChanged.connect(
+            [this](std::optional<size_t>) { onTrackChanged(); });
+
     // Initial Library Refresh if authenticated
     if (client_->isAuthenticated()) {
         accountManager_->refreshAll();
-        QTimer::singleShot(2000, this, [this]() {
-            refreshLibrary(1);
-        });
+        QTimer::singleShot(2000, this, [this]() { refreshLibrary(1); });
     }
 
     // Handle Debug Lyrics
     if (CONFIG.suno().debugLyrics && !CONFIG.suno().debugLyricsFile.empty()) {
-         fs::path p = CONFIG.suno().debugLyricsFile;
+        fs::path p = CONFIG.suno().debugLyricsFile;
         if (fs::exists(p)) {
             LOG_INFO("SunoController: Loading debug lyrics from {}", p.string());
             QFile f(QString::fromStdString(p.string()));
@@ -228,10 +235,10 @@ SunoController::SunoController(AudioEngine* audioEngine,
                 } else {
                     auto words = LyricsAligner::parseJson(data);
                     if (!words.empty()) {
-                         std::string prompt;
+                        std::string prompt;
                         for (size_t i = 0; i < words.size(); ++i) {
                             prompt += words[i].word;
-                            if ((i + 1) % 5 == 0) prompt += "\n"; 
+                            if ((i + 1) % 5 == 0) prompt += "\n";
                         }
                         auto lyrics = LyricsAligner::align(prompt, words);
                         lyrics.songId = "debug-test-id";
@@ -245,9 +252,7 @@ SunoController::SunoController(AudioEngine* audioEngine,
 
 SunoController::~SunoController() = default;
 
-void SunoController::downloadAndPlay(const SunoClip& clip) {
-    downloader_->downloadAndPlay(clip);
-}
+void SunoController::downloadAndPlay(const SunoClip& clip) { downloader_->downloadAndPlay(clip); }
 
 bool SunoController::playClipById(const std::string& clipId) {
     if (clipId.empty()) {
@@ -281,13 +286,9 @@ Result<AlignedLyrics> SunoController::getLyrics(const std::string& clipId) {
     return Result<AlignedLyrics>::ok(AlignedLyrics::fromLyricsData(*lyrics));
 }
 
-void SunoController::refreshLibrary(int page) {
-    libraryManager_->refreshLibrary(page);
-}
+void SunoController::refreshLibrary(int page) { libraryManager_->refreshLibrary(page); }
 
-void SunoController::syncDatabase(bool forceAuth) {
-    libraryManager_->syncDatabase(forceAuth);
-}
+void SunoController::syncDatabase(bool forceAuth) { libraryManager_->syncDatabase(forceAuth); }
 
 void SunoController::requestAuthentication() {
     // No system-browser flow anymore: surface the requirement to QML, which
@@ -295,9 +296,7 @@ void SunoController::requestAuthentication() {
     emit authenticationRequired();
 }
 
-void SunoController::refreshAccount() {
-    client_->reloadStoredCredentials();
-}
+void SunoController::refreshAccount() { client_->reloadStoredCredentials(); }
 
 void SunoController::sendChatMessage(const QString& message, const QString& workspaceId) {
     if (orchestrator_) orchestrator_->sendMessage(message, workspaceId);
@@ -399,8 +398,8 @@ void SunoController::publishLyrics(const std::string& clipId, LyricsData lyrics)
     }
 }
 
-std::optional<LyricsData> SunoController::parseLyricsForClip(
-    const std::string& clipId, const std::string& json) {
+std::optional<LyricsData> SunoController::parseLyricsForClip(const std::string& clipId,
+                                                             const std::string& json) {
     auto clip = resolveClip(libraryManager_->accumulatedClips(), db_, clipId);
     if (!clip) {
         clip = SunoClip{};

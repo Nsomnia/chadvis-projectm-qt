@@ -149,12 +149,12 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       projectM. The shipped `[audio] sample_rate = 44100` (`config/default.toml:4`) is
       ignored, **misaligning beat detection by ~9 %**. Fix: read the live rate off the
       audio queue.
-- [ ] T0016 **Unbounded lyrics-fetch queue fed by an O(n²) loop over a full sync** (`src/ui/controllers/SunoController.cpp:133-144`) #risk-high
+- [x] T0016 **Unbounded lyrics-fetch queue fed by an O(n²) loop over a full sync** (`src/ui/controllers/SunoController.cpp:133-144`) #risk-high
       `libraryUpdated` carries the **whole accumulated list after every page**
       (`SunoLibraryManager.cpp:163`) while auto-paging the entire library at 1.1 s/page
       (:171), so page *k* issues *k*×20 `getAlignedLyrics` queries; `lyricsQueue_` has no
       capacity bound (`SunoLyricsManager.cpp:24`). Fix: iterate the page, dedup by id, cap.
-- [ ] T0017 **The lyrics concurrency counter is corrupted by unrelated errors, and leaks permanently when signed out** (`src/suno/SunoLyricsManager.cpp:16-18,83-84`) #risk-high
+- [x] T0017 **The lyrics concurrency counter is corrupted by unrelated errors, and leaks permanently when signed out** (`src/suno/SunoLyricsManager.cpp:16-18,83-84`) #risk-high
       The global `errorOccurred` broadcast decrements the lyrics counter, so any unrelated
       error frees a slot and `processQueue()` (:34) overshoots its cap of 3. Conversely
       `SunoClient::fetchAlignedLyrics` returns **silently** when unauthenticated

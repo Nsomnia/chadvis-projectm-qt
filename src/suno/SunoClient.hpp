@@ -7,10 +7,10 @@
 //   - keep a bearer fresh (proactive timer + uniform single 401 retry),
 //   - stamp canonical studio-api headers onto outgoing requests.
 
-#include "SunoModels.hpp"
-#include "SunoLyrics.hpp"
-#include "SunoEndpoints.hpp"
 #include "HttpPolicy.hpp"
+#include "SunoEndpoints.hpp"
+#include "SunoLyrics.hpp"
+#include "SunoModels.hpp"
 #include "auth/AuthTypes.hpp"
 #include "auth/ClerkAuthClient.hpp"
 #include "util/Result.hpp"
@@ -123,14 +123,12 @@ class SunoClient : public QObject {
     Q_OBJECT
 
 public:
-    using ReplyFactory = std::function<QNetworkReply*(
-            const QNetworkRequest&, const std::string&, const QByteArray&)>;
+    using ReplyFactory = std::function<QNetworkReply*(const QNetworkRequest&, const std::string&,
+                                                      const QByteArray&)>;
 
-    explicit SunoClient(
-            QString deviceId = {},
-            QObject* parent = nullptr,
-            CredentialStoreWorker::Backend credentialStoreBackend = {},
-            ReplyFactory replyFactory = {});
+    explicit SunoClient(QString deviceId = {}, QObject* parent = nullptr,
+                        CredentialStoreWorker::Backend credentialStoreBackend = {},
+                        ReplyFactory replyFactory = {});
     ~SunoClient() override;
 
     // ── Credentials ─────────────────────────────────────────────────────
@@ -167,15 +165,13 @@ public:
     /// Stop polling wav-conversion status for clipId (user navigated away).
     void cancelPoll(const std::string& clipId);
 
-    void generate(const std::string& prompt, const std::string& tags,
-                  bool makeInstrumental = false,
+    void generate(const std::string& prompt, const std::string& tags, bool makeInstrumental = false,
                   const std::string& model = "chirp-v3.5");
 
     /// Run an authenticated request through the rate-limiting queue.
     /// Waits for a bearer when only a cookie is available; a 401 response is
     /// retried exactly once behind the scenes. The callback owns the reply.
-    void enqueueAuthenticatedRequest(const QString& endpoint,
-                                     const std::string& method,
+    void enqueueAuthenticatedRequest(const QString& endpoint, const std::string& method,
                                      const QByteArray& data,
                                      std::function<void(QNetworkReply*)> callback,
                                      bool retryOnUnauthorized = true);
@@ -235,6 +231,12 @@ public:
     Signal<const std::vector<SunoClip>&> libraryFetched;
     Signal<const std::vector<SunoClip>&> generationStarted;
     Signal<std::string, std::string> alignedLyricsFetched;
+    /// (clipId, reason) — the lyrics-scoped failure twin of
+    /// alignedLyricsFetched. Every issued lyrics request lands in exactly one
+    /// of the two, so the lyrics manager can size its concurrency from them
+    /// alone rather than from the global errorOccurred broadcast, which also
+    /// fires for unrelated failures.
+    Signal<std::string, std::string> lyricsFetchFailed;
     Signal<std::string, std::string> wavConversionReady;
     Signal<std::string> tokenChanged;
     Signal<std::string> errorOccurred;
@@ -285,8 +287,7 @@ private:
     void resetClerkClient();
     void dropPendingAuthWork(const QString& reason);
     void onBearerReadyInternal(const auth::BearerToken& token);
-    void onClerkAuthFailedInternal(const QString& reason,
-                                  auth::AuthFailureKind kind);
+    void onClerkAuthFailedInternal(const QString& reason, auth::AuthFailureKind kind);
     bool hasCredentials() const;
     bool isTrackedReply(const QNetworkReply* reply) const;
     void trackReply(QNetworkReply* reply);
@@ -302,20 +303,16 @@ private:
 
     // Request plumbing
     std::optional<QUrl> resolveStudioApiUrl(const QString& endpoint) const;
-    std::optional<QNetworkRequest> createAuthenticatedRequest(
-            const QUrl& url, const std::string& method, const QByteArray& data);
+    std::optional<QNetworkRequest>
+    createAuthenticatedRequest(const QUrl& url, const std::string& method, const QByteArray& data);
     void rejectAuthenticatedRequest(const QString& reason);
-    void enqueueRequest(QNetworkRequest req, const std::string& method,
-                        QByteArray data,
-                        std::function<void(QNetworkReply*)> callback,
-                        bool retriedAuth = false,
-                        quint64 epoch = 0,
-                        bool retryOnUnauthorized = true);
+    void enqueueRequest(QNetworkRequest req, const std::string& method, QByteArray data,
+                        std::function<void(QNetworkReply*)> callback, bool retriedAuth = false,
+                        quint64 epoch = 0, bool retryOnUnauthorized = true);
     void processQueue();
     void handleReplyFinished(QNetworkReply* reply, PendingRequest&& pending);
     void withValidToken(std::function<void()> proceed);
-    void handleJsonReply(QNetworkReply* reply,
-                         std::function<void(const QJsonDocument&)> handler);
+    void handleJsonReply(QNetworkReply* reply, std::function<void(const QJsonDocument&)> handler);
     void handleNetworkError(QNetworkReply* reply);
 
     // Reply handlers (existing API surface)

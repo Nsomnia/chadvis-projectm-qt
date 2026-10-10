@@ -9,7 +9,12 @@ SunoLyricsManager::SunoLyricsManager(SunoClient* client, SunoDatabase& db, QObje
     : QObject(parent), client_(client), db_(db) {
     client_->alignedLyricsFetched.connect(
             [this](const auto& id, const auto& json) { onAlignedLyricsFetched(id, json); });
-    client_->errorOccurred.connect([this](const auto& msg) { onError(msg); });
+    // The concurrency counter decrements only on lyrics-scoped outcomes. The
+    // global errorOccurred broadcast also fires for unrelated failures —
+    // explore, notifications, uploads — and riding it let any error free a
+    // lyrics slot, overshooting the cap.
+    client_->lyricsFetchFailed.connect(
+            [this](const auto& id, const auto& msg) { onLyricsFetchFailed(id, msg); });
 
     // A dead session stops the lyrics queue through the real channel.
     // SunoClient classifies auth failures from the HTTP status alone and
@@ -27,7 +32,12 @@ SunoLyricsManager::SunoLyricsManager(SunoClient* client, SunoDatabase& db, QObje
 SunoLyricsManager::~SunoLyricsManager() = default;
 
 void SunoLyricsManager::queueLyricsFetch(const std::string& clipId) {
-    lyricsQueue_.push_back(clipId);
+    // Duplicates and over-cap arrivals are refused here — the queue this
+    // class used to run was unbounded and undeduplicated, which is what let
+    // the page storm grow it without limit.
+    if (!lyricsQueue_.tryEnqueue(clipId)) {
+        return;
+    }
     totalLyricsToFetch_++;
     if (activeLyricsRequests_ == 0) {
         lyricsSyncStartTime_ = std::chrono::steady_clock::now();
@@ -38,8 +48,9 @@ void SunoLyricsManager::queueLyricsFetch(const std::string& clipId) {
 void SunoLyricsManager::processQueue() {
     // Limit concurrent requests to 3 to be nicer to API and avoid rate limits
     while (activeLyricsRequests_ < 3 && !lyricsQueue_.empty()) {
-        std::string id = lyricsQueue_.front();
-        lyricsQueue_.pop_front();
+        auto next = lyricsQueue_.pop();
+        if (!next) break;
+        std::string id = std::move(*next);
         activeLyricsRequests_++;
 
         // Add random jitter delay (50-250ms) to avoid hammering
@@ -88,20 +99,21 @@ void SunoLyricsManager::onAlignedLyricsFetched(const std::string& clipId, const 
     emit lyricsFetched(clipId, json);
 }
 
-void SunoLyricsManager::onError(const std::string& message) {
+void SunoLyricsManager::onLyricsFetchFailed(const std::string& clipId, const std::string& message) {
     activeLyricsRequests_ = std::max(0, activeLyricsRequests_ - 1);
 
-    // Check for "Lyrics processing" -> Re-queue
+    // "Lyrics processing:" is the server's still-aligning marker, requeued
+    // for a later pass. No code in this tree currently emits that marker
+    // (verified 2026-10-09) — the branch is retained for the shape's return;
+    // pop() removing the id from the dedup set is exactly what lets the
+    // requeue re-enter. The clip id rides the signal now instead of being
+    // scraped back out of the message text.
     if (message.rfind("Lyrics processing:", 0) == 0) {
-        std::string id = message.substr(18);
-        if (!id.empty()) {
-            LOG_INFO("SunoLyricsManager: Re-queueing processing lyrics for {}", id);
-            lyricsQueue_.push_back(id);
+        if (!clipId.empty()) {
+            LOG_INFO("SunoLyricsManager: Re-queueing processing lyrics for {}", clipId);
+            (void)lyricsQueue_.tryEnqueue(clipId);
         }
     }
-    // Auth-death no longer arrives here: needsReauth — connected in the
-    // constructor — clears the queue, and only the HTTP status, never this
-    // text, can classify an auth failure.
 
     processQueue();
     emit errorOccurred(message);

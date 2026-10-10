@@ -5,10 +5,10 @@
 #include <QObject>
 #include <QVariantList>
 #include <memory>
-#include <vector>
-#include <string>
 #include <optional>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
@@ -29,103 +29,102 @@ class AuthCoordinator;
 class SunoLibraryManager;
 class SunoDownloader;
 class SunoLyricsManager;
-}
-}
+} // namespace suno
+} // namespace vc
 
 namespace vc::suno {
 
 class SunoController : public QObject {
-Q_OBJECT
+    Q_OBJECT
 
 public:
-	explicit SunoController(AudioEngine* audioEngine,
-		LyricsSync* lyricsSync,
-		QObject* parent = nullptr);
-	~SunoController() override;
+    explicit SunoController(AudioEngine* audioEngine, LyricsSync* lyricsSync,
+                            QObject* parent = nullptr);
+    ~SunoController() override;
 
-  SunoClient* client() { return client_.get(); }
+    SunoClient* client() { return client_.get(); }
 
-  /// The one downloader this controller owns, for the bridge layer. An
-  /// accessor rather than a findChild() from outside: the object tree is a
-  /// QObject implementation detail that can change without a diagnostic, and a
-  /// failed lookup would surface as a silently disabled feature rather than a
-  /// compile error.
-  vc::suno::SunoDownloader* downloader() { return downloader_.get(); }
-  auth::AuthCoordinator* authCoordinator() { return authCoordinator_.get(); }
-  SunoLibraryManager* libraryManager() { return libraryManager_.get(); }
-  SunoAccountManager* accountManager() { return accountManager_.get(); }
+    /// The one downloader this controller owns, for the bridge layer. An
+    /// accessor rather than a findChild() from outside: the object tree is a
+    /// QObject implementation detail that can change without a diagnostic, and a
+    /// failed lookup would surface as a silently disabled feature rather than a
+    /// compile error.
+    vc::suno::SunoDownloader* downloader() { return downloader_.get(); }
+    auth::AuthCoordinator* authCoordinator() { return authCoordinator_.get(); }
+    SunoLibraryManager* libraryManager() { return libraryManager_.get(); }
+    SunoAccountManager* accountManager() { return accountManager_.get(); }
 
-	// Facade Methods (Delegated to Managers)
-	void downloadAndPlay(const SunoClip& clip);
-	bool playClipById(const std::string& clipId);
-	Result<AlignedLyrics> getLyrics(const std::string& clipId);
-	void refreshLibrary(int page = 1);
-	void syncDatabase(bool forceAuth = false);
+    // Facade Methods (Delegated to Managers)
+    void downloadAndPlay(const SunoClip& clip);
+    bool playClipById(const std::string& clipId);
+    Result<AlignedLyrics> getLyrics(const std::string& clipId);
+    void refreshLibrary(int page = 1);
+    void syncDatabase(bool forceAuth = false);
 
-	// Auth - triggers signal for QML to handle
-	Q_INVOKABLE void requestAuthentication();
-	Q_INVOKABLE void refreshAccount();
-	Q_INVOKABLE void sendChatMessage(const QString& message, const QString& workspaceId = {});
-	Q_INVOKABLE void fetchChatHistory();
+    // Auth - triggers signal for QML to handle
+    Q_INVOKABLE void requestAuthentication();
+    Q_INVOKABLE void refreshAccount();
+    Q_INVOKABLE void sendChatMessage(const QString& message, const QString& workspaceId = {});
+    Q_INVOKABLE void fetchChatHistory();
 
-	const std::vector<SunoClip>& clips() const;
-	SunoDatabase& db() { return db_; }
+    const std::vector<SunoClip>& clips() const;
+    SunoDatabase& db() { return db_; }
 
-	bool hasLyrics(const std::string& clipId) const {
-		return db_.hasLyrics(clipId);
-	}
+    bool hasLyrics(const std::string& clipId) const { return db_.hasLyrics(clipId); }
 
-	Q_INVOKABLE bool isAuthenticated() const {
-		return client_ && client_->isAuthenticated();
-	}
+    Q_INVOKABLE bool isAuthenticated() const { return client_ && client_->isAuthenticated(); }
 
-	[[nodiscard]] auth::AuthFailureKind authFailureKind() const {
-		return client_ ? client_->authFailureKind() : auth::AuthFailureKind::None;
-	}
+    [[nodiscard]] auth::AuthFailureKind authFailureKind() const {
+        return client_ ? client_->authFailureKind() : auth::AuthFailureKind::None;
+    }
 
-	void setDebugLyrics(const AlignedLyrics& lyrics);
+    void setDebugLyrics(const AlignedLyrics& lyrics);
 
 signals:
-	void libraryUpdated(const std::vector<SunoClip>& clips);
-	void clipUpdated(const std::string& clipId);
-	void statusMessage(const std::string& message);
-	void authenticationRequired();
-	void authenticationSuccess();
-	void authenticationFailed(const QString& reason);
-	void authFailureKindChanged();
-	void libraryFetchFailed(const QString& reason);
-	void sunoError(const QString& reason);
-	void chatMessageReceived(const QString& response, const QString& workspaceId);
-	void chatHistoryFetched(const QVariantList& sessions);
-	void chatError(const QString& error);
-	/// Aggregate download progress feed (forwarded from SunoDownloader's
-	/// DownloadQueue); state values are vc::suno::DownloadState as int.
-	void downloadStateChanged(const QString& clipId, int state, int percent);
-	void downloadQueueIdle();
+    void libraryUpdated(const std::vector<SunoClip>& clips);
+    void clipUpdated(const std::string& clipId);
+    void statusMessage(const std::string& message);
+    void authenticationRequired();
+    void authenticationSuccess();
+    void authenticationFailed(const QString& reason);
+    void authFailureKindChanged();
+    void libraryFetchFailed(const QString& reason);
+    void sunoError(const QString& reason);
+    void chatMessageReceived(const QString& response, const QString& workspaceId);
+    void chatHistoryFetched(const QVariantList& sessions);
+    void chatError(const QString& error);
+    /// Aggregate download progress feed (forwarded from SunoDownloader's
+    /// DownloadQueue); state values are vc::suno::DownloadState as int.
+    void downloadStateChanged(const QString& clipId, int state, int percent);
+    void downloadQueueIdle();
 
 private:
-	void onTrackChanged();
-	void activateClipLyrics(const std::string& clipId);
-	void publishLyrics(const std::string& clipId, LyricsData lyrics);
-	std::optional<LyricsData> parseLyricsForClip(
-		const std::string& clipId, const std::string& json);
+    void onTrackChanged();
+    void activateClipLyrics(const std::string& clipId);
+    void publishLyrics(const std::string& clipId, LyricsData lyrics);
+    std::optional<LyricsData> parseLyricsForClip(const std::string& clipId,
+                                                 const std::string& json);
 
-	AudioEngine* audioEngine_;
-	LyricsSync* lyricsSync_;
+    AudioEngine* audioEngine_;
+    LyricsSync* lyricsSync_;
 
-	std::unique_ptr<SunoClient> client_;
-	std::unique_ptr<auth::AuthCoordinator> authCoordinator_;
-	std::unique_ptr<vc::SunoOrchestrator> orchestrator_;
-	SunoDatabase db_;
-	
+    std::unique_ptr<SunoClient> client_;
+    std::unique_ptr<auth::AuthCoordinator> authCoordinator_;
+    std::unique_ptr<vc::SunoOrchestrator> orchestrator_;
+    SunoDatabase db_;
+
     // Managers
     std::unique_ptr<SunoAccountManager> accountManager_;
     std::unique_ptr<SunoLibraryManager> libraryManager_;
     std::unique_ptr<SunoDownloader> downloader_;
     std::unique_ptr<SunoLyricsManager> lyricsManager_;
 
-	std::unordered_map<std::string, LyricsData> directLyricsCache_;
-	std::string activeClipId_;
+    std::unordered_map<std::string, LyricsData> directLyricsCache_;
+    /// Library size at the last lyrics scan: libraryUpdated carries the whole
+    /// accumulated list on every page, so the new-clip window is the suffix
+    /// past this mark (a smaller list means a fresh sync — rescan from zero).
+    std::size_t lastLyricsScanSize_{0};
+    std::string activeClipId_;
 };
 
 } // namespace vc::suno
