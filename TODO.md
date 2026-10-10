@@ -77,7 +77,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       stacked on top of the per-item buttons and eats every click. `ClipCard.qml:299-300`
       documents this exact trap and is correct; these two are not. Fix: declare the
       delegate `MouseArea` before the controls, or use `z`/`acceptedButtons`.
-- [ ] T0005 **`isAuthFailure` treats any text containing "401" as an auth failure** (`src/suno/SunoAuthFailure.hpp:15`) #risk-high #blocks-ui
+- [x] T0005 **`isAuthFailure` treats any text containing "401" as an auth failure** (`src/suno/SunoAuthFailure.hpp:15`) #risk-high #blocks-ui
       `return errorMessage.contains("Unauthorized") || errorMessage.contains("401");`
       Called with `httpStatus == -1` at `SunoLyricsManager.cpp:96` (raw server text) and
       `SunoClient.cpp:1288`. A byte count, track id or path segment containing `401`

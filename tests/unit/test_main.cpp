@@ -14,6 +14,7 @@ int runTestPlaylist(int argc, char** argv);
 int runTestPresetScanner(int argc, char** argv);
 int runTestPresetBridge(int argc, char** argv);
 int runTestSunoEndpoints(int argc, char** argv);
+int runTestSunoAuthFailure(int argc, char** argv);
 int runTestAuthModule(int argc, char** argv);
 int runTestStoredCredentialClassification(int argc, char** argv);
 int runTestCredentialRestoreWorker(int argc, char** argv);
@@ -52,6 +53,7 @@ int main(int argc, char* argv[]) {
     status |= runTestPresetScanner(argc, argv);
     status |= runTestPresetBridge(argc, argv);
     status |= runTestSunoEndpoints(argc, argv);
+    status |= runTestSunoAuthFailure(argc, argv);
     status |= runTestAuthModule(argc, argv);
     status |= runTestStoredCredentialClassification(argc, argv);
     status |= runTestCredentialRestoreWorker(argc, argv);
