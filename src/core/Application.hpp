@@ -39,12 +39,12 @@ class SunoController;
 }
 
 struct AppOptions {
-  // General
-  bool debug{false};
-  bool headless{false};
-  std::optional<fs::path> configFile;
-  std::vector<fs::path> inputFiles;
-    
+    // General
+    bool debug{false};
+    bool headless{false};
+    std::optional<fs::path> configFile;
+    std::vector<fs::path> inputFiles;
+
     // Visualizer
     std::optional<std::string> presetName;
     bool useDefaultPreset{false};
@@ -52,31 +52,31 @@ struct AppOptions {
     std::optional<int> visualizerWidth;
     std::optional<int> visualizerHeight;
     std::optional<bool> visualizerShuffle;
-    
+
     // Recording
     bool startRecording{false};
     std::optional<fs::path> outputFile;
     std::optional<std::string> recordingCodec;
     std::optional<int> recordingCrf;
     std::optional<std::string> recordingPreset;
-    
+
     // Audio
     std::optional<std::string> audioDevice;
     std::optional<int> audioBufferSize;
     std::optional<int> audioSampleRate;
-    
+
     // Suno
     std::optional<std::string> sunoId;
     std::optional<fs::path> sunoDownloadPath;
     std::optional<bool> sunoAutoDownload;
-    
+
     // Karaoke/Lyrics
     std::optional<fs::path> testLyricsFile;
     std::optional<bool> karaokeEnabled;
     std::optional<std::string> karaokeFont;
     std::optional<int> karaokeFontSize;
     std::optional<float> karaokeYPosition;
-    
+
     // UI
     std::optional<std::string> theme;
 };
@@ -90,35 +90,26 @@ public:
 
     // Parse command line arguments
     Result<AppOptions> parseArgs();
+    /// Pure parsing seam: the same grammar as parseArgs(), but driven by
+    /// explicit argv so tests can pin flag combinations without constructing
+    /// an Application (whose destructor tears down the global logger
+    /// mid-test-binary).
+    static Result<AppOptions> parseArgsFrom(int argc, const char* const argv[]);
 
     // Initialize and run
     Result<void> init(const AppOptions& opts);
     int exec();
 
     // Component access
-	AudioEngine* audioEngine() const {
-		return audioEngine_.get();
-	}
-	VideoRecorder* videoRecorder() const {
-		return videoRecorder_.get();
-	}
-    PresetManager* presetManager() const {
-        return presetManager_.get();
-    }
-    LyricsSync* lyricsSync() const {
-        return lyricsSync_.get();
-    }
-    suno::SunoController* sunoController() const {
-        return sunoController_.get();
-    }
-    VisualizerWindow* visualizerWindow() const {
-        return visualizerWindow_.get();
-    }
+    AudioEngine* audioEngine() const { return audioEngine_.get(); }
+    VideoRecorder* videoRecorder() const { return videoRecorder_.get(); }
+    PresetManager* presetManager() const { return presetManager_.get(); }
+    LyricsSync* lyricsSync() const { return lyricsSync_.get(); }
+    suno::SunoController* sunoController() const { return sunoController_.get(); }
+    VisualizerWindow* visualizerWindow() const { return visualizerWindow_.get(); }
 
-	// Global instance
-	static Application* instance() {
-		return instance_;
-	}
+    // Global instance
+    static Application* instance() { return instance_; }
 
 signals:
     void aboutToQuit();
@@ -127,29 +118,29 @@ public slots:
     void quit();
 
 private:
-	void printVersion();
-	void printHelp();
+    static void printVersion();
+    static void printHelp();
 
-	/// Generate list of all flag names from CliArgs.inc table (for findClosestMatch)
-	std::vector<std::string_view> allFlagNames();
+    /// Generate list of all flag names from CliArgs.inc table (for findClosestMatch)
+    static std::vector<std::string_view> allFlagNames();
 
     static Application* instance_;
 
-	std::unique_ptr<QGuiApplication> qapp_;
-	std::unique_ptr<QQmlApplicationEngine> qmlEngine_;
-	// Components - Declaration order matters for destruction (reverse order)
-	// We want engines to stay alive until the UI is gone
-	std::unique_ptr<AudioEngine> audioEngine_;
-	std::unique_ptr<VideoRecorder> videoRecorder_;
+    std::unique_ptr<QGuiApplication> qapp_;
+    std::unique_ptr<QQmlApplicationEngine> qmlEngine_;
+    // Components - Declaration order matters for destruction (reverse order)
+    // We want engines to stay alive until the UI is gone
+    std::unique_ptr<AudioEngine> audioEngine_;
+    std::unique_ptr<VideoRecorder> videoRecorder_;
 
-// QML-specific managers
-std::unique_ptr<PresetManager> presetManager_;
-std::unique_ptr<LyricsSync> lyricsSync_;
-std::unique_ptr<suno::SunoController> sunoController_;
-std::unique_ptr<VisualizerWindow> visualizerWindow_;
+    // QML-specific managers
+    std::unique_ptr<PresetManager> presetManager_;
+    std::unique_ptr<LyricsSync> lyricsSync_;
+    std::unique_ptr<suno::SunoController> sunoController_;
+    std::unique_ptr<VisualizerWindow> visualizerWindow_;
 
-	int argc_;
-	char** argv_;
+    int argc_;
+    char** argv_;
 };
 
 // Global shortcut

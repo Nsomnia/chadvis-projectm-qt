@@ -128,7 +128,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       `mutationsUnavailableReason` / `mutationsBusy`. ~727 LOC plus 11 `Q_INVOKABLE`s can
       neither run nor be seen. Decide: wire it behind an explicit user setting **and** add
       the QML handlers, or delete it and mark the constants `declared-unused`.
-- [ ] T0012 **`--headless` makes recording unreachable, not merely silent** (`src/core/Application.cpp:383`) #blocks-ui
+- [x] T0012 **`--headless` makes recording unreachable, not merely silent** (`src/core/Application.cpp:383`) #blocks-ui
       `VisualizerWindow`, the `frameCaptured` → `VideoRecorder::submitVideoFrame` connect
       (:419-425) and `RecordingBridge::setVisualizer` (:429) all live inside
       `if (!opts.headless)`. No window ⇒ no frame. `--record`

@@ -7,6 +7,7 @@ int runTestConfigLoader(int argc, char** argv);
 int runTestFileUtils(int argc, char** argv);
 int runTestVersion(int argc, char** argv);
 int runTestSignal(int argc, char** argv);
+int runTestCliArgs(int argc, char** argv);
 int runTestRecorder(int argc, char** argv);
 int runTestAudioFileDecoder(int argc, char** argv);
 int runTestRenderQueue(int argc, char** argv);
@@ -46,6 +47,7 @@ int main(int argc, char* argv[]) {
     status |= runTestFileUtils(argc, argv);
     status |= runTestVersion(argc, argv);
     status |= runTestSignal(argc, argv);
+    status |= runTestCliArgs(argc, argv);
     status |= runTestRecorder(argc, argv);
     status |= runTestAudioFileDecoder(argc, argv);
     status |= runTestRenderQueue(argc, argv);
