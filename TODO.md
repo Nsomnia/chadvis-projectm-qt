@@ -161,7 +161,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       (`SunoClient.cpp:1401`) emitting nothing, so the counter never decrements and **the
       queue wedges permanently at 3 after three such drops.** Fix: give lyrics its own
       reply signal and decrement exactly once per issued request.
-- [ ] T0018 **`markAllRead` reports a legitimate `204 No Content` to the user as a failure** (`src/suno/SunoNotificationService.cpp:432-437`) #risk-high
+- [x] T0018 **`markAllRead` reports a legitimate `204 No Content` to the user as a failure** (`src/suno/SunoNotificationService.cpp:432-437`) #risk-high
       The code requires a JSON object on a 2xx. `SunoEndpoints.hpp:100-105` states no
       success body was ever captured for the mutation set and a 2xx must be treated as
       "accepted, shape unverified". A 204 takes the error path, so **all notifications

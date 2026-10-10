@@ -16,8 +16,7 @@ namespace vc::suno {
 
 namespace {
 
-QString scalarString(const QJsonValue& value)
-{
+QString scalarString(const QJsonValue& value) {
     if (value.isString()) {
         return value.toString();
     }
@@ -30,8 +29,7 @@ QString scalarString(const QJsonValue& value)
     return {};
 }
 
-std::optional<qint64> integerValue(const QJsonValue& value)
-{
+std::optional<qint64> integerValue(const QJsonValue& value) {
     if (value.isDouble()) {
         return static_cast<qint64>(value.toDouble());
     }
@@ -45,8 +43,7 @@ std::optional<qint64> integerValue(const QJsonValue& value)
     return std::nullopt;
 }
 
-bool booleanValue(const QJsonValue& value, bool fallback = false)
-{
+bool booleanValue(const QJsonValue& value, bool fallback = false) {
     if (value.isBool()) {
         return value.toBool();
     }
@@ -65,8 +62,7 @@ bool booleanValue(const QJsonValue& value, bool fallback = false)
     return fallback;
 }
 
-QString firstString(std::initializer_list<QString> values)
-{
+QString firstString(std::initializer_list<QString> values) {
     for (const QString& value : values) {
         if (!value.isEmpty()) {
             return value;
@@ -75,8 +71,7 @@ QString firstString(std::initializer_list<QString> values)
     return {};
 }
 
-QJsonObject firstProfile(const QJsonObject& object)
-{
+QJsonObject firstProfile(const QJsonObject& object) {
     const QJsonValue profiles = object.value(QStringLiteral("user_profiles"));
     if (profiles.isArray()) {
         const QJsonArray profileValues = profiles.toArray();
@@ -94,8 +89,7 @@ QJsonObject firstProfile(const QJsonObject& object)
     return profile.isObject() ? profile.toObject() : QJsonObject{};
 }
 
-std::optional<SunoNotificationService::Notification> parseNotification(const QJsonValue& value)
-{
+std::optional<SunoNotificationService::Notification> parseNotification(const QJsonValue& value) {
     if (!value.isObject()) {
         return std::nullopt;
     }
@@ -103,82 +97,83 @@ std::optional<SunoNotificationService::Notification> parseNotification(const QJs
     const QJsonObject object = value.toObject();
     const QJsonObject authorObject = firstProfile(object);
     const QJsonValue contentValue = object.value(QStringLiteral("content"));
-    const QJsonObject contentObject = contentValue.isObject() ? contentValue.toObject() : QJsonObject{};
+    const QJsonObject contentObject =
+            contentValue.isObject() ? contentValue.toObject() : QJsonObject{};
 
     SunoNotificationService::Notification notification;
     notification.id = scalarString(object.value(QStringLiteral("id")));
     notification.type = firstString({
-        scalarString(object.value(QStringLiteral("notification_type"))),
-        scalarString(object.value(QStringLiteral("type"))),
+            scalarString(object.value(QStringLiteral("notification_type"))),
+            scalarString(object.value(QStringLiteral("type"))),
     });
     notification.createdAt = firstString({
-        scalarString(object.value(QStringLiteral("updated_at"))),
-        scalarString(object.value(QStringLiteral("created_at"))),
-        scalarString(object.value(QStringLiteral("notified_at"))),
+            scalarString(object.value(QStringLiteral("updated_at"))),
+            scalarString(object.value(QStringLiteral("created_at"))),
+            scalarString(object.value(QStringLiteral("notified_at"))),
     });
     notification.read = booleanValue(object.value(QStringLiteral("is_read")),
                                      booleanValue(object.value(QStringLiteral("read"))));
 
     notification.author.userId = firstString({
-        scalarString(authorObject.value(QStringLiteral("user_id"))),
-        scalarString(authorObject.value(QStringLiteral("id"))),
+            scalarString(authorObject.value(QStringLiteral("user_id"))),
+            scalarString(authorObject.value(QStringLiteral("id"))),
     });
     notification.author.displayName = firstString({
-        scalarString(authorObject.value(QStringLiteral("display_name"))),
-        scalarString(authorObject.value(QStringLiteral("name"))),
-        scalarString(authorObject.value(QStringLiteral("username"))),
+            scalarString(authorObject.value(QStringLiteral("display_name"))),
+            scalarString(authorObject.value(QStringLiteral("name"))),
+            scalarString(authorObject.value(QStringLiteral("username"))),
     });
     notification.author.handle = firstString({
-        scalarString(authorObject.value(QStringLiteral("handle"))),
-        scalarString(authorObject.value(QStringLiteral("username"))),
+            scalarString(authorObject.value(QStringLiteral("handle"))),
+            scalarString(authorObject.value(QStringLiteral("username"))),
     });
 
     notification.contentType = firstString({
-        scalarString(object.value(QStringLiteral("content_type"))),
-        scalarString(contentObject.value(QStringLiteral("content_type"))),
-        scalarString(contentObject.value(QStringLiteral("type"))),
-        scalarString(object.value(QStringLiteral("entity_type"))),
+            scalarString(object.value(QStringLiteral("content_type"))),
+            scalarString(contentObject.value(QStringLiteral("content_type"))),
+            scalarString(contentObject.value(QStringLiteral("type"))),
+            scalarString(object.value(QStringLiteral("entity_type"))),
     });
     notification.contentId = firstString({
-        scalarString(object.value(QStringLiteral("content_id"))),
-        scalarString(contentObject.value(QStringLiteral("content_id"))),
-        scalarString(contentObject.value(QStringLiteral("id"))),
+            scalarString(object.value(QStringLiteral("content_id"))),
+            scalarString(contentObject.value(QStringLiteral("content_id"))),
+            scalarString(contentObject.value(QStringLiteral("id"))),
     });
     notification.contentAncillaryId = firstString({
-        scalarString(object.value(QStringLiteral("content_ancillary_id"))),
-        scalarString(contentObject.value(QStringLiteral("content_ancillary_id"))),
-        scalarString(contentObject.value(QStringLiteral("ancillary_id"))),
+            scalarString(object.value(QStringLiteral("content_ancillary_id"))),
+            scalarString(contentObject.value(QStringLiteral("content_ancillary_id"))),
+            scalarString(contentObject.value(QStringLiteral("ancillary_id"))),
     });
     notification.contentTitle = firstString({
-        scalarString(object.value(QStringLiteral("content_title"))),
-        scalarString(contentObject.value(QStringLiteral("content_title"))),
-        scalarString(contentObject.value(QStringLiteral("title"))),
-        scalarString(contentObject.value(QStringLiteral("name"))),
+            scalarString(object.value(QStringLiteral("content_title"))),
+            scalarString(contentObject.value(QStringLiteral("content_title"))),
+            scalarString(contentObject.value(QStringLiteral("title"))),
+            scalarString(contentObject.value(QStringLiteral("name"))),
     });
     notification.contentMessage = firstString({
-        scalarString(object.value(QStringLiteral("content_message"))),
-        scalarString(object.value(QStringLiteral("caption"))),
-        scalarString(contentObject.value(QStringLiteral("content_message"))),
-        scalarString(contentObject.value(QStringLiteral("message"))),
-        scalarString(contentObject.value(QStringLiteral("caption"))),
+            scalarString(object.value(QStringLiteral("content_message"))),
+            scalarString(object.value(QStringLiteral("caption"))),
+            scalarString(contentObject.value(QStringLiteral("content_message"))),
+            scalarString(contentObject.value(QStringLiteral("message"))),
+            scalarString(contentObject.value(QStringLiteral("caption"))),
     });
     notification.caption = firstString({
-        scalarString(object.value(QStringLiteral("caption"))),
-        notification.contentMessage,
-        contentValue.isString() ? contentValue.toString() : QString{},
-        scalarString(contentObject.value(QStringLiteral("description"))),
+            scalarString(object.value(QStringLiteral("caption"))),
+            notification.contentMessage,
+            contentValue.isString() ? contentValue.toString() : QString{},
+            scalarString(contentObject.value(QStringLiteral("description"))),
     });
-    notification.priority = static_cast<int>(integerValue(object.value(QStringLiteral("priority"))).value_or(0));
-    notification.totalUsers = static_cast<int>(integerValue(object.value(QStringLiteral("total_users"))).value_or(0));
+    notification.priority =
+            static_cast<int>(integerValue(object.value(QStringLiteral("priority"))).value_or(0));
+    notification.totalUsers =
+            static_cast<int>(integerValue(object.value(QStringLiteral("total_users"))).value_or(0));
     return notification;
 }
 
-}
+} // namespace
 
 SunoNotificationService::SunoNotificationService(SunoClient* client, QObject* parent)
-    : QObject(parent)
-    , client_(client)
-{
+    : QObject(parent), client_(client) {
     if (client_) {
         connect(client_, &SunoClient::authStateChanged, this, [this]() {
             if (client_ && client_->isAuthenticated()) {
@@ -195,8 +190,7 @@ SunoNotificationService::SunoNotificationService(SunoClient* client, QObject* pa
 }
 
 std::expected<SunoNotificationService::Response, QString>
-SunoNotificationService::parseResponse(const QJsonObject& root)
-{
+SunoNotificationService::parseResponse(const QJsonObject& root) {
     const QJsonValue notificationsValue = root.value(QStringLiteral("notifications"));
     if (!notificationsValue.isArray()) {
         return std::unexpected(QStringLiteral("Notification response has no notifications array"));
@@ -214,27 +208,24 @@ SunoNotificationService::parseResponse(const QJsonObject& root)
     return response;
 }
 
-std::expected<qint64, QString> SunoNotificationService::parseBadgeCount(const QJsonObject& root)
-{
+std::expected<qint64, QString> SunoNotificationService::parseBadgeCount(const QJsonObject& root) {
     const auto count = integerValue(root.value(QStringLiteral("badge_count")));
     if (!count || *count < 0) {
-        return std::unexpected(QStringLiteral("Notification badge response has no valid badge_count"));
+        return std::unexpected(
+                QStringLiteral("Notification badge response has no valid badge_count"));
     }
     return *count;
 }
 
-QJsonObject SunoNotificationService::markAllReadBody(const QDateTime& before)
-{
+QJsonObject SunoNotificationService::markAllReadBody(const QDateTime& before) {
     QJsonObject body;
     body[QStringLiteral("all")] = true;
-    body[QStringLiteral("before_datetime_utc")] = before.isValid()
-                                                   ? before.toUTC().toString(Qt::ISODateWithMs)
-                                                   : QString{};
+    body[QStringLiteral("before_datetime_utc")] =
+            before.isValid() ? before.toUTC().toString(Qt::ISODateWithMs) : QString{};
     return body;
 }
 
-void SunoNotificationService::refresh()
-{
+void SunoNotificationService::refresh() {
     if (loading_) {
         return;
     }
@@ -253,33 +244,30 @@ void SunoNotificationService::refresh()
     enqueueRefresh();
 }
 
-void SunoNotificationService::enqueueRefresh()
-{
+void SunoNotificationService::enqueueRefresh() {
     const quint64 generation = refreshGeneration_;
     QPointer<SunoNotificationService> guard(this);
     client_->enqueueAuthenticatedRequest(
-            qstr(endpoints::NOTIFICATION_V2), "GET", {},
-            [guard, generation](QNetworkReply* reply) {
+            qstr(endpoints::NOTIFICATION_V2), "GET", {}, [guard, generation](QNetworkReply* reply) {
                 if (guard) {
                     guard->handleRefreshReply(reply, ReplyKind::List, generation);
                 } else if (reply) {
                     reply->deleteLater();
                 }
             });
-    client_->enqueueAuthenticatedRequest(
-            qstr(endpoints::NOTIFICATION_BADGE_COUNT), "GET", {},
-            [guard, generation](QNetworkReply* reply) {
-                if (guard) {
-                    guard->handleRefreshReply(reply, ReplyKind::Badge, generation);
-                } else if (reply) {
-                    reply->deleteLater();
-                }
-            });
+    client_->enqueueAuthenticatedRequest(qstr(endpoints::NOTIFICATION_BADGE_COUNT), "GET", {},
+                                         [guard, generation](QNetworkReply* reply) {
+                                             if (guard) {
+                                                 guard->handleRefreshReply(reply, ReplyKind::Badge,
+                                                                           generation);
+                                             } else if (reply) {
+                                                 reply->deleteLater();
+                                             }
+                                         });
 }
 
 void SunoNotificationService::handleRefreshReply(QNetworkReply* reply, ReplyKind kind,
-                                                  quint64 generation)
-{
+                                                 quint64 generation) {
     if (!reply) {
         return;
     }
@@ -363,8 +351,7 @@ void SunoNotificationService::handleRefreshReply(QNetworkReply* reply, ReplyKind
     setLoading(markLoading_);
 }
 
-void SunoNotificationService::markAllRead()
-{
+void SunoNotificationService::markAllRead() {
     if (loading_) {
         return;
     }
@@ -380,10 +367,10 @@ void SunoNotificationService::markAllRead()
     enqueueMarkAllRead(QDateTime::currentDateTimeUtc());
 }
 
-void SunoNotificationService::enqueueMarkAllRead(const QDateTime& before)
-{
+void SunoNotificationService::enqueueMarkAllRead(const QDateTime& before) {
     const quint64 generation = markGeneration_;
-    const QByteArray payload = QJsonDocument(markAllReadBody(before)).toJson(QJsonDocument::Compact);
+    const QByteArray payload =
+            QJsonDocument(markAllReadBody(before)).toJson(QJsonDocument::Compact);
     QPointer<SunoNotificationService> guard(this);
     client_->enqueueAuthenticatedRequest(
             qstr(endpoints::NOTIFICATION_V2_READ), "POST", payload,
@@ -397,8 +384,7 @@ void SunoNotificationService::enqueueMarkAllRead(const QDateTime& before)
             false);
 }
 
-void SunoNotificationService::handleMarkReadReply(QNetworkReply* reply, quint64 generation)
-{
+void SunoNotificationService::handleMarkReadReply(QNetworkReply* reply, quint64 generation) {
     if (!reply) {
         return;
     }
@@ -429,13 +415,12 @@ void SunoNotificationService::handleMarkReadReply(QNetworkReply* reply, quint64 
         return;
     }
 
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(*body, &parseError);
-    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        failMarkRead(QStringLiteral("Mark all read returned invalid JSON"));
-        return;
-    }
-
+    // A 2xx is accepted without parsing: 204 No Content is a legitimate
+    // success for this mutation, and the shape of any 2xx body is unverified
+    // per the endpoint inventory. Requiring a JSON object here reported the
+    // server's accepted mark-all-read back to the user as a failure and
+    // left every notification unread. SunoLibraryMutations::handleReply
+    // treats a 2xx the same way — parse nothing.
     markLoading_ = false;
     setLoading(refreshLoading_);
     for (auto& notification : notifications_) {
@@ -450,9 +435,7 @@ void SunoNotificationService::handleMarkReadReply(QNetworkReply* reply, quint64 
     refresh();
 }
 
-QString SunoNotificationService::requestError(QNetworkReply* reply,
-                                              const QString& fallback) const
-{
+QString SunoNotificationService::requestError(QNetworkReply* reply, const QString& fallback) const {
     if (reply->error() == QNetworkReply::NoError) {
         return {};
     }
@@ -460,8 +443,7 @@ QString SunoNotificationService::requestError(QNetworkReply* reply,
     return text.isEmpty() ? fallback : text;
 }
 
-void SunoNotificationService::setLoading(bool loading)
-{
+void SunoNotificationService::setLoading(bool loading) {
     if (loading_ == loading) {
         return;
     }
@@ -469,8 +451,7 @@ void SunoNotificationService::setLoading(bool loading)
     emit loadingChanged();
 }
 
-void SunoNotificationService::setError(const QString& message)
-{
+void SunoNotificationService::setError(const QString& message) {
     if (error_ == message) {
         return;
     }
@@ -478,8 +459,7 @@ void SunoNotificationService::setError(const QString& message)
     emit errorChanged(error_);
 }
 
-void SunoNotificationService::failRefresh(const QString& message)
-{
+void SunoNotificationService::failRefresh(const QString& message) {
     ++refreshGeneration_;
     refreshPending_ = 0;
     refreshLoading_ = false;
@@ -489,12 +469,11 @@ void SunoNotificationService::failRefresh(const QString& message)
     setError(message);
 }
 
-void SunoNotificationService::failMarkRead(const QString& message)
-{
+void SunoNotificationService::failMarkRead(const QString& message) {
     ++markGeneration_;
     markLoading_ = false;
     setLoading(refreshLoading_);
     setError(message);
 }
 
-}
+} // namespace vc::suno
