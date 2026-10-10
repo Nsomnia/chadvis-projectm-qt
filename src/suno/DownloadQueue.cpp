@@ -264,6 +264,12 @@ std::string shortWriteReason(const std::string_view clipId, const qint64 offsetB
                        writtenBytes, wantedBytes, offsetBytes, deviceError);
 }
 
+std::string shortDownloadReason(const std::string_view clipId, const qint64 receivedBytes,
+                                const qint64 expectedBytes) {
+    return std::format("{} downloaded {} of the {} bytes the server promised", clipId,
+                       receivedBytes, expectedBytes);
+}
+
 DownloadQueue::DownloadQueue(QNetworkAccessManager* adoptedManager, QObject* parent)
     : QObject(parent) {
     if (adoptedManager) {
@@ -398,6 +404,7 @@ void DownloadQueue::startItem(const std::shared_ptr<Item>& item) {
     item->finishing = false;
     item->cancelRequested = false;
     item->bytesReceived = 0;
+    item->expectedTotal = 0;
     item->ownsPart = false;
     item->abortCause = AbortCause::None;
     item->abortReason.clear();
@@ -601,6 +608,9 @@ void DownloadQueue::onProgress(Item& item, const qint64 received, const qint64 t
     // onFinished already honour it.
     if (item.finishing || item.abortCause != AbortCause::None) return;
     if (total <= 0) return;
+    // The promised size, recorded for the short-body guard in finalizeSuccess.
+    // Only a total the transport actually reported may be enforced.
+    item.expectedTotal = total;
     const qint64 absolute = received;
     const qint64 grand = total;
     const int percent = static_cast<int>(std::clamp<qint64>(absolute * 100 / grand, 0, 100));
@@ -667,6 +677,34 @@ void DownloadQueue::dropPart(Item& item) {
 
 void DownloadQueue::finalizeSuccess(Item& item, QNetworkReply& reply) {
     item.finishing = true;
+
+    // Short-body guard, before any byte is promoted: a 2xx whose connection
+    // closed early still arrives here with NoError, and without this check
+    // the plausible-looking prefix was renamed into place and reported
+    // Completed -- a file that plays to the break and that no downstream
+    // consumer can tell apart from a real download. Only a total the
+    // transfer actually reported can be enforced: no progress total and no
+    // Content-Length means nothing to compare against, and failing there
+    // would break every legitimate unknown-length transfer.
+    qint64 expectedTotal = item.expectedTotal;
+    if (expectedTotal <= 0) {
+        const QVariant length = reply.header(QNetworkRequest::ContentLengthHeader);
+        if (length.isValid()) expectedTotal = length.toLongLong();
+    }
+    if (expectedTotal > 0 && item.bytesReceived < expectedTotal) {
+        const std::string reason =
+                shortDownloadReason(item.clipId, item.bytesReceived, expectedTotal);
+        LOG_WARN("DownloadQueue: {}", reason);
+        item.abortCause = AbortCause::ShortDownload;
+        item.abortReason = reason;
+        // A truncated transfer is a transient network condition: the same
+        // retry treatment as any other transport failure, bounded by
+        // kMaxAttempts, restarting from byte zero (range resume is
+        // deliberately disabled).
+        handleFailure(item, &reply, FailureKind::Retryable);
+        return;
+    }
+
     // Close, never unlink: the bytes live under the scratch name until the
     // rename below, and dropPart() here would delete them first -- which is
     // precisely how a Completed item ends up with no file at all.
@@ -720,6 +758,16 @@ void DownloadQueue::handleFailure(Item& item, QNetworkReply* reply, const Failur
                                     std::chrono::duration_cast<std::chrono::seconds>(
                                             std::chrono::system_clock::now().time_since_epoch())
                                             .count());
+        }
+        // The attempt's reply is finished business, and this branch used to
+        // return without releasing it: startItem's next assignment orphaned
+        // up to kMaxAttempts-1 replies per item, each still holding its
+        // connection and buffers. deleteLater is safe mid-signal -- the
+        // object survives until control returns to the event loop, which is
+        // what every other teardown path here already relies on.
+        if (reply) {
+            reply->deleteLater();
+            item.reply.clear();
         }
         const std::int64_t delay = retryDelayMs(item.attempts - 1, retryAfter, rng_);
         LOG_WARN("DownloadQueue: {} failed (attempt {}/{}), retrying in {} ms{}", item.clipId,

@@ -143,15 +143,19 @@ enum class PartOpenError {
     return "unknown";
 }
 
-/// User-facing wording for the two self-inflicted terminal failures. Exported
-/// and pure so the text is asserted by a test instead of only appearing in a
-/// log nobody reads; both name the clip, because "download failed" with no
+/// User-facing wording for the self-inflicted failure reasons. Exported and
+/// pure so the text is asserted by a test instead of only appearing in a log
+/// nobody reads; each names the clip, because "download failed" with no
 /// subject is indistinguishable across a batch of ten.
 [[nodiscard]] std::string byteCapReason(std::string_view clipId, qint64 limitBytes,
                                         qint64 seenBytes);
 [[nodiscard]] std::string shortWriteReason(std::string_view clipId, qint64 offsetBytes,
                                            qint64 wantedBytes, qint64 writtenBytes,
                                            std::string_view deviceError);
+/// A 2xx that delivered fewer bytes than the transfer promised. Retryable
+/// wording, not terminal: a truncated connection is a transient condition.
+[[nodiscard]] std::string shortDownloadReason(std::string_view clipId, qint64 receivedBytes,
+                                              qint64 expectedBytes);
 
 /// Injectable seam: unit tests hand back scripted fake replies and never
 /// touch the network. Production uses the single adopted QNetworkAccessManager.
@@ -253,7 +257,7 @@ private:
     /// the item rather than passed down because aborting a reply re-enters
     /// through finished(), and the classification that must win there is ours,
     /// not whatever error the transport happens to report.
-    enum class AbortCause { None, ByteCap, ShortWrite, Collision, OpenFailed };
+    enum class AbortCause { None, ByteCap, ShortWrite, ShortDownload, Collision, OpenFailed };
 
     /// Shared by the containers and by every reply callback, which holds only a
     /// `std::weak_ptr`. That is not a style preference: retire() drops the
@@ -270,7 +274,12 @@ private:
         int attempts{0}; // completed attempts (failures consumed)
         int progressPercent{-1};
         qint64 bytesReceived{0}; // bytes this queue accepted from the reply
-        bool finishing{false};   // swallow further callbacks for this reply
+        /// Bytes the transfer promised for this attempt: the downloadProgress
+        /// total when the transport reported one, else Content-Length at
+        /// finalize time. 0 means no total was ever known -- the one shape the
+        /// short-body guard must NOT fail.
+        qint64 expectedTotal{0};
+        bool finishing{false}; // swallow further callbacks for this reply
         bool cancelRequested{false};
         /// True only between a successful exclusive open and the next rename.
         /// Every `.part` removal is gated on this, so the queue can only ever

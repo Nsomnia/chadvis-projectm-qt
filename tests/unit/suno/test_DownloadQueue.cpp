@@ -63,6 +63,30 @@ public:
         emit finished();
     }
 
+    /// 2xx whose progress total promises more than the body delivers -- the
+    /// truncated-transfer shape. No transport error is set: this is exactly
+    /// how a connection that dies mid-body can look to the queue.
+    void succeedShort(QByteArray body, qint64 promisedTotal, int httpStatus = 200) {
+        setHeaders(httpStatus, false);
+        payload_ = std::move(body);
+        offset_ = 0;
+        if (!payload_.isEmpty()) emit readyRead();
+        emit downloadProgress(payload_.size(), promisedTotal);
+        finishing_ = true;
+        emit finished();
+    }
+
+    /// 2xx with no total ever reported: no progress signal, no
+    /// Content-Length. The short-body guard must not fail this shape.
+    void succeedUnknownLength(QByteArray body, int httpStatus = 200) {
+        setHeaders(httpStatus, false);
+        payload_ = std::move(body);
+        offset_ = 0;
+        if (!payload_.isEmpty()) emit readyRead();
+        finishing_ = true;
+        emit finished();
+    }
+
     void fail(QNetworkReply::NetworkError err, int httpStatus = 0, bool acceptRanges = false,
               QByteArray body = {}) {
         setHeaders(httpStatus, acceptRanges);
@@ -468,6 +492,8 @@ private slots:
         QCOMPARE(shortWriteReason("clip-42", 50, 20, 0, "No space left on device"),
                  std::string("clip-42 could not be written: 0 of 20 bytes at offset 50 "
                              "(No space left on device)"));
+        QCOMPARE(shortDownloadReason("clip-42", 10, 16),
+                 std::string("clip-42 downloaded 10 of the 16 bytes the server promised"));
     }
 
     void aShortWriteNeverBecomesACompletedFile() {
@@ -534,6 +560,106 @@ private slots:
         QCOMPARE(static_cast<int>(server.replies.size()), 3);
         QCOMPARE(sink, QByteArray()); // a refused write lands nothing at all
         QVERIFY(!QFile::exists(dest));
+        QVERIFY(queue.isEmpty());
+    }
+
+    // ── short-body guard (T0006) ─────────────────────────────────────────────
+    // The defect being pinned: a 2xx whose connection closed early reached
+    // finalizeSuccess with NoError and no total check, so the plausible-looking
+    // prefix was renamed into place and reported Completed.
+
+    void aShortDownloadNeverBecomesACompletedFile() {
+        FakeServer server;
+        DownloadQueue queue(server.factory());
+        QTemporaryDir dir;
+
+        std::vector<int> states;
+        QObject::connect(&queue, &DownloadQueue::itemStateChanged,
+                         [&](const QString&, int state, int) { states.push_back(state); });
+
+        const QString dest = dir.filePath("short-body.mp3");
+        QVERIFY(queue.enqueue("short-body", "https://fake.cdn/short-body.mp3", dest.toStdString()));
+
+        // The connection "closes" at 62%: NoError, 200, ten of sixteen
+        // promised bytes.
+        server.replies[0]->succeedShort(QByteArray("0123456789"), 16);
+        QTest::qWait(10);
+
+        QVERIFY(!QFile::exists(dest));                                // never renamed
+        QVERIFY(!QFile::exists(dir.filePath("short-body.mp3.part"))); // prefix unlinked
+        QCOMPARE(queue.waitingCount(), 1);                            // retryable, not completed
+        QVERIFY(std::none_of(states.begin(), states.end(), [](const int s) {
+            return s == static_cast<int>(DownloadState::Completed);
+        }));
+        QVERIFY(queue.cancel("short-body")); // do not sit out the ladder
+        QTest::qWait(10);
+        QVERIFY(queue.isEmpty());
+    }
+
+    void aShortDownloadExhaustsRetriesAndLeavesNothingBehind() {
+        FakeServer server;
+        DownloadQueue queue(server.factory());
+        QTemporaryDir dir;
+
+        int lastState = -1;
+        QObject::connect(&queue, &DownloadQueue::itemStateChanged,
+                         [&](const QString&, int state, int) { lastState = state; });
+
+        const QString dest = dir.filePath("truncated.mp3");
+        QVERIFY(queue.enqueue("truncated", "https://fake.cdn/truncated.mp3", dest.toStdString()));
+
+        for (int i = 0; i < 3; ++i) {
+            QTRY_COMPARE(static_cast<int>(server.replies.size()), i + 1);
+            server.replies[i]->succeedShort(QByteArray("half-a-tube"), 20);
+            QTest::qWait(10);
+        }
+        QTest::qWait(50);
+
+        QCOMPARE(lastState, static_cast<int>(DownloadState::FailedRetryable));
+        QCOMPARE(static_cast<int>(server.replies.size()), 3);
+        QVERIFY(!QFile::exists(dest));
+        QVERIFY(!QFile::exists(dir.filePath("truncated.mp3.part")));
+        QVERIFY(queue.isEmpty());
+    }
+
+    void unknownLengthTransfersAreNotFailedForBeingUnverifiable() {
+        FakeServer server;
+        DownloadQueue queue(server.factory());
+        QTemporaryDir dir;
+
+        // No progress total and no Content-Length: the guard has nothing to
+        // compare against and must not fail the transfer.
+        const QString dest = dir.filePath("chunked.mp3");
+        QVERIFY(queue.enqueue("chunked", "https://fake.cdn/chunked", dest.toStdString()));
+        server.replies[0]->succeedUnknownLength(QByteArray("no content length here"));
+        QTest::qWait(10);
+
+        QCOMPARE(readAll(dest), QByteArray("no content length here"));
+        QVERIFY(queue.isEmpty());
+    }
+
+    // ── retry-path reply release (T0007) ─────────────────────────────────────
+    // The retry branch returned without deleteLater() and without clearing
+    // item.reply, so startItem's next assignment orphaned up to
+    // kMaxAttempts-1 replies per item, each still holding its connection.
+
+    void retryReleasesTheFailedReply() {
+        FakeServer server;
+        DownloadQueue queue(server.factory());
+        QTemporaryDir dir;
+
+        QVERIFY(queue.enqueue("leak", "https://fake.cdn/leak.mp3",
+                              dir.filePath("leak.mp3").toStdString()));
+
+        // Watch the attempt-1 reply for destruction through the queue's own
+        // ownership (QPointer nulls when the deleteLater drains).
+        QPointer<QNetworkReply> firstReply(server.replies[0]);
+        server.replies[0]->fail(QNetworkReply::TimeoutError);
+        QTRY_COMPARE(queue.waitingCount(), 1);
+        QTRY_VERIFY_WITH_TIMEOUT(firstReply.isNull(), 2000);
+
+        QVERIFY(queue.cancel("leak")); // do not sit out the ladder
+        QTest::qWait(10);
         QVERIFY(queue.isEmpty());
     }
 

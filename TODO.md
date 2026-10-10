@@ -84,18 +84,18 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       flips the client to `NeedsReauth`, drops the bearer and emits `needsReauth()` —
       **a self-inflicted sign-out.** Fix: gate on `httpStatus == 401 || == 403` only.
       **Zero tests cover this function.**
-- [ ] T0006 **A short download is renamed into place and reported `Completed`** (`src/suno/DownloadQueue.cpp:669-695`) #data-loss
+- [x] T0006 **A short download is renamed into place and reported `Completed`** (`src/suno/DownloadQueue.cpp:669-695`) #data-loss
       `finalizeSuccess` never compares `bytesReceived` against `Content-Length`, and
       `classifyFailure` returns `None` for any 2xx (:105). A connection closing at 90 %
       yields a plausible short MP3 that is renamed, tagged, sidecarred and announced via
       `fileSaved` (`SunoDownloader.cpp:395-406`) — precisely the failure this repo has
       shipped before. Fix: record `total` from `downloadProgress` and fail before rename.
-- [ ] T0007 **Every retryable download failure leaks the `QNetworkReply`** (`src/suno/DownloadQueue.cpp:708-744`) #risk-high
+- [x] T0007 **Every retryable download failure leaks the `QNetworkReply`** (`src/suno/DownloadQueue.cpp:708-744`) #risk-high
       The retry branch returns without `deleteLater()` or clearing `item.reply`; only the
       terminal path does. `startItem` overwrites `item.reply` next attempt (:427), so up
       to `kMaxAttempts-1 = 2` replies per item are dropped with no owner, each still
       holding its connection and buffers.
-- [ ] T0008 **Use-after-free in `DownloadQueue::cancel`** (`src/suno/DownloadQueue.cpp:361-366`) #risk-high
+- [x] T0008 **Use-after-free in `DownloadQueue::cancel`** (`src/suno/DownloadQueue.cpp:361-366`) #risk-high
       `reply->abort()` **synchronously** emits `finished()`, landing in `onFinished` →
       `finishCancelled` → `reply->deleteLater()` (:700) and `retire()`. `findItem` /
       `takeFromActive` return raw `Item*` documented as valid "only while one of the
@@ -393,6 +393,8 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       own single-slot handler, killing its 5-retry recovery. A behavioural regression against
       stock projectM rather than a safety bug, but it means a preset that fails to load is
       simply lost. Distinct from T0057, which is about the never-emitted `presetLoading` flag.
+- [ ] T0178 **ASan: container-overflow read attributed inside `checkPlausibility` on the reflow fixture** (`src/lyrics/LyricTiming.cpp:777`, `tests/unit/lyrics/test_LyricTiming.cpp:222`) #risk-high
+      Found by the first ASan lane run on this tree — exactly the T0043 gap. `./build.sh --asan --tests` then `./build-asan/tests/unit/unit_tests` aborts (exit 134) in TestLyricTiming::theReflowModelIsExactOnAWorkedExample: ASan container-overflow, SUMMARY names LyricTiming.cpp:777; every suite before TestLyricTiming passes under instrumentation, including the whole DownloadQueue suite. `words()` is an exact span over the member vector, so the lead is checkPlausibility's own `durations` vector: non-finite and negative-time words `continue` without a push_back, and any later rule indexing `durations` by word index reads past size within capacity. Alternative: the libc++ container-annotation interop gap. Source analysis decides which; do not silence it with detect_container_overflow=0.
 
 ## P2 — robustness, cleanup, and debt
 
