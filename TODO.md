@@ -276,6 +276,12 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       `tagAudioFile` opens and rewrites the file in place; two `ofstream`s and two
       `fs::exists` run synchronously inside `DownloadQueue::finished` on the GUI thread. A
       40-clip batch tags and writes 80 sidecars in one event-loop turn.
+- [x] T0179 **`build.sh` spends 75% of the box, not all of it** (`build.sh`) #risk-high #perf
+      `--jobs` counted 4 logical cores and ignored RAM; now 2 physical (floored at the physical
+      count), capped by available RAM, `nice 10`s every child. ctest budgeted separately (`-j2`):
+      `unit_tests` burns 14 s CPU across 91 s. `--budget` prints the arithmetic. `--nice` shipped
+      broken (defaults assigned after the parser). Also probes `sccache`, and repairs a dir whose
+      cmake was uninstalled -- read `build.ninja`, not the cache. Details in CHANGELOG.
 - [ ] T0038 **`scripts/build-fast.sh` hijacks the Release build directory with a `-O0` Debug config** (`scripts/build-fast.sh:1`) #risk-high
       Directly contradicts `build.sh:7-10` ("every profile gets its OWN directory"). No
       shebang, no `set -e`, hardcodes `sccache` while `Compiler.cmake:170` probes both, and
@@ -622,10 +628,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [ ] T0095 Every CI `ctest` invocation is serial (`.github/workflows/build.yml:297,229`) #performance
       Add `--parallel $(nproc)`. `release.yml:121-123` admits it has no dependency caching
       while still installing ccache.
-- [x] T0096 Recorder tests write receipts into the repository root (`.gitignore:99-108`, `tests/unit/recorder/test_RenderQueue.cpp`) #risk-high
-      The ignore rule is a **guard, not a repair**: `RenderJob::kReceiptSuffix` sidecars land
-      in CWD because the tests point the encoder at relative paths. 17 of 45 test files use
-      `QTemporaryDir` correctly — copy them. **This recurs on every full ctest run.**
 - [ ] T0097 `unit_tests` is one binary with one `QCoreApplication` running 31 suites sequentially (`tests/unit/test_main.cpp:38,41-72`) #risk-medium
       A crash or hang in suite 30 loses suites 1–29's results, and config-singleton mutators
       are unisolated.
