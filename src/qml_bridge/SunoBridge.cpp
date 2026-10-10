@@ -1,22 +1,22 @@
 #include "SunoBridge.hpp"
+#include <QStringList>
+#include <QVariantMap>
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
-#include "ui/controllers/SunoController.hpp"
 #include "suno/ClipParser.hpp"
 #include "suno/ClipResolver.hpp"
-#include "suno/SunoAccountManager.hpp"
-#include "suno/SunoClient.hpp"
-#include "suno/auth/AuthCoordinator.hpp"
 #include "suno/DownloadQueue.hpp"
+#include "suno/SunoAccountManager.hpp"
+#include "suno/SunoAudioUploadService.hpp"
+#include "suno/SunoClient.hpp"
 #include "suno/SunoDownloader.hpp"
 #include "suno/SunoExploreService.hpp"
-#include "suno/SunoNotificationService.hpp"
-#include "suno/SunoAudioUploadService.hpp"
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoLibraryMutations.hpp"
 #include "suno/SunoModels.hpp"
-#include <QStringList>
-#include <QVariantMap>
+#include "suno/SunoNotificationService.hpp"
+#include "suno/auth/AuthCoordinator.hpp"
+#include "ui/controllers/SunoController.hpp"
 
 namespace qml_bridge {
 
@@ -65,49 +65,52 @@ namespace {
 /// constants exist and several are `[T1]`, which is not the same as having code
 /// — see the three-layer reachability rule in TODO.md.
 constexpr vc::suno::FeatureGate kGatesImplementedByThisBuild[]{
-        vc::suno::FeatureGate::Library,        vc::suno::FeatureGate::Explore,
-        vc::suno::FeatureGate::Notifications,  vc::suno::FeatureGate::Upload,
-        vc::suno::FeatureGate::Billing,        vc::suno::FeatureGate::AccountProfile,
+        vc::suno::FeatureGate::Library,       vc::suno::FeatureGate::Explore,
+        vc::suno::FeatureGate::Notifications, vc::suno::FeatureGate::Upload,
+        vc::suno::FeatureGate::Billing,       vc::suno::FeatureGate::AccountProfile,
         vc::suno::FeatureGate::MediaDelivery};
 
 QString authFailureKindString(vc::suno::auth::AuthFailureKind kind) {
     using Kind = vc::suno::auth::AuthFailureKind;
     switch (kind) {
-    case Kind::None:
-        return QStringLiteral("none");
-    case Kind::NoActiveSession:
-        return QStringLiteral("noSession");
-    case Kind::RejectedCredential:
-        return QStringLiteral("rejected");
-    case Kind::ProtocolMismatch:
-        return QStringLiteral("protocol");
-    case Kind::MalformedResponse:
-        return QStringLiteral("malformed");
+        case Kind::None:
+            return QStringLiteral("none");
+        case Kind::NoActiveSession:
+            return QStringLiteral("noSession");
+        case Kind::RejectedCredential:
+            return QStringLiteral("rejected");
+        case Kind::ProtocolMismatch:
+            return QStringLiteral("protocol");
+        case Kind::MalformedResponse:
+            return QStringLiteral("malformed");
     }
     return QStringLiteral("none");
 }
 
-QString synthesizedAuthFailureError(
-        vc::suno::auth::AuthFailureKind kind) {
+QString synthesizedAuthFailureError(vc::suno::auth::AuthFailureKind kind) {
     using Kind = vc::suno::auth::AuthFailureKind;
     switch (kind) {
-    case Kind::NoActiveSession:
-        return QStringLiteral("No active Suno session was found. Paste a valid bearer token or the complete Clerk cookie header in Account settings.");
-    case Kind::RejectedCredential:
-        return QStringLiteral("Suno rejected the stored credential. Paste a fresh bearer token or complete Clerk cookie header in Account settings.");
-    case Kind::ProtocolMismatch:
-        return QStringLiteral("Suno sign-in hit an unexpected authentication response. Try again; if it persists, refresh the captured sign-in flow.");
-    case Kind::MalformedResponse:
-        return QStringLiteral("Suno sign-in returned an unreadable authentication response. Try again; if it persists, refresh the captured sign-in flow.");
-    case Kind::None:
-        break;
+        case Kind::NoActiveSession:
+            return QStringLiteral("No active Suno session was found. Paste a valid bearer token or "
+                                  "the complete Clerk cookie header in Account settings.");
+        case Kind::RejectedCredential:
+            return QStringLiteral("Suno rejected the stored credential. Paste a fresh bearer token "
+                                  "or complete Clerk cookie header in Account settings.");
+        case Kind::ProtocolMismatch:
+            return QStringLiteral("Suno sign-in hit an unexpected authentication response. Try "
+                                  "again; if it persists, refresh the captured sign-in flow.");
+        case Kind::MalformedResponse:
+            return QStringLiteral("Suno sign-in returned an unreadable authentication response. "
+                                  "Try again; if it persists, refresh the captured sign-in flow.");
+        case Kind::None:
+            break;
     }
     return {};
 }
 
 QString generationUnavailableMessage() {
-    return QStringLiteral(
-            "Generation is unavailable because the required Suno CAPTCHA token flow is not supported. No request was sent.");
+    return QStringLiteral("Generation is unavailable because the required Suno CAPTCHA token flow "
+                          "is not supported. No request was sent.");
 }
 
 QVariantMap toDiscoverClip(const vc::suno::SunoClip& clip) {
@@ -115,18 +118,19 @@ QVariantMap toDiscoverClip(const vc::suno::SunoClip& clip) {
     result[QStringLiteral("id")] = QString::fromStdString(clip.id);
     result[QStringLiteral("title")] = QString::fromStdString(clip.title);
     result[QStringLiteral("status")] = QString::fromStdString(clip.status);
-    result[QStringLiteral("image_url")] = vc::suno::ClipParser::selectImageUrl(
-            QString::fromStdString(clip.image_large_url),
-            QString::fromStdString(clip.image_url))
-            .value_or(QString());
-    result[QStringLiteral("creator")] = QString::fromStdString(
-            clip.display_name.empty() ? clip.handle : clip.display_name);
+    result[QStringLiteral("image_url")] =
+            vc::suno::ClipParser::selectImageUrl(QString::fromStdString(clip.image_large_url),
+                                                 QString::fromStdString(clip.image_url))
+                    .value_or(QString());
+    result[QStringLiteral("creator")] =
+            QString::fromStdString(clip.display_name.empty() ? clip.handle : clip.display_name);
     result[QStringLiteral("created_at")] = QString::fromStdString(clip.created_at);
     result[QStringLiteral("duration")] = QString::fromStdString(clip.metadata.duration);
     return result;
 }
 
-QVariantMap toNotificationVariant(const vc::suno::SunoNotificationService::Notification& notification) {
+QVariantMap
+toNotificationVariant(const vc::suno::SunoNotificationService::Notification& notification) {
     QVariantMap author;
     author[QStringLiteral("user_id")] = notification.author.userId;
     author[QStringLiteral("display_name")] = notification.author.displayName;
@@ -176,7 +180,8 @@ QVariantList toQVariantModels(const QList<vc::suno::SunoModelInfo>& models) {
         limits[QStringLiteral("title")] = static_cast<qlonglong>(model.max_lengths.title);
         limits[QStringLiteral("prompt")] = static_cast<qlonglong>(model.max_lengths.prompt);
         limits[QStringLiteral("tags")] = static_cast<qlonglong>(model.max_lengths.tags);
-        limits[QStringLiteral("negative_tags")] = static_cast<qlonglong>(model.max_lengths.negative_tags);
+        limits[QStringLiteral("negative_tags")] =
+                static_cast<qlonglong>(model.max_lengths.negative_tags);
         limits[QStringLiteral("gpt_description_prompt")] =
                 static_cast<qlonglong>(model.max_lengths.gpt_description_prompt);
 
@@ -205,9 +210,8 @@ SunoBridge::SunoBridge(QObject* parent) : QObject(parent) {
 
     searchDebounce_.setSingleShot(true);
     searchDebounce_.setInterval(350);
-    connect(&searchDebounce_, &QTimer::timeout, this, [this]() {
-        setFilterText(searchDebounceText_);
-    });
+    connect(&searchDebounce_, &QTimer::timeout, this,
+            [this]() { setFilterText(searchDebounceText_); });
 
     loadingWatchdog_.setSingleShot(true);
     loadingWatchdog_.setInterval(15000);
@@ -301,27 +305,27 @@ void SunoBridge::wireControllerSignals() {
     ensureDownloader();
     auto* bridgeInstance = this;
 
-    connect(s_controller, &vc::suno::SunoController::libraryUpdated,
-            bridgeInstance, &SunoBridge::onLibraryUpdated);
-    connect(s_controller, &vc::suno::SunoController::authenticationRequired,
-            bridgeInstance, &SunoBridge::clearLoading);
-    connect(s_controller, &vc::suno::SunoController::authenticationFailed,
-            bridgeInstance, &SunoBridge::onAuthenticationFailed);
-    connect(s_controller, &vc::suno::SunoController::authFailureKindChanged,
-            bridgeInstance, [bridgeInstance]() {
+    connect(s_controller, &vc::suno::SunoController::libraryUpdated, bridgeInstance,
+            &SunoBridge::onLibraryUpdated);
+    connect(s_controller, &vc::suno::SunoController::authenticationRequired, bridgeInstance,
+            &SunoBridge::clearLoading);
+    connect(s_controller, &vc::suno::SunoController::authenticationFailed, bridgeInstance,
+            &SunoBridge::onAuthenticationFailed);
+    connect(s_controller, &vc::suno::SunoController::authFailureKindChanged, bridgeInstance,
+            [bridgeInstance]() {
                 emit bridgeInstance->authFailureKindChanged();
                 emit bridgeInstance->googleLoginErrorChanged();
             });
-    connect(s_controller, &vc::suno::SunoController::libraryFetchFailed,
-            bridgeInstance, &SunoBridge::onLibraryFetchFailed);
-    connect(s_controller, &vc::suno::SunoController::sunoError,
-            bridgeInstance, &SunoBridge::onLibraryFetchFailed);
-    connect(s_controller, &vc::suno::SunoController::statusMessage,
-            bridgeInstance, [bridgeInstance](const std::string& message) {
+    connect(s_controller, &vc::suno::SunoController::libraryFetchFailed, bridgeInstance,
+            &SunoBridge::onLibraryFetchFailed);
+    connect(s_controller, &vc::suno::SunoController::sunoError, bridgeInstance,
+            &SunoBridge::onLibraryFetchFailed);
+    connect(s_controller, &vc::suno::SunoController::statusMessage, bridgeInstance,
+            [bridgeInstance](const std::string& message) {
                 bridgeInstance->setStatusMessage(QString::fromStdString(message));
             });
-    connect(s_controller, &vc::suno::SunoController::downloadStateChanged,
-            bridgeInstance, [bridgeInstance](const QString& clipId, int state, int percent) {
+    connect(s_controller, &vc::suno::SunoController::downloadStateChanged, bridgeInstance,
+            [bridgeInstance](const QString& clipId, int state, int percent) {
                 // Only an explicit play request suppresses other clips' events.
                 // A save-only request leaves this empty, so a batch's results
                 // are never filtered out by the play path's bookkeeping.
@@ -331,61 +335,65 @@ void SunoBridge::wireControllerSignals() {
                 }
                 const QString title = bridgeInstance->clipTitle(clipId);
                 switch (static_cast<vc::suno::DownloadState>(state)) {
-                case vc::suno::DownloadState::Queued:
-                    bridgeInstance->setDownloadStatusForClip(clipId, QStringLiteral("Queued for download"));
-                    break;
-                case vc::suno::DownloadState::Downloading:
-                    bridgeInstance->setDownloadStatusForClip(
-                            clipId, QStringLiteral("Downloading %1… %2%").arg(title).arg(qMax(0, percent)));
-                    break;
-                case vc::suno::DownloadState::Completed: {
-                    // Save and play are separate requests that share one queue
-                    // event, so the wording has to come from the request rather
-                    // than be hardcoded: a silent save must never claim the
-                    // transport moved.
-                    const bool wasPlayRequest = bridgeInstance->playRequestClipId_ == clipId;
-                    bridgeInstance->setDownloadStatusForClip(
-                            clipId, wasPlayRequest
+                    case vc::suno::DownloadState::Queued:
+                        bridgeInstance->setDownloadStatusForClip(
+                                clipId, QStringLiteral("Queued for download"));
+                        break;
+                    case vc::suno::DownloadState::Downloading:
+                        bridgeInstance->setDownloadStatusForClip(
+                                clipId, QStringLiteral("Downloading %1… %2%")
+                                                .arg(title)
+                                                .arg(qMax(0, percent)));
+                        break;
+                    case vc::suno::DownloadState::Completed: {
+                        // Save and play are separate requests that share one queue
+                        // event, so the wording has to come from the request rather
+                        // than be hardcoded: a silent save must never claim the
+                        // transport moved.
+                        const bool wasPlayRequest = bridgeInstance->playRequestClipId_ == clipId;
+                        bridgeInstance->setDownloadStatusForClip(
+                                clipId,
+                                wasPlayRequest
                                         ? QStringLiteral("Downloaded %1; now playing").arg(title)
                                         : QStringLiteral("Saved %1 to your downloads").arg(title));
-                    if (wasPlayRequest) {
-                        bridgeInstance->playRequestClipId_.clear();
-                        bridgeInstance->activeDownloadClipId_.clear();
+                        if (wasPlayRequest) {
+                            bridgeInstance->playRequestClipId_.clear();
+                            bridgeInstance->activeDownloadClipId_.clear();
+                        }
+                        break;
                     }
-                    break;
-                }
-                case vc::suno::DownloadState::FailedRetryable:
-                case vc::suno::DownloadState::FailedPermanent:
-                    bridgeInstance->setDownloadStatusForClip(
-                            clipId, QStringLiteral("Download failed for %1").arg(title));
-                    if (bridgeInstance->playRequestClipId_ == clipId) {
-                        bridgeInstance->playRequestClipId_.clear();
-                        bridgeInstance->activeDownloadClipId_.clear();
-                    }
-                    break;
-                case vc::suno::DownloadState::Cancelled:
-                    bridgeInstance->setDownloadStatusForClip(
-                            clipId, QStringLiteral("Download cancelled for %1").arg(title));
-                    if (bridgeInstance->playRequestClipId_ == clipId) {
-                        bridgeInstance->playRequestClipId_.clear();
-                        bridgeInstance->activeDownloadClipId_.clear();
-                    }
-                    break;
+                    case vc::suno::DownloadState::FailedRetryable:
+                    case vc::suno::DownloadState::FailedPermanent:
+                        bridgeInstance->setDownloadStatusForClip(
+                                clipId, QStringLiteral("Download failed for %1").arg(title));
+                        if (bridgeInstance->playRequestClipId_ == clipId) {
+                            bridgeInstance->playRequestClipId_.clear();
+                            bridgeInstance->activeDownloadClipId_.clear();
+                        }
+                        break;
+                    case vc::suno::DownloadState::Cancelled:
+                        bridgeInstance->setDownloadStatusForClip(
+                                clipId, QStringLiteral("Download cancelled for %1").arg(title));
+                        if (bridgeInstance->playRequestClipId_ == clipId) {
+                            bridgeInstance->playRequestClipId_.clear();
+                            bridgeInstance->activeDownloadClipId_.clear();
+                        }
+                        break;
                 }
             });
 
     if (auto* lm = s_controller->libraryManager()) {
-        connect(lm, &vc::suno::SunoLibraryManager::authenticationRequired,
-                bridgeInstance, &SunoBridge::clearLoading);
-        connect(lm, &vc::suno::SunoLibraryManager::libraryFetchFailed,
-                bridgeInstance, &SunoBridge::onLibraryFetchFailed);
+        connect(lm, &vc::suno::SunoLibraryManager::authenticationRequired, bridgeInstance,
+                &SunoBridge::clearLoading);
+        connect(lm, &vc::suno::SunoLibraryManager::libraryFetchFailed, bridgeInstance,
+                &SunoBridge::onLibraryFetchFailed);
     }
 
     if (s_client) {
-        connect(s_client, &vc::suno::SunoClient::needsReauth,
-                bridgeInstance, &SunoBridge::clearLoading);
-        connect(s_client, &vc::suno::SunoClient::authStateChanged,
-                bridgeInstance, [bridgeInstance]() {
+        connect(s_client, &vc::suno::SunoClient::needsReauth, bridgeInstance,
+                &SunoBridge::clearLoading);
+        connect(s_client, &vc::suno::SunoClient::authStateChanged, bridgeInstance,
+                [bridgeInstance]() {
                     if (bridgeInstance->s_client->isAuthenticated()) {
                         bridgeInstance->setErrorMessage({});
                     }
@@ -393,34 +401,38 @@ void SunoBridge::wireControllerSignals() {
                 });
         // Custom Signal<> for generic errors: queued clear so it
         // arrives on the bridge's thread even if emitted off-thread.
-        clientErrorConnectionId_ = s_client->errorOccurred.connect([bridgeInstance](const std::string& err) {
-            QMetaObject::invokeMethod(bridgeInstance,
-                [bridgeInstance, err]() { bridgeInstance->onLibraryFetchFailed(QString::fromStdString(err)); },
-                Qt::QueuedConnection);
-        });
+        clientErrorConnectionId_ =
+                s_client->errorOccurred.connect([bridgeInstance](const std::string& err) {
+                    QMetaObject::invokeMethod(
+                            bridgeInstance,
+                            [bridgeInstance, err]() {
+                                bridgeInstance->onLibraryFetchFailed(QString::fromStdString(err));
+                            },
+                            Qt::QueuedConnection);
+                });
     }
 
     if (auto* coordinator = s_controller->authCoordinator()) {
         // AuthCoordinator owns the canonical state strings.  The bridge
         // mirrors its signals without introducing a second auth state machine.
-        connect(coordinator, &vc::suno::auth::AuthCoordinator::stateChanged,
-                bridgeInstance, [bridgeInstance](const QString&) {
+        connect(coordinator, &vc::suno::auth::AuthCoordinator::stateChanged, bridgeInstance,
+                [bridgeInstance](const QString&) {
                     emit bridgeInstance->googleLoginStateChanged();
                 });
-        connect(coordinator, &vc::suno::auth::AuthCoordinator::errorChanged,
-                bridgeInstance, [bridgeInstance](const QString&) {
+        connect(coordinator, &vc::suno::auth::AuthCoordinator::errorChanged, bridgeInstance,
+                [bridgeInstance](const QString&) {
                     emit bridgeInstance->googleLoginErrorChanged();
                 });
-        connect(coordinator, &vc::suno::auth::AuthCoordinator::callbackReceived,
-                bridgeInstance, &SunoBridge::googleLoginCallbackReceived);
+        connect(coordinator, &vc::suno::auth::AuthCoordinator::callbackReceived, bridgeInstance,
+                &SunoBridge::googleLoginCallbackReceived);
     }
 
     // Account snapshot -> QML properties.
     if (auto* am = s_controller->accountManager()) {
-        connect(am, &vc::suno::SunoAccountManager::billingInfoReady,
-                bridgeInstance, &SunoBridge::billingInfoChanged);
-        connect(am, &vc::suno::SunoAccountManager::accountInfoReady,
-                bridgeInstance, [bridgeInstance]() {
+        connect(am, &vc::suno::SunoAccountManager::billingInfoReady, bridgeInstance,
+                &SunoBridge::billingInfoChanged);
+        connect(am, &vc::suno::SunoAccountManager::accountInfoReady, bridgeInstance,
+                [bridgeInstance]() {
                     bridgeInstance->updateModelCatalog();
                     emit bridgeInstance->accountInfoChanged();
                 });
@@ -429,21 +441,21 @@ void SunoBridge::wireControllerSignals() {
         // honest signal for that: `accountInfoReady` means the user object, and
         // emitting it from the billing path would make a billing refresh
         // masquerade as an account refresh.
-        connect(am, &vc::suno::SunoAccountManager::billingInfoReady,
-                bridgeInstance, [bridgeInstance]() {
+        connect(am, &vc::suno::SunoAccountManager::billingInfoReady, bridgeInstance,
+                [bridgeInstance]() {
                     bridgeInstance->updateModelCatalog();
                     emit bridgeInstance->billingInfoChanged();
                 });
-        connect(am, &vc::suno::SunoAccountManager::accountError,
-                bridgeInstance, [bridgeInstance](const QString& message) {
+        connect(am, &vc::suno::SunoAccountManager::accountError, bridgeInstance,
+                [bridgeInstance](const QString& message) {
                     bridgeInstance->setErrorMessage(message);
                 });
         // The generation gate's verdict and reason both move when the server flag
         // map changes, so both properties notify from this one signal. Without it
         // the properties would be correct but never re-read — the same
         // invisibility the old CONSTANT declaration had.
-        connect(am, &vc::suno::SunoAccountManager::gatesChanged,
-                bridgeInstance, [bridgeInstance]() {
+        connect(am, &vc::suno::SunoAccountManager::gatesChanged, bridgeInstance,
+                [bridgeInstance]() {
                     emit bridgeInstance->generationAvailableChanged();
                     emit bridgeInstance->gateStatusesChanged();
                     // The mutation surface consults the same resolver, so its
@@ -489,19 +501,21 @@ void SunoBridge::wireControllerSignals() {
             }
         }
     }
-    connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance, [bridge = bridgeInstance](const QString& response, const QString& workspaceId) {
-        QVariantMap assistantMsg;
-        assistantMsg["role"] = "assistant";
-        assistantMsg["content"] = response;
-        assistantMsg["workspaceId"] = workspaceId;
-        bridge->chatHistory_.append(assistantMsg);
-        emit bridge->chatHistoryChanged();
-    });
+    connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance,
+            [bridge = bridgeInstance](const QString& response, const QString& workspaceId) {
+                QVariantMap assistantMsg;
+                assistantMsg["role"] = "assistant";
+                assistantMsg["content"] = response;
+                assistantMsg["workspaceId"] = workspaceId;
+                bridge->chatHistory_.append(assistantMsg);
+                emit bridge->chatHistoryChanged();
+            });
 
-    connect(s_controller, &vc::suno::SunoController::chatHistoryFetched, bridgeInstance, [bridge = bridgeInstance](const QVariantList& sessions) {
-        bridge->chatHistory_ = sessions;
-        emit bridge->chatHistoryChanged();
-    });
+    connect(s_controller, &vc::suno::SunoController::chatHistoryFetched, bridgeInstance,
+            [bridge = bridgeInstance](const QVariantList& sessions) {
+                bridge->chatHistory_ = sessions;
+                emit bridge->chatHistoryChanged();
+            });
 
     controllerSignalsWired_ = true;
 
@@ -517,17 +531,11 @@ bool SunoBridge::loading() const { return loading_; }
 
 QVariantList SunoBridge::clips() const { return clips_; }
 
-int SunoBridge::totalClips() const {
-  return allClips_.size();
-}
+int SunoBridge::totalClips() const { return allClips_.size(); }
 
-bool SunoBridge::hasMorePages() const {
-  return hasMorePages_;
-}
+bool SunoBridge::hasMorePages() const { return hasMorePages_; }
 
-int SunoBridge::currentPage() const {
-  return currentPage_;
-}
+int SunoBridge::currentPage() const { return currentPage_; }
 
 QVariantList SunoBridge::chatHistory() const { return chatHistory_; }
 
@@ -579,30 +587,24 @@ QVariantList SunoBridge::gateStatuses() const {
 
     for (const vc::suno::GateVerdict& verdict : gates.evaluateAll()) {
         QVariantMap row;
-        row.insert(QStringLiteral("gate"),
-                   QString::fromLatin1(vc::suno::toString(verdict.gate)));
+        row.insert(QStringLiteral("gate"), QString::fromLatin1(vc::suno::toString(verdict.gate)));
         row.insert(QStringLiteral("status"),
                    QString::fromLatin1(vc::suno::toString(verdict.status)));
-        row.insert(QStringLiteral("available"),
-                   verdict.status == vc::suno::GateStatus::Available);
+        row.insert(QStringLiteral("available"), verdict.status == vc::suno::GateStatus::Available);
         row.insert(QStringLiteral("reason"), verdict.reason);
 
         // The catalog row supplies the human-facing metadata. A verdict whose
         // gate has no catalog entry is reported as EvidenceBlocked by the
         // resolver, and `findFeature` returning null here is handled rather than
         // dereferenced — the row is still emitted, just without a title.
-        if (const vc::suno::FeatureDefinition* def =
-                    vc::suno::findFeature(verdict.gate)) {
-            row.insert(QStringLiteral("title"), QString::fromStdString(
-                                                       std::string(def->title)));
-            row.insert(QStringLiteral("area"), QString::fromStdString(
-                                                      std::string(def->area)));
+        if (const vc::suno::FeatureDefinition* def = vc::suno::findFeature(verdict.gate)) {
+            row.insert(QStringLiteral("title"), QString::fromStdString(std::string(def->title)));
+            row.insert(QStringLiteral("area"), QString::fromStdString(std::string(def->area)));
             row.insert(QStringLiteral("evidence"),
                        QString::fromLatin1(vc::suno::hosts::toString(def->evidence)));
             row.insert(QStringLiteral("serverFlags"),
                        QString::fromStdString(std::string(def->serverFlags)));
-            row.insert(QStringLiteral("note"),
-                       QString::fromStdString(std::string(def->note)));
+            row.insert(QStringLiteral("note"), QString::fromStdString(std::string(def->note)));
         }
         rows.append(row);
     }
@@ -658,8 +660,8 @@ void SunoBridge::setFilterText(const QString& filter) {
     emit filterTextChanged();
 }
 
-void SunoBridge::generate(const QString& prompt, const QString& tags,
-                          bool instrumental, const QString& model) {
+void SunoBridge::generate(const QString& prompt, const QString& tags, bool instrumental,
+                          const QString& model) {
     Q_UNUSED(prompt)
     Q_UNUSED(tags)
     Q_UNUSED(instrumental)
@@ -726,8 +728,7 @@ void SunoBridge::playClip(const QString& clipId) {
     playRequestClipId_ = clipId;
     const QString title = clipTitle(clipId);
     setStatusMessage(QStringLiteral("Preparing %1 for playback").arg(title));
-    setDownloadStatusForClip(clipId,
-                             QStringLiteral("Preparing %1 for playback").arg(title));
+    setDownloadStatusForClip(clipId, QStringLiteral("Preparing %1 for playback").arg(title));
     if (!s_controller->playClipById(clipId.toStdString())) {
         playRequestClipId_.clear();
         activeDownloadClipId_.clear();
@@ -735,13 +736,9 @@ void SunoBridge::playClip(const QString& clipId) {
     }
 }
 
-void SunoBridge::downloadClip(const QString& clipId) {
-    downloadInto({clipId});
-}
+void SunoBridge::downloadClip(const QString& clipId) { downloadInto({clipId}); }
 
-void SunoBridge::downloadClips(const QStringList& clipIds) {
-    downloadInto(clipIds);
-}
+void SunoBridge::downloadClips(const QStringList& clipIds) { downloadInto(clipIds); }
 
 /// Save-only by construction: nothing in this path can enqueue, jump, or
 /// otherwise touch the transport, so a batch cannot hijack playback. Playback
@@ -749,8 +746,8 @@ void SunoBridge::downloadClips(const QStringList& clipIds) {
 void SunoBridge::downloadInto(const QStringList& clipIds) {
     auto* downloader = ensureDownloader();
     if (!downloader || !s_controller) {
-        setErrorMessage(
-            QStringLiteral("Downloads are unavailable because no download service is attached."));
+        setErrorMessage(QStringLiteral(
+                "Downloads are unavailable because no download service is attached."));
         return;
     }
     if (clipIds.isEmpty()) {
@@ -768,9 +765,9 @@ void SunoBridge::downloadInto(const QStringList& clipIds) {
                                                 clipId.toStdString());
         if (!clip) {
             ++unknown;
-            emit clipSaveRefused(
-                    clipId, QStringLiteral("This clip is no longer in the library, so it "
-                                           "cannot be saved."));
+            emit clipSaveRefused(clipId,
+                                 QStringLiteral("This clip is no longer in the library, so it "
+                                                "cannot be saved."));
             continue;
         }
         auto result = downloader->download(*clip);
@@ -801,8 +798,8 @@ void SunoBridge::downloadInto(const QStringList& clipIds) {
         message = firstRejection;
     } else if (rejected > 1) {
         message = QStringLiteral("%1 clips could not be saved. First reason: %2")
-                      .arg(rejected)
-                      .arg(firstRejection);
+                          .arg(rejected)
+                          .arg(firstRejection);
     }
     if (unknown > 0) {
         QString missing;
@@ -868,77 +865,79 @@ QString SunoBridge::userName() const {
 void SunoBridge::sendChatMessage(const QString& message, const QString& workspaceId) {
     Q_UNUSED(message)
     Q_UNUSED(workspaceId)
-    setErrorMessage(QStringLiteral("B-Side Chat is unavailable because its endpoints are not capture-backed."));
+    setErrorMessage(QStringLiteral(
+            "B-Side Chat is unavailable because its endpoints are not capture-backed."));
 }
 
 void SunoBridge::fetchChatHistory() {
-    setErrorMessage(QStringLiteral("B-Side Chat is unavailable because its endpoints are not capture-backed."));
+    setErrorMessage(QStringLiteral(
+            "B-Side Chat is unavailable because its endpoints are not capture-backed."));
 }
 
 void SunoBridge::onLibraryUpdated() {
-  if (!s_controller) return;
+    if (!s_controller) return;
 
-  allClips_.clear();
-  const auto& clips = s_controller->clips();
-  for (const auto& clip : clips) {
-    QVariantMap map;
-    map["id"] = QString::fromStdString(clip.id);
-    map["title"] = QString::fromStdString(clip.title);
-    map["status"] = QString::fromStdString(clip.status);
-    map["image_url"] = vc::suno::ClipParser::selectImageUrl(
-            QString::fromStdString(clip.image_large_url),
-            QString::fromStdString(clip.image_url))
-            .value_or(QString());
-    map["model_name"] = QString::fromStdString(clip.model_name);
-    map["major_model_version"] = QString::fromStdString(clip.major_model_version);
-    map["created_at"] = QString::fromStdString(clip.created_at);
-    map["play_count"] = static_cast<int>(clip.play_count);
-    map["duration"] = QString::fromStdString(clip.metadata.duration);
-    map["has_media"] = vc::suno::SunoDownloader::selectDownloadUrl(
-                               clip, CONFIG.suno().downloadFormat)
-                               .has_value();
+    allClips_.clear();
+    const auto& clips = s_controller->clips();
+    for (const auto& clip : clips) {
+        QVariantMap map;
+        map["id"] = QString::fromStdString(clip.id);
+        map["title"] = QString::fromStdString(clip.title);
+        map["status"] = QString::fromStdString(clip.status);
+        map["image_url"] =
+                vc::suno::ClipParser::selectImageUrl(QString::fromStdString(clip.image_large_url),
+                                                     QString::fromStdString(clip.image_url))
+                        .value_or(QString());
+        map["model_name"] = QString::fromStdString(clip.model_name);
+        map["major_model_version"] = QString::fromStdString(clip.major_model_version);
+        map["created_at"] = QString::fromStdString(clip.created_at);
+        map["play_count"] = static_cast<int>(clip.play_count);
+        map["duration"] = QString::fromStdString(clip.metadata.duration);
+        map["has_media"] =
+                vc::suno::SunoDownloader::selectDownloadUrl(clip, CONFIG.suno().downloadFormat)
+                        .has_value();
 
-    QVariantMap meta;
-    meta["tags"] = QString::fromStdString(clip.metadata.tags);
-    meta["prompt"] = QString::fromStdString(clip.metadata.prompt);
-    meta["lyrics"] = QString::fromStdString(clip.metadata.lyrics);
-    map["metadata"] = meta;
+        QVariantMap meta;
+        meta["tags"] = QString::fromStdString(clip.metadata.tags);
+        meta["prompt"] = QString::fromStdString(clip.metadata.prompt);
+        meta["lyrics"] = QString::fromStdString(clip.metadata.lyrics);
+        map["metadata"] = meta;
 
-    allClips_.append(map);
-  }
-
-  // Update pagination state from library manager
-  if (auto* lm = s_controller->libraryManager()) {
-    const bool hadMore = hasMorePages_;
-    hasMorePages_ = lm->hasMorePages();
-    if (hadMore != hasMorePages_) {
-      emit hasMorePagesChanged();
+        allClips_.append(map);
     }
-    const int prevPage = currentPage_;
-    currentPage_ = lm->currentPage();
-    if (prevPage != currentPage_) {
-      emit currentPageChanged();
-    }
-  }
 
-  updateFilteredClips();
-  // Keep spinner active while auto-pagination is still fetching.
-  // Full sync drives multiple feed/v3 pages; loading clears only when
-  // the library manager reports exhaustion.
-  if (!hasMorePages_) {
-    loading_ = false;
-    emit loadingChanged();
-    stopLoadingWatchdog();
-  } else {
-    // Still more pages — keep loading true and refresh watchdog for
-    // the next auto-page (rate-limited ~1 Hz).
-    if (!loading_) {
-      loading_ = true;
-      emit loadingChanged();
+    // Update pagination state from library manager
+    if (auto* lm = s_controller->libraryManager()) {
+        const bool hadMore = hasMorePages_;
+        hasMorePages_ = lm->hasMorePages();
+        if (hadMore != hasMorePages_) {
+            emit hasMorePagesChanged();
+        }
+        const int prevPage = currentPage_;
+        currentPage_ = lm->currentPage();
+        if (prevPage != currentPage_) {
+            emit currentPageChanged();
+        }
     }
-    startLoadingWatchdog();
-  }
-  emit authenticationChanged();
+
+    updateFilteredClips();
+    // Keep spinner active while auto-pagination is still fetching.
+    // Full sync drives multiple feed/v3 pages; loading clears only when
+    // the library manager reports exhaustion.
+    if (!hasMorePages_) {
+        loading_ = false;
+        emit loadingChanged();
+        stopLoadingWatchdog();
+    } else {
+        // Still more pages — keep loading true and refresh watchdog for
+        // the next auto-page (rate-limited ~1 Hz).
+        if (!loading_) {
+            loading_ = true;
+            emit loadingChanged();
+        }
+        startLoadingWatchdog();
+    }
+    emit authenticationChanged();
 }
 
 bool SunoBridge::isAuthenticated() const {
@@ -1133,9 +1132,7 @@ void SunoBridge::onDiscoverHasMoreChanged() {
     emit discoverHasMoreChanged();
 }
 
-void SunoBridge::onDiscoverFailed(const QString& reason) {
-    setDiscoverError(reason);
-}
+void SunoBridge::onDiscoverFailed(const QString& reason) { setDiscoverError(reason); }
 
 void SunoBridge::onNotificationsChanged() {
     if (!notificationService_) {
@@ -1210,16 +1207,16 @@ void SunoBridge::ensureAudioUploadService() {
     if (audioUploadService_ || !s_client) {
         return;
     }
-    audioUploadService_ = new vc::suno::SunoAudioUploadService(
-            s_client, s_client->networkManager(), this);
-    connect(audioUploadService_, &vc::suno::SunoAudioUploadService::stateChanged,
-            this, &SunoBridge::audioUploadChanged);
-    connect(audioUploadService_, &vc::suno::SunoAudioUploadService::progressChanged,
-            this, &SunoBridge::audioUploadChanged);
-    connect(audioUploadService_, &vc::suno::SunoAudioUploadService::statusChanged,
-            this, &SunoBridge::audioUploadChanged);
-    connect(audioUploadService_, &vc::suno::SunoAudioUploadService::errorChanged,
-            this, &SunoBridge::audioUploadChanged);
+    audioUploadService_ =
+            new vc::suno::SunoAudioUploadService(s_client, s_client->networkManager(), this);
+    connect(audioUploadService_, &vc::suno::SunoAudioUploadService::stateChanged, this,
+            &SunoBridge::audioUploadChanged);
+    connect(audioUploadService_, &vc::suno::SunoAudioUploadService::progressChanged, this,
+            &SunoBridge::audioUploadChanged);
+    connect(audioUploadService_, &vc::suno::SunoAudioUploadService::statusChanged, this,
+            &SunoBridge::audioUploadChanged);
+    connect(audioUploadService_, &vc::suno::SunoAudioUploadService::errorChanged, this,
+            &SunoBridge::audioUploadChanged);
 }
 
 void SunoBridge::destroyAudioUploadService() {
@@ -1236,16 +1233,16 @@ void SunoBridge::ensureExploreService() {
         return;
     }
     exploreService_ = new vc::suno::SunoExploreService(s_client, this);
-    connect(exploreService_, &vc::suno::SunoExploreService::reset,
-            this, &SunoBridge::onDiscoverReset);
-    connect(exploreService_, &vc::suno::SunoExploreService::pageReady,
-            this, &SunoBridge::onDiscoverPageReady);
-    connect(exploreService_, &vc::suno::SunoExploreService::loadingChanged,
-            this, &SunoBridge::onDiscoverLoadingChanged);
-    connect(exploreService_, &vc::suno::SunoExploreService::hasMoreChanged,
-            this, &SunoBridge::onDiscoverHasMoreChanged);
-    connect(exploreService_, &vc::suno::SunoExploreService::failed,
-            this, &SunoBridge::onDiscoverFailed);
+    connect(exploreService_, &vc::suno::SunoExploreService::reset, this,
+            &SunoBridge::onDiscoverReset);
+    connect(exploreService_, &vc::suno::SunoExploreService::pageReady, this,
+            &SunoBridge::onDiscoverPageReady);
+    connect(exploreService_, &vc::suno::SunoExploreService::loadingChanged, this,
+            &SunoBridge::onDiscoverLoadingChanged);
+    connect(exploreService_, &vc::suno::SunoExploreService::hasMoreChanged, this,
+            &SunoBridge::onDiscoverHasMoreChanged);
+    connect(exploreService_, &vc::suno::SunoExploreService::failed, this,
+            &SunoBridge::onDiscoverFailed);
 }
 
 void SunoBridge::destroyExploreService() {
@@ -1286,14 +1283,14 @@ void SunoBridge::ensureNotificationService() {
         return;
     }
     notificationService_ = new vc::suno::SunoNotificationService(s_client, this);
-    connect(notificationService_, &vc::suno::SunoNotificationService::notificationsChanged,
-            this, &SunoBridge::onNotificationsChanged);
-    connect(notificationService_, &vc::suno::SunoNotificationService::unreadCountChanged,
-            this, &SunoBridge::onUnreadCountChanged);
-    connect(notificationService_, &vc::suno::SunoNotificationService::loadingChanged,
-            this, &SunoBridge::onNotificationsLoadingChanged);
-    connect(notificationService_, &vc::suno::SunoNotificationService::errorChanged,
-            this, &SunoBridge::onNotificationsErrorChanged);
+    connect(notificationService_, &vc::suno::SunoNotificationService::notificationsChanged, this,
+            &SunoBridge::onNotificationsChanged);
+    connect(notificationService_, &vc::suno::SunoNotificationService::unreadCountChanged, this,
+            &SunoBridge::onUnreadCountChanged);
+    connect(notificationService_, &vc::suno::SunoNotificationService::loadingChanged, this,
+            &SunoBridge::onNotificationsLoadingChanged);
+    connect(notificationService_, &vc::suno::SunoNotificationService::errorChanged, this,
+            &SunoBridge::onNotificationsErrorChanged);
 }
 
 void SunoBridge::destroyNotificationService() {
@@ -1404,8 +1401,7 @@ using vc::suno::PlaylistUpdateType;
 /// `playlistMutationSettled` honest: a playlist id must never arrive on a
 /// signal a card delegate is listening to, or a clip card would update from a
 /// playlist write.
-[[nodiscard]] bool isClipScoped(const MutationVerb verb) noexcept
-{
+[[nodiscard]] bool isClipScoped(const MutationVerb verb) noexcept {
     switch (verb) {
         case MutationVerb::SetVisibility:
         case MutationVerb::ToggleRemixPermission:
@@ -1428,9 +1424,7 @@ using vc::suno::PlaylistUpdateType;
 /// this map is evidence-backed — and an unrecognised string returns nullopt
 /// rather than defaulting to one of them, because a silent `add` where the user
 /// asked for something else is the worst available outcome.
-[[nodiscard]] std::optional<PlaylistUpdateType> playlistUpdateTypeFrom(
-        const QString& text)
-{
+[[nodiscard]] std::optional<PlaylistUpdateType> playlistUpdateTypeFrom(const QString& text) {
     if (text == QLatin1String("add")) {
         return PlaylistUpdateType::Add;
     }
@@ -1448,8 +1442,7 @@ using vc::suno::PlaylistUpdateType;
 
 } // namespace
 
-vc::suno::SunoLibraryMutations* SunoBridge::ensureMutations()
-{
+vc::suno::SunoLibraryMutations* SunoBridge::ensureMutations() {
     if (mutationService_ && s_client) {
         return mutationService_;
     }
@@ -1457,8 +1450,7 @@ vc::suno::SunoLibraryMutations* SunoBridge::ensureMutations()
     return mutationService_;
 }
 
-void SunoBridge::ensureMutationService()
-{
+void SunoBridge::ensureMutationService() {
     if (mutationService_ || !s_client) {
         return;
     }
@@ -1470,17 +1462,16 @@ void SunoBridge::ensureMutationService()
     if (s_controller && s_controller->accountManager()) {
         mutationService_->setGateResolver(&s_controller->accountManager()->gates());
     }
-    connect(mutationService_, &vc::suno::SunoLibraryMutations::availabilityChanged,
-            this, &SunoBridge::onMutationsAvailabilityChanged);
-    connect(mutationService_, &vc::suno::SunoLibraryMutations::mutationSettled,
-            this, [this](const MutationResult& result) {
+    connect(mutationService_, &vc::suno::SunoLibraryMutations::availabilityChanged, this,
+            &SunoBridge::onMutationsAvailabilityChanged);
+    connect(mutationService_, &vc::suno::SunoLibraryMutations::mutationSettled, this,
+            [this](const MutationResult& result) {
                 onMutationSettled(static_cast<int>(result.verb), result.subjectId,
                                   static_cast<int>(result.outcome), result.reason);
             });
 }
 
-void SunoBridge::destroyMutationService()
-{
+void SunoBridge::destroyMutationService() {
     if (mutationService_) {
         disconnect(mutationService_, nullptr, this, nullptr);
         delete mutationService_;
@@ -1490,8 +1481,7 @@ void SunoBridge::destroyMutationService()
     }
 }
 
-void SunoBridge::onMutationsAvailabilityChanged()
-{
+void SunoBridge::onMutationsAvailabilityChanged() {
     emit mutationsAvailableChanged();
     // The resolver's verdict moved, so `mutationsBusy` did not necessarily move
     // with it; this is only about the availability pair, and the busy signal is
@@ -1500,8 +1490,7 @@ void SunoBridge::onMutationsAvailabilityChanged()
 }
 
 void SunoBridge::onMutationSettled(const int verb, const QString& subjectId, const int outcome,
-                                   const QString& reason)
-{
+                                   const QString& reason) {
     const auto verbEnum = static_cast<MutationVerb>(verb);
     const auto outcomeEnum = static_cast<MutationOutcome>(outcome);
     const QString verbName = QString::fromLatin1(vc::suno::toString(verbEnum));
@@ -1527,24 +1516,18 @@ void SunoBridge::onMutationSettled(const int verb, const QString& subjectId, con
     emit mutationsBusyChanged();
 }
 
-bool SunoBridge::mutationsAvailable() const
-{
+bool SunoBridge::mutationsAvailable() const {
     return mutationService_ && mutationService_->isAvailable();
 }
 
-QString SunoBridge::mutationsUnavailableReason() const
-{
+QString SunoBridge::mutationsUnavailableReason() const {
     if (!mutationService_) {
-        return QStringLiteral(
-                "Library changes need a signed-in Suno account.");
+        return QStringLiteral("Library changes need a signed-in Suno account.");
     }
     return mutationService_->unavailableReason();
 }
 
-bool SunoBridge::mutationsBusy() const
-{
-    return mutationService_ && mutationService_->isBusy();
-}
+bool SunoBridge::mutationsBusy() const { return mutationService_ && mutationService_->isBusy(); }
 
 // ── The invokables ───────────────────────────────────────────────────────────
 // Each is `if (auto* m = ensureMutations()) m->…`, so a signed-out app gets the
@@ -1554,62 +1537,68 @@ bool SunoBridge::mutationsBusy() const
 // information the caller lacks — and discarding it here is safe precisely
 // because the settlement path is unconditional.
 
-void SunoBridge::setClipVisibility(const QString& clipId, const bool isPublic)
-{
+void SunoBridge::setClipVisibility(const QString& clipId, const bool isPublic) {
     if (auto* m = ensureMutations()) {
         (void)m->setClipVisibility(clipId, isPublic);
     }
 }
 
-void SunoBridge::setClipRemixPermission(const QString& clipId, const bool canRemix)
-{
+void SunoBridge::setClipRemixPermission(const QString& clipId, const bool canRemix) {
     if (auto* m = ensureMutations()) {
         (void)m->setClipRemixPermission(clipId, canRemix);
     }
 }
 
-void SunoBridge::setClipShowRemixes(const QString& clipId, const bool showRemix)
-{
+void SunoBridge::setClipShowRemixes(const QString& clipId, const bool showRemix) {
     if (auto* m = ensureMutations()) {
         (void)m->setClipShowRemixes(clipId, showRemix);
     }
 }
 
-void SunoBridge::setClipFeedback(const QString& clipId, const QString& reason)
-{
+void SunoBridge::setClipFeedback(const QString& clipId, const QString& reason) {
     if (auto* m = ensureMutations()) {
         (void)m->setClipFeedbackState(clipId, reason);
     }
 }
 
-void SunoBridge::shareClip(const QString& clipId, const QString& contentType)
-{
+void SunoBridge::shareClip(const QString& clipId, const QString& contentType) {
     if (auto* m = ensureMutations()) {
         (void)m->requestShareLink(clipId, contentType);
     }
 }
 
 void SunoBridge::setPlaylistMetadata(const QString& playlistId, const QString& name,
-                                     const QString& description)
-{
+                                     const QString& description) {
     if (auto* m = ensureMutations()) {
         (void)m->setPlaylistMetadata(playlistId, name, description);
     }
 }
 
 void SunoBridge::updatePlaylistClips(const QString& playlistId, const QString& updateType,
-                                     const QVariantMap& metadata)
-{
-    auto* m = ensureMutations();
-    if (!m) {
-        return;
-    }
-    // An unrecognised updateType is refused by the service, which is where the
-    // captured member list lives. Refusing here instead would duplicate that
-    // list in a second file, and the two would drift.
+                                     const QVariantMap& metadata) {
+    // The member list already lives in this file: `playlistUpdateTypeFrom` is
+    // the string-side mirror of the captured enum in SunoLibraryMutations.hpp,
+    // so refusing here creates no second owner to drift. And the refusal can
+    // ONLY happen here: the service takes the enum, so a string that fails to
+    // map could be sent only by first being mapped onto some member — which is
+    // the guess. The previous fallthrough sent `Add` with empty metadata, a
+    // real mutation for a request the caller never made.
     const auto type = playlistUpdateTypeFrom(updateType);
     if (!type) {
-        (void)m->updatePlaylistClips(playlistId, PlaylistUpdateType::Add, {});
+        // Through the single emit path, so a bridge-local refusal has exactly
+        // the shape of a service-side one: `playlistMutationSettled`, outcome
+        // `refused`, reason also shown in `errorMessage`. Before the service,
+        // because a bad argument is bad regardless of session state. The
+        // offending string is caller text and is deliberately not echoed.
+        onMutationSettled(static_cast<int>(MutationVerb::PlaylistUpdateClips), playlistId,
+                          static_cast<int>(MutationOutcome::Refused),
+                          QStringLiteral("That kind of playlist change is not one of "
+                                         "add, remove, remove_by_id or reorder, so "
+                                         "nothing was sent."));
+        return;
+    }
+    auto* m = ensureMutations();
+    if (!m) {
         return;
     }
     // QVariantMap -> QJsonObject, forwarded verbatim: nothing inside is named,
@@ -1622,23 +1611,19 @@ void SunoBridge::updatePlaylistClips(const QString& playlistId, const QString& u
     (void)m->updatePlaylistClips(playlistId, *type, json);
 }
 
-void SunoBridge::addClipsToPlaylist(const QString& playlistId, const QStringList& clipIds)
-{
+void SunoBridge::addClipsToPlaylist(const QString& playlistId, const QStringList& clipIds) {
     if (auto* m = ensureMutations()) {
         (void)m->addClipsToPlaylist(playlistId, clipIds);
     }
 }
 
-void SunoBridge::removeClipsFromPlaylist(const QString& playlistId, const QStringList& clipIds)
-{
+void SunoBridge::removeClipsFromPlaylist(const QString& playlistId, const QStringList& clipIds) {
     if (auto* m = ensureMutations()) {
         (void)m->removeClipsFromPlaylist(playlistId, clipIds);
     }
 }
 
-void SunoBridge::reorderPlaylistTracks(const QString& playlistId,
-                                       const QVariantList& positions)
-{
+void SunoBridge::reorderPlaylistTracks(const QString& playlistId, const QVariantList& positions) {
     auto* m = ensureMutations();
     if (!m) {
         return;
@@ -1652,8 +1637,7 @@ void SunoBridge::reorderPlaylistTracks(const QString& playlistId,
     (void)m->reorderPlaylistTracks(playlistId, json);
 }
 
-void SunoBridge::setPlaylistCoverImage(const QString& playlistId, const QString& imageId)
-{
+void SunoBridge::setPlaylistCoverImage(const QString& playlistId, const QString& imageId) {
     if (auto* m = ensureMutations()) {
         (void)m->setPlaylistCoverImage(playlistId, imageId);
     }

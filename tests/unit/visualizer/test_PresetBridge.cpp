@@ -142,11 +142,18 @@ void TestPresetBridge::favoritingThroughAFilteredRowTogglesThatRow() {
     QCOMPARE(rows.size(), qsizetype(1));
     bridge_->toggleFavorite(rows.first().toMap().value(QStringLiteral("index")).toInt());
 
-    // The pinned generation is the same storage the toggle mutated in place,
-    // so this observes the real effect: the victim gained a star, slot 0 did
-    // not.
-    QVERIFY((*generation)[2].favorite);
+    // The toggle publishes a copy-on-write generation, so the pinned snapshot
+    // keeps the OLD storage and the OLD values — through it the victim is
+    // still unstarred…
+    QVERIFY(!(*generation)[2].favorite);
     QVERIFY(!(*generation)[0].favorite);
+    // …while the live generation the panel re-reads carries the star on the
+    // victim — and only the victim, so the row the click meant is the row
+    // that changed.
+    const PresetManager::Snapshot live = manager_->allPresets();
+    QVERIFY((*live)[2].favorite);
+    QVERIFY(!(*live)[0].favorite);
+    QCOMPARE(QString::fromStdString((*live)[2].name), QString::fromStdString(victim));
 }
 
 void TestPresetBridge::ratingThroughAFilteredRowWritesThatRow() {

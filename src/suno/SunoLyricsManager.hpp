@@ -25,6 +25,7 @@
 
 #include <QObject>
 #include <chrono>
+#include <cstddef>
 #include <deque>
 #include <optional>
 #include <string>
@@ -103,6 +104,12 @@ signals:
 private:
     SunoClient* client_;
     SunoDatabase& db_;
+
+    /// Retained per the vc::Signal contract (Signal.hpp): the signal keeps no
+    /// lifetime link to its subscribers, so these ids are disconnected in the
+    /// destructor.
+    std::size_t alignedLyricsFetchedConnectionId_{0};
+    std::size_t lyricsFetchFailedConnectionId_{0};
 
     LyricsFetchQueue lyricsQueue_;
     int activeLyricsRequests_{0};

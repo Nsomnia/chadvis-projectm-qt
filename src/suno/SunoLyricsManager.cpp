@@ -7,13 +7,15 @@ namespace vc::suno {
 
 SunoLyricsManager::SunoLyricsManager(SunoClient* client, SunoDatabase& db, QObject* parent)
     : QObject(parent), client_(client), db_(db) {
-    client_->alignedLyricsFetched.connect(
+    // The vc::Signal ids are retained as members and disconnected in the
+    // destructor; the signal itself tracks no lifetimes.
+    alignedLyricsFetchedConnectionId_ = client_->alignedLyricsFetched.connect(
             [this](const auto& id, const auto& json) { onAlignedLyricsFetched(id, json); });
     // The concurrency counter decrements only on lyrics-scoped outcomes. The
     // global errorOccurred broadcast also fires for unrelated failures —
     // explore, notifications, uploads — and riding it let any error free a
     // lyrics slot, overshooting the cap.
-    client_->lyricsFetchFailed.connect(
+    lyricsFetchFailedConnectionId_ = client_->lyricsFetchFailed.connect(
             [this](const auto& id, const auto& msg) { onLyricsFetchFailed(id, msg); });
 
     // A dead session stops the lyrics queue through the real channel.
@@ -29,7 +31,17 @@ SunoLyricsManager::SunoLyricsManager(SunoClient* client, SunoDatabase& db, QObje
         activeLyricsRequests_ = 0;
     });
 }
-SunoLyricsManager::~SunoLyricsManager() = default;
+SunoLyricsManager::~SunoLyricsManager() {
+    // Same contract as SunoLibraryManager: every construction site declares
+    // the SunoClient before constructing this class (SunoController.cpp:78;
+    // no test constructs this class at all), so reverse-order destruction
+    // runs this destructor while the Signals are still alive. Disconnecting
+    // here is what stops a client that outlives this manager from calling a
+    // freed `this` on the next emit. The Qt needsReauth connect is severed
+    // automatically by the QObject context object.
+    client_->alignedLyricsFetched.disconnect(alignedLyricsFetchedConnectionId_);
+    client_->lyricsFetchFailed.disconnect(lyricsFetchFailedConnectionId_);
+}
 
 void SunoLyricsManager::queueLyricsFetch(const std::string& clipId) {
     // Duplicates and over-cap arrivals are refused here — the queue this

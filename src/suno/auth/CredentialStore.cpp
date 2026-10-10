@@ -280,14 +280,28 @@ public:
                                              .arg(file.errorString())
                                              .toStdString());
         }
+        // 0600 BEFORE the secret is written and BEFORE commit(): QSaveFile's
+        // commit is an atomic rename, and a rename carries the temp file's
+        // inode - and with it the permission bits - into the final name. The
+        // old ordering (chmod after commit) left the committed secret
+        // world-readable for the whole rename-to-chmod window under umask
+        // 022, and the temp file was 0644 the entire time it held the secret.
+        // Failing to lock the temp file down is fatal, not tolerated: a
+        // plaintext backend that cannot promise owner-only must refuse to
+        // store rather than write at 0644. QSaveFile's destructor discards the
+        // temp file on this early return.
+        if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
+            return Result<void>::err(
+                    QStringLiteral("Cannot restrict secret file permissions before writing: %1")
+                            .arg(file.errorString())
+                            .toStdString());
+        }
         file.write(secret.toUtf8());
         if (!file.commit()) {
             return Result<void>::err(QStringLiteral("Failed to commit secret file: %1")
                                              .arg(file.errorString())
                                              .toStdString());
         }
-        // 0600: owner read/write only (no-op where permissions unsupported).
-        QFile::setPermissions(*path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         return Result<void>::ok();
     }
 

@@ -31,8 +31,8 @@
  * table at all.
  */
 #include "ConfigParsers.hpp"
-#include <algorithm>
 #include <QDir>
+#include <algorithm>
 #include "Logger.hpp"
 #include "util/FileUtils.hpp"
 
@@ -43,17 +43,13 @@ template <typename T>
 T get(const toml::table& tbl, std::string_view key, T defaultVal) {
     if (auto node = tbl[key]) {
         if constexpr (std::is_same_v<T, std::string>) {
-            if (auto val = node.value<std::string>())
-                return *val;
+            if (auto val = node.value<std::string>()) return *val;
         } else if constexpr (std::is_same_v<T, bool>) {
-            if (auto val = node.value<bool>())
-                return *val;
+            if (auto val = node.value<bool>()) return *val;
         } else if constexpr (std::is_same_v<T, f32>) {
-            if (auto val = node.value<double>())
-                return static_cast<f32>(*val);
+            if (auto val = node.value<double>()) return static_cast<f32>(*val);
         } else if constexpr (std::is_integral_v<T>) {
-            if (auto val = node.value<i64>())
-                return static_cast<T>(*val);
+            if (auto val = node.value<i64>()) return static_cast<T>(*val);
         }
     }
     return defaultVal;
@@ -87,35 +83,35 @@ fs::path expandPath(std::string_view path) {
 // TYPE tags: STR BOOL U32 I32 F32 PATH COLOR
 // ─────────────────────────────────────────────────────────────────────
 
-#define CHADVIS_AUDIO_FIELDS(X)          \
-    X("device",      device,     STR)    \
-    X("buffer_size", bufferSize, U32)    \
+#define CHADVIS_AUDIO_FIELDS(X)                                                                    \
+    X("device", device, STR)                                                                       \
+    X("buffer_size", bufferSize, U32)                                                              \
     X("sample_rate", sampleRate, U32)
 
 // preset_path and texture_paths handled manually (see parseVisualizer).
-#define CHADVIS_VISUALIZER_FIELDS(X)              \
-    X("width", width, U32)                        \
-    X("height", height, U32)                      \
-    X("fps", fps, U32)                            \
-    X("beat_sensitivity", beatSensitivity, F32)   \
-    X("preset_duration", presetDuration, U32)     \
-    X("smooth_preset_duration", smoothPresetDuration, U32) \
-    X("hard_cut_sensitivity", hardCutSensitivity, F32)     \
-    X("aspect_correction", aspectCorrection, BOOL)         \
-    X("shuffle_presets", shufflePresets, BOOL)            \
-    X("force_preset", forcePreset, STR)                   \
-    X("use_default_preset", useDefaultPreset, BOOL)       \
-    X("mesh_x", meshX, U32)                               \
+#define CHADVIS_VISUALIZER_FIELDS(X)                                                               \
+    X("width", width, U32)                                                                         \
+    X("height", height, U32)                                                                       \
+    X("fps", fps, U32)                                                                             \
+    X("beat_sensitivity", beatSensitivity, F32)                                                    \
+    X("preset_duration", presetDuration, U32)                                                      \
+    X("smooth_preset_duration", smoothPresetDuration, U32)                                         \
+    X("hard_cut_sensitivity", hardCutSensitivity, F32)                                             \
+    X("aspect_correction", aspectCorrection, BOOL)                                                 \
+    X("shuffle_presets", shufflePresets, BOOL)                                                     \
+    X("force_preset", forcePreset, STR)                                                            \
+    X("use_default_preset", useDefaultPreset, BOOL)                                                \
+    X("mesh_x", meshX, U32)                                                                        \
     X("mesh_y", meshY, U32)
 
 // output_directory handled manually (see parseRecording).
-#define CHADVIS_RECORDING_FIELDS(X)             \
-    X("enabled", enabled, BOOL)                 \
-    X("auto_record", autoRecord, BOOL)          \
-    X("record_entire_song", recordEntireSong, BOOL)      \
-    X("restart_track_on_record", restartTrackOnRecord, BOOL) \
-    X("stop_at_track_end", stopAtTrackEnd, BOOL)         \
-    X("default_filename", defaultFilename, STR)          \
+#define CHADVIS_RECORDING_FIELDS(X)                                                                \
+    X("enabled", enabled, BOOL)                                                                    \
+    X("auto_record", autoRecord, BOOL)                                                             \
+    X("record_entire_song", recordEntireSong, BOOL)                                                \
+    X("restart_track_on_record", restartTrackOnRecord, BOOL)                                       \
+    X("stop_at_track_end", stopAtTrackEnd, BOOL)                                                   \
+    X("default_filename", defaultFilename, STR)                                                    \
     X("container", container, STR)
 
 // gop_size and b_frames were absent from this table for the life of the project,
@@ -144,43 +140,43 @@ fs::path expandPath(std::string_view path) {
     X("sample_rate", sampleRate, U32)                                                              \
     X("channels", channels, U32)
 
-#define CHADVIS_UI_FIELDS(X)                          \
-    X("theme", theme, STR)                            \
-    X("show_playlist", showPlaylist, BOOL)            \
-    X("show_presets", showPresets, BOOL)              \
-    X("show_debug_panel", showDebugPanel, BOOL)       \
-    X("visualizer_background", backgroundColor, COLOR) \
-    X("accent_color", accentColor, COLOR)             \
-    X("expanded_panel", expandedPanel, STR)           \
-    X("sidebar_width", sidebarWidth, I32)             \
+#define CHADVIS_UI_FIELDS(X)                                                                       \
+    X("theme", theme, STR)                                                                         \
+    X("show_playlist", showPlaylist, BOOL)                                                         \
+    X("show_presets", showPresets, BOOL)                                                           \
+    X("show_debug_panel", showDebugPanel, BOOL)                                                    \
+    X("visualizer_background", backgroundColor, COLOR)                                             \
+    X("accent_color", accentColor, COLOR)                                                          \
+    X("expanded_panel", expandedPanel, STR)                                                        \
+    X("sidebar_width", sidebarWidth, I32)                                                          \
     X("drawer_open", drawerOpen, BOOL)
 
-#define CHADVIS_KEYBOARD_FIELDS(X)   \
-    X("play_pause", playPause, STR)  \
-    X("next_track", nextTrack, STR)  \
-    X("prev_track", prevTrack, STR)  \
-    X("toggle_record", toggleRecord, STR)       \
-    X("toggle_fullscreen", toggleFullscreen, STR) \
-    X("next_preset", nextPreset, STR)           \
+#define CHADVIS_KEYBOARD_FIELDS(X)                                                                 \
+    X("play_pause", playPause, STR)                                                                \
+    X("next_track", nextTrack, STR)                                                                \
+    X("prev_track", prevTrack, STR)                                                                \
+    X("toggle_record", toggleRecord, STR)                                                          \
+    X("toggle_fullscreen", toggleFullscreen, STR)                                                  \
+    X("next_preset", nextPreset, STR)                                                              \
     X("prev_preset", prevPreset, STR)
 
-#define CHADVIS_KARAOKE_FIELDS(X)                     \
-    X("enabled", enabled, BOOL)                       \
-    X("font_family", fontFamily, STR)                 \
-    X("font_size", fontSize, U32)                     \
-    X("bold", bold, BOOL)                             \
-    X("y_position", yPosition, F32)                   \
-    X("active_color", activeColor, COLOR)             \
-    X("inactive_color", inactiveColor, COLOR)         \
+#define CHADVIS_KARAOKE_FIELDS(X)                                                                  \
+    X("enabled", enabled, BOOL)                                                                    \
+    X("font_family", fontFamily, STR)                                                              \
+    X("font_size", fontSize, U32)                                                                  \
+    X("bold", bold, BOOL)                                                                          \
+    X("y_position", yPosition, F32)                                                                \
+    X("active_color", activeColor, COLOR)                                                          \
+    X("inactive_color", inactiveColor, COLOR)                                                      \
     X("shadow_color", shadowColor, COLOR)
 
 // download_path and download_format handled manually (see parseSuno).
-#define CHADVIS_SUNO_FIELDS(X)                    \
-    X("device_id", deviceId, STR)                 \
-    X("auto_download", autoDownload, BOOL)        \
-    X("save_lyrics", saveLyrics, BOOL)            \
-    X("embed_metadata", embedMetadata, BOOL)      \
-    X("debug_lyrics", debugLyrics, BOOL)          \
+#define CHADVIS_SUNO_FIELDS(X)                                                                     \
+    X("device_id", deviceId, STR)                                                                  \
+    X("auto_download", autoDownload, BOOL)                                                         \
+    X("save_lyrics", saveLyrics, BOOL)                                                             \
+    X("embed_metadata", embedMetadata, BOOL)                                                       \
+    X("debug_lyrics", debugLyrics, BOOL)                                                           \
     X("debug_lyrics_file", debugLyricsFile, PATH)
 
 // Legacy Clerk credential -- READ ONLY, and deliberately not part of
@@ -197,63 +193,41 @@ fs::path expandPath(std::string_view path) {
 // CredentialStore. Because serialize rebuilds the entire file, the first save
 // after this fix removes them from disk; parseSuno logs a warning when it sees
 // one so that is never silent.
-#define CHADVIS_SUNO_LEGACY_SECRET_FIELDS(X) \
-    X("token", token, STR)                    \
+#define CHADVIS_SUNO_LEGACY_SECRET_FIELDS(X)                                                       \
+    X("token", token, STR)                                                                         \
     X("cookie", cookie, STR)
 
 // ── Parse expansion ──────────────────────────────────────────────────
 #define VC_PARSE_FIELD(key, member, TYPE) VC_PARSE_##TYPE(key, member)
-#define VC_PARSE_STR(key, member)   obj.member = get(*t, key, def.member);
-#define VC_PARSE_BOOL(key, member)  obj.member = get(*t, key, def.member);
-#define VC_PARSE_U32(key, member)   obj.member = get(*t, key, def.member);
-#define VC_PARSE_I32(key, member)   obj.member = get(*t, key, def.member);
-#define VC_PARSE_F32(key, member)   obj.member = get(*t, key, def.member);
-#define VC_PARSE_PATH(key, member)  \
-    obj.member = expandPath(get(*t, key, def.member.string()));
-#define VC_PARSE_COLOR(key, member) \
-    obj.member = Color::fromHex(get(*t, key, def.member.toHex()));
+#define VC_PARSE_STR(key, member) obj.member = get(*t, key, def.member);
+#define VC_PARSE_BOOL(key, member) obj.member = get(*t, key, def.member);
+#define VC_PARSE_U32(key, member) obj.member = get(*t, key, def.member);
+#define VC_PARSE_I32(key, member) obj.member = get(*t, key, def.member);
+#define VC_PARSE_F32(key, member) obj.member = get(*t, key, def.member);
+#define VC_PARSE_PATH(key, member) obj.member = expandPath(get(*t, key, def.member.string()));
+#define VC_PARSE_COLOR(key, member) obj.member = Color::fromHex(get(*t, key, def.member.toHex()));
 
 // ── Serialize expansion ──────────────────────────────────────────────
 #define VC_SER_FIELD(key, member, TYPE) VC_SER_##TYPE(key, member)
-#define VC_SER_STR(key, member)   out.insert(key, obj.member);
-#define VC_SER_BOOL(key, member)  out.insert(key, obj.member);
-#define VC_SER_U32(key, member)   out.insert(key, (i64)obj.member);
-#define VC_SER_I32(key, member)   out.insert(key, (i64)obj.member);
-#define VC_SER_F32(key, member)   out.insert(key, (double)obj.member);
-#define VC_SER_PATH(key, member)  out.insert(key, obj.member.string());
+#define VC_SER_STR(key, member) out.insert(key, obj.member);
+#define VC_SER_BOOL(key, member) out.insert(key, obj.member);
+#define VC_SER_U32(key, member) out.insert(key, (i64)obj.member);
+#define VC_SER_I32(key, member) out.insert(key, (i64)obj.member);
+#define VC_SER_F32(key, member) out.insert(key, (double)obj.member);
+#define VC_SER_PATH(key, member) out.insert(key, obj.member.string());
 #define VC_SER_COLOR(key, member) out.insert(key, obj.member.toHex());
 
 } // namespace
 
 void ConfigParsers::parseAudio(const toml::table& tbl, AudioConfig& cfg) {
     auto* t = tbl["audio"].as_table();
-    if (!t)
-        return;
+    if (!t) return;
     const AudioConfig def{};
     auto& obj = cfg;
     CHADVIS_AUDIO_FIELDS(VC_PARSE_FIELD)
 }
 
-void ConfigParsers::parseVisualizer(const toml::table& tbl,
-                                    VisualizerConfig& cfg) {
-    auto* t = tbl["visualizer"].as_table();
-
-    // preset_path intentionally keeps a runtime fallback instead of the empty
-    // struct default. An absent key or an explicit empty string ('' in TOML)
-    // both mean "auto-detect the system presets dir" via FileUtils; only a
-    // non-empty configured path is used literally.
-    const std::string rawPresetPath =
-            t ? get(*t, "preset_path", std::string()) : std::string();
-    cfg.presetPath =
-            rawPresetPath.empty() ? file::presetsDir() : expandPath(rawPresetPath);
-
-    if (!t)
-        return;
-
-    const VisualizerConfig def{};
-    auto& obj = cfg;
-    CHADVIS_VISUALIZER_FIELDS(VC_PARSE_FIELD)
-
+void ConfigParsers::clampVisualizer(VisualizerConfig& cfg) {
     cfg.width = std::clamp(cfg.width, 160u, 7680u);
     cfg.height = std::clamp(cfg.height, 120u, 4320u);
     cfg.fps = std::clamp(cfg.fps, 10u, 240u);
@@ -262,21 +236,53 @@ void ConfigParsers::parseVisualizer(const toml::table& tbl,
     cfg.hardCutSensitivity = std::clamp(cfg.hardCutSensitivity, 0.1f, 10.0f);
     cfg.meshX = std::clamp(cfg.meshX, 8u, 512u);
     cfg.meshY = std::clamp(cfg.meshY, 8u, 512u);
+}
+
+void ConfigParsers::parseVisualizer(const toml::table& tbl, VisualizerConfig& cfg) {
+    auto* t = tbl["visualizer"].as_table();
+
+    // preset_path intentionally keeps a runtime fallback instead of the empty
+    // struct default. An absent key or an explicit empty string ('' in TOML)
+    // both mean "auto-detect the system presets dir" via FileUtils; only a
+    // non-empty configured path is used literally.
+    const std::string rawPresetPath = t ? get(*t, "preset_path", std::string()) : std::string();
+    cfg.presetPath = rawPresetPath.empty() ? file::presetsDir() : expandPath(rawPresetPath);
+
+    if (!t) return;
+
+    const VisualizerConfig def{};
+    auto& obj = cfg;
+    CHADVIS_VISUALIZER_FIELDS(VC_PARSE_FIELD)
+
+    clampVisualizer(cfg);
 
     if (auto paths = (*t)["texture_paths"].as_array()) {
         cfg.texturePaths.clear();
         for (const auto& p : *paths) {
-            if (auto s = p.value<std::string>())
-                cfg.texturePaths.push_back(expandPath(*s));
+            if (auto s = p.value<std::string>()) cfg.texturePaths.push_back(expandPath(*s));
         }
     }
 }
 
-void ConfigParsers::parseRecording(const toml::table& tbl,
-                                   RecordingConfig& cfg) {
+void ConfigParsers::clampVideoEncoder(VideoEncoderConfig& cfg) {
+    cfg.crf = std::clamp(cfg.crf, 0u, 51u);
+    cfg.width = (std::clamp(cfg.width, 160u, 7680u) + 1) & ~1u;
+    cfg.height = (std::clamp(cfg.height, 120u, 4320u) + 1) & ~1u;
+    cfg.fps = std::clamp(cfg.fps, 10u, 120u);
+    // 0 means "let the encoder choose" for gop_size -- VideoRecorderFFmpeg
+    // substitutes fps * 2 -- so 0 must survive untouched and only an absurd
+    // value is pulled back to auto. b_frames is bounded absolutely rather
+    // than against gop_size: gop_size 0 means "auto", and clamping against it
+    // would silently disable B-frames for every user who left the GOP alone,
+    // which is a behaviour change masquerading as validation. 16 is generous
+    // (x264's own default is 3) and beyond it no decoder gains anything.
+    cfg.gopSize = cfg.gopSize > 600u ? 0u : cfg.gopSize;
+    cfg.bFrames = std::min(cfg.bFrames, 16u);
+}
+
+void ConfigParsers::parseRecording(const toml::table& tbl, RecordingConfig& cfg) {
     auto* t = tbl["recording"].as_table();
-    if (!t)
-        return;
+    if (!t) return;
 
     {
         const RecordingConfig def{};
@@ -287,8 +293,7 @@ void ConfigParsers::parseRecording(const toml::table& tbl,
     // output_directory intentionally keeps its legacy fallback ("~/Videos/
     // ChadVis"); the struct default is empty because loadDefault() resolves
     // a real path at first-run time.
-    cfg.outputDirectory =
-            expandPath(get(*t, "output_directory", std::string("~/Videos/ChadVis")));
+    cfg.outputDirectory = expandPath(get(*t, "output_directory", std::string("~/Videos/ChadVis")));
 
     if (auto* vt = (*t)["video"].as_table()) {
         // Defaults come straight from ConfigData.hpp: crf 18, "medium",
@@ -298,19 +303,7 @@ void ConfigParsers::parseRecording(const toml::table& tbl,
         auto* t = vt;
         CHADVIS_VIDEO_FIELDS(VC_PARSE_FIELD)
 
-        cfg.video.crf = std::clamp(cfg.video.crf, 0u, 51u);
-        cfg.video.width = (std::clamp(cfg.video.width, 160u, 7680u) + 1) & ~1u;
-        cfg.video.height = (std::clamp(cfg.video.height, 120u, 4320u) + 1) & ~1u;
-        cfg.video.fps = std::clamp(cfg.video.fps, 10u, 120u);
-        // 0 means "let the encoder choose" for gop_size -- VideoRecorderFFmpeg
-        // substitutes fps * 2 -- so 0 must survive untouched and only an absurd
-        // value is pulled back to auto. b_frames is bounded absolutely rather
-        // than against gop_size: gop_size 0 means "auto", and clamping against it
-        // would silently disable B-frames for every user who left the GOP alone,
-        // which is a behaviour change masquerading as validation. 16 is generous
-        // (x264's own default is 3) and beyond it no decoder gains anything.
-        cfg.video.gopSize = cfg.video.gopSize > 600u ? 0u : cfg.video.gopSize;
-        cfg.video.bFrames = std::min(cfg.video.bFrames, 16u);
+        clampVideoEncoder(cfg.video);
     }
 
     if (auto* at = (*t)["audio"].as_table()) {
@@ -340,8 +333,7 @@ void ConfigParsers::parseRecording(const toml::table& tbl,
 void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
     cfg.elements.clear();
     auto* overlay = tbl["overlay"].as_table();
-    if (!overlay)
-        return;
+    if (!overlay) return;
 
     const OverlayConfig def{};
     cfg.enabled = get(*overlay, "enabled", def.enabled);
@@ -355,13 +347,10 @@ void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
                 if (auto pos = (*elemTbl)["position"].as_table())
                     element.position = parseVec2(*pos);
                 element.fontSize = get(*elemTbl, "font_size", 32u);
-                element.color = Color::fromHex(
-                        get(*elemTbl, "color", std::string("#FFFFFF")));
+                element.color = Color::fromHex(get(*elemTbl, "color", std::string("#FFFFFF")));
                 element.opacity = get(*elemTbl, "opacity", 1.0f);
-                element.animation =
-                        get(*elemTbl, "animation", std::string("none"));
-                element.animationSpeed =
-                        get(*elemTbl, "animation_speed", 1.0f);
+                element.animation = get(*elemTbl, "animation", std::string("none"));
+                element.animationSpeed = get(*elemTbl, "animation_speed", 1.0f);
                 element.anchor = get(*elemTbl, "anchor", std::string("left"));
                 element.visible = get(*elemTbl, "visible", true);
                 cfg.elements.push_back(std::move(element));
@@ -372,8 +361,7 @@ void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
 
 void ConfigParsers::parseUI(const toml::table& tbl, UIConfig& cfg) {
     auto* t = tbl["ui"].as_table();
-    if (!t)
-        return;
+    if (!t) return;
     const UIConfig def{};
     auto& obj = cfg;
     CHADVIS_UI_FIELDS(VC_PARSE_FIELD)
@@ -383,8 +371,7 @@ void ConfigParsers::parseUI(const toml::table& tbl, UIConfig& cfg) {
 
 void ConfigParsers::parseKeyboard(const toml::table& tbl, KeyboardConfig& cfg) {
     auto* t = tbl["keyboard"].as_table();
-    if (!t)
-        return;
+    if (!t) return;
     const KeyboardConfig def{};
     auto& obj = cfg;
     CHADVIS_KEYBOARD_FIELDS(VC_PARSE_FIELD)
@@ -392,8 +379,7 @@ void ConfigParsers::parseKeyboard(const toml::table& tbl, KeyboardConfig& cfg) {
 
 void ConfigParsers::parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg) {
     auto* t = tbl["karaoke"].as_table();
-    if (!t)
-        return;
+    if (!t) return;
     const KaraokeConfig def{};
     auto& obj = cfg;
     CHADVIS_KARAOKE_FIELDS(VC_PARSE_FIELD)
@@ -401,8 +387,7 @@ void ConfigParsers::parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg) {
 
 void ConfigParsers::parseSuno(const toml::table& tbl, SunoConfig& cfg) {
     auto* t = tbl["suno"].as_table();
-    if (!t)
-        return;
+    if (!t) return;
 
     const SunoConfig def{};
     auto& obj = cfg;
@@ -418,24 +403,17 @@ void ConfigParsers::parseSuno(const toml::table& tbl, SunoConfig& cfg) {
     }
 
     auto pathStr = get(*t, "download_path", std::string());
-    if (!pathStr.empty())
-        cfg.downloadPath = expandPath(pathStr);
+    if (!pathStr.empty()) cfg.downloadPath = expandPath(pathStr);
 
     auto fmtStr = get(*t, "download_format", std::string("mp3"));
-    cfg.downloadFormat = (fmtStr == "wav") ? SunoDownloadFormat::WAV
-                                           : SunoDownloadFormat::MP3;
+    cfg.downloadFormat = (fmtStr == "wav") ? SunoDownloadFormat::WAV : SunoDownloadFormat::MP3;
 }
 
-toml::table ConfigParsers::serialize(
-        const AudioConfig& audio,
-        const VisualizerConfig& visualizer,
-        const RecordingConfig& recording,
-        const UIConfig& ui,
-        const KeyboardConfig& keyboard,
-        const SunoConfig& suno,
-        const KaraokeConfig& karaoke,
-        const OverlayConfig& overlay,
-        bool debug) {
+toml::table ConfigParsers::serialize(const AudioConfig& audio, const VisualizerConfig& visualizer,
+                                     const RecordingConfig& recording, const UIConfig& ui,
+                                     const KeyboardConfig& keyboard, const SunoConfig& suno,
+                                     const KaraokeConfig& karaoke, const OverlayConfig& overlay,
+                                     bool debug) {
     toml::table root;
     root.insert("general", toml::table{{"debug", debug}});
 
@@ -498,8 +476,7 @@ toml::table ConfigParsers::serialize(
         elementsArr.push_back(toml::table{
                 {"id", elem.id},
                 {"text", elem.text},
-                {"position",
-                 toml::table{{"x", elem.position.x}, {"y", elem.position.y}}},
+                {"position", toml::table{{"x", elem.position.x}, {"y", elem.position.y}}},
                 {"font_size", (i64)elem.fontSize},
                 {"color", elem.color.toHex()},
                 {"opacity", (double)elem.opacity},
@@ -508,9 +485,7 @@ toml::table ConfigParsers::serialize(
                 {"anchor", elem.anchor},
                 {"visible", elem.visible}});
     }
-    root.insert("overlay",
-                toml::table{{"enabled", overlay.enabled},
-                            {"elements", elementsArr}});
+    root.insert("overlay", toml::table{{"enabled", overlay.enabled}, {"elements", elementsArr}});
 
     {
         toml::table out;
@@ -532,8 +507,7 @@ toml::table ConfigParsers::serialize(
         CHADVIS_SUNO_FIELDS(VC_SER_FIELD)
         out.insert("download_path", suno.downloadPath.string());
         out.insert("download_format",
-                   suno.downloadFormat == SunoDownloadFormat::WAV ? "wav"
-                                                                  : "mp3");
+                   suno.downloadFormat == SunoDownloadFormat::WAV ? "wav" : "mp3");
         root.insert("suno", std::move(out));
     }
 

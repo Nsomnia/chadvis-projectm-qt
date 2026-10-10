@@ -2,17 +2,34 @@
 // Signal.hpp - Lightweight signals for non-Qt classes
 // Because sometimes you don't want QObject overhead
 
-#include <functional>
-#include <vector>
 #include <algorithm>
+#include <functional>
 #include <mutex>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace vc {
 
-template<typename... Args>
+template <typename... Args>
 class Signal {
+    /// Lifetime: a Signal knows nothing about its subscribers. `Slot` is a
+    /// plain `std::function` with no link back to the subscriber object, so a
+    /// subscriber that captures `this` and dies while the signal lives on
+    /// leaves the signal holding a callable into freed memory -- the next
+    /// emit calls it. The contract is explicit: retain the `SlotId` returned
+    /// by `connect` and pass it to `disconnect` before the subscriber is
+    /// destroyed. (Qt `connect`s on QObject classes are safe by contrast: the
+    /// context object severs them automatically.)
+    ///
+    /// Concurrency: every member is mutex-protected, so `connect`/`disconnect`
+    /// may race an `emitSignal` on another thread. An emit snapshots the
+    /// active slots under the mutex before invoking, and a `disconnect` landing
+    /// during that emit only marks the connection inactive and defers the sweep
+    /// (see `emitDepth_`), so the snapshot is never invalidated. What
+    /// `disconnect` does not buy is exclusion from a slot already running:
+    /// destruction must not race the last emit *into* a subscriber.
+
 public:
     using Slot = std::function<void(Args...)>;
     using SlotId = std::size_t;
@@ -27,19 +44,18 @@ public:
     // release-only silent-corruption path. References are judged on the
     // pointee, so `Signal<const std::vector<SunoClip>&>` is judged on the
     // vector.
-    static_assert(
-            (std::is_copy_constructible_v<std::remove_cvref_t<Args>> && ... && true),
-            "Signal payload must be copy-constructible: every subscriber but the "
-            "last receives a copy, and a runtime check for that would compile out "
-            "of Release builds");
-    
+    static_assert((std::is_copy_constructible_v<std::remove_cvref_t<Args>> && ... && true),
+                  "Signal payload must be copy-constructible: every subscriber but the "
+                  "last receives a copy, and a runtime check for that would compile out "
+                  "of Release builds");
+
 private:
     struct Connection {
         SlotId id;
         Slot callback;
         bool active{true};
     };
-    
+
     std::vector<Connection> slots_;
     SlotId nextId_{0};
     mutable std::mutex mutex_;
@@ -55,7 +71,7 @@ private:
     /// was disconnected. Cleared by that sweep, and never anywhere else, so it
     /// cannot be lost before the emit chain that set it unwinds.
     bool cleanupPending_{false};
-    
+
     /// Leaves the emit chain: only the emit whose decrement lands on zero owns
     /// the sweep, and a subscriber can throw, so this runs from a destructor
     /// (`EmitGuard`) where it is the only code that gets to run. A depth
@@ -80,7 +96,7 @@ private:
             cleanupPending_ = false;
         }
     }
-    
+
     /// RAII owner of one level of the emit chain. The destructor is the only
     /// thing that can run when a subscriber throws, so the decrement lives there
     /// rather than at the end of `emitSignal`.
@@ -88,26 +104,26 @@ private:
     public:
         explicit EmitGuard(Signal& owner) noexcept : owner_(&owner) {}
         ~EmitGuard() { owner_->leaveEmit(); }
-        
+
         EmitGuard(const EmitGuard&) = delete;
         EmitGuard& operator=(const EmitGuard&) = delete;
         EmitGuard(EmitGuard&&) = delete;
         EmitGuard& operator=(EmitGuard&&) = delete;
-    
+
     private:
         Signal* owner_;
     };
-    
+
 public:
     Signal() = default;
     ~Signal() = default;
-    
+
     // Non-copyable, moveable
     Signal(const Signal&) = delete;
     Signal& operator=(const Signal&) = delete;
     Signal(Signal&&) noexcept = default;
     Signal& operator=(Signal&&) noexcept = default;
-    
+
     // Connect a callback, returns ID for disconnection
     SlotId connect(Slot callback) {
         std::lock_guard lock(mutex_);
@@ -115,7 +131,7 @@ public:
         slots_.push_back({id, std::move(callback), true});
         return id;
     }
-    
+
     // Disconnect by ID
     void disconnect(SlotId id) {
         std::lock_guard lock(mutex_);
@@ -133,7 +149,7 @@ public:
             }
         }
     }
-    
+
     // Disconnect all
     void disconnectAll() {
         std::lock_guard lock(mutex_);
@@ -148,7 +164,7 @@ public:
             }
         }
     }
-    
+
     // Emit signal to all connected slots
     //
     // Perfect forwarding, deliberately. The old signature took the payload by
@@ -185,16 +201,15 @@ public:
     // Strictly copy-reducing and move-neutral in every case. Note the old code
     // was never "N copies + 1 move": the by-value parameter meant N copies and
     // N+1 moves.
-    template<typename... Ts>
+    template <typename... Ts>
     void emitSignal(Ts&&... args) {
         // The call site no longer constrains anything by itself, so constrain it
         // here -- otherwise a wrong-typed call would fail deep inside
         // `std::function`'s invoker, naming the subscriber's lambda parameter
         // instead of the signal's payload.
-        static_assert(
-                sizeof...(Ts) == sizeof...(Args)
-                        && (std::is_convertible_v<Ts, Args> && ... && true),
-                "emitSignal arguments must match the signal's declared payload");
+        static_assert(sizeof...(Ts) == sizeof...(Args) &&
+                              (std::is_convertible_v<Ts, Args> && ... && true),
+                      "emitSignal arguments must match the signal's declared payload");
 
         std::vector<Slot> slotsToCall;
         {
@@ -221,17 +236,19 @@ public:
             }
         }
     }
-    
+
     // Operator() shorthand
-    template<typename... Ts>
-    void operator()(Ts&&... args) { emitSignal(std::forward<Ts>(args)...); }
-    
+    template <typename... Ts>
+    void operator()(Ts&&... args) {
+        emitSignal(std::forward<Ts>(args)...);
+    }
+
     // Check if any slots connected
     [[nodiscard]] bool hasConnections() const {
         std::lock_guard lock(mutex_);
         return !slots_.empty();
     }
-    
+
     [[nodiscard]] std::size_t connectionCount() const {
         std::lock_guard lock(mutex_);
         return slots_.size();

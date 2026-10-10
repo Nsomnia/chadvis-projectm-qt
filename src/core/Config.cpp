@@ -22,7 +22,15 @@ Result<void> Config::loadDefault() {
 
 Result<void> Config::save(const fs::path& path) const {
     std::lock_guard lock(mutex_);
-    return ConfigLoader::save(*this, path);
+    auto result = ConfigLoader::save(*this, path);
+    // Clear the dirty flag ONLY on success. ConfigLoader::save is atomic
+    // (temp -> completeness check -> rename), so a successful call means the
+    // bytes are durable; leaving the flag set would rewrite the file on every
+    // quit regardless of change (T0023).
+    if (result.isOk()) {
+        markClean();
+    }
+    return result;
 }
 
 void Config::addOverlayElement(OverlayElementConfig elem) {

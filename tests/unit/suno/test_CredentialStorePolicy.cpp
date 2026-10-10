@@ -20,8 +20,12 @@
 
 #include <QtTest>
 
+#include <QDir>
+#include <QFile>
 #include <QString>
 #include <QTemporaryDir>
+
+#include <sys/stat.h>
 
 using namespace vc::suno::auth;
 
@@ -554,6 +558,59 @@ private slots:
         const auto loaded = store.load(QStringLiteral("suno/default"));
         QVERIFY(loaded.isOk());
         QCOMPARE(loaded.value(), secret);
+    }
+
+    void theFileBackendLandsTheSecretAtOwnerOnlyAndLeavesNoTemp() {
+        // Regression guard for the umask-022 window (T0029): store() must set
+        // 0600 on QSaveFile's temp file BEFORE writing the secret and BEFORE
+        // the atomic rename, so there is never an interval - pre- or post-commit
+        // - in which the secret file is world-readable. The pre-rename mode of
+        // the temp file is not observable from outside store(), so this asserts
+        // the externally observable contract instead: after a successful
+        // store+load round trip, the root holds exactly one file (no QSaveFile
+        // temp leaked) and its mode is exactly owner read/write.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        CredentialStore store(CredentialStore::Backend::File, dir.path());
+
+        const QString secret = QStringLiteral("__client=perm-window");
+        QVERIFY(store.store(QStringLiteral("suno/default"), secret).isOk());
+
+        // The load-verify path must be undisturbed by the ordering change.
+        const auto loaded = store.load(QStringLiteral("suno/default"));
+        QVERIFY(loaded.isOk());
+        QCOMPARE(loaded.value(), secret);
+
+        // Exactly one file, counting hidden entries so a discarded-but-leaked
+        // QSaveFile temp would fail the count.
+        const QDir root(dir.path());
+        const QStringList files = root.entryList(QDir::Files | QDir::Hidden | QDir::NoDotAndDotDot);
+        QCOMPARE(files.size(), 1);
+
+        // 0600 exactly. POSIX mode bits are fully representable here, so
+        // assert the exact mask (test_AuthModule.cpp checks the bits one by
+        // one; this pins that no OTHER bit - e.g. exec - sneaks in either).
+        // On Windows the mode is an ACL emulation that expands to group and
+        // others, so the exact mask is not asserted there.
+#ifdef Q_OS_UNIX
+        QFile committed(root.filePath(files.first()));
+        QVERIFY(committed.exists());
+        // Assert the real POSIX mode via stat(), NOT QFile::permissions(). Qt's
+        // flag translation is unreliable here: on this platform
+        // QFile::permissions() reports 0x6600 (ReadOwner|WriteOwner|
+        // WriteUser|ExeUser) for a file that stat() reports as exactly
+        // 0600. The kernel bits are the contract that matters for a secret
+        // file; the Qt enum is a lossy re-encoding of them.
+        struct stat st{};
+        const bool statted = ::stat(committed.fileName().toUtf8().constData(), &st) == 0;
+        QVERIFY2(statted, "could not stat the committed secret file");
+        const unsigned posixMode = st.st_mode & 07777u;
+        QVERIFY2(posixMode == 0600u,
+                 qPrintable(QStringLiteral("the committed secret file must be exactly 0600 "
+                                           "(owner read/write); file=%1 posix=0%2")
+                                    .arg(committed.fileName())
+                                    .arg(posixMode, 6, 8, QLatin1Char('0'))));
+#endif
     }
 };
 

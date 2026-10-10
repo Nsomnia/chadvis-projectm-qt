@@ -24,9 +24,10 @@
 #pragma once
 
 #include <QObject>
-#include <vector>
-#include <string>
+#include <cstddef>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
@@ -35,45 +36,52 @@
 namespace vc::suno {
 
 class SunoLibraryManager : public QObject {
-Q_OBJECT
+    Q_OBJECT
 
 public:
-	explicit SunoLibraryManager(SunoClient* client, SunoDatabase& db, QObject* parent = nullptr);
-	~SunoLibraryManager() override;
+    explicit SunoLibraryManager(SunoClient* client, SunoDatabase& db, QObject* parent = nullptr);
+    ~SunoLibraryManager() override;
 
-  void refreshLibrary(int page = 1);
-  /// Fetch the next feed page using the client's next_cursor (no-op when
-  /// the current page reports exhaustion or a fetch is in flight).
-  void requestNextPage();
+    void refreshLibrary(int page = 1);
+    /// Fetch the next feed page using the client's next_cursor (no-op when
+    /// the current page reports exhaustion or a fetch is in flight).
+    void requestNextPage();
     /// Set the local filter used by the bridge; it is not sent to the feed.
     void setSearchText(const QString& text);
-  void syncDatabase(bool forceAuth);
+    void syncDatabase(bool forceAuth);
 
-  // Accessors
-  const std::vector<SunoClip>& accumulatedClips() const { return accumulatedClips_; }
-  void clearAccumulatedClips() { accumulatedClips_.clear(); }
-  bool hasMorePages() const { return hasMorePages_; }
-  int currentPage() const { return pagesLoaded_; }
+    // Accessors
+    const std::vector<SunoClip>& accumulatedClips() const { return accumulatedClips_; }
+    void clearAccumulatedClips() { accumulatedClips_.clear(); }
+    bool hasMorePages() const { return hasMorePages_; }
+    int currentPage() const { return pagesLoaded_; }
 
- signals:
-   void statusMessage(const std::string& message);
-   void libraryUpdated(const std::vector<SunoClip>& clips);
-   void clipUpdated(const std::string& clipId);
-   void authenticationRequired();
-   void hasMorePagesChanged();
-   void libraryFetchFailed(const QString& reason);
+signals:
+    void statusMessage(const std::string& message);
+    void libraryUpdated(const std::vector<SunoClip>& clips);
+    void clipUpdated(const std::string& clipId);
+    void authenticationRequired();
+    void hasMorePagesChanged();
+    void libraryFetchFailed(const QString& reason);
 
 private:
     SunoClient* client_;
     SunoDatabase& db_;
-    
-  std::vector<SunoClip> accumulatedClips_;
-  bool isSyncing_ = false;
-  bool credentialRefreshPending_ = false;
-  int pendingPage_ = 1;
-  int pagesLoaded_ = 0;      ///< Number of feed pages pulled this sync session
-  bool hasMorePages_ = false;
-    QString searchText_;       ///< Local filter text; never sent to the feed
+
+    /// Retained per the vc::Signal contract (Signal.hpp): the signal keeps no
+    /// lifetime link to its subscribers, so these ids are disconnected in the
+    /// destructor -- otherwise a SunoClient outliving this manager calls a
+    /// freed `this` on its next emit.
+    std::size_t libraryFetchedConnectionId_{0};
+    std::size_t errorOccurredConnectionId_{0};
+
+    std::vector<SunoClip> accumulatedClips_;
+    bool isSyncing_ = false;
+    bool credentialRefreshPending_ = false;
+    int pendingPage_ = 1;
+    int pagesLoaded_ = 0; ///< Number of feed pages pulled this sync session
+    bool hasMorePages_ = false;
+    QString searchText_; ///< Local filter text; never sent to the feed
 
     void onCredentialsRestored();
     void onLibraryFetched(const std::vector<SunoClip>& clips);

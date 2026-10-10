@@ -38,6 +38,7 @@ int runTestLyricTiming(int argc, char** argv);
 int runTestPcmFormat(int argc, char** argv);
 int runTestLoudnessAnalysis(int argc, char** argv);
 int runTestPathSafety(int argc, char** argv);
+int runTestSunoBridge(int argc, char** argv);
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
@@ -80,6 +81,7 @@ int main(int argc, char* argv[]) {
     status |= runTestPcmFormat(argc, argv);
     status |= runTestLoudnessAnalysis(argc, argv);
     status |= runTestPathSafety(argc, argv);
+    status |= runTestSunoBridge(argc, argv);
 
     return status;
 }

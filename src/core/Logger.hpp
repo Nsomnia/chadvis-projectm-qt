@@ -6,11 +6,22 @@
  * spdlog instance. It provides macros for convenient logging with source
  * location information.
  *
+ * @section Threading
+ * - get() is safe to call from any thread, before init() has ever run (and
+ *   even if init() never runs): the process-wide logger cell is a Meyers
+ *   singleton (function-local static), and C++11+ guaranteed initialization
+ *   serializes the first construction. Early LOG_* calls land on a silent
+ *   null-sink fallback instead of racing a namespace-scope static.
+ * - get() never lazily runs init(); that lazy path was the race.
+ * - init()/shutdown() are startup/teardown calls made from the main thread
+ *   (Application::init / ~Application).
+ *
  * @section Dependencies
  * - spdlog
  *
  * @section Patterns
  * - Wrapper: Simplifies spdlog usage.
+ * - Singleton (Meyers): thread-safe first use of the logger cell.
  */
 
 #pragma once
@@ -30,22 +41,24 @@ namespace vc {
 
 class Logger {
 public:
-    static void init(std::string_view appName = "chadvis-projectm-qt",
-                     bool debug = false);
+    static void init(std::string_view appName = "chadvis-projectm-qt", bool debug = false);
     static void shutdown();
 
+    /// Process-wide logger. Safe before init(): returns a usable (null-sink)
+    /// fallback logger rather than racing a non-atomic static.
     static std::shared_ptr<spdlog::logger>& get();
 
     // Convenience method to set log level at runtime
     static void setLevel(bool debug) {
-        if (logger_) {
-            logger_->set_level(debug ? spdlog::level::debug : spdlog::level::info);
+        if (auto& logger = get(); logger) {
+            logger->set_level(debug ? spdlog::level::debug : spdlog::level::info);
         }
     }
 
     // Convenience macros below
 private:
-    static std::shared_ptr<spdlog::logger> logger_;
+    struct Holder;
+    static Holder& holder();
 };
 
 // Macros for convenient logging with source location

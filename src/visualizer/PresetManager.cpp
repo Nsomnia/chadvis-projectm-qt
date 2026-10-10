@@ -14,9 +14,7 @@ namespace vc {
 
 PresetManager::PresetManager() : presets_(std::make_shared<PresetList>()) {}
 
-PresetManager::~PresetManager() {
-    stopScanWorker();
-}
+PresetManager::~PresetManager() { stopScanWorker(); }
 
 // ─── Off-thread scanning ─────────────────────────────────────────────────────
 
@@ -69,9 +67,7 @@ bool PresetManager::scanAsync(const fs::path& directory, bool recursive) {
             scanRequested_ = true;
         } else {
             if (!scanWorker_.joinable()) {
-                scanWorker_ = JThread([this](StopToken stopToken) {
-                    scanWorkerMain(stopToken);
-                });
+                scanWorker_ = JThread([this](StopToken stopToken) { scanWorkerMain(stopToken); });
             }
             pendingScan_ = std::move(request);
             scanRequested_ = true;
@@ -83,8 +79,7 @@ bool PresetManager::scanAsync(const fs::path& directory, bool recursive) {
 }
 
 bool PresetManager::rescanAsync() {
-    if (scanDirectory_.empty())
-        return false;
+    if (scanDirectory_.empty()) return false;
     // Mirrors rescan(): the last scan was recursive, so a bare rescan is too.
     return scanAsync(scanDirectory_);
 }
@@ -96,9 +91,7 @@ bool PresetManager::scanInFlight() const {
 
 void PresetManager::waitForScan() {
     std::unique_lock lock(mutex_);
-    scanSignal_.wait(lock, [this] {
-        return stopping_ || (!scanRequested_ && !scanRunning_);
-    });
+    scanSignal_.wait(lock, [this] { return stopping_ || (!scanRequested_ && !scanRunning_); });
 }
 
 void PresetManager::scanWorkerMain(StopToken stopToken) {
@@ -109,8 +102,7 @@ void PresetManager::scanWorkerMain(StopToken stopToken) {
             scanSignal_.wait(lock, [this, &stopToken] {
                 return stopping_ || stopToken.stop_requested() || scanRequested_;
             });
-            if (stopping_ || stopToken.stop_requested())
-                return;
+            if (stopping_ || stopToken.stop_requested()) return;
             request = std::move(pendingScan_);
             pendingScan_ = ScanRequest{};
             scanRequested_ = false;
@@ -118,14 +110,10 @@ void PresetManager::scanWorkerMain(StopToken stopToken) {
         }
 
         ScanOutcome outcome;
-        if (auto result = PresetScanner::scan(request.directory,
-                                              request.recursive,
-                                              outcome.presets,
-                                              request.favoriteNames,
-                                              request.blacklistedNames);
+        if (auto result = PresetScanner::scan(request.directory, request.recursive, outcome.presets,
+                                              request.favoriteNames, request.blacklistedNames);
             !result) {
-            LOG_WARN("PresetManager: preset scan of '{}' failed: {}",
-                     request.directory.string(),
+            LOG_WARN("PresetManager: preset scan of '{}' failed: {}", request.directory.string(),
                      result.error().message);
             outcome.presets.clear();
             outcome.error = result.error().message;
@@ -161,7 +149,8 @@ void PresetManager::deliverScanResult(ScanOutcome&& outcome) {
                            applyScanOutcome(std::move(outcome));
                        },
                        Qt::QueuedConnection)) {
-        LOG_ERROR("PresetManager: could not queue the preset scan result onto its publishing context");
+        LOG_ERROR("PresetManager: could not queue the preset scan result onto its publishing "
+                  "context");
         // Nothing will ever call applyScanOutcome, so scanPublishing_ must not be
         // set -- otherwise every later request would coalesce into a no-op and
         // the manager would look permanently busy.
@@ -216,8 +205,7 @@ void PresetManager::publishGeneration(PresetList&& scanned) {
 
 void PresetManager::applyPendingSelection() {
     if (!pendingPresetName_.empty()) {
-        if (selectByName(pendingPresetName_))
-            pendingPresetName_.clear();
+        if (selectByName(pendingPresetName_)) pendingPresetName_.clear();
     }
 }
 
@@ -244,8 +232,8 @@ Result<void> PresetManager::scan(const fs::path& directory, bool recursive) {
     // Scan into a private vector and publish it, so a pinned Snapshot is never
     // resized underneath its holder.
     PresetList scanned;
-    if (auto result = PresetScanner::scan(
-                directory, recursive, scanned, favoriteNames_, blacklistedNames_);
+    if (auto result = PresetScanner::scan(directory, recursive, scanned, favoriteNames_,
+                                          blacklistedNames_);
         !result) {
         return result;
     }
@@ -255,8 +243,7 @@ Result<void> PresetManager::scan(const fs::path& directory, bool recursive) {
 }
 
 void PresetManager::rescan() {
-    if (!scanDirectory_.empty())
-        (void)scan(scanDirectory_);
+    if (!scanDirectory_.empty()) (void)scan(scanDirectory_);
 }
 
 void PresetManager::clear() {
@@ -278,26 +265,19 @@ usize PresetManager::count() const {
 
 usize PresetManager::activeCount() const {
     const Snapshot generation = currentGeneration();
-    return static_cast<usize>(std::count_if(
-            generation->begin(), generation->end(), [](const auto& p) {
-                return !p.blacklisted;
-            }));
+    return static_cast<usize>(std::count_if(generation->begin(), generation->end(),
+                                            [](const auto& p) { return !p.blacklisted; }));
 }
 
-bool PresetManager::empty() const {
-    return count() == 0;
-}
+bool PresetManager::empty() const { return count() == 0; }
 
-PresetManager::Snapshot PresetManager::allPresets() const {
-    return currentGeneration();
-}
+PresetManager::Snapshot PresetManager::allPresets() const { return currentGeneration(); }
 
 PresetManager::PresetView PresetManager::activePresets() const {
     PresetView view;
     view.generation = currentGeneration();
     for (const auto& p : *view.generation)
-        if (!p.blacklisted)
-            view.items.push_back(&p);
+        if (!p.blacklisted) view.items.push_back(&p);
     return view;
 }
 
@@ -305,8 +285,7 @@ PresetManager::PresetView PresetManager::favoritePresets() const {
     PresetView view;
     view.generation = currentGeneration();
     for (const auto& p : *view.generation)
-        if (p.favorite && !p.blacklisted)
-            view.items.push_back(&p);
+        if (p.favorite && !p.blacklisted) view.items.push_back(&p);
     return view;
 }
 
@@ -314,8 +293,7 @@ PresetManager::PresetView PresetManager::blacklistedPresets() const {
     PresetView view;
     view.generation = currentGeneration();
     for (const auto& p : *view.generation)
-        if (p.blacklisted)
-            view.items.push_back(&p);
+        if (p.blacklisted) view.items.push_back(&p);
     return view;
 }
 
@@ -331,15 +309,13 @@ std::vector<std::string> PresetManager::categories() const {
 
 const PresetInfo* PresetManager::current() const {
     const PresetList& list = *currentGeneration();
-    if (currentIndex_ >= list.size())
-        return nullptr;
+    if (currentIndex_ >= list.size()) return nullptr;
     return &list[currentIndex_];
 }
 
 bool PresetManager::selectByIndex(usize index) {
     PresetList& list = liveList();
-    if (index >= list.size() || list[index].blacklisted)
-        return false;
+    if (index >= list.size() || list[index].blacklisted) return false;
 
     if (history_.empty() || history_[historyPosition_] != index) {
         if (!history_.empty() && historyPosition_ < history_.size() - 1) {
@@ -368,8 +344,7 @@ bool PresetManager::selectByName(const std::string& name) {
     }
 
     for (usize i = 0; i < list.size(); ++i) {
-        if (list[i].name == name && !list[i].blacklisted)
-            return selectByIndex(i);
+        if (list[i].name == name && !list[i].blacklisted) return selectByIndex(i);
     }
 
     for (usize i = 0; i < list.size(); ++i) {
@@ -378,18 +353,12 @@ bool PresetManager::selectByName(const std::string& name) {
     }
 
     std::string lowerName = name;
-    std::transform(
-            lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
     for (usize i = 0; i < list.size(); ++i) {
-        if (list[i].blacklisted)
-            continue;
+        if (list[i].blacklisted) continue;
         std::string lowerPreset = list[i].name;
-        std::transform(lowerPreset.begin(),
-                       lowerPreset.end(),
-                       lowerPreset.begin(),
-                       ::tolower);
-        if (lowerPreset.find(lowerName) != std::string::npos)
-            return selectByIndex(i);
+        std::transform(lowerPreset.begin(), lowerPreset.end(), lowerPreset.begin(), ::tolower);
+        if (lowerPreset.find(lowerName) != std::string::npos) return selectByIndex(i);
     }
 
     return false;
@@ -398,28 +367,24 @@ bool PresetManager::selectByName(const std::string& name) {
 bool PresetManager::selectByPath(const fs::path& path) {
     const PresetList& list = liveList();
     for (usize i = 0; i < list.size(); ++i) {
-        if (list[i].path == path && !list[i].blacklisted)
-            return selectByIndex(i);
+        if (list[i].path == path && !list[i].blacklisted) return selectByIndex(i);
     }
     return false;
 }
 
 bool PresetManager::selectRandom() {
     const PresetView active = activePresets();
-    if (active.empty())
-        return false;
+    if (active.empty()) return false;
     std::uniform_int_distribution<usize> dist(0, active.items.size() - 1);
     const PresetInfo* preset = active.items[dist(rng_)];
     const PresetList& list = *active.generation;
     for (usize i = 0; i < list.size(); ++i)
-        if (&list[i] == preset)
-            return selectByIndex(i);
+        if (&list[i] == preset) return selectByIndex(i);
     return false;
 }
 
 bool PresetManager::selectNext() {
-    if (liveList().empty())
-        return false;
+    if (liveList().empty()) return false;
     PresetList& list = liveList();
     if (!history_.empty() && historyPosition_ < history_.size() - 1) {
         historyPosition_++;
@@ -435,8 +400,7 @@ bool PresetManager::selectNext() {
     do {
         nextIndex = (nextIndex + 1) % list.size();
         if (!list[nextIndex].blacklisted) {
-            if (!currentName.empty() && list[nextIndex].name == currentName)
-                continue;
+            if (!currentName.empty() && list[nextIndex].name == currentName) continue;
             return selectByIndex(nextIndex);
         }
     } while (nextIndex != start);
@@ -444,8 +408,7 @@ bool PresetManager::selectNext() {
 }
 
 bool PresetManager::selectPrevious() {
-    if (liveList().empty())
-        return false;
+    if (liveList().empty()) return false;
     PresetList& list = liveList();
     if (!history_.empty() && historyPosition_ > 0) {
         historyPosition_--;
@@ -461,8 +424,7 @@ bool PresetManager::selectPrevious() {
     do {
         prevIndex = (prevIndex == 0) ? list.size() - 1 : prevIndex - 1;
         if (!list[prevIndex].blacklisted) {
-            if (!currentName.empty() && list[prevIndex].name == currentName)
-                continue;
+            if (!currentName.empty() && list[prevIndex].name == currentName) continue;
             return selectByIndex(prevIndex);
         }
     } while (prevIndex != start);
@@ -472,35 +434,40 @@ bool PresetManager::selectPrevious() {
 // ─── Favorites & Blacklist ───────────────────────────────────────────────────
 
 void PresetManager::setFavorite(usize index, bool favorite) {
-    if (index >= liveList().size())
-        return;
-    liveList()[index].favorite = favorite;
+    if (index >= liveList().size()) return;
+    // Copy-on-write, loadState's merge-then-swap shape: the published
+    // generation is shared with every reader holding a Snapshot, so writing
+    // the toggle straight into liveList() would be visible through storage
+    // publishGeneration's swap promised to keep "alive and unmodified".
+    // Copy the list, toggle the copy, publish. publishGeneration emits the
+    // same listChanged this function always emitted.
+    PresetList next = liveList();
+    next[index].favorite = favorite;
     if (favorite)
-        favoriteNames_.insert(liveList()[index].name);
+        favoriteNames_.insert(next[index].name);
     else
-        favoriteNames_.erase(liveList()[index].name);
-    listChanged.emitSignal();
+        favoriteNames_.erase(next[index].name);
+    publishGeneration(std::move(next));
 }
 
 void PresetManager::setBlacklisted(usize index, bool blacklisted) {
-    if (index >= liveList().size())
-        return;
-    liveList()[index].blacklisted = blacklisted;
+    if (index >= liveList().size()) return;
+    // Copy-on-write for the same reason as setFavorite above.
+    PresetList next = liveList();
+    next[index].blacklisted = blacklisted;
     if (blacklisted)
-        blacklistedNames_.insert(liveList()[index].name);
+        blacklistedNames_.insert(next[index].name);
     else
-        blacklistedNames_.erase(liveList()[index].name);
-    listChanged.emitSignal();
+        blacklistedNames_.erase(next[index].name);
+    publishGeneration(std::move(next));
 }
 
 void PresetManager::toggleFavorite(usize index) {
-    if (index < liveList().size())
-        setFavorite(index, !liveList()[index].favorite);
+    if (index < liveList().size()) setFavorite(index, !liveList()[index].favorite);
 }
 
 void PresetManager::toggleBlacklisted(usize index) {
-    if (index < liveList().size())
-        setBlacklisted(index, !liveList()[index].blacklisted);
+    if (index < liveList().size()) setBlacklisted(index, !liveList()[index].blacklisted);
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────
@@ -509,27 +476,20 @@ PresetManager::PresetView PresetManager::search(const std::string& query) const 
     PresetView view;
     view.generation = currentGeneration();
     std::string lowerQuery = query;
-    std::transform(
-            lowerQuery.begin(), lowerQuery.end(), lowerQuery.begin(), ::tolower);
+    std::transform(lowerQuery.begin(), lowerQuery.end(), lowerQuery.begin(), ::tolower);
     for (const auto& p : *view.generation) {
         std::string lowerName = p.name;
-        std::transform(lowerName.begin(),
-                       lowerName.end(),
-                       lowerName.begin(),
-                       ::tolower);
-        if (lowerName.find(lowerQuery) != std::string::npos)
-            view.items.push_back(&p);
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+        if (lowerName.find(lowerQuery) != std::string::npos) view.items.push_back(&p);
     }
     return view;
 }
 
-PresetManager::PresetView PresetManager::byCategory(
-        const std::string& category) const {
+PresetManager::PresetView PresetManager::byCategory(const std::string& category) const {
     PresetView view;
     view.generation = currentGeneration();
     for (const auto& p : *view.generation)
-        if (p.category == category && !p.blacklisted)
-            view.items.push_back(&p);
+        if (p.category == category && !p.blacklisted) view.items.push_back(&p);
     return view;
 }
 
@@ -540,8 +500,8 @@ Result<void> PresetManager::loadState(const fs::path& path) {
     // vector would reallocate it, which is exactly the invalidation a pinned
     // Snapshot must never see.
     auto merged = std::make_shared<PresetList>(*presets_);
-    if (auto result = PresetPersistence::loadState(
-                path, favoriteNames_, blacklistedNames_, *merged);
+    if (auto result =
+                PresetPersistence::loadState(path, favoriteNames_, blacklistedNames_, *merged);
         !result) {
         return result;
     }
@@ -553,8 +513,7 @@ Result<void> PresetManager::loadState(const fs::path& path) {
 }
 
 Result<void> PresetManager::saveState(const fs::path& path) const {
-    return PresetPersistence::saveState(
-            path, favoriteNames_, blacklistedNames_);
+    return PresetPersistence::saveState(path, favoriteNames_, blacklistedNames_);
 }
 
 } // namespace vc

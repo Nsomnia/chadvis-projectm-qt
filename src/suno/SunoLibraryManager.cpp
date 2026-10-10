@@ -1,25 +1,24 @@
 #include "suno/SunoLibraryManager.hpp"
 #include "core/Logger.hpp"
 
-#include <QTimer>
 #include <QString>
+#include <QTimer>
 
 namespace vc::suno {
 
 SunoLibraryManager::SunoLibraryManager(SunoClient* client, SunoDatabase& db, QObject* parent)
     : QObject(parent), client_(client), db_(db) {
-    
-    // Connect client signals
-    client_->libraryFetched.connect([this](const auto& clips) { 
-        onLibraryFetched(clips); 
-    });
+    // Connect client signals. The vc::Signal ids are retained as members and
+    // disconnected in the destructor; the signal itself tracks no lifetimes.
+    libraryFetchedConnectionId_ =
+            client_->libraryFetched.connect([this](const auto& clips) { onLibraryFetched(clips); });
 
-    connect(client_, &SunoClient::credentialRestoreCompleted,
-            this, &SunoLibraryManager::onCredentialsRestored);
+    connect(client_, &SunoClient::credentialRestoreCompleted, this,
+            &SunoLibraryManager::onCredentialsRestored);
 
     // Any terminal fetch failure must clear the "syncing" gate and
     // surface a libraryFetchFailed so Bridge can clear its spinner.
-    client_->errorOccurred.connect([this](const std::string& err) {
+    errorOccurredConnectionId_ = client_->errorOccurred.connect([this](const std::string& err) {
         if (isSyncing_) {
             isSyncing_ = false;
             const bool hadMore = hasMorePages_;
@@ -57,74 +56,85 @@ SunoLibraryManager::SunoLibraryManager(SunoClient* client, SunoDatabase& db, QOb
     });
 }
 
-SunoLibraryManager::~SunoLibraryManager() = default;
+SunoLibraryManager::~SunoLibraryManager() {
+    // Safe only because the client outlives this manager: every construction
+    // site (SunoController.cpp:61, test_SunoLibraryManager.cpp:69) declares
+    // the SunoClient before constructing this class, so destruction -- the
+    // reverse of declaration order -- reaches here while the Signals are
+    // still alive. The inverse order would dangle these disconnects, which is
+    // why the ownership graph, not this class, owns that guarantee. The Qt
+    // connects on client_ are severed automatically by the QObject context
+    // object; only the vc::Signal slots need this.
+    client_->libraryFetched.disconnect(libraryFetchedConnectionId_);
+    client_->errorOccurred.disconnect(errorOccurredConnectionId_);
+}
 
 void SunoLibraryManager::refreshLibrary(int page) {
-  if (isSyncing_ || credentialRefreshPending_) {
-    return;
-  }
+    if (isSyncing_ || credentialRefreshPending_) {
+        return;
+    }
 
-  pendingPage_ = page;
-  credentialRefreshPending_ = true;
-  client_->reloadStoredCredentials();
+    pendingPage_ = page;
+    credentialRefreshPending_ = true;
+    client_->reloadStoredCredentials();
 }
 
 void SunoLibraryManager::onCredentialsRestored() {
-  if (!credentialRefreshPending_) {
-    return;
-  }
-
-  credentialRefreshPending_ = false;
-  const int page = pendingPage_;
-
-  if (!client_->isAuthenticated()) {
-    emit authenticationRequired();
-    {
-        const bool hadMore = hasMorePages_;
-        hasMorePages_ = false;
-        if (hadMore) emit hasMorePagesChanged();
+    if (!credentialRefreshPending_) {
+        return;
     }
-    isSyncing_ = false;
-    emit libraryFetchFailed(QStringLiteral("Not authenticated"));
-    return;
-  }
 
-  if (page <= 1) {
-    accumulatedClips_.clear();
-    pagesLoaded_ = 0;
-    isSyncing_ = true;
-    hasMorePages_ = true;
-    emit hasMorePagesChanged();
+    credentialRefreshPending_ = false;
+    const int page = pendingPage_;
 
-    std::string msg = "Syncing Suno library";
-    emit statusMessage(msg);
-  } else {
-    requestNextPage();
-    return;
-  }
+    if (!client_->isAuthenticated()) {
+        emit authenticationRequired();
+        {
+            const bool hadMore = hasMorePages_;
+            hasMorePages_ = false;
+            if (hadMore) emit hasMorePagesChanged();
+        }
+        isSyncing_ = false;
+        emit libraryFetchFailed(QStringLiteral("Not authenticated"));
+        return;
+    }
 
-  client_->fetchLibraryPage(std::nullopt, 20, searchText_);
+    if (page <= 1) {
+        accumulatedClips_.clear();
+        pagesLoaded_ = 0;
+        isSyncing_ = true;
+        hasMorePages_ = true;
+        emit hasMorePagesChanged();
+
+        std::string msg = "Syncing Suno library";
+        emit statusMessage(msg);
+    } else {
+        requestNextPage();
+        return;
+    }
+
+    client_->fetchLibraryPage(std::nullopt, 20, searchText_);
 }
 
 void SunoLibraryManager::requestNextPage() {
-  if (isSyncing_ || !hasMorePages_) {
-    return;
-  }
-  if (client_->nextCursor().isEmpty()) {
-    // No cursor means the feed is exhausted even if has_more was stale.
-    hasMorePages_ = false;
-    emit hasMorePagesChanged();
-    return;
-  }
+    if (isSyncing_ || !hasMorePages_) {
+        return;
+    }
+    if (client_->nextCursor().isEmpty()) {
+        // No cursor means the feed is exhausted even if has_more was stale.
+        hasMorePages_ = false;
+        emit hasMorePagesChanged();
+        return;
+    }
 
-  isSyncing_ = true;
-  emit statusMessage("Fetching more Suno clips...");
-  client_->fetchLibraryPage(client_->nextCursor(), 20, searchText_);
+    isSyncing_ = true;
+    emit statusMessage("Fetching more Suno clips...");
+    client_->fetchLibraryPage(client_->nextCursor(), 20, searchText_);
 }
 
 void SunoLibraryManager::setSearchText(const QString& text) {
-  if (searchText_ == text) return;
-  searchText_ = text;
+    if (searchText_ == text) return;
+    searchText_ = text;
 }
 
 void SunoLibraryManager::syncDatabase(bool forceAuth) {
@@ -136,44 +146,45 @@ void SunoLibraryManager::syncDatabase(bool forceAuth) {
 }
 
 void SunoLibraryManager::onLibraryFetched(const std::vector<SunoClip>& clips) {
-  LOG_INFO("SunoLibraryManager: Fetched {} clips", clips.size());
+    LOG_INFO("SunoLibraryManager: Fetched {} clips", clips.size());
 
-  // Accumulate clips for this sync session
-  for (const auto& clip : clips) {
-    accumulatedClips_.push_back(clip);
-  }
+    // Accumulate clips for this sync session
+    for (const auto& clip : clips) {
+        accumulatedClips_.push_back(clip);
+    }
 
-  pagesLoaded_++;
-  // Page complete: allow the next requestNextPage() through.
-  isSyncing_ = false;
+    pagesLoaded_++;
+    // Page complete: allow the next requestNextPage() through.
+    isSyncing_ = false;
 
-  if (auto result = db_.saveClips(clips); !result) {
-    LOG_ERROR("SunoLibraryManager: Failed to persist library page: {}",
-              result.error().message);
-  }
+    if (auto result = db_.saveClips(clips); !result) {
+        LOG_ERROR("SunoLibraryManager: Failed to persist library page: {}", result.error().message);
+    }
 
-  // Pagination truth comes straight from the feed/v3 envelope now.
-  const bool hadMore = hasMorePages_;
-  hasMorePages_ = client_->hasMorePages() && !client_->nextCursor().isEmpty();
-  if (hadMore != hasMorePages_) {
-    emit hasMorePagesChanged();
-  }
+    // Pagination truth comes straight from the feed/v3 envelope now.
+    const bool hadMore = hasMorePages_;
+    hasMorePages_ = client_->hasMorePages() && !client_->nextCursor().isEmpty();
+    if (hadMore != hasMorePages_) {
+        emit hasMorePagesChanged();
+    }
 
-  // Emit incremental update after every page so UI can render progressively
-  emit libraryUpdated(accumulatedClips_);
+    // Emit incremental update after every page so UI can render progressively
+    emit libraryUpdated(accumulatedClips_);
 
-  if (hasMorePages_) {
-    emit statusMessage("Suno library: " + std::to_string(accumulatedClips_.size()) + " clips loaded (more available)");
-    // Auto-page through the entire library (rate-limited). QML infinite
-    // scroll remains as a fallback if auto-pagination is interrupted, but
-    // the primary path now syncs the full library without manual scrolling.
-    // Respect the SunoClient 1 Hz politeness limiter.
-    QTimer::singleShot(1100, this, [this]() { requestNextPage(); });
-  } else {
-    LOG_INFO("SunoLibraryManager: Sync complete after {} page(s). Total clips: {}",
-             pagesLoaded_, accumulatedClips_.size());
-    emit statusMessage("Suno library sync complete (" + std::to_string(accumulatedClips_.size()) + " clips)");
-  }
+    if (hasMorePages_) {
+        emit statusMessage("Suno library: " + std::to_string(accumulatedClips_.size()) +
+                           " clips loaded (more available)");
+        // Auto-page through the entire library (rate-limited). QML infinite
+        // scroll remains as a fallback if auto-pagination is interrupted, but
+        // the primary path now syncs the full library without manual scrolling.
+        // Respect the SunoClient 1 Hz politeness limiter.
+        QTimer::singleShot(1100, this, [this]() { requestNextPage(); });
+    } else {
+        LOG_INFO("SunoLibraryManager: Sync complete after {} page(s). Total clips: {}",
+                 pagesLoaded_, accumulatedClips_.size());
+        emit statusMessage("Suno library sync complete (" +
+                           std::to_string(accumulatedClips_.size()) + " clips)");
+    }
 }
 
 } // namespace vc::suno

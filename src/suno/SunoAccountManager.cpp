@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
+#include <QPointer>
 
 namespace vc::suno {
 
@@ -46,12 +47,16 @@ std::optional<SunoUserSummary> parseUser(const QJsonObject& root) {
     // Session envelope: { user: {...}, models: [...] } — tolerate nesting.
     QJsonObject userObj = root.value(QStringLiteral("user")).toObject();
     if (userObj.isEmpty()) {
-        userObj = root.value(QStringLiteral("session")).toObject()
-                          .value(QStringLiteral("user")).toObject();
+        userObj = root.value(QStringLiteral("session"))
+                          .toObject()
+                          .value(QStringLiteral("user"))
+                          .toObject();
     }
     if (userObj.isEmpty()) {
-        userObj = root.value(QStringLiteral("data")).toObject()
-                          .value(QStringLiteral("user")).toObject();
+        userObj = root.value(QStringLiteral("data"))
+                          .toObject()
+                          .value(QStringLiteral("user"))
+                          .toObject();
     }
     if (userObj.isEmpty() && root.contains(QStringLiteral("id"))) {
         userObj = root; // flat fallback
@@ -78,12 +83,11 @@ QList<SunoModelInfo> parseModels(const QJsonObject& root) {
     QList<SunoModelInfo> models;
     QJsonValue modelsValue = root.value(QStringLiteral("models"));
     if (!modelsValue.isArray()) {
-        modelsValue = root.value(QStringLiteral("session")).toObject()
-                             .value(QStringLiteral("models"));
+        modelsValue =
+                root.value(QStringLiteral("session")).toObject().value(QStringLiteral("models"));
     }
     if (!modelsValue.isArray()) {
-        modelsValue = root.value(QStringLiteral("data")).toObject()
-                             .value(QStringLiteral("models"));
+        modelsValue = root.value(QStringLiteral("data")).toObject().value(QStringLiteral("models"));
     }
     if (!modelsValue.isArray()) {
         return models;
@@ -105,14 +109,12 @@ QList<SunoModelInfo> parseModels(const QJsonObject& root) {
         model.features = optStringList(m, "features");
         model.badges = optStringList(m, "badges");
 
-        const QJsonObject limits =
-                m.value(QStringLiteral("max_lengths")).toObject();
+        const QJsonObject limits = m.value(QStringLiteral("max_lengths")).toObject();
         model.max_lengths.title = P::optInt(limits, "title");
         model.max_lengths.prompt = P::optInt(limits, "prompt");
         model.max_lengths.tags = P::optInt(limits, "tags");
         model.max_lengths.negative_tags = P::optInt(limits, "negative_tags");
-        model.max_lengths.gpt_description_prompt =
-                P::optInt(limits, "gpt_description_prompt");
+        model.max_lengths.gpt_description_prompt = P::optInt(limits, "gpt_description_prompt");
 
         if (!model.name.empty() || !model.external_key.empty()) {
             models.push_back(std::move(model));
@@ -180,9 +182,15 @@ void SunoAccountManager::refreshAll() {
         return;
     }
 
-    client_->enqueueAuthenticatedRequest(
-            qstr(vc::suno::endpoints::SESSION), "GET", {},
-            [this](QNetworkReply* reply) { handleSessionReply(reply); });
+    QPointer<SunoAccountManager> guard(this);
+    client_->enqueueAuthenticatedRequest(qstr(vc::suno::endpoints::SESSION), "GET", {},
+                                         [guard](QNetworkReply* reply) {
+                                             if (guard) {
+                                                 guard->handleSessionReply(reply);
+                                             } else if (reply) {
+                                                 reply->deleteLater();
+                                             }
+                                         });
 
     refreshBilling();
 }
@@ -192,14 +200,19 @@ void SunoAccountManager::refreshBilling() {
         return;
     }
 
-    client_->enqueueAuthenticatedRequest(
-            qstr(vc::suno::endpoints::BILLING_INFO), "GET", {},
-            [this](QNetworkReply* reply) { handleBillingReply(reply); });
+    QPointer<SunoAccountManager> guard(this);
+    client_->enqueueAuthenticatedRequest(qstr(vc::suno::endpoints::BILLING_INFO), "GET", {},
+                                         [guard](QNetworkReply* reply) {
+                                             if (guard) {
+                                                 guard->handleBillingReply(reply);
+                                             } else if (reply) {
+                                                 reply->deleteLater();
+                                             }
+                                         });
 }
 
 void SunoAccountManager::clearSnapshots() {
-    const bool hadSnapshot = user_.has_value() || !models_.isEmpty() ||
-                             billing_.has_value();
+    const bool hadSnapshot = user_.has_value() || !models_.isEmpty() || billing_.has_value();
     user_.reset();
     models_.clear();
     billingModels_.clear();
@@ -234,8 +247,8 @@ void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
     // envelope had no user object" -- a wrong diagnosis of a real fault.
     auto body = client_ ? client_->readTrackedBody(reply)
                         : std::expected<QByteArray, QString>(std::unexpected(
-                              QStringLiteral("account manager has no SunoClient to read the "
-                                             "response with")));
+                                  QStringLiteral("account manager has no SunoClient to read the "
+                                                 "response with")));
     reply->deleteLater();
 
     if (!authenticated) {
@@ -243,14 +256,12 @@ void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
         return;
     }
     if (!body) {
-        LOG_WARN("SunoAccountManager: session response refused: {}",
-                 body.error().toStdString());
+        LOG_WARN("SunoAccountManager: session response refused: {}", body.error().toStdString());
         emit accountError(body.error());
         return;
     }
     if (error != QNetworkReply::NoError) {
-        LOG_WARN("SunoAccountManager: session fetch failed: {}",
-                 errorString.toStdString());
+        LOG_WARN("SunoAccountManager: session fetch failed: {}", errorString.toStdString());
         emit accountError(errorString);
         return;
     }
@@ -279,8 +290,7 @@ void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
     user_ = std::move(*user);
     models_ = parseModels(root);
     LOG_INFO("SunoAccountManager: session loaded ({} model(s), {} server flag(s), user '{}')",
-             static_cast<i64>(models_.size()),
-             static_cast<i64>(gates_.capabilities().flagCount()),
+             static_cast<i64>(models_.size()), static_cast<i64>(gates_.capabilities().flagCount()),
              user_->display_name);
     emit accountInfoReady();
 }
@@ -292,22 +302,20 @@ void SunoAccountManager::handleBillingReply(QNetworkReply* reply) {
 
     auto body = client_ ? client_->readTrackedBody(reply)
                         : std::expected<QByteArray, QString>(std::unexpected(
-                              QStringLiteral("account manager has no SunoClient to read the "
-                                             "response with")));
+                                  QStringLiteral("account manager has no SunoClient to read the "
+                                                 "response with")));
     reply->deleteLater();
 
     if (!authenticated) {
         return;
     }
     if (!body) {
-        LOG_WARN("SunoAccountManager: billing response refused: {}",
-                 body.error().toStdString());
+        LOG_WARN("SunoAccountManager: billing response refused: {}", body.error().toStdString());
         emit accountError(body.error());
         return;
     }
     if (error != QNetworkReply::NoError) {
-        LOG_WARN("SunoAccountManager: billing fetch failed: {}",
-                 errorString.toStdString());
+        LOG_WARN("SunoAccountManager: billing fetch failed: {}", errorString.toStdString());
         emit accountError(errorString);
         return;
     }

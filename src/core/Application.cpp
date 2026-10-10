@@ -3,6 +3,7 @@
 #include "CliArg.hpp"
 #include "CliUtils.hpp"
 #include "Config.hpp"
+#include "ConfigParsers.hpp"
 #include "Logger.hpp"
 #include "audio/AudioEngine.hpp"
 #include "lyrics/LyricsSync.hpp"
@@ -308,6 +309,18 @@ void applyOverride(const std::optional<bool>& optVal, bool& configField, std::st
     }
 }
 
+/// Warn when a CLI override landed outside the parser's legal range and was
+/// pulled back by the clamp helpers below. Without this, --visualizer-fps 0
+/// quietly becoming 10 would just be a quieter version of the old bug, where
+/// it quietly stayed 60.
+void warnIfClamped(const std::optional<int>& optVal, u32 effective, std::string_view name) {
+    if (optVal && *optVal != static_cast<int>(effective)) {
+        LOG_WARN("CLI override {} = {} is out of range, clamped to {} "
+                 "(the same bounds the config file enforces)",
+                 name, *optVal, effective);
+    }
+}
+
 } // anonymous namespace
 
 Result<void> Application::init(const AppOptions& opts) {
@@ -349,7 +362,8 @@ Result<void> Application::init(const AppOptions& opts) {
     }
 
     // ─── Apply CLI overrides to config ────────────────────────────────────
-    // Audio overrides
+    // Audio overrides. parseAudio applies no range clamps to its fields, so
+    // there is nothing to re-run after these the way there is below.
     applyOverride(opts.audioDevice, CONFIG.audio().device, "audio.device");
     applyOverride(opts.audioBufferSize, CONFIG.audio().bufferSize, "audio.bufferSize");
     applyOverride(opts.audioSampleRate, CONFIG.audio().sampleRate, "audio.sampleRate");
@@ -360,11 +374,24 @@ Result<void> Application::init(const AppOptions& opts) {
     applyOverride(opts.visualizerHeight, CONFIG.visualizer().height, "visualizer.height");
     applyOverride(opts.visualizerShuffle, CONFIG.visualizer().shufflePresets,
                   "visualizer.shufflePresets");
+    // Overrides write raw values into CONFIG after ConfigParsers has already
+    // clamped the file-loaded values, so an out-of-range flag would sail past
+    // every bound the parser enforces: --visualizer-fps 0 skipped the
+    // `fps > 0` guard in VisualizerRenderer::initialize and silently kept the
+    // 60 default, i.e. the flag did nothing. Re-run the parser's own clamp
+    // helpers so a flag meets the same bounds as the file.
+    ConfigParsers::clampVisualizer(CONFIG.visualizer());
+    warnIfClamped(opts.visualizerFps, CONFIG.visualizer().fps, "visualizer.fps");
+    warnIfClamped(opts.visualizerWidth, CONFIG.visualizer().width, "visualizer.width");
+    warnIfClamped(opts.visualizerHeight, CONFIG.visualizer().height, "visualizer.height");
 
-    // Recording overrides
+    // Recording overrides. Same rationale as the visualizer clamp above:
+    // --recording-crf writes past parseRecording's clamp(crf, 0, 51).
     applyOverride(opts.recordingCodec, CONFIG.recording().video.codec, "recording.video.codec");
     applyOverride(opts.recordingCrf, CONFIG.recording().video.crf, "recording.video.crf");
     applyOverride(opts.recordingPreset, CONFIG.recording().video.preset, "recording.video.preset");
+    ConfigParsers::clampVideoEncoder(CONFIG.recording().video);
+    warnIfClamped(opts.recordingCrf, CONFIG.recording().video.crf, "recording.video.crf");
 
     // Suno overrides
     applyOverride(opts.sunoDownloadPath, CONFIG.suno().downloadPath, "suno.downloadPath");

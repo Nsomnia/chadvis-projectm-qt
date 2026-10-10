@@ -1,10 +1,10 @@
 #pragma once
 #include <QObject>
-#include <QtQml/qqml.h>
-#include <QTimer>
-#include <QStringList>
-#include <QVariantList>
 #include <QString>
+#include <QStringList>
+#include <QTimer>
+#include <QVariantList>
+#include <QtQml/qqml.h>
 #include <cstddef>
 #include "QmlSingletonBridge.hpp"
 
@@ -17,14 +17,13 @@ class SunoExploreService;
 class SunoNotificationService;
 class SunoAudioUploadService;
 class SunoLibraryMutations;
-}
-}
+} // namespace suno
+} // namespace vc
 
 namespace qml_bridge {
 
 class SunoBridge : public QObject,
                    public QmlSingletonBridge<SunoBridge, SingletonPolicy::CachedUnparented> {
-
     friend class QmlSingletonBridge<SunoBridge, SingletonPolicy::CachedUnparented>;
     Q_OBJECT
     QML_ELEMENT
@@ -41,7 +40,8 @@ class SunoBridge : public QObject,
     Q_PROPERTY(QString googleLoginState READ googleLoginState NOTIFY googleLoginStateChanged)
     Q_PROPERTY(QString googleLoginError READ googleLoginError NOTIFY googleLoginErrorChanged)
     Q_PROPERTY(QString authFailureKind READ authFailureKind NOTIFY authFailureKindChanged)
-    Q_PROPERTY(bool googleLoginAvailable READ googleLoginAvailable NOTIFY googleLoginAvailableChanged)
+    Q_PROPERTY(
+            bool googleLoginAvailable READ googleLoginAvailable NOTIFY googleLoginAvailableChanged)
     Q_PROPERTY(QVariantList models READ models NOTIFY modelsChanged)
     Q_PROPERTY(int credits READ credits NOTIFY billingInfoChanged)
     Q_PROPERTY(QString planName READ planName NOTIFY billingInfoChanged)
@@ -53,7 +53,8 @@ class SunoBridge : public QObject,
     // invisible to every QML binding. NOTIFY is required for the change to be
     // observable at all.
     Q_PROPERTY(bool generationAvailable READ generationAvailable NOTIFY generationAvailableChanged)
-    Q_PROPERTY(QString generationUnavailableReason READ generationUnavailableReason NOTIFY generationAvailableChanged)
+    Q_PROPERTY(QString generationUnavailableReason READ generationUnavailableReason NOTIFY
+                       generationAvailableChanged)
     /// Every gated surface with its verdict and the reason it is held.
     ///
     /// This exists because `GateResolver::evaluateAll()` had **no caller** — it
@@ -84,7 +85,8 @@ class SunoBridge : public QObject,
     Q_PROPERTY(QString discoverError READ discoverError NOTIFY discoverErrorChanged)
     Q_PROPERTY(QVariantList notifications READ notifications NOTIFY notificationsChanged)
     Q_PROPERTY(int unreadCount READ unreadCount NOTIFY unreadCountChanged)
-    Q_PROPERTY(bool notificationsLoading READ notificationsLoading NOTIFY notificationsLoadingChanged)
+    Q_PROPERTY(
+            bool notificationsLoading READ notificationsLoading NOTIFY notificationsLoadingChanged)
     Q_PROPERTY(QString notificationsError READ notificationsError NOTIFY notificationsErrorChanged)
 
     /// Can this build change the library at all? Both layers must permit: the
@@ -97,7 +99,8 @@ class SunoBridge : public QObject,
     /// being a well-built door to nowhere.
     Q_PROPERTY(bool mutationsAvailable READ mutationsAvailable NOTIFY mutationsAvailableChanged)
     /// Names which of the two layers refused, and why. Never a bare "disabled".
-    Q_PROPERTY(QString mutationsUnavailableReason READ mutationsUnavailableReason NOTIFY mutationsAvailableChanged)
+    Q_PROPERTY(QString mutationsUnavailableReason READ mutationsUnavailableReason NOTIFY
+                       mutationsAvailableChanged)
     /// True while at least one mutation is waiting for its reply.
     Q_PROPERTY(bool mutationsBusy READ mutationsBusy NOTIFY mutationsBusyChanged)
 
@@ -151,7 +154,8 @@ public:
     bool mutationsBusy() const;
 
 public slots:
-    Q_INVOKABLE void generate(const QString& prompt, const QString& tags, bool instrumental, const QString& model);
+    Q_INVOKABLE void generate(const QString& prompt, const QString& tags, bool instrumental,
+                              const QString& model);
     Q_INVOKABLE void uploadAudio(const QString& localFilePath);
     Q_INVOKABLE void refreshLibrary(int page = 1);
     Q_INVOKABLE void requestNextLibraryPage();
@@ -200,7 +204,11 @@ public slots:
                                          const QString& description);
     /// `updateType` is one of the four captured enum members, as a string:
     /// `"add"`, `"remove"`, `"remove_by_id"`, `"reorder"`. Anything else is
-    /// refused rather than guessed.
+    /// refused rather than guessed — locally, before the mutation service is
+    /// consulted — and the refusal arrives on `playlistMutationSettled` as
+    /// outcome `refused`, naming the accepted members. Mapping an
+    /// unrecognised string onto any member would send a mutation the caller
+    /// never asked for.
     ///
     /// `metadata` is forwarded verbatim. Its contents were **not** captured, so
     /// no key inside it is named or defaulted here.
@@ -208,7 +216,8 @@ public slots:
                                          const QVariantMap& metadata);
     Q_INVOKABLE void addClipsToPlaylist(const QString& playlistId, const QStringList& clipIds);
     Q_INVOKABLE void removeClipsFromPlaylist(const QString& playlistId, const QStringList& clipIds);
-    Q_INVOKABLE void reorderPlaylistTracks(const QString& playlistId, const QVariantList& positions);
+    Q_INVOKABLE void reorderPlaylistTracks(const QString& playlistId,
+                                           const QVariantList& positions);
     Q_INVOKABLE void setPlaylistCoverImage(const QString& playlistId, const QString& imageId);
 
 signals:
@@ -282,8 +291,8 @@ signals:
     /// state is now what was asked for** — no success response body has ever
     /// been captured, so nothing was read from it and nothing was written
     /// locally. A UI must re-read the library rather than assume.
-    void clipMutationSettled(const QString& clipId, const QString& verb,
-                             const QString& outcome, const QString& reason);
+    void clipMutationSettled(const QString& clipId, const QString& verb, const QString& outcome,
+                             const QString& reason);
     /// The same, for the six playlist-scoped verbs, keyed by playlist id.
     void playlistMutationSettled(const QString& playlistId, const QString& verb,
                                  const QString& outcome, const QString& reason);
@@ -338,8 +347,7 @@ private:
     /// keeps its convention of forward-declaring the `vc::suno` types instead of
     /// including them. The one `MutationResult` is read in the lambda that
     /// connects the service signal.
-    void onMutationSettled(int verb, const QString& subjectId, int outcome,
-                           const QString& reason);
+    void onMutationSettled(int verb, const QString& subjectId, int outcome, const QString& reason);
     /// Invoked by the mutation invokables. Ensures the service exists and then
     /// reports the one reason nothing can be sent, so a QML call on a signed-out
     /// app produces a sentence instead of silence.

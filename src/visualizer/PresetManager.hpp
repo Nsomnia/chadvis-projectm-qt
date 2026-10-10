@@ -36,7 +36,11 @@
  * could still be holding `const PresetInfo*` into it, which is a use-after-free
  * waiting to happen. Instead, every scan builds a brand-new vector and *swaps
  * it in*; a published generation is never cleared, resized, or refilled in
- * place. Readers receive a `Snapshot` (shared ownership of one generation) or a
+ * place. Favorite/blacklist toggles keep the same discipline from the mutating
+ * side: setFavorite/setBlacklisted copy the list, toggle the copy, and publish
+ * it through the same swap, so no edit is ever visible through a Snapshot a
+ * reader still holds. Readers receive a `Snapshot` (shared ownership of one
+ * generation) or a
  * `PresetView` (a query result that pins its generation), so a pointer handed
  * out before a rescan keeps pointing at valid, correctly readable storage
  * afterwards. Holding a `Snapshot` also means no read path has to hold a lock
@@ -88,9 +92,13 @@ public:
     ///
     /// The pinned storage is never moved, resized, or freed while a Snapshot is
     /// alive, so every `const PresetInfo*` taken from it stays valid across any
-    /// number of rescans. Individual entries can still be edited in place by
-    /// explicit calls (setFavorite/setBlacklisted/selection play count); the
-    /// guarantee is about lifetime and identity, not immutability.
+    /// number of rescans. The favorite/blacklist flags are immutable through a
+    /// Snapshot too: setFavorite/setBlacklisted copy-on-write, publishing a
+    /// toggled copy as a new generation, so pinned storage keeps the exact
+    /// values it was handed. The one in-place write that remains is the
+    /// selection play count (bumped by selectByIndex and the history
+    /// walkers); it is only ever read through fresh queries, never through a
+    /// Snapshot a caller means to keep.
     using Snapshot = std::shared_ptr<const PresetList>;
 
     /// One filtered, ordered query result plus the generation it borrows from.
@@ -161,9 +169,7 @@ public:
     /// scan is published. Null when nothing is selected. Use allPresets() for
     /// a handle that survives a rescan.
     const PresetInfo* current() const;
-    usize currentIndex() const {
-        return currentIndex_;
-    }
+    usize currentIndex() const { return currentIndex_; }
 
     bool selectByIndex(usize index);
     bool selectByName(const std::string& name);
@@ -173,15 +179,9 @@ public:
     bool selectPrevious();
 
     // Pending preset
-    void setPendingPreset(const std::string& name) {
-        pendingPresetName_ = name;
-    }
-    const std::string& pendingPreset() const {
-        return pendingPresetName_;
-    }
-    void clearPendingPreset() {
-        pendingPresetName_.clear();
-    }
+    void setPendingPreset(const std::string& name) { pendingPresetName_ = name; }
+    const std::string& pendingPreset() const { return pendingPresetName_; }
+    void clearPendingPreset() { pendingPresetName_.clear(); }
 
     // Favorites & Blacklist
     void setFavorite(usize index, bool favorite);
@@ -228,9 +228,7 @@ private:
     [[nodiscard]] Snapshot currentGeneration() const;
     [[nodiscard]] bool hasPublishContext() const;
     /// The published generation, for the publishing thread's own mutations.
-    PresetList& liveList() {
-        return *presets_;
-    }
+    PresetList& liveList() { return *presets_; }
 
     // Published state — only the publishing thread mutates it. `presets_` is
     // replaced wholesale, never resized in place.

@@ -1,5 +1,5 @@
-#include <toml++/toml.h>
 #include <QtTest>
+#include <toml++/toml.h>
 #include "core/ConfigParsers.hpp"
 
 using namespace vc;
@@ -40,6 +40,66 @@ private slots:
         QCOMPARE(cfg.shufflePresets, true);
     }
 
+    void testClampVisualizerBoundsRawOverrides() {
+        // The CLI override lane (Application::init) writes raw flag values
+        // into CONFIG past this parser, then re-runs these helpers. Pin the
+        // exact bounds so the two lanes can never drift: --visualizer-fps 0
+        // used to skip VisualizerRenderer's `fps > 0` guard entirely.
+        VisualizerConfig cfg;
+        cfg.fps = 0;
+        cfg.width = 100;
+        cfg.height = 9999;
+        ConfigParsers::clampVisualizer(cfg);
+        QCOMPARE(cfg.fps, 10u);
+        QCOMPARE(cfg.width, 160u);
+        QCOMPARE(cfg.height, 4320u);
+
+        // Idempotent: the parse path already clamped these values once, and
+        // Application::init runs the helper over them a second time.
+        ConfigParsers::clampVisualizer(cfg);
+        QCOMPARE(cfg.fps, 10u);
+        QCOMPARE(cfg.width, 160u);
+        QCOMPARE(cfg.height, 4320u);
+
+        // The other direction a raw flag can overshoot.
+        cfg.fps = 1000;
+        cfg.width = 8000;
+        cfg.height = 5000;
+        ConfigParsers::clampVisualizer(cfg);
+        QCOMPARE(cfg.fps, 240u);
+        QCOMPARE(cfg.width, 7680u);
+        QCOMPARE(cfg.height, 4320u);
+    }
+
+    void testClampVideoEncoderBoundsRawOverrides() {
+        VideoEncoderConfig cfg;
+        cfg.crf = 99; // --recording-crf past clamp(crf, 0, 51)
+        ConfigParsers::clampVideoEncoder(cfg);
+        QCOMPARE(cfg.crf, 51u);
+
+        // Width rounds UP to even after clamping, exactly as parseRecording
+        // always has.
+        cfg.width = 161;
+        ConfigParsers::clampVideoEncoder(cfg);
+        QCOMPARE(cfg.width, 162u);
+
+        // Idempotent on the values the parse path already produced.
+        ConfigParsers::clampVideoEncoder(cfg);
+        QCOMPARE(cfg.crf, 51u);
+        QCOMPARE(cfg.width, 162u);
+
+        // gop_size 0 means "auto" and must survive; an absurd value is
+        // pulled back to auto. b_frames caps at 16.
+        cfg.gopSize = 0;
+        cfg.bFrames = 32;
+        ConfigParsers::clampVideoEncoder(cfg);
+        QCOMPARE(cfg.gopSize, 0u);
+        QCOMPARE(cfg.bFrames, 16u);
+        cfg.gopSize = 601;
+        ConfigParsers::clampVideoEncoder(cfg);
+        QCOMPARE(cfg.gopSize, 0u);
+    }
+
     void testSerialize() {
         AudioConfig audio;
         audio.device = "test_device";
@@ -51,20 +111,12 @@ private slots:
         KaraokeConfig karaoke;
         OverlayConfig overlays;
 
-        auto tbl = ConfigParsers::serialize(audio,
-                                            visualizer,
-                                            recording,
-                                            ui,
-                                            keyboard,
-                                            suno,
-                                            karaoke,
-                                            overlays,
-                                            false);
+        auto tbl = ConfigParsers::serialize(audio, visualizer, recording, ui, keyboard, suno,
+                                            karaoke, overlays, false);
 
         auto audioTbl = tbl["audio"].as_table();
         QVERIFY(audioTbl != nullptr);
-        QCOMPARE((*audioTbl)["device"].as_string()->get(),
-                 std::string("test_device"));
+        QCOMPARE((*audioTbl)["device"].as_string()->get(), std::string("test_device"));
     }
 };
 

@@ -27,20 +27,28 @@ public:
     static void parseSuno(const toml::table& tbl, SunoConfig& cfg);
     static void parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg);
 
+    /// Range-clamps [visualizer] with the exact bounds parseVisualizer
+    /// enforces. Extracted from the parse path so the CLI override lane
+    /// (Application::init) can re-apply them after --visualizer-fps/-width/
+    /// -height write raw values into CONFIG, past the parser. Idempotent:
+    /// already-legal values pass through unchanged.
+    static void clampVisualizer(VisualizerConfig& cfg);
+
+    /// Range-clamps [recording.video] with the exact bounds parseRecording
+    /// enforces (crf, even-aligned width/height, fps, gop_size, b_frames).
+    /// Same rationale as clampVisualizer: --recording-crf writes past the
+    /// parser. Idempotent.
+    static void clampVideoEncoder(VideoEncoderConfig& cfg);
+
     /// Rebuilds the whole document from the structs. Keys absent from the
     /// section field tables are NOT preserved -- see the @section UnknownKeys
     /// note in ConfigParsers.cpp. `suno.token` / `suno.cookie` are always
     /// omitted, whatever they hold.
-    static toml::table serialize(
-            const AudioConfig& audio,
-            const VisualizerConfig& visualizer,
-            const RecordingConfig& recording,
-            const UIConfig& ui,
-            const KeyboardConfig& keyboard,
-            const SunoConfig& suno,
-            const KaraokeConfig& karaoke,
-            const OverlayConfig& overlay,
-            bool debug);
+    static toml::table serialize(const AudioConfig& audio, const VisualizerConfig& visualizer,
+                                 const RecordingConfig& recording, const UIConfig& ui,
+                                 const KeyboardConfig& keyboard, const SunoConfig& suno,
+                                 const KaraokeConfig& karaoke, const OverlayConfig& overlay,
+                                 bool debug);
 };
 
 } // namespace vc
