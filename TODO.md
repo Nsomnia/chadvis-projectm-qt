@@ -108,7 +108,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       body, from **any** GitHub account. The action is also pinned to `@latest` (:29),
       contradicting `dependabot.yml:16`. Fix: require
       `OWNER|MEMBER|COLLABORATOR|MEMBER` and pin to a SHA.
-- [ ] T0010 **An unrecognised playlist `updateType` silently adds tracks** (`src/qml_bridge/SunoBridge.cpp:1611`) #data-loss
+- [x] T0010 **An unrecognised playlist `updateType` silently adds tracks** (`src/qml_bridge/SunoBridge.cpp:1611`) #data-loss
       ```cpp
       if (!type) { (void)m->updatePlaylistClips(playlistId, PlaylistUpdateType::Add, {}); return; }
       ```
@@ -175,12 +175,12 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       `db_.commit()` results are **discarded**, so `saveClips` reports ok even when
       nothing was persisted. `addDatabase("suno_db")` (:84) has no `contains()` guard and
       the destructor never calls `removeDatabase`.
-- [ ] T0020 **Raw `this` captured in `SunoAccountManager` request callbacks** (`src/suno/SunoAccountManager.cpp:185,197`) #risk-high
+- [x] T0020 **Raw `this` captured in `SunoAccountManager` request callbacks** (`src/suno/SunoAccountManager.cpp:185,197`) #risk-high
       The manager is a `unique_ptr` member of `SunoController` (:66); destroy it before
       the reply lands and the lambda runs on freed memory. Three sibling services already
       use the correct `QPointer` guard for this exact hazard (`SunoExploreService.cpp:226`,
       `SunoNotificationService.cpp:259`, `SunoAudioUploadService.cpp:230`).
-- [ ] T0021 **`vc::Signal<>` subscriptions capture raw `this` and are never disconnected** (`src/suno/SunoLibraryManager.cpp:13-15,22-30`) #risk-high
+- [x] T0021 **`vc::Signal<>` subscriptions capture raw `this` and are never disconnected** (`src/suno/SunoLibraryManager.cpp:13-15,22-30`) #risk-high
       `vc::Signal` (`src/util/Signal.hpp:112`) stores a plain `std::function` with no
       lifetime tracking and no `disconnect`; the connection id is discarded and the
       destructor is `= default` (.cpp:60). A `SunoClient` outliving the manager calls a
@@ -194,15 +194,15 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       `VisualizerRenderer.cpp:27,222`, `SunoDownloader.cpp:79,226`, `SunoClient.cpp:383`).
       The header comment at :5 ("Thread-Safe: Mutex-protected access") **overstates the
       code.** (after: T0023)
-- [ ] T0023 **`Config::save()` never clears the dirty flag** (`src/core/Config.cpp:23-26`) #risk-high
+- [x] T0023 **`Config::save()` never clears the dirty flag** (`src/core/Config.cpp:23-26`) #risk-high
       `ConfigLoader::save` succeeds (:299) but nothing calls `markClean()`, so with T0022
       the file is rewritten on every quit regardless of change.
-- [ ] T0024 **`setFavorite`/`setBlacklisted` mutate the published generation in place** (`src/visualizer/PresetManager.cpp:474-494`) #risk-high
+- [x] T0024 **`setFavorite`/`setBlacklisted` mutate the published generation in place** (`src/visualizer/PresetManager.cpp:474-494`) #risk-high
       `publishGeneration` documents "Swap, never clear-and-refill: a Snapshot pinned by any
       reader keeps the old storage alive **and unmodified**" (:209-211). The toggle writes
       `liveList()[index].favorite` (:477), violating the invariant documented 265 lines
       earlier in the same file. Fix: copy-on-write the generation.
-- [ ] T0025 **`Logger::get()` races on a non-atomic static** (`src/core/Logger.cpp:7,59-64`) #risk-high
+- [x] T0025 **`Logger::get()` races on a non-atomic static** (`src/core/Logger.cpp:7,59-64`) #risk-high
       `logger_` is a `static std::shared_ptr`. Two threads logging before
       `Application::init` reaches `Logger::init` (`Application.cpp:275`) race on the
       pointer assignment and on `spdlog::register_logger`. Fix: Meyers singleton +
@@ -230,12 +230,12 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       comment warns that per-FBO draw-buffer state *"leaks into FBO 0 on some drivers"*. The
       host must therefore guard viewport + scissor + colour mask + blend + depth itself. FIX:
       save and restore all of it around the projectM call.
-- [ ] T0028 **CLI overrides bypass the parser's clamps** (`src/core/Application.cpp:318-320`) #risk-high
+- [x] T0028 **CLI overrides bypass the parser's clamps** (`src/core/Application.cpp:318-320`) #risk-high
       `applyOverride` writes raw values **after** `clamp(fps,10,240)`
       (`ConfigParsers.cpp:259`). `--visualizer-fps 0` → `fps=0` → `VisualizerRenderer.cpp:28`
       skips its guard and keeps `targetFps_{60}` (`VisualizerRenderer.hpp:99`), so the flag
       silently does nothing.
-- [ ] T0029 **`FileBackend::store` leaves a 0644 window on the refresh secret** (`src/suno/auth/CredentialStore.cpp:284-290`) #security
+- [x] T0029 **`FileBackend::store` leaves a 0644 window on the refresh secret** (`src/suno/auth/CredentialStore.cpp:284-290`) #security
       `file.commit()` renames the temp file into place; `setPermissions(0600)` runs
       **after**. Under `umask 022` the secret is world-readable in between. Gated to
       `Backend::File` / `CHADVIS_NO_KEYCHAIN` only (:634), both of which `LOG_WARN` — so P1,
