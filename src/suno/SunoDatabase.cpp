@@ -70,6 +70,12 @@ SunoClip clipFromQuery(const QSqlQuery& query) {
     return clip;
 }
 
+/// The process-wide Qt connection name. QSqlDatabase registrations live in a
+/// global registry that outlives every SunoDatabase instance, so both the
+/// contains() guard in init() and the removeDatabase() in the destructor
+/// exist to keep that registry honest.
+constexpr auto kConnectionName = "suno_db";
+
 } // namespace
 
 SunoDatabase::SunoDatabase() = default;
@@ -78,15 +84,55 @@ SunoDatabase::~SunoDatabase() {
     if (db_.isOpen()) {
         db_.close();
     }
+    // Unregister so a later SunoDatabase in the same process (a re-run test,
+    // a second instance) does not hit the duplicate-registration path. The
+    // handle must be released before removeDatabase(), or Qt keeps the
+    // connection "in use" and the removal degrades to a warning.
+    if (!db_.connectionName().isEmpty()) {
+        const QString name = db_.connectionName();
+        db_ = QSqlDatabase();
+        QSqlDatabase::removeDatabase(name);
+    }
 }
 
 Result<void> SunoDatabase::init(const std::string& dbPath) {
-    db_ = QSqlDatabase::addDatabase("QSQLITE", "suno_db");
+    // The guard the registration always needed: a second SunoDatabase (or a
+    // re-init) must fail loudly here rather than silently replacing a live
+    // connection registration.
+    if (QSqlDatabase::contains(kConnectionName)) {
+        return Result<void>::err("A Suno database connection already exists in this process; "
+                                 "init() refuses to re-register it");
+    }
+    db_ = QSqlDatabase::addDatabase("QSQLITE", kConnectionName);
     db_.setDatabaseName(QString::fromStdString(dbPath));
 
     if (!db_.open()) {
         return Result<void>::err("Failed to open Suno database: " +
                                  db_.lastError().text().toStdString());
+    }
+    // WAL: readers never block the writer, and a crash-held lock no longer
+    // holds every later open() hostage — journal recovery is instant instead
+    // of the default 5 s wait. synchronous=NORMAL is the documented WAL
+    // companion; the trade (a power loss may lose the last transactions but
+    // cannot corrupt the database) is right for a client-side cache of a
+    // server-owned library. busy_timeout is the explicit, bounded wait a
+    // lock collision now gets instead of an immediate error.
+    //
+    // WAL is a file-database feature: SQLite cannot put an in-memory database
+    // into WAL mode at all (the pragma returns "memory" unchanged), and crash
+    // recovery has no meaning without a file — so for ":memory:" the mode is
+    // skipped rather than demanded. Everything else applies to both.
+    const bool inMemory = dbPath == ":memory:";
+    QSqlQuery pragma(db_);
+    if (!inMemory &&
+        (!pragma.exec("PRAGMA journal_mode=WAL") || !pragma.next() ||
+         pragma.value(0).toString().compare(QStringLiteral("wal"), Qt::CaseInsensitive) != 0)) {
+        return Result<void>::err("Failed to enable WAL journal mode: " +
+                                 pragma.lastError().text().toStdString());
+    }
+    if (!pragma.exec("PRAGMA synchronous=NORMAL") || !pragma.exec("PRAGMA busy_timeout=5000")) {
+        return Result<void>::err("Failed to set database pragmas: " +
+                                 pragma.lastError().text().toStdString());
     }
 
     QSqlQuery query(db_);
@@ -135,25 +181,25 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
     if (schemaVersion < 1) {
         // Migration: Add missing columns if they don't exist
         QSqlRecord record = db_.record("clips");
-        struct Column { QString name; QString type; };
-        std::vector<Column> missingColumns = {
-            {"image_large_url", "TEXT"},
-            {"major_model_version", "TEXT"},
-            {"display_name", "TEXT"},
-            {"handle", "TEXT"},
-            {"is_liked", "INTEGER"},
-            {"is_trashed", "INTEGER"},
-            {"is_public", "INTEGER"},
-            {"duration", "TEXT"},
-            {"error_message", "TEXT"},
-            {"aligned_lyrics_json", "TEXT"}
+        struct Column {
+            QString name;
+            QString type;
         };
+        std::vector<Column> missingColumns = {
+                {"image_large_url", "TEXT"}, {"major_model_version", "TEXT"},
+                {"display_name", "TEXT"},    {"handle", "TEXT"},
+                {"is_liked", "INTEGER"},     {"is_trashed", "INTEGER"},
+                {"is_public", "INTEGER"},    {"duration", "TEXT"},
+                {"error_message", "TEXT"},   {"aligned_lyrics_json", "TEXT"}};
 
         for (const auto& col : missingColumns) {
             if (record.indexOf(col.name) == -1) {
-                LOG_INFO("SunoDatabase: Migrating table clips, adding column {}", col.name.toStdString());
-                if (!query.exec(QString("ALTER TABLE clips ADD COLUMN %1 %2").arg(col.name, col.type))) {
-                    LOG_ERROR("SunoDatabase: Failed to add column {}: {}", col.name.toStdString(), query.lastError().text().toStdString());
+                LOG_INFO("SunoDatabase: Migrating table clips, adding column {}",
+                         col.name.toStdString());
+                if (!query.exec(QString("ALTER TABLE clips ADD COLUMN %1 %2")
+                                        .arg(col.name, col.type))) {
+                    LOG_ERROR("SunoDatabase: Failed to add column {}: {}", col.name.toStdString(),
+                              query.lastError().text().toStdString());
                 }
             }
         }
@@ -166,7 +212,8 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
                 bool ok;
                 double secs = durStr.toDouble(&ok);
                 if (ok) {
-                    QString formatted = QString::fromStdString(file::formatDuration(Duration(static_cast<i64>(secs * 1000))));
+                    QString formatted = QString::fromStdString(
+                            file::formatDuration(Duration(static_cast<i64>(secs * 1000))));
                     QSqlQuery updateQuery(db_);
                     updateQuery.prepare("UPDATE clips SET duration = :dur WHERE id = :id");
                     updateQuery.bindValue(":dur", formatted);
@@ -178,7 +225,8 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
 
         // Mark migrations as complete so future startups skip this block.
         if (!query.exec("PRAGMA user_version = 1")) {
-            LOG_WARN("SunoDatabase: Failed to persist schema version; migration may re-run next startup");
+            LOG_WARN("SunoDatabase: Failed to persist schema version; migration may re-run next "
+                     "startup");
         } else {
             LOG_INFO("SunoDatabase: Schema migrated to version 1");
         }
@@ -188,8 +236,8 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
     if (schemaVersion < 2) {
         QSqlRecord record = db_.record("clips");
         const std::vector<std::pair<QString, QString>> newColumns = {
-            {"play_count", "INTEGER DEFAULT 0"},
-            {"upvote_count", "INTEGER DEFAULT 0"},
+                {"play_count", "INTEGER DEFAULT 0"},
+                {"upvote_count", "INTEGER DEFAULT 0"},
         };
 
         for (const auto& [name, type] : newColumns) {
@@ -197,8 +245,8 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
                 LOG_INFO("SunoDatabase: Migrating table clips (v2), adding column {}",
                          name.toStdString());
                 if (!query.exec(QString("ALTER TABLE clips ADD COLUMN %1 %2").arg(name, type))) {
-                    LOG_ERROR("SunoDatabase: Failed to add column {}: {}",
-                              name.toStdString(), query.lastError().text().toStdString());
+                    LOG_ERROR("SunoDatabase: Failed to add column {}: {}", name.toStdString(),
+                              query.lastError().text().toStdString());
                 }
             }
         }
@@ -206,7 +254,8 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
         if (query.exec("PRAGMA user_version = 2")) {
             LOG_INFO("SunoDatabase: Schema migrated to version 2");
         } else {
-            LOG_WARN("SunoDatabase: Failed to persist schema version 2; migration may re-run next startup");
+            LOG_WARN("SunoDatabase: Failed to persist schema version 2; migration may re-run next "
+                     "startup");
         }
     }
 
@@ -225,14 +274,25 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
         }
     }
 
+    // The library view sorts by created_at DESC on every open; without this
+    // index that is a full scan plus an in-memory sort of the whole table —
+    // on a library with no retention policy. (searchClips' five
+    // LIKE '%…%' predicates stay scans by nature: a leading wildcard cannot
+    // use a B-tree index, and full-text search would be its own feature,
+    // not a missing index.)
+    if (!query.exec("CREATE INDEX IF NOT EXISTS idx_clips_created_at "
+                    "ON clips (created_at DESC)")) {
+        return Result<void>::err("Failed to create clips index: " +
+                                 query.lastError().text().toStdString());
+    }
+
     initialized_ = true;
     LOG_INFO("Suno database initialized at {}", dbPath);
     return Result<void>::ok();
 }
 
 Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
-    if (!initialized_)
-        return Result<void>::err("Database not initialized");
+    if (!initialized_) return Result<void>::err("Database not initialized");
 
     QSqlQuery query(db_);
     query.prepare(
@@ -252,7 +312,8 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
             "image_large_url=excluded.image_large_url, "
             "model_name=excluded.model_name, major_model_version=excluded.major_model_version, "
             "display_name=excluded.display_name, handle=excluded.handle, "
-            "is_liked=excluded.is_liked, is_trashed=excluded.is_trashed, is_public=excluded.is_public, "
+            "is_liked=excluded.is_liked, is_trashed=excluded.is_trashed, "
+            "is_public=excluded.is_public, "
             "status=excluded.status, created_at=excluded.created_at, "
             "play_count=excluded.play_count, upvote_count=excluded.upvote_count, "
             "prompt=excluded.prompt, tags=excluded.tags, lyrics=excluded.lyrics, "
@@ -284,15 +345,22 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
     query.bindValue(":error_message", QString::fromStdString(clip.metadata.error_message));
 
     if (!query.exec()) {
-        return Result<void>::err("Failed to save clip: " +
-                                 query.lastError().text().toStdString());
+        return Result<void>::err("Failed to save clip: " + query.lastError().text().toStdString());
     }
 
     return Result<void>::ok();
 }
 
 Result<void> SunoDatabase::saveClips(const std::vector<SunoClip>& clips) {
-    db_.transaction();
+    if (!initialized_) return Result<void>::err("Database not initialized");
+
+    // Both results used to be discarded: a failed begin() left the batch
+    // saving in autocommit pieces, and a failed commit() reported success
+    // with nothing persisted.
+    if (!db_.transaction()) {
+        return Result<void>::err("Failed to begin transaction: " +
+                                 db_.lastError().text().toStdString());
+    }
     for (const auto& clip : clips) {
         auto res = saveClip(clip);
         if (!res) {
@@ -300,13 +368,15 @@ Result<void> SunoDatabase::saveClips(const std::vector<SunoClip>& clips) {
             return res;
         }
     }
-    db_.commit();
+    if (!db_.commit()) {
+        return Result<void>::err("Failed to commit clip batch: " +
+                                 db_.lastError().text().toStdString());
+    }
     return Result<void>::ok();
 }
 
 Result<std::vector<SunoClip>> SunoDatabase::getAllClips() {
-    if (!initialized_)
-        return Result<std::vector<SunoClip>>::err("Database not initialized");
+    if (!initialized_) return Result<std::vector<SunoClip>>::err("Database not initialized");
 
     QSqlQuery query("SELECT * FROM clips ORDER BY created_at DESC", db_);
     std::vector<SunoClip> clips;
@@ -319,8 +389,7 @@ Result<std::vector<SunoClip>> SunoDatabase::getAllClips() {
 }
 
 Result<std::optional<SunoClip>> SunoDatabase::getClip(const std::string& id) {
-    if (!initialized_)
-        return Result<std::optional<SunoClip>>::err("Database not initialized");
+    if (!initialized_) return Result<std::optional<SunoClip>>::err("Database not initialized");
 
     QSqlQuery query(db_);
     query.prepare("SELECT * FROM clips WHERE id = :id");
@@ -338,14 +407,12 @@ Result<std::optional<SunoClip>> SunoDatabase::getClip(const std::string& id) {
     return Result<std::optional<SunoClip>>::ok(std::nullopt);
 }
 
-Result<void> SunoDatabase::saveAlignedLyrics(
-        const std::string& clipId, const std::string& alignedLyricsJson) {
-    if (!initialized_)
-        return Result<void>::err("Database not initialized");
+Result<void> SunoDatabase::saveAlignedLyrics(const std::string& clipId,
+                                             const std::string& alignedLyricsJson) {
+    if (!initialized_) return Result<void>::err("Database not initialized");
 
     QSqlQuery query(db_);
-    query.prepare(
-            "UPDATE clips SET aligned_lyrics_json = :json WHERE id = :id");
+    query.prepare("UPDATE clips SET aligned_lyrics_json = :json WHERE id = :id");
     query.bindValue(":json", QString::fromStdString(alignedLyricsJson));
     query.bindValue(":id", QString::fromStdString(clipId));
 
@@ -358,8 +425,7 @@ Result<void> SunoDatabase::saveAlignedLyrics(
 }
 
 Result<std::string> SunoDatabase::getAlignedLyrics(const std::string& clipId) {
-    if (!initialized_)
-        return Result<std::string>::err("Database not initialized");
+    if (!initialized_) return Result<std::string>::err("Database not initialized");
 
     QSqlQuery query(db_);
     query.prepare("SELECT aligned_lyrics_json FROM clips WHERE id = :id");
@@ -376,8 +442,7 @@ Result<std::string> SunoDatabase::getAlignedLyrics(const std::string& clipId) {
 }
 
 bool SunoDatabase::hasLyrics(const std::string& clipId) const {
-    if (!initialized_)
-        return false;
+    if (!initialized_) return false;
 
     QSqlQuery query(db_);
     query.prepare("SELECT COUNT(*) FROM clips WHERE id = :id AND ("
@@ -394,17 +459,15 @@ bool SunoDatabase::hasLyrics(const std::string& clipId) const {
 }
 
 Result<std::vector<SunoClip>> SunoDatabase::searchClips(const std::string& query) {
-    if (!initialized_)
-        return Result<std::vector<SunoClip>>::err("Database not initialized");
+    if (!initialized_) return Result<std::vector<SunoClip>>::err("Database not initialized");
 
-    if (query.empty())
-        return getAllClips();
+    if (query.empty()) return getAllClips();
 
     std::vector<SunoClip> clips;
-    
+
     // Build search query - search in title, display_name, tags, prompt, lyrics
     QString searchPattern = QString("%%%1%%").arg(QString::fromStdString(query));
-    
+
     QSqlQuery q(db_);
     q.prepare("SELECT * FROM clips WHERE "
               "title LIKE :pattern OR "
@@ -414,16 +477,16 @@ Result<std::vector<SunoClip>> SunoDatabase::searchClips(const std::string& query
               "lyrics LIKE :pattern "
               "ORDER BY created_at DESC");
     q.bindValue(":pattern", searchPattern);
-    
+
     if (!q.exec()) {
-        return Result<std::vector<SunoClip>>::err("Search failed: " + 
+        return Result<std::vector<SunoClip>>::err("Search failed: " +
                                                   q.lastError().text().toStdString());
     }
-    
+
     while (q.next()) {
         clips.push_back(clipFromQuery(q));
     }
-    
+
     LOG_INFO("SunoDatabase: Search for '{}' found {} clips", query, clips.size());
     return Result<std::vector<SunoClip>>::ok(clips);
 }

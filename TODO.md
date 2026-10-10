@@ -167,7 +167,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       "accepted, shape unverified". A 204 takes the error path, so **all notifications
       stay unread although the server marked them.** `SunoLibraryMutations::handleReply`
       (:488-493) gets this right. Fix: accept any 2xx without parsing.
-- [ ] T0019 **`SunoDatabase` has no indexes, no WAL, no `busy_timeout`, and discards transaction results** (`src/suno/SunoDatabase.cpp:83-120,295,303`) #risk-high
+- [x] T0019 **`SunoDatabase` has no indexes, no WAL, no `busy_timeout`, and discards transaction results** (`src/suno/SunoDatabase.cpp:83-120,295,303`) #risk-high
       No `CREATE INDEX` anywhere; `getAllClips` (:311, `ORDER BY created_at DESC`) and
       `searchClips` (:409-415, five `LIKE`) are full scans on a table with no retention
       policy. No `journal_mode=WAL` / `synchronous` / `busy_timeout`, so a crash-held
