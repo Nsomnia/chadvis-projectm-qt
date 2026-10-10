@@ -61,13 +61,13 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       behind that window (`SettingsWindow.qml:102` → `AccountPage.qml:516-524`), so
       neither Google sign-in nor manual cookie paste is reachable. Verify by launching and
       clicking Settings; the window must appear.
-- [ ] T0002 **Every preset click operates on preset #0 regardless of the row** (`src/qml/panels/PresetsPanel.qml:48,96`) #data-loss
+- [x] T0002 **Every preset click operates on preset #0 regardless of the row** (`src/qml/panels/PresetsPanel.qml:48,96`) #data-loss
       `PresetBridge::presetToVariant` (`PresetBridge.cpp:268-280`) emits exactly
       `name, path, author, category, favorite, blacklisted, playCount, rating` — **no
       `index` key** — while the panel passes `modelData.index`, which is `undefined`
       and is coerced to `0` by the `int` parameter. Verified by reading both sides.
       Fix: emit an `index` key, or use the already-existing `selectByName`
-      (`PresetBridge.hpp:60`). (after: T0002)
+      (`PresetBridge.hpp:60`).
 - [ ] T0003 **Preset ratings can only ever be written to slot 0** (`src/qml/panels/PresetsPanel.qml:84-98`) #data-loss
       The star `Repeater { model: 5 }` makes `modelData` the **number** 0–4, so
       `modelData.index` at :96 is `undefined`; `setRating` then indexes

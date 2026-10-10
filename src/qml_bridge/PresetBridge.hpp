@@ -1,25 +1,24 @@
 #pragma once
 
 #include <QObject>
-#include <QtQml/qqml.h>
+#include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
-#include <QStringList>
+#include <QtQml/qqml.h>
 #include "visualizer/PresetData.hpp"
 // The full PresetManager definition, not a forward declaration: the private read
 // helpers below name PresetManager::PresetView, the handle that keeps a query
 // result's pointers valid while the QML-facing QVariantMaps are built from them.
-#include "visualizer/PresetManager.hpp"
 #include "QmlSingletonBridge.hpp"
+#include "visualizer/PresetManager.hpp"
 
 namespace qml_bridge {
 
 class PresetBridge : public QObject,
                      public QmlSingletonBridge<PresetBridge, SingletonPolicy::CachedQmlParented> {
-
-// The CRTP mixin constructs this singleton via its private
-// constructor; grant only the exact instantiation access.
-friend class QmlSingletonBridge<PresetBridge, SingletonPolicy::CachedQmlParented>;
+    // The CRTP mixin constructs this singleton via its private
+    // constructor; grant only the exact instantiation access.
+    friend class QmlSingletonBridge<PresetBridge, SingletonPolicy::CachedQmlParented>;
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -33,7 +32,8 @@ friend class QmlSingletonBridge<PresetBridge, SingletonPolicy::CachedQmlParented
     Q_PROPERTY(int presetCount READ presetCount NOTIFY presetsChanged)
     Q_PROPERTY(int activeCount READ activeCount NOTIFY presetsChanged)
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
-    Q_PROPERTY(QString selectedCategory READ selectedCategory WRITE setSelectedCategory NOTIFY selectedCategoryChanged)
+    Q_PROPERTY(QString selectedCategory READ selectedCategory WRITE setSelectedCategory NOTIFY
+                       selectedCategoryChanged)
 
 public:
     explicit PresetBridge(QObject* parent = nullptr);
@@ -84,7 +84,16 @@ private:
     /// driven from the constructor because QML creates this singleton lazily.
     void attachManager();
 
-    QVariantMap presetToVariant(const vc::PresetInfo& info) const;
+    /// Value form handed to QML. `fullListIndex` is the preset's position in
+    /// the FULL manager generation — the list every index-based QML-facing
+    /// slot (selectByIndex, toggleFavorite, toggleBlacklisted, setRating)
+    /// addresses — never the row's position in a filtered view: the panel
+    /// renders filteredPresets(), so the two diverge whenever a search or
+    /// category filter is active. QML passes the emitted key straight back
+    /// into those slots; when this key was missing, modelData.index was
+    /// undefined, QML coerced it to 0, and every visible row acted on
+    /// preset #0.
+    QVariantMap presetToVariant(const vc::PresetInfo& info, int fullListIndex) const;
     /// Copies a manager query result into the value-only form QML consumes.
     /// QML never sees a `const PresetInfo*`, so nothing on the QML side can
     /// outlive the generation the view pins.

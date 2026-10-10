@@ -1,22 +1,16 @@
 #include "PresetBridge.hpp"
-#include "visualizer/PresetManager.hpp"
 #include "visualizer/PresetData.hpp"
+#include "visualizer/PresetManager.hpp"
 #include "visualizer/RatingManager.hpp"
 
 namespace qml_bridge {
 
 vc::PresetManager* PresetBridge::s_manager = nullptr;
 
-PresetBridge::PresetBridge(QObject* parent)
-    : QObject(parent)
-{
-    attachManager();
-}
+PresetBridge::PresetBridge(QObject* parent) : QObject(parent) { attachManager(); }
 
-void PresetBridge::attachManager()
-{
-    if (!s_manager || signalsAttached_)
-        return;
+void PresetBridge::attachManager() {
+    if (!s_manager || signalsAttached_) return;
     signalsAttached_ = true;
 
     // A manager scan publishes its result by queuing onto this bridge, so the
@@ -32,25 +26,18 @@ void PresetBridge::attachManager()
     // lives in a guard: connecting twice would emit presetsChanged twice per
     // publication and double the QVariantList rebuilds.
     auto* self = this;
-    s_manager->presetChanged.connect([self](const vc::PresetInfo* p) {
-        self->onPresetChanged(p);
-    });
-    s_manager->listChanged.connect([self]() {
-        self->onListChanged();
-    });
+    s_manager->presetChanged.connect([self](const vc::PresetInfo* p) { self->onPresetChanged(p); });
+    s_manager->listChanged.connect([self]() { self->onListChanged(); });
 }
 
-void PresetBridge::setPresetManager(vc::PresetManager* manager)
-{
+void PresetBridge::setPresetManager(vc::PresetManager* manager) {
     s_manager = manager;
     // The singleton may already exist if something touched it before the
     // manager was registered; otherwise its constructor attaches on creation.
-    if (auto* bridge = instance(); bridge)
-        bridge->attachManager();
+    if (auto* bridge = instance(); bridge) bridge->attachManager();
 }
 
-QVariantList PresetBridge::presets() const
-{
+QVariantList PresetBridge::presets() const {
     if (!s_manager) return {};
 
     // One shared handle for the whole loop: it pins the generation the pointers
@@ -60,30 +47,28 @@ QVariantList PresetBridge::presets() const
 
     QVariantList result;
     result.reserve(static_cast<qsizetype>(generation->size()));
+    int fullListIndex = 0;
     for (const auto& preset : *generation) {
-        result.append(presetToVariant(preset));
+        result.append(presetToVariant(preset, fullListIndex++));
     }
     return result;
 }
 
-QVariantList PresetBridge::activePresets() const
-{
+QVariantList PresetBridge::activePresets() const {
     if (!s_manager) return {};
 
     const vc::PresetManager::PresetView active = s_manager->activePresets();
     return toVariantList(active);
 }
 
-QVariantList PresetBridge::favoritePresets() const
-{
+QVariantList PresetBridge::favoritePresets() const {
     if (!s_manager) return {};
 
     const vc::PresetManager::PresetView favorites = s_manager->favoritePresets();
     return toVariantList(favorites);
 }
 
-QStringList PresetBridge::categories() const
-{
+QStringList PresetBridge::categories() const {
     if (!s_manager) return {};
 
     QStringList result;
@@ -93,43 +78,32 @@ QStringList PresetBridge::categories() const
     return result;
 }
 
-QVariantMap PresetBridge::currentPreset() const
-{
+QVariantMap PresetBridge::currentPreset() const {
     if (!s_manager) return {};
 
     const auto* current = s_manager->current();
     if (!current) return {};
 
-    return presetToVariant(*current);
+    return presetToVariant(*current, static_cast<int>(s_manager->currentIndex()));
 }
 
-int PresetBridge::currentIndex() const
-{
+int PresetBridge::currentIndex() const {
     return s_manager ? static_cast<int>(s_manager->currentIndex()) : 0;
 }
 
-int PresetBridge::presetCount() const
-{
+int PresetBridge::presetCount() const {
     return s_manager ? static_cast<int>(s_manager->count()) : 0;
 }
 
-int PresetBridge::activeCount() const
-{
+int PresetBridge::activeCount() const {
     return s_manager ? static_cast<int>(s_manager->activeCount()) : 0;
 }
 
-QString PresetBridge::searchQuery() const
-{
-    return searchQuery_;
-}
+QString PresetBridge::searchQuery() const { return searchQuery_; }
 
-QString PresetBridge::selectedCategory() const
-{
-    return selectedCategory_;
-}
+QString PresetBridge::selectedCategory() const { return selectedCategory_; }
 
-void PresetBridge::setSearchQuery(const QString& query)
-{
+void PresetBridge::setSearchQuery(const QString& query) {
     if (searchQuery_ != query) {
         searchQuery_ = query;
         emit searchQueryChanged();
@@ -137,8 +111,7 @@ void PresetBridge::setSearchQuery(const QString& query)
     }
 }
 
-void PresetBridge::setSelectedCategory(const QString& category)
-{
+void PresetBridge::setSelectedCategory(const QString& category) {
     if (selectedCategory_ != category) {
         selectedCategory_ = category;
         emit selectedCategoryChanged();
@@ -146,71 +119,60 @@ void PresetBridge::setSelectedCategory(const QString& category)
     }
 }
 
-bool PresetBridge::selectByIndex(int index)
-{
+bool PresetBridge::selectByIndex(int index) {
     if (!s_manager) return false;
     return s_manager->selectByIndex(static_cast<size_t>(index));
 }
 
-bool PresetBridge::selectByName(const QString& name)
-{
+bool PresetBridge::selectByName(const QString& name) {
     if (!s_manager) return false;
     return s_manager->selectByName(name.toStdString());
 }
 
-bool PresetBridge::selectRandom()
-{
+bool PresetBridge::selectRandom() {
     if (!s_manager) return false;
     return s_manager->selectRandom();
 }
 
-bool PresetBridge::selectNext()
-{
+bool PresetBridge::selectNext() {
     if (!s_manager) return false;
     return s_manager->selectNext();
 }
 
-bool PresetBridge::selectPrevious()
-{
+bool PresetBridge::selectPrevious() {
     if (!s_manager) return false;
     return s_manager->selectPrevious();
 }
 
-void PresetBridge::toggleFavorite(int index)
-{
+void PresetBridge::toggleFavorite(int index) {
     if (s_manager && index >= 0) {
         s_manager->toggleFavorite(static_cast<size_t>(index));
     }
 }
 
-void PresetBridge::toggleBlacklist(int index)
-{
+void PresetBridge::toggleBlacklist(int index) {
     if (s_manager && index >= 0) {
         s_manager->toggleBlacklisted(static_cast<size_t>(index));
     }
 }
 
-void PresetBridge::setRating(int index, int rating)
-{
+void PresetBridge::setRating(int index, int rating) {
     if (!s_manager || index < 0 || rating < 1 || rating > 5) return;
 
     // Pin the generation for the duration of the lookup; the index means nothing
     // without it once a rescan publishes a new list.
     const vc::PresetManager::Snapshot presets = s_manager->allPresets();
     if (static_cast<std::size_t>(index) < presets->size()) {
-        vc::RatingManager::instance().setRating(
-            (*presets)[index].name, static_cast<int>(rating));
+        vc::RatingManager::instance().setRating((*presets)[index].name, static_cast<int>(rating));
         emit presetsChanged();
     }
 }
 
-int PresetBridge::getRating(const QString& presetName) const
-{
+int PresetBridge::getRating(const QString& presetName) const {
     return vc::RatingManager::instance().getRating(presetName.toStdString());
 }
 
-QVariantList PresetBridge::filteredPresets() const
-{
+QVariantList PresetBridge::filteredPresets() const {
     if (!s_manager) return {};
 
     // One view, whatever the filter: whichever manager query answers, the
@@ -230,18 +192,23 @@ QVariantList PresetBridge::filteredPresets() const
     return toVariantList(filtered);
 }
 
-QVariantList PresetBridge::toVariantList(const vc::PresetManager::PresetView& view) const
-{
+QVariantList PresetBridge::toVariantList(const vc::PresetManager::PresetView& view) const {
     QVariantList result;
     result.reserve(static_cast<qsizetype>(view.items.size()));
+    // Every item of a PresetView borrows from view.generation's own storage —
+    // that is the documented PresetView contract — so the full-list index is
+    // pointer arithmetic within one array, the same pointer-to-index idiom
+    // PresetManager::selectRandom() already uses. It is deliberately NOT the
+    // visible row position: search and category filters reorder and drop rows,
+    // while every QML-facing index slot addresses the full generation.
+    const auto* const base = view.generation->data();
     for (const auto* preset : view.items) {
-        result.append(presetToVariant(*preset));
+        result.append(presetToVariant(*preset, static_cast<int>(preset - base)));
     }
     return result;
 }
 
-void PresetBridge::rescan()
-{
+void PresetBridge::rescan() {
     if (!s_manager) return;
 
     // Off-thread. The directory walk is thousands of stat() calls on a real
@@ -254,20 +221,15 @@ void PresetBridge::rescan()
     s_manager->rescanAsync();
 }
 
-void PresetBridge::onPresetChanged(const vc::PresetInfo* preset)
-{
+void PresetBridge::onPresetChanged(const vc::PresetInfo* preset) {
     Q_UNUSED(preset)
     emit currentPresetChanged();
 }
 
-void PresetBridge::onListChanged()
-{
-    emit presetsChanged();
-}
-
-QVariantMap PresetBridge::presetToVariant(const vc::PresetInfo& info) const
-{
+void PresetBridge::onListChanged() { emit presetsChanged(); }
+QVariantMap PresetBridge::presetToVariant(const vc::PresetInfo& info, int fullListIndex) const {
     QVariantMap map;
+    map[QStringLiteral("index")] = fullListIndex;
     map[QStringLiteral("name")] = QString::fromStdString(info.name);
     map[QStringLiteral("path")] = QString::fromStdString(info.path.string());
     map[QStringLiteral("author")] = QString::fromStdString(info.author);

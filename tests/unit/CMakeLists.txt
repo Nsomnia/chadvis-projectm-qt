@@ -13,6 +13,7 @@ add_executable(unit_tests
     audio/test_PcmFormat.cpp
     audio/test_LoudnessAnalysis.cpp
     visualizer/test_PresetScanner.cpp
+    visualizer/test_PresetBridge.cpp
     suno/test_AuthModule.cpp
     suno/test_StoredCredentialClassification.cpp
     suno/test_CredentialRestoreWorker.cpp
