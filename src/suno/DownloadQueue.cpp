@@ -44,9 +44,7 @@ namespace {
 
 #ifdef Q_OS_WIN
 
-int nativeHandleOf(QFile& file) {
-    return _get_osfhandle(static_cast<int>(file.nativeHandle()));
-}
+int nativeHandleOf(QFile& file) { return _get_osfhandle(static_cast<int>(file.nativeHandle())); }
 
 bool lockExclusive(const int fd) {
     OVERLAPPED overlapped{};
@@ -83,7 +81,7 @@ bool claimIfUnlocked(const fs::path& path) {
     if (fd < 0) return true;
 
     const bool locked = lockExclusive(fd);
-    if (locked) unlockExclusive(fd);  // probe only; release immediately
+    if (locked) unlockExclusive(fd); // probe only; release immediately
     probe.close();
     return locked;
 }
@@ -127,7 +125,7 @@ namespace {
 /// Month spellings for the IMF-fixdate token set. RFC 9110 fixes these nine
 /// tokens; anything else is malformed, so this is an exact match, not a prefix.
 constexpr std::array<const char*, 12> kHttpMonths{"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+                                                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
 /// Parse an HTTP-date (RFC 9110 5.6.7) into a UTC epoch.
 ///
@@ -158,17 +156,18 @@ std::optional<std::int64_t> parseHttpDate(const QByteArray& value,
     const qsizetype comma = text.indexOf(QLatin1Char(','));
     if (comma <= 0) return std::nullopt;
 
-    const QStringList clock = text.mid(comma + 1).trimmed().split(QLatin1Char(' '),
-                                                                  Qt::SkipEmptyParts);
+    const QStringList clock =
+            text.mid(comma + 1).trimmed().split(QLatin1Char(' '), Qt::SkipEmptyParts);
     // "06 Nov 1994 08:49:37 GMT" -> four clock fields plus the zone.
     if (clock.size() != 5) return std::nullopt;
 
     const int day = clock[0].toInt();
-    const int month =
-        static_cast<int>(std::find_if(kHttpMonths.begin(), kHttpMonths.end(),
-                                      [&](const char* m) { return clock[1] == QLatin1String(m); }) -
-                         kHttpMonths.begin()) +
-        1;
+    const int month = static_cast<int>(std::find_if(kHttpMonths.begin(), kHttpMonths.end(),
+                                                    [&](const char* m) {
+                                                        return clock[1] == QLatin1String(m);
+                                                    }) -
+                                       kHttpMonths.begin()) +
+                      1;
     const int year = clock[2].toInt();
     const QStringList hms = clock[3].split(QLatin1Char(':'));
     if (hms.size() != 3) return std::nullopt;
@@ -190,8 +189,8 @@ std::optional<std::int64_t> parseHttpDate(const QByteArray& value,
     // a leap-second hint read as "retry immediately", clamped up to the 1 s
     // floor. RFC 9110 does permit time-second 60, but Qt cannot represent it, so
     // reject it and let the caller fall back to the backoff ladder.
-    if (day < 1 || day > 31 || month < 1 || month > 12 || hour > 23 || hour < 0 ||
-        minute > 59 || minute < 0 || second > 59 || second < 0) {
+    if (day < 1 || day > 31 || month < 1 || month > 12 || hour > 23 || hour < 0 || minute > 59 ||
+        minute < 0 || second > 59 || second < 0) {
         return std::nullopt;
     }
 
@@ -200,10 +199,13 @@ std::optional<std::int64_t> parseHttpDate(const QByteArray& value,
     // guessing here is the fail-open this class exists to avoid.
     std::int64_t zoneOffsetSecs = 0;
     const QString zone = clock[4];
-    if (zone.compare("GMT", Qt::CaseInsensitive) == 0 || zone.compare("UT", Qt::CaseInsensitive) == 0 ||
-        zone.compare("UTC", Qt::CaseInsensitive) == 0 || zone.compare("Z", Qt::CaseInsensitive) == 0) {
+    if (zone.compare("GMT", Qt::CaseInsensitive) == 0 ||
+        zone.compare("UT", Qt::CaseInsensitive) == 0 ||
+        zone.compare("UTC", Qt::CaseInsensitive) == 0 ||
+        zone.compare("Z", Qt::CaseInsensitive) == 0) {
         zoneOffsetSecs = 0;
-    } else if (zone.size() == 5 && (zone.at(0) == QLatin1Char('+') || zone.at(0) == QLatin1Char('-'))) {
+    } else if (zone.size() == 5 &&
+               (zone.at(0) == QLatin1Char('+') || zone.at(0) == QLatin1Char('-'))) {
         bool ok = false;
         const int offset = zone.mid(1).toInt(&ok);
         if (!ok) return std::nullopt;
@@ -213,9 +215,8 @@ std::optional<std::int64_t> parseHttpDate(const QByteArray& value,
         return std::nullopt;
     }
 
-    const QDateTime when{
-        QDate(year, month, day), QTime(hour, minute, second), QTimeZone::utc()};
-    if (!when.isValid()) return std::nullopt;  // e.g. 40 Nov, or hour 99
+    const QDateTime when{QDate(year, month, day), QTime(hour, minute, second), QTimeZone::utc()};
+    if (!when.isValid()) return std::nullopt; // e.g. 40 Nov, or hour 99
     return std::optional<std::int64_t>{when.toSecsSinceEpoch() - zoneOffsetSecs - nowEpochSecs};
 }
 
@@ -245,7 +246,7 @@ std::int64_t retryDelayMs(const int attemptZeroBased,
     if (!retryAfterSecs.has_value()) return backoffWithJitterMs(attemptZeroBased, rng);
 
     const std::int64_t hint =
-        std::clamp(*retryAfterSecs * 1000, kMinRetryAfterMs, kMaxRetryAfterMs);
+            std::clamp(*retryAfterSecs * 1000, kMinRetryAfterMs, kMaxRetryAfterMs);
     std::uniform_int_distribution<std::int64_t> jitter(0, hint / 5);
     return hint + jitter(rng);
 }
@@ -267,7 +268,7 @@ DownloadQueue::DownloadQueue(QNetworkAccessManager* adoptedManager, QObject* par
     : QObject(parent) {
     if (adoptedManager) {
         nam_ = adoptedManager;
-        nam_->setParent(this);  // we own the one and only manager now
+        nam_->setParent(this); // we own the one and only manager now
     }
 }
 
@@ -284,7 +285,8 @@ DownloadQueue::~DownloadQueue() {
     // a crashed run -- so the queue has to honour that invariant on its own exit
     // too, or the first thing a crashed run finds is a queue that leaks.
     const auto release = [this](std::vector<std::shared_ptr<Item>>& container) {
-        for (auto& item : container) dropPart(*item);
+        for (auto& item : container)
+            dropPart(*item);
     };
     release(active_);
     release(waiting_);
@@ -311,9 +313,7 @@ std::filesystem::path DownloadQueue::partPathFor(const std::filesystem::path& de
     return dest.string() + kPartSuffix;
 }
 
-bool DownloadQueue::enqueue(std::string clipId,
-                            std::string url,
-                            std::filesystem::path destPath,
+bool DownloadQueue::enqueue(std::string clipId, std::string url, std::filesystem::path destPath,
                             QVariantMap metadata) {
     if (clipId.empty() || url.empty() || destPath.empty()) {
         LOG_WARN("DownloadQueue: rejected job with empty id/url/dest");
@@ -365,7 +365,7 @@ bool DownloadQueue::cancel(const std::string& clipId) {
         if (auto* reply = (*it)->reply.data()) reply->abort();
         return true;
     }
-    return false;  // unknown or terminal id: graceful no-op
+    return false; // unknown or terminal id: graceful no-op
 }
 
 DownloadQueue::Item* DownloadQueue::findItem(const std::string& clipId) {
@@ -437,10 +437,9 @@ void DownloadQueue::startItem(const std::shared_ptr<Item>& item) {
     connect(reply, &QNetworkReply::readyRead, this, [this, weak]() {
         if (const auto held = weak.lock(); held) onData(*held);
     });
-    connect(reply, &QNetworkReply::downloadProgress, this,
-            [this, weak](qint64 rec, qint64 total) {
-                if (const auto held = weak.lock(); held) onProgress(*held, rec, total);
-            });
+    connect(reply, &QNetworkReply::downloadProgress, this, [this, weak](qint64 rec, qint64 total) {
+        if (const auto held = weak.lock(); held) onProgress(*held, rec, total);
+    });
     connect(reply, &QNetworkReply::finished, this, [this, weak, reply]() {
         if (const auto held = weak.lock(); held) onFinished(*held, *reply);
     });
@@ -457,7 +456,7 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
         auto injected = partOpener_(pathStr);
         if (!injected) {
             item.abortReason =
-                std::format("{} could not open its scratch file at {}", item.clipId, pathStr);
+                    std::format("{} could not open its scratch file at {}", item.clipId, pathStr);
             return std::unexpected(PartOpenError::Failed);
         }
         item.ownsPart = true;
@@ -480,7 +479,7 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
     };
     const auto lockCreated = [](QFile& file) {
         const int fd = nativeHandleOf(file);
-        return fd < 0 || lockExclusive(fd);  // no native handle: nothing to lock
+        return fd < 0 || lockExclusive(fd); // no native handle: nothing to lock
     };
 
     if (auto file = openOnce()) {
@@ -491,8 +490,8 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
             LOG_WARN("DownloadQueue: lost the race for {} immediately after creating it", pathStr);
             std::error_code ec;
             fs::remove(path, ec);
-            item.abortReason =
-                std::format("{} lost the race to create its scratch file at {}", item.clipId, pathStr);
+            item.abortReason = std::format("{} lost the race to create its scratch file at {}",
+                                           item.clipId, pathStr);
             return std::unexpected(PartOpenError::Failed);
         }
         item.ownsPart = true;
@@ -522,7 +521,7 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
     if (!claimIfUnlocked(path)) {
         LOG_WARN("DownloadQueue: {} collides with a live writer at {}", item.clipId, pathStr);
         item.abortReason =
-            std::format("{} found another download already writing {}", item.clipId, pathStr);
+                std::format("{} found another download already writing {}", item.clipId, pathStr);
         return std::unexpected(PartOpenError::Collision);
     }
 
@@ -532,7 +531,7 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
         LOG_WARN("DownloadQueue: cannot reclaim stale part for {} at {}: {}", item.clipId, pathStr,
                  removeEc.message());
         item.abortReason = std::format("{} found a stale scratch file at {} that could not be "
-                                        "removed ({})",
+                                       "removed ({})",
                                        item.clipId, pathStr, removeEc.message());
         return std::unexpected(PartOpenError::Failed);
     }
@@ -543,8 +542,8 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
                  reclaimed ? std::string("could not lock after reclaiming") : openError);
         std::error_code cleanupEc;
         fs::remove(path, cleanupEc);
-        item.abortReason = std::format("{} could not take over the stale scratch file at {}", item.clipId,
-                                       pathStr);
+        item.abortReason = std::format("{} could not take over the stale scratch file at {}",
+                                       item.clipId, pathStr);
         return std::unexpected(PartOpenError::Failed);
     }
 
@@ -678,7 +677,7 @@ void DownloadQueue::finalizeSuccess(Item& item, QNetworkReply& reply) {
     // A rename failure is unrecoverable for this attempt: the sink was closed
     // and there is no second copy of the bytes anywhere. Terminal, not retried.
     std::error_code ec;
-    fs::rename(partPathFor(item.destPath), item.destPath, ec);  // atomic on POSIX
+    fs::rename(partPathFor(item.destPath), item.destPath, ec); // atomic on POSIX
     if (ec) {
         LOG_WARN("DownloadQueue: rename failed for {}: {}", item.clipId, ec.message());
         item.abortReason = std::format("{} downloaded but could not be moved into place ({})",
@@ -716,11 +715,11 @@ void DownloadQueue::handleFailure(Item& item, QNetworkReply* reply, const Failur
         // telling us when it will be ready, and the ladder is a guess.
         std::optional<std::int64_t> retryAfter;
         if (reply) {
-            retryAfter = parseRetryAfter(
-                reply->rawHeader("Retry-After"),
-                std::chrono::duration_cast<std::chrono::seconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                    .count());
+            retryAfter =
+                    parseRetryAfter(reply->rawHeader("Retry-After"),
+                                    std::chrono::duration_cast<std::chrono::seconds>(
+                                            std::chrono::system_clock::now().time_since_epoch())
+                                            .count());
         }
         const std::int64_t delay = retryDelayMs(item.attempts - 1, retryAfter, rng_);
         LOG_WARN("DownloadQueue: {} failed (attempt {}/{}), retrying in {} ms{}", item.clipId,
@@ -746,17 +745,16 @@ void DownloadQueue::handleFailure(Item& item, QNetworkReply* reply, const Failur
 void DownloadQueue::resumeWaiting(const std::string& clipId) {
     const auto it = std::find_if(waiting_.begin(), waiting_.end(),
                                  [&clipId](const auto& ptr) { return ptr->clipId == clipId; });
-    if (it == waiting_.end()) return;  // cancelled during backoff
+    if (it == waiting_.end()) return; // cancelled during backoff
     auto item = std::move(*it);
     waiting_.erase(it);
-    pending_.push_back(std::move(item));  // retries rejoin at FIFO front priority
+    pending_.push_back(std::move(item)); // retries rejoin at FIFO front priority
     pump();
 }
 
 void DownloadQueue::setState(Item& item, const DownloadState state) {
     item.state = state;
-    emit itemStateChanged(QString::fromStdString(item.clipId),
-                          static_cast<int>(state),
+    emit itemStateChanged(QString::fromStdString(item.clipId), static_cast<int>(state),
                           state == DownloadState::Completed ? 100 : item.progressPercent);
 }
 

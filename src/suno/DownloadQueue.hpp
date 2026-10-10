@@ -6,12 +6,12 @@
 #pragma once
 
 #include <QByteArray>
+#include <QIODevice>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QObject>
 #include <QPointer>
-#include <QIODevice>
 #include <QString>
 #include <QVariantMap>
 
@@ -37,19 +37,25 @@ enum class DownloadState : int {
     Queued = 0,
     Downloading = 1,
     Completed = 2,
-    FailedRetryable = 3,  // retries exhausted; a later re-enqueue may succeed
-    FailedPermanent = 4,  // server refused (4xx); retrying will not help
+    FailedRetryable = 3, // retries exhausted; a later re-enqueue may succeed
+    FailedPermanent = 4, // server refused (4xx); retrying will not help
     Cancelled = 5,
 };
 
 [[nodiscard]] constexpr const char* toString(DownloadState state) {
     switch (state) {
-        case DownloadState::Queued: return "queued";
-        case DownloadState::Downloading: return "downloading";
-        case DownloadState::Completed: return "completed";
-        case DownloadState::FailedRetryable: return "failed-retryable";
-        case DownloadState::FailedPermanent: return "failed-permanent";
-        case DownloadState::Cancelled: return "cancelled";
+        case DownloadState::Queued:
+            return "queued";
+        case DownloadState::Downloading:
+            return "downloading";
+        case DownloadState::Completed:
+            return "completed";
+        case DownloadState::FailedRetryable:
+            return "failed-retryable";
+        case DownloadState::FailedPermanent:
+            return "failed-permanent";
+        case DownloadState::Cancelled:
+            return "cancelled";
     }
     return "unknown";
 }
@@ -96,9 +102,8 @@ inline constexpr std::int64_t kMaxRetryAfterMs = 60000;
 /// only (0..+20%): it is a floor the server asked us to respect, and subtracting
 /// from it would defeat the purpose of sending it. The ladder keeps symmetric
 /// +/-20% because that value is our own choice.
-[[nodiscard]] std::int64_t retryDelayMs(int attemptZeroBased,
-                                       std::optional<std::int64_t> retryAfterSecs,
-                                       std::mt19937& rng);
+[[nodiscard]] std::int64_t
+retryDelayMs(int attemptZeroBased, std::optional<std::int64_t> retryAfterSecs, std::mt19937& rng);
 
 /// Outcome of one `QIODevice::write()` on the scratch file.
 enum class SinkWrite {
@@ -130,8 +135,10 @@ enum class PartOpenError {
 
 [[nodiscard]] constexpr const char* toString(PartOpenError error) {
     switch (error) {
-        case PartOpenError::Collision: return "collision";
-        case PartOpenError::Failed: return "failed";
+        case PartOpenError::Collision:
+            return "collision";
+        case PartOpenError::Failed:
+            return "failed";
     }
     return "unknown";
 }
@@ -221,16 +228,16 @@ public:
     [[nodiscard]] qint64 maxBytesPerItem() const { return maxBytesPerItem_; }
 
     /// FIFO enqueue. Duplicate ids among live items are rejected gracefully.
-    bool enqueue(std::string clipId,
-                 std::string url,
-                 std::filesystem::path destPath,
+    bool enqueue(std::string clipId, std::string url, std::filesystem::path destPath,
                  QVariantMap metadata = {});
 
     /// Aborts the in-flight reply and dequeues queued items for this id.
     /// Graceful no-op when the id is unknown or already terminal.
     bool cancel(const std::string& clipId);
 
-    [[nodiscard]] bool isEmpty() const { return pending_.empty() && waiting_.empty() && active_.empty(); }
+    [[nodiscard]] bool isEmpty() const {
+        return pending_.empty() && waiting_.empty() && active_.empty();
+    }
     [[nodiscard]] int activeCount() const { return static_cast<int>(active_.size()); }
     [[nodiscard]] int queuedCount() const { return static_cast<int>(pending_.size()); }
     [[nodiscard]] int waitingCount() const { return static_cast<int>(waiting_.size()); }
@@ -260,10 +267,10 @@ private:
         std::filesystem::path destPath;
         QVariantMap metadata;
         DownloadState state{DownloadState::Queued};
-        int attempts{0};          // completed attempts (failures consumed)
+        int attempts{0}; // completed attempts (failures consumed)
         int progressPercent{-1};
-        qint64 bytesReceived{0};  // bytes this queue accepted from the reply
-        bool finishing{false};    // swallow further callbacks for this reply
+        qint64 bytesReceived{0}; // bytes this queue accepted from the reply
+        bool finishing{false};   // swallow further callbacks for this reply
         bool cancelRequested{false};
         /// True only between a successful exclusive open and the next rename.
         /// Every `.part` removal is gated on this, so the queue can only ever
@@ -311,7 +318,7 @@ private:
 
     ReplyFactory factory_;
     PartOpener partOpener_;
-    QNetworkAccessManager* nam_{nullptr};   // owned via QObject parenting
+    QNetworkAccessManager* nam_{nullptr}; // owned via QObject parenting
     int maxConcurrent_{kDefaultMaxConcurrent};
     int transferTimeoutMs_{kDefaultTransferTimeoutMs};
     qint64 maxBytesPerItem_{kDefaultMaxBytesPerItem};

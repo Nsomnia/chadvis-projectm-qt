@@ -1,6 +1,6 @@
-#include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QtTest>
 
 #include "suno/DownloadQueue.hpp"
 
@@ -63,8 +63,8 @@ public:
         emit finished();
     }
 
-    void fail(QNetworkReply::NetworkError err, int httpStatus = 0,
-              bool acceptRanges = false, QByteArray body = {}) {
+    void fail(QNetworkReply::NetworkError err, int httpStatus = 0, bool acceptRanges = false,
+              QByteArray body = {}) {
         setHeaders(httpStatus, acceptRanges);
         setError(err, QStringLiteral("scripted failure"));
         payload_ = std::move(body);
@@ -210,10 +210,8 @@ private slots:
         QCOMPARE(classifyFailure(NE::TimeoutError, 0), FailureKind::Retryable);
         QCOMPARE(classifyFailure(NE::ConnectionRefusedError, 0), FailureKind::Retryable);
         // ...except auth/permission denials.
-        QCOMPARE(classifyFailure(NE::AuthenticationRequiredError, 0),
-                 FailureKind::Permanent);
-        QCOMPARE(classifyFailure(NE::ContentAccessDenied, 0),
-                 FailureKind::Permanent);
+        QCOMPARE(classifyFailure(NE::AuthenticationRequiredError, 0), FailureKind::Permanent);
+        QCOMPARE(classifyFailure(NE::ContentAccessDenied, 0), FailureKind::Permanent);
         QCOMPARE(classifyFailure(NE::NoError, 302), FailureKind::Permanent);
     }
 
@@ -221,8 +219,8 @@ private slots:
         QCOMPARE(backoffBaseMs(0), qint64{1000});
         QCOMPARE(backoffBaseMs(1), qint64{4000});
         QCOMPARE(backoffBaseMs(2), qint64{16000});
-        QCOMPARE(backoffBaseMs(9), qint64{16000});   // capped
-        QCOMPARE(backoffBaseMs(-3), qint64{1000});   // clamped
+        QCOMPARE(backoffBaseMs(9), qint64{16000}); // capped
+        QCOMPARE(backoffBaseMs(-3), qint64{1000}); // clamped
 
         std::mt19937 rng{42};
         for (const int attempt : {0, 1, 2}) {
@@ -249,12 +247,12 @@ private slots:
 
         QSignalSpy idle(&queue, &DownloadQueue::queueIdle);
         server.replies[0]->succeed(body);
-        QTest::qWait(10);  // drain deleteLater
+        QTest::qWait(10); // drain deleteLater
 
         QFile out(dir.filePath("song.mp3"));
         QVERIFY(out.open(QIODevice::ReadOnly));
         QCOMPARE(out.readAll(), body);
-        QVERIFY(!QFile::exists(dir.filePath("song.mp3.part")));  // .part renamed away
+        QVERIFY(!QFile::exists(dir.filePath("song.mp3.part"))); // .part renamed away
         QCOMPARE(idle.count(), 1);
     }
 
@@ -284,7 +282,7 @@ private slots:
                               dir.filePath("r.mp3").toStdString()));
         server.replies[0]->fail(QNetworkReply::TimeoutError);
 
-        QTRY_COMPARE(static_cast<int>(server.requests.size()), 2);  // waits out ~1s backoff
+        QTRY_COMPARE(static_cast<int>(server.requests.size()), 2); // waits out ~1s backoff
         server.replies[1]->succeed(body);
         QTest::qWait(10);
 
@@ -307,9 +305,9 @@ private slots:
         QVERIFY(queue.enqueue("clip-404", "https://fake.cdn/nope.mp3",
                               dir.filePath("n.mp3").toStdString()));
         server.replies[0]->fail(QNetworkReply::ContentNotFoundError, 404);
-        QTest::qWait(150);  // generous window: nothing may come back
+        QTest::qWait(150); // generous window: nothing may come back
 
-        QCOMPARE(static_cast<int>(server.requests.size()), 1);  // single attempt only
+        QCOMPARE(static_cast<int>(server.requests.size()), 1); // single attempt only
         QVERIFY(!states.empty());
         QCOMPARE(states.back(), static_cast<int>(DownloadState::FailedPermanent));
         QVERIFY(queue.isEmpty());
@@ -404,7 +402,7 @@ private slots:
                              if (id == QLatin1String("c-2")) states.push_back(state);
                          });
 
-        QVERIFY(queue.cancel("c-2"));  // still queued
+        QVERIFY(queue.cancel("c-2")); // still queued
         QCOMPARE(states, std::vector<int>{static_cast<int>(DownloadState::Cancelled)});
         QCOMPARE(queue.queuedCount(), 1);
 
@@ -426,12 +424,12 @@ private slots:
                          [&](const QString&, int state, int) { states.push_back(state); });
 
         server.replies[0]->openStream("partial");
-        QVERIFY(queue.cancel("live"));  // triggers abort() -> finished()
+        QVERIFY(queue.cancel("live")); // triggers abort() -> finished()
         QTest::qWait(10);
 
         QVERIFY(!states.empty());
         QCOMPARE(states.back(), static_cast<int>(DownloadState::Cancelled));
-        QVERIFY(!QFile::exists(dir.filePath("live.mp3.part")));  // cleaned up
+        QVERIFY(!QFile::exists(dir.filePath("live.mp3.part"))); // cleaned up
         QVERIFY(queue.isEmpty());
     }
 
@@ -456,7 +454,7 @@ private slots:
 
     void sinkWritesAreClassifiedExactly() {
         QCOMPARE(classifySinkWrite(20, 20), SinkWrite::Complete);
-        QCOMPARE(classifySinkWrite(21, 20), SinkWrite::Complete);  // never written short
+        QCOMPARE(classifySinkWrite(21, 20), SinkWrite::Complete); // never written short
         QCOMPARE(classifySinkWrite(0, 0), SinkWrite::Complete);
         QCOMPARE(classifySinkWrite(19, 20), SinkWrite::Short);
         QCOMPARE(classifySinkWrite(0, 20), SinkWrite::Short);
@@ -475,7 +473,7 @@ private slots:
     void aShortWriteNeverBecomesACompletedFile() {
         FakeServer server;
         QTemporaryDir dir;
-        QByteArray sink;  // outlives the device the queue destroys
+        QByteArray sink; // outlives the device the queue destroys
         // Injected opener: state and payload are what this mechanism can prove.
         // `.part` on disk is asserted by the tests that use the real opener.
         DownloadQueue queue(server.factory(),
@@ -494,15 +492,16 @@ private slots:
         server.replies[0]->openStream(QByteArray("0123456789ab"), false, 200);
         QTest::qWait(10);
 
-        QCOMPARE(sink, QByteArray("01234"));  // the short write really happened
-        QVERIFY(!QFile::exists(dest));         // ... and did NOT become a file
+        QCOMPARE(sink, QByteArray("01234")); // the short write really happened
+        QVERIFY(!QFile::exists(dest));       // ... and did NOT become a file
         QCOMPARE(queue.activeCount(), 0);
-        QCOMPARE(queue.waitingCount(), 1);     // retryable: requeued, not completed
+        QCOMPARE(queue.waitingCount(), 1); // retryable: requeued, not completed
         QCOMPARE(states.back(), static_cast<int>(DownloadState::Queued));
-        QVERIFY(std::none_of(states.begin(), states.end(),
-                             [](const int s) { return s == static_cast<int>(DownloadState::Completed); }));
+        QVERIFY(std::none_of(states.begin(), states.end(), [](const int s) {
+            return s == static_cast<int>(DownloadState::Completed);
+        }));
 
-        QVERIFY(queue.cancel("short"));  // do not sit out the 1 s ladder
+        QVERIFY(queue.cancel("short")); // do not sit out the 1 s ladder
         QTest::qWait(10);
         QCOMPARE(states.back(), static_cast<int>(DownloadState::Cancelled));
         QVERIFY(!QFile::exists(dest));
@@ -514,7 +513,7 @@ private slots:
         QByteArray sink;
         DownloadQueue queue(server.factory(),
                             [&sink](const std::string&) -> std::unique_ptr<QIODevice> {
-                                return std::make_unique<BudgetedSink>(-1, &sink);  // always -1
+                                return std::make_unique<BudgetedSink>(-1, &sink); // always -1
                             });
 
         int lastState = -1;
@@ -533,7 +532,7 @@ private slots:
 
         QCOMPARE(lastState, static_cast<int>(DownloadState::FailedRetryable));
         QCOMPARE(static_cast<int>(server.replies.size()), 3);
-        QCOMPARE(sink, QByteArray());  // a refused write lands nothing at all
+        QCOMPARE(sink, QByteArray()); // a refused write lands nothing at all
         QVERIFY(!QFile::exists(dest));
         QVERIFY(queue.isEmpty());
     }
@@ -543,7 +542,7 @@ private slots:
     void theByteCapBoundaryIsExact() {
         constexpr qint64 kCap = 100;
 
-        {   // exactly at the cap: legal, completes
+        { // exactly at the cap: legal, completes
             FakeServer server;
             DownloadQueue queue(server.factory());
             queue.setMaxBytesPerItem(kCap);
@@ -567,7 +566,7 @@ private slots:
             QVERIFY(!QFile::exists(dir.filePath("atcap.mp3.part")));
         }
 
-        {   // one byte over: permanent, named, no file
+        { // one byte over: permanent, named, no file
             FakeServer server;
             DownloadQueue queue(server.factory());
             queue.setMaxBytesPerItem(kCap);
@@ -586,7 +585,7 @@ private slots:
             QTest::qWait(10);
 
             QCOMPARE(states.back(), static_cast<int>(DownloadState::FailedPermanent));
-            QCOMPARE(static_cast<int>(server.replies.size()), 1);  // never retried
+            QCOMPARE(static_cast<int>(server.replies.size()), 1); // never retried
             QVERIFY(!QFile::exists(dest));
             QVERIFY(!QFile::exists(dir.filePath("over.mp3.part")));
             QVERIFY(queue.isEmpty());
@@ -644,7 +643,7 @@ private slots:
     // ── Retry-After ──────────────────────────────────────────────────────────
 
     void retryAfterIsReadInBothWireForms() {
-        const std::int64_t base = 784111777;  // Sun, 06 Nov 1994 08:49:37 GMT
+        const std::int64_t base = 784111777; // Sun, 06 Nov 1994 08:49:37 GMT
 
         // delta-seconds
         QCOMPARE(parseRetryAfter(QByteArray("120"), base), std::optional<std::int64_t>{120});
@@ -669,9 +668,9 @@ private slots:
         QCOMPARE(parseRetryAfter(QByteArray("Sun, 06 Nov 1994 08:49:37 gmt"), base),
                  std::optional<std::int64_t>{0});
         QCOMPARE(parseRetryAfter(QByteArray("Mon, 06 Nov 1994 08:49:37 GMT"), base),
-                 std::optional<std::int64_t>{0});  // weekday is redundant; must be ignored
+                 std::optional<std::int64_t>{0}); // weekday is redundant; must be ignored
         QCOMPARE(parseRetryAfter(QByteArray("Sun, 6 Nov 1994 08:49:37 GMT"), base),
-                 std::optional<std::int64_t>{0});  // lenient on width
+                 std::optional<std::int64_t>{0}); // lenient on width
 
         // Absolute ground truth: an all-numeric-offset date, no local-time input.
         QCOMPARE(parseRetryAfter(QByteArray("Thu, 01 Jan 2026 00:00:00 GMT"), 0),
@@ -681,8 +680,8 @@ private slots:
         QVERIFY(!parseRetryAfter(QByteArray(), base).has_value());
         QVERIFY(!parseRetryAfter(QByteArray("   "), base).has_value());
         QVERIFY(!parseRetryAfter(QByteArray("soon"), base).has_value());
-        QVERIFY(!parseRetryAfter(QByteArray("5s"), base).has_value());   // trailing garbage
-        QVERIFY(!parseRetryAfter(QByteArray("-5"), base).has_value());   // delta-seconds is 1*DIGIT
+        QVERIFY(!parseRetryAfter(QByteArray("5s"), base).has_value()); // trailing garbage
+        QVERIFY(!parseRetryAfter(QByteArray("-5"), base).has_value()); // delta-seconds is 1*DIGIT
         QVERIFY(!parseRetryAfter(QByteArray("99999999999999999999999"), base).has_value());
         QVERIFY(!parseRetryAfter(QByteArray("Sun 06 Nov 1994 08:49:37 GMT"), base).has_value());
         QVERIFY(!parseRetryAfter(QByteArray("Sun, 06 Nov 1994 08:49:37 PST"), base).has_value());
@@ -726,7 +725,7 @@ private slots:
         server.replies[0]->failWithRetryAfter(QNetworkReply::UnknownServerError, 503, "600");
         QTest::qWait(1500);
 
-        QCOMPARE(static_cast<int>(server.requests.size()), 1);  // ladder did not fire
+        QCOMPARE(static_cast<int>(server.requests.size()), 1); // ladder did not fire
         QCOMPARE(queue.waitingCount(), 1);                     // but the hint is in effect
         QVERIFY(queue.cancel("ra"));
     }
@@ -797,7 +796,7 @@ private slots:
                          [&](const QString&, int state, int) { secondStates.push_back(state); });
 
         QVERIFY(first.enqueue("first", "https://fake.cdn/first.mp3", dest.toStdString()));
-        QVERIFY(QFile::exists(part));  // first attempt is live and holds the lock
+        QVERIFY(QFile::exists(part)); // first attempt is live and holds the lock
 
         QVERIFY(second.enqueue("second", "https://fake.cdn/second.mp3", dest.toStdString()));
         QTest::qWait(10);
@@ -806,8 +805,8 @@ private slots:
         // process (BSD documents it), so this also covers two queues in one app.
         QCOMPARE(secondStates.back(), static_cast<int>(DownloadState::FailedPermanent));
         QVERIFY(second.isEmpty());
-        QVERIFY(QFile::exists(part));  // the live writer's scratch file survives
-        QCOMPARE(readAll(part), QByteArray());  // untouched: nothing was written to it
+        QVERIFY(QFile::exists(part));          // the live writer's scratch file survives
+        QCOMPARE(readAll(part), QByteArray()); // untouched: nothing was written to it
 
         // And the live writer still completes normally.
         serverA.replies[0]->succeed("first body");
@@ -848,7 +847,7 @@ private slots:
             return dir.filePath(QString::fromLatin1(name) + DownloadQueue::kPartSuffix);
         };
 
-        {   // retryable failure: unlinked before the retry is scheduled
+        { // retryable failure: unlinked before the retry is scheduled
             FakeServer server;
             DownloadQueue queue(server.factory());
             const QString part = partOf("f.mp3");
@@ -864,7 +863,7 @@ private slots:
             QVERIFY(!QFile::exists(part));
         }
 
-        {   // permanent failure
+        { // permanent failure
             FakeServer server;
             DownloadQueue queue(server.factory());
             const QString part = partOf("p.mp3");
@@ -877,7 +876,7 @@ private slots:
             QVERIFY(!QFile::exists(dir.filePath("p.mp3")));
         }
 
-        {   // cancel while queued for retry
+        { // cancel while queued for retry
             FakeServer server;
             DownloadQueue queue(server.factory());
             const QString part = partOf("cw.mp3");
@@ -891,7 +890,7 @@ private slots:
             QVERIFY(queue.isEmpty());
         }
 
-        {   // queue destroyed while an attempt is live
+        { // queue destroyed while an attempt is live
             FakeServer server;
             auto queue = std::make_unique<DownloadQueue>(server.factory());
             const QString part = partOf("d.mp3");
