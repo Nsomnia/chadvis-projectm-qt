@@ -140,7 +140,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       the Application-owned one (`BridgeRegistration.cpp:75`) while
       `VisualizerWindow::loadPresetFromManager` drives the Bridge-owned one
       (`VisualizerWindow.cpp:120-123`). Fix: inject one manager into `pm::Bridge`.
-- [ ] T0014 **Ratings are lost every session — `RatingManager::save()` is never called** (`src/visualizer/RatingManager.cpp:44-56`) #data-loss
+- [x] T0014 **Ratings are lost every session — `RatingManager::save()` is never called** (`src/visualizer/RatingManager.cpp:44-56`) #data-loss
       `load()` is called once (`Application.cpp:378`); `save()` has zero callers.
       `PresetBridge::setRating` (`PresetBridge.cpp:201`) mutates only the in-memory map.
       Fix: call it from `Application::quit()`.

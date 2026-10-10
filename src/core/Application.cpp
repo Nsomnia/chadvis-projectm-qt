@@ -536,6 +536,19 @@ Result<void> Application::init(const AppOptions& opts) {
 
     // Connect quit signal
     connect(qapp_.get(), &QGuiApplication::aboutToQuit, this, &Application::aboutToQuit);
+    // Ratings live in a process-wide in-memory map from load() at init until
+    // here. aboutToQuit is the one UNIVERSAL exit hook — a QML window close
+    // and Qt.quit() end the loop without ever invoking Application::quit()
+    // (that slot only runs from the SIGINT/SIGTERM handlers), so persisting in
+    // quit() alone would still lose ratings on the most common exit path.
+    // aboutToQuit fires after every one of them, including quit()-driven ones.
+    connect(qapp_.get(), &QGuiApplication::aboutToQuit, this, []() {
+        if (auto result = RatingManager::instance().save(); !result) {
+            LOG_WARN("Failed to save preset ratings: {}", result.error().message);
+        } else {
+            LOG_DEBUG("Saved preset ratings");
+        }
+    });
 
     LOG_INFO("Initialization complete. Let's get this bread.");
 
