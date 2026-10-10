@@ -66,6 +66,12 @@ ColumnLayout {
         readonly property int presetIndex: modelData ? modelData.index : 0
         signal selected(); signal favoriteToggled(); signal blacklistToggled()
 
+        // Whole-row MouseArea declared BEFORE the controls: later siblings
+        // stack above it, so the favourite, blacklist and star handlers take
+        // their own clicks. Declared last, this full-bleed area sat on top of
+        // every button and ate them all — ClipCard.qml documents the trap.
+        MouseArea { id: mouseArea; anchors.fill: parent; hoverEnabled: true; onDoubleClicked: delegate.selected() }
+
         RowLayout {
             anchors.fill: parent; anchors.margins: Theme.spacingSmall; spacing: Theme.spacingSmall
     Image {
@@ -106,6 +112,5 @@ ColumnLayout {
             AppButton { icon: delegate.isFavorite ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : "qrc:/qt/qml/ChadVis/resources/icons/star-outline.svg"; implicitWidth: 36; implicitHeight: 36; highlighted: delegate.isFavorite; onClicked: delegate.favoriteToggled() }
             AppButton { icon: delegate.isBlacklisted ? "qrc:/qt/qml/ChadVis/resources/icons/blacklist.svg" : "qrc:/qt/qml/ChadVis/resources/icons/random.svg"; implicitWidth: 36; implicitHeight: 36; onClicked: delegate.blacklistToggled() }
         }
-        MouseArea { id: mouseArea; anchors.fill: parent; hoverEnabled: true; onDoubleClicked: delegate.selected() }
     }
 }

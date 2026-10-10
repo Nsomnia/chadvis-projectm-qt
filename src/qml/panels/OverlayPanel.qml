@@ -286,6 +286,17 @@ ColumnLayout {
         signal selectClicked()
         signal deleteClicked()
 
+        // Whole-row MouseArea declared BEFORE the controls: later siblings
+        // stack above it, so the delete button takes its own click. Declared
+        // last, this full-bleed area sat on top of the button and ate it —
+        // ClipCard.qml documents the trap.
+        MouseArea {
+            id: mouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: delegate.selectClicked()
+        }
+
         RowLayout {
             anchors.fill: parent
             anchors.margins: Theme.spacingSmall
@@ -307,11 +318,5 @@ ColumnLayout {
 	}
         }
 
-        MouseArea {
-            id: mouseArea
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: delegate.selectClicked()
-        }
     }
 }

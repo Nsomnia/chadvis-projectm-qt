@@ -72,7 +72,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       The star `Repeater { model: 5 }` makes `modelData` the **number** 0–4, so
       `modelData.index` at :96 is `undefined`; `setRating` then indexes
       `(*presets)[index].name`. Fix: pass the outer preset's name.
-- [ ] T0004 **Preset favourite/blacklist and overlay delete are impossible** (`src/qml/panels/PresetsPanel.qml:100-103`, `src/qml/panels/OverlayPanel.qml:302-315`) #blocks-ui
+- [x] T0004 **Preset favourite/blacklist and overlay delete are impossible** (`src/qml/panels/PresetsPanel.qml:100-103`, `src/qml/panels/OverlayPanel.qml:302-315`) #blocks-ui
       A trailing full-bleed `MouseArea { anchors.fill: parent }` declared **last** is
       stacked on top of the per-item buttons and eats every click. `ClipCard.qml:299-300`
       documents this exact trap and is correct; these two are not. Fix: declare the
@@ -525,9 +525,11 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       Zero occurrences across 7 views. `DiscoverView.qml:115-127` materialises every clip of
       every feed. Also 16 `layer.enabled` sites, and `KaraokeMaster.qml:117-126` re-evaluates
       a two-`MultiEffect` stack on **every `lineProgress` change**.
-- [ ] T0073 Per-item buttons inside delegates are killed by a trailing full-bleed `MouseArea` — same class as T0004 (`src/qml/panels/OverlayPanel.qml:310-315`) #blocks-ui
-      Kept separate from T0004 because it is a different panel and the fix is the same
-      pattern.
+- [-] T0073 Per-item buttons inside delegates are killed by a trailing full-bleed `MouseArea` — same class as T0004 (`src/qml/panels/OverlayPanel.qml:310-315`) #blocks-ui
+      Dropped as a duplicate of T0004: the citation names the same trailing
+      OverlayPanel.qml MouseArea T0004's file list already contains, and the
+      "different panel" claim contradicted its own citation. Fixed and
+      verified under T0004.
 - [ ] T0074 `Escape` closes the whole Settings window while the "Reset all settings?" dialog is up (`src/qml/SettingsWindow.qml:156-160`) #risk-high
       Window-scope `Esc` outranks the modal dialog, so a user backing out of a destructive
       confirmation instead dismisses the window — losing unsaved edits per T0046. Directly
