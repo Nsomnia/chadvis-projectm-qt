@@ -276,11 +276,24 @@ This table is a **contract-host allowlist**, not a log of every host that
 appeared in the corpus. Hosts observed only as static assets, telemetry,
 analytics, or health checks — including `cdn-o.suno.com`, `goto.suno.com`,
 `s.prod.suno.com`, `statusz.suno.ai`, the hCaptcha asset/endpoint hosts, and the
-`telemetry host whose export filename mis-spells the real
+telemetry host whose export filename mis-spells the real
 `m-stratovibe.prod.suno.com` — are deliberately **absent** here, because none of
 them carries a promoted contract. Their provenance and SHA-256 hashes are in
 [`raw/README.md`](raw/README.md). Their absence is a fail-closed decision, not an
 oversight: do not add a host here without a captured contract for it.
+
+**Named trap — the CloudFront domains in this corpus are not media.** A scan of
+the 2026-09 bundle corpus surfaces four CloudFront hosts that appear nowhere in
+this table, and they have exactly the shape of a media origin:
+`d3uc069fcn7uxw`, `d20xtzwzcl0ceb`, `d2lb3d8e434rsy`, and `dn3ebm5xp8ng9`.
+They are **Datadog RUM browser-agent `intakeOrigins`**, sitting in a telemetry
+module beside `www.datadoghq-browser-agent.com` and `http://localhost`. They
+deliver no Suno bytes and they are not allowlist candidates.
+
+Worth recording because the reverse also holds: the one CloudFront host we *do*
+hold as `[T1]` — `d2lwuy8qc234o3` — appears **zero** times in that corpus. A
+bundle is not where the media-host evidence lives, and a bundle host that looks
+right is not the same as a captured one.
 
 Naming a captcha provider in section 3.4 does **not** add any captcha host,
 widget, or challenge endpoint here. A sitekey is a public embed value, not an
@@ -1310,6 +1323,14 @@ can record a user's consent to data sharing or to a programme's terms carries
 consequences its author cannot discharge, so neither belongs here regardless of
 availability.
 
+Knowing the request body does not change that, and the 2026-09 bundle corpus
+makes the point sharply: it shows `POST /api/user/vip_program_acceptance` with a
+body of `{accepted: <bool>}`, and reads `accepted_vip_program_tos` and
+`data_sharing_consent` off the user object. **The route is easy to call and
+still excluded.** That is recorded here so the exclusion reads as a decision
+rather than an omission — the contract is `[LEAD]`-visible, the probe was never
+run, and no body belongs in a third-party client's consent record.
+
 **Contest clip downloads.** The server flag
 `remix-contest-disable-downloads` is live in production. Contest clips are
 download-restricted server-side; downloading one would be circumventing a
@@ -1399,9 +1420,9 @@ some earlier pass.
 |---|---|---|---|
 | 1 | Server `flags` on `/api/session/` | 47 unauthenticated; a larger set when authenticated (57); 58 on staging. `roles` = `is_day_zero_user`, `pro`, `staff`, `unlimited_credits`. The unauthenticated/staging split is a disclosed exposure, not a client strategy. | `[T1]` response values |
 | 2 | Statsig | 1,311 gates and 606 dynamic configs, with **no ID→name mapping**. The names are opaque numeric IDs, so "gate X controls feature Y" is unsupportable from this data and must not be written down as though it were. | `[T1]` counts; `[LEAD]` semantics |
-| 3 | ParameterStore | A client-side `Parameter`/`ParameterStore` const-enum: 60 parameters across 6 stores. | `[LEAD]` client const-enum |
+| 3 | ParameterStore | A client-side `Parameter`/`ParameterStore` const-enum: 60 parameters across 6 stores. The 2026-09 bundle corpus consumes it under the `orpheus_*` namespace — `orpheus_is_enabled`, `orpheus_is_auto_mode`, `orpheus_is_canvas_enabled`, `orpheus_default_to_chat` — so the Orpheus surface is behind a client-side boolean that is trivially `false` by default. | `[LEAD]` client const-enum |
 | 4 | `PlanFeature` | 22 server-supplied entitlements, delivered per plan. | `[T1]` response values |
-| 5 | `access_group_attrs` on `/api/user/metadata` | Per-account cohort membership. The captured account carried `is_voices_early_access: "true"`. | `[T1]` response value |
+| 5 | `access_group_attrs` on `/api/user/metadata` | Per-account cohort membership. The captured account carried `is_voices_early_access: "true"`. The 2026-09 bundle corpus shows two sibling entitlement fields on the same user object — `is_trusted_vip` and `accepted_vip_program_tos` — both tri-state in practice (`true`/`false`/absent), which is why an absent field must not be read as a denial. | `[T1]` response value; sibling field names `[LEAD]` |
 | 6 | `experiments` on `/api/session/` | A first-class server experiments plane, **distinct from both Statsig and `flags`**. Captured as an empty object for the authenticated account and `null` unauthenticated — an empty plane is not an absent plane. | `[T1]` response values |
 | 7 | **`configs.gen-endpoint`** | The server states which generation route to call: the captured value was `/api/generate/v2-web/`, the same path the client's own hardcoded constant uses. | `[T1]` response value |
 
