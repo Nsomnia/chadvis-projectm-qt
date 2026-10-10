@@ -19,6 +19,12 @@
   observations** — every `[LEAD]` and `[VERIFY]` row. It is never a stable
   contract and never an implementation source; it exists only for research and
   capture planning, and may not be wired without a direct capture.
+- [`THIRD-PARTY-IMPLEMENTATIONS.md`](THIRD-PARTY-IMPLEMENTATIONS.md) is the
+  register of **other clients' API material**. Every claim in it is `[LEAD]` by
+  definition: another client's traffic is not a capture by this repository, so it
+  can neither promote a row into the inventory nor demote one out of it. It owns
+  what each registered source may and may not settle, and records the hosts those
+  sources name that are deliberately **not** allowlist candidates.
 - [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) is the single
   location for the observed Google web flow, the Clerk cookie families, and the
   **native-callback gate**. The intended desktop sign-in path is the system

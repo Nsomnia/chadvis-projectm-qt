@@ -38,6 +38,10 @@ where the token hierarchy, cookie attributes, enabled sign-in strategies, and
 the two-captcha-systems split live.
 [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) owns
 every `[LEAD]`/`[VERIFY]` observation.
+[`THIRD-PARTY-IMPLEMENTATIONS.md`](THIRD-PARTY-IMPLEMENTATIONS.md) owns the
+register of other clients' API material — what each source claims, what it may
+and may not settle, and the hosts it names that are deliberately **not**
+allowlist candidates.
 [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) owns the observed
 Google web request sequence, the Clerk cookie families, and the binding
 native-callback gate. [`raw/README.md`](raw/README.md) owns provenance, SHA-256
@@ -51,7 +55,7 @@ operational runbook is [`../integration/SUNO.md`](../integration/SUNO.md).
 | Label | Meaning | Permitted use |
 |---|---|---|
 | `[T1]` | Directly present in a cited request/response capture, with secrets redacted. For the 2026-09-22 OAuth recon, request presence only is T1. | Historical contract, subject to drift and client-side defensive parsing. |
-| `[LEAD]` | Found in a JS/HTML scan, raw endpoint dump, old inventory, reconstructed path, or prose without a direct capture. An unlabeled old row is always a lead. | Research and capture planning only. |
+| `[LEAD]` | Found in a JS/HTML scan, raw endpoint dump, old inventory, reconstructed path, prose without a direct capture, or another client's source. An unlabeled old row is always a lead. | Research and capture planning only. |
 | `[VERIFY]` | Sources conflict, or one part of the route contract is not captured. | Do not call until a new capture resolves it. |
 
 `[LEAD]` and `[VERIFY]` rows are catalogued in
@@ -109,6 +113,18 @@ Additional notation used in the catalog:
 7. Raw scans, decoded frontend bundles, and old topic prose supply `[LEAD]`
    inventory only. External SDK folklore, constructed media paths, and
    client-side flag names cannot promote a route above `[LEAD]`.
+8. **Another client's source is `[LEAD]` by definition, in both directions.**
+   A third-party implementation that reports live traffic against its own
+   account has observed *its* corpus on *its* date. That is not a capture by
+   this repository, so it cannot promote a row into this file, and it cannot
+   demote one out of it — including where our own local bytes are currently
+   unverifiable (see [`raw/README.md`](raw/README.md)). Agreement between two
+   sources is not a stronger grade; disagreement is not a weaker one. A
+   third-party claim can do exactly three things: add a `[LEAD]` capture
+   target, add an Appendix A conflict row, or be recorded as a design
+   reference. The registered sources, and what each one may and may not
+   settle, are in
+   [`THIRD-PARTY-IMPLEMENTATIONS.md`](THIRD-PARTY-IMPLEMENTATIONS.md).
 
 ### 1.3 Implementation status — a separate axis from evidence
 
@@ -177,6 +193,16 @@ against the form it has not captured. It is recorded here because "the client
 requires mp3" and "mp3 is the normal case" cannot both be true, and the master
 previously implied the latter. Widening the accepted set requires capture
 evidence and is not implied by this note.
+
+**The likelier resolution is a route we have never captured, not a wider filter
+on this one.** A download-*preparation* family — a preparation call returning a
+short-lived signed URL, separate from the playback array — is registered as
+`[LEAD]` in [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) section 4.6 and discussed
+in [`THIRD-PARTY-IMPLEMENTATIONS.md`](THIRD-PARTY-IMPLEMENTATIONS.md). If it is
+real, then "the client requires mp3 in `media_urls[]`" is not a filter that is
+too narrow but a selection from the wrong source. **Capturing that family is the
+next step; loosening `selectDownloadUrl()` is not.** Widening the accepted set
+without a capture would keep the fail-closed property only by accident.
 
 ### 1.5 Capture methodology — probe verdicts, and three shapes the server manufactures
 
@@ -929,7 +955,7 @@ field. `[T1]` evidence comes from feed, generation, project, and HAR captures.
 | Identity | `id`, `entity_type`, `title` | Song captures used `entity_type: "song_schema"`. |
 | Processing | `status` | Observed values included `submitted` and `complete`; this is not an exhaustive status vocabulary. |
 | Legacy media | `audio_url`, `video_url`, `image_url`, `image_large_url` | Values may be empty while processing. A non-empty value may still be a forbidden sentinel; see below. |
-| Progressive media | `media_urls[]` | Each observed audio item has `url`, `content_type`, `delivery`, and `encoding`; this array is the playback/download authority. |
+| Progressive media | `media_urls[]` | Each observed audio item has `url`, `content_type`, `delivery`, and `encoding`. **This array is a playback authority, not an established download contract** — see the correction below. |
 | Observed media taxonomy | `m4a-opus` / `progressive` on the CloudFront host | **The only progressive combination observed in the 2026-09-30 recon: 40 of 40 entries, no exceptions.** `mp3`, `webm-opus`, and any `streaming` delivery were **not** observed there. `mp3` and `webm-opus` over `streaming` remain `[T1]` *response values in the 2026-09-24 clip objects* — a different corpus — and are not contradicted, but they are not the normal case and must not be documented as one. |
 | Model observation | `major_model_version`, `model_name` | Values are account/time/model-catalog dependent. |
 | Engagement | `play_count`, `upvote_count`, `allow_comments`, `is_verified` | Observed clip metadata/counters. |
@@ -981,6 +1007,34 @@ neither is a demotion:
   also matches an `audiopipe-dev` variant, and a **constructed** URL template.
   That is `[LEAD]` under section 1.1 and is precisely the
   construct-from-ID fallback the paragraph above forbids.
+
+**`media_urls[]` is playback; downloading is a separate contract we have not
+captured.** The table above originally read "this array is the
+playback/**download** authority". That characterization is withdrawn. What the
+captures actually establish is narrower:
+
+- `media_urls[]` is **captured** as a shape, and its observed contents are a
+  progressive `m4a-opus` variant on the CloudFront host. That is `[T1]`.
+- Nothing captured shows a **`media_urls[]` entry being transferred as a
+  download**, or shows the server *authorizing* a save against one.
+- `mp3` is **zero occurrences in 40 of 40** observed entries in the 2026-09-30
+  corpus. A client that selects an `mp3` entry out of `media_urls[]` selects
+  against an observed-empty set.
+- The 2026-09-24 corpus separately showed legacy `audio_url` carrying the
+  `/api/forbidden` sentinel. So neither the progressive array nor the legacy
+  field is an established download contract.
+
+A download-preparation route family is registered as `[LEAD]` in
+[`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) section 4.6 and summarized in
+[`THIRD-PARTY-IMPLEMENTATIONS.md`](THIRD-PARTY-IMPLEMENTATIONS.md). It is
+**not** in section 4 of this document, because we have not captured it. Its
+existence is a capture target; its shape, its host, and the host its returned
+signed URL points at are all unknown to us.
+
+The practical consequence is a standing one: **do not treat any captured media
+URL as a download contract, and do not add a host to
+`src/suno/CapturedHosts.cpp` on the strength of a signed URL this repository
+has never seen returned.**
 
 **Direct consequence for the client, recorded here so it is not rediscovered as
 a bug.** The download/playback layer selects an entry only when
@@ -1409,6 +1463,8 @@ no owner.
 | Session identifier source | The implementation re-derives the active session id from the access token's `sid` claim instead of selecting `response.last_active_session_id`, which reads as a deviation from the section 3.1 selector rule. | In the 2026-08-25 capture the envelope's `last_active_session_id`, `sessions[0].id`, the `sid` claim, and the `touch` `{sid}` segment are all the same value, which **corroborates** the substitution. That is one capture with a single session, and the instance reports `single_session_mode: true`, so equivalence for a multi-session account is unproved. Select from the envelope; do not assume array position. | **Corroborated single-session; multi-session unproved** |
 | Acceptance of a non-`suno.com` handshake `redirect_url` | Both captured handshake `redirect_url` values were `https://suno.com/…`, so it is unclear whether Clerk validates or honours an arbitrary absolute target. | Not this file's question. The handshake contract is captured in section 3.3; the loopback gate and its five proof requirements are owned solely by [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) and are unchanged. | **Unresolved — gate held** |
 | Server feature-flag count | The corpus's long-form `endpoints.md` §6d states 51 server flags; its own machine-readable drift record, findings write-up, and disclosure all state **47** production / **58** staging. | **47 / 58.** Three independent artifacts agree and one does not, so the outlier is the stale figure: quote 47. The corpus's `endpoints.md` is not edited here — it is a captured artifact outside the repository, and a capture is evidence, not a file this project maintains. | **Resolved — 47, not 51** |
+| `media_urls[]` as the download authority | This document's section 5.3 called the array "the playback/**download** authority". A third-party client (`suno-cli` @ `6d28c67a`) and independently the 2026-09 bundle corpus both describe a **separate** download-preparation contract: a preparation route returning a short-lived signed URL, with the legacy `audio_url` as the fallback. | **Our captures stand and no `[T1]` is demoted.** What the captures establish is the array's *shape*, not its fitness for download: `mp3` is zero occurrences in 40 of 40 observed entries, and the legacy field carried a `/api/forbidden` sentinel in the 2026-09-24 sample. The "download authority" wording was an interpretation layered on a shape and is withdrawn in section 5.3. The preparation family stays `[LEAD]` in [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) until captured — and per section 1.2 item 8, a third-party claim cannot promote it either way. | **Unresolved — capture stands; characterization corrected** |
+| `/api/edit/stems/{clip_id}` trailing slash | `suno-cli` @ `6d28c67a` spells it **without** a trailing slash; our lead rows carry a trailing slash. No capture from this repository selects either spelling. | Neither spelling may be rewritten into the other. This is a spelling conflict, not a retitling — path template *parameter names* (`{id}` vs `{clip_id}`) are **not** on the wire and are not drift, so they are deliberately not recorded here. | **Unresolved `[VERIFY]` at use time** |
 | Progressive media host and content type | The 2026-09-24 clip objects returned `mp3`/`webm-opus` over `streaming` on `audiopipe.suno.ai`, while the 2026-09-30 feed bodies returned `m4a-opus` over `progressive` on the CloudFront origin in 40 of 40 entries with no `mp3` and no `audiopipe` occurrence. Two captures of two accounts disagree about the default. | **Both observations stand as `[T1]`**; they are different corpora, not a correction of one another. The recon's 40-entry observation is the only evidence for which form is *observed as the default*, and the client's `mp3`-plus-`audiopipe` filter therefore rejects 100% of it (section 5.3). `audiopipe.suno.ai` does appear inside the recon's client bundles as a hostname regex and a constructed URL template, which is `[LEAD]` and does not affect its `[T1]` row in section 2.1. | **Unresolved which is served to a given account; both captured** |
 | Notification routes vs current client bundle | `/api/notification/v2`, `/v2/badge-count`, and `/v2/read` are `[T1]` from the 2026-08-25/2026-09-24 request-response exports and all three are `wired`, yet two passes over ~96 client-bundle chunks found **zero** `/api/notification*` strings. | The captures are real, so the rows stay `[T1]` and nothing is demoted: section 6.2's rule that absence from the bundle is evidence of client-side disuse rather than server removal applies symmetrically. What the negative changes is handling, not status — degrade a failing notification surface to a visible error state rather than deleting the service on a static negative, and do not present it as working. One authenticated probe settles it. | **Unresolved — captured routes, uncorroborated by the current client** |
 | Library mutation request contracts | This master and the backlog both treated library and playlist mutations as needing a fresh human capture. | **Request** contracts are `[T1]` — recovered from server validation errors, 64 write endpoints probed, and the library/playlist subset is canonical in section 5.9. **Response** shapes were not captured, and `playlist/create/`, `playlist/trash/`, `gen/{id}/set_metadata/`, `gen/{id}/update_reaction_type/`, and `gen/trash` were never probed and remain `[LEAD]`; `POST /api/clips/delete/` answered 404. Recovered bodies are **flat** (section 1.5). | **Resolved for requests; responses and unprobed siblings remain uncaptured** |

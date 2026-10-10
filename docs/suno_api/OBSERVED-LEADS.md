@@ -17,8 +17,8 @@ The governing rule is the master's own `[LEAD]` definition, copied verbatim from
 [`ENDPOINT-INVENTORY.md`](ENDPOINT-INVENTORY.md) section 1.1:
 
 > **Meaning:** Found in a JS/HTML scan, raw endpoint dump, old inventory,
-> reconstructed path, or prose without a direct capture. An unlabeled old row is
-> always a lead.
+> reconstructed path, prose without a direct capture, or another client's source.
+> An unlabeled old row is always a lead.
 > **Permitted use:** Research and capture planning only.
 
 Therefore:
@@ -70,7 +70,7 @@ define, extend, or reinterpret a label.
 | Label | Meaning (master section 1.1) | Where it belongs |
 |---|---|---|
 | `[T1]` | Directly present in a cited request/response capture, with secrets redacted. | The master. Not this file. |
-| `[LEAD]` | Found in a scan, raw endpoint dump, old inventory, reconstructed path, or prose without a direct capture. An unlabeled old row is always a lead. | Here, as a capture target. |
+| `[LEAD]` | Found in a scan, raw endpoint dump, old inventory, reconstructed path, prose without a direct capture, or another client's source. An unlabeled old row is always a lead. | Here, as a capture target. |
 | `[VERIFY]` | Sources conflict, or one part of the route contract is not captured. | Here, with the conflict recorded in the master's conflict register (Appendix A). |
 
 Trailing-`?` method notation, `Bearer?`, and path-spelling sensitivity carry the
@@ -120,6 +120,10 @@ Master section: 4.1. No captured billing mutation exists; see master 5.8.
 | `?` | `/api/billing/auto-reload` | Bearer? | Auto-reload root surface | `[LEAD]` loose normalized scan | not-in-code |
 | `?` | `/api/billing/auto-reload/enable` | Bearer? | Enable auto-reload | `[LEAD]` loose normalized scan | not-in-code |
 | `?` | `/api/billing/auto-reload/disable` | Bearer? | Disable auto-reload | `[LEAD]` loose normalized scan | not-in-code |
+| GET? | `/api/report_v2/refund_prompt` | Bearer? | Refund-prompt surface; eligibility rules unproved | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| POST? | `/api/report_v2/refund_prompt/clicked` | Bearer? | Record a refund-prompt click | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| GET? | `/api/video_gen/cost/image` | Bearer? | Credit cost of image generation; credit and entitlement semantics unproved | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| GET? | `/api/video_gen/cost/video` | Bearer? | Credit cost of video generation; credit and entitlement semantics unproved | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 
 The three `auto-reload` rows have no method at all — not even a reconstructed
 one. The captured `POST /api/billing/auto-reload/nudge-check` is a different
@@ -145,6 +149,9 @@ Master section: 4.2.
 | `?` | `/api/onboarding/back` | Bearer? | Onboarding back navigation/state | `[LEAD]` loose normalized scan | not-in-code |
 | `?` | `/api/onboarding/audio-upload/abort` | Bearer? | Abort onboarding upload | `[LEAD]` loose normalized scan | not-in-code |
 | `?` | `/api/onboarding/audio-upload/remove` | Bearer? | Remove onboarding upload | `[LEAD]` loose normalized scan | not-in-code |
+| `?` | `/api/clerk` | Bearer? | Bare clerk prefix surface; no captured method, shape, or host | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/objects` | Bearer? | Bare objects prefix surface; unresolved, bundle route string | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/latest-news` | Bearer? | News/announcement feed; distinct from the CMS surface, unproved | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 
 ### 4.2.1 Deleted: the `/api/me/*` v1 + v2 transcription block
 
@@ -201,6 +208,12 @@ Master section: 4.3. The four captured project routes stay in the master.
 | GET? | `/api/studio/project-version/{id}` | Bearer?/entitlement? | Studio project version | `[LEAD]` old topic prose | not-in-code |
 | `?` | `/api/studio/` | Web session? | Claimed Studio access/page surface on API host | `[VERIFY]`; may be a page route, not a stable API call | not-in-code |
 | `?` | `/api/studio/{slug}` | Web session? | Claimed Studio-by-slug surface | `[VERIFY]`; colon-form and slash-form scan artifacts are not canonical | not-in-code |
+| `?` | `/api/studio/clips/{clip_id}/projects` | Bearer? | Studio projects a clip belongs to | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/studio/create-or-load-project-for-clip/{clip_id}` | Bearer? | Create-or-load the Studio project for a clip | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/studio/project/{project_id}` | Bearer? | Studio project read/update surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/studio/project_revision/{revision_id}` | Bearer? | Studio project-revision surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/studio/project_revision/{revision_id}/clone` | Bearer? | Clone a Studio project revision | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/studio/{project_id}/version/{version_id}` | Bearer? | Studio project version | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 
 The last two rows are `[VERIFY]` because the artifact itself is ambiguous: a
 `/api/studio/` prefix on an API host may be a page route, and `/api/studio/{slug}`
@@ -240,6 +253,7 @@ an evidence statement.
 | GET? | `/api/gen/{id}/wav_file/` | Bearer? | WAV artifact retrieval | `[LEAD]` current endpoint map | declared-unused |
 | POST? | `/api/gen/bulk_increment_play_counts/v2` | Bearer? | Bulk play-count telemetry | `[LEAD]` old inventory/raw scan | not-in-code |
 | POST? | `/api/gen/increment_action_counts/` | Bearer? | Bulk action-count telemetry | `[LEAD]` old inventory/raw scan | not-in-code |
+| `?` | `/api/gen/{gen_id}/increment_action_count/` | Bearer? | Action-count telemetry for a single generation; sibling of the bulk route above | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | POST? | `/api/gen/prompt_image/` | Bearer? | Prompt-image job | `[LEAD]` old inventory/topic prose | not-in-code |
 | POST? | `/api/gen/trash` | Bearer? | Trash generated items | `[LEAD]` old inventory/topic prose | not-in-code |
 | POST? | `/api/gen/set_metadata/` | Bearer? | Set generation metadata | `[LEAD]` old inventory | not-in-code |
@@ -249,6 +263,20 @@ an evidence statement.
 | GET? | `/api/instruments` | Bearer? | Instrument selection surface | `[LEAD]` loose normalized scan | not-in-code |
 | `?` | `/api/instrument/describe-doodle` | Bearer? | Instrument description surface | `[LEAD]` loose normalized scan | not-in-code |
 | POST? | `/api/lyricists` | Bearer? | Lyricist creation surface | `[LEAD]`; only `GET /api/lyricists` is captured | not-in-code |
+| `?` | `/api/gen/` | Bearer? | Bare gen prefix surface; unresolved, bundle route string | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{clip_id}/aligned_lyrics/v3` | Bearer? | Aligned lyrics, v3 spelling; distinct from the captured v2 route | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{clip_id}/downbeats` | Bearer? | Downbeats; distinct from the captured downbeats_streaming/v2 route | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{clip_id}/novelty-sections` | Bearer? | Novelty-section analysis surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{gen_id}/set_audio_description` | Bearer? | Set a generation's audio description | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{gen_id}/set_clip_prompt/` | Bearer? | Set a clip's prompt | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{gen_id}/set_configurations/` | Bearer? | Set generation configurations | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{gen_id}/set_display_tags` | Bearer? | Set a generation's display tags | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{gen_id}/unlock-preview` | Bearer? | Unlock a generation preview | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/lyricists/{lyricist_id}` | Bearer? | Lyricist detail | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/lyrics-projects/{project_id}` | Bearer? | Lyrics-project detail; member route of the captured collection routes | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/prompts/v2/{prompt_id}` | Bearer? | Prompt detail, v2 spelling | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/prompts/suggestions/contextual` | Bearer? | Contextual prompt suggestions | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/processed_clip/{processed_clip_id}/waveform-aggregates` | Bearer? | Waveform aggregates for a processed clip | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 
 `/api/gen/{id}/convert_wav/` and `/api/gen/{id}/wav_file/` are the two rows where
 the client holds constants that exist only because the endpoint mirror carried
@@ -283,6 +311,15 @@ stay in the master.
 | POST? | `/api/playlist/update_clips/` | Bearer? | Add/remove/reorder playlist clips | `[LEAD]` old inventory/topic prose | not-in-code |
 | GET? | `/api/playlist/{playlist_id}/` | Bearer? | Playlist detail | `[LEAD]` old library/topic prose | not-in-code |
 | GET? | `/api/playlist/{playlist_id}/tracks` | Bearer? | Playlist tracks | `[LEAD]` old library/topic prose | not-in-code |
+| `?` | `/api/unified/library` | Bearer? | Unified library surface; sibling of the captured homepage/explore family | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/radio/{tag}/` | Bearer? | Tag radio station feed | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/playlist/v2/{playlist_id}` | Bearer? | Playlist detail, v2 spelling | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/playlist/v2/{playlist_id}/save` | Bearer? | Save a v2 playlist | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/playlist/v2/{playlist_id}/trash` | Bearer? | Trash a v2 playlist | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/playlist_reaction/{playlist_id}/increment_play_count/` | Bearer? | Increment playlist play count | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/playlist_reaction/{playlist_id}/set_visibility/` | Bearer? | Set playlist visibility | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/playlist_reaction/{playlist_id}/update_reaction_type/` | Bearer? | Update a playlist reaction type | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/recommend/feedback/song/{clip_id}` | Bearer? | Recommendation feedback for a song | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 
 The search rows are the worst offenders in this file: six of them claim a
 server-side search surface that **no reviewed capture supports**. The master
@@ -335,6 +372,29 @@ three-leg audio upload stay in the master.
 | `?` | `/api/video/hooks/fetch_hook_lyrics` | Bearer? | Fetch hook lyrics | `[LEAD]` raw scan | not-in-code |
 | `?` | `/api/video/hooks/suggested_clips` | Bearer? | Suggested video-hook clips | `[LEAD]` raw scan | not-in-code |
 | `?` | `/api/video_gen/poll_batches` | Bearer? | Poll video batches | `[LEAD]` old inventory/loose scan | not-in-code |
+| `?` | `/api/download/clip/{clip_id}` | Bearer? | Download-preparation/authorization family, distinct from the captured media_urls playback array; our captures never recorded it | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/download/sample-pack/{clip_id}` | Bearer? | Download-preparation/authorization family, distinct from the captured media_urls playback array; our captures never recorded it | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/studio/clip/{clip_id}/download` | Bearer? | Download-preparation/authorization family, distinct from the captured media_urls playback array; our captures never recorded it | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/clips/{clip_id}/set_remix_type` | Bearer? | Set a clip's remix type | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/edit/action/{action_clip_id}/` | Bearer? | Apply an edit action to a clip | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/edit/fade/{clip_id}/` | Bearer? | Fade edit over a clip | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/uploads/image/{upload_id}/upload-finish/` | Bearer? | Finalize an image upload | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/uploads/midi/` | Bearer? | MIDI upload surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/uploads/midi/{upload_id}/upload-finish/` | Bearer? | Finalize a MIDI upload | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/uploads/video/{upload_id}/` | Bearer? | Upload status by upload id; spelling differs from the two uploads/video rows above | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video/generate/{clip_id}/` | Bearer? | Video generation for a clip | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video/hooks/{hook_id}` | Bearer? | Video-hook detail | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video_gen/image/generate` | Bearer? | Image video-generation submission | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video_gen/video/generate` | Bearer? | Video-generation submission | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video_gen/model-configs` | Bearer? | Video-generation model configurations | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+
+The three download rows (`/api/download/clip/{clip_id}`,
+`/api/download/sample-pack/{clip_id}`, `/api/studio/clip/{clip_id}/download`)
+are the download-preparation/authorization family the master keeps separate from
+the captured `media_urls[]` playback array (ENDPOINT-INVENTORY.md section 5.3
+and its conflict register). Their existence is a capture target; their shape,
+their host, and the host a returned signed URL points at are unknown here. None
+of the three may be added to `src/suno/CapturedHosts.cpp`.
 
 The four `/api/uploads/...` spelling pairs are deliberately preserved as separate
 rows with no aliasing. Trailing-slash differences and the
@@ -356,6 +416,9 @@ Master section: 4.7. The captured pending-custom-model route stays in the master
 | POST? | `/api/custom-model/create/` | Bearer?/entitlement? | Create custom model | `[LEAD]` old inventory/topic prose; training schema unproved | not-in-code |
 | POST? | `/api/custom-model/archive/` | Bearer?/entitlement? | Archive custom model | `[LEAD]` old inventory/topic prose | not-in-code |
 | POST? | `/api/processed_clip/voice-vox-stem` | Bearer? | Voice/stem processing | `[LEAD]` old inventory/topic prose | not-in-code |
+| `?` | `/api/custom-model/bases/` | Bearer? | Custom-model base list; distinct from the create/archive mutations above | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/persona/get-persona/{persona_id}/` | Bearer? | Single persona by id; distinct from the get-persona-paginated route | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/persona/{persona_id}/toggle_love/` | Bearer? | Toggle love on a persona | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 
 Every row in this table is gated on an **entitlement** that no capture
 establishes. The master records that no plan matrix, verification requirement,
@@ -386,6 +449,26 @@ notification-read routes stay in the master.
 | `GET?` or `POST?` | `/api/song_copy/send-song` | Bearer? | Send/copy song action | `[VERIFY]` direct method conflict | not-in-code |
 | GET? | `/api/invite/` | Bearer? | Invitation surface | `[LEAD]` old inventory/raw scan | not-in-code |
 | POST? | `/api/survey/survey-responses` | Bearer? | Survey response | `[LEAD]` raw/loose scan | not-in-code |
+| `?` | `/api/clip/{clip_id}/permissions` | Bearer? | Clip permissions surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/clip/{clip_id}/permissions/visibility` | Bearer? | Clip permission visibility | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/clip/{clip_id}/permissions/grants` | Bearer? | Clip permission grants | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/clip/{clip_id}/permissions/grants/{grantee_uid}` | Bearer? | Per-grantee clip permission grant | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{gen_id}/share_asset` | Bearer? | Create a share asset | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{gen_id}/share_asset/{asset_id}` | Bearer? | Share-asset member route; no captured method distinguishes read from mutation | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/share/code/{share_id}` | Bearer? | Share-code surface; distinct from the captured share-link route | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{clip_id}/comment` | Bearer? | Comment on a clip | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{clip_id}/comments/count` | Bearer? | Clip comment count | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/gen/{clip_id}/toggle_comments/` | Bearer? | Toggle comments on a clip | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video/hooks/comments/{hook_id}/comments` | Bearer? | Video-hook comment list | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video/hooks/comments/{hook_id}/comments/count` | Bearer? | Video-hook comment count | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video/hooks/comments/{hook_id}/comment` | Bearer? | Comment on a video hook | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video/hooks/comments/{comment_id}` | Bearer? | Video-hook comment surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video/hooks/comments/{comment_id}/reaction` | Bearer? | React to a video-hook comment | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video/hooks/comments/{comment_id}/replies` | Bearer? | Replies to a video-hook comment | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/video/hooks/comments/{comment_id}/report` | Bearer? | Report a video-hook comment | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/profiles/pin-clip/{clip_id}` | Bearer? | Pin a clip to a profile | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/profiles/{handle}/remixes-inspired/` | Bearer? | Remixes inspired by a profile | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/profiles/{handle}/remixes-inspired-count/` | Bearer? | Inspired-remix count for a profile | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 
 Three separate rows here are **mutations described with a `GET?` method**
 (`/api/profiles/follow`, `/api/comment/{id}/reaction` aside,
@@ -410,6 +493,11 @@ master.
 | POST? | `/api/preferences/clip-review/submit` | Bearer? | Submit clip review | `[LEAD]` old inventory/raw scan | not-in-code |
 | POST? | `/api/preferences/clip-review/opt-out` | Bearer? | Opt out of clip review | `[LEAD]` old inventory/raw scan | not-in-code |
 | POST? | `/api/labs/verse/messages/` | Bearer? | Labs Verse messages | `[LEAD]` raw scan | not-in-code |
+| `?` | `/api/contests/is_contest_clip/{clip_id}/` | Bearer? | Contest-clip predicate; contest downloads are server-restricted and no download path may be built for them | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/v2/` | Bearer? | Bare v2 prefix surface; unresolved, bundle route string | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/v2/integrations` | Bearer? | Integrations surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/v2/integrations/musixmatch` | Bearer? | Musixmatch integration surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `?` | `/api/v2/integrations/musixmatch/authorize-url` | Bearer? | Musixmatch authorization-URL surface; no capture establishes the flow or the redirect | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 
 `/api/cms/paywall/plan-options` exists only because a loose scan produced
 `/marketplace/api/cms/paywall/plan-options` and the frontend prefix was stripped

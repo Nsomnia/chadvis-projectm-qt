@@ -39,6 +39,7 @@ routes** — it states which single file owns which kind of fact.
 | [API index](suno_api/README.md) | **Navigation boundary** | Authority rules and the `[T1]`/`[LEAD]`/`[VERIFY]` legend. No endpoint tables. |
 | [Endpoint inventory](suno_api/ENDPOINT-INVENTORY.md) | **Sole API-spec master** | Hosts, request conventions, the `[T1]` route catalog with contracts, error and model parsing. |
 | [Observed leads](suno_api/OBSERVED-LEADS.md) | **Non-contractual** | Every `[LEAD]`/`[VERIFY]` route, plus client flag names. Research only — never a stable contract, never an implementation source. |
+| [Third-party implementations](suno_api/THIRD-PARTY-IMPLEMENTATIONS.md) | **Non-contractual** | What other clients claim the API is. Always `[LEAD]`; can neither promote nor demote a row, and never an allowlist source. |
 | [OAuth redirect analysis](suno_api/OAUTH_REDIRECT_ANALYSIS.md) | **Native-callback gate** | The captured Google/Facebook web flow and the intended `127.0.0.1` loopback sign-in path. |
 | [Evidence provenance](suno_api/raw/README.md) | **Provenance only** | Capture dates, SHA-256 hashes, and the rules for handling evidence. |
 
