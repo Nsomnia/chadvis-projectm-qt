@@ -282,33 +282,33 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       `unit_tests` burns 14 s CPU across 91 s. `--budget` prints the arithmetic. `--nice` shipped
       broken (defaults assigned after the parser). Also probes `sccache`, and repairs a dir whose
       cmake was uninstalled -- read `build.ninja`, not the cache. Details in CHANGELOG.
-- [ ] T0038 **`scripts/build-fast.sh` hijacks the Release build directory with a `-O0` Debug config** (`scripts/build-fast.sh:1`) #risk-high
+- [x] T0038 **`scripts/build-fast.sh` hijacks the Release build directory with a `-O0` Debug config** (`scripts/build-fast.sh:1`) #risk-high
       Directly contradicts `build.sh:7-10` ("every profile gets its OWN directory"). No
       shebang, no `set -e`, hardcodes `sccache` while `Compiler.cmake:170` probes both, and
       reuses `CMAKE_CXX_FLAGS` so it sticks in the cache. Fix: delete it, or make it a
       two-line wrapper over `./build.sh --fast`.
-- [ ] T0039 **`release.yml` misstates macOS signing and believes `MACOSX_BUNDLE` is unset** (`.github/workflows/release.yml:19-42,190-192,300-306`) #risk-high
+- [x] T0039 **`release.yml` misstates macOS signing and believes `MACOSX_BUNDLE` is unset** (`.github/workflows/release.yml:19-42,190-192,300-306`) #risk-high
       It passes the CMake signing variables and the notes claim the `.app` is unsigned,
       but `cmake/TargetSetup.cmake:868` always ad-hoc-signs (`_chadvis_sign_identity`
       defaults to `"-"` at :855-856). It also asserts `MACOSX_BUNDLE` is **not** set — it
       **is** (`TargetSetup.cmake:263`) — so the macOS release leg is `required: false`
       (:93,:96) and can never block a release.
-- [ ] T0040 **`SAFE_TESTS` silently omits three registered ctest entries** (`build.sh:50-59`) #risk-high
+- [x] T0040 **`SAFE_TESTS` silently omits three registered ctest entries** (`build.sh:50-59`) #risk-high
       `test_CapturedHosts`, `test_FeatureFlags` and `test_OffscreenRenderSpike` are
       registered but absent, so `--tests` does not build them and `--safe` does not run
       them — including the suites `tests/unit/CMakeLists.txt:98-105` calls "the only tests
       covering the tree's fail-closed host policy". The comment at `build.sh:37-40`
       documents this failure having happened before. Make `build.yml:271-291` the single
       source of truth. (after: T0041)
-- [ ] T0041 **Three ctest entries are instrumented but carry no `TSAN_OPTIONS`** (`tests/unit/CMakeLists.txt:339-350`) #risk-high
+- [x] T0041 **Three ctest entries are instrumented but carry no `TSAN_OPTIONS`** (`tests/unit/CMakeLists.txt:339-350`) #risk-high
       `test_HttpPolicy`, `test_RenderExecutor` and `test_OffscreenRenderSpike` are missing
       from the block `tsan.yml:53-57` records as a known gap. `test_RenderExecutor` is
       documented headless-safe (:203) and belongs there.
-- [ ] T0042 **The TSan lane cannot distinguish a new race from the old ones** (`.github/workflows/tsan.yml:191-193,163,207`) #risk-high
+- [x] T0042 **The TSan lane cannot distinguish a new race from the old ones** (`.github/workflows/tsan.yml:191-193,163,207`) #risk-high
       Non-gating, and "expected to report 39 races" since it was written. Add a report-count
       threshold so regressions bite while known noise stays tolerated. **Do not** fill
       `cmake/tsan.supp` — a suppression that hides a real race is worse than a red lane.
-- [ ] T0043 **A failed worker-thread join in `SunoClient` is compounded by no ASan/UBSan lane** (`.github/workflows/`) #risk-high
+- [x] T0043 **A failed worker-thread join in `SunoClient` is compounded by no ASan/UBSan lane** (`.github/workflows/`) #risk-high
       `CHADVIS_SANITIZER` accepts `address`/`undefined` (`Compiler.cmake:139-140`) and
       `build.sh:167-168` exposes `--asan`/`--ubsan`, but only TSan has a workflow — and the
       PCM/decoder/encoder code is exactly what the unexercised lanes would catch.
