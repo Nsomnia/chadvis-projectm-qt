@@ -21,6 +21,7 @@
 // TagLib Includes
 #include <taglib/mpegfile.h>
 #include <taglib/id3v2tag.h>
+#include <taglib/fileref.h>
 #include <taglib/unsynchronizedlyricsframe.h>
 #include <taglib/synchronizedlyricsframe.h>
 #include <taglib/textidentificationframe.h>
@@ -383,6 +384,42 @@ fs::path SunoDownloader::resolveDestPath(const SunoClip& clip) {
         return key;
     };
 
+    // T0169: the stale-file half of the tie-break. `destOwner_` only knows about
+    // clips THIS process has handed paths to, so a plain-named file left by an
+    // EARLIER session is invisible to it -- and a different clip whose title
+    // matches then gets handed the same path and silently overwrites it, which
+    // is data loss with no error and no user visible anywhere.
+    //
+    // Reading the embedded SUNO_ID closes it without changing the filename: the
+    // "already downloaded" shortcut that downloadAndPlay depends on still works
+    // for the clip that really owns the file, and a foreign file no longer
+    // counts as taken-by-us.
+    //
+    // Deliberately NOT keyed on fs::exists() for THIS clip's claim, because
+    // probing the filesystem for whether our own bytes have landed would make
+    // the answer depend on transfer timing: the transfer and the sidecar
+    // writers run on either side of that moment and would then disagree about
+    // the path. Only a FOREIGN identification is allowed to move candidate;
+    // ours never is.
+    if (!destOwner_.contains(claim(candidate))) {
+        if (const auto embedded = embeddedSunoId(candidate); embedded && *embedded != clip.id) {
+            // Someone else's file, and it is not ours to overwrite. Fall through
+            // to the id-suffixed name below rather than reusing it.
+            destOwner_.emplace(claim(candidate), *embedded);
+            candidate = dir / (stem + "-" + vc::file::sanitizeFilename(clip.id) +
+                               std::string(kAudioExtension));
+        } else if (embedded) {
+            // Our own file from a previous session: reuse the plain name, which
+            // is the shortcut's entire job.
+            //
+            // Deliberately does NOT claim `destOwner_` here. That map answers
+            // "is this name taken by another clip", and recording ourselves
+            // would make the disambiguation block two lines below see the name
+            // as taken and rename it -- one inbound clip silently getting a
+            // suffixed file and losing the reuse it was entitled to.
+            candidate = dir / (stem + std::string(kAudioExtension));
+        }
+    }
     if (destOwner_.contains(claim(candidate))) {
         // clip.id is sanitized because it is interpolated into a path here, and
         // ClipParser::parseClip validates only that it is non-empty -- so an id
@@ -562,6 +599,80 @@ void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
         tag->addField("SUNO_PROMPT", TagLib::String(clip.metadata.prompt, TagLib::String::UTF8));
 
         f.save();
+    }
+}
+
+/// The `SUNO_ID` embedded in a saved file, or nullopt.
+///
+/// T0169. tagAudioFile writes this frame for every clip it tags (ID3v2 TXXX for
+/// MP3, a XiphComment field for FLAC), which makes it the one value that can
+/// tell two files apart when their titles match. resolveDestPath needs it:
+/// "is this plain-named file mine, or a different clip's from an earlier
+/// session?" is a question only the tag can answer.
+///
+/// Returns nullopt for a file that cannot be read or that carries no id -- an
+/// untagged file from outside the app, or a partial download. Never throws:
+/// TagLib's constructors are the only paths that could, and both are caught.
+std::optional<std::string> SunoDownloader::embeddedSunoId(const fs::path& path) {
+    std::error_code ec;
+    if (!fs::is_regular_file(path, ec) || ec) {
+        return std::nullopt;
+    }
+    try {
+        const std::string lower = [](std::string ext) {
+            std::ranges::transform(ext, ext.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            return ext;
+        }(path.extension().string());
+
+        if (lower == ".mp3") {
+            TagLib::MPEG::File f(path.c_str());
+            if (!f.isValid() || !f.hasID3v2Tag()) {
+                return std::nullopt;
+            }
+            const TagLib::ID3v2::FrameList frames =
+                f.ID3v2Tag()->frameListMap()[ "TXXX" ];
+            for (const auto* frame : frames) {
+                const auto* txxx =
+                    dynamic_cast<const TagLib::ID3v2::UserTextIdentificationFrame*>(frame);
+                if (txxx && txxx->description().upper() == "SUNO_ID") {
+                    // fieldList()[1], NOT fieldList().toString(). A TXXX frame's
+                    // text list is ["SUNO_ID", "<the value>"] -- the description is
+                    // field 0 -- so toString() renders "SUNO_ID <value>" and could
+                    // never equal a clip id, while [1] is exactly what the tagger
+                    // put there. Reading what was written, not a rendering of it.
+                    return std::string(txxx->fieldList()[1].to8Bit());
+                }
+            }
+            return std::nullopt;
+        }
+
+        if (lower == ".flac") {
+            // Same FLAC::File + xiphComment() API the tagger writes through, so
+            // the reader and writer cannot disagree about where the field lives.
+            TagLib::FLAC::File f(path.c_str());
+            if (!f.isValid()) {
+                return std::nullopt;
+            }
+            TagLib::Ogg::XiphComment* tag = f.xiphComment();
+            if (!tag) {
+                return std::nullopt;
+            }
+            const TagLib::String value = tag->fieldListMap()["SUNO_ID"].toString();
+            if (value.isEmpty()) {
+                return std::nullopt;
+            }
+            return std::string(value.to8Bit());
+        }
+        return std::nullopt;
+    } catch (const std::exception&) {
+        // A malformed tag is not an error worth failing a download over: the
+        // file is simply not identifiable, which resolveDestPath treats the
+        // same way it treats a file with no id at all.
+        return std::nullopt;
+    } catch (...) {
+        return std::nullopt;
     }
 }
 

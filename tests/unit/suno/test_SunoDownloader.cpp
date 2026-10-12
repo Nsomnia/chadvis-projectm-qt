@@ -29,6 +29,10 @@
 
 #include "FakeNetworkReply.hpp"
 
+#include <taglib/mpegfile.h>
+#include <taglib/id3v2tag.h>
+#include <taglib/textidentificationframe.h>
+
 #include <optional>
 #include <set>
 #include <string>
@@ -89,6 +93,64 @@ SunoClip opusOnlyClip(const std::string& id) {
 
 QByteArray payloadFor(const QString& id) {
     return QByteArray("chadvis-fake-audio-") + id.toUtf8();
+}
+
+/// A minimal file that TagLib will parse as an MPEG and that carries the given
+/// clip id in a `SUNO_ID` TXXX frame -- i.e. the on-disk shape a previous
+/// session's completed download leaves.
+///
+/// Writes the frame with the SAME TagLib API tagAudioFile uses, because the
+/// production read path looks for exactly this frame, and a fixture that
+/// carried a differently-shaped frame would test nothing about T0169.
+///
+/// The MPEG prefix is needed for a reason that is not obvious: TagLib's
+/// MPEG::File::isValid() gates every write in tagAudioFile and every read in
+/// embeddedSunoId, so a zero-byte or fake-bytes file is invisible to both and
+/// the whole test would pass trivially. 4 header bytes + 417 pad = one whole
+/// 44.1 kHz MPEG frame; the file need not actually decode.
+/// Reads back the SUNO_ID a file currently carries, without writing anything.
+std::optional<std::string> stillTagged(const fs::path& path) {
+    TagLib::MPEG::File f(path.c_str());
+    if (!f.isValid() || !f.hasID3v2Tag()) {
+        return std::nullopt;
+    }
+    const TagLib::ID3v2::FrameList frames = f.ID3v2Tag()->frameListMap()["TXXX"];
+    for (const auto* frame : frames) {
+        const auto* txxx =
+            dynamic_cast<const TagLib::ID3v2::UserTextIdentificationFrame*>(frame);
+        if (txxx && txxx->description().upper() == "SUNO_ID") {
+            const TagLib::StringList fields = txxx->fieldList();
+            if (fields.size() < 2) {
+                return std::nullopt;
+            }
+            return std::string(fields[1].to8Bit());
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> seedTaggedMp3(const fs::path& path, const std::string& clipId) {
+    {
+        QFile out(QString::fromStdString(path.string()));
+        if (!out.open(QIODevice::WriteOnly)) {
+            return std::nullopt;
+        }
+        const QByteArray frameHeader("\xff\xfb\x90\x64", 4);  // 128 kbps, 44.1 kHz
+        out.write(frameHeader);
+        const QByteArray padding(417, 'A');
+        out.write(padding);
+        out.close();
+    }
+    TagLib::MPEG::File f(path.c_str());
+    if (!f.isValid()) {
+        return std::nullopt;
+    }
+    auto* frame = new TagLib::ID3v2::UserTextIdentificationFrame();
+    frame->setDescription(TagLib::String("SUNO_ID", TagLib::String::UTF8));
+    frame->setText(TagLib::String(clipId, TagLib::String::UTF8));
+    f.ID3v2Tag(true)->addFrame(frame);
+    f.save();
+    return clipId;
 }
 
 } // namespace
@@ -245,6 +307,97 @@ private slots:
         QCOMPARE(saved.takeFirst().at(1).toString(), alreadyThere.fileName());
         QCOMPARE(ready.count(), 0);
         QCOMPARE(audio.playlist().size(), usize{0});
+    }
+
+    /// T0169. A stale plain-named file LEFT BY AN EARLIER SESSION must not be
+    /// handed to a different clip whose title happens to match.
+    ///
+    /// `destOwner_` only knows the clips THIS process has routed, so the
+    /// pre-fix resolveDestPath saw an empty owner table for "Neon Arch.mp3",
+    /// returned it again, and the new clip's transfer overwrote the old file --
+    /// data loss with no error anywhere, because from every layer's point of
+    /// view it simply saved the file it was asked to.
+    ///
+    /// The embedded SUNO_ID frame is what discriminates, and it is read rather
+    /// than the filename, so the fix never changes the name it hands out.
+    void staleFileFromAnEarlierSessionIsNotReused() {
+        DownloadConfigGuard config;
+        QTemporaryDir downloadDir;
+        QVERIFY(downloadDir.isValid());
+        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+
+        // A real, tagged MP3 carrying a DIFFERENT clip's id -- the shape a
+        // previous session's completed download leaves behind.
+        //
+        // It must be a PARSEABLE MPEG file, not fake bytes: TagLib's
+        // MPEG::File::isValid() gates every write in tagAudioFile, and this
+        // file's whole job is to have been tagged. TagLib's own test suite uses
+        // an 11-byte frame header (0xFF 0xFB 0x90 0x00 ...) followed by the
+        // ID3 payload, which is enough for it to parse and let the ID3v2 tag be
+        // appended; the file need not actually decode.
+        SunoClip other = completeClip("session-old-clip", "Neon Arch");
+        const fs::path stale = fs::path(downloadDir.path().toStdString()) / "Neon Arch.mp3";
+        QVERIFY2(seedTaggedMp3(stale, other.id).has_value(),
+                 "the seeded fixture could not be parsed as an MPEG by TagLib; the "
+                 "test would prove nothing about the production read path");
+
+        QTemporaryDir sessionDir;
+        QVERIFY(sessionDir.isValid());
+        AudioEngine audio(fs::path(sessionDir.path().toStdString()) / "last_session.m3u");
+        QVERIFY(audio.init());
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+
+        FakeServer server;
+        SunoDownloader downloader(database, &audio, server.factory());
+
+        auto result = downloader.download(completeClip("session-new-clip", "Neon Arch"));
+        QVERIFY(result.has_value());
+        // A transfer was started, and the destination is the disambiguated one:
+        // the stale file must survive this download untouched.
+        QCOMPARE(server.replies.size(), std::size_t{1});
+        QVERIFY(result->reusedOnDisk == false);
+        // Where did it decide to save? The transfer's own request URL is not the
+        // destination, so assert on the destination the tagger/sidecar writers
+        // will use, via the queue's own enqueue: the .part it creates is the
+        // destination with the suffix moved. Simplest observable proxy that does
+        // not add a production accessor for a test's convenience.
+        const QDir listing(downloadDir.path(), QStringLiteral("*.mp3"), QDir::Name, QDir::Files);
+        QCOMPARE(listing.entryList().count(), 1);
+        QCOMPARE(listing.entryList().first(), QStringLiteral("Neon Arch.mp3"));
+        // And the old tag still names the old clip, i.e. the file is unmodified.
+        QCOMPARE(stillTagged(stale), std::optional<std::string>("session-old-clip"));
+    }
+
+    /// The complement, and the reason this is not simply "never reuse the plain
+    /// name": OUR OWN file from an earlier session must still be reused, which
+    /// is the already-downloaded shortcut downloadAndPlay depends on.
+    void ourOwnFileFromAnEarlierSessionIsStillReused() {
+        DownloadConfigGuard config;
+        QTemporaryDir downloadDir;
+        QVERIFY(downloadDir.isValid());
+        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+
+        SunoClip mine = completeClip("mine-from-last-time", "Neon Arch");
+        const fs::path stale = fs::path(downloadDir.path().toStdString()) / "Neon Arch.mp3";
+        QVERIFY2(seedTaggedMp3(stale, mine.id).has_value(),
+                 "the seeded fixture could not be parsed as an MPEG by TagLib");
+
+        QTemporaryDir sessionDir;
+        QVERIFY(sessionDir.isValid());
+        AudioEngine audio(fs::path(sessionDir.path().toStdString()) / "last_session.m3u");
+        QVERIFY(audio.init());
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+
+        FakeServer server;
+        SunoDownloader downloader(database, &audio, server.factory());
+
+        auto result = downloader.download(completeClip("mine-from-last-time", "Neon Arch"));
+        QVERIFY(result.has_value());
+        QVERIFY(result->reusedOnDisk);
+        QCOMPARE(server.replies.size(), std::size_t{0});
+        QCOMPARE(stillTagged(stale), std::optional<std::string>("mine-from-last-time"));
     }
 
     /// Two clips that share a title must not share a file: the second is

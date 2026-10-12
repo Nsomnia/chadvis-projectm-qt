@@ -115,6 +115,16 @@ public:
     // Embedded tagging functionality
     static void tagAudioFile(const fs::path& path, const SunoClip& clip);
 
+    /// The `SUNO_ID` embedded in a saved file, or nullopt (T0169).
+    ///
+    /// A private static member rather than a file-local helper because the one
+    /// caller, resolveDestPath, is a member of this class and must see the same
+    /// symbol without depending on the translation unit's anonymous-namespace
+    /// arrangement -- this file carries two overlapping anonymous namespaces,
+    /// and a file-local helper defined after its first use is exactly how a
+    /// linker error arrives that names a symbol nobody typed.
+    [[nodiscard]] static std::optional<std::string> embeddedSunoId(const fs::path& path);
+
 signals:
     /// T0037: emitted from finalizeThread_ once a clip's tags and sidecars are
     /// written, so the GUI thread runs addAndPlay and the QML-facing
