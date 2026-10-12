@@ -75,6 +75,41 @@ There is exactly **one owner of the theme now**: `styles/Theme.qml` for the toke
 
 `SunoBridge` has a startup-order invariant. `registerBridges()` calls `SunoBridge::setSunoController()` before `QQmlApplicationEngine::load()`, so the static controller pointer is set while the singleton is still unconstructed. The first QML access constructs `SunoBridge`, whose constructor wires the already-installed controller. If the singleton already exists, `setSunoController()` must wire it. For that reason, wiring exists in both the constructor and `setSunoController()`; removing either path can leave library, authentication, account, and error signals undelivered.
 
+## Authentication
+
+Google sign-in is a **system-browser flow, not an OAuth client** (T0181). Clerk
+owns the exchange: the OAuth `redirect_uri` is
+`https://auth.suno.com/social/complete/google-oauth2/` and the authorization
+`code` never leaves the browser↔Clerk boundary — [suno_api/LOGIN-CAPTURE-FINALIZATION.md](../suno_api/LOGIN-CAPTURE-FINALIZATION.md)
+records that no `127.0.0.1` address appears anywhere in a 1379-entry HAR. So
+this program has no client_id, no redirect_uri, no code to exchange, and
+nothing to wait for.
+
+What that leaves, and what exists:
+
+1. `AuthCoordinator::beginGoogleSignIn()` opens the system browser on Suno's
+   sign-in page and reports only whether the launch succeeded. It has no
+   timeout, no state machine, and no cancel — there is nothing to cancel.
+2. The user completes Google login in their browser.
+3. The credential comes back through the **paste field** on the Account
+   settings page ("Paste session cookie header instead"), and is stored via
+   `CredentialStore`, which on a secure backend means the OS keychain.
+4. `ClerkAuthClient::fetchBearer()` does `GET /v1/client` and reads
+   `sessions[0].last_active_token.jwt`; `touch()` POSTs
+   `/v1/client/sessions/{sid}/tokens` for the same JWT.
+
+The loopback machinery that used to occupy this section (`LoopbackListener`,
+`OAuthLoginService`, `OAuthTransaction`) is deleted — it bound a socket no
+request could reach, and its capture gate meant the feature failed 100% of the
+time. **Do not reintroduce it** without a capture showing a `127.0.0.1`
+redirect_uri, which this one rules out.
+
+The open question is automating step 3. A bookmarklet that POSTs
+`document.cookie` to a local listener would remove the paste, but
+`document.cookie` cannot read an `HttpOnly` cookie, and Clerk's `Set-Cookie`
+attributes were stripped from the HAR. That is board item T0182 and it is
+blocked on a capture, not on code.
+
 ## Suno Request and Data Flow
 
 The primary library flow is:
