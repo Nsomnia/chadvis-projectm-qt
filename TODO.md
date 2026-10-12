@@ -368,7 +368,7 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       library. Prescribed shape: `{complete: false, projects, errors, stats: {pagesFetched,
       expectedTotal, elapsedMs}}`, and a short page must not be treated as proof of completion
       when the reported total disagrees.
-- [ ] T0168 **Transfer failure is matched by clip *title*, not id** (`src/qml/views/LibraryView.qml`) #risk-high #data-loss
+- [x] T0168 **Transfer failure is matched by clip *title*, not id** (`src/qml/views/LibraryView.qml`) #risk-high #data-loss
       `downloadStatus` is the only terminal channel, and the view parses `"Download failed for "`
       then matches the remainder against `clip.title` **by exact equality** — so a rename or a
       duplicate title attributes the failure to the wrong clip. `downloadStatus` is also never
