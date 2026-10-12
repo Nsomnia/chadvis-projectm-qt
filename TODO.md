@@ -252,27 +252,27 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       On `wait()` failure the destructor only logs, sets `worker_=nullptr`, and the object
       dies — while queued lambdas at :215/:219 capture **raw `this`**. The comment at
       :186-188 claims destruction joins the thread, which a failed join does not deliver.
-- [ ] T0033 **Duplicate host allowlists survive outside the registry** (`src/suno/SunoDownloader.cpp:121`, `src/suno/ClipParser.cpp:72-73`, `src/suno/SunoAudioUploadService.cpp:163`) #risk-high #security
+- [x] T0033 **Duplicate host allowlists survive outside the registry** (`src/suno/SunoDownloader.cpp:121`, `src/suno/ClipParser.cpp:72-73`, `src/suno/SunoAudioUploadService.cpp:163`) #risk-high #security
       `CapturedHosts.hpp:11-14` documents replacing three per-file predicates as the reason
       the registry exists; three remain hand-rolled, so `hostsForRole` has **no production
       caller** and editing a registry row changes nothing. All three are anonymous fetches
       today, so no bearer leaks — but the fail-closed guarantee is triplicated.
-- [ ] T0034 **Recursive preset scan has no depth or breadth cap** (`src/util/FileUtils.cpp:242-247`) #risk-high
+- [x] T0034 **Recursive preset scan has no depth or breadth cap** (`src/util/FileUtils.cpp:242-247`) #risk-high
       `recursive_directory_iterator` with no `max_depth`. Symlink loops are safe and
       permission errors handled, but a user-supplied tree is walked unboundedly.
-- [ ] T0035 **No upload size limit, no cancel, no retry, wrong content type** (`src/suno/SunoAudioUploadService.cpp:206-212,329-330,341-343`) #risk-high
+- [x] T0035 **No upload size limit, no cancel, no retry, wrong content type** (`src/suno/SunoAudioUploadService.cpp:206-212,329-330,341-343`) #risk-high
       Validates `size() <= 0` but sets no maximum and offers no `cancel()` — the only aborts
       are private and destructor-driven, so a 2 GB upload cannot be stopped. Exactly one
       storage POST, no retry, no `Retry-After`, and on failure the S3 ticket is dropped
       (:390) leaving orphaned parts. Content type is hardcoded `application/octet-stream`
       although only `m4a` is accepted, so it should be `audio/mp4` — and the validated
       `ticket_->fields["Content-Type"]` (:150-154) is ignored.
-- [ ] T0036 **`SunoController` fans every client error into `libraryFetchFailed`** (`src/ui/controllers/SunoController.cpp:160-168`) #risk-high
+- [x] T0036 **`SunoController` fans every client error into `libraryFetchFailed`** (`src/ui/controllers/SunoController.cpp:160-168`) #risk-high
       A failing Explore page, a 429 on the badge endpoint, or a blocked upload **clears the
       library spinner and sets the library error** (`SunoBridge.cpp:315-318`;
       `SunoLibraryManager.cpp:22-30`). The comment in `SunoWorkspace.hpp:83-90` names this
       exact anti-pattern and leaves it in the one place it survives.
-- [ ] T0037 **Blocking TagLib and file I/O on the GUI thread in the download completion path** (`src/suno/SunoDownloader.cpp:419,543,576`) #risk-high
+- [x] T0037 **Blocking TagLib and file I/O on the GUI thread in the download completion path** (`src/suno/SunoDownloader.cpp:419,543,576`) #risk-high
       `tagAudioFile` opens and rewrites the file in place; two `ofstream`s and two
       `fs::exists` run synchronously inside `DownloadQueue::finished` on the GUI thread. A
       40-clip batch tags and writes 80 sidecars in one event-loop turn.
