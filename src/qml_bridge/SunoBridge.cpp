@@ -433,8 +433,6 @@ void SunoBridge::wireControllerSignals() {
                 [bridgeInstance](const QString&) {
                     emit bridgeInstance->googleLoginErrorChanged();
                 });
-        connect(coordinator, &vc::suno::auth::AuthCoordinator::callbackReceived, bridgeInstance,
-                &SunoBridge::googleLoginCallbackReceived);
     }
 
     // Account snapshot -> QML properties.
@@ -987,19 +985,15 @@ bool SunoBridge::googleLoginAvailable() const {
 }
 
 void SunoBridge::beginGoogleSignIn() {
+    // T0181: opens the system browser on Suno's sign-in page. The OAuth
+    // exchange is server-side (Clerk owns the redirect_uri), so there is
+    // nothing here to wait for -- the browser is the whole flow, and the
+    // credential comes back through the paste field.
     if (!s_controller) return;
     if (auto* coordinator = s_controller->authCoordinator()) {
         QString safeError;
-        // With no capture-approved launch, the coordinator takes its
-        // policy-error path and never calls QDesktopServices.
-        (void)coordinator->beginGoogleSignIn(&safeError);
-    }
-}
-
-void SunoBridge::cancelGoogleSignIn() {
-    if (s_controller) {
-        if (auto* coordinator = s_controller->authCoordinator()) {
-            coordinator->cancelGoogleSignIn();
+        if (!coordinator->beginGoogleSignIn(&safeError)) {
+            emit googleLoginErrorChanged();
         }
     }
 }

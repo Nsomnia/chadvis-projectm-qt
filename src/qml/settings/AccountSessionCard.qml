@@ -9,15 +9,12 @@ Rectangle {
 
     required property string loginState
     required property bool googleLoginAvailable
-    required property bool cancelAvailable
     required property bool signingOut
 
     readonly property bool authenticated: SunoBridge.isAuthenticated
     readonly property bool browserOpen: loginState === "browserOpen"
-    readonly property bool callbackReceived: loginState === "callbackReceived"
 
     signal signInRequested()
-    signal cancelRequested()
     signal signOutRequested()
 
     readonly property string displayName: SunoBridge.userName.length > 0
@@ -35,9 +32,11 @@ Rectangle {
     StackLayout {
         anchors.fill: parent
         anchors.margins: Theme.spacingLarge
-        currentIndex: root.authenticated
-                     ? 2
-                     : (root.browserOpen || root.callbackReceived ? 1 : 0)
+        // T0181: two real states plus the signed-in one. The old
+        // "callbackReceived" page waited for a code that Clerk never sends to
+        // this app; index 1 is now "you are in your browser, here is what to do
+        // next", which is the only thing left for the UI to communicate.
+        currentIndex: root.authenticated ? 2 : (root.browserOpen ? 1 : 0)
 
         ColumnLayout {
             spacing: Theme.spacingMedium
@@ -64,13 +63,17 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 220
                 Layout.preferredHeight: Theme.buttonHeightLarge
+                // T0181: the button opens the SYSTEM browser, not a loopback
+                // listener. Clerk completes the Google exchange server-side, so
+                // this application never receives an authorization code and
+                // cannot wait for one -- opening the browser is the whole flow.
                 text: "Sign in with Google"
                 highlighted: true
                 enabled: root.googleLoginAvailable
                 buttonRadius: Theme.radiusMedium
                 onClicked: root.signInRequested()
                 ToolTip.visible: hovered && !enabled
-                ToolTip.text: "Desktop Google sign-in is not enabled in this build. Import a session cookie or bearer token below."
+                ToolTip.text: "Secure credential storage is unavailable, so a session cannot be stored. Import a session cookie or bearer token below."
                 ToolTip.delay: 350
                 Accessible.name: "Sign in with Google"
             }
@@ -97,16 +100,25 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 implicitWidth: 48
                 implicitHeight: 48
-                running: root.browserOpen || root.callbackReceived
+                running: root.browserOpen
             }
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: root.callbackReceived
-                      ? "Finishing sign-in…"
-                      : "Waiting for your browser…"
+                text: "Finish in your browser"
                 color: Theme.textPrimary
                 font: Theme.fontSubtitle
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignHCenter
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                text: "ChadVis opened Suno in your browser. Sign in with Google "
+                      + "there, then paste your session cookie below."
+                color: Theme.textSecondary
+                font: Theme.fontCaption
             }
 
             Text {
@@ -119,14 +131,9 @@ Rectangle {
                 wrapMode: Text.WordWrap
             }
 
-            AppButton {
-                Layout.alignment: Qt.AlignHCenter
-                visible: root.browserOpen
-                enabled: root.cancelAvailable
-                text: "Cancel"
-                flat: true
-                onClicked: root.cancelRequested()
-            }
+            // No Cancel button (T0181). There is nothing to cancel: the browser
+            // is the user's own, this app cannot close it, and the flow it is in
+            // has no client-side state left to abandon.
 
             Item { Layout.fillHeight: true }
         }

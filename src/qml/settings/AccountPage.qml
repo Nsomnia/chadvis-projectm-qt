@@ -27,8 +27,6 @@ Flickable {
     readonly property bool googleLoginAvailable:
         typeof bridgeApi["googleLoginAvailable"] === "boolean"
         && bridgeApi["googleLoginAvailable"] === true
-    readonly property bool cancelGoogleLoginAvailable:
-        bridgeSupports("cancelGoogleSignIn")
     readonly property string visibleFeedback: {
         if (googleLoginState === "cancelled")
             return ""
@@ -95,15 +93,14 @@ Flickable {
     }
 
     function beginGoogleSignIn() {
+        // T0181. "Sign in with Google" now means "open your browser on Suno's
+        // sign-in page", because that is the only place the Google exchange can
+        // happen -- Clerk owns the redirect_uri and no code ever reaches this
+        // program. The credential is pasted back in the session-cookie field.
         feedbackMessage = ""
         feedbackIsError = false
         if (googleLoginAvailable && bridgeSupports("beginGoogleSignIn"))
             bridgeApi["beginGoogleSignIn"]()
-    }
-
-    function cancelGoogleSignIn() {
-        if (googleLoginState === "browserOpen" && cancelGoogleLoginAvailable)
-            bridgeApi["cancelGoogleSignIn"]()
     }
 
     function signOutSuno() {
@@ -516,10 +513,8 @@ readonly property string noteText: row.note !== undefined
         AccountSessionCard {
             loginState: root.googleLoginState
             googleLoginAvailable: root.googleLoginAvailable
-            cancelAvailable: root.cancelGoogleLoginAvailable
             signingOut: root.signingOut
             onSignInRequested: root.beginGoogleSignIn()
-            onCancelRequested: root.cancelGoogleSignIn()
             onSignOutRequested: root.signOutSuno()
         }
 

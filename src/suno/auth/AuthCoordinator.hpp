@@ -1,7 +1,5 @@
 #pragma once
 
-#include "oauth/OAuthLoginService.hpp"
-
 #include <QObject>
 #include <QString>
 
@@ -21,7 +19,6 @@ class AuthCoordinator : public QObject {
 
 public:
     struct Dependencies {
-        std::unique_ptr<oauth::OAuthLoginService> loginService;
         std::function<bool()> installCredentials;
         std::function<void()> clearLocalCredentials;
         std::function<bool()> secureBackendAvailable;
@@ -33,32 +30,32 @@ public:
     ~AuthCoordinator() override = default;
 
     [[nodiscard]] bool isSecureBackendAvailable() const;
+    /// Open the system browser on Suno's sign-in page (T0181).
+    ///
+    /// This is the whole of "sign in with Google" now: Clerk owns the OAuth
+    /// exchange server-side, so the client's only job is to get the user to a
+    /// browser. Returns false when a browser could not be launched, with
+    /// `safeError` naming why. It NEVER waits for a callback -- the credential
+    /// arrives afterwards through installCredentials(), which is the paste
+    /// path, and that is a property of the flow rather than a fallback.
     bool beginGoogleSignIn(QString* safeError = nullptr);
-    void cancelGoogleSignIn();
     void signOutSuno();
 
     [[nodiscard]] QString googleLoginState() const { return state_; }
     [[nodiscard]] QString googleLoginError() const { return error_; }
     [[nodiscard]] bool googleLoginAvailable() const;
 
-    /// A future capture-integration lane is the only intended caller.
-    void setCaptureApprovedLaunch(oauth::CaptureApprovedLaunch launch);
-    void clearCaptureApprovedLaunch();
-
 signals:
     void stateChanged(QString state);
     void errorChanged(QString error);
-    void callbackReceived();
 
 private:
     void setPolicyError(const QString& safeMessage);
 
     vc::suno::SunoClient* client_;
-    std::unique_ptr<oauth::OAuthLoginService> service_;
     std::function<bool()> installCredentials_;
     std::function<void()> clearLocalCredentials_;
     std::function<bool()> secureBackendAvailable_;
-    std::optional<oauth::CaptureApprovedLaunch> launch_;
     QString state_ = QStringLiteral("signedOut");
     QString error_;
     bool callbackInstallationClaimed_ = false;

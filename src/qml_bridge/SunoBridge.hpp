@@ -167,7 +167,6 @@ public slots:
     Q_INVOKABLE void fetchChatHistory();
     Q_INVOKABLE void clearLoading();
     Q_INVOKABLE void beginGoogleSignIn();
-    Q_INVOKABLE void cancelGoogleSignIn();
     Q_INVOKABLE void signOutSuno();
     Q_INVOKABLE void refreshAccount();
     Q_INVOKABLE void refreshDiscover();
@@ -235,7 +234,6 @@ signals:
     void googleLoginErrorChanged();
     void authFailureKindChanged();
     void googleLoginAvailableChanged();
-    void googleLoginCallbackReceived();
     void authenticationFailed(const QString& reason);
     void modelsChanged();
     /// The generation gate verdict (and therefore the reason string) may have

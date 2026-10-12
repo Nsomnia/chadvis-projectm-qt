@@ -3,7 +3,6 @@
 
 #include "suno/auth/AuthCoordinator.hpp"
 #include "suno/auth/CredentialStore.hpp"
-#include "suno/auth/oauth/OAuthLoginService.hpp"
 
 #ifdef CHADVIS_STANDALONE_AUTH_TEST
 #include "suno/SunoClient.hpp"
@@ -21,27 +20,8 @@ void SunoClient::clearLocalCredentials() {}
 
 using vc::suno::auth::AuthCoordinator;
 using vc::suno::auth::CredentialStore;
-using namespace vc::suno::auth::oauth;
 
 namespace {
-
-std::unique_ptr<OAuthLoginService> makeKnownService(std::function<bool(const QUrl&)> openBrowser,
-                                                    const QString& knownState) {
-    return std::make_unique<OAuthLoginService>(
-        std::move(openBrowser), [] { return QDateTime::currentDateTimeUtc(); },
-        [knownState](const QString& path, quint16 port, const QDateTime& deadline) {
-            auto transaction = OAuthTransaction::make(path, port, deadline);
-            if (transaction) transaction->state = knownState;
-            return transaction;
-        });
-}
-
-CaptureApprovedLaunch coordinatorLaunch() {
-    return CaptureApprovedLaunch{
-        .authorizationUrl = QUrl(QStringLiteral("https://example.invalid/oauth/start")),
-        .loopbackPath = QStringLiteral("/oauth/callback"),
-    };
-}
 
 } // namespace
 
@@ -51,8 +31,6 @@ class TestAuthCoordinator : public QObject {
 private slots:
     void insecureBackendRefusesFromSignedOut() {
         AuthCoordinator::Dependencies dependencies;
-        dependencies.loginService = makeKnownService([](const QUrl&) { return true; },
-                                                     QStringLiteral("unused-state"));
         dependencies.secureBackendAvailable = [] { return false; };
         AuthCoordinator coordinator(nullptr, std::move(dependencies));
         QSignalSpy states(&coordinator, &AuthCoordinator::stateChanged);
@@ -72,64 +50,36 @@ private slots:
         QCOMPARE(coordinator.googleLoginError(), error);
     }
 
-    void secureBackendWithoutCaptureLaunchRefuses() {
+    /// T0181: a secure backend is the WHOLE precondition now. The old gate was
+    /// a capture-approved launch whose loopback path could never be populated
+    /// (Clerk completes the OAuth exchange server-side), so sign-in used to
+    /// fail every time and this test asserted exactly that. Green, and the
+    /// feature it covered was unreachable.
+    void secureBackendMakesGoogleSignInAvailable() {
         AuthCoordinator::Dependencies dependencies;
-        dependencies.loginService = makeKnownService([](const QUrl&) { return true; },
-                                                     QStringLiteral("unused-state"));
         dependencies.secureBackendAvailable = [] { return true; };
         AuthCoordinator coordinator(nullptr, std::move(dependencies));
 
         QVERIFY(coordinator.isSecureBackendAvailable());
-        QVERIFY(!coordinator.googleLoginAvailable());
-        QString error;
-        QVERIFY(!coordinator.beginGoogleSignIn(&error));
-        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("error"));
-        QCOMPARE(error,
-                 QStringLiteral("Desktop sign-in is not enabled in this build"));
+        QVERIFY(coordinator.googleLoginAvailable());
     }
 
-    void installsOneValidatedCallbackAndSignsOutLocally() {
-        int openCalls = 0;
-        int installCalls = 0;
+    /// T0181: sign-out is local only, and it is the one half of this suite that
+    /// was always correct. The credential *install* half lost its only caller
+    /// when the loopback service went away -- the credential now arrives from
+    /// the UI's paste field through SunoClient directly -- so what is left to
+    /// pin is that a sign-out clears the local credential exactly once.
+    void signOutClearsTheLocalCredentialOnce() {
         int clearCalls = 0;
-        auto service = makeKnownService(
-            [&](const QUrl&) { ++openCalls; return true; },
-            QStringLiteral("coordinator-known-state-0123456789abcdefghijklm"));
-        auto* rawService = service.get();
-
         AuthCoordinator::Dependencies dependencies;
-        dependencies.loginService = std::move(service);
         dependencies.secureBackendAvailable = [] { return true; };
-        dependencies.installCredentials = [&] { ++installCalls; return true; };
         dependencies.clearLocalCredentials = [&] { ++clearCalls; };
         AuthCoordinator coordinator(nullptr, std::move(dependencies));
-        coordinator.setCaptureApprovedLaunch(coordinatorLaunch());
-        QSignalSpy callbacks(&coordinator, &AuthCoordinator::callbackReceived);
 
         QVERIFY(coordinator.googleLoginAvailable());
-        QString error;
-        QVERIFY(coordinator.beginGoogleSignIn(&error));
-        QCOMPARE(openCalls, 1);
-        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("browserOpen"));
-
-        // T0166: a real success response carries a code. This test previously
-        // sent the state alone and passed, which is the very shape of callback
-        // the board item reported as being accepted as a successful sign-in.
-        rawService->acceptCallback(QUrl(QStringLiteral(
-            "/oauth/callback?code=coordinator-auth-code&state=coordinator-known-state-0123456789abcdefghijklm")));
-        QCOMPARE(callbacks.count(), 1);
-        QCOMPARE(installCalls, 1);
-        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("authenticated"));
-
-        // Replay cannot invoke the credential installer a second time.
-        rawService->acceptCallback(QUrl(QStringLiteral(
-            "/oauth/callback?code=coordinator-auth-code&state=coordinator-known-state-0123456789abcdefghijklm")));
-        QCOMPARE(callbacks.count(), 1);
-        QCOMPARE(installCalls, 1);
-        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("error"));
-
         coordinator.signOutSuno();
-        QCOMPARE(clearCalls, 1);
+        coordinator.signOutSuno();
+        QCOMPARE(clearCalls, 2);
     }
 
     void keychainReadStatusMappingIsDistinguishable() {

@@ -22,8 +22,6 @@ add_executable(unit_tests
     suno/test_LyricsFetchQueue.cpp
     suno/test_SunoDatabase.cpp
     suno/test_AuthCoordinator.cpp
-    suno/test_LoopbackListener.cpp
-    suno/test_OAuthLoginService.cpp
     suno/test_ClipParser.cpp
     suno/test_DownloadQueue.cpp
     suno/test_CredentialStorePolicy.cpp
