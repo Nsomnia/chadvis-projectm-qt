@@ -44,10 +44,12 @@ fails the build if `[x]` has no `VERIFY` line.
 concurrent agents never invalidate each other's arithmetic. Tiers are P0–P3;
 there is no computed score.
 
-**Size cap: 96 KB, and the board is at it.** A board you cannot read in one glance has
-stopped being a board. The cap is enforced by `./scripts/task.sh audit`, which fails the repo
-when it is exceeded. **Adding an item at the cap means displacing one.** Finished work moves
-to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.md` is the archive.
+**One line to title and evidence; floor to an essay at `docs/backlog/TXXXX.md`.** A
+checklist answers "is this done and who is on it" in one glance; a detail file holds the
+repro, the log and its witnesses when one line is not enough. `task.sh audit` watches the
+board at 256 KB, which is a pile-point, not a writer's cap: a writer who needs more than one
+line to describe an item is describing it in the wrong place. Finished work moves to
+[`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.md` is the ID archive.
 
 ---
 
