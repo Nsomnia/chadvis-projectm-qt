@@ -191,8 +191,6 @@ set(QML_BRIDGE_SOURCES
     src/qml_bridge/SettingsBridge.cpp
     src/qml_bridge/BridgeRegistration.hpp
     src/qml_bridge/BridgeRegistration.cpp
-    src/qml_bridge/SunoWorkspaceBridge.hpp
-    src/qml_bridge/SunoWorkspaceBridge.cpp
 )
 
 # ─────────────────────────────────────────────────────────────
