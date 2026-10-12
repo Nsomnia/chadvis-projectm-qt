@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <deque>
 #include <iterator>
+#include <string_view>
 #include <utility>
 
 namespace vc::suno {
@@ -161,6 +162,39 @@ CredentialStoreWorker::Outcome runCredentialStoreRequest(CredentialStoreWorker::
 }
 } // namespace
 
+namespace {
+/// Human-readable name for a QNetworkReply network error. Deliberately a
+/// closed set rather than errorString(): Qt's string embeds the full request
+/// URL, query string included, and this value reaches the log and the QML
+/// error signal (AGENTS.md forbids logging a full URL with a query string).
+std::string_view networkErrorName(QNetworkReply::NetworkError error) {
+    switch (error) {
+        case QNetworkReply::NoError:
+            return "none";
+        case QNetworkReply::ConnectionRefusedError:
+            return "connection refused";
+        case QNetworkReply::RemoteHostClosedError:
+            return "remote host closed";
+        case QNetworkReply::HostNotFoundError:
+            return "host not found";
+        case QNetworkReply::TimeoutError:
+            return "timeout";
+        case QNetworkReply::OperationCanceledError:
+            return "cancelled";
+        case QNetworkReply::SslHandshakeFailedError:
+            return "ssl handshake failed";
+        case QNetworkReply::TemporaryNetworkFailureError:
+            return "temporary network failure";
+        case QNetworkReply::NetworkSessionFailedError:
+            return "network session failed";
+        case QNetworkReply::TooManyRedirectsError:
+            return "too many redirects";
+        default:
+            return "unknown";
+    }
+}
+} // namespace
+
 CredentialStoreWorker::CredentialStoreWorker(QObject* guiReceiver, Backend backend)
     : guiReceiver_(guiReceiver), backend_(std::move(backend)),
       workerThread_(std::make_unique<QThread>()) {
@@ -181,12 +215,21 @@ CredentialStoreWorker::~CredentialStoreWorker() {
     }
 
     // A Security.framework call cannot be force-cancelled safely. The GUI can
-    // remain responsive while it runs, but destruction owns and joins the
-    // thread before any captured SunoClient state can disappear.
+    // remain responsive while it runs, so we ask for interruption and quit,
+    // then join before any captured state can disappear.
+    //
+    // The join is a REQUEST, not a guarantee: wait() can fail, and the previous
+    // comment here overstated that. We do not force it (a Security.framework
+    // call mid-flight must not be abandoned). Instead shuttingDown_ is raised
+    // first, and every queued lambda carries a shared_ptr copy of the flag, so
+    // a lambda that does outlive this object observes the flag through its own
+    // copy and returns without touching freed members (T0032).
+    shuttingDown_->store(true, std::memory_order_release);
     workerThread_->requestInterruption();
     workerThread_->quit();
     if (!workerThread_->wait()) {
-        LOG_ERROR("SunoClient: credential worker did not stop during shutdown");
+        LOG_ERROR("SunoClient: credential worker did not stop during shutdown; "
+                  "queued work is abandoned and will no-op on the shutdown flag");
     }
     worker_ = nullptr;
 }
@@ -209,11 +252,23 @@ bool CredentialStoreWorker::requestRestore(Request request, Completion completio
 
     const bool queued = QMetaObject::invokeMethod(
             worker_,
-            [this, request = std::move(request), generation]() mutable {
+            [this, request = std::move(request), generation,
+             shutdown = shuttingDown_]() mutable {
+                // Outlives-us guard: if the join failed in the destructor, this
+                // body must not read backend_ or guiReceiver_ from a freed
+                // object. The flag copy outlives the object precisely so this
+                // check is safe to make here.
+                if (shutdown->load(std::memory_order_acquire)) {
+                    return;
+                }
                 Outcome outcome = backend_(request);
                 QMetaObject::invokeMethod(
                         guiReceiver_,
-                        [this, outcome = std::move(outcome), generation]() mutable {
+                        [this, outcome = std::move(outcome), generation,
+                         shutdown]() mutable {
+                            if (shutdown->load(std::memory_order_acquire)) {
+                                return;
+                            }
                             if (!restoreInFlight_ || generation != restoreGeneration_) {
                                 return;
                             }
@@ -447,7 +502,6 @@ void SunoClient::applyRestoreResult(RestoreMode mode, CredentialStoreWorker::Out
                     LOG_ERROR("SunoClient: {} (stored value preserved)",
                               rejectedBearerReason.toStdString());
                     if (mode == RestoreMode::Reload) {
-                        emit tokenChanged(std::string());
                     }
                     rejectedStoredCredential = true;
                     break;
@@ -475,7 +529,6 @@ void SunoClient::applyRestoreResult(RestoreMode mode, CredentialStoreWorker::Out
                     bearer_ = auth::BearerToken{};
                     setState(auth::AuthState::NeedsReauth);
                     if (mode == RestoreMode::Reload) {
-                        emit tokenChanged(std::string());
                     }
                 }
                 break;
@@ -492,7 +545,6 @@ void SunoClient::applyRestoreResult(RestoreMode mode, CredentialStoreWorker::Out
                 LOG_ERROR("SunoClient: {} (stored value preserved)",
                           classification.safeDiagnostic.toStdString());
                 if (mode == RestoreMode::Reload) {
-                    emit tokenChanged(std::string());
                 }
                 rejectedStoredCredential = true;
                 break;
@@ -543,7 +595,6 @@ void SunoClient::applyRestoreResult(RestoreMode mode, CredentialStoreWorker::Out
         lastActiveSessionId_.clear();
         setState(auth::AuthState::Disconnected);
         if (mode == RestoreMode::Reload) {
-            emit tokenChanged(std::string());
         }
         return;
     }
@@ -606,7 +657,6 @@ void SunoClient::setCookie(const std::string& cookie) {
     } else {
         credentialStoreWorker_->store(QStringLiteral("suno/default"), value);
     }
-    emit tokenChanged(std::string());
     emit credentialChanged();
     if (!refreshAfterRestore_) {
         emit credentialRestoreCompleted();
@@ -665,7 +715,6 @@ void SunoClient::clearLocalCredentials() {
     }
 
     setState(auth::AuthState::Disconnected);
-    tokenChanged.emitSignal(std::string());
     emit credentialChanged();
     emit credentialRestoreCompleted();
 }
@@ -860,7 +909,6 @@ void SunoClient::applyBearer(const auth::BearerToken& token) {
 
     scheduleProactiveRefresh();
     setState(auth::AuthState::ActiveValid);
-    emit tokenChanged(token.jwt.toStdString());
 }
 
 void SunoClient::scheduleProactiveRefresh() {
@@ -927,8 +975,16 @@ void SunoClient::onBearerReadyInternal(const auth::BearerToken& token) {
 }
 
 void SunoClient::onClerkAuthFailedInternal(const QString& reason, auth::AuthFailureKind kind) {
+    // Same stale-exchange guard as onBearerReadyInternal (T0044). A failure
+    // reply from an exchange that requestEpoch_ has moved past describes a
+    // session that no longer exists: applying it would wipe the bearer of a
+    // healthy, freshly-authenticated client and force a spurious reauth.
+    if (authExchangeEpoch_ == 0 || authExchangeEpoch_ != requestEpoch_) {
+        return;
+    }
     bearer_ = auth::BearerToken{};
     touchInFlight_ = false;
+    authExchangeEpoch_ = 0;
     setAuthFailureKind(kind);
     LOG_ERROR("SunoClient: clerk auth exchange failed: {}", reason.toStdString());
     dropPendingAuthWork(reason);
@@ -1138,7 +1194,7 @@ void SunoClient::handleReplyFinished(QNetworkReply* reply, PendingRequest&& pend
     if (status == 401) {
         if (pending.retryOnUnauthorized && !pending.retriedAuth && hasCredentials()) {
             LOG_WARN("SunoClient: 401 on {} - refreshing bearer, retrying once",
-                     pending.request.url().toString().toStdString());
+                     pending.request.url().path().toStdString());
             reply->deleteLater();
             bearer_ = auth::BearerToken{};
             pending.retriedAuth = true;
@@ -1255,7 +1311,14 @@ void SunoClient::handleNetworkError(QNetworkReply* reply) {
         return;
     }
     int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    std::string err = reply->errorString().toStdString();
+    // Do NOT use reply->errorString(): on a transfer error Qt fills it with the
+    // full request URL, query string and all, and this string reaches both the
+    // log and the QML error signal (AGENTS.md: never log a full URL with a
+    // query string). Rebuild the message from the error enum plus url.path(),
+    // which is all a reader needs to tell "timed out" from "refused".
+    std::string err = std::string("Network error ")
+        + std::string(networkErrorName(reply->error())) + " on "
+        + reply->url().path().toStdString();
     if (isAuthFailure(httpStatus)) {
         err = "Unauthorized: Token expired";
         bearer_ = auth::BearerToken{};

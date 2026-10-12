@@ -111,6 +111,13 @@ private:
     Backend backend_;
     std::unique_ptr<QThread> workerThread_;
     QObject* worker_ = nullptr;
+    /// Set by the destructor before the join. Held by shared_ptr so the flag
+    /// itself survives even if the join fails and a queued lambda outlives
+    /// this object -- that lambda reads the flag through its own copy and
+    /// bails out instead of touching freed memory (T0032). Without this the
+    /// worker-thread lambda would dereference a destroyed CredentialStoreWorker.
+    std::shared_ptr<std::atomic<bool>> shuttingDown_ =
+        std::make_shared<std::atomic<bool>>(false);
     bool restoreInFlight_ = false;
     bool restoreDiscarded_ = false;
     quint64 restoreGeneration_ = 0;
@@ -238,7 +245,10 @@ public:
     /// fires for unrelated failures.
     Signal<std::string, std::string> lyricsFetchFailed;
     Signal<std::string, std::string> wavConversionReady;
-    Signal<std::string> tokenChanged;
+    // Removed: `tokenChanged` carried the live bearer as a std::string and had
+    // zero subscribers repo-wide (T0031). It was a standing invitation to log
+    // the token, which AGENTS.md forbids; auth state is already observable
+    // through authStateChanged / needsReauth without carrying the secret.
     Signal<std::string> errorOccurred;
 
 signals:
