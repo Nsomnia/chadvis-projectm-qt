@@ -102,6 +102,13 @@ friend class QmlSingletonBridge<SettingsBridge, SingletonPolicy::CachedQmlParent
     Q_PROPERTY(QString sunoToken READ sunoToken WRITE setSunoToken NOTIFY sunoTokenChanged)
     Q_PROPERTY(QString sunoDownloadPath READ sunoDownloadPath WRITE setSunoDownloadPath NOTIFY sunoDownloadPathChanged)
 
+    // Appearance (T0047). The QML side treats these as the source of truth for
+    // what to paint with, and reads them back through SettingsBridge rather
+    // than holding its own copy -- two copies of a colour that is supposed to
+    // persist is how it silently stops persisting.
+    Q_PROPERTY(QString accentColor READ accentColor WRITE setAccentColor NOTIFY accentColorChanged)
+    Q_PROPERTY(QString backgroundColor READ backgroundColor WRITE setBackgroundColor NOTIFY backgroundColorChanged)
+
     // UI State (persistent sidebar/accordion)
     Q_PROPERTY(QString expandedPanel READ expandedPanel WRITE setExpandedPanel NOTIFY expandedPanelChanged)
     Q_PROPERTY(int sidebarWidth READ sidebarWidth WRITE setSidebarWidth NOTIFY sidebarWidthChanged)
@@ -196,6 +203,12 @@ public:
     QString sunoDownloadPath() const;
     void setSunoDownloadPath(const QString& path);
 
+    // Appearance
+    QString accentColor() const;
+    void setAccentColor(const QString& hex);
+    QString backgroundColor() const;
+    void setBackgroundColor(const QString& hex);
+
     // UI State
     QString expandedPanel() const;
     void setExpandedPanel(const QString& panel);
@@ -251,6 +264,8 @@ signals:
     void karaokeEnabledChanged();
     void sunoTokenChanged();
     void sunoDownloadPathChanged();
+    void accentColorChanged();
+    void backgroundColorChanged();
     void expandedPanelChanged();
     void sidebarWidthChanged();
     void drawerOpenChanged();

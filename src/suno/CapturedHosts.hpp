@@ -282,6 +282,26 @@ enum class Refusal {
 /// fetched; it must still be fetched anonymously.
 [[nodiscard]] bool mayReceiveCredential(const QUrl& url, Tier activeTier) noexcept;
 
+/// May this URL be fetched at all, with or without a credential? Fails closed.
+///
+/// T0033. `mayReceiveCredential` answers the wrong question for a large class of
+/// call sites: artwork, audio downloads and uploads carry no secret, so refusing
+/// them on `EvidenceTooWeak` would be wrong, and answering them by hand is how the
+/// allowlist came to exist three times over (see the file header). This is the one
+/// predicate for "host is reachable", and the only difference from the credential
+/// path is that it does not gate on evidence grade.
+///
+/// Checks: valid and absolute; https; default port or 443; no userinfo; host present
+/// in the registry; not `Tier::Experimental`; tier matches exactly; non-empty path.
+/// Callers may add their own path rules on top (an audio endpoint refusing a
+/// sentinel path, say) -- those are endpoint facts, not host policy.
+///
+/// Note the evidence grade is deliberately NOT checked here, and every host the
+/// current call sites reach is graded `Captured` -- so this is a distinction with
+/// no present behaviour difference, not a current exemption. It is here so that the
+/// next `[LEAD]`-graded host is fetchable without re-opening this question.
+[[nodiscard]] bool mayBeFetched(const QUrl& url, Tier activeTier) noexcept;
+
 /// Tiers a `TierPolicy` may be raised to. `Experimental` never: the registry does
 /// list an Experimental host, but that host is permanently refused as a credential
 /// transport, so "selecting" the tier could only ever narrow the reachable set to

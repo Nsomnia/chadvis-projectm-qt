@@ -82,12 +82,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Why `errorOccurred` is deleted rather than wired
 // ─────────────────────────────────────────────────────────────────────────────
-// One broadcast string consumed by every subsystem is the recorded cause of a live
-// bug elsewhere in this tree: `SunoController` fans `SunoClient::errorOccurred`
-// into both `sunoError` and `libraryFetchFailed`, so a blocked notification route
-// clears the library spinner. A refusal that cannot be delivered to the right
-// consumer is the same defect in embryo. Every refusal here is a **return value**,
-// which a caller either reads or ignores deliberately.
+// One broadcast string consumed by every subsystem is the recorded cause of a real
+// bug in this tree, now fixed (T0036): `SunoController` fanned
+// `SunoClient::errorOccurred` into both `sunoError` and `libraryFetchFailed`, so a
+// blocked notification route cleared the library spinner. The fan-out is gone --
+// library failures now travel the library manager's own scoped signal. This stays
+// as the standing argument against reintroducing it. A refusal that cannot be
+// delivered to the right consumer is the same defect in embryo. Every refusal here
+// is a **return value**, which a caller either reads or ignores deliberately.
 
 #include "recorder/RenderJob.hpp"
 #include "recorder/RenderQueue.hpp"

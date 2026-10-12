@@ -30,10 +30,19 @@ fs::path presetsDir();         // /usr/share/projectM/presets or similar
 // Read binary file
 [[nodiscard]] Result<std::vector<u8>> readBinary(const fs::path& path);
 
-// List files with extension filter
-std::vector<fs::path> listFiles(const fs::path& dir, 
+// List files with extension filter.
+//
+// Recursive walks are bounded (T0034). `maxDepth` counts directory levels below
+// `dir` and `maxEntries` caps directory entries VISITED -- not matches -- because
+// the cost is in traversal, not in the files we keep. Exceeding either bound stops
+// the walk and logs a warning naming the bound hit; a truncated scan is reported,
+// never silent. The defaults are generous for a preset tree and still make a
+// symlink cycle or a pathological tree terminate.
+std::vector<fs::path> listFiles(const fs::path& dir,
                                  const std::set<std::string>& extensions = {},
-                                 bool recursive = false);
+                                 bool recursive = false,
+                                 int maxDepth = 16,
+                                 std::size_t maxEntries = 200000);
 
 // Supported audio extensions
 inline const std::set<std::string> audioExtensions = {

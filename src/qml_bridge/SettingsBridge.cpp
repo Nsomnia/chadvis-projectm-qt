@@ -430,17 +430,20 @@ void SettingsBridge::resetToDefaults()
 #undef SETTING_BOOL
 #undef SETTING_FLOAT
 #undef SETTING_STRING
+#undef SETTING_COLOR
 #undef SETTING_RO_STRING
 #define SETTING_INT(prop, ...) emit prop##Changed();
 #define SETTING_BOOL(prop, ...) emit prop##Changed();
 #define SETTING_FLOAT(prop, ...) emit prop##Changed();
 #define SETTING_STRING(prop, ...) emit prop##Changed();
+#define SETTING_COLOR(prop, ...) emit prop##Changed();
 #define SETTING_RO_STRING(prop, ...) emit prop##Changed();
 #include "SettingsBridgeSettings.inc"
 #undef SETTING_INT
 #undef SETTING_BOOL
 #undef SETTING_FLOAT
 #undef SETTING_STRING
+#undef SETTING_COLOR
 #undef SETTING_RO_STRING
 
     emit sunoDownloadPathChanged();

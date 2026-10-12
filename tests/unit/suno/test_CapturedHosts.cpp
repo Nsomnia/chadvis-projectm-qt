@@ -702,6 +702,59 @@ private slots:
         QVERIFY(!ruleFor("cdn-o.suno.com").has_value());
     }
 
+    void mayBeFetchedSharesEveryRefusalThatIsNotAboutEvidence()
+    {
+        // T0033: mayBeFetched exists so the three fetch call sites stop keeping
+        // their own host lists. If it ever drifts from mayReceiveCredential the
+        // copies come back -- and they drift invisibly, because "may we fetch"
+        // and "may we send a bearer" differ in exactly one check. These rows are
+        // the whole scheme/port/userinfo/host/tier half, so any future
+        // difference shows up as a failure on the row that owns it.
+        for (const auto& url : {QStringLiteral("https://audiopipe.suno.ai/stream.mp3"),
+                                QStringLiteral("https://audiopipe.suno.ai:443/stream.mp3")}) {
+            QVERIFY(mayBeFetched(QUrl{url}, Tier::Production));
+            QVERIFY(mayReceiveCredential(QUrl{url}, Tier::Production));
+        }
+
+        for (const auto& url :
+             {QStringLiteral("http://audiopipe.suno.ai/stream.mp3"),
+              QStringLiteral("https://user@audiopipe.suno.ai/stream.mp3"),
+              QStringLiteral("https://audiopipe.suno.ai:444/stream.mp3"),
+              QStringLiteral("https://audiopipe.suno.ai.invalid.test/stream.mp3"),
+              QStringLiteral("https://cdn-o.suno.com/favicon.ico"),
+              QStringLiteral("/relative/path.m4a"),
+              QStringLiteral("file:///tmp/x.m4a")}) {
+            QVERIFY2(!mayBeFetched(QUrl{url}, Tier::Production),
+                     qPrintable(QStringLiteral("mayBeFetched admitted \"%1\"").arg(url)));
+        }
+    }
+
+    void mayBeFetchedIsNotTierBlindAndNotExperimental()
+    {
+        // A URL's tier is never its own. Asking at Experimental must not
+        // resurrect a host that Production refuses, and Production must stay
+        // the only tier these call sites can select.
+        QVERIFY(!mayBeFetched(QUrl{QStringLiteral("https://audiopipe.suno.ai/stream.mp3")},
+                               Tier::Experimental));
+        QVERIFY(!mayReceiveCredential(QUrl{QStringLiteral("https://audiopipe.suno.ai/stream.mp3")},
+                                      Tier::Experimental));
+    }
+
+    void mayBeFetchedDoesNotGradeOnEvidence()
+    {
+        // The distinction between the two predicates, stated as a test rather
+        // than left as a comment. Every host the current fetch call sites reach
+        // is graded Captured, so this passes trivially today; it exists so that
+        // grading the next [LEAD] host cannot silently start refusing artwork,
+        // and so that "no behaviour difference today" cannot be mistaken for
+        // "the checks are identical".
+        QVERIFY(mayBeFetched(QUrl{QStringLiteral("https://cdn1.suno.ai/art.png")}, Tier::Production));
+        QVERIFY(mayReceiveCredential(QUrl{QStringLiteral("https://cdn1.suno.ai/art.png")},
+                                     Tier::Production));
+        // The path must be non-empty: a bare origin is not a fetchable resource.
+        QVERIFY(!mayBeFetched(QUrl{QStringLiteral("https://audiopipe.suno.ai")}, Tier::Production));
+    }
+
     void aTrailingDotHostIsRefusedAsHostUnknown()
     {
         // Deliberate, and pinned so a future "fix" is a conscious act rather than a

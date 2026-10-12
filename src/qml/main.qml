@@ -494,7 +494,25 @@ ApplicationWindow {
         objectName: "settingsWindow"
         transientParent: mainWindow
         modality: Qt.ApplicationModal
-        onClosing: {
+    }
+
+    // T0046: this used to be an `onClosing:` handler written directly on the
+    // SettingsWindow instance above. A signal handler declared on an instance
+    // REPLACES the one the component declared on its own root object -- it does
+    // not add to it. SettingsWindow.qml:67 has its own onClosing that applies
+    // the appearance page and calls SettingsBridge.save(), so every accent edit
+    // made in that window was silently discarded on close: the handler that
+    // restored the previous view ran, and the handler that persisted the edits
+    // did not. Nothing warned; the settings simply did not stick.
+    //
+    // Connections is additive by construction, which is the only reason both
+    // handlers now survive. The same trap applies to every other signal the
+    // component handles for itself -- do not move one of these back onto the
+    // instance.
+    Connections {
+        target: settingsWindow
+
+        function onClosing() {
             if (mainWindow.activeView === "settings") {
                 Qt.callLater(function() {
                     mainWindow.activeView = mainWindow.returnView

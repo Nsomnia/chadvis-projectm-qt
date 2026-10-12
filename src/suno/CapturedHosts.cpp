@@ -463,6 +463,63 @@ bool mayReceiveCredential(const QUrl& url, const Tier activeTier) noexcept
     return !classifyRefusal(url, activeTier).has_value();
 }
 
+// Defined below mayBeFetched. Internal: the header exposes only the boolean,
+// because the Refusal reason for an anonymous fetch has no distinct vocabulary --
+// an unreachable host is unreachable either way, and adding one would be a second
+// enum to keep in sync for no reader.
+static std::optional<Refusal> classifyFetchRefusal(const QUrl& url, Tier activeTier) noexcept;
+
+bool mayBeFetched(const QUrl& url, const Tier activeTier) noexcept
+{
+    // Same shape as classifyRefusal, minus the evidence grade. classifyRefusal is
+    // not reused because it cannot be: its final branch is the whole difference
+    // between the two questions, and calling it then ignoring its answer would be
+    // a predicate whose name lies about what it computed.
+    return !classifyFetchRefusal(url, activeTier).has_value();
+}
+
+static std::optional<Refusal> classifyFetchRefusal(const QUrl& url, const Tier activeTier) noexcept
+{
+    // Valid, absolute, https, default port, no userinfo, known host, not
+    // Experimental, tier matches.
+    //
+    // The one check deliberately ABSENT is the evidence grade. Every host these
+    // three call sites reach today (audiopipe, cdn1, cdn2, the upload target) is
+    // graded Captured, so dropping it changes no behaviour right now -- which is
+    // exactly why the difference is easy to get wrong later. The call sites ask
+    // "may we fetch this?", and a `[LEAD]`-graded host is one this tree reaches
+    // on a captured response value: reachable, but not yet evidence of a request
+    // it legitimately answers. Grading those on credential evidence would refuse
+    // artwork the user can plainly see in the app.
+    if (!url.isValid() || url.isRelative()) {
+        return Refusal::InvalidUrl;
+    }
+    if (url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) != 0) {
+        return Refusal::SchemeNotHttps;
+    }
+    if (!(url.port() < 0 || url.port() == 443)) {
+        return Refusal::NonDefaultPort;
+    }
+    if (!url.userInfo().isEmpty()) {
+        return Refusal::UserInfoPresent;
+    }
+
+    const HostRule* rule = findRuleForHost(url.host());
+    if (rule == nullptr) {
+        return Refusal::HostUnknown;
+    }
+    if (rule->tier == Tier::Experimental) {
+        return Refusal::ExperimentalRefused;
+    }
+    if (rule->tier != activeTier) {
+        return Refusal::TierNotPermitted;
+    }
+    if (url.path().isEmpty()) {
+        return Refusal::InvalidUrl;
+    }
+    return std::nullopt;
+}
+
 TierPolicy::TierPolicy() noexcept
     : activeTier_(Tier::Production)
 {

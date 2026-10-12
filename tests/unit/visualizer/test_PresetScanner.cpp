@@ -1,5 +1,6 @@
 #include <QtTest>
 #include <QEventLoop>
+#include <QTemporaryDir>
 #include <QMetaObject>
 #include <QObject>
 #include <QTimer>
@@ -67,13 +68,22 @@ class TestPresetScanner : public QObject {
 
 private slots:
     void initTestCase() {
-        testDir = fs::current_path() / "test_presets";
+        // Under QTemporaryDir, not fs::current_path(). Fixtures used to be
+        // written into the working directory, which is the repo root when the
+        // binary is run by hand -- so a test run littered the source tree with
+        // test_presets/ and test_preset_names/, and a crashed or interrupted run
+        // left them behind for good. The directory is removed with the temp dir
+        // itself, so cleanupTestCase no longer has to be the only safety net.
+        QVERIFY(tmpDir.isValid());
+        const fs::path base(tmpDir.path().toStdString());
+
+        testDir = base / "test_presets";
         fs::create_directories(testDir);
         fs::create_directories(testDir / "CategoryA");
 
         // Separate root, so the filename-shape coverage below cannot change the
         // number of presets testScan() counts in testDir.
-        namesDir = fs::current_path() / "test_preset_names";
+        namesDir = base / "test_preset_names";
         fs::remove_all(namesDir);
         fs::create_directories(namesDir);
         for (const auto& shape : kNameShapes)
@@ -325,6 +335,7 @@ private slots:
     }
 
 private:
+    QTemporaryDir tmpDir;
     fs::path testDir;
     fs::path namesDir;
 

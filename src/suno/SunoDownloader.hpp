@@ -7,7 +7,9 @@
 
 #include <QObject>
 #include <QString>
+#include <QThread>
 #include <expected>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -103,12 +105,24 @@ public:
                            const std::string& json,
                            const QJsonDocument& doc,
                            const std::vector<SunoClip>& clips);
-    void saveMetadataSidecar(const SunoClip& clip);
+    // T0037: both are static and take their paths as arguments so the finalize job
+    // is a pure function of its captured values. A worker closure that needed
+    // `this` -- or a QPointer read from the worker, which is its own race --
+    // would reintroduce the T0032 use-after-free from inside a thread-safe-looking
+    // refactor.
+    static void saveMetadataSidecar(fs::path audioPath, const SunoClip& clip);
 
     // Embedded tagging functionality
-    void tagAudioFile(const fs::path& path, const SunoClip& clip);
+    static void tagAudioFile(const fs::path& path, const SunoClip& clip);
 
 signals:
+    /// T0037: emitted from finalizeThread_ once a clip's tags and sidecars are
+    /// written, so the GUI thread runs addAndPlay and the QML-facing
+    /// fileSaved. A signal with `this` as context rather than a manual
+    /// QMetaObject::invokeMethod, because Qt discards a queued delivery whose
+    /// receiver is destroyed -- which is the guarantee a hand-rolled post to
+    /// `this` would have to re-earn.
+    void finalizeFinished(const QString& clipId, const QString& destPath, bool play);
     /// Forwarded from the DownloadQueue for controller/bridge progress wiring.
     void downloadStateChanged(const QString& clipId, int state, int progressPercent);
     void downloadQueueIdle();
@@ -124,6 +138,23 @@ private:
     SunoDatabase& db_;
     AudioEngine* audioEngine_;
     std::unique_ptr<DownloadQueue> queue_;
+
+    /// T0037: the finalize work (TagLib tagging + two sidecar writes) is
+    /// blocking and was running on the GUI thread from handleItemState, so every
+    /// completed download froze the UI for the duration of the tag write. One
+    /// worker thread, not a thread per download: TagLib writes the same file and
+    /// the sidecars sit beside it, so concurrent finalizers would race on the
+    /// path they all just resolved.
+    ///
+    /// Jobs are posted as `std::function` rather than a typed queue because the
+    /// payload is a closure over an already-copied PendingDownload -- the closure
+    /// is the whole lifetime argument: it captures by value, so it cannot
+    /// outlive the clip it describes.
+    QThread finalizeThread_;
+
+    /// Runs `job` on finalizeThread_. Ignores the request if `this` is being
+    /// destroyed, which is why the destructor stops the thread before members go.
+    void runFinalize(std::function<void()> job);
 
     struct PendingDownload {
         SunoClip clip;

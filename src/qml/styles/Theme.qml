@@ -13,6 +13,9 @@
 
 pragma Singleton
 import QtQuick
+// T0047: applyAccent/applyBackground persist through SettingsBridge, which
+// lives in this module. A singleton in a module may import its own URI.
+import ChadVis
 
 QtObject {
     id: theme
@@ -291,6 +294,12 @@ QtObject {
 
     /**
      * Apply a new accent color and recompute all derived accent variants.
+     *
+     * Persists through SettingsBridge (T0047). The colour was already parsed
+     * and saved by config.toml -- `accent_color` under [visualizer] -- and this
+     * was the only path that could write it, so before the bridge existed the
+     * appearance panel advertised "auto-saved as you tweak" and saved nothing.
+     *
      * @param baseColor - The new accent color (string or color)
      */
     function applyAccent(baseColor) {
@@ -299,11 +308,19 @@ QtObject {
         accentPressed = Qt.darker(baseColor, 1.2)
         accentLight = Qt.lighter(baseColor, 1.5)
         accentDark = Qt.darker(baseColor, 1.5)
+        // Written as "#rrggbb" because the bridge speaks hex text, not color.
+        // toString() on a Qt.lighter() result can carry the alpha channel, and
+        // QColor::name() on the other side would drop it silently -- harmless
+        // today, quietly wrong the day anyone themes with opacity.
+        SettingsBridge.accentColor = Qt.color(baseColor).toString().toUpperCase()
         themeChanged()
     }
 
     /**
      * Apply a new background color and recompute all derived surface variants.
+     *
+     * Persists through SettingsBridge; see applyAccent.
+     *
      * @param baseColor - The new background color (string or color)
      */
     function applyBackground(baseColor) {
@@ -312,6 +329,29 @@ QtObject {
         surface = Qt.lighter(baseColor, 1.15)
         surfaceRaised = Qt.lighter(baseColor, 1.25)
         surfaceOverlay = Qt.lighter(baseColor, 1.35)
+        SettingsBridge.backgroundColor = Qt.color(baseColor).toString().toUpperCase()
         themeChanged()
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // RESTORE ON LOAD
+    // ═══════════════════════════════════════════════════════════
+
+    // T0047. Writing the colours was only half the fix; without this the app
+    // saved the user's accent faithfully and then ignored it on the next
+    // launch, which is the same data loss wearing a persistence-shaped hat.
+    //
+    // The two defaults disagree on purpose-detectable numbers: this file
+    // declares "#00bcd4" / "#1a1a1a", while vc::UIConfig declares #00FF88 and
+    // black. Whichever wins here is what a user sees on a fresh install, so
+    // the config is the authority -- it is the value that survives a restart,
+    // and a value that cannot survive a restart is not the user's setting.
+    //
+    // Routed through applyAccent/applyBackground so the derived variants are
+    // recomputed exactly as an edit recomputes them. Going through the setter
+    // is also free of a write-back loop: both setters compare before writing.
+    Component.onCompleted: {
+        applyAccent(SettingsBridge.accentColor)
+        applyBackground(SettingsBridge.backgroundColor)
     }
 }

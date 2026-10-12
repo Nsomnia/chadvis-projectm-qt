@@ -74,6 +74,29 @@
         } \
     }
 
+// ─── COLOR (QString ↔ vc::Color) ──────────────────────────────
+// Stored as a hex string in `vc::Color`; QML sees it as the same "#rrggbb"
+// text the colour pickers already hold, so no QColor conversion is needed on
+// the QML side and a round-trip through the config file is lossless.
+//
+// T0047: the appearance colours were the one setting family with a parsed,
+// persisted config field (`accent_color` / `visualizer_background`, see
+// ConfigParsers.cpp) and no bridge that could write them. Theme.qml's
+// applyAccent/applyBackground mutated only the in-memory singleton, so the UI
+// said "auto-saved as you tweak" and saved nothing. Wiring them through this
+// bridge is what makes that claim true.
+#define SETTING_COLOR(prop, Prop, accessor) \
+    QString SettingsBridge::prop() const { \
+        return QString::fromStdString(vc::Config::instance().accessor.toHex()); \
+    } \
+    void SettingsBridge::set##Prop(const QString& value) { \
+        if (value != prop()) { \
+            vc::Config::instance().accessor = vc::Color::fromHex(value.toStdString()); \
+            emit prop##Changed(); \
+            scheduleAutoSave(); \
+        } \
+    }
+
 // ─── READ-ONLY STRING ────────────────────────────────────────
 #define SETTING_RO_STRING(prop, accessor) \
     QString SettingsBridge::prop() const { \

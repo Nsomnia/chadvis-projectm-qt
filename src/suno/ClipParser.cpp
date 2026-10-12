@@ -1,5 +1,6 @@
 #include "ClipParser.hpp"
 
+#include "CapturedHosts.hpp"
 #include "core/Logger.hpp"
 
 #include <QJsonValue>
@@ -67,15 +68,26 @@ namespace {
 bool isCapturedImageUrl(const QString& value)
 {
     const QUrl url(value);
-    const int port = url.port();
-    const bool capturedHost =
-            url.host().compare(QStringLiteral("cdn1.suno.ai"), Qt::CaseInsensitive) == 0 ||
-            url.host().compare(QStringLiteral("cdn2.suno.ai"), Qt::CaseInsensitive) == 0;
-    return url.isValid() && !url.isRelative() &&
-           url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0 &&
-           capturedHost && (port == -1 || port == 443) &&
-           url.userInfo().isEmpty() && url.fragment().isEmpty() &&
-           !url.path().isEmpty();
+    // T0033: this was a hand-rolled pair of host literals ("cdn1"/"cdn2.suno.ai")
+    // plus its own scheme/port/userinfo/path rules -- one of three copies of the
+    // outbound-host allowlist (see CapturedHosts.hpp:6). The registry is now the
+    // only owner of "may we talk to this host".
+    //
+    // mayBeFetched, not mayReceiveCredential: artwork carries no bearer, and the
+    // registry admits a captured host for fetching even when its evidence grade
+    // is too weak to carry a secret. Both CDN hosts are graded Captured today,
+    // so this changes no behaviour for them right now; it matters for the next
+    // `[LEAD]`-graded host, which this predicate must not refuse.
+    //
+    // The fragment rule stays local. A fragment is not sent to the server, so it
+    // is not a host-policy question, and the registry deliberately does not
+    // carry per-call-site URL rules.
+    // Tier pinned to Production, exactly as `AuthHeaders.cpp:50` does it and for
+    // the same reason: these call sites carry no tier plumbing, and the host
+    // literals this replaces were production hosts. Choosing staging is an
+    // explicit `TierPolicy` decision, never something a URL string gets to make.
+    return hosts::mayBeFetched(url, hosts::Tier::Production) &&
+           url.fragment().isEmpty();
 }
 
 void parseMediaUrls(const QJsonObject& obj, SunoClip& clip) {

@@ -58,7 +58,16 @@ public:
     QString searchQuery() const;
     QVariantList searchResults() const;
 
-    void setSearchQuery(const QString& query);
+    /// Also reachable as `LyricsBridge.setSearchQuery(...)` from QML.
+    ///
+    /// The `WRITE` half of the `searchQuery` Q_PROPERTY above is enough for
+    /// `LyricsBridge.searchQuery = "..."`, and it is NOT enough for the call
+    /// form: a plain public member function never enters the metaobject, so
+    /// only signals, slots and `Q_INVOKABLE`s are callable from QML. T0045 --
+    /// `LyricsPanel.qml:54` calls the method form, so without this annotation
+    /// the panel's search field threw "is not a function" at runtime and the
+    /// query never reached the bridge.
+    Q_INVOKABLE void setSearchQuery(const QString& query);
 
 public slots:
     Q_INVOKABLE void seekToLine(int lineIndex);

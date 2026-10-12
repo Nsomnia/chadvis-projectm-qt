@@ -1,6 +1,7 @@
 #include "suno/SunoDownloader.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
+#include "suno/CapturedHosts.hpp"
 #include "suno/ClipResolver.hpp"
 #include "suno/SunoLyrics.hpp"
 #include "util/FileUtils.hpp"
@@ -59,10 +60,50 @@ SunoDownloader::SunoDownloader(SunoDatabase& db,
       db_(db),
       audioEngine_(audioEngine),
       queue_(std::make_unique<DownloadQueue>(std::move(replyFactory), this)) {
+    // T0037: the finalize worker. Queued connection, so the handler below runs on
+    // the GUI thread where addAndPlay and the QML-facing signals belong, and Qt
+    // drops the delivery if `this` is gone by then.
+    connect(this, &SunoDownloader::finalizeFinished, this,
+            [this](const QString& clipId, const QString& destPath, bool play) {
+                if (play) {
+                    static_cast<void>(addAndPlay(fs::path(destPath.toStdString()),
+                                                 clipId.toStdString()));
+                }
+                emit fileSaved(clipId, destPath);
+            },
+            Qt::QueuedConnection);
+    finalizeThread_.setObjectName(QStringLiteral("SunoDownloader::finalize"));
+    finalizeThread_.start();
     wireQueue();
 }
 
-SunoDownloader::~SunoDownloader() = default;
+SunoDownloader::~SunoDownloader() {
+    // T0037: stop the finalize thread BEFORE anything it touches goes away.
+    //
+    // Order matters and is not arbitrary: quit() then wait() drains nothing, so
+    // a job already running still has to finish. wait() with no timeout is
+    // deliberate -- returning while a job is mid-write would leave TagLib
+    // writing a file this destructor is about to invalidate, which is the
+    // use-after-free class T0032 was about, just reached the other way round.
+    // A TagLib write is short and bounded; blocking shutdown on it is correct.
+    //
+    // What quit()+wait() does NOT guarantee: a job still QUEUED when quit()
+    // takes effect never runs. On shutdown that is the right outcome -- the app
+    // is going away and playing audio has nowhere to go -- but it means a clip
+    // whose tagging was never started is silently left untagged, with no
+    // fileSaved. That was already true of the queued downloads themselves, so
+    // this is not a new class of loss, only a new place it can happen.
+    finalizeThread_.quit();
+    finalizeThread_.wait();
+}
+
+void SunoDownloader::runFinalize(std::function<void()> job) {
+    // Captured by value so the closure owns everything it needs and cannot
+    // reference a dead SunoDownloader (see the member comment).
+    QMetaObject::invokeMethod(
+            &finalizeThread_, [work = std::move(job)]() { work(); },
+            Qt::QueuedConnection);
+}
 
 void SunoDownloader::wireQueue() {
     connect(queue_.get(), &DownloadQueue::itemStateChanged, this,
@@ -105,21 +146,31 @@ bool isUsableCapturedUrl(const std::string& value) {
     }
 
     const QUrl url(text);
-    if (!url.isValid() || url.isRelative()) return false;
-
-    const QString scheme = url.scheme().toLower();
-    if (scheme != QStringLiteral("https")) {
-        return false;
-    }
-
-    const int port = url.port();
-    if (port != -1 && port != 443) return false;
-    if (!url.userInfo().isEmpty() || !url.fragment().isEmpty() ||
-        url.path().isEmpty()) {
-        return false;
-    }
+    // T0033: the scheme/port/userinfo/path half was a hand-rolled copy of the
+    // outbound-host rules (CapturedHosts.hpp:6). That half is now the registry's,
+    // via mayBeFetched -- a media download carries no bearer.
+    //
+    // The host test STAYS, and it is not redundant: the registry admits every
+    // captured host, including artwork, Clerk and the studio API. This function
+    // asks the narrower "is this the audio delivery host". Host policy and
+    // endpoint identity are different questions.
+    //
+    // So is the path sentinel: `api/forbidden` is a server route, not a host
+    // fact, and belongs to the endpoint rather than to the registry.
     if (url.host().compare(QStringLiteral("audiopipe.suno.ai"),
                            Qt::CaseInsensitive) != 0) {
+        return false;
+    }
+    // A fragment is refused, and stays refused here rather than being folded into
+    // the registry: it is not sent to the server, so it is not a host fact, and
+    // `test_ClipParser.cpp:220` pins the refusal. mayBeFetched deliberately does
+    // not look at it -- a fragment-less host is still a reachable host, and two
+    // call sites wanting different fragment policies is exactly what the
+    // registry should not be deciding.
+    if (!url.fragment().isEmpty()) {
+        return false;
+    }
+    if (!hosts::mayBeFetched(url, hosts::Tier::Production)) {
         return false;
     }
 
@@ -393,16 +444,40 @@ void SunoDownloader::handleItemState(const std::string& clipId, DownloadState st
 
     switch (state) {
         case DownloadState::Completed: {
-            // The file, its tags and its sidecars are all in place before the
-            // path can reach the audio engine, so a synchronous lyrics fetch
+            // T0037: the tagging and both sidecar writes moved off the GUI
+            // thread. They are blocking file I/O -- TagLib rewrites the file's
+            // ID3 container -- and this runs once per completed download, so a
+            // batch froze the UI once per clip for the length of a tag write.
+            //
+            // `pending` is copied into the closure, so the worker never reads
+            // pendingClips_, which the next completion may already be mutating.
+            //
+            // The ordering guarantee the original comment described is
+            // preserved and is the reason addAndPlay is in the completion half:
+            // the file, its tags and its sidecars are all in place before the
+            // path reaches the audio engine, so a synchronous lyrics fetch
             // triggered from addAndPlay() finds a complete download directory.
-            tagAudioFile(pending.destPath, pending.clip);
-            saveMetadataSidecar(pending.clip);
-            if (pending.action == DownloadAction::SaveAndPlay) {
-                static_cast<void>(addAndPlay(pending.destPath, pending.clip.id));
-            }
-            emit fileSaved(QString::fromStdString(clipId),
-                           QString::fromStdString(pending.destPath.string()));
+            const bool play = pending.action == DownloadAction::SaveAndPlay;
+            const QString clipIdQt = QString::fromStdString(clipId);
+            const fs::path destPath = pending.destPath;
+            // The worker closure captures `this`, which is safe HERE ONLY because the
+            // destructor body quits and joins finalizeThread_ before any member
+            // is destroyed: a job is therefore either fully executed while the
+            // object is still whole, or discarded when the thread's event loop
+            // stops. Do not move this closure anywhere that outlives that join --
+            // a queued lambda running on a destroyed object is the T0032 bug, and
+            // a QPointer guard would not fix it, since reading the QPointer from
+            // the worker races the destruction it is meant to observe.
+            //
+            // tagAudioFile and saveMetadataSidecar are static and take the
+            // resolved path precisely so this closure touches no mutable member:
+            // destByClip_/destOwner_ are GUI-thread state and reading them here
+            // would be a second, quieter race.
+            runFinalize([this, pending, clipIdQt, destPath, play]() {
+                tagAudioFile(pending.destPath, pending.clip);
+                saveMetadataSidecar(destPath, pending.clip);
+                emit finalizeFinished(clipIdQt, QString::fromStdString(destPath.string()), play);
+            });
             break;
         }
         case DownloadState::FailedPermanent:
@@ -568,10 +643,19 @@ void SunoDownloader::saveLyricsSidecar(const std::string& clipId,
     }
 }
 
-void SunoDownloader::saveMetadataSidecar(const SunoClip& clip) {
-    // replace_extension on the resolved audio path: the sidecar can only ever
-    // land beside the file it describes, disambiguated or not.
-    const fs::path sidecar = resolveDestPath(clip).replace_extension(".txt");
+void SunoDownloader::saveMetadataSidecar(fs::path audioPath, const SunoClip& clip) {
+    // T0037: takes the already-resolved audio path instead of calling
+    // resolveDestPath() itself. resolveDestPath reads destByClip_/destOwner_,
+    // which are GUI-thread members; a sidecar write now runs on the finalize
+    // thread, and reading them from there would be a data race. The caller
+    // already resolved the path on the GUI thread (handleItemState), so this is
+    // a removal of duplicated work, not a new responsibility.
+    //
+    // replace_extension on that path: the sidecar can only ever land beside the
+    // file it describes, disambiguated or not. Taken by value because
+    // replace_extension mutates in place and the caller's copy is not ours to
+    // rewrite.
+    fs::path sidecar = audioPath.replace_extension(".txt");
 
     std::ofstream file(sidecar);
     if (file) {

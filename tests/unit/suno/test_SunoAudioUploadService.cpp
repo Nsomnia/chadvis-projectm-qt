@@ -2,9 +2,11 @@
 
 #include "suno/SunoAudioUploadService.hpp"
 
+#include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkRequest>
+#include <QTemporaryDir>
 
 using namespace vc::suno;
 
@@ -33,6 +35,72 @@ class TestSunoAudioUploadService : public QObject
     Q_OBJECT
 
 private slots:
+    void oversizedFileIsRefusedBeforeAnyTicketIsRequested()
+    {
+        // T0035: the bound that did not exist. `start()` validated size() > 0
+        // only, so a 2 GB file was POSTed to S3 with no way to stop it.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("huge.m4a"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        // Sparse: seek past the cap and write one byte, so the test costs no
+        // disk while still reporting a real size.
+        QVERIFY(file.seek(SunoAudioUploadService::kMaxUploadBytes));
+        QCOMPARE(file.write("x"), qint64(1));
+        file.close();
+
+        SunoAudioUploadService service(nullptr, nullptr);
+        QSignalSpy failed(&service, &SunoAudioUploadService::failed);
+        service.start(path);
+
+        QCOMPARE(failed.count(), 1);
+        QVERIFY(service.error().contains(QStringLiteral("too large")));
+        QVERIFY(!service.isUploading());
+        // Nothing was uploaded, so no progress was ever reported.
+        QCOMPARE(service.progress(), 0);
+    }
+
+    void aFileUnderTheCapIsNotRefusedForItsSize()
+    {
+        // The complement of the above: the cap must not reject ordinary files.
+        // File validation now precedes the auth check (T0035), so a valid file
+        // with no client fails with the SIGN-IN error rather than a size error.
+        // Asserting on which error it is -- not merely that it failed -- is what
+        // makes this a test of the cap rather than of the error path.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("small.m4a"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write("tiny"), qint64(4));
+        file.close();
+
+        SunoAudioUploadService service(nullptr, nullptr);
+        QSignalSpy failed(&service, &SunoAudioUploadService::failed);
+        service.start(path);
+
+        QCOMPARE(failed.count(), 1);
+        QVERIFY(!service.error().contains(QStringLiteral("too large")));
+        QCOMPARE(service.error(), QStringLiteral("Sign in to Suno before uploading audio."));
+    }
+
+    void cancelIsIdempotentAndSilentWhenNotUploading()
+    {
+        // T0035: cancel() is the new user-facing abort. Cancelling an idle
+        // service must emit nothing -- a "cancelled" failure on an upload that
+        // was never running would be a lie a UI could not distinguish from a
+        // real one.
+        SunoAudioUploadService service(nullptr, nullptr);
+        QSignalSpy failed(&service, &SunoAudioUploadService::failed);
+
+        service.cancel();
+        service.cancel();
+
+        QCOMPARE(failed.count(), 0);
+        QVERIFY(!service.isUploading());
+    }
+
     void initializeContractIsExact()
     {
         const QJsonObject body = SunoAudioUploadService::initializeBody();

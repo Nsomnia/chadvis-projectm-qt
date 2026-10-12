@@ -211,6 +211,17 @@ private slots:
         QTest::newRow("forbidden-sentinel")
                 << QStringLiteral("https://audiopipe.suno.ai/api/forbidden")
                 << false;
+        // T0033: the host half of this decision is now vc::suno::hosts, not a
+        // literal in SunoDownloader. These two rows pin that the registry is
+        // consulted and that the endpoint rule still survives on top of it --
+        // an uncaptured host is refused because the registry does not know it,
+        // and the sentinel is refused even though the host is captured.
+        QTest::newRow("registry-refuses-unknown-host")
+                << QStringLiteral("https://audiopipe.suno.ai.invalid.test/stream.mp3")
+                << false;
+        QTest::newRow("registry-refuses-captured-but-wrong-endpoint")
+                << QStringLiteral("https://clerk.suno.ai/stream.mp3")
+                << false;
     }
 
     void mediaUrlPolicy()

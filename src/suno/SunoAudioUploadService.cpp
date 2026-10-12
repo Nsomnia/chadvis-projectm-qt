@@ -1,5 +1,6 @@
 #include "SunoAudioUploadService.hpp"
 
+#include "CapturedHosts.hpp"
 #include "HttpPolicy.hpp"
 #include "SunoClient.hpp"
 #include "SunoEndpoints.hpp"
@@ -157,13 +158,23 @@ SunoAudioUploadService::parseInitializeResponse(const QByteArray& payload)
 
 bool SunoAudioUploadService::isSupportedTemporaryUrl(const QUrl& url)
 {
-    const int port = url.port();
-    return url.isValid() && !url.isRelative() &&
-           url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0 &&
-           url.host().compare(qstr(endpoints::AUDIO_UPLOAD_STORAGE_HOST),
-                              Qt::CaseInsensitive) == 0 &&
-           (port == -1 || port == 443) && url.userInfo().isEmpty() &&
-           url.fragment().isEmpty() && !url.path().isEmpty();
+    // T0033: the scheme/port/userinfo/path half of this was a fourth hand-rolled
+    // copy of the outbound-host rules (see CapturedHosts.hpp:6). That half is now
+    // the registry's, via mayBeFetched -- an upload carries the file but no bearer.
+    //
+    // The host test STAYS, and it is not redundant: the registry answers "is this a
+    // host we may talk to", which admits artwork, media and the studio API too.
+    // This function answers the narrower "is this the upload target", and widening
+    // it would let a response redirect an upload at a captured-but-wrong host. Host
+    // policy and endpoint identity are different questions; only the first belongs
+    // in the registry.
+    if (!url.host().compare(qstr(endpoints::AUDIO_UPLOAD_STORAGE_HOST),
+                            Qt::CaseInsensitive) == 0) {
+        return false;
+    }
+    // Fragment is not sent to the server and is not a host-policy question.
+    return hosts::mayBeFetched(url, hosts::Tier::Production) &&
+           url.fragment().isEmpty();
 }
 
 std::expected<QNetworkRequest, QString>
@@ -197,17 +208,32 @@ void SunoAudioUploadService::start(const QString& localFilePath)
         setError(QStringLiteral("An audio upload is already in progress."));
         return;
     }
-    if (!client_ || !client_->isAuthenticated() ||
-        (!directNetworkManager_ && !directReplyFactory_)) {
-        fail(QStringLiteral("Sign in to Suno before uploading audio."));
-        return;
-    }
 
+    // Local file validation runs BEFORE the auth check (T0035). Two reasons, and
+    // the second is the real one: validating a path costs one stat and needs no
+    // credentials, while the auth check cannot say anything useful about the
+    // file. Ordering it first means "this file is too large" is reported as such
+    // instead of being masked by "sign in first", and it keeps the size bound
+    // reachable in a test that has no client at all.
     const QFileInfo fileInfo(localFilePath);
     if (localFilePath.isEmpty() || !isSupportedAudioPath(localFilePath) ||
         !fileInfo.exists() || !fileInfo.isFile() || !fileInfo.isReadable() ||
         fileInfo.size() <= 0) {
         fail(QStringLiteral("Choose a readable audio file."));
+        return;
+    }
+    // The upper bound that did not exist. Checked before the ticket is
+    // requested, so an oversized file costs one stat rather than a full
+    // initialize/upload/finish round trip that would fail at S3.
+    if (fileInfo.size() > kMaxUploadBytes) {
+        fail(QStringLiteral("That audio file is too large to upload (limit %1 MB).")
+                 .arg(kMaxUploadBytes / (1024 * 1024)));
+        return;
+    }
+
+    if (!client_ || !client_->isAuthenticated() ||
+        (!directNetworkManager_ && !directReplyFactory_)) {
+        fail(QStringLiteral("Sign in to Suno before uploading audio."));
         return;
     }
 
@@ -216,6 +242,9 @@ void SunoAudioUploadService::start(const QString& localFilePath)
     fileName_ = fileInfo.fileName();
     uploadId_.clear();
     ticket_.reset();
+    // T0035: attempt budget is per-upload, never per-service-lifetime, so a
+    // retried upload that exhausts it does not also disable retrying the next one.
+    directAttempts_ = 0;
     setError({});
     setProgress(0);
     setStatus(QStringLiteral("Preparing audio upload."));
@@ -326,8 +355,19 @@ void SunoAudioUploadService::startDirectUpload(quint64 generation)
     QHttpPart filePart;
     filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
                        multipartDisposition(QStringLiteral("file"), file->fileName()));
+    // T0035: was hardcoded application/octet-stream while the only accepted
+    // suffix is m4a, so every upload declared itself opaque binary. Prefer the
+    // server's own validated `Content-Type` field from the ticket -- it was
+    // already required and already checked in parseInitializeResponse, and
+    // throwing it away in favour of a local constant is how the two drifted.
+    // m4a is ISO-BMFF, hence audio/mp4; the octet-stream fallback stays for a
+    // ticket that somehow lacks the field, which parseInitializeResponse makes
+    // unreachable but which should not crash if that changes.
+    const QString ticketContentType = ticket_->fields.value(QStringLiteral("Content-Type"));
     filePart.setHeader(QNetworkRequest::ContentTypeHeader,
-                       QStringLiteral("application/octet-stream"));
+                       ticketContentType.isEmpty()
+                           ? QStringLiteral("audio/mp4")
+                           : ticketContentType);
     filePart.setBodyDevice(file);
     multipart->append(filePart);
     file->setParent(multipart);
@@ -387,8 +427,30 @@ void SunoAudioUploadService::handleDirectReply(QNetworkReply* reply, quint64 gen
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QNetworkReply::NetworkError networkError = reply->error();
     reply->deleteLater();
-    ticket_.reset();
     if (networkError != QNetworkReply::NoError || status != 204) {
+        // T0035: one retry, and only for the transient case. The ticket is
+        // dropped before deciding, because a retry needs a fresh one -- S3
+        // tickets are single-use, so replaying the old fields would fail as a
+        // signature error and the user would see a retry that can never work.
+        //
+        // Retryable is deliberately narrow: no HTTP status at all, or 5xx, with a
+        // network error that is not a cancellation. A 4xx is the server refusing
+        // this exact request, and asking again is asking the same question.
+        const bool cancelled = networkError == QNetworkReply::OperationCanceledError;
+        const bool transportFailure = status == 0 || (status >= 500 && status < 600);
+        const bool retryable = !uploading_ ? false
+                                           : (!cancelled && transportFailure &&
+                                              directAttempts_ < kMaxDirectUploadAttempts);
+        ticket_.reset();
+        if (retryable) {
+            ++directAttempts_;
+            setStatus(QStringLiteral("Upload interrupted. Retrying (%1 of %2)...")
+                          .arg(directAttempts_)
+                          .arg(kMaxDirectUploadAttempts - 1));
+            setProgress(0);
+            initialize();
+            return;
+        }
         fail(QStringLiteral("The audio file could not be uploaded."));
         return;
     }
@@ -456,6 +518,18 @@ void SunoAudioUploadService::cancelForAuthLoss()
     {
         fail(QStringLiteral("Not authenticated"));
     }
+}
+
+void SunoAudioUploadService::cancel()
+{
+    if (!uploading_) {
+        return;
+    }
+    // fail() bumps the generation, which is what makes every in-flight callback
+    // a no-op, aborts and deletes directReply_, and drops the ticket. So this is
+    // the same teardown as an error with a different sentence -- deliberately not
+    // a parallel implementation that could drift from it.
+    fail(QStringLiteral("Audio upload cancelled."));
 }
 
 void SunoAudioUploadService::fail(const QString& message)

@@ -213,7 +213,9 @@ Result<std::vector<u8>> readBinary(const fs::path& path) {
 
 std::vector<fs::path> listFiles(const fs::path& dir,
                                 const std::set<std::string>& extensions,
-                                bool recursive) {
+                                bool recursive,
+                                int maxDepth,
+                                std::size_t maxEntries) {
     std::vector<fs::path> result;
 
     std::error_code ec;
@@ -239,6 +241,17 @@ std::vector<fs::path> listFiles(const fs::path& dir,
 
     try {
         if (recursive) {
+            // T0034: the walk is bounded in both depth and breadth. Without
+            // this a symlink loop or a deep tree spins until the process is
+            // killed, and because this runs on the preset-refresh path the
+            // UI is frozen for as long as it takes. Both bounds report
+            // themselves -- a truncated preset scan that looks like a
+            // complete one is worse than a loud failure, since the user
+            // cannot tell their presets went missing.
+            std::size_t visited = 0;
+            bool depthCapped = false;
+            bool breadthCapped = false;
+
             for (auto it = fs::recursive_directory_iterator(
                          dir,
                          fs::directory_options::skip_permission_denied,
@@ -253,11 +266,57 @@ std::vector<fs::path> listFiles(const fs::path& dir,
                     continue;
                 }
 
+                // relative() can fail on an odd entry; treat that as depth
+                // 0 rather than abandoning the scan, since the increment
+                // below still needs to run.
+                std::error_code relEc;
+                const fs::path rel = fs::relative(it->path(), dir, relEc);
+                // Directory levels below `dir`, per the header's contract.
+                // Counting the entry's own name would make a file sitting
+                // directly in `dir` a "level 1" tree, so maxDepth=1 would mean
+                // "top level only" instead of "no subdirectories at all" --
+                // and the two readings disagree by exactly one everywhere.
+                int depth = 0;
+                if (!relEc) {
+                    for (const auto& part : rel) {
+                        if (part != "." && part != "..") {
+                            ++depth;
+                        }
+                    }
+                    if (depth > 0) {
+                        --depth;
+                    }
+                }
+
+                if (depth > maxDepth) {
+                    depthCapped = true;
+                    // Descend no further, but keep this level's siblings.
+                    it.disable_recursion_pending();
+                    continue;
+                }
+
+                if (visited >= maxEntries) {
+                    breadthCapped = true;
+                    break;
+                }
+                ++visited;
+
                 std::error_code ignore;
                 if (fs::is_regular_file(it->path(), ignore) &&
                     matches(it->path())) {
                     result.push_back(it->path());
                 }
+            }
+
+            if (depthCapped) {
+                LOG_WARN("listFiles: recursion depth cap {} reached under {}; "
+                         "preset scan truncated",
+                         maxDepth, dir.string());
+            }
+            if (breadthCapped) {
+                LOG_WARN("listFiles: entry cap {} reached under {}; "
+                         "preset scan truncated ({} files matched)",
+                         maxEntries, dir.string(), result.size());
             }
         } else {
             for (auto it = fs::directory_iterator(dir, ec);

@@ -5,6 +5,11 @@
 //
 // To add a new setting: add one line here + 3 lines in SettingsBridge.hpp
 // (Q_PROPERTY, getter/setter declarations, signal declaration).
+//
+// NOTE: this file is included TWICE, so every macro used here must also be
+// #undef'd and redefined to emit-only in SettingsBridge.cpp's resetToDefaults.
+// Forgetting the second stub compiles as a function definition inside a
+// function -- "function definition is not allowed here" -- one line per entry.
 
 // ─── Audio ────────────────────────────────────────────────────
 SETTING_INT(audioBufferSize, AudioBufferSize, audio().bufferSize, vc::u32)
@@ -48,6 +53,13 @@ SETTING_BOOL(karaokeEnabled, KaraokeEnabled, karaoke().enabled)
 // CredentialStore (OS keychain), never written to config.toml. It is
 // implemented manually next to sunoDownloadPath.
 // NOTE: sunoDownloadPath is also not here — it uses fs::path, not std::string
+
+// ─── Appearance (T0047) ───────────────────────────────────────
+// The two colours the appearance panel edits. Both already parsed and
+// persisted; before this they had no writer, so Theme.applyAccent() only
+// touched the in-memory singleton and the colours reset on every launch.
+SETTING_COLOR(accentColor, AccentColor, ui().accentColor)
+SETTING_COLOR(backgroundColor, BackgroundColor, ui().backgroundColor)
 
 // ─── UI State ─────────────────────────────────────────────────
 SETTING_STRING(expandedPanel, ExpandedPanel, ui().expandedPanel)

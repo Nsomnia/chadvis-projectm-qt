@@ -163,11 +163,22 @@ SunoController::SunoController(AudioEngine* audioEngine, LyricsSync* lyricsSync,
         // every NeedsReauth transition as an expired session.
         const bool authFailure = client_->authState() == auth::AuthState::NeedsReauth;
         // Emit on the Qt thread; queued to avoid re-entrancy with managers.
+        //
+        // T0036: this used to ALSO emit libraryFetchFailed. But
+        // errorOccurred is the global broadcast -- it fires for a failed
+        // single-lyrics request, a failed upload, anything -- so every
+        // unrelated failure told the library view its fetch had died and
+        // cleared its spinner, leaving the library permanently "empty"
+        // with no error of its own. SunoLibraryManager already emits a
+        // properly scoped libraryFetchFailed for genuine library failures
+        // (SunoLibraryManager.cpp:27,38,54,98), and the Bridge already
+        // connects that directly at SunoBridge.cpp:388, so the fan-out
+        // bought nothing and cost correctness. Only sunoError and the
+        // auth transition belong on a global signal.
         QMetaObject::invokeMethod(
                 this,
                 [this, qmsg = QString::fromStdString(err), authFailure]() {
                     emit sunoError(qmsg);
-                    emit libraryFetchFailed(qmsg);
                     if (authFailure) {
                         emit authenticationFailed(qmsg);
                     }
