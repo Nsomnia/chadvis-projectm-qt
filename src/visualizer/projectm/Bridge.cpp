@@ -115,8 +115,27 @@ void Bridge::syncState() {
     {
         std::lock_guard<std::mutex> lock(loadMutex_);
         if (!pendingLoadPath_.empty()) {
+            // Raise only when the last state was false. The flag lives across a
+            // frame boundary, so emitting true:success:true over two back-to-back
+            // loads would be a lie that readers could not act on. The renderer
+            // checks presetLoading_ at the TOP of the frame, so the raise must be
+            // visible to the frame before the load runs -- which is why this
+            // branch happens before the load at all, and why the lowered edge
+            // lands on the NEXT frame's syncState rather than inside the current one.
+            if (!presetLoadingPending_) {
+                presetLoadingPending_ = true;
+                presetLoading.emitSignal(true);
+            }
             engine_.loadPreset(pendingLoadPath_, !pendingSmooth_);
+            // The flag stays raised through the remainder of this frame; the
+            // clear arrives when the next frame's syncState runs with no new load
+            // pending. That is the precise shape the "clear to black while
+            // loading" branch needs: the current frame reads true, the next
+            // reads false.
             pendingLoadPath_.clear();
+        } else if (presetLoadingPending_) {
+            presetLoadingPending_ = false;
+            presetLoading.emitSignal(false);
         }
     }
 

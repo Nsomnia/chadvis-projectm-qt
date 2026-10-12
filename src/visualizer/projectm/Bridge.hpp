@@ -68,6 +68,8 @@ private:
     std::atomic<bool> pendingLockChange_{false};
 
     std::mutex loadMutex_;
+    bool presetLoadingPending_{false};  // last emit state, guarded by loadMutex_
+
     std::string pendingLoadPath_;
 
     std::mt19937 rng_{std::random_device{}()};
