@@ -117,6 +117,18 @@ ApplicationWindow {
     property real restoreWidth: 0
     property real restoreHeight: 0
 
+    // T0047. Theme colours are persisted; this is the ordered place they are
+    // restored from, and the only reason it lives on the shell rather than in
+    // Theme.qml is ordering: a singleton's own onCompleted is not ordered
+    // after SettingsBridge's construction, and seeding there produced a stale
+    // blue accent that looked like the theme refusing to save. Both colours are
+    // routed through Theme's own mutators, so derived variants (hover, pressed,
+    // surface, overlay) are recomputed exactly as an edit recomputes them.
+    function applyTheme() {
+        Theme.applyAccent(SettingsBridge.accentColor)
+        Theme.applyBackground(SettingsBridge.backgroundColor)
+    }
+
     function setFullscreen(on) {
         if (on === fullscreenActive)
             return
@@ -174,6 +186,20 @@ ApplicationWindow {
         /^[A-Za-z0-9]$/.test(String(SettingsBridge.keyboardToggleFullscreen).trim())
 
     Component.onCompleted: {
+        // T0047: seed the theme from the persisted colours, from HERE rather
+        // than Theme.qml's own onCompleted. A QtObject singleton in a
+        // qt_add_qml_module is instantiated lazily and its completion is not
+        // ordered after SettingsBridge's construction, so the accent was
+        // landing on the config default only sometimes -- the symptom was a
+        // stale blue accent surviving a session that had saved green. This
+        // component already reads SettingsBridge at completion and is therefore
+        // ordered by construction.
+        //
+        // Routed through applyAccent/applyBackground so the derived variants
+        // are recomputed exactly as an edit recomputes them, and both setters
+        // compare before writing, so a no-change seed never triggers an
+        // auto-save.
+        applyTheme()
         const savedView = String(SettingsBridge.expandedPanel)
         activeView = contentViews.indexOf(savedView) >= 0 ? savedView : "library"
         returnView = activeView

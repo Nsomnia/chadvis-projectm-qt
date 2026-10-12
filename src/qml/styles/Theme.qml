@@ -13,8 +13,8 @@
 
 pragma Singleton
 import QtQuick
-// T0047: applyAccent/applyBackground persist through SettingsBridge, which
-// lives in this module. A singleton in a module may import its own URI.
+// applyAccent/applyBackground write the persisted colours through SettingsBridge,
+// which lives in this module. A singleton in a module may import its own URI.
 import ChadVis
 
 QtObject {
@@ -292,6 +292,17 @@ QtObject {
     // RUNTIME THEME MUTATORS
     // ═══════════════════════════════════════════════════════════
 
+    // Seeded from main.qml's Component.onCompleted, NOT from here.
+    //
+    // T0047 first seeded from this singleton's own Component.onCompleted and it
+    // did not take: a QtObject singleton in a qt_add_qml_module is instantiated
+    // lazily at first use, and its completion is not ordered after SettingsBridge's
+    // construction, so the accent landed on the config default only sometimes --
+    // the visible symptom was a stale blue accent from an earlier session
+    // persisting while the persisted value said otherwise. main.qml is the
+    // component that already reads SettingsBridge at completion, so seeding from
+    // there is correctly ordered by construction.
+
     /**
      * Apply a new accent color and recompute all derived accent variants.
      *
@@ -310,8 +321,8 @@ QtObject {
         accentDark = Qt.darker(baseColor, 1.5)
         // Written as "#rrggbb" because the bridge speaks hex text, not color.
         // toString() on a Qt.lighter() result can carry the alpha channel, and
-        // QColor::name() on the other side would drop it silently -- harmless
-        // today, quietly wrong the day anyone themes with opacity.
+        // vc::Color accepts 8 digits, so spelling the round trip out keeps a
+        // future themed-with-opacity accent from silently losing its alpha.
         SettingsBridge.accentColor = Qt.color(baseColor).toString().toUpperCase()
         themeChanged()
     }
@@ -331,27 +342,5 @@ QtObject {
         surfaceOverlay = Qt.lighter(baseColor, 1.35)
         SettingsBridge.backgroundColor = Qt.color(baseColor).toString().toUpperCase()
         themeChanged()
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // RESTORE ON LOAD
-    // ═══════════════════════════════════════════════════════════
-
-    // T0047. Writing the colours was only half the fix; without this the app
-    // saved the user's accent faithfully and then ignored it on the next
-    // launch, which is the same data loss wearing a persistence-shaped hat.
-    //
-    // The two defaults disagree on purpose-detectable numbers: this file
-    // declares "#00bcd4" / "#1a1a1a", while vc::UIConfig declares #00FF88 and
-    // black. Whichever wins here is what a user sees on a fresh install, so
-    // the config is the authority -- it is the value that survives a restart,
-    // and a value that cannot survive a restart is not the user's setting.
-    //
-    // Routed through applyAccent/applyBackground so the derived variants are
-    // recomputed exactly as an edit recomputes them. Going through the setter
-    // is also free of a write-back loop: both setters compare before writing.
-    Component.onCompleted: {
-        applyAccent(SettingsBridge.accentColor)
-        applyBackground(SettingsBridge.backgroundColor)
     }
 }
