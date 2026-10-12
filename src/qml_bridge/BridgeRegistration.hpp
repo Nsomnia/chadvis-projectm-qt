@@ -32,7 +32,6 @@ class RecordingBridge;
 class PresetBridge;
 class LyricsBridge;
 class SunoBridge;
-class ThemeBridge;
 
 void registerBridges(QQmlApplicationEngine* engine,
     vc::AudioEngine* audioEngine,
@@ -49,6 +48,5 @@ RecordingBridge* getRecordingBridge();
 PresetBridge* getPresetBridge();
 LyricsBridge* getLyricsBridge();
 SunoBridge* getSunoBridge();
-ThemeBridge* getThemeBridge();
 
 } // namespace qml_bridge

@@ -6,7 +6,6 @@
 #include "PresetBridge.hpp"
 #include "LyricsBridge.hpp"
 #include "SunoBridge.hpp"
-#include "ThemeBridge.hpp"
 #include "OverlayBridge.hpp"
 #include "SettingsBridge.hpp"
 
@@ -31,11 +30,7 @@ void registerBridges(QQmlApplicationEngine* engine,
     qmlRegisterSingletonType<PresetBridge>("ChadVis", 1, 0, "PresetBridge", PresetBridge::create);
     qmlRegisterSingletonType<LyricsBridge>("ChadVis", 1, 0, "LyricsBridge", LyricsBridge::create);
     qmlRegisterSingletonType<SunoBridge>("ChadVis", 1, 0, "SunoBridge", SunoBridge::create);
-    // NOTE: "Theme" is intentionally NOT registered here. The QML-side
-    // styles/Theme.qml singleton (full token set) owns that name; registering
-    // the C++ ThemeBridge under it shadows the QML singleton and leaves most
-    // tokens (fontDisplay, spacingXL, shadows, ...) undefined at runtime.
-    qmlRegisterSingletonType<OverlayBridge>("ChadVis", 1, 0, "OverlayBridge", OverlayBridge::create);
+qmlRegisterSingletonType<OverlayBridge>("ChadVis", 1, 0, "OverlayBridge", OverlayBridge::create);
     qmlRegisterSingletonType<SettingsBridge>("ChadVis", 1, 0, "SettingsBridge", SettingsBridge::create);
 
     // SunoWorkspaceBridge is DELIBERATELY not registered, and adding the one

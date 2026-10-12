@@ -185,8 +185,6 @@ set(QML_BRIDGE_SOURCES
     src/qml_bridge/LyricsBridge.cpp
     src/qml_bridge/SunoBridge.hpp
     src/qml_bridge/SunoBridge.cpp
-    src/qml_bridge/ThemeBridge.hpp
-    src/qml_bridge/ThemeBridge.cpp
     src/qml_bridge/OverlayBridge.hpp
     src/qml_bridge/OverlayBridge.cpp
     src/qml_bridge/SettingsBridge.hpp
@@ -322,7 +320,7 @@ list(APPEND RECORDER_SOURCES
 # ConfigLoader::load (whose catch covered only toml::parse_error) on a
 # hand-edited `accent_color`. Color::fromHex/toHex MOVED here from FileUtils.cpp,
 # so this entry is REQUIRED, not optional: omit it and every vc::Color::toHex()
-# caller — ConfigParsers, ThemeBridge, ConfigLoader — is an undefined symbol.
+# caller -- ConfigParsers, SettingsBridge, ConfigLoader -- is an undefined symbol.
 #
 # Must be UTIL_SOURCES specifically. TargetSetup.cmake names each set() variable
 # explicitly in add_library(project_lib STATIC ...) and does NOT glob, so a fresh
