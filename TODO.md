@@ -53,61 +53,6 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
 
 ## P0 — the product is broken, data is corrupted, or a secret is exposed
 
-- [x] T0001 **The Settings window cannot open, so the app has no sign-in path** (`src/qml/main.qml:60`) #blocks-ui #risk-high
-      `settingsWindowApi["open"]()` — `QQuickWindow` exposes `show()`, `raise()`,
-      `requestActivate()`; there is no `open()`. Every `navigate("settings")` throws
-      `TypeError: settingsWindowApi.open is not a function` (main.qml:45,60; reached from
-      `NavRail.qml:25` and the account chip `main.qml:308-310`). Sign-in exists **only**
-      behind that window (`SettingsWindow.qml:102` → `AccountPage.qml:516-524`), so
-      neither Google sign-in nor manual cookie paste is reachable. Verify by launching and
-      clicking Settings; the window must appear.
-- [x] T0002 **Every preset click operates on preset #0 regardless of the row** (`src/qml/panels/PresetsPanel.qml:48,96`) #data-loss
-      `PresetBridge::presetToVariant` (`PresetBridge.cpp:268-280`) emits exactly
-      `name, path, author, category, favorite, blacklisted, playCount, rating` — **no
-      `index` key** — while the panel passes `modelData.index`, which is `undefined`
-      and is coerced to `0` by the `int` parameter. Verified by reading both sides.
-      Fix: emit an `index` key, or use the already-existing `selectByName`
-      (`PresetBridge.hpp:60`).
-- [x] T0003 **Preset ratings can only ever be written to slot 0** (`src/qml/panels/PresetsPanel.qml:84-98`) #data-loss
-      The star `Repeater { model: 5 }` makes `modelData` the **number** 0–4, so
-      `modelData.index` at :96 is `undefined`; `setRating` then indexes
-      `(*presets)[index].name`. Fix: pass the outer preset's name.
-- [x] T0004 **Preset favourite/blacklist and overlay delete are impossible** (`src/qml/panels/PresetsPanel.qml:100-103`, `src/qml/panels/OverlayPanel.qml:302-315`) #blocks-ui
-      A trailing full-bleed `MouseArea { anchors.fill: parent }` declared **last** is
-      stacked on top of the per-item buttons and eats every click. `ClipCard.qml:299-300`
-      documents this exact trap and is correct; these two are not. Fix: declare the
-      delegate `MouseArea` before the controls, or use `z`/`acceptedButtons`.
-- [x] T0005 **`isAuthFailure` treats any text containing "401" as an auth failure** (`src/suno/SunoAuthFailure.hpp:15`) #risk-high #blocks-ui
-      `return errorMessage.contains("Unauthorized") || errorMessage.contains("401");`
-      Called with `httpStatus == -1` at `SunoLyricsManager.cpp:96` (raw server text) and
-      `SunoClient.cpp:1288`. A byte count, track id or path segment containing `401`
-      flips the client to `NeedsReauth`, drops the bearer and emits `needsReauth()` —
-      **a self-inflicted sign-out.** Fix: gate on `httpStatus == 401 || == 403` only.
-      **Zero tests cover this function.**
-- [x] T0006 **A short download is renamed into place and reported `Completed`** (`src/suno/DownloadQueue.cpp:669-695`) #data-loss
-      `finalizeSuccess` never compares `bytesReceived` against `Content-Length`, and
-      `classifyFailure` returns `None` for any 2xx (:105). A connection closing at 90 %
-      yields a plausible short MP3 that is renamed, tagged, sidecarred and announced via
-      `fileSaved` (`SunoDownloader.cpp:395-406`) — precisely the failure this repo has
-      shipped before. Fix: record `total` from `downloadProgress` and fail before rename.
-- [x] T0007 **Every retryable download failure leaks the `QNetworkReply`** (`src/suno/DownloadQueue.cpp:708-744`) #risk-high
-      The retry branch returns without `deleteLater()` or clearing `item.reply`; only the
-      terminal path does. `startItem` overwrites `item.reply` next attempt (:427), so up
-      to `kMaxAttempts-1 = 2` replies per item are dropped with no owner, each still
-      holding its connection and buffers.
-- [x] T0008 **Use-after-free in `DownloadQueue::cancel`** (`src/suno/DownloadQueue.cpp:361-366`) #risk-high
-      `reply->abort()` **synchronously** emits `finished()`, landing in `onFinished` →
-      `finishCancelled` → `reply->deleteLater()` (:700) and `retire()`. `findItem` /
-      `takeFromActive` return raw `Item*` documented as valid "only while one of the
-      containers still holds a reference" (:371-380) — both pointers are invalidated by
-      the re-entrant call. The same pattern is already handled correctly elsewhere
-      (`SunoClient.cpp:729-730`). Fix: mirror `SunoClient::abortTrackedReplies` (:855-865).
-- [x] T0009 **`opencode.yml` runs a secret-bearing action for any commenter** (`.github/workflows/opencode.yml:3-33`) #security #risk-high
-      No `author_association` filter, no `if:` on the commenter, and the job holds
-      `id-token: write` plus `secrets.OPENCODE_API_KEY`. Triggered by `/oc` in a comment
-      body, from **any** GitHub account. The action is also pinned to `@latest` (:29),
-      contradicting `dependabot.yml:16`. Fix: require
-      `OWNER|MEMBER|COLLABORATOR|MEMBER` and pin to a SHA.
 - [x] T0010 **An unrecognised playlist `updateType` silently adds tracks** (`src/qml_bridge/SunoBridge.cpp:1611`) #data-loss
       ```cpp
       if (!type) { (void)m->updatePlaylistClips(playlistId, PlaylistUpdateType::Add, {}); return; }
@@ -399,8 +344,11 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       own single-slot handler, killing its 5-retry recovery. A behavioural regression against
       stock projectM rather than a safety bug, but it means a preset that fails to load is
       simply lost. Distinct from T0057, which is about the never-emitted `presetLoading` flag.
-- [ ] T0178 **ASan: container-overflow read attributed inside `checkPlausibility` on the reflow fixture** (`src/lyrics/LyricTiming.cpp:777`, `tests/unit/lyrics/test_LyricTiming.cpp:222`) #risk-high
+- [x] T0178 **ASan: container-overflow read attributed inside `checkPlausibility` on the reflow fixture** (`src/lyrics/LyricTiming.cpp:777`, `tests/unit/lyrics/test_LyricTiming.cpp:222`) #risk-high
       Found by the first ASan lane run on this tree — exactly the T0043 gap. `./build.sh --asan --tests` then `./build-asan/tests/unit/unit_tests` aborts (exit 134) in TestLyricTiming::theReflowModelIsExactOnAWorkedExample: ASan container-overflow, SUMMARY names LyricTiming.cpp:777; every suite before TestLyricTiming passes under instrumentation, including the whole DownloadQueue suite. `words()` is an exact span over the member vector, so the lead is checkPlausibility's own `durations` vector: non-finite and negative-time words `continue` without a push_back, and any later rule indexing `durations` by word index reads past size within capacity. Alternative: the libc++ container-annotation interop gap. Source analysis decides which; do not silence it with detect_container_overflow=0.
+- [ ] T0180 **ASan lane: `TestQmlStartup::settingsWindowOpensOnNavigate` throws at teardown with the engine still mid-creation** (`tests/integration/test_main.cpp:70-126`, `tests/integration/CMakeLists.txt:33`) #risk-high
+      Found by the ASan lane's first full integration run -- this lane is NOT in `SAFE_TESTS`, so `--safe` never reaches it and the fast profile cannot see it. Under `--asan`, the test fails with "Caught unhandled exception" (qtestcase.cpp:2002), preceded by `QQmlComponent: Component destroyed while completion pending` and `There are still "77" items in the process of being created at engine destruction`, then `libc++abi: terminating due to uncaught exception of type std::system_error: mutex lock failed: Invalid argument` after the totals line.
+      Verified NOT caused by the T0047 theme work: the same failure reproduces with `Theme.qml` checked out at 435f91f (pre-change) and rebuilt, so it is pre-existing, instrumented-timing-only, and invisible to `--safe`. Fast profile passes the same test 4/0. The 77 pending items point at teardown ordering -- the engine is destroyed while async component creation is still pending -- and the mutex error is a separate teardown crash. Do not "fix" by making the test wait; establish what is still being created at destruction first.
 
 ## P2 — robustness, cleanup, and debt
 
