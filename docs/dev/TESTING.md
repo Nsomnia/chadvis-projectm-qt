@@ -153,7 +153,7 @@ Eleven entries: nine in `tests/unit/CMakeLists.txt`, two in `tests/integration/C
 ```bash
 ./build.sh
 ctest --test-dir build/tests -R unit_tests --output-on-failure
-./build/tests/unit/unit_tests                                   # aggregate, all 30 suites
+./build/tests/unit/unit_tests                                   # aggregate, all 38 suites
 ./build/tests/unit/test_HttpPolicy                              # single standalone target
 ./build/tests/unit/test_RenderExecutor                           # needs QT_QPA_PLATFORM=offscreen
 QT_QPA_PLATFORM=offscreen ./build/tests/integration/integration_tests
@@ -161,6 +161,24 @@ ctest --test-dir build/tests -R integration_gl_tests --output-on-failure   # the
 ```
 
 ## Scope Notes
+
+### The sanitizer lanes
+
+`AGENTS.md` says the lanes exist and that they run before merging recorder or session work. This section says how to actually run them.
+
+```bash
+./build.sh --tsan --tests  && ./build.sh --tsan --safe   # data races
+./build.sh --asan --tests                                # memory errors; --safe misses the gl surfaces
+./build.sh --ubsan --tests
+```
+
+Each profile has its own build directory, so `--fast` and `--asan` builds coexist. Two traps worth knowing before you spend a day on one:
+
+**`detect_leaks` is not supported on macOS.** Setting `ASAN_OPTIONS=detect_leaks=1` on this box makes ASan abort at initialization with a single "detect_leaks is not supported on this platform" line and kills every test in the suite, which reads as N failures and is one. Omit the flag to run ASan here. LeakSanitizer does run on Linux, so `.github/workflows/asan.yml` still carries it and CI keeps that coverage.
+
+**`--safe` does not reach the surfaces that matter for ASan.** `SAFE_TESTS` in `build.sh` lists the ten headless-safe entries; `integration_tests` and `integration_gl_tests` are deliberately excluded per `AGENTS.md` ("a green run is not evidence for GL, burn-in, or audio"). The ASan lane needs them regardless: `ctest --test-dir build-asan/tests --output-on-failure -j2` runs all thirteen.
+
+Three-outcome classification, per the workflow. `exit 0` is clean. `exit 66` (TSan, the configured exitcode) and `exit 67` (ASan) mean findings worth reading. **Anything else means the lane itself broke** — a sanitizer runtime init failure, or SIGABRT — and must never be read as "clean", which is why the workflows carry the summary line saying which happened.
 
 - There is no Qt Widgets menu bar and no separate full-window projectM stage in this interface. The projectM surface is the native window embedded in the Video page; see [ARCHITECTURE.md](ARCHITECTURE.md) and [../integration/PROJECTM.md](../integration/PROJECTM.md).
 - **Create has no `B-Side Chat` tab.** `src/qml/views/CreateView.qml` declares no tab strip. The B-Side surface is unavailable because its Modal/Orpheus routes remain `[LEAD]` and unverified, matching [../user/USAGE.md](../user/USAGE.md). Earlier revisions of this document claimed otherwise; that was wrong. Do not reintroduce the claim, and do not ship the tab, until a direct capture promotes those routes.
