@@ -240,15 +240,15 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       **after**. Under `umask 022` the secret is world-readable in between. Gated to
       `Backend::File` / `CHADVIS_NO_KEYCHAIN` only (:634), both of which `LOG_WARN` — so P1,
       not P0. Fix: open the temp file with the permissions (QSaveFile inherits them).
-- [ ] T0030 **Full request URLs reach the log** (`src/suno/SunoClient.cpp:1169-1170,1296-1297`, `src/suno/CapturedHosts.cpp:308`) #security
+- [x] T0030 **Full request URLs reach the log** (`src/suno/SunoClient.cpp:1169-1170,1296-1297`, `src/suno/CapturedHosts.cpp:308`) #security
       `url().toString()` is logged; `reply->errorString()` is logged and Qt populates it
       with the full URL on transfer errors; `describeRefusal` embeds `url.toString()` in
       every refusal sentence. `refusalSentence` echoing a **query string** is a latent leak
       — the loopback callback carries `state`. Fix: log `url.path()`.
-- [ ] T0031 **`tokenChanged` carries a live bearer and has zero subscribers** (`src/suno/SunoClient.hpp:239`) #security
+- [x] T0031 **`tokenChanged` carries a live bearer and has zero subscribers** (`src/suno/SunoClient.hpp:239`) #security
       Emits `token.jwt.toStdString()` (:883) and nothing ever connects. One careless future
       `connect` from QML or a log away from a leak. Fix: delete, or send a redacted form.
-- [ ] T0032 **Failed worker-thread join leaves a use-after-free window** (`src/suno/SunoClient.cpp:189-194`) #risk-high
+- [x] T0032 **Failed worker-thread join leaves a use-after-free window** (`src/suno/SunoClient.cpp:189-194`) #risk-high
       On `wait()` failure the destructor only logs, sets `worker_=nullptr`, and the object
       dies — while queued lambdas at :215/:219 capture **raw `this`**. The comment at
       :186-188 claims destruction joins the thread, which a failed join does not deliver.
@@ -312,7 +312,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       `CHADVIS_SANITIZER` accepts `address`/`undefined` (`Compiler.cmake:139-140`) and
       `build.sh:167-168` exposes `--asan`/`--ubsan`, but only TSan has a workflow — and the
       PCM/decoder/encoder code is exactly what the unexercised lanes would catch.
-- [ ] T0044 **A stale Clerk failure reply can tear down a healthy session** (`src/suno/SunoClient.cpp:950-953`) #risk-high
+- [x] T0044 **A stale Clerk failure reply can tear down a healthy session** (`src/suno/SunoClient.cpp:950-953`) #risk-high
       `onClerkAuthFailedInternal` clears the bearer and bumps the request epoch **without**
       the epoch guard its sibling has at :926. A failure from an exchange invalidated by a
       credential change signs out a live session. No test covers the failure path.
