@@ -44,6 +44,25 @@ namespace {
     return std::bit_cast<u64>(actual) == std::bit_cast<u64>(expected);
 }
 
+/// The kind of the first finding, for a failure message, or a sentence saying
+/// there were none.
+///
+/// Exists because of T0178. Qt 6's QVERIFY2 evaluates its message expression
+/// eagerly, so an assertion of the form
+///   QVERIFY2(report.empty(), ... report.findings.front().kind ...)
+/// calls front() on the SUCCESS path too -- when the report IS empty and
+/// front() is UB. The two call sites that hit this were both "clean document"
+/// assertions, i.e. the assertions most likely to pass, which is why the read
+/// only ever surfaced under ASan. Guarding here makes the message safe to
+/// evaluate in any state rather than safe only when the test is already
+/// failing.
+[[nodiscard]] QString firstFindingKind(const PlausibilityReport& report) {
+    if (report.findings.empty()) {
+        return QStringLiteral("report was empty -- no finding to name");
+    }
+    return QString::fromStdString(std::string(violationKindName(report.findings.front().kind)));
+}
+
 /// Bit-for-bit equality on a whole word list, so a document comparison can be
 /// written as one line rather than a loop in every test.
 [[nodiscard]] bool sameBits(const std::vector<TimedWord>& actual,
@@ -220,8 +239,15 @@ void TestLyricTiming::theReflowModelIsExactOnAWorkedExample() {
     // duration above the frame floor. This is the invariant that makes the model
     // safe to use -- the map is monotone, so it cannot reorder words.
     const PlausibilityReport afterReflow = checkPlausibility(document.words());
-    QVERIFY2(afterReflow.empty(), qPrintable(QString::fromStdString(std::string(
-                                          violationKindName(afterReflow.findings.front().kind)))));
+    // Failure text goes through firstFindingKind, NOT findings.front() directly.
+    // Qt 6's QVERIFY2 evaluates its message expression EAGERLY -- the ASan
+    // container-overflow that started T0178 proved it: the report here is empty
+    // because the reflow is clean, and the `front()` in this message read past
+    // size into reserved capacity on the success path. `front()` on an empty
+    // vector is UB with or without instrumentation; the annotation is just what
+    // made it observable.
+    QVERIFY2(afterReflow.empty(),
+             qPrintable(firstFindingKind(afterReflow)));
     for (const TimedWord& word : document.words()) {
         QVERIFY2(word.endSeconds > word.startSeconds, "no word lost its extent");
     }
@@ -372,8 +398,7 @@ void TestLyricTiming::plausibilityRejectsTheNamedViolationsAndAcceptsAGoodDocume
             makeWord("five", 2.28, 2.54),  makeWord("six", 2.56, 2.90),
     };
     const PlausibilityReport goodReport = checkPlausibility(good, 12.0);
-    QVERIFY2(goodReport.empty(), qPrintable(QString::fromStdString(std::string(
-                                         violationKindName(goodReport.findings.front().kind)))));
+    QVERIFY2(goodReport.empty(), qPrintable(firstFindingKind(goodReport)));
     QVERIFY(goodReport.ok());
     QCOMPARE(goodReport.violationCount(), std::size_t{0});
 
