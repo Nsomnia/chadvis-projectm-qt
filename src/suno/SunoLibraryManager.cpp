@@ -20,22 +20,25 @@ SunoLibraryManager::SunoLibraryManager(SunoClient* client, SunoDatabase& db, QOb
     // surface a libraryFetchFailed so Bridge can clear its spinner.
     errorOccurredConnectionId_ = client_->errorOccurred.connect([this](const std::string& err) {
         if (isSyncing_) {
-            isSyncing_ = false;
-            const bool hadMore = hasMorePages_;
-            hasMorePages_ = false;
-            if (hadMore) emit hasMorePagesChanged();
-            emit libraryFetchFailed(QString::fromStdString(err));
+            settleSync(false, QString::fromStdString(err));
         }
     });
+    // T0167: the library-page failure channel. Before this existed a malformed
+    // envelope was reported as an EMPTY SUCCESS, which left hasMorePages_ true
+    // from stale client state and re-requested the same cursor forever. Both
+    // failure channels converge on settleSync so a failed page cannot be read
+    // as a finished sync.
+    libraryPageFailedConnectionId_ =
+            client_->libraryPageFailed.connect([this](const std::string& err) {
+                if (isSyncing_) {
+                    settleSync(false, QString::fromStdString(err));
+                }
+            });
     connect(client_, &SunoClient::needsReauth, this, [this]() {
         if (credentialRefreshPending_) {
             onCredentialsRestored();
         } else if (isSyncing_) {
-            isSyncing_ = false;
-            const bool hadMore = hasMorePages_;
-            hasMorePages_ = false;
-            if (hadMore) emit hasMorePagesChanged();
-            emit libraryFetchFailed(QStringLiteral("needsReauth"));
+            settleSync(false, QStringLiteral("needsReauth"));
         }
     });
     connect(client_, &SunoClient::authStateChanged, this, [this]() {
@@ -47,11 +50,7 @@ SunoLibraryManager::SunoLibraryManager(SunoClient* client, SunoDatabase& db, QOb
             return;
         }
         if (isSyncing_ && client_->authState() != auth::AuthState::ActiveValid) {
-            isSyncing_ = false;
-            const bool hadMore = hasMorePages_;
-            hasMorePages_ = false;
-            if (hadMore) emit hasMorePagesChanged();
-            emit libraryFetchFailed(QStringLiteral("authStateChanged"));
+            settleSync(false, QStringLiteral("authStateChanged"));
         }
     });
 }
@@ -67,6 +66,7 @@ SunoLibraryManager::~SunoLibraryManager() {
     // object; only the vc::Signal slots need this.
     client_->libraryFetched.disconnect(libraryFetchedConnectionId_);
     client_->errorOccurred.disconnect(errorOccurredConnectionId_);
+    client_->libraryPageFailed.disconnect(libraryPageFailedConnectionId_);
 }
 
 void SunoLibraryManager::refreshLibrary(int page) {
@@ -75,6 +75,7 @@ void SunoLibraryManager::refreshLibrary(int page) {
     }
 
     pendingPage_ = page;
+    syncSettled_ = false;
     credentialRefreshPending_ = true;
     client_->reloadStoredCredentials();
 }
@@ -89,13 +90,7 @@ void SunoLibraryManager::onCredentialsRestored() {
 
     if (!client_->isAuthenticated()) {
         emit authenticationRequired();
-        {
-            const bool hadMore = hasMorePages_;
-            hasMorePages_ = false;
-            if (hadMore) emit hasMorePagesChanged();
-        }
-        isSyncing_ = false;
-        emit libraryFetchFailed(QStringLiteral("Not authenticated"));
+        settleSync(false, QStringLiteral("Not authenticated"));
         return;
     }
 
@@ -105,6 +100,7 @@ void SunoLibraryManager::onCredentialsRestored() {
         isSyncing_ = true;
         hasMorePages_ = true;
         emit hasMorePagesChanged();
+        syncClock_.start();
 
         std::string msg = "Syncing Suno library";
         emit statusMessage(msg);
@@ -184,7 +180,34 @@ void SunoLibraryManager::onLibraryFetched(const std::vector<SunoClip>& clips) {
                  pagesLoaded_, accumulatedClips_.size());
         emit statusMessage("Suno library sync complete (" +
                            std::to_string(accumulatedClips_.size()) + " clips)");
+        // T0167: the one exit that means what it says. The feed's own cursor
+        // said exhausted, every requested page arrived, and nothing failed.
+        settleSync(true, QStringLiteral());
     }
+}
+
+void SunoLibraryManager::settleSync(bool complete, const QString& reason) {
+    // At most one verdict per refresh attempt: two failure channels can fire
+    // for one page (a transport error followed by its parse failure), and a
+    // second settle must not double-count or re-report a sync that already
+    // ended. Keyed on an explicit flag rather than isSyncing_ because the
+    // "not authenticated" path ends an attempt that never got far enough to
+    // raise the syncing gate -- gating on isSyncing_ would swallow it, which a
+    // test caught immediately.
+    if (syncSettled_) {
+        return;
+    }
+    syncSettled_ = true;
+    isSyncing_ = false;
+    const bool hadMore = hasMorePages_;
+    hasMorePages_ = false;
+    if (hadMore) emit hasMorePagesChanged();
+    if (!complete) {
+        emit libraryFetchFailed(reason);
+    }
+    emit librarySyncSettled(complete, pagesLoaded_,
+                            static_cast<int>(accumulatedClips_.size()),
+                            syncClock_.isValid() ? syncClock_.elapsed() : qint64(0), reason);
 }
 
 } // namespace vc::suno

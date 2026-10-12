@@ -1377,7 +1377,14 @@ void SunoClient::onLibraryReply(QNetworkReply* reply) {
         auto page = ClipParser::parseFeedEnvelope(doc.object());
         if (!page) {
             LOG_ERROR("SunoClient: feed envelope parse failed: {}", page.error().toStdString());
-            libraryFetched.emitSignal(std::vector<SunoClip>{});
+            // T0167: this used to emit an EMPTY SUCCESS. nextCursor_ and
+            // hasMore_ kept the previous page's values, so the manager saw a
+            // clean (if empty) page, kept hasMorePages_ true from stale state,
+            // and re-requested the SAME cursor 1.1s later -- a parse failure
+            // became an endless retry loop narrated as "more available". The
+            // failure now travels its own channel and the manager stops paging.
+            libraryPageFailed.emitSignal(
+                "Library page could not be read: " + page.error().toStdString());
             return;
         }
 

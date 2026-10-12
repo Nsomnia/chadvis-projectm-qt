@@ -24,6 +24,7 @@
 #pragma once
 
 #include <QObject>
+#include <QElapsedTimer>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -63,6 +64,25 @@ signals:
     void authenticationRequired();
     void hasMorePagesChanged();
     void libraryFetchFailed(const QString& reason);
+    /// One sync session ended, and this is the only place that says whether it
+    /// ended COMPLETELY (T0167).
+    ///
+    /// `libraryUpdated` fires after every page with the accumulated list, so by
+    /// the time a sync dies mid-way the UI has already received a partial
+    /// library that looks identical to a finished one -- the failure arrives on
+    /// a different channel and nothing connects the two. This fires ONCE per
+    /// sync, on every exit path: `complete` true only when the feed itself said
+    /// the cursor was exhausted; false for a transport failure or an
+    /// unparseable page, with `reason` carrying which.
+    ///
+    /// `expectedTotal` is deliberately absent. The captured /api/feed/v3
+    /// contract carries no total (ENDPOINT-INVENTORY.md 5.2: clips, has_more,
+    /// next_cursor -- nothing else), so any number here would be invented, and
+    /// an invented total that agrees with a truncated sync is precisely the
+    /// lie this signal exists to stop telling. `elapsedMs` and the page count
+    /// are the only honest measurements available.
+    void librarySyncSettled(bool complete, int pagesFetched, int clipCount,
+                            qint64 elapsedMs, const QString& reason);
 
 private:
     SunoClient* client_;
@@ -82,9 +102,23 @@ private:
     int pagesLoaded_ = 0; ///< Number of feed pages pulled this sync session
     bool hasMorePages_ = false;
     QString searchText_; ///< Local filter text; never sent to the feed
+    /// T0167: one verdict per refresh attempt. Reset when an attempt starts,
+    /// set by settleSync, so a page that trips two failure channels reports once.
+    bool syncSettled_ = true;
+    /// T0167: when the current sync started, so a settled report can say how
+    /// long it ran. Invalid means no sync is or was in flight.
+    QElapsedTimer syncClock_;
+    /// Retained per the vc::Signal contract, like the two ids above: the
+    /// library-page failure channel keeps no lifetime link to its subscriber.
+    std::size_t libraryPageFailedConnectionId_{0};
 
     void onCredentialsRestored();
     void onLibraryFetched(const std::vector<SunoClip>& clips);
+    /// T0167: the single exit from a sync session. Every end -- feed exhausted,
+    /// transport failure, unparseable page, lost session -- goes through here,
+    /// so completeness is reported exactly once per sync and never contradicted
+    /// by a second, differing verdict.
+    void settleSync(bool complete, const QString& reason);
 };
 
 } // namespace vc::suno

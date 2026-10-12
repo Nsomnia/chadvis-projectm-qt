@@ -250,6 +250,14 @@ public:
     // the token, which AGENTS.md forbids; auth state is already observable
     // through authStateChanged / needsReauth without carrying the secret.
     Signal<std::string> errorOccurred;
+    /// One feed page could not be parsed -- a malformed envelope, not a
+    /// transport failure (T0167). Distinct from errorOccurred, which is the
+    /// global broadcast and also fires for explore, notifications and uploads:
+    /// a listener that cleared its sync gate on that would abort a library sync
+    /// because of an unrelated lyrics failure, the exact coupling the lyrics
+    /// manager was moved off in the T0017 fix. This carries only library-page
+    /// faults, so the library manager can react to its own.
+    Signal<std::string> libraryPageFailed;
 
 signals:
     /// Touch/retry chain exhausted; user must supply fresh credentials.
