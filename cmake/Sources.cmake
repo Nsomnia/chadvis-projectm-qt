@@ -211,8 +211,6 @@ set(UI_SOURCES
 set(QML_SOURCES
     src/qml/main.qml
     src/qml/styles/Theme.qml
-    src/qml/components/AccordionPanel.qml
-    src/qml/components/AccordionContainer.qml
     src/qml/components/AppButton.qml
     src/qml/components/AppSlider.qml
     src/qml/components/AppTextField.qml
@@ -229,12 +227,10 @@ set(QML_SOURCES
     src/qml/components/TransportBar.qml
     src/qml/components/ClipCard.qml
     src/qml/components/ClipDetailSheet.qml
-    src/qml/components/ComingSoonPage.qml
     src/qml/views/LibraryView.qml
     src/qml/views/DiscoverView.qml
     src/qml/views/NotificationsView.qml
     src/qml/views/ListenView.qml
-    src/qml/views/SettingsView.qml
     src/qml/panels/settings/PerformanceSettings.qml
     src/qml/panels/settings/AppearanceSettings.qml
     src/qml/panels/settings/AudioSettings.qml
@@ -243,14 +239,12 @@ set(QML_SOURCES
     src/qml/panels/settings/SunoSettings.qml
     src/qml/panels/settings/ShortcutsSettings.qml
     src/qml/panels/settings/ProfileSettings.qml
-    src/qml/panels/PlaybackPanel.qml
     src/qml/panels/PlaylistPanel.qml
     src/qml/panels/PresetsPanel.qml
     src/qml/panels/LyricsPanel.qml
     src/qml/panels/SunoPanel.qml
     src/qml/panels/OverlayPanel.qml
     src/qml/panels/RecordingPanel.qml
-    src/qml/panels/SettingsPanel.qml
     src/qml/SettingsWindow.qml
     src/qml/settings/AccountPage.qml
     src/qml/settings/AccountSessionCard.qml
