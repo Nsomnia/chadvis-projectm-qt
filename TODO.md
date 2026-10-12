@@ -308,7 +308,7 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       accepted `QTcpSocket`s alive with no idle timer.
       **The lane is deliberately gated, so this is not a live exploit — but it is a
       precondition for flipping that gate (T0145), not something to do after.**
-- [ ] T0167 **A short library sync is indistinguishable from a complete one** (`src/suno/SunoLibraryManager.cpp`, `src/suno/DownloadQueue.cpp`) #risk-high
+- [x] T0167 **A short library sync is indistinguishable from a complete one** (`src/suno/SunoLibraryManager.cpp`, `src/suno/DownloadQueue.cpp`) #risk-high
       Neither layer reports *completeness*, so a truncated sync is presented as a finished
       library. Prescribed shape: `{complete: false, projects, errors, stats: {pagesFetched,
       expectedTotal, elapsedMs}}`, and a short page must not be treated as proof of completion
