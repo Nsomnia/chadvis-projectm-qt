@@ -28,11 +28,11 @@ CTest treats "no tests found" as a success exit code, so the wrong directory is 
 
 ### `unit_tests` (aggregate)
 
-`tests/unit/CMakeLists.txt:1-33` builds a single `unit_tests` executable from **31** sources:
+`tests/unit/CMakeLists.txt:1-33` builds a single `unit_tests` executable from **39** sources:
 
 | Source | Coverage |
 | --- | --- |
-| `tests/unit/test_main.cpp` | Aggregate runner; declares and calls all 30 `runTest*` entry points. |
+| `tests/unit/test_main.cpp` | Aggregate runner; declares and calls all 38 `runTest*` entry points. |
 | `tests/unit/core/test_Logger.cpp` | Logger lifecycle coverage. |
 | `tests/unit/core/test_ConfigParsers.cpp` | TOML parsing and serialization coverage. |
 | `tests/unit/core/test_ConfigLoader.cpp` | Every serialized field surviving a round trip; the `[recording.video]`/`[recording.audio]` sub-tables written as sub-tables rather than collapsed onto one key; **no credential reaching either the serialized document or the saved file, across three successive saves**, while the legacy values stay readable for migration; `overlay.enabled` round-tripping in both states; unknown keys dropped; and corrupt, malformed or missing input diagnosed rather than thrown on. Also pins that the shipped `config/default.toml` declares every key the serializer emits. |
@@ -63,8 +63,16 @@ CTest treats "no tests found" as a success exit code, so the wrong directory is 
 | `tests/unit/lyrics/test_LyricsExport.cpp` | ASS header and lyric golden output including `\kf` word timing, a timestamp with non-zero centiseconds surviving, braces escaped and newlines neutralised so **a lyric or title cannot forge a header key**, a degenerate remote payload still producing a valid file, and the SRT/LRC golden bytes surviving non-finite times. |
 | `tests/unit/lyrics/test_LyricTiming.cpp` | The reflow model exact on a worked example, undo restoring a bitwise-identical document after a multi-step drag, plausibility refusing the named violations while accepting a good document, and an exact serialisation round trip on every field. |
 | `tests/unit/util/test_PathSafety.cpp` | `sanitizeFilename` as a single component and traversal-proof: the byte budget never splits a UTF-8 sequence, composed and decomposed spellings produce one name, titles differing only by a combining mark do not collide, Win32 reserved names are refused in every spelling **and truncation cannot manufacture one**, traversal yields a bare filename, an embedded NUL cannot truncate silently. Plus `parseHexColor`'s verdicts, a remote `.m3u` line never becoming a track, and a session file written by `saveM3U` round-tripping its titles and durations. |
+| `test_SunoBridge.cpp` | `tests/unit/qml_bridge/test_SunoBridge.cpp` | Playlist mutation refusal paths (`T0010`), unrecognised `updateType` refused rather than guessed into an add, recognised types reaching the service unrefused. |
+| `test_CliArgs.cpp` | `tests/unit/core/test_CliArgs.cpp` | Every CLI flag parsing alone, `--headless --record` refused in both orders and via `-r`. |
+| `test_SunoAuthFailure.cpp` | `tests/unit/suno/test_SunoAuthFailure.cpp` | Auth-failure classification on the status axis only. |
+| `test_SunoDatabase.cpp` | `tests/unit/suno/test_SunoDatabase.cpp` | Registration lifecycle, pragmas observed through a second connection, clip round trips. |
+| `test_LyricsFetchQueue.cpp` | `tests/unit/suno/test_LyricsFetchQueue.cpp` | Deduplication, FIFO fairness when over cap, "still processing" re-entry. |
+| `test_DownloadEntitlement.cpp` | `tests/unit/suno/test_DownloadEntitlement.cpp` | Per-clip download entitlement decisions. |
+| `test_SunoWorkspace.cpp` | `tests/unit/suno/test_SunoWorkspace.cpp` | Workspace refusal kinds and the honest-state suite. |
+| `test_PresetBridge.cpp` | `tests/unit/visualizer/test_PresetBridge.cpp` | A filtered row selects and favourites *itself*, never slot 0 (the `T0002`/`T0003` regression guard). |
 
-The aggregate runner invokes **30** suites (`tests/unit/test_main.cpp:39-68`): logger, config parsers, config loader, file utils, version, signal, recorder, audio file decoder, render queue, playlist, PCM format, loudness analysis, preset scanner, Suno endpoints, auth module, stored-credential classification, credential restore worker, library manager, auth coordinator, loopback listener, OAuth login service, clip parser, download queue, credential store policy, Suno downloader, bounded body, lyrics pipeline, lyrics export, lyric timing, and path safety.
+The aggregate runner invokes **38** suites (`tests/unit/test_main.cpp`): logger, config parsers, config loader, file utils, version, signal, CLI args, recorder, audio file decoder, render queue, playlist, preset scanner, preset bridge, Suno endpoints, Suno auth failure, auth module, stored-credential classification, credential restore worker, library manager, lyrics fetch queue, Suno database, auth coordinator, loopback listener, OAuth login service, clip parser, download queue, credential store policy, Suno downloader, download entitlement, bounded body, Suno workspace, lyrics pipeline, lyrics export, lyric timing, PCM format, loudness analysis, path safety, and Suno bridge.
 
 **Every one of the 31 sources above is invoked.** There are no compiled-but-unrun translation units in the aggregate target, and there are no static-initialization test hooks. Verified by set difference on this session: the 31 aggregate sources plus the 8 standalone sources account for **all 39** `.cpp` files under `tests/unit/`, with nothing declared-but-absent and nothing on-disk-but-undeclared. That was not always true, and the failure mode is the one this repository keeps re-learning:
 
@@ -81,14 +89,6 @@ Eight suites build as their own targets and register with CTest individually, be
 
 | Target | Source | Focus |
 | --- | --- | --- |
-| `test_SunoAudioUploadService` | `tests/unit/suno/test_SunoAudioUploadService.cpp` | Exact captured initialize/finish contract, captured initializer field preservation, malformed-initializer rejection, temporary-URL policy. |
-| `test_SunoRequestEpoch` | `tests/unit/suno/test_SunoRequestEpoch.cpp` | Sign-out clears queued and in-flight work, credential replacement aborts in-flight work, invalidated restore wakes readiness waiters, empty reload clears the active credential. |
-| `test_SunoExploreService` | `tests/unit/suno/test_SunoExploreService.cpp` | Explore request/cursor contract, nested clip parsing with feed labels preserved, malformed and exhausted responses. |
-| `test_SunoNotificationService` | `tests/unit/suno/test_SunoNotificationService.cpp` | Captured notification envelope, malformed entries and nested content, missing-`notifications` rejection, badge and mark-all-read contract. |
-| `test_ClerkAuthClient` | `tests/unit/suno/test_ClerkAuthClient.cpp` | `getStyle` envelope parsing, `touch`-style response and client token parsing, cookie normalization with captured headers, exact-selector session preference. |
-| `test_HttpPolicy` | `tests/unit/suno/test_HttpPolicy.cpp` | Per-request-class transfer timeouts and body caps, each timeout actually landing on a real `QNetworkRequest` and being replaced rather than accumulated on re-apply, `applyRequestPolicy` leaving redirect policy alone; a body exactly at the cap accepted and one byte over refused mid-stream without the overflow ever being stored; a default-constructed reader refusing rather than reading unbounded. Plus the hand-parsed `Retry-After`: IMF-fixdate, numeric zone offset, delta-seconds, out-of-range fields rejected (`QTime` accepts hour 99), and a leap second never read as midnight. |
-| `test_OffscreenRenderSpike` | `tests/unit/recorder/test_OffscreenRenderSpike.cpp` | Runtime evidence for `vc::runOffscreenRenderProbe`, the spike the render executor is designed against: the verdict is one of three and always explained, a supported verdict is backed by a frame that actually held its pixels, `needsMainThread` blames the drawable shape rather than the thread, the teardown loop demonstrably ran and is reported as a series, and the frame cost is measured at the resolution it reports. Needs `Qt6::OpenGL` and a 180 s timeout; it drives projectM in a loop, so slowness must not read as a hang. |
-| `test_RenderExecutor` | `tests/unit/recorder/test_RenderExecutor.cpp` | The GUI-thread scheduler against a fake backend: interleaving order exact and the concurrency ceiling following the spike's verdict, a cancel retiring within one quantum, and a job with audio behind it skipped without starving the others. No drawable needed — the GL half sits behind `RenderFrameBackend`, which has no implementation — but `QT_QPA_PLATFORM=offscreen` is still load-bearing, because a `QGuiApplication` on the cocoa plugin needs a window server. |
 
 ### `integration_tests` and `integration_gl_tests`
 
@@ -134,8 +134,10 @@ Eleven entries: nine in `tests/unit/CMakeLists.txt`, two in `tests/integration/C
 
 | Suite | Kind | Environment |
 | --- | --- | --- |
-| `unit_tests` | Aggregate, 30 invoked suites from 31 sources | console |
+| `unit_tests` | Aggregate, 38 invoked suites from 39 sources | console |
 | `test_HttpPolicy` | Standalone unit (own `main()`) | console |
+| `test_CapturedHosts` | Standalone unit, host registry | console |
+| `test_FeatureFlags` | Standalone unit | console |
 | `test_OffscreenRenderSpike` | Standalone unit (`QGuiApplication`, real GL drawable) | console, 180 s timeout |
 | `test_RenderExecutor` | Standalone unit (`QGuiApplication`) | `QT_QPA_PLATFORM=offscreen`, 180 s timeout |
 | `test_SunoAudioUploadService` | Standalone unit | console |
