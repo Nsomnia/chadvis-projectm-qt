@@ -358,9 +358,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       Qt calls this layout "a frequent source of mistakes" and 6.8 can generate per-directory
       `qmldir`s (`NO_GENERATE_EXTRA_QMLDIRS`). Either enable it and fix the relative imports,
       or flatten the QML tree beside the CMake call.
-- [ ] T0055 `ThemeBridge` is compiled, linked, and entirely unreachable (`src/qml_bridge/ThemeBridge.{hpp,cpp}`, `cmake/Sources.cmake:188-189`) #cleanup
-      59 properties and two `Config::save()` calls, zero QML references, deliberately
-      unregistered at `BridgeRegistration.cpp:34-37`. A complete duplicate theme system.
 - [ ] T0056 `SunoWorkspaceBridge` is compiled and unregistered by design (`cmake/Sources.cmake:196-197`, `src/qml_bridge/BridgeRegistration.cpp:41-64`) #cleanup
       ~190 header + 622 cpp LOC, 16 properties, zero QML references. `CreateView.qml` uses
       `SunoBridge.generate` instead. Decide: wire it or delete it.
