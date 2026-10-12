@@ -358,17 +358,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       Qt calls this layout "a frequent source of mistakes" and 6.8 can generate per-directory
       `qmldir`s (`NO_GENERATE_EXTRA_QMLDIRS`). Either enable it and fix the relative imports,
       or flatten the QML tree beside the CMake call.
-- [ ] T0052 All four `.qss` files are **100 % dead** and target classes that cannot exist (`resources/styles/*.qss`, `resources/dark-theme.qss`) #cleanup
-      The app is a `QGuiApplication` (`Application.cpp:353`) and **no `setStyleSheet` call
-      exists anywhere**; grep for "qss" in `src/`/`cmake/` returns only the three `<file>`
-      entries in the `.qrc`. `dark.qss` selects 27 Qt **Widgets** classes — none of which
-      exist in a pure-QtQuick app. They are a fork of a different app ("VibeChad",
-      "VibeVisuals"). Fix: delete both `dark-theme.qss` and the four styles.
-- [ ] T0053 `src/qml/shaders/shadow.frag` is dead, uncompilable, and not even in the binary (`src/qml/shaders/`) #cleanup
-      No `qt_add_shaders` anywhere, zero `ShaderEffect` in QML. It is GLSL ES 1.00
-      (`varying`, `gl_FragColor`, `texture2D`, no `#version`) and **cannot compile on any
-      Qt 6 backend** (RHI compiles GLSL ES 3.00); it also declares a `lowp sampler2D`,
-      which is invalid. Fix: delete the directory.
 - [ ] T0054 Six orphaned QML files (`src/qml/views/SettingsView.qml`, `panels/SettingsPanel.qml`, `panels/PlaybackPanel.qml`, `components/AccordionContainer.qml`, `AccordionPanel.qml`, `ComingSoonPage.qml`) #cleanup
       `ComingSoonPage.qml` is real content loss (the roadmap surface). `PlaybackPanel.qml`
       also carries a latent bug: it overwrites `AppButton`'s own `buttonRadius` binding.

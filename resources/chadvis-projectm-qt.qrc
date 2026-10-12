@@ -1,9 +1,6 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
 <qresource prefix="/">
-<file>styles/dark.qss</file>
-<file>styles/gruvbox.qss</file>
-<file>styles/nord.qss</file>
 <file>icons/chadvis-projectm-qt.svg</file>
 </qresource>
 </RCC>
