@@ -358,9 +358,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       Qt calls this layout "a frequent source of mistakes" and 6.8 can generate per-directory
       `qmldir`s (`NO_GENERATE_EXTRA_QMLDIRS`). Either enable it and fix the relative imports,
       or flatten the QML tree beside the CMake call.
-- [ ] T0054 Six orphaned QML files (`src/qml/views/SettingsView.qml`, `panels/SettingsPanel.qml`, `panels/PlaybackPanel.qml`, `components/AccordionContainer.qml`, `AccordionPanel.qml`, `ComingSoonPage.qml`) #cleanup
-      `ComingSoonPage.qml` is real content loss (the roadmap surface). `PlaybackPanel.qml`
-      also carries a latent bug: it overwrites `AppButton`'s own `buttonRadius` binding.
 - [ ] T0055 `ThemeBridge` is compiled, linked, and entirely unreachable (`src/qml_bridge/ThemeBridge.{hpp,cpp}`, `cmake/Sources.cmake:188-189`) #cleanup
       59 properties and two `Config::save()` calls, zero QML references, deliberately
       unregistered at `BridgeRegistration.cpp:34-37`. A complete duplicate theme system.
