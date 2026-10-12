@@ -351,7 +351,7 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
 
 Carried over from the superseded backlog and **confirmed by re-reading the tree**:
 
-- [ ] T0166 **The OAuth loopback accepts an IdP error response as success** (`src/suno/auth/oauth/OAuthLoginService.cpp:138-163`) #risk-high
+- [x] T0166 **The OAuth loopback accepts an IdP error response as success** (`src/suno/auth/oauth/OAuthLoginService.cpp:138-163`) #risk-high
       `acceptCallback` validates path, URL cap, state presence, a 256-byte state cap,
       `constantTimeEquals`, and the deadline — then goes straight to `State::CallbackReceived`
       and emits `callbackReceived()`. It **never checks for a `code` parameter and never
