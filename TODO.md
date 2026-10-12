@@ -321,10 +321,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       duplicate title attributes the failure to the wrong clip. `downloadStatus` is also never
       cleared, so an hour-old failure still reads as current. Fix: a
       `downloadStateChanged(clipId, state, reason)` signal.
-- [ ] T0169 **`resolveDestPath` reuses a plain-named file left by an earlier session** (`src/suno/SunoDownloader.cpp:301-347`) #data-loss
-      A different clip whose title matches still collides with a stale plain-named file. The
-      `SUNO_ID` TXXX frame the tagger already writes is the discriminating value; reading it
-      closes the collision without changing the filename.
 - [ ] T0170 **Overlays and karaoke cannot appear in recorded video at all** (`src/visualizer/VisualizerWindow.cpp`, `src/recorder/`) #risk-high #blocks-feature
       The recorder captures inside the *native* `VisualizerWindow` GL context; the QML scene
       graph is a sibling on top in the `QQuickWindow`. **The entire overlay system is invisible
