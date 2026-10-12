@@ -364,15 +364,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [ ] T0056 `SunoWorkspaceBridge` is compiled and unregistered by design (`cmake/Sources.cmake:196-197`, `src/qml_bridge/BridgeRegistration.cpp:41-64`) #cleanup
       ~190 header + 622 cpp LOC, 16 properties, zero QML references. `CreateView.qml` uses
       `SunoBridge.generate` instead. Decide: wire it or delete it.
-- [ ] T0057 `pm::Bridge::presetLoading` is declared, connected, branched on, and **never emitted** (`src/visualizer/projectm/Bridge.hpp:45`, `src/visualizer/VisualizerRenderer.cpp:32,92-94`) #cleanup
-      `presetLoading_` is permanently false, so the "clear to black while loading" path is
-      dead. **Research settles the options:** projectM v4 has **no async/preload API in any
-      released version** — loading is synchronous inside `projectm_load_preset_file()`, and
-      an integrator measured a **600–1200 ms** stall at exactly the crossfade moment, with
-      ~177 ms of that being HLSL→GLSL transpile (projectm discussion #1008, 2026-07-06).
-      A preload API was offered upstream and is **not merged**. So either emit the flag around
-      the genuinely-blocking load (honest about blocking, which the UI can at least respond to)
-      or delete the flag and the branch. Do not invent a two-phase load the library cannot do.
 - [ ] T0164 **projectM is pinned two releases stale — 4.1.8 fixes an out-of-bounds read** (`cmake/FindProjectM4.cmake:62`) #risk-high
       The pin is `GIT_TAG v4.1.6` (2025-11-28). **v4.1.7** (2026-07-14) and **v4.1.8**
       (2026-10-06) are both newer. 4.1.8 fixes `projectm_pcm_get_max_samples()` returning a
