@@ -366,6 +366,13 @@ void SunoBridge::wireControllerSignals() {
                     case vc::suno::DownloadState::FailedPermanent:
                         bridgeInstance->setDownloadStatusForClip(
                                 clipId, QStringLiteral("Download failed for %1").arg(title));
+                        // T0168: the id-carrying channel. The status string above
+                        // still names the clip by title for the UI's single-line
+                        // summary, but nothing should have to parse it back out
+                        // to learn WHICH clip failed.
+                        emit bridgeInstance->clipDownloadSettled(
+                                clipId, state,
+                                QStringLiteral("Download failed for %1").arg(title));
                         if (bridgeInstance->playRequestClipId_ == clipId) {
                             bridgeInstance->playRequestClipId_.clear();
                             bridgeInstance->activeDownloadClipId_.clear();
@@ -374,6 +381,9 @@ void SunoBridge::wireControllerSignals() {
                     case vc::suno::DownloadState::Cancelled:
                         bridgeInstance->setDownloadStatusForClip(
                                 clipId, QStringLiteral("Download cancelled for %1").arg(title));
+                        emit bridgeInstance->clipDownloadSettled(
+                                clipId, state,
+                                QStringLiteral("Download cancelled for %1").arg(title));
                         if (bridgeInstance->playRequestClipId_ == clipId) {
                             bridgeInstance->playRequestClipId_.clear();
                             bridgeInstance->activeDownloadClipId_.clear();

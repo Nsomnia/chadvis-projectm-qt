@@ -274,6 +274,22 @@ signals:
     /// entitlement decision — passed through verbatim rather than summarised.
     void clipSaveRefused(const QString& clipId, const QString& reason);
 
+    /// One transfer reached a TERMINAL, unsuccessful state -- failed or
+    /// cancelled -- carrying the clip id.
+    ///
+    /// T0168. The bridge already emits `clipSaved` with an id, and
+    /// `clipSaveRefused` with an id; this is the third terminal arm. A transfer
+    /// that dies mid-flight produces neither, so the only channel left was the
+    /// single `downloadStatus` string, which names the clip by TITLE. The view
+    /// parsed that title back out and matched it by exact equality against
+    /// `clip.title`, so a rename or a duplicate title attributed one clip's
+    /// failure to another. `state` is the `DownloadState` value as an int
+    /// because QML cannot take the enum; callers compare against the same
+    /// numbers `DownloadQueue.hpp` defines.
+    ///
+    /// `reason` is the download layer's own sentence, passed through verbatim.
+    void clipDownloadSettled(const QString& clipId, int state, const QString& reason);
+
     // ── Mutation result channel ───────────────────────────────────────────
     // ONE signal per subject, carrying the id, mirroring `clipSaved` /
     // `clipSaveRefused`. A batch of 40 clips added to a playlist produces one

@@ -582,39 +582,29 @@ Item {
             root.setSaveState(clipId, "saved", savedPath, "")
         }
 
-        // A transfer that dies mid-flight never reaches clipSaved, so its card would
-        // sit on "Saving" forever. downloadStatus is the only string that
-        // reports a terminal outcome, and it names the clip by TITLE rather than
-        // id, so this match is exact-equality on the title and is
-        // best-effort by construction: two saving clips sharing a title both
-        // get marked. That is the safe direction — both really did fail — and
-        // the honest alternative is a permanent "Saving" that means nothing.
+        // A transfer that dies mid-flight never reaches clipSaved, so its card
+        // would sit on "Saving" forever.
         //
-        // It marks them refused with the status sentence rather than back to
-        // idle, because idle would render the failure as if nothing happened.
-        function onDownloadStatusChanged() {
-            const status = String(SunoBridge.downloadStatus)
-            const prefixes = ["Download failed for ", "Download cancelled for "]
-            let title = null
-            for (let i = 0; i < prefixes.length; ++i) {
-                if (status.indexOf(prefixes[i]) === 0) {
-                    title = status.slice(prefixes[i].length)
-                    break
-                }
-            }
-            if (title === null)
+        // T0168: this used to scrape the clip's TITLE out of the single
+        // downloadStatus string and match it back by exact equality against
+        // clip.title. A rename or a duplicate title therefore attributed one
+        // clip's failure to another, and downloadStatus is never cleared, so an
+        // hour-old failure still re-matched on any later status change. Both
+        // faults go away when the id arrives directly.
+        //
+        // Marks refused rather than idle, because idle would render the failure
+        // as if nothing had happened.
+        function onClipDownloadSettled(clipId, state, reason) {
+            const entry = root.saveStates[clipId]
+            if (!entry || entry.state !== "saving")
                 return
-            const clips = SunoBridge.clips
-            for (let i = 0; i < clips.length; ++i) {
-                const clip = clips[i]
-                if (!clip)
-                    continue
-                const entry = root.saveStates[clip.id]
-                if (entry && entry.state === "saving"
-                        && (clip.title || "clip") === title) {
-                    root.setSaveState(clip.id, "refused", "", status)
-                }
-            }
+            // Both terminal arms -- failed (3, 4) and cancelled (5) -- land on
+            // "refused", because that is the only unsuccessful state the
+            // consumers of saveState actually handle: ClipDetailSheet.qml:335
+            // renders it as the error case and nothing handles anything else.
+            // Adding a "cancelled" state here would render as no state at all,
+            // which is the permanent-"Saving" bug in a new costume.
+            root.setSaveState(clipId, "refused", "", String(reason))
         }
     }
 
