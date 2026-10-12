@@ -316,15 +316,15 @@ to [`CHANGELOG.md`](CHANGELOG.md) and the line is deleted — `git log -p TODO.m
       `onClerkAuthFailedInternal` clears the bearer and bumps the request epoch **without**
       the epoch guard its sibling has at :926. A failure from an exchange invalidated by a
       credential change signs out a live session. No test covers the failure path.
-- [ ] T0045 **`LyricsBridge::setSearchQuery` is not `Q_INVOKABLE`, so lyrics search never fires** (`src/qml_bridge/LyricsBridge.hpp:61`, `src/qml/panels/LyricsPanel.qml:54`) #blocks-ui
+- [x] T0045 **`LyricsBridge::setSearchQuery` is not `Q_INVOKABLE`, so lyrics search never fires** (`src/qml_bridge/LyricsBridge.hpp:61`, `src/qml/panels/LyricsPanel.qml:54`) #blocks-ui
       A plain `public:` member, outside the `public slots:` block starting at :63. QML can
       only invoke slots/`Q_INVOKABLE`s, so this fails at runtime and the panel's search
       field never sends its query.
-- [ ] T0046 **`SettingsWindow.onClosing` is shadowed on the instance — accent edits are lost** (`src/qml/main.qml:484-490`) #data-loss
+- [x] T0046 **`SettingsWindow.onClosing` is shadowed on the instance — accent edits are lost** (`src/qml/main.qml:484-490`) #data-loss
       Declaring `onClosing` on the instance **replaces** the component-level handler, so
       `appearancePage.apply(); SettingsBridge.save()` (`SettingsWindow.qml:67-70`) never
       runs. Fix: merge into a `Connections { target: settingsWindow }`.
-- [ ] T0047 **Theme accent and background are not persisted although the UI says they are** (`src/qml/panels/settings/AppearanceSettings.qml:23-26`) #data-loss
+- [x] T0047 **Theme accent and background are not persisted although the UI says they are** (`src/qml/panels/settings/AppearanceSettings.qml:23-26`) #data-loss
       `Theme.applyAccent/applyBackground` write only the in-memory singleton
       (`Theme.qml:296-316`); `SettingsBridge.hpp` declares no such property. The claims at
       `SettingsView.qml:39` ("auto-saved as you tweak") and `SettingsPanel.qml:8` are false.
