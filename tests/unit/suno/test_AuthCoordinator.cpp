@@ -112,15 +112,18 @@ private slots:
         QCOMPARE(openCalls, 1);
         QCOMPARE(coordinator.googleLoginState(), QStringLiteral("browserOpen"));
 
-        rawService->acceptCallback(
-            QUrl(QStringLiteral("/oauth/callback?state=coordinator-known-state-0123456789abcdefghijklm")));
+        // T0166: a real success response carries a code. This test previously
+        // sent the state alone and passed, which is the very shape of callback
+        // the board item reported as being accepted as a successful sign-in.
+        rawService->acceptCallback(QUrl(QStringLiteral(
+            "/oauth/callback?code=coordinator-auth-code&state=coordinator-known-state-0123456789abcdefghijklm")));
         QCOMPARE(callbacks.count(), 1);
         QCOMPARE(installCalls, 1);
         QCOMPARE(coordinator.googleLoginState(), QStringLiteral("authenticated"));
 
         // Replay cannot invoke the credential installer a second time.
-        rawService->acceptCallback(
-            QUrl(QStringLiteral("/oauth/callback?state=coordinator-known-state-0123456789abcdefghijklm")));
+        rawService->acceptCallback(QUrl(QStringLiteral(
+            "/oauth/callback?code=coordinator-auth-code&state=coordinator-known-state-0123456789abcdefghijklm")));
         QCOMPARE(callbacks.count(), 1);
         QCOMPARE(installCalls, 1);
         QCOMPARE(coordinator.googleLoginState(), QStringLiteral("error"));

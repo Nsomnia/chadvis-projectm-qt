@@ -139,7 +139,10 @@ private slots:
         QCOMPARE(service.state(), State::BrowserOpen);
         QCOMPARE(failures.count(), 1);
 
-        const QUrl callback(QStringLiteral("/oauth/callback?state=") + knownState);
+        // T0166: a real success response carries a code alongside the state.
+        // This test used to send state alone and pass, which is exactly the
+        // shape of response the board item said was accepted as success.
+        const QUrl callback(QStringLiteral("/oauth/callback?code=auth-code-value&state=") + knownState);
         bool replayed = false;
         QObject::connect(&service, &OAuthLoginService::callbackReceived, &service,
                          [&] {
@@ -207,10 +210,176 @@ private slots:
             knownTransactionFactory(QStringLiteral("after-cancel-state")));
         QSignalSpy cancelledAfter(&after, &OAuthLoginService::cancelled);
         after.begin(testLaunch());
-        after.acceptCallback(QUrl(QStringLiteral("/oauth/callback?state=after-cancel-state")));
+        after.acceptCallback(
+            QUrl(QStringLiteral("/oauth/callback?code=after-cancel-code&state=after-cancel-state")));
         after.cancel();
         QCOMPARE(after.state(), State::CallbackReceived);
         QCOMPARE(cancelledAfter.count(), 0);
+    }
+
+    // --- T0166: an IdP error response must never reach the authenticated state.
+
+    /// The board item's exact repro: a well-formed callback on the right path,
+    /// inside the deadline, with the CORRECT state -- and no `code`. It reached
+    /// State::CallbackReceived, and the coordinator then ran installCredentials_
+    /// on an exchange with nothing to exchange.
+    void callbackWithStateButNoCodeIsNotSuccess() {
+        OAuthLoginService service(
+            [](const QUrl&) { return true; }, [] { return QDateTime::currentDateTimeUtc(); },
+            knownTransactionFactory(QStringLiteral("no-code-state")));
+        QSignalSpy callbacks(&service, &OAuthLoginService::callbackReceived);
+        QSignalSpy failures(&service, &OAuthLoginService::failed);
+
+        service.begin(testLaunch());
+        service.acceptCallback(QUrl(QStringLiteral("/oauth/callback?state=no-code-state")));
+
+        QCOMPARE(callbacks.count(), 0);
+        QCOMPARE(failures.count(), 1);
+        QCOMPARE(service.state(), State::Error);
+    }
+
+    /// The headline: `?error=access_denied&state=<valid>` is the response a
+    /// user gets from the IdP's own "Cancel" button. Every pre-existing check
+    /// passes on it.
+    void idpErrorResponseIsRejectedAsSuccess() {
+        OAuthLoginService service(
+            [](const QUrl&) { return true; }, [] { return QDateTime::currentDateTimeUtc(); },
+            knownTransactionFactory(QStringLiteral("denied-state")));
+        QSignalSpy callbacks(&service, &OAuthLoginService::callbackReceived);
+        QSignalSpy failures(&service, &OAuthLoginService::failed);
+
+        service.begin(testLaunch());
+        service.acceptCallback(
+            QUrl(QStringLiteral("/oauth/callback?error=access_denied&state=denied-state")));
+
+        QCOMPARE(callbacks.count(), 0);
+        QCOMPARE(failures.count(), 1);
+        QCOMPARE(service.state(), State::Error);
+        QCOMPARE(failures.first().at(0).toString(), QStringLiteral("Sign-in was declined"));
+    }
+
+    /// RFC 6749 4.1.2.1: error_description is attacker-influenced free text.
+    /// The callback arrives on a socket any local process can connect to, so it
+    /// must never be echoed into the UI or the log.
+    void idpErrorDescriptionIsNeverEchoed() {
+        const QString marker = QStringLiteral("token=jwt-secret;password=hunter2");
+        OAuthLoginService service(
+            [](const QUrl&) { return true; }, [] { return QDateTime::currentDateTimeUtc(); },
+            knownTransactionFactory(QStringLiteral("echo-state")));
+        QSignalSpy failures(&service, &OAuthLoginService::failed);
+
+        service.begin(testLaunch());
+        service.acceptCallback(QUrl(QStringLiteral("/oauth/callback?error=server_error&error_description=") +
+                                   marker + QStringLiteral("&state=echo-state")));
+
+        QCOMPARE(failures.count(), 1);
+        const QString safeError = failures.first().at(0).toString();
+        QVERIFY(!safeError.contains(marker));
+        QVERIFY(!safeError.contains(QStringLiteral("hunter2")));
+    }
+
+    /// An unknown error code is an IdP extension. Passing it through would put
+    /// a string this file never chose into the message.
+    void unrecognisedErrorCodeIsNotEchoedVerbatim() {
+        const QString marker = QStringLiteral("weird-provider-code-marker");
+        OAuthLoginService service(
+            [](const QUrl&) { return true; }, [] { return QDateTime::currentDateTimeUtc(); },
+            knownTransactionFactory(QStringLiteral("unknown-code-state")));
+        QSignalSpy failures(&service, &OAuthLoginService::failed);
+
+        service.begin(testLaunch());
+        service.acceptCallback(QUrl(QStringLiteral("/oauth/callback?error=") + marker +
+                                   QStringLiteral("&state=unknown-code-state")));
+
+        QCOMPARE(failures.count(), 1);
+        const QString safeError = failures.first().at(0).toString();
+        QVERIFY(!safeError.contains(marker));
+    }
+
+    /// Duplicated parameters are an OAuth MUST NOT (RFC 6749 3.1). Two `code`
+    /// values is an ambiguity, not a choice to make.
+    void duplicatedCodeIsRejected() {
+        OAuthLoginService service(
+            [](const QUrl&) { return true; }, [] { return QDateTime::currentDateTimeUtc(); },
+            knownTransactionFactory(QStringLiteral("dupe-code-state")));
+        QSignalSpy callbacks(&service, &OAuthLoginService::callbackReceived);
+        QSignalSpy failures(&service, &OAuthLoginService::failed);
+
+        service.begin(testLaunch());
+        service.acceptCallback(QUrl(QStringLiteral("/oauth/callback?code=first&code=second&state=dupe-code-state")));
+
+        QCOMPARE(callbacks.count(), 0);
+        QCOMPARE(failures.count(), 1);
+    }
+
+    /// The two arms are mutually exclusive. An injected `error` must win even
+    /// when a valid `code` is also present -- otherwise an attacker who can add
+    /// a parameter to an otherwise-valid callback rides along.
+    void errorWinsOverAValidCode() {
+        OAuthLoginService service(
+            [](const QUrl&) { return true; }, [] { return QDateTime::currentDateTimeUtc(); },
+            knownTransactionFactory(QStringLiteral("both-arms-state")));
+        QSignalSpy callbacks(&service, &OAuthLoginService::callbackReceived);
+        QSignalSpy failures(&service, &OAuthLoginService::failed);
+
+        service.begin(testLaunch());
+        service.acceptCallback(QUrl(QStringLiteral(
+            "/oauth/callback?code=real-code&error=access_denied&state=both-arms-state")));
+
+        QCOMPARE(callbacks.count(), 0);
+        QCOMPARE(failures.count(), 1);
+    }
+
+    void emptyCodeIsRejected() {
+        OAuthLoginService service(
+            [](const QUrl&) { return true; }, [] { return QDateTime::currentDateTimeUtc(); },
+            knownTransactionFactory(QStringLiteral("empty-code-state")));
+        QSignalSpy callbacks(&service, &OAuthLoginService::callbackReceived);
+        QSignalSpy failures(&service, &OAuthLoginService::failed);
+
+        service.begin(testLaunch());
+        service.acceptCallback(QUrl(QStringLiteral("/oauth/callback?code=&state=empty-code-state")));
+
+        QCOMPARE(callbacks.count(), 0);
+        QCOMPARE(failures.count(), 1);
+    }
+
+    /// Guards the fix from the other side: a genuine success still works.
+    void wellFormedSuccessStillReachesCallbackReceived() {
+        OAuthLoginService service(
+            [](const QUrl&) { return true; }, [] { return QDateTime::currentDateTimeUtc(); },
+            knownTransactionFactory(QStringLiteral("good-state")));
+        QSignalSpy callbacks(&service, &OAuthLoginService::callbackReceived);
+        QSignalSpy failures(&service, &OAuthLoginService::failed);
+
+        service.begin(testLaunch());
+        service.acceptCallback(
+            QUrl(QStringLiteral("/oauth/callback?code=the-real-code&state=good-state")));
+
+        QCOMPARE(callbacks.count(), 1);
+        QCOMPARE(failures.count(), 0);
+        QCOMPARE(service.state(), State::CallbackReceived);
+    }
+
+    /// A rejected callback must not leave a half-consumed transaction, or a
+    /// retry would behave differently from a first attempt.
+    void rejectedCallbackDoesNotConsumeTheTransaction() {
+        OAuthLoginService service(
+            [](const QUrl&) { return true; }, [] { return QDateTime::currentDateTimeUtc(); },
+            knownTransactionFactory(QStringLiteral("reuse-state")));
+        QSignalSpy failures(&service, &OAuthLoginService::failed);
+
+        service.begin(testLaunch());
+        service.acceptCallback(QUrl(QStringLiteral("/oauth/callback?error=access_denied&state=reuse-state")));
+        QCOMPARE(failures.count(), 1);
+        QCOMPARE(service.state(), State::Error);
+
+        // fail() resets the transaction, so a second callback is refused for
+        // having no transaction rather than being re-admitted.
+        service.acceptCallback(
+            QUrl(QStringLiteral("/oauth/callback?code=late-code&state=reuse-state")));
+        QCOMPARE(failures.count(), 2);
+        QCOMPARE(service.state(), State::Error);
     }
 };
 

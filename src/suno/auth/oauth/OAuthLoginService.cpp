@@ -44,6 +44,72 @@ bool callbackState(const QUrl& url, QString* state) {
     return found;
 }
 
+/// T0166. A single query key, read once, duplicates refused. OAuth's own rules
+/// are a MUST NOT on parameter repetition (RFC 6749 3.1), so two `code` values
+/// are an ambiguity rather than something to pick a winner from.
+bool callbackParam(const QUrl& url, QLatin1StringView key, QString* value) {
+    const QUrlQuery query(url.query(QUrl::FullyEncoded));
+    bool found = false;
+    for (const auto& item : query.queryItems(QUrl::FullyDecoded)) {
+        if (item.first != key) continue;
+        if (found) return false;
+        *value = item.second;
+        found = true;
+    }
+    return found;
+}
+
+/// OAuth error codes are a fixed registry, not free text (RFC 6749 4.1.2.1).
+/// Anything else is an IdP extension we do not model, so it is passed through
+/// verbatim rather than silently mapped to a generic message that would hide
+/// which one occurred.
+[[nodiscard]] bool knownOAuthErrorCode(QLatin1StringView code) {
+    return code == QLatin1String("invalid_request") || code == QLatin1String("unauthorized_client") ||
+           code == QLatin1String("access_denied") || code == QLatin1String("unsupported_response_type") ||
+           code == QLatin1String("invalid_scope") || code == QLatin1String("server_error") ||
+           code == QLatin1String("temporarily_unavailable");
+}
+
+/// T0166. Maps an IdP error to a message that is safe to show and to log.
+///
+/// `error_description` is attacker-influenced text: the callback comes off a
+/// socket any local process can connect to, so echoing it verbatim would put
+/// arbitrary strings into the UI and into the log. Only recognised OAuth error
+/// codes are rendered, and the registry is a fixed set -- so what reaches the
+/// user is always a string this file chose.
+[[nodiscard]] QString safeOAuthErrorMessage(QLatin1StringView code) {
+    if (!knownOAuthErrorCode(code)) {
+        return QStringLiteral("The sign-in provider reported an unrecognised error");
+    }
+    if (code == QLatin1String("access_denied")) {
+        return QStringLiteral("Sign-in was declined");
+    }
+    if (code == QLatin1String("temporarily_unavailable") ||
+        code == QLatin1String("server_error")) {
+        return QStringLiteral("The sign-in provider is temporarily unavailable");
+    }
+    return QStringLiteral("The sign-in provider rejected the request");
+}
+
+/// T0166. Whether a successful authorization response carried a usable code.
+///
+/// RFC 6749 4.1.2: the success and failure arms are mutually exclusive and both
+/// are a single query parameter. So `error` wins if present -- an attacker who
+/// can inject `error` into an otherwise valid callback should not be able to
+/// ride along by omitting `code` -- and success requires exactly one non-empty
+/// `code`.
+[[nodiscard]] bool hasUsableAuthorizationCode(const QUrl& url) {
+    QString errorCode;
+    if (callbackParam(url, QLatin1String("error"), &errorCode)) return false;
+    QString code;
+    if (!callbackParam(url, QLatin1String("code"), &code)) return false;
+    if (code.isEmpty()) return false;
+    // Bound the value the same way the state is bounded. The URL itself is
+    // capped by the listener, so this is belt and braces against a code that
+    // is legitimately short enough to matter and absurdly long.
+    return code.size() <= 2048;
+}
+
 } // namespace
 
 QString stateToString(State state) {
@@ -152,6 +218,33 @@ void OAuthLoginService::acceptCallback(const QUrl& callbackUrl) {
     const bool beforeDeadline = now.isValid() && now <= active.deadlineUtc;
     if (!pathMatches || !withinUrlCap || !hasState || suppliedState.size() > 256 ||
         !constantTimeEquals(active.state, suppliedState) || !beforeDeadline) {
+        fail(QStringLiteral("Sign-in callback is invalid or has expired"));
+        return;
+    }
+
+    // T0166. An IdP reports failure by redirecting to the SAME loopback path
+    // with the SAME valid state and an `error` parameter instead of a `code`
+    // (RFC 6749 4.1.2.1). Everything validated above therefore passes on a
+    // failure response, so without this the transaction reached
+    // State::CallbackReceived and the coordinator ran installCredentials_ on
+    // an exchange that had no code to exchange -- `?error=access_denied`
+    // sign-in "succeeded".
+    //
+    // Checked before the ownership transfer, so a rejected callback leaves no
+    // half-consumed transaction behind and fail() resets cleanly.
+    if (!hasUsableAuthorizationCode(callbackUrl)) {
+        QString errorCode;
+        if (callbackParam(callbackUrl, QLatin1String("error"), &errorCode) &&
+            !errorCode.isEmpty()) {
+            // A recognised code gets its own message; an unknown or empty one
+            // gets the generic refusal, because an IdP extension we do not
+            // model must not become a string we echo back to the user.
+            fail(safeOAuthErrorMessage(QLatin1StringView(errorCode.toLatin1())));
+            return;
+        }
+        // No error, no usable code: a truncated or malformed success response.
+        // Treated as invalid rather than reported as a provider fault, because
+        // that is what it is.
         fail(QStringLiteral("Sign-in callback is invalid or has expired"));
         return;
     }
