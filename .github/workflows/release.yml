@@ -1,12 +1,22 @@
 # ===========================================================================
 # release.yml -- tag-triggered build, test, package, publish.
 #
-# THE ARTIFACTS ARE UNSIGNED. SAY IT OUT LOUD, EVERY TIME.
-#   This project has no code-signing identity, no notarisation, and no
-#   Developer ID certificate. Nothing here attempts either: passing
-#   CODE_SIGN_IDENTITY="" and CODE_SIGNING_ALLOWED=OFF makes that explicit to
-#   CMake rather than leaving it to chance, and the release notes lead with the
-#   consequence.
+# THE macOS ARTIFACT IS AD-HOC SIGNED, NEVER NOTARISED. SAY IT OUT LOUD, EVERY TIME.
+#   This project has no Developer ID certificate, so there is no notarisation and
+#   no Gatekeeper pass on any other machine.
+#
+#   Precise wording, because the distinction decides what a user must do
+#   (T0039): the bundle IS signed, by cmake/TargetSetup.cmake:868, which runs
+#   `codesign --force --deep --sign "-"` as a POST_BUILD step. Ad-hoc signing
+#   binds the bytes to the bundle but identifies no developer, so it satisfies
+#   neither Gatekeeper nor notarisation. Saying "unsigned" was wrong twice
+#   over -- the notes were false, and "unsigned" invites the reader to expect
+#   no signature at all.
+#
+#   The CMAKE_OSX_CODE_SIGNING_* flags below therefore do NOT control the final
+#   signature: they govern CMake's own link-time signing, while the POST_BUILD
+#   codesign above is unconditional and independent of them. They are still
+#   passed, to keep the two from fighting.
 #
 #   The consequence, stated plainly so it is not discovered by a user: on any
 #   machine other than the one that built it, macOS Gatekeeper will refuse to
@@ -22,19 +32,25 @@
 #   `MACOSX_BUNDLE TRUE`, cpack on macOS produces a directory of loose dylibs
 #   rather than an .app -- a .dmg that cannot be launched.
 #
-#   That property is a separate, concurrent change to cmake/TargetSetup.cmake,
-#   which is outside this change's write scope. So this workflow DETECTS the
-#   shape rather than assuming it, and macOS is marked `required: false` in the
-#   matrix:
+#   That premise is now OBSOLETE (T0039). The property landed: cmake/TargetSetup.cmake:263
+#   sets MACOSX_BUNDLE TRUE. This header used to describe the property as a
+#   pending change "outside this change's write scope" and to mark macOS
+#   `required: false` in the matrix so a missing bundle could not block a
+#   release. With the property present, that exemption only means a broken
+#   macOS packaging step ships silently while the badge stays green -- the leg
+#   fails, nobody reads it, and the release notes quietly carry no macOS
+#   artifact.
 #
-#     bundle present -> package it. Works the moment the property lands, with no
-#                       edit here.
+#   So macOS is now a REQUIRED matrix leg. The detection step below is kept
+#   anyway -- it still names the exact property to set if the bundle ever goes
+#   missing -- but it is now a guard that stops a release instead of a warning
+#   that gets filed away:
+#
+#     bundle present -> package it. The expected path.
 #     bundle absent  -> the macOS leg fails at "Verify the macOS bundle exists",
-#                       naming the exact property to set. Because that leg is
-#                       non-required the failure does not block the release:
-#                       the Linux .tar.gz still ships, and the generated release
-#                       notes say in plain words that no macOS artifact is
-#                       attached.
+#                       naming the exact property to set. Required, so it stops
+#                       the release instead of shipping a Linux-only one that
+#                       nobody notices until a user reports the missing download.
 #
 #   The alternative -- publishing the loose-dylib .dmg and calling it macOS --
 #   is the failure mode this exists to prevent. The notes are generated from the
@@ -88,9 +104,12 @@ jobs:
           - os: macos-14
             id: macos-dmg
             generator: DragNDrop
-            # required: false means the macOS leg reports red without blocking,
-            # which is what the missing MACOSX_BUNDLE property needs today.
-            required: false
+            # required: true (T0039). This used to be false, on the premise that
+            # MACOSX_BUNDLE was not yet set. It is set -- TargetSetup.cmake:263 --
+            # so a red macOS leg now means packaging is genuinely broken, and
+            # shipping anyway is how a release ends up with no .dmg that nobody
+            # notices until a user reports it.
+            required: true
     # A failure in a non-required leg still shows as failed on the check, so
     # the signal is visible; it just does not stop the release.
     continue-on-error: ${{ !matrix.required }}
@@ -297,8 +316,10 @@ jobs:
             echo "### Signing"
             echo
             if [[ "$RUNNER_OS" == "macOS" ]]; then
-              echo "**The .app is UNSIGNED and NOT notarised.** macOS Gatekeeper will"
-              echo "block it on any machine but the one that built it. To open it:"
+              echo "**The .app is AD-HOC SIGNED and NOT notarised.** It is signed with"
+              echo "identity \`-\`, which binds the bytes but identifies no developer, so"
+              echo "macOS Gatekeeper will still block it on any machine but the one that"
+              echo "built it. To open it:"
               echo
               echo '```'
               echo "right-click > Open                            # once, then trusted"

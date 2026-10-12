@@ -351,6 +351,13 @@ if(CHADVIS_SANITIZER)
         test_ClerkAuthClient
         test_CapturedHosts
         test_FeatureFlags
+        # These two are registered ctest entries and get built by the sanitizer
+        # profile like every other target here, but they were missing from this
+        # list -- so under --tsan they ran WITHOUT exitcode=66 and without the
+        # suppression file. A race in either would have exited 0 and been
+        # counted as a pass (T0041). Add every add_test above to this list.
+        test_HttpPolicy
+        test_RenderExecutor
         PROPERTIES ENVIRONMENT
         "TSAN_OPTIONS=abort_on_error=0:halt_on_error=0:exitcode=66:suppressions=${CMAKE_SOURCE_DIR}/cmake/tsan.supp"
     )

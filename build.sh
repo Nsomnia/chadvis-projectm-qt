@@ -56,7 +56,17 @@ SAFE_TESTS=(
     test_ClerkAuthClient
     test_HttpPolicy
     test_RenderExecutor
+    test_CapturedHosts
+    test_FeatureFlags
+    test_OffscreenRenderSpike
 )
+
+# integration_tests and integration_gl_tests are registered ctest entries and are
+# deliberately NOT listed above: they are the GL / burn-in / audio lanes, they
+# skip themselves when headless, and ctest counts that skip as a pass. So
+# "--safe" can never be evidence for them -- see AGENTS.md. Everything else
+# registered belongs in the list above; the comm check in the comment catches
+# drift in both directions.
 
 usage() {
     cat <<EOF
@@ -69,7 +79,7 @@ ${BOLD}Profiles${RESET} ${YELLOW}(each keeps its own build directory; switch fre
   ${GREEN}-r, --release${RESET}    optimized Release, ./build    the shipping configuration ${YELLOW}(explicit)${RESET}
   ${GREEN}--tsan${RESET}           ThreadSanitizer, ./build-tsan  ${YELLOW}(exits 66 on Qt-internal reports; see cmake/tsan.supp)${RESET}
   ${GREEN}--asan${RESET}           AddressSanitizer, ./build-asan
-  ${GREEN}--ubsan${RESET}          Undefined+AddressSanitizer, ./build-ubsan
+  ${GREEN}--ubsan${RESET}          UndefinedBehaviorSanitizer, ./build-ubsan  ${YELLOW}(-fsanitize=undefined alone, not address+undefined)${RESET}
 
 ${BOLD}Actions${RESET}
   ${GREEN}--tests${RESET}          build only the test binaries (skips app + QML tooling)

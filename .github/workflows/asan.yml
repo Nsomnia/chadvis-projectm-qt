@@ -1,0 +1,312 @@
+# ===========================================================================
+# asan.yml -- AddressSanitizer + UndefinedBehaviorSanitizer lanes.
+#
+# WHY THIS EXISTS
+#   T0043. SunoClient shipped a failed worker-thread join (the T0032 window:
+#   a queued lambda capturing raw `this` surviving a destructor whose
+#   QThread::wait() failed). ThreadSanitizer cannot see that class of bug at
+#   all -- it reports data races, not use-after-free. Only ASan sees the
+#   read of freed memory. So the single existing sanitizer lane had no way to
+#   catch the one bug the board had just found, and "we run a sanitizer lane"
+#   was quietly false.
+#
+# WHY IT IS A CACHE OPTION AND NOT A TARGET
+#   Same reason as tsan.yml: cmake/Compiler.cmake sets CHADVIS_SANITIZER
+#   directory-global, because `unit_tests` links libproject_lib.a which holds
+#   every line of application code. A sanitizer on the test target alone links
+#   uninstrumented application objects, finds nothing, and exits 0 -- a
+#   false-negative generator, which is worse than no lane. So each job builds
+#   the WHOLE project instrumented, in its own directory, and asserts the
+#   cache value rather than trusting it.
+#
+#   RelWithDebInfo, not Release: Release sets NDEBUG, which compiles out the
+#   Q_ASSERT thread-affinity guards. ASan needs -g for usable stack traces, and
+#   Compiler.cmake already passes -g with the flag.
+#
+# WHY THE STEPS ARE continue-on-error, AND WHY THAT IS NOT "WE IGNORE THEM"
+#   Neither sanitizer is known-clean today. A permanently red badge is a badge
+#   nobody reads, so -- exactly as in tsan.yml -- the jobs run, count, classify,
+#   and write the verdict to the summary. Exit 0 from a sanitizer means
+#   "nothing found"; SIGABRT/abort_on_error means "found"; and the lane also
+#   fails loudly if it produced NO measurement at all, because "no signal" and
+#   "no bugs" must never look alike. See the final step.
+#
+# WHY GCC, NOT CLANG
+#   Same as tsan.yml: ubuntu-24.04's GCC 13 satisfies Compiler.cmake's >=13
+#   floor and ships libasan/libubsan, so no extra runtime package is needed.
+#   If a job dies with an ASan runtime init failure ("Shadow memory range
+#   interleaves with an existing memory mapping"), that is classified as
+#   LANE BROKEN, not clean.
+#
+# WHY NO ccache HERE
+#   Compiler.cmake:169 deliberately skips the ccache launcher when a sanitizer
+#   is on. Cold build every run, by design.
+# ===========================================================================
+
+name: asan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: asan-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  asan:
+    name: AddressSanitizer (ubuntu / gcc, reporting only)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ninja-build \
+            pkg-config \
+            libgl1-mesa-dev \
+            libgl1-mesa-dri \
+            libtag1-dev \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libswresample-dev \
+            libavfilter-dev \
+            libglm-dev \
+            libdbus-1-3 \
+            libxkbcommon0 \
+            libxcb-cursor0
+
+      - name: Install Qt 6.8.3
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux'
+          target: 'desktop'
+          install-deps: true
+          cache: true
+          cache-key-prefix: qt-linux-6.8.3
+
+      - name: Configure the instrumented tree
+        run: |
+          set -euo pipefail
+          cmake -G Ninja -S . -B build-asan \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DCHADVIS_SANITIZER=address
+          # Assert the lane actually engaged. A typo in the option value would
+          # otherwise produce a normal uninstrumented build whose tests pass,
+          # which is the exact false negative this lane exists to prevent.
+          if ! grep -q '^CHADVIS_SANITIZER:STRING=address$' build-asan/CMakeCache.txt; then
+            echo "::error::CHADVIS_SANITIZER is not 'address' in the cache -- this build is NOT instrumented."
+            exit 1
+          fi
+
+      - name: Build
+        run: cmake --build build-asan --parallel
+
+      - name: Run the AddressSanitizer lane (reports; does not gate)
+        id: asan
+        continue-on-error: true
+        env:
+          # detect_leaks=1 is the point of the lane: SunoClient and the
+          # credential worker hand ownership across threads, so a leak is a
+          # plausible failure mode and the default-off setting would hide it.
+          # abort_on_error=0 + a distinctive exitcode so a finding is
+          # distinguishable from a crash (see the classification below).
+          ASAN_OPTIONS: 'detect_leaks=1:abort_on_error=0:halt_on_error=0:exitcode=67'
+          UBSAN_OPTIONS: 'print_stacktrace=1:halt_on_error=0:exitcode=67'
+        run: |
+          set -uo pipefail
+          set +e
+          ctest --test-dir build-asan/tests --output-on-failure 2>&1 | tee asan-run.log
+          rc="${PIPESTATUS[0]}"
+          set -e
+
+          findings="$(grep -cE 'ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:' asan-run.log || true)"
+          findings="${findings:-0}"
+
+          if [ "$rc" -eq 0 ]; then
+            verdict="CLEAN -- 0 AddressSanitizer/LeakSanitizer findings"
+          elif [ "$rc" -eq 67 ]; then
+            verdict="FINDINGS -- $findings ASan/LSan/UBSan report(s), exit 67 (the configured exitcode)"
+          else
+            verdict="LANE BROKEN -- exit $rc, $findings report(s). This is NOT 'clean' and NOT a finding: expect a sanitizer runtime init failure, or SIGABRT from an unannotated entry."
+          fi
+
+          {
+            echo "### AddressSanitizer"
+            echo
+            echo "**$verdict**"
+            echo
+            echo "Whole project instrumented (\`-DCHADVIS_SANITIZER=address\`, directory-global,",
+            echo "because the tests link the instrumented application library). Leak detection on."
+            echo
+            echo '<details><summary>Full output</summary>'
+            echo
+            echo '```'
+            cat asan-run.log
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "$verdict"
+          exit 0
+
+      - name: Report the ASan verdict, and fail only if it never ran
+        if: always()
+        run: |
+          set -u
+          findings="$(grep -cE 'ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:' asan-run.log 2>/dev/null || true)"
+          findings="${findings:-0}"
+          {
+            echo
+            echo "| Metric | Value |"
+            echo "|---|---|"
+            echo "| ASan/LSan/UBSan findings | ${findings} |"
+            echo "| log size | $(wc -c < asan-run.log 2>/dev/null || echo 0) bytes |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "ASan/LSan/UBSan findings: $findings"
+
+          # Fail ONLY when the lane produced no measurement at all. A lane
+          # with known findings is tolerated; a lane that never ran is a
+          # silent hole in the coverage and is not.
+          if [ ! -s asan-run.log ]; then
+            echo "::error title=AddressSanitizer lane never ran::asan-run.log is absent or empty. This is not a clean lane; it is a lane that produced no measurement."
+            exit 1
+          fi
+
+  ubsan:
+    name: UndefinedBehaviorSanitizer (ubuntu / gcc, reporting only)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ninja-build \
+            pkg-config \
+            libgl1-mesa-dev \
+            libgl1-mesa-dri \
+            libtag1-dev \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libswresample-dev \
+            libavfilter-dev \
+            libglm-dev \
+            libdbus-1-3 \
+            libxkbcommon0 \
+            libxcb-cursor0
+
+      - name: Install Qt 6.8.3
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux'
+          target: 'desktop'
+          install-deps: true
+          cache: true
+          cache-key-prefix: qt-linux-6.8.3
+
+      - name: Configure the instrumented tree
+        run: |
+          set -euo pipefail
+          cmake -G Ninja -S . -B build-ubsan \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DCHADVIS_SANITIZER=undefined
+          if ! grep -q '^CHADVIS_SANITIZER:STRING=undefined$' build-ubsan/CMakeCache.txt; then
+            echo "::error::CHADVIS_SANITIZER is not 'undefined' in the cache -- this build is NOT instrumented."
+            exit 1
+          fi
+
+      - name: Build
+        run: cmake --build build-ubsan --parallel
+
+      - name: Run the UBSan lane (reports; does not gate)
+        id: ubsan
+        continue-on-error: true
+        env:
+          UBSAN_OPTIONS: 'print_stacktrace=1:halt_on_error=0:exitcode=68'
+        run: |
+          set -uo pipefail
+          set +e
+          ctest --test-dir build-ubsan/tests --output-on-failure 2>&1 | tee ubsan-run.log
+          rc="${PIPESTATUS[0]}"
+          set -e
+
+          findings="$(grep -c 'runtime error:' ubsan-run.log || true)"
+          findings="${findings:-0}"
+
+          if [ "$rc" -eq 0 ]; then
+            verdict="CLEAN -- 0 UndefinedBehaviorSanitizer findings"
+          elif [ "$rc" -eq 68 ]; then
+            verdict="FINDINGS -- $findings undefined-behaviour report(s), exit 68 (the configured exitcode)"
+          else
+            verdict="LANE BROKEN -- exit $rc, $findings report(s). This is NOT 'clean' and NOT a finding."
+          fi
+
+          {
+            echo "### UndefinedBehaviorSanitizer"
+            echo
+            echo "**$verdict**"
+            echo
+            echo "Whole project instrumented (\`-DCHADVIS_SANITIZER=undefined\`). Reports only;"
+            echo "UBSan is not a memory-error detector, so it complements the ASan job rather",
+            echo "than duplicating it -- signed overflow, bad shifts, misaligned or",
+            echo "null-pointer dereference, and invalid enum/bool loads."
+            echo
+            echo '<details><summary>Full output</summary>'
+            echo
+            echo '```'
+            cat ubsan-run.log
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "$verdict"
+          exit 0
+
+      - name: Report the UBSan verdict, and fail only if it never ran
+        if: always()
+        run: |
+          set -u
+          findings="$(grep -c 'runtime error:' ubsan-run.log 2>/dev/null || true)"
+          findings="${findings:-0}"
+          {
+            echo
+            echo "| Metric | Value |"
+            echo "|---|---|"
+            echo "| UBSan findings | ${findings} |"
+            echo "| log size | $(wc -c < ubsan-run.log 2>/dev/null || echo 0) bytes |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "UBSan findings: $findings"
+
+          if [ ! -s ubsan-run.log ]; then
+            echo "::error title=UndefinedBehaviorSanitizer lane never ran::ubsan-run.log is absent or empty. This is not a clean lane; it is a lane that produced no measurement."
+            exit 1
+          fi

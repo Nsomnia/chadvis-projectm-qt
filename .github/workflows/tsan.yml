@@ -50,11 +50,13 @@
 #   Darwin aborts on the first finding, and on Linux the default exitcode is
 #   66 only by coincidence of halt_on_error, so an unannotated entry would
 #   either SIGABRT or exit 0 and neither outcome is a measurement.
-#   Known gap, recorded rather than hidden: test_HttpPolicy,
-#   test_OffscreenRenderSpike and test_RenderExecutor are instrumented (they
-#   link the instrumented project_lib) but are NOT in that block, so they are
-#   excluded here. Fixing it means editing tests/unit/CMakeLists.txt, which
-#   this change does not touch.
+#   CLOSED (T0041): test_HttpPolicy and test_RenderExecutor were instrumented
+#   but missing from that set_tests_properties block, so they ran here without
+#   exitcode=66 and without the suppression file -- a race in either would
+#   have exited 0 and been counted as a pass. Both are in the block now, and
+#   the RE below lists all ten entries.
+#   Still excluded: test_OffscreenRenderSpike, a GL spike with no business in
+#   a headless sanitizer lane. Recorded rather than hidden.
 #
 # GCC, NOT CLANG
 #   ubuntu-24.04's default GCC 13 satisfies Compiler.cmake's >=13 floor and
@@ -163,7 +165,7 @@ jobs:
         continue-on-error: true
         run: |
           set -uo pipefail
-          RE='^(unit_tests|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient|test_CapturedHosts|test_FeatureFlags)$'
+          RE='^(unit_tests|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient|test_CapturedHosts|test_FeatureFlags|test_HttpPolicy|test_RenderExecutor)$'
 
           set +e
           ctest --test-dir "$BUILD_DIR/tests" --output-on-failure -R "$RE" 2>&1 | tee tsan-run.log
@@ -172,6 +174,23 @@ jobs:
 
           reports="$(grep -c 'WARNING: ThreadSanitizer' tsan-run.log || true)"
           reports="${reports:-0}"
+
+          # T0042: "39 known-benign" was prose in the summary, which made a
+          # regression indistinguishable from the status quo -- 40 reports and
+          # 39 reports both rendered as "FINDINGS" and a reader had to diff two
+          # logs by eye. Compare the count against an explicit baseline and say
+          # which direction it moved. The count is the proxy, not a classifier:
+          # a real new race can replace a benign one and leave the total flat,
+          # which is why the full log stays in the summary below.
+          BASELINE=39
+          delta=$((reports - BASELINE))
+          if [ "$delta" -gt 0 ]; then
+            trend="REGRESSION -- $delta report(s) MORE than the known baseline of $BASELINE. A new race, or a previously-benign one that is not benign any more. This is the outcome worth reading."
+          elif [ "$delta" -lt 0 ]; then
+            trend="IMPROVED -- $((-delta)) report(s) fewer than the known baseline of $BASELINE."
+          else
+            trend="AT BASELINE -- $reports report(s), unchanged from the known $BASELINE."
+          fi
 
           if [ "$rc" -eq 0 ]; then
             verdict="CLEAN -- 0 ThreadSanitizer reports"
@@ -185,6 +204,8 @@ jobs:
             echo "### ThreadSanitizer"
             echo
             echo "**$verdict**"
+            echo
+            echo "**$trend**"
             echo
             echo "Entries run: the 8 ctest entries carrying TSAN_OPTIONS in"
             echo "\`tests/unit/CMakeLists.txt\`. Suppressions: \`cmake/tsan.supp\`"
