@@ -358,9 +358,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       Qt calls this layout "a frequent source of mistakes" and 6.8 can generate per-directory
       `qmldir`s (`NO_GENERATE_EXTRA_QMLDIRS`). Either enable it and fix the relative imports,
       or flatten the QML tree beside the CMake call.
-- [ ] T0056 `SunoWorkspaceBridge` is compiled and unregistered by design (`cmake/Sources.cmake:196-197`, `src/qml_bridge/BridgeRegistration.cpp:41-64`) #cleanup
-      ~190 header + 622 cpp LOC, 16 properties, zero QML references. `CreateView.qml` uses
-      `SunoBridge.generate` instead. Decide: wire it or delete it.
 - [ ] T0164 **projectM is pinned two releases stale — 4.1.8 fixes an out-of-bounds read** (`cmake/FindProjectM4.cmake:62`) #risk-high
       The pin is `GIT_TAG v4.1.6` (2025-11-28). **v4.1.7** (2026-07-14) and **v4.1.8**
       (2026-10-06) are both newer. 4.1.8 fixes `projectm_pcm_get_max_samples()` returning a
