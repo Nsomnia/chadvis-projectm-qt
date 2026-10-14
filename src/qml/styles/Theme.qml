@@ -1,15 +1,19 @@
 /**
-* @file Theme.qml
-* @brief Theme singleton providing consistent styling across QML components
-*
-* Defines color palette, metrics, and typography for the modern UI.
-* Supports runtime theme switching via ThemeManager.
-*
-* Mutable properties: accent family + background family (user-customizable)
-* Readonly properties: text, semantic, border, metrics, typography, shadows
-*
-* @version 1.1.0
-*/
+ * @file Theme.qml
+ * @brief Theme singleton providing consistent styling across QML components
+ *
+ * Defines color palette, metrics, and typography for the modern UI.
+ * Runtime theme switching happens through this singleton: applyAccent() and
+ * applyBackground() mutate the two base colors and every derived token
+ * re-evaluates. There is no ThemeManager -- the line this replaces named a
+ * class that never existed in any of the 554 commits up to T0185.
+ *
+ * Mutable: accent + background (the two user-customizable bases)
+ * Derived: surfaces, glass, text ramp, borders, glow -- bindings on the bases
+ * Fixed:   metrics, typography, shadows, and the semantic colors T0119 owns
+ *
+ * @version 1.1.0
+ */
 
 pragma Singleton
 import QtQuick
@@ -38,31 +42,88 @@ QtObject {
     property color accentDark: "#00838f"
 
     // ═══════════════════════════════════════════════════════════
-    // BACKGROUND COLORS - Dark theme base (MUTABLE)
+    // COLOUR DERIVATION
+    //
+    // Every token below is DERIVED from exactly two mutable inputs: `accent`
+    // and `background`. That is the whole point. T0185: `glassBorder`,
+    // `glassHighlight` and `glowAccent` hardcoded the shipped cyan, and
+    // `border`, `borderLight` and `textDisabled` were `readonly` at their dark
+    // values -- so a user who picked an accent got cyan glass, and a user who
+    // picked a background got unreadable text, with no way to tell the picker
+    // from the bug. T0118 recorded the same defect from the light-mode side.
+    //
+    // The ramp is RELATIVE, not multiplicative. `Qt.lighter(black, 2)` is still
+    // black, so the old `Qt.lighter` chain collapsed to a flat black UI at the
+    // value actually in config.toml (`visualizer_background = '#000000FF'`).
+    // Moving toward the opposite pole by a fraction of the distance that
+    // remains produces a usable ramp from any base, black included, and keeps
+    // the hand-tuned proportions of the dark defaults.
+    //
+    // The fractions below are the dark defaults expressed that way, each fitted
+    // against `#1a1a1a` so the dark theme renders as it did:
+    //
+    //   background #1a1a1a   surface #252525   raised #2d2d2d   overlay #353535
+    //   border     #3a3a3a   text    #e0e0e0   secondary #888888  disabled #606060
+    //
+    // ═══════════════════════════════════════════════════════════
+
+    /// Perceived brightness, 0..1. ITU-R BT.601 luma.
+    function luma(c) {
+        return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b
+    }
+
+    /// Move `base` toward the opposite pole (white on a dark base, black on a
+    /// light one) by `fraction` of the distance remaining, per channel so a
+    /// tinted background ramps along its own hue. Alpha is carried through.
+    function ramp(base, fraction) {
+        const toward = luma(base) > 0.5 ? 0.0 : 1.0
+        const shift = function(c) {
+            const moved = c + (toward - c) * fraction
+            return Math.max(0, Math.min(1, moved))
+        }
+        return Qt.rgba(shift(base.r), shift(base.g), shift(base.b), base.a)
+    }
+
+    /// True when the background is light enough that text on it must be dark.
+    /// This is the branch T0118 needs and does not have.
+    readonly property bool backgroundIsLight: luma(background) > 0.5
+
+    /// True when the accent is light enough that text on it must be dark. The
+    /// shipped `#00bcd4` cyan lands just above the threshold, so the default
+    /// textOnAccent stays dark exactly as it was hardcoded.
+    readonly property bool accentIsLight: luma(accent) > 0.5
+
+    // ═══════════════════════════════════════════════════════════
+    // BACKGROUND COLORS (MUTABLE base, everything else derived)
     // ═══════════════════════════════════════════════════════════
 
     property color background: "#1a1a1a"
-    property color backgroundAlt: "#1e1e1e"
-    property color surface: "#252525"
-    property color surfaceRaised: "#2d2d2d"
-    property color surfaceOverlay: "#353535"
+    readonly property color backgroundAlt: ramp(background, 0.02)
+    readonly property color surface: ramp(background, 0.05)
+    readonly property color surfaceRaised: ramp(background, 0.085)
+    readonly property color surfaceOverlay: ramp(background, 0.12)
 
-    // Glassmorphism backgrounds (semi-transparent)
-    readonly property color glassBackground: Qt.rgba(0.164, 0.164, 0.164, 0.85)
-    readonly property color glassBorder: Qt.rgba(0, 0.733, 0.831, 0.3)
-    readonly property color glassHighlight: Qt.rgba(0, 0.733, 0.831, 0.1)
+    // Glassmorphism backgrounds (semi-transparent). The base followed a
+    // hardcoded neutral grey and both tints followed the hardcoded cyan; all
+    // three now follow the surface and the accent.
+    readonly property color glassBackground: Qt.rgba(surface.r, surface.g, surface.b, 0.85)
+    readonly property color glassBorder: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
+    readonly property color glassHighlight: Qt.rgba(accent.r, accent.g, accent.b, 0.10)
 
     // ═══════════════════════════════════════════════════════════
     // TEXT COLORS
     // ═══════════════════════════════════════════════════════════
 
-    readonly property color textPrimary: "#e0e0e0"
+    readonly property color textPrimary: ramp(background, 0.864)
     // Softened primary for large quiet surfaces (was referenced by panels but
-    // never defined — LyricsPanel/OverlayPanel used it as an implicit undefined)
-    readonly property color textPrimaryVariant: "#bdbdbd"
-    readonly property color textSecondary: "#888888"
-    readonly property color textDisabled: "#606060"
-    readonly property color textOnAccent: "#1a1a1a"
+    // never defined — LyricsPanel/OverlayPanel used it as an implicit undefined).
+    // T0119 measured this at 6.53-9.26:1 and says leave it alone; the fraction
+    // below reproduces #bdbdbd exactly at the dark base, so it is untouched.
+    readonly property color textPrimaryVariant: ramp(background, 0.712)
+    readonly property color textSecondary: ramp(background, 0.480)
+    readonly property color textDisabled: ramp(background, 0.305)
+    // Follows the ACCENT, not the background: a light accent needs dark text.
+    readonly property color textOnAccent: accentIsLight ? "#1a1a1a" : ramp(accent, 0.88)
     readonly property color textLink: accent
 
     // ═══════════════════════════════════════════════════════════
@@ -85,8 +146,8 @@ QtObject {
     // BORDER COLORS
     // ═══════════════════════════════════════════════════════════
 
-    readonly property color border: "#3a3a3a"
-    readonly property color borderLight: "#4a4a4a"
+    readonly property color border: ramp(background, 0.139)
+    readonly property color borderLight: ramp(background, 0.209)
     readonly property color borderFocus: accent
 
     // ═══════════════════════════════════════════════════════════
@@ -244,9 +305,10 @@ QtObject {
         "radius": 16
     }
 
-    // Glow for accent elements
+    // Glow for accent elements. T0185: the colour was the hardcoded shipped
+    // cyan, so a picked accent left every glow the old default's.
     readonly property var glowAccent: {
-        "color": Qt.rgba(0, 0.733, 0.831, 0.5),
+        "color": Qt.rgba(accent.r, accent.g, accent.b, 0.5),
         "horizontalOffset": 0,
         "verticalOffset": 0,
         "radius": 12
@@ -376,17 +438,21 @@ QtObject {
     }
 
     /**
-     * Apply a new background color and recompute all derived surface variants.
+     * Apply a new background color.
+     *
+     * Only the base is assigned. Every surface, border and text token is a
+     * binding on `background` (see COLOUR DERIVATION above), so this sets one
+     * value and the binding re-evaluates the ramp. The previous version
+     * assigned surface/backgroundAlt/surfaceRaised/surfaceOverlay with
+     * `Qt.lighter(resolved, 1.05..1.35)`, which is a multiplicative ramp: at
+     * the `#000000` actually stored in config.toml it derived black from black
+     * five times over and the UI flattened to a single shade.
      *
      * @param baseColor - The new background color (#rrggbb or #rrggbbaa)
      */
     function applyBackground(baseColor) {
         const resolved = parseRgbaHex(baseColor)
         background = resolved
-        backgroundAlt = Qt.lighter(resolved, 1.05)
-        surface = Qt.lighter(resolved, 1.15)
-        surfaceRaised = Qt.lighter(resolved, 1.25)
-        surfaceOverlay = Qt.lighter(resolved, 1.35)
         SettingsBridge.backgroundColor = toRgbaHex(resolved)
         themeChanged()
     }
