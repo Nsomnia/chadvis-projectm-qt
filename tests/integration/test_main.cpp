@@ -7,6 +7,7 @@
 #include <QtTest>
 
 #include "audio/AudioEngine.hpp"
+#include "core/Config.hpp"
 #include "qml_bridge/BridgeRegistration.hpp"
 
 int runTestProjectMFramebuffer(int argc, char** argv);
@@ -60,6 +61,147 @@ private slots:
         QVERIFY(!frame.isNull());
         QVERIFY(frame.width() > 0);
         QVERIFY(frame.height() > 0);
+    }
+
+    /// T0047's real regression guard, and the one the item never had.
+    ///
+    /// The theme used to show the QML default cyan `#00bcd4` while
+    /// config.toml said `#00FF88` green, because the seeding that was supposed
+    /// to apply the persisted colours ran in a scope that never executes (a
+    /// singleton's own `Component.onCompleted`, ordered against a bridge that
+    /// may not exist yet). Nothing caught it: every other test in this file
+    /// only checks that a window exists and navigates.
+    ///
+    /// This asserts the property the user actually sees -- `Theme.accent` after
+    /// main.qml has loaded -- against the value vc::UIConfig carries. It runs
+    /// headless, needs no GL, and fails loudly if the seeding regresses.
+    void themeAccentComesFromThePersistedConfig() {
+        vc::AudioEngine audio;
+        QQmlApplicationEngine engine;
+
+        auto* window = loadShell(audio, engine);
+        QVERIFY(window);
+
+        // The QML Theme singleton. Looked up by URI+name rather than through
+        // rootObjects because main.qml's root is the ApplicationWindow, not the
+        // singleton, and a singleton is not a root object.
+        auto* theme = engine.singletonInstance<QObject*>("ChadVis", "Theme");
+        QVERIFY2(theme, "the ChadVis Theme singleton is not registered");
+
+        // Read the accent the way QML holds it, and compare CHANNEL values, not
+        // hex text. A string comparison has to pick a byte order, and the two
+        // sides disagree by design: vc::Color writes #RRGGBBAA and Qt's
+        // color.toString() writes #AARRGGBB. Comparing the channels is the only
+        // comparison that cannot be right for the wrong reason.
+        const QVariant accentVariant = theme->property("accent");
+        QVERIFY2(accentVariant.isValid(), "Theme.accent is not a readable property");
+        const QColor accent = accentVariant.value<QColor>();
+        const vc::Color expectedAccent = vc::Config::instance().ui().accentColor;
+        QCOMPARE(accent.red(), expectedAccent.r);
+        QCOMPARE(accent.green(), expectedAccent.g);
+        QCOMPARE(accent.blue(), expectedAccent.b);
+        // Opaque. This is the assertion a colour-only comparison cannot make:
+        // the T0047 regression produced a colour with the right RED, GREEN and
+        // BLUE and an alpha of 0, so it passed every channel check and rendered
+        // a fully transparent window that showed the desktop wallpaper through.
+        QCOMPARE(accent.alpha(), 255);
+
+        // Same channel comparison for the background, for the same reason. The
+        // background is the one that broke: config's #000000FF is opaque black,
+        // and Qt reading it as #AARRGGBB made it transparent -- a window you can
+        // see the desktop wallpaper through, which on a blue-toned wallpaper is
+        // indistinguishable from a blue theme.
+        const QVariant backgroundVariant = theme->property("background");
+        QVERIFY2(backgroundVariant.isValid(), "Theme.background is not a readable property");
+        const QColor background = backgroundVariant.value<QColor>();
+        const vc::Color expectedBackground = vc::Config::instance().ui().backgroundColor;
+        QCOMPARE(background.red(), expectedBackground.r);
+        QCOMPARE(background.green(), expectedBackground.g);
+        QCOMPARE(background.blue(), expectedBackground.b);
+        QCOMPARE(background.alpha(), 255);
+    }
+
+    /// Pixel-level proof of what the user actually sees, for T0047.
+    ///
+    /// The property assertions above prove the *value* is right; this proves the
+    /// *paint* is right. A theme can hold the correct colour and still render
+    /// blue if something downstream recomputes it, which is exactly the
+    /// symptom being chased: the app looked mid-blue while the config said
+    /// green. Sampling the composited frame removes every layer in between.
+    ///
+    /// Two samples, deliberately: one inside the nav rail over the accent, one
+    /// on the main content surface. If either is blue-ish the UI is wrong even
+    /// though the properties read correctly.
+    void renderedFrameIsNotBlueWhenConfigSaysGreen() {
+        vc::AudioEngine audio;
+        QQmlApplicationEngine engine;
+
+        auto* window = loadShell(audio, engine);
+        QVERIFY(window);
+        QVERIFY(window->isVisible());
+        QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 3000);
+        QTest::qWait(150);
+
+        const QImage frame = window->grabWindow();
+        QVERIFY(!frame.isNull());
+
+        // The mean of every pixel in the top rail band and the content band.
+        // A mean is robust to a single accent element and would still be moved
+        // by a background or surface that is the wrong hue.
+        auto meanOf = [&frame](int y0, int y1) {
+            quint64 r = 0, g = 0, b = 0, n = 0;
+            for (int y = y0; y < y1 && y < frame.height(); ++y) {
+                for (int x = 0; x < frame.width(); ++x) {
+                    const QRgb p = frame.pixel(x, y);
+                    r += qRed(p); g += qGreen(p); b += qBlue(p); ++n;
+                }
+            }
+            if (n == 0) return QColor();
+            return QColor(int(r / n), int(g / n), int(b / n));
+        };
+
+        const QColor rail = meanOf(0, 90);
+        const QColor content = meanOf(140, frame.height() - 40);
+
+        // "Blue-dominant" is the condition worth failing on: blue above both
+        // reds and greens by a margin. Green-accented UI cannot satisfy it.
+        const auto blueDominant = [](const QColor& c) {
+            return c.blue() > c.red() + 40 && c.blue() > c.green() + 40;
+        };
+        QVERIFY2(!blueDominant(rail),
+                 qPrintable(QStringLiteral("the nav rail renders blue-dominant "
+                                           "(R%1 G%2 B%3); config accent is #%4")
+                                .arg(rail.red()).arg(rail.green()).arg(rail.blue())
+                                .arg(QString::fromStdString(
+                                    vc::Config::instance().ui().accentColor.toHex()))));
+        QVERIFY2(!blueDominant(content),
+                 qPrintable(QStringLiteral("the content surface renders blue-dominant "
+                                           "(R%1 G%2 B%3); config background is #%4")
+                                .arg(content.red()).arg(content.green()).arg(content.blue())
+                                .arg(QString::fromStdString(
+                                    vc::Config::instance().ui().backgroundColor.toHex()))));
+
+        // And the frame is not uniformly transparent. This is the assertion
+        // that catches the actual T0047 regression, and it has to be a mean
+        // rather than a single pixel: sampling one centre pixel reports a hole
+        // between controls as if the whole window were transparent, which is a
+        // false failure. A window whose background lost its alpha is
+        // transparent EVERYWHERE, so the mean is 0 only in the real case.
+        int transparent = 0;
+        int sampled = 0;
+        for (int y = 0; y < frame.height(); y += 8) {
+            for (int x = 0; x < frame.width(); x += 8) {
+                ++sampled;
+                if (qAlpha(frame.pixel(x, y)) == 0) ++transparent;
+            }
+        }
+        const double opaqueFraction = sampled > 0
+            ? double(sampled - transparent) / double(sampled) : 0.0;
+        QVERIFY2(opaqueFraction > 0.95,
+                 qPrintable(QStringLiteral("only %1% of sampled pixels are opaque; the "
+                                           "background colour lost its alpha, so the window "
+                                           "is see-through and shows the desktop wallpaper")
+                                .arg(opaqueFraction * 100.0, 0, 'f', 1)));
     }
 
     // Settings is the only route to sign-in (AccountPage), so the single call

@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import ChadVis
-import "../components"
 
 ColumnLayout {
     id: root

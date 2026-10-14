@@ -229,6 +229,25 @@ jobs:
         run: cmake --build "$BUILD_DIR" --parallel
 
       # ---------------------------------------------------------------------
+      # QML lint -- T0048.
+      #
+      # The tree had no qmllint gate, and the cost is already paid twice: a
+      # `color` bound to a `string` field took the whole theme down to its QML
+      # default (T0047), and a missing `id` made Settings unopenable (T0001).
+      # Both are things qmllint reports on the first run. The lint target itself
+      # is `ninja -C build project_lib_qmllint`, which qt_add_qml_module creates
+      # automatically -- it was built and ignored.
+      #
+      # .qmllint.ini is what makes this a gate rather than a wall: it sets
+      # UnusedImports and IncompatibleType to error and leaves the 900-odd AOT
+      # "could not compile binding" diagnostics at warning, so a green run here
+      # means "no defect" rather than "nobody has fixed the backlog yet".
+      # ---------------------------------------------------------------------
+
+      - name: Lint the QML
+        run: ./scripts/lint-qml.sh
+
+      # ---------------------------------------------------------------------
       # Test discovery guard -- see the dedicated step's own comment.
       # ---------------------------------------------------------------------
 

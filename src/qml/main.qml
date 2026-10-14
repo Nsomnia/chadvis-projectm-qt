@@ -125,6 +125,8 @@ ApplicationWindow {
     // routed through Theme's own mutators, so derived variants (hover, pressed,
     // surface, overlay) are recomputed exactly as an edit recomputes them.
     function applyTheme() {
+        // Constant first: QML evaluates arguments before the call, so a log that
+        // interpolates a bridge property can be silenced by that property.
         Theme.applyAccent(SettingsBridge.accentColor)
         Theme.applyBackground(SettingsBridge.backgroundColor)
     }

@@ -303,44 +303,91 @@ QtObject {
     // component that already reads SettingsBridge at completion, so seeding from
     // there is correctly ordered by construction.
 
+    /// #RRGGBBAA -> a real Qt colour.
+    ///
+    /// This is the whole of the T0047 fix's second half. vc::Color writes its
+    /// hex as `#RRGGBBAA`, but Qt parses an 8-digit hex as `#AARRGGBB` -- so
+    /// passing the string through `Qt.color()` reads the ALPHA out of the RED
+    /// channel and the RED out of the alpha. `#000000FF` (config's black, fully
+    /// opaque) became rgba(0,0,0,0): a fully transparent window. On a desktop
+    /// with a blue-toned wallpaper the whole UI then reads as mid blue, because
+    /// what you are seeing is the wallpaper and nothing else. `#00FF88FF`
+    /// (green, opaque) became rgba(255,136,0,0) -- transparent orange.
+    ///
+    /// Parsing by position, rather than trusting a hex parser's byte order, is
+    /// the only way this can be correct for both a 6-digit and an 8-digit value.
+    function parseRgbaHex(value) {
+        const text = String(value).trim()
+        if (text.length === 0 || text.charAt(0) !== "#")
+            return Qt.rgba(0, 0, 0, 1)
+        const digits = text.substring(1)
+        if (digits.length < 6)
+            return Qt.rgba(0, 0, 0, 1)
+        const channel = function(offset) {
+            return parseInt(digits.substring(offset, offset + 2), 16) / 255
+        }
+        const r = channel(0)
+        const g = channel(2)
+        const b = channel(4)
+        // The 7th and 8th digits are the alpha when present. A 6-digit colour is
+        // opaque by definition, which is what Qt means by omitting it.
+        const a = digits.length >= 8 ? channel(6) : 1.0
+        return Qt.rgba(r, g, b, a)
+    }
+
+    /// The inverse of parseRgbaHex, and the reason the pair exists.
+    ///
+    /// Emits "#RRGGBBAA" -- the byte order vc::Color::toHex writes and
+    /// fromHex reads. A Qt color's own toString() emits "#AARRGGBB" when it has
+    /// an alpha, so using it as the write-back string would round-trip the alpha
+    /// into the red channel and back, which is a corruption that survives a save
+    /// and reload rather than being a transient display artefact.
+    function toRgbaHex(c) {
+        const hex2 = function(v) {
+            const s = Math.max(0, Math.min(255, Math.round(v * 255))).toString(16)
+            return s.length === 1 ? "0" + s : s
+        }
+        return ("#" + hex2(c.r) + hex2(c.g) + hex2(c.b) + hex2(c.a)).toUpperCase()
+    }
+
     /**
      * Apply a new accent color and recompute all derived accent variants.
      *
-     * Persists through SettingsBridge (T0047). The colour was already parsed
-     * and saved by config.toml -- `accent_color` under [visualizer] -- and this
-     * was the only path that could write it, so before the bridge existed the
-     * appearance panel advertised "auto-saved as you tweak" and saved nothing.
-     *
-     * @param baseColor - The new accent color (string or color)
+     * @param baseColor - The new accent color (#rrggbb or #rrggbbaa)
      */
     function applyAccent(baseColor) {
-        accent = baseColor
-        accentHover = Qt.lighter(baseColor, 1.15)
-        accentPressed = Qt.darker(baseColor, 1.2)
-        accentLight = Qt.lighter(baseColor, 1.5)
-        accentDark = Qt.darker(baseColor, 1.5)
+        const resolved = parseRgbaHex(baseColor)
+        accent = resolved
+        accentHover = Qt.lighter(resolved, 1.15)
+        accentPressed = Qt.darker(resolved, 1.2)
+        accentLight = Qt.lighter(resolved, 1.5)
+        accentDark = Qt.darker(resolved, 1.5)
         // Written as "#rrggbb" because the bridge speaks hex text, not color.
         // toString() on a Qt.lighter() result can carry the alpha channel, and
         // vc::Color accepts 8 digits, so spelling the round trip out keeps a
         // future themed-with-opacity accent from silently losing its alpha.
-        SettingsBridge.accentColor = Qt.color(baseColor).toString().toUpperCase()
+        // Written back as "#RRGGBBAA", the byte order vc::Color expects. Not
+        // Qt.color(x).toString(): if baseColor arrived as an 8-digit string Qt
+        // has already mis-parsed it (#AARRGGBB), and writing the string back
+        // would persist the mangled value into config.toml -- so the corruption
+        // would survive the restart that was supposed to fix it.
+        SettingsBridge.accentColor = toRgbaHex(resolved)
         themeChanged()
     }
 
     /**
      * Apply a new background color and recompute all derived surface variants.
      *
-     * Persists through SettingsBridge; see applyAccent.
-     *
-     * @param baseColor - The new background color (string or color)
+     * @param baseColor - The new background color (#rrggbb or #rrggbbaa)
      */
     function applyBackground(baseColor) {
-        background = baseColor
-        backgroundAlt = Qt.lighter(baseColor, 1.05)
-        surface = Qt.lighter(baseColor, 1.15)
-        surfaceRaised = Qt.lighter(baseColor, 1.25)
-        surfaceOverlay = Qt.lighter(baseColor, 1.35)
-        SettingsBridge.backgroundColor = Qt.color(baseColor).toString().toUpperCase()
+        const resolved = parseRgbaHex(baseColor)
+        background = resolved
+        backgroundAlt = Qt.lighter(resolved, 1.05)
+        surface = Qt.lighter(resolved, 1.15)
+        surfaceRaised = Qt.lighter(resolved, 1.25)
+        surfaceOverlay = Qt.lighter(resolved, 1.35)
+        SettingsBridge.backgroundColor = toRgbaHex(resolved)
         themeChanged()
     }
 }
