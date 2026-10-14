@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-10-07
+updated: 2026-10-14
 ---
 
 # ChadVis backlog
@@ -64,6 +64,8 @@ line to describe an item is describing it in the wrong place. Finished work move
       guessed" (`SunoBridge.hpp:202-203`). A typo or future QML value issues
       `POST /playlist/update_clips/` with `update_type:"add"`. Fix: return early and emit
       a refusal through `playlistMutationSettled`.
+- [ ] T0183 **The appearance panel ships no colour editor — T0047's fix deleted the control instead of repairing it** (`src/qml/panels/settings/AppearanceSettings.qml`) #blocks-ui #risk-high #cod-high
+      The panel renders two 20×20 `Rectangle` swatches and two read-only `Text` hex labels in a `GridLayout`. **There is no `MouseArea`, no editable field and no picker anywhere in `src/qml/settings/` or `src/qml/panels/settings/`** — the sole `MouseArea` in either tree is `SettingsPageRail.qml:117`, the nav rail. So "clicking a colour does nothing" is the literal behaviour, not a failed interaction: there is nothing to click. `866b36e` (2026-10-14 08:15) removed the two `AppTextField`s because `AppTextField.text` was bound to `Theme.accent`, a `color` in a `string` field, which qmllint calls `incompatible-type`. That repaired the *reading* half of T0047 and **deleted the writing half**; its own message says "Those fields are gone: swatches read the colour, the hex is displayed as text". `apply()` (:32-43) now only re-commits the colours already in the singleton, so it is a no-op. Two claims on screen are false: "Changes are saved automatically when you apply them." (:93) and "Choose the accent and background palette" (`AppearancePage.qml:32`). Restore the write path with a real control — a hue/saturation field plus the hex field bound `text: Theme.toRgbaHex(Theme.accent)` with `onEditingFinished: Theme.applyAccent(text)`, which satisfies qmllint because the binding is string→string and the conversion happens in the handler rather than in a `color`→`string` coercion.
 
 ## P1 — correctness, robustness, and debt that will bite
 
@@ -343,6 +345,11 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 
 - [ ] T0182 **Bookmarklet credential handoff, so no user ever opens devtools** (`src/suno/auth/`) #risk-high
       A one-click bookmark on suno.com that POSTs `document.cookie` to a local listener removes the paste entirely, which is the difference between a feature novice users can complete and one they abandon. Gated on ONE captured fact: `LOGIN-CAPTURE-FINALIZATION.md` records the `Set-Cookie` attributes for `__session`/`__client` as `[VERIFY]` because the HAR stripped them. If `__session` is `HttpOnly` it is invisible to `document.cookie` and no client-side automation can read it — paste becomes the floor. Capture first; build only if the answer is favourable.
+
+- [ ] T0184 **`--theme dark/gruvbox/nord` is printed in `--help`, parsed, persisted, and read by nothing** (`src/core/Application.cpp:692`) #cleanup
+      `Cli::printOption("--theme <name>", "UI theme (dark/gruvbox/nord)", "dark")` (:692) and `CliArgs.inc:56` declare the flag; :407 applies it as an override into `CONFIG.ui().theme`. A tree-wide grep for `ui().theme` returns **only those two sites, and both are writes.** `theme = 'dark'` sits in `config/default.toml`, and the only readers are three assertions in `test_ConfigLoader.cpp`. So `--theme gruvbox` is accepted, persisted, and silently discarded — a shipped false affordance on a user-facing surface, advertising three themes that were deleted in `ab7018b` as 100 % dead (T0052). Either wire it to the live `Theme.qml` singleton (T0187) or delete the flag, the help line and the config key together. A flag naming themes the app cannot load is worse than no flag.
+- [ ] T0185 **The accent family is only half-derived, so a user-picked colour half-applies** (`src/qml/styles/Theme.qml`) #risk-high
+      `applyAccent` (:358-376) recomputes the five `accent*` tokens, but `glassBorder` (:52), `glassHighlight` (:53) and `glowAccent` (:249) hardcode `Qt.rgba(0, 0.733, 0.831, …)` — **the shipped cyan, frozen.** Change the accent and every glass border, highlight and glow stays cyan. `applyBackground` (:383-392) derives five of the surface family; `border` (:88), `borderLight` (:89) and `textDisabled` (:64) stay `readonly` at their dark values, so a light background yields ~1.0:1 text — the same defect T0118 already records. Derive every accent-dependent token from `accent`, and make the surface/border/text family derive from `background` with a lightness-aware branch. **This is what makes T0183's fix look broken on first use**, and it should land with it.
 
 ## P2 — robustness, cleanup, and debt
 
@@ -730,6 +737,9 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       template for the same machine (bounded concurrency, backoff, atomic `.part` rename,
       cancel, idle signal).
 
+- [ ] T0186 **The colour round-trip that T0047 shipped has no test, so the same class of bug returns silently** (`tests/unit/`) #risk-high
+      There is no theme test file, and no test anywhere in `tests/` references `parseRgbaHex`, `toRgbaHex` or `applyAccent` — the three functions that *were* the entire fix. `866b36e`'s own message names the guards it should have had: channel-equality assertions on accent **and background including alpha** (alpha is the field whose loss passed every colour-only check), plus a round trip over both the 6-digit and 8-digit forms. Minimum set: `#000000FF` stays opaque black, `#00FF88FF` stays opaque green and is not read as `#AARRGGBB`, `toRgbaHex(parseRgbaHex(x)) === x`, and a 6-digit input returns 8-digit opaque rather than transparent. This is the regression guard that lets T0183 and T0187 change the palette safely.
+
 ## P3 — polish and speculative
 
 - [ ] T0117 Localization: zero `qsTr` across 58 QML files, ~200 user-visible literals (#feature) #cod-high
@@ -828,6 +838,13 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       delete the ones with no effect.**
 - [ ] T0140 Remove the stale dead-code comment in `ConfigLoader` and other drifted comments (`src/core/ConfigLoader.cpp:120-123`) #cleanup
       The comment claims a fixed null deref that is already correct. Harmless but misleading.
+
+- [ ] T0187 A real theme engine: named palettes, a registry, runtime switching (`src/qml/styles/Theme.qml`) #feature #cod-high
+      The header advertises "Supports runtime theme switching via ThemeManager" — **`ThemeManager` has never existed in any of the 554 commits**; the line has been false since `8f7fd3d` (2026-03-16). The engine is recoverable. `vc::ThemeLoader` (`git show 9b35a7c:src/core/ThemeLoader.cpp`, 114 LOC, alive only on `recover/development`) did `CONFIG.ui().theme` → `:/styles/<name>.qss` → `setStyleSheet` with a `reload()`; a working `QComboBox` picker for `{dark, gruvbox, nord}` lived at `git show cd1cd59^:.backup_graveyard/ui.20260321_232055/SettingsDialog.cpp` until the Widgets→QML refactor (`2090ef2`). **Port the shape — name → palette → token map → hot reload — into the QML singleton as a registry. Do not restore the artifacts:** `ab7018b^:resources/styles/{gruvbox(147),nord(174),dark(360)}.qss` are genuine Qt **Widgets** stylesheets whose 27 `QWidget`-family selectors cannot exist in a `QGuiApplication` + QtQuick app (that is why T0052 deleted them), and the nine `resources/*-theme.qss` from `c03e75a` were skeletons — **five are git's 0-byte blob and four share one identical 77-byte catppuccin URL comment** (`git show 2d35091^:resources/gruvbox-theme.qss`). Real palettes already exist in this account and should be transcribed, not re-invented: `Nsomnia/suno-media-station-glm5.2/assets/themes/` carries Catppuccin Latte/Frappé/Macchiato/Mocha and Monokai, generated from the official `catppuccin` crate via `crates/foundation/design-tokens-theme-definitions/` — which is the provenance discipline the mockup's hand-copied 26 hex values lack. Delete the dangling `ThemeManager` claim as part of this.
+- [ ] T0188 The interaction language the design docs specify: hover-grow, 44×44 targets, responsive breakpoints (`src/qml/components/AppButton.qml`) #feature
+      `AppButton.qml:80` implements `scale: pressed ? 0.97 : 1.0` — **press-only, no hover-grow** — while the user's mockup (`~/Documents/qt-qml-responsive-desktop-mobile-esque-ui-mockup`, `Nsomnia/qt-qml-responsive-desktop-mobile-esque-ui-mockup`) specifies hover `1.02` / press `0.96` on `PrimaryButton` and `1.05` / `0.94` on `IconButton`, both 120 ms `OutCubic`, plus a 150 ms `ColorAnimation` on `Card.border.color`. The repo has hover-grow on `AppSlider` (:106) and `ClipCard` (:85) but **not on the primary button**, so the most-used control is the least alive. `Nsomnia/Resonance`'s `docs/inital-input-material/ui-ux/DESIGN_PHILOSOPHY.md` gives the governing rule — "mobile app sensibility on desktop", tap targets ≥44×44, and "if animation doesn't help understanding, remove it" — while `THEMING.md` gives the timing scale (fast 100–150, normal 200–300, slow 400–600 ms) that the current 50/150/250/400/600 ladder only half matches: `durationInstant` is 50 ms, below the fast floor. The mockup also breaks at 768 px with a `MobileNavBar`; the repo auto-collapses `NavRail` at `navRailAutoCollapseBelow` 1000 and has no bottom bar at all. Scale here is not decoration — it is the affordance T0119 is chasing.
+- [ ] T0189 Live preview, reset, and a contrast guard, so a colour picker cannot end in an unreadable UI (`src/qml/panels/settings/AppearanceSettings.qml`) #feature
+      T0183 restores the ability to pick a colour; this makes the result safe to use. Three gaps: **(a)** edits should apply live against `Theme` and persist on commit, not through one "Save & Apply" the user can lose; **(b)** there is no reset-to-default, so one bad pick is unrecoverable except by hand-editing `config.toml`; **(c)** nothing validates the result. `applyBackground` leaves `border`/`borderLight`/`textDisabled` frozen dark (T0185), and T0083 measured the palette at `textDisabled` 1.95–2.77:1, `recording` 3.07:1, `textSecondary` 3.46:1, `error` 3.60:1 — so a user who picks a light background gets unreadable text with no feedback. Add a live WCAG readout (4.5:1 text, 3:1 UI) beside each swatch and warn below the bar. Lands with T0118, which needs a light path the dead `.qss` files cannot provide.
 
 ## Refuted claims — do not re-investigate these
 
