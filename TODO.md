@@ -275,13 +275,6 @@ line to describe an item is describing it in the wrong place. Finished work move
       `Theme.applyAccent/applyBackground` write only the in-memory singleton
       (`Theme.qml:296-316`); `SettingsBridge.hpp` declares no such property. The claims at
       `SettingsView.qml:39` ("auto-saved as you tweak") and `SettingsPanel.qml:8` are false.
-- [ ] T0048 **No qmllint configuration and no lint gate** (`.qmllint.ini`, `.github/`) #risk-high
-      Zero `.qmllint.ini` and no `all_qmllint` in CI. `qt_add_qml_module` auto-creates a
-      `<target>_qmllint` target — wire it with `-W 0 --json -`, and turn on
-      `CompilerWarnings=warning` (qmlsc diagnostics, disabled by default),
-      `UnusedImports=error`, `UnqualifiedAccess=error`,
-      `TranslationFunctionMismatch=error`. This is the single highest-value guard
-      available against the runtime-only QML class. (after: T0049)
 - [ ] T0049 **Qt 6.12 can convert missing `required property` into a load-time error — not used** (`src/qml/`, `src/core/Application.cpp`) #risk-high
       "When instantiating a component with missing required properties, the engine now
       reports an error instead of silently constructing an incomplete object." Marking
