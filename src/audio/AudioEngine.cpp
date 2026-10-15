@@ -428,7 +428,17 @@ void AudioEngine::loadCurrentTrack() {
 }
 
 void AudioEngine::prepareNextTrack() {
-    const auto nextItem = playlist_.itemAt(playlist_.currentIndex().value_or(0) + 1);
+    // T0172. This used to derive `currentIndex() + 1` — the LINEAR successor —
+    // while shuffle was active, whose traversal order is the permutation. On
+    // EndOfMedia the player holding this pre-loaded source is swapped in as
+    // the active one, so the wrong pre-buffer did not merely cost a warm-up:
+    // it made the WRONG TRACK play. peekNextIndex() mirrors next() exactly and
+    // answers nullopt at the one point it cannot know (the shuffle wrap under
+    // Repeat::All regenerates the permutation), where clearing the pre-load
+    // takes the non-swap advance path instead.
+    const auto nextIndex = playlist_.peekNextIndex();
+    const auto nextItem = nextIndex ? playlist_.itemAt(*nextIndex)
+                                   : std::optional<PlaylistItem>{};
     if (!nextItem) {
         nextPlayer_->setSource(QUrl());
         return;

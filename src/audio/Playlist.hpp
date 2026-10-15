@@ -102,6 +102,23 @@ public:
     bool next();
     bool previous();
     /**
+     * @brief The index next() would select, without selecting it.
+     *
+     * Mirrors next() branch for branch so a consumer can pre-load exactly the
+     * track that will play. The one case it cannot answer is the shuffle
+     * wrap under Repeat::All: next() regenerates the permutation there, so
+     * which track comes next is genuinely unknowable in advance, and the peek
+     * returns nullopt rather than guessing. A caller that pre-loads from this
+     * (AudioEngine::prepareNextTrack) must treat nullopt as "no pre-load":
+     * its EndOfMedia path swaps players onto whatever was pre-loaded, so a
+     * wrong guess plays the wrong track while a missing pre-load only costs a
+     * decoder warm-up.
+     *
+     * Repeat::One re-emits the current index by design; the peek reports it
+     * too, since pre-loading the same track is exactly what a replay wants.
+     */
+    [[nodiscard]] std::optional<usize> peekNextIndex() const;
+    /**
      * @brief Begin playback: select the first track, or the first entry of the
      *        shuffled traversal.
      *

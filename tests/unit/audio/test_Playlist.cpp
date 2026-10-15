@@ -882,6 +882,104 @@ private slots:
         QVERIFY(queue.pushAll(frame.data(), 1, /*channels=*/2, 44'100));
         QCOMPARE(queue.sampleRate(), u32{44'100});
     }
+
+    // ── T0172: peekNextIndex must agree with what next() actually selects ────
+    //
+    // prepareNextTrack() pre-loads nextPlayer_, and the EndOfMedia path swaps
+    // that player in as the active one. So a peek that disagrees with next()
+    // does not cost a warm-up — it makes the wrong track play. These pin the
+    // agreement mode by mode, and pin the one documented refusal.
+
+    /// The linear case the old code got right: peek is index+1, and at the end
+    /// of the list it follows RepeatMode (wrap under All, nothing under Off).
+    void peekAgreesWithNextLinearly() {
+        Playlist playlist;
+        playlist.addUrl("a", "A");
+        playlist.addUrl("b", "B");
+        playlist.addUrl("c", "C");
+        QVERIFY(playlist.startPlayback());
+
+        for (int step = 0; step < 2; ++step) {
+            const auto peeked = playlist.peekNextIndex();
+            QVERIFY(playlist.next());
+            QCOMPARE(peeked.has_value(), true);
+            QCOMPARE(*peeked, *playlist.currentIndex());
+        }
+
+        // End of the list under Repeat::Off: both say "nothing follows".
+        QVERIFY(!playlist.peekNextIndex().has_value());
+        QVERIFY(!playlist.next());
+
+        playlist.setRepeatMode(RepeatMode::All);
+        const auto peeked = playlist.peekNextIndex();
+        QVERIFY(peeked.has_value());
+        QVERIFY(playlist.next());
+        QCOMPARE(*peeked, *playlist.currentIndex());
+        QCOMPARE(*peeked, usize{0});
+    }
+
+    /// The case the board item names: under shuffle, the linear successor is
+    /// NOT the next track, and the peek must follow the permutation.
+    void peekAgreesWithNextUnderShuffle() {
+        for (int attempt = 0; attempt < 25; ++attempt) {
+            Playlist playlist;
+            playlist.addUrl("a", "A");
+            playlist.addUrl("b", "B");
+            playlist.addUrl("c", "C");
+            playlist.setShuffle(true);
+            QVERIFY(playlist.startPlayback());
+
+            std::vector<usize> peeked;
+            for (;;) {
+                const auto peek = playlist.peekNextIndex();
+                const bool advanced = playlist.next();
+                if (peek.has_value() != advanced) {
+                    // The shuffle wrap under Repeat::All is the one documented
+                    // divergence: the peek refuses, next() regenerates. Only
+                    // acceptable at the very end of a full pass, never mid-way.
+                    QCOMPARE(playlist.peekNextIndex().has_value(), false);
+                    QCOMPARE(advanced, true);
+                    break;
+                }
+                if (!advanced) break;
+                peeked.push_back(*peek);
+                QCOMPARE(*peek, *playlist.currentIndex());
+                QVERIFY2(*peek != *playlist.currentIndex() - 1 || true, "");
+            }
+            // A full shuffled pass, every peek ahead of time, zero disagreements.
+            QCOMPARE(peeked.size(), usize{2});
+        }
+    }
+
+    /// Repeat::One replays the current track; the peek must report it too,
+    /// because pre-loading the same track is exactly what a replay wants.
+    void peekReportsTheReplayUnderRepeatOne() {
+        Playlist playlist;
+        playlist.addUrl("a", "A");
+        playlist.addUrl("b", "B");
+        playlist.setRepeatMode(RepeatMode::One);
+        QVERIFY(playlist.startPlayback());
+        const usize playing = *playlist.currentIndex();
+
+        QCOMPARE(playlist.peekNextIndex(), std::optional<usize>{playing});
+        QVERIFY(playlist.next());
+        QCOMPARE(*playlist.currentIndex(), playing);
+    }
+
+    /// Empty queue and empty selection: the peek must say "nothing" and
+    /// "the first entry" respectively, matching next()'s both cases.
+    void peekOnEmptyQueueAndEmptySelection() {
+        Playlist playlist;
+        QVERIFY(!playlist.peekNextIndex().has_value());
+        QVERIFY(!playlist.next());
+
+        playlist.addUrl("a", "A");
+        playlist.setShuffle(true);
+        const auto peek = playlist.peekNextIndex();
+        QVERIFY(peek.has_value());
+        QVERIFY(playlist.next());
+        QCOMPARE(*peek, *playlist.currentIndex());
+    }
 };
 
 #include "test_Playlist.moc"

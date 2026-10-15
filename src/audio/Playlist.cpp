@@ -376,6 +376,49 @@ bool Playlist::next() {
     return true;
 }
 
+std::optional<usize> Playlist::peekNextIndex() const {
+    assertOwnerThread(__func__);
+
+    if (items_.empty()) return std::nullopt;
+
+    // Mirrors next()'s guard exactly: Repeat::One only re-emits when there is
+    // a selection to re-emit; with none, next() falls through to traversal.
+    if (repeatMode_ == RepeatMode::One && currentIndex_) {
+        return currentIndex_;
+    }
+
+    if (shuffle_) {
+        if (!currentIndex_) {
+            // next() begins at the permutation entry shufflePosition_ already
+            // points at; the empty-selection case does not step past it.
+            if (shufflePosition_ < shuffleOrder_.size()) {
+                return shuffleOrder_[shufflePosition_];
+            }
+            return std::nullopt;
+        }
+        const usize nextPos = shufflePosition_ + 1;
+        if (nextPos < shuffleOrder_.size()) {
+            return shuffleOrder_[nextPos];
+        }
+        // next() under Repeat::All wraps by REGENERATING the permutation and
+        // taking its new first entry, so the concrete track is unknowable
+        // here without performing the very mutation a peek must not perform.
+        // Refusing rather than guessing is the whole point: the engine swaps
+        // players onto whatever was pre-loaded, so a guess plays the wrong
+        // track while a refusal only costs a decoder warm-up.
+        return std::nullopt;
+    }
+
+    if (!currentIndex_) {
+        return usize{0};
+    }
+    const usize next = *currentIndex_ + 1;
+    if (next < items_.size()) {
+        return next;
+    }
+    return repeatMode_ == RepeatMode::All ? std::optional<usize>{0} : std::nullopt;
+}
+
 bool Playlist::previous() {
     assertOwnerThread(__func__);
 
