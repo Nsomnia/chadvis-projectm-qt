@@ -157,6 +157,73 @@ ColumnLayout {
         }
     }
 
+    // ── Contrast readout ──────────────────────────────────────────────────
+    //
+    // T0189. This exists because the picker will happily let you set 1.4:1
+    // grey text and then tell you nothing, and "why is everything grey" is a
+    // bad afternoon. Two numbers, both measured live, both recomputed as the
+    // theme changes -- these are bindings, so they cannot drift.
+    //
+    // `surfaceRaised` is the surface the labels actually sit on; using
+    // `background` would flatter every number by a full step.
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Theme.spacingMedium
+
+        Text {
+            text: "Body text"
+            color: Theme.textSecondary
+            font: Theme.fontCaption
+        }
+
+        Text {
+            text: Theme.formatContrast(Theme.textPrimary, Theme.surfaceRaised)
+            color: Theme.contrastRatio(Theme.textPrimary, Theme.surfaceRaised) >= 4.5
+                   ? Theme.success : Theme.warning
+            font: Theme.fontCaption
+        }
+
+        Text {
+            text: "Secondary"
+            color: Theme.textSecondary
+            font: Theme.fontCaption
+        }
+
+        Text {
+            text: Theme.formatContrast(Theme.textSecondary, Theme.surfaceRaised)
+            color: Theme.contrastRatio(Theme.textSecondary, Theme.surfaceRaised) >= 4.5
+                   ? Theme.success : Theme.warning
+            font: Theme.fontCaption
+        }
+
+        Text {
+            text: "Accent as focus ring"
+            color: Theme.textSecondary
+            font: Theme.fontCaption
+        }
+
+        Text {
+            text: Theme.formatContrast(Theme.accent, Theme.surfaceRaised)
+            // 3:1, not 4.5: the accent is a UI component outline (WCAG 1.4.11),
+            // not body text.
+            color: Theme.contrastRatio(Theme.accent, Theme.surfaceRaised) >= 3.0
+                   ? Theme.success : Theme.warning
+            font: Theme.fontCaption
+        }
+
+        Item { Layout.fillWidth: true }
+    }
+
+    Text {
+        Layout.fillWidth: true
+        text: "Contrast is measured as you change colours. Body text needs 4.5:1; "
+              + "the accent, as a focus ring, needs 3:1."
+        color: Theme.textDisabled
+        font: Theme.fontCaption
+        wrapMode: Text.WordWrap
+    }
+
     // ── Buttons ────────────────────────────────────────────────────────────
 
     RowLayout {

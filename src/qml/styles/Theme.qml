@@ -466,6 +466,44 @@ QtObject {
     }
 
     // ═══════════════════════════════════════════════════════════
+    // CONTRAST
+    //
+    // Shown live beside the colour pickers (T0189). A picker that accepts
+    // anything and says nothing is how a user ends up with unreadable grey
+    // text and no explanation.
+    //
+    // WCAG defines relative luminance on LINEARISED channels, not on the
+    // gamma-encoded BT.601 values that luma() uses. Conflating the two is a
+    // real and common mistake: on a dark background it understates every
+    // ratio. scripts/check-theme-contrast.py made exactly that mistake first
+    // and reported a palette as failing that was comfortably passing, so the
+    // two functions are kept deliberately distinct.
+    // ═══════════════════════════════════════════════════════════
+
+    /// WCAG 2.x relative luminance.
+    function relativeLuminance(c) {
+        const channel = function (v) {
+            return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+    }
+
+    /// WCAG 2.x contrast ratio, 1.0 to 21.0.
+    function contrastRatio(fg, bg) {
+        const a = relativeLuminance(fg)
+        const b = relativeLuminance(bg)
+        const hi = a > b ? a : b
+        const lo = a > b ? b : a
+        return (hi + 0.05) / (lo + 0.05)
+    }
+
+    /// "12.3:1" — the form a person can read at a glance. One decimal; a
+    /// ratio to three places is noise pretending to be precision.
+    function formatContrast(fg, bg) {
+        return contrastRatio(fg, bg).toFixed(1) + ":1"
+    }
+
+    // ═══════════════════════════════════════════════════════════
     // THEME APPLICATION
     //
     // One entry point: applyThemeById(). Startup seeding (main.qml), the
