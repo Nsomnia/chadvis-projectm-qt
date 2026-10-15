@@ -160,3 +160,4 @@ STATUS/*.claim
 build.log
 __pycache__/
 *.pyc
+.qt-stitch/

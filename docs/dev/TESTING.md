@@ -11,6 +11,29 @@ This file documents the **automated** tests and how to run them. The interactive
 ctest --test-dir build/tests --output-on-failure
 ```
 
+### Gotcha: a build directory remembers its Qt, and a half-upgraded Homebrew lies about it
+
+`CMAKE_PREFIX_PATH` is cached. Changing `CHADVIS_QT_PATH` or passing `--qt` to an **existing** build directory does not take effect — the cache still holds the old prefix, and the failure names files from the *old* Qt, not the one you just pointed at. AGENTS.md warns about this in general; the concrete symptom on this machine was:
+
+```
+The imported target "Qt6::harmonydeployqt" references the file
+"/usr/local/opt/qt/bin/harmonydeployqt" but this file does not exist
+```
+
+which reads like a broken project and is a broken package manager. `brew upgrade` had left the `qt` umbrella at 6.11.1 while qtbase, qtdeclarative, qtmultimedia and qttools all moved to 6.12.0, so the umbrella's cmake files described a `bin/` that no longer had those tools in it.
+
+Two distinct failures live here and they are worth telling apart:
+
+* **Components split across prefixes.** `Qt6Config.cmake` only looks for its components *beside itself*, so `CMAKE_PREFIX_PATH="/usr/local/opt/qtbase;/usr/local/opt/qtdeclarative"` does not find `Qt6Multimedia` — it is not next to qtbase's config. Homebrew ships the umbrella broken, so `scripts/qt-stitch.sh` builds `.qt-stitch/`: one prefix of symlinks uniting the 6.12.0 formulae. Nothing is copied and Homebrew is not touched; delete the directory to undo it.
+
+```bash
+scripts/qt-stitch.sh
+mv build-fast .backup_graveyard/        # the cache still names the old Qt
+./build.sh --fast --tests --qt "$PWD/.qt-stitch"
+```
+
+The stitch is a workaround, not a fix. `brew upgrade qt` completing removes the need for it. `scripts/qt-stitch.sh` reports which components it found, and writes nothing into `/usr/local` — an early draft did, creating `*.d` directories inside qtbase, which is why the merge order in that script is load-bearing and commented as such.
+
 ### Gotcha: `--test-dir build` is a false green
 
 `ctest --test-dir build` reports **SUCCESS while discovering zero tests**, and it will keep doing so until someone notices there is no `build/CTestTestfile.cmake`. The test tree is configured by `tests/CMakeLists.txt`, so the generated `CTestTestfile.cmake` lands in `build/tests/`, not `build/`. Confirm it before you trust a green run:
