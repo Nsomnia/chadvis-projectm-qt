@@ -475,7 +475,7 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       Window-scope `Esc` outranks the modal dialog, so a user backing out of a destructive
       confirmation instead dismisses the window — losing unsaved edits per T0046. Directly
       contradicts `main.qml:560-561`.
-- [ ] T0075 Destructive actions with no confirmation (`src/qml/panels/PlaylistPanel.qml:268,262`, `src/qml/panels/SettingsPanel.qml:83`) #risk-high
+- [x] T0075 Destructive actions with no confirmation (`src/qml/panels/PlaylistPanel.qml:268,262`, `src/qml/panels/SettingsPanel.qml:83`) #risk-high
       "Clear All" destroys the whole playlist in one right-click. The live path
       (`SettingsWindow.qml:141-146`) does have a dialog — copy it.
 - [ ] T0076 Views with no loading, empty, or error state (`src/qml/views/VideoView.qml:18-53`, `panels/PresetsPanel.qml:45-54`, `panels/PlaylistPanel.qml:87`, `components/TransportBar.qml`) #blocks-ui

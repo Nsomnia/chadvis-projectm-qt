@@ -21,6 +21,18 @@ ColumnLayout {
 
     spacing: Theme.spacingSmall
 
+    // T0075. "Clear All" used to call PlaylistBridge.clear() directly, from two
+    // places — the toolbar button and the context menu — so one click (or one
+    // right-click, no less) destroyed the whole queue with no way back. The
+    // live path already had the right shape: SettingsWindow's reset asks first.
+    // Both entries now route through requestClearAll(), and the ONLY clear()
+    // call in this panel is inside the dialog's onAccepted. Named so the
+    // integration test can pin "requesting clear opens a confirmation" without
+    // performing the destruction.
+    function requestClearAll() {
+        clearConfirm.open()
+    }
+
     // QML has no QUrl.fromLocalFile(), so build a well-formed file URL
     // manually: normalize Windows separators and percent-encode. Naive
     // "file://" + path concatenation corrupts spaces, '#'/'?', and drive
@@ -78,7 +90,7 @@ ColumnLayout {
             implicitWidth: 28
             implicitHeight: 28
             radius: Theme.radiusSmall
-            onClicked: PlaylistBridge.clear()
+            onClicked: root.requestClearAll()
         }
 
         Item { Layout.fillWidth: true }
@@ -266,7 +278,7 @@ Menu {
 
         MenuItem {
             text: "Clear All"
-            onTriggered: PlaylistBridge.clear()
+            onTriggered: root.requestClearAll()
         }
 
         MenuSeparator {}
@@ -301,5 +313,35 @@ Menu {
             }
             PlaylistBridge.addFiles(urls);
         }
+    }
+
+    // T0075. The one confirmation the queue cannot come back from. Mirrors the
+    // SettingsWindow reset dialog's shape (modal, Yes/No, the consequence in
+    // plain words) so the two destructive flows read as the same product.
+    Dialog {
+        id: clearConfirm
+        // Named for the integration test, which pins that REQUESTING the clear
+        // opens this rather than performing it. Deliberately not accepted in
+        // that test: clearing would destroy a real queue, and the defect being
+        // pinned is the missing ask, not Qt's Yes button.
+        objectName: "clearConfirm"
+        title: "Clear the playlist?"
+        modal: true
+        width: 420
+        standardButtons: Dialog.Yes | Dialog.No
+
+        contentItem: ColumnLayout {
+            spacing: Theme.spacingMedium
+
+            Text {
+                Layout.fillWidth: true
+                text: "Every track in the queue will be removed. This cannot be undone."
+                color: Theme.textPrimaryVariant
+                font: Theme.fontBody
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        onAccepted: PlaylistBridge.clear()
     }
 }

@@ -318,6 +318,44 @@ private slots:
         settings->hide();
         QVERIFY(!settings->isVisible());
     }
+
+    /// T0075. "Clear All" used to call PlaylistBridge.clear() directly from two
+    /// entry points, so one right-click destroyed the whole queue. Both now
+    /// route through requestClearAll(), which opens a confirmation. This pins
+    /// the ask: requesting the clear opens the dialog and clears nothing.
+    ///
+    /// Deliberately NOT accepted here. Accepting would clear a real queue —
+    /// the test's AudioEngine is the user's config directory — and the defect
+    /// being pinned is the missing confirmation, not Qt's Yes button. The
+    /// un-accepted leg is what makes this test safe to run on a machine with
+    /// a live playlist.
+    void requestingClearAllOpensAConfirmation()
+    {
+        vc::AudioEngine audio;
+        QQmlApplicationEngine engine;
+        auto* window = loadShell(audio, engine);
+        QVERIFY(window);
+
+        // The panel is instantiated inside the shell; find it by the dialog it
+        // now owns, which is also the thing being asserted.
+        auto* dialog = window->findChild<QObject*>(QStringLiteral("clearConfirm"));
+        QVERIFY2(dialog, "PlaylistPanel declares no Dialog named "
+                         "\"clearConfirm\" — the Clear All path changed and "
+                         "this test has nothing to pin");
+        QVERIFY(!dialog->property("opened").toBool());
+
+        // The panel's single routed entry point. Red against the old code:
+        // requestClearAll() did not exist, and the entries cleared directly.
+        auto* panel = dialog->parent();
+        QVERIFY(QMetaObject::invokeMethod(panel, "requestClearAll"));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+
+        // Close without accepting: the queue must be untouched. Nothing is
+        // asserted about PlaylistBridge's count — the singleton in this process
+        // is not wired to the engine, and asserting on it would be vacuous.
+        QVERIFY(QMetaObject::invokeMethod(dialog, "close"));
+        QTRY_VERIFY(!dialog->property("opened").toBool());
+    }
 };
 
 int main(int argc, char* argv[])
