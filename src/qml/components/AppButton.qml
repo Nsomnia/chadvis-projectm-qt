@@ -77,8 +77,35 @@ Rectangle {
         visible: root.activeFocus
     }
 
-    scale: mouseArea.pressed ? 0.97 : 1.0
-    Behavior on scale { NumberAnimation { duration: Theme.durationInstant } }
+    // T0188. The app's primary control used to react to PRESS only -- scale 0.97 --
+    // and not at all to hover. That is not a mistake of taste so much as a
+    // desktop convention: a mouse user is assumed to be looking. The reference
+    // design this app is heading towards treats it like a touch surface that
+    // happens to have a cursor, and gives hover its own state.
+    //
+    // 1.02 on hover is small on purpose. It has to read as "this responds to
+    // you" without making a row of buttons shimmer, which is what a larger
+    // factor does the moment three of them are adjacent. The press state is
+    // deeper than the hover state because press is a decision, not a question.
+    //
+    // `durationFast` is 150 ms, which is the top of the 100-150 ms band the
+    // design docs call "fast" for hover and press. Instant (50 ms) was what
+    // this used, and at 50 ms the grow reads as a flicker rather than a
+    // response.
+    readonly property real hoverScale: 1.02
+    readonly property real pressScale: 0.96
+
+    scale: !root.enabled ? 1.0
+                             : (mouseArea.pressed ? root.pressScale
+                                : (mouseArea.containsMouse ? root.hoverScale : 1.0))
+    Behavior on scale {
+        NumberAnimation {
+            duration: Theme.durationFast
+            // OutCubic on the way up, InCubic on the way down. The asymmetry is
+            // what makes it feel like an object rather than a slider.
+            easing.type: root.pressed ? Easing.InCubic : Easing.OutCubic
+        }
+    }
 
     RowLayout {
         id: buttonLayout
@@ -109,6 +136,11 @@ Rectangle {
             font: Theme.fontBody
         }
     }
+
+    // The MouseArea is left enabled when the button is not, so that its
+    // cursorShape can still say "not now". That means `pressed` and
+    // `containsMouse` are both live on a DISABLED button, and both have to be
+    // gated on root.enabled above or a disabled button still reacts.
 
     MouseArea {
         id: mouseArea

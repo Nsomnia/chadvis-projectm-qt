@@ -202,9 +202,11 @@ set(UI_SOURCES
 set(QML_SOURCES
     src/qml/main.qml
     src/qml/styles/Theme.qml
+    src/qml/styles/ThemeDefinitions.qml
     src/qml/components/AppButton.qml
     src/qml/components/AppSlider.qml
     src/qml/components/AppTextField.qml
+    src/qml/components/AppColorPicker.qml
     src/qml/components/AppComboBox.qml
     src/qml/components/AppSwitch.qml
     src/qml/components/SectionHeader.qml

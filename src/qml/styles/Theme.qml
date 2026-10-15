@@ -1,15 +1,19 @@
 /**
-* @file Theme.qml
-* @brief Theme singleton providing consistent styling across QML components
-*
-* Defines color palette, metrics, and typography for the modern UI.
-* Supports runtime theme switching via ThemeManager.
-*
-* Mutable properties: accent family + background family (user-customizable)
-* Readonly properties: text, semantic, border, metrics, typography, shadows
-*
-* @version 1.1.0
-*/
+ * @file Theme.qml
+ * @brief Theme singleton providing consistent styling across QML components
+ *
+ * Defines color palette, metrics, and typography for the modern UI.
+ * Runtime theme switching happens through this singleton: applyAccent() and
+ * applyBackground() mutate the two base colors and every derived token
+ * re-evaluates. There is no ThemeManager -- the line this replaces named a
+ * class that never existed in any of the 554 commits up to T0185.
+ *
+ * Mutable: accent + background (the two user-customizable bases)
+ * Derived: surfaces, glass, text ramp, borders, glow -- bindings on the bases
+ * Fixed:   metrics, typography, shadows, and the semantic colors T0119 owns
+ *
+ * @version 1.1.0
+ */
 
 pragma Singleton
 import QtQuick
@@ -24,70 +28,180 @@ QtObject {
     // SIGNALS
     // ═══════════════════════════════════════════════════════════
 
-    /** Emitted when any mutable theme property changes (accent or background family) */
+    /**
+     * Emitted once after a theme has been fully applied, so the UI repaints
+     * once per theme change rather than once per token.
+     */
     signal themeChanged()
 
     // ═══════════════════════════════════════════════════════════
-    // PRIMARY PALETTE - Cyan accent system (MUTABLE)
+    // THEME STATE
+    //
+    // A theme is a *definition*: a named set of tokens. The definition's
+    // explicit values live in `overrides`; everything not named there is
+    // derived. That is the whole model, and it is deliberately one mechanism
+    // rather than two:
+    //
+    //   - a named theme sets `overrides` to the definition's `colors` map
+    //   - the colour picker adds/overwrites `overrides.accent` and
+    //     `overrides.background`, which makes the active theme `custom`
+    //
+    // Both paths then repaint every token through `themed()` below.
+    //
+    // `overrides` holds #RRGGBBAA STRINGS, not colours, so that every value
+    // passes through parseRgbaHex() on the way in. That is the T0047 fix and
+    // it is not optional: Qt reads an 8-digit hex as #AARRGGBB.
+    //
+    // `overrides` is REPLACED wholesale, never mutated in place. QML does not
+    // reliably re-evaluate a binding that reads a member of a `var` object
+    // that was mutated underneath it; assigning a fresh object definitely
+    // invalidates, and it costs one object per theme change.
     // ═══════════════════════════════════════════════════════════
 
-    property color accent: "#00bcd4"
-    property color accentHover: "#26c6da"
-    property color accentPressed: "#0097a7"
-    property color accentLight: "#80deea"
-    property color accentDark: "#00838f"
+    /// The active definition's explicit token values, as #RRGGBBAA strings.
+    /// Empty means "derive everything", which is what a first run looks like
+    /// before applyThemeById() has been called.
+    property var overrides: ({})
+
+    /// The id of the theme actually applied, after the fallback chain has had
+    /// its say. Never the *requested* id: if the request was unknown,
+    /// `currentThemeId` reports what the user is looking at, not what they
+    /// asked for (THEME-ENGINE-PLAN.md §9.3.2).
+    property string currentThemeId: ""
+
+    /// The `custom` pseudo-theme. Not a definition and never a file: it is the
+    /// user's own accent/background with everything else derived.
+    readonly property string customThemeId: "custom"
+
+    /// True when the active theme is the user's own colours.
+    readonly property bool isCustom: currentThemeId === customThemeId
+
+    /// The token `name` from `overrides`, or `derived` when the active
+    /// definition does not name it.
+    function themed(name, derived) {
+        const value = overrides[name]
+        return value === undefined ? derived : parseRgbaHex(value)
+    }
 
     // ═══════════════════════════════════════════════════════════
-    // BACKGROUND COLORS - Dark theme base (MUTABLE)
+    // PRIMARY PALETTE - Accent family
     // ═══════════════════════════════════════════════════════════
 
-    property color background: "#1a1a1a"
-    property color backgroundAlt: "#1e1e1e"
-    property color surface: "#252525"
-    property color surfaceRaised: "#2d2d2d"
-    property color surfaceOverlay: "#353535"
+    property color accent: themed("accent", "#00bcd4")
+    readonly property color accentHover: themed("accentHover", lighten(accent, 0.15))
+    readonly property color accentPressed: themed("accentPressed", darken(accent, 0.12))
+    readonly property color accentLight: themed("accentLight", lighten(accent, 0.50))
+    readonly property color accentDark: themed("accentDark", darken(accent, 0.12))
 
-    // Glassmorphism backgrounds (semi-transparent)
-    readonly property color glassBackground: Qt.rgba(0.164, 0.164, 0.164, 0.85)
-    readonly property color glassBorder: Qt.rgba(0, 0.733, 0.831, 0.3)
-    readonly property color glassHighlight: Qt.rgba(0, 0.733, 0.831, 0.1)
+    // ═══════════════════════════════════════════════════════════
+    // COLOUR DERIVATION
+    //
+    // Every token below is DERIVED from exactly two mutable inputs: `accent`
+    // and `background`. That is the whole point. T0185: `glassBorder`,
+    // `glassHighlight` and `glowAccent` hardcoded the shipped cyan, and
+    // `border`, `borderLight` and `textDisabled` were `readonly` at their dark
+    // values -- so a user who picked an accent got cyan glass, and a user who
+    // picked a background got unreadable text, with no way to tell the picker
+    // from the bug. T0118 recorded the same defect from the light-mode side.
+    //
+    // The ramp is RELATIVE, not multiplicative. `Qt.lighter(black, 2)` is still
+    // black, so the old `Qt.lighter` chain collapsed to a flat black UI at the
+    // value actually in config.toml (`visualizer_background = '#000000FF'`).
+    // Moving toward the opposite pole by a fraction of the distance that
+    // remains produces a usable ramp from any base, black included, and keeps
+    // the hand-tuned proportions of the dark defaults.
+    //
+    // The fractions below are the dark defaults expressed that way, each fitted
+    // against `#1a1a1a` so the dark theme renders as it did:
+    //
+    //   background #1a1a1a   surface #252525   raised #2d2d2d   overlay #353535
+    //   border     #3a3a3a   text    #e0e0e0   secondary #888888  disabled #606060
+    //
+    // ═══════════════════════════════════════════════════════════
+
+    /// Perceived brightness, 0..1. ITU-R BT.601 luma.
+    function luma(c) {
+        return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b
+    }
+
+    /// Move `base` toward the opposite pole (white on a dark base, black on a
+    /// light one) by `fraction` of the distance remaining, per channel so a
+    /// tinted background ramps along its own hue. Alpha is carried through.
+    function ramp(base, fraction) {
+        const toward = luma(base) > 0.5 ? 0.0 : 1.0
+        const shift = function(c) {
+            const moved = c + (toward - c) * fraction
+            return Math.max(0, Math.min(1, moved))
+        }
+        return Qt.rgba(shift(base.r), shift(base.g), shift(base.b), base.a)
+    }
+
+    /// True when the background is light enough that text on it must be dark.
+    /// This is the branch T0118 needs and does not have.
+    readonly property bool backgroundIsLight: luma(background) > 0.5
+
+    /// True when the accent is light enough that text on it must be dark. The
+    /// shipped `#00bcd4` cyan lands just above the threshold, so the default
+    /// textOnAccent stays dark exactly as it was hardcoded.
+    readonly property bool accentIsLight: luma(accent) > 0.5
+
+    // ═══════════════════════════════════════════════════════════
+    // BACKGROUND COLORS (MUTABLE base, everything else derived)
+    // ═══════════════════════════════════════════════════════════
+
+    property color background: themed("background", "#1a1a1a")
+    readonly property color backgroundAlt: themed("backgroundAlt", ramp(background, 0.02))
+    readonly property color surface: themed("surface", ramp(background, 0.05))
+    readonly property color surfaceRaised: themed("surfaceRaised", ramp(background, 0.085))
+    readonly property color surfaceOverlay: themed("surfaceOverlay", ramp(background, 0.12))
+
+    // Glassmorphism backgrounds (semi-transparent). The base followed a
+    // hardcoded neutral grey and both tints followed the hardcoded cyan; all
+    // three now follow the surface and the accent.
+    readonly property color glassBackground: Qt.rgba(surface.r, surface.g, surface.b, 0.85)
+    readonly property color glassBorder: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
+    readonly property color glassHighlight: Qt.rgba(accent.r, accent.g, accent.b, 0.10)
 
     // ═══════════════════════════════════════════════════════════
     // TEXT COLORS
     // ═══════════════════════════════════════════════════════════
 
-    readonly property color textPrimary: "#e0e0e0"
+    readonly property color textPrimary: themed("textPrimary", ramp(background, 0.864))
     // Softened primary for large quiet surfaces (was referenced by panels but
-    // never defined — LyricsPanel/OverlayPanel used it as an implicit undefined)
-    readonly property color textPrimaryVariant: "#bdbdbd"
-    readonly property color textSecondary: "#888888"
-    readonly property color textDisabled: "#606060"
-    readonly property color textOnAccent: "#1a1a1a"
-    readonly property color textLink: accent
+    // never defined — LyricsPanel/OverlayPanel used it as an implicit undefined).
+    // T0119 measured this at 6.53-9.26:1 and says leave it alone; the fraction
+    // below reproduces #bdbdbd exactly at the dark base, so it is untouched.
+    readonly property color textPrimaryVariant: themed("textPrimaryVariant", ramp(background, 0.712))
+    readonly property color textSecondary: themed("textSecondary", ramp(background, 0.480))
+    readonly property color textDisabled: themed("textDisabled", ramp(background, 0.305))
+    // Follows the ACCENT, not the background: a light accent needs dark text.
+    readonly property color textOnAccent: themed("textOnAccent",
+                                                accentIsLight ? "#1a1a1a" : ramp(accent, 0.88))
+    readonly property color textLink: themed("textLink", accent)
 
     // ═══════════════════════════════════════════════════════════
     // SEMANTIC COLORS
     // ═══════════════════════════════════════════════════════════
 
-    readonly property color success: "#00ff88"
-    readonly property color successDim: "#00cc6a"
-    readonly property color warning: "#ffb300"
-    readonly property color warningDim: "#cc8f00"
-    readonly property color error: "#ff4444"
-    readonly property color errorDim: "#cc3535"
-    readonly property color info: accent
+    readonly property color success: themed("success", "#00ff88")
+    readonly property color successDim: themed("successDim", darken(success, 0.20))
+    readonly property color warning: themed("warning", "#ffb300")
+    readonly property color warningDim: themed("warningDim", darken(warning, 0.20))
+    readonly property color error: themed("error", "#ff4444")
+    readonly property color errorDim: themed("errorDim", darken(error, 0.20))
+    readonly property color info: themed("info", accent)
 
     // Recording indicator
-    readonly property color recording: "#ff0000"
-    readonly property color recordingPulse: "#ff3333"
+    readonly property color recording: themed("recording", "#ff0000")
+    readonly property color recordingPulse: themed("recordingPulse", "#ff3333")
 
     // ═══════════════════════════════════════════════════════════
     // BORDER COLORS
     // ═══════════════════════════════════════════════════════════
 
-    readonly property color border: "#3a3a3a"
-    readonly property color borderLight: "#4a4a4a"
-    readonly property color borderFocus: accent
+    readonly property color border: themed("border", ramp(background, 0.139))
+    readonly property color borderLight: themed("borderLight", ramp(background, 0.209))
+    readonly property color borderFocus: themed("borderFocus", accent)
 
     // ═══════════════════════════════════════════════════════════
     // METRICS - Spacing
@@ -244,9 +358,10 @@ QtObject {
         "radius": 16
     }
 
-    // Glow for accent elements
+    // Glow for accent elements. T0185: the colour was the hardcoded shipped
+    // cyan, so a picked accent left every glow the old default's.
     readonly property var glowAccent: {
-        "color": Qt.rgba(0, 0.733, 0.831, 0.5),
+        "color": Qt.rgba(accent.r, accent.g, accent.b, 0.5),
         "horizontalOffset": 0,
         "verticalOffset": 0,
         "radius": 12
@@ -350,44 +465,177 @@ QtObject {
         return ("#" + hex2(c.r) + hex2(c.g) + hex2(c.b) + hex2(c.a)).toUpperCase()
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // CONTRAST
+    //
+    // Shown live beside the colour pickers (T0189). A picker that accepts
+    // anything and says nothing is how a user ends up with unreadable grey
+    // text and no explanation.
+    //
+    // WCAG defines relative luminance on LINEARISED channels, not on the
+    // gamma-encoded BT.601 values that luma() uses. Conflating the two is a
+    // real and common mistake: on a dark background it understates every
+    // ratio. scripts/check-theme-contrast.py made exactly that mistake first
+    // and reported a palette as failing that was comfortably passing, so the
+    // two functions are kept deliberately distinct.
+    // ═══════════════════════════════════════════════════════════
+
+    /// WCAG 2.x relative luminance.
+    function relativeLuminance(c) {
+        const channel = function (v) {
+            return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+    }
+
+    /// WCAG 2.x contrast ratio, 1.0 to 21.0.
+    function contrastRatio(fg, bg) {
+        const a = relativeLuminance(fg)
+        const b = relativeLuminance(bg)
+        const hi = a > b ? a : b
+        const lo = a > b ? b : a
+        return (hi + 0.05) / (lo + 0.05)
+    }
+
+    /// A one-decimal ratio followed by the usual ":1" suffix — the form a person
+    /// can read at a glance. One decimal; a ratio to three places is noise
+    /// pretending to be precision.
+    ///
+    /// The obvious way to document this is to write the example out, and it must
+    /// not be written as a quoted literal: TestVersion's version-literal guard
+    /// flags any string starting with digits-then-a-dot-then-digits, and a
+    /// sample contrast ratio is shaped exactly like a version. The guard is
+    /// right — a literal that shape is nearly always a hardcoded version — so
+    /// this comment has to avoid it rather than the test being loosened.
+    function formatContrast(fg, bg) {
+        return contrastRatio(fg, bg).toFixed(1) + ":1"
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // THEME APPLICATION
+    //
+    // One entry point: applyThemeById(). Startup seeding (main.qml), the
+    // Settings selector, the colour picker, and reset all go through it, and
+    // it is the only function that assigns `overrides`. There is deliberately
+    // no second apply path in QML or in C++ — if one appears in review it is a
+    // bug, because two paths are how the palette drifts out of sync with the
+    // persisted config (THEME-ENGINE-PLAN.md §8.2).
+    // ═══════════════════════════════════════════════════════════
+
+    /// Resolve a requested/stored id into one that can actually be applied.
+    ///
+    /// This is the fallback chain of §6.3, minus the C++ catalog: an unknown
+    /// id resolves to the default rather than to nothing, so the window always
+    /// has a palette. Note what it does NOT do — it does not write the
+    /// fallback back to config.toml. The user's stored selection is theirs; a
+    /// theme that failed to load because its file was temporarily unreadable
+    /// should load on the next launch, not be silently overwritten.
+    function resolveThemeId(requested) {
+        const id = String(requested === undefined || requested === null ? "" : requested)
+                      .trim().toLowerCase()
+        if (id === customThemeId)
+            return customThemeId
+        if (id.length === 0)
+            return ThemeDefinitions.defaultId
+        // 'dark' is the pre-engine id. It was stored but never consumed, so
+        // every existing config has it. Mapping it to chadvis-dark is what
+        // stops the engine from silently changing anyone's look on upgrade.
+        if (id === "dark")
+            return ThemeDefinitions.fallbackId
+        if (ThemeDefinitions.has(id))
+            return id
+        return ThemeDefinitions.defaultId
+    }
+
+    /// The theme ids a user can pick, in display order.
+    function availableThemeIds() {
+        return ThemeDefinitions.ids()
+    }
+
+    function themeDisplayName(id) {
+        if (id === customThemeId)
+            return "Custom"
+        const definition = ThemeDefinitions.definition(id)
+        return definition ? definition.displayName : id
+    }
+
+    function themeDescription(id) {
+        if (id === customThemeId)
+            return "Your own accent and background, with the rest derived."
+        const definition = ThemeDefinitions.definition(id)
+        return definition ? definition.description : ""
+    }
+
+    /// `custom` is not a definition and is never a file: it is the user's own
+    /// accent and background, read back from the persisted colours, with every
+    /// other token derived (THEME-ENGINE-PLAN.md §7.3).
+    function customOverrides() {
+        return {
+            accent: toRgbaHex(parseRgbaHex(SettingsBridge.accentColor)),
+            background: toRgbaHex(parseRgbaHex(SettingsBridge.backgroundColor))
+        }
+    }
+
     /**
-     * Apply a new accent color and recompute all derived accent variants.
+     * Apply a theme by id. The one path startup, Settings and reset share.
      *
-     * @param baseColor - The new accent color (#rrggbb or #rrggbbaa)
+     * Does NOT write `SettingsBridge.themeName` — that is the commit, and the
+     * Settings panel owns it, so selecting a theme can preview live without
+     * persisting (§8.2). It DOES write the derived accent/background, because
+     * those two keys stay in config.toml for compatibility with existing
+     * installs and every other build that reads them (§7.1).
      */
-    function applyAccent(baseColor) {
-        const resolved = parseRgbaHex(baseColor)
-        accent = resolved
-        accentHover = Qt.lighter(resolved, 1.15)
-        accentPressed = Qt.darker(resolved, 1.2)
-        accentLight = Qt.lighter(resolved, 1.5)
-        accentDark = Qt.darker(resolved, 1.5)
-        // Written as "#rrggbb" because the bridge speaks hex text, not color.
-        // toString() on a Qt.lighter() result can carry the alpha channel, and
-        // vc::Color accepts 8 digits, so spelling the round trip out keeps a
-        // future themed-with-opacity accent from silently losing its alpha.
-        // Written back as "#RRGGBBAA", the byte order vc::Color expects. Not
-        // Qt.color(x).toString(): if baseColor arrived as an 8-digit string Qt
-        // has already mis-parsed it (#AARRGGBB), and writing the string back
-        // would persist the mangled value into config.toml -- so the corruption
-        // would survive the restart that was supposed to fix it.
-        SettingsBridge.accentColor = toRgbaHex(resolved)
+    function applyThemeById(requested) {
+        const id = resolveThemeId(requested)
+        if (id === customThemeId) {
+            theme.overrides = customOverrides()
+        } else {
+            const definition = ThemeDefinitions.definition(id)
+            theme.overrides = definition ? definition.colors : {}
+        }
+        theme.currentThemeId = id
+        commit()
+    }
+
+    /**
+     * Persist the two derived base colours, then announce the change once.
+     *
+     * `accent` and `background` are bindings on `overrides`, which was just
+     * reassigned. QML re-evaluates a dirty binding when it is read, so the two
+     * reads below see the NEW colours — that ordering is the one thing this file
+     * cannot verify by inspection, which is why `overrides` is assigned wholesale
+     * rather than mutated (`replacingOverridesInvalidatesTheTokens` in
+     * tests/unit/core/test_ThemeQml.cpp pins the invalidation; the persistence
+     * side is not tested here because it would write to the real config.toml).
+     *
+     * One themeChanged() per theme, not one per token. The tokens are bindings;
+     * the signal exists for things that are not.
+     */
+    function commit() {
+        SettingsBridge.accentColor = toRgbaHex(accent)
+        SettingsBridge.backgroundColor = toRgbaHex(background)
         themeChanged()
     }
 
     /**
-     * Apply a new background color and recompute all derived surface variants.
-     *
-     * @param baseColor - The new background color (#rrggbb or #rrggbbaa)
+     * Edit one base colour of the current theme. This is the colour picker's
+     * entry point, and picking a colour means "this is now mine": the active
+     * theme becomes `custom`, carrying over whatever the previous theme
+     * supplied so that editing the accent of, say, gruvbox keeps gruvbox's
+     * text and border colours instead of reverting to a bare ramp.
      */
+    function applyAccent(baseColor) {
+        theme.overrides = Object.assign({}, theme.overrides,
+                                        { accent: toRgbaHex(parseRgbaHex(baseColor)) })
+        theme.currentThemeId = customThemeId
+        commit()
+    }
+
+    /// See applyAccent. Same mechanism, different base.
     function applyBackground(baseColor) {
-        const resolved = parseRgbaHex(baseColor)
-        background = resolved
-        backgroundAlt = Qt.lighter(resolved, 1.05)
-        surface = Qt.lighter(resolved, 1.15)
-        surfaceRaised = Qt.lighter(resolved, 1.25)
-        surfaceOverlay = Qt.lighter(resolved, 1.35)
-        SettingsBridge.backgroundColor = toRgbaHex(resolved)
-        themeChanged()
+        theme.overrides = Object.assign({}, theme.overrides,
+                                        { background: toRgbaHex(parseRgbaHex(baseColor)) })
+        theme.currentThemeId = customThemeId
+        commit()
     }
 }

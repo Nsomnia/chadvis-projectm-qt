@@ -158,3 +158,6 @@ STATUS/*.claim
 # (The former `user-eyes-only/` ignore rule was removed once its contents were moved
 # into git-managed `docs/archive/` — see the commit that added that directory.)
 build.log
+__pycache__/
+*.pyc
+.qt-stitch/

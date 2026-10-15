@@ -53,4 +53,10 @@ CLI_STRING("--karaoke-font", "",    "Font family",                      "Arial",
 CLI_INT("--karaoke-font-size","",   "Font size in pixels",              "32",  "",                            karaokeFontSize,    karaoke().fontSize)
 CLI_FLOAT("--karaoke-y-position","", "Vertical position (0=top, 1=bottom)", "0.5","",                        karaokeYPosition,   karaoke().yPosition)
 // ─── UI ─────────────────────────────────────────────────────
-CLI_STRING("--theme",        "",    "UI theme (dark/gruvbox/nord)",     "dark","",                            theme,              ui().theme)
+// T0192. The default here is only what --help prints; an absent --theme is
+// detected by the empty string, NOT by this default, because defaulting the
+// parsed value to a theme name would make "user did not pass --theme" and
+// "user passed --theme material" indistinguishable -- and the first must leave
+// the saved theme alone. Session-only: consumed by SettingsBridge.sessionTheme,
+// never applied to CONFIG (see the applyOverride site in Application.cpp).
+CLI_STRING("--theme",        "",    "UI theme, this session only (material/chadvis-dark/gruvbox/nord)", "", "",    theme,              ui().theme)

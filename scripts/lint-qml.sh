@@ -94,7 +94,16 @@ fi
 # `onActivated: (index) => ...` rather than any diagnostic -- producing findings
 # that were Python-console colour, not QML errors. The bracket anchor is what
 # keeps that from happening.
-BLOCKING="$(printf '%s\n' "$RAW" | grep -E '\[(incompatible-type|unused-imports|missing-type|invalid-property)\]' || true)"
+# T0198. `missing-property` joined the blocking set because of a concrete
+# failure, not a hunch. AppColorPicker.qml used LinearGradient without
+# `import QtQuick.Shapes`; qmllint reported the *consequences* -- four
+# `Could not find property "horizontal"/"vertical"` -- tagged `missing-property`,
+# which was baselined as "other". The result was an app that did not start:
+# "Type AppColorPicker unavailable" took the settings window and the main window
+# down with it, while the lint gate said "no blocking problems" and the whole
+# test suite stayed green. All four findings tree-wide were that one bug, so
+# promoting the tag costs nothing and catches the class.
+BLOCKING="$(printf '%s\n' "$RAW" | grep -E '\[(incompatible-type|unused-imports|missing-type|missing-property|invalid-property)\]' || true)"
 # `unqualified` access is a documented style preference at 144 occurrences, kept
 # separate so "there is a bug" and "there is a backlog" never look the same.
 PREFERENCE="$(printf '%s\n' "$RAW" | grep -E '\[(unqualified|deprecated)\]' || true)"

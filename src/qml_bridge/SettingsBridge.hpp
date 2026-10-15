@@ -109,6 +109,31 @@ friend class QmlSingletonBridge<SettingsBridge, SingletonPolicy::CachedQmlParent
     Q_PROPERTY(QString accentColor READ accentColor WRITE setAccentColor NOTIFY accentColorChanged)
     Q_PROPERTY(QString backgroundColor READ backgroundColor WRITE setBackgroundColor NOTIFY backgroundColorChanged)
 
+    // T0190. The active theme id. This is the COMMIT; Theme.qml applies a theme
+    // without writing it, so the Settings selector can preview live and only
+    // persists when the user saves (THEME-ENGINE-PLAN.md §8.2). Never write this
+    // from the picker: picking a colour means "custom", and that is Settings'
+    // job to commit, not a side effect of a drag.
+    Q_PROPERTY(QString themeName READ themeName WRITE setThemeName NOTIFY themeNameChanged)
+
+    // T0192. The --theme CLI override. CONSTANT and session-only ON PURPOSE.
+    //
+    // It is a read-only mirror of a static, set by Application before the QML
+    // engine loads, for the same reason setAudioEngine() is static: the value
+    // has to exist before main.qml's Component.onCompleted runs, and threading it
+    // through registerBridges() would mean changing that signature for one
+    // string.
+    //
+    // It is deliberately NOT in ConfigParsers and NOT in the .inc table. The
+    // old code called applyOverride(opts.theme, CONFIG.ui().theme, ...), which
+    // writes straight into the live Config and is therefore persisted by the
+    // next save -- so every launch with `--theme nord` silently overwrote the
+    // user's saved theme. That was invisible while --theme did nothing. The
+    // moment the engine made it real it would have become a data-loss bug, so
+    // the fix is structural: the CLI value reaches the display and never
+    // reaches the file.
+    Q_PROPERTY(QString sessionTheme READ sessionTheme CONSTANT)
+
     // UI State (persistent sidebar/accordion)
     Q_PROPERTY(QString expandedPanel READ expandedPanel WRITE setExpandedPanel NOTIFY expandedPanelChanged)
     Q_PROPERTY(int sidebarWidth READ sidebarWidth WRITE setSidebarWidth NOTIFY sidebarWidthChanged)
@@ -208,6 +233,11 @@ public:
     void setAccentColor(const QString& hex);
     QString backgroundColor() const;
     void setBackgroundColor(const QString& hex);
+    QString themeName() const;
+    void setThemeName(const QString& name);
+    /// The --theme override, or an empty string when none was given.
+    QString sessionTheme() const;
+    static void setSessionTheme(const QString& theme);
 
     // UI State
     QString expandedPanel() const;
@@ -266,6 +296,7 @@ signals:
     void sunoDownloadPathChanged();
     void accentColorChanged();
     void backgroundColorChanged();
+    void themeNameChanged();
     void expandedPanelChanged();
     void sidebarWidthChanged();
     void drawerOpenChanged();
@@ -301,6 +332,9 @@ private:
 
     vc::AudioEngine* m_audioEngine{nullptr};
     static vc::AudioEngine* s_audioEngine;
+
+    /// T0192. The --theme override for this process only. Empty = none.
+    static QString s_sessionTheme;
     /// Live QMediaDevices instance, kept only for audioOutputsChanged(). Null
     /// until the first refresh, in which case hot-plug is simply not reported.
     /// Parented to this bridge, so no manual teardown.

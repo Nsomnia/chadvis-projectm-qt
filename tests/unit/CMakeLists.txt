@@ -229,6 +229,50 @@ target_link_libraries(test_RenderExecutor PRIVATE
 
 add_test(NAME test_RenderExecutor COMMAND test_RenderExecutor)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# THEME — the QML Theme singleton's colour maths (T0186)
+#
+# A standalone target rather than a unit_tests member for the deciding reason:
+# this is the first suite that instantiates a QQmlEngine, and QTEST_MAIN selects
+# QGuiApplication here (QT_GUI_LIB is defined) where unit_tests' main() is a
+# QCoreApplication. Loading the QtQuick QML module against the wrong app object is
+# the kind of failure that takes down every other suite in the binary, so it is
+# isolated instead. Same reason as test_RenderExecutor and
+# test_OffscreenRenderSpike above.
+#
+# Qt6::Qml and Qt6::Quick below are load-bearing rather than redundant:
+# QQmlEngine/QQmlComponent are Qt6::Qml, and loading Theme.qml needs its
+# `import QtQuick` resolved from Qt6::Quick. Neither comes transitively from
+# project_lib at link time in a way that can be relied on, and the suite must
+# keep working if the QML module's implementation changes.
+#
+# QT_QPA_PLATFORM=offscreen for the same reason as every other Qt GUI suite:
+# a QGuiApplication on the cocoa plugin needs a window server, so a ctest entry
+# run without one fails before reaching an assertion.
+# ─────────────────────────────────────────────────────────────────────────────
+add_executable(test_ThemeQml
+    core/test_ThemeQml.cpp
+)
+
+set_target_properties(test_ThemeQml PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_ThemeQml PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_ThemeQml COMMAND test_ThemeQml)
+
+set_tests_properties(test_ThemeQml PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 set_tests_properties(test_RenderExecutor PROPERTIES
     TIMEOUT 180
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"

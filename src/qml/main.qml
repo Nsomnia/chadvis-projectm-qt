@@ -121,14 +121,22 @@ ApplicationWindow {
     // restored from, and the only reason it lives on the shell rather than in
     // Theme.qml is ordering: a singleton's own onCompleted is not ordered
     // after SettingsBridge's construction, and seeding there produced a stale
-    // blue accent that looked like the theme refusing to save. Both colours are
-    // routed through Theme's own mutators, so derived variants (hover, pressed,
-    // surface, overlay) are recomputed exactly as an edit recomputes them.
+    // blue accent that looked like the theme refusing to save.
+    //
+    // Now that a theme is a definition rather than two loose colours, seeding
+    // is one call. Theme.applyThemeById() resolves the stored id through the
+    // fallback chain (unknown -> default, legacy 'dark' -> chadvis-dark,
+    // 'custom' -> the user's own accent/background read back from the bridge)
+    // and repaints every token. Two call sites for this is the bug this
+    // replaces: they disagreed about which colours they set.
     function applyTheme() {
-        // Constant first: QML evaluates arguments before the call, so a log that
-        // interpolates a bridge property can be silenced by that property.
-        Theme.applyAccent(SettingsBridge.accentColor)
-        Theme.applyBackground(SettingsBridge.backgroundColor)
+        // T0192. --theme wins for this session, but only for this session: the
+        // session value is a CONSTANT property that never reaches Config, so the
+        // user's saved theme is still what the next launch starts from. The
+        // selector in Settings shows the override as active, so the UI does not
+        // claim one theme while showing another.
+        const session = SettingsBridge.sessionTheme
+        Theme.applyThemeById(session && session.length > 0 ? session : SettingsBridge.themeName)
     }
 
     function setFullscreen(on) {
