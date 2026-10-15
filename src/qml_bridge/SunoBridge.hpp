@@ -167,6 +167,7 @@ public slots:
     Q_INVOKABLE void fetchChatHistory();
     Q_INVOKABLE void clearLoading();
     Q_INVOKABLE void beginGoogleSignIn();
+    Q_INVOKABLE void importSessionFromBrowser();
     Q_INVOKABLE void signOutSuno();
     Q_INVOKABLE void refreshAccount();
     Q_INVOKABLE void refreshDiscover();

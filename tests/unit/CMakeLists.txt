@@ -17,6 +17,7 @@ add_executable(unit_tests
     visualizer/test_PresetBridge.cpp
     suno/test_AuthModule.cpp
     suno/test_StoredCredentialClassification.cpp
+    suno/test_BrowserCookieImport.cpp
     suno/test_CredentialRestoreWorker.cpp
     suno/test_SunoLibraryManager.cpp
     suno/test_LyricsFetchQueue.cpp

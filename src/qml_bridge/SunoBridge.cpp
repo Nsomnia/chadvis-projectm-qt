@@ -998,6 +998,21 @@ void SunoBridge::beginGoogleSignIn() {
     }
 }
 
+void SunoBridge::importSessionFromBrowser() {
+    // T0199. The complement to beginGoogleSignIn(): the browser half opens the
+    // page, this half collects the credential that already lives there. It is
+    // a QML-invokable because the user has to press the button -- reading a
+    // browser's Safe Storage secret prompts macOS for consent, and that prompt
+    // is the feature, not a friction to automate away.
+    if (!s_controller) return;
+    if (auto* coordinator = s_controller->authCoordinator()) {
+        QString safeError;
+        if (!coordinator->importSessionFromBrowser(&safeError)) {
+            emit googleLoginErrorChanged();
+        }
+    }
+}
+
 void SunoBridge::signOutSuno() {
     // LOCAL ONLY: no capture-proven remote Suno logout endpoint exists.
     // This clears local credentials and stops local refresh work only.

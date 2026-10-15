@@ -18,6 +18,7 @@ int runTestSunoEndpoints(int argc, char** argv);
 int runTestSunoAuthFailure(int argc, char** argv);
 int runTestAuthModule(int argc, char** argv);
 int runTestStoredCredentialClassification(int argc, char** argv);
+int runTestBrowserCookieImport(int argc, char** argv);
 int runTestCredentialRestoreWorker(int argc, char** argv);
 int runTestSunoLibraryManager(int argc, char** argv);
 int runTestLyricsFetchQueue(int argc, char** argv);
@@ -59,6 +60,7 @@ int main(int argc, char* argv[]) {
     status |= runTestSunoAuthFailure(argc, argv);
     status |= runTestAuthModule(argc, argv);
     status |= runTestStoredCredentialClassification(argc, argv);
+    status |= runTestBrowserCookieImport(argc, argv);
     status |= runTestCredentialRestoreWorker(argc, argv);
     status |= runTestSunoLibraryManager(argc, argv);
     status |= runTestLyricsFetchQueue(argc, argv);

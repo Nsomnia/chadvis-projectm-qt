@@ -103,6 +103,21 @@ Flickable {
             bridgeApi["beginGoogleSignIn"]()
     }
 
+    function importSessionFromBrowser() {
+        // T0199. The half T0181 could not provide. The browser half ends with
+        // the user signed in at suno.com and no channel back to this process;
+        // this reads the resulting session out of the browser's cookie store.
+        // The keychain prompt happens inside this call, which is why it is a
+        // button and never automatic.
+        feedbackMessage = ""
+        feedbackIsError = false
+        if (!bridgeSupports("importSessionFromBrowser")) {
+            showFeedback("Importing a browser session is unavailable in this build.", true)
+            return
+        }
+        bridgeApi["importSessionFromBrowser"]()
+    }
+
     function signOutSuno() {
         feedbackMessage = ""
         feedbackIsError = false
@@ -515,6 +530,7 @@ readonly property string noteText: row.note !== undefined
             googleLoginAvailable: root.googleLoginAvailable
             signingOut: root.signingOut
             onSignInRequested: root.beginGoogleSignIn()
+            onImportRequested: root.importSessionFromBrowser()
             onSignOutRequested: root.signOutSuno()
         }
 

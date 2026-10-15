@@ -16,6 +16,7 @@ Rectangle {
 
     signal signInRequested()
     signal signOutRequested()
+    signal importRequested()
 
     readonly property string displayName: SunoBridge.userName.length > 0
                                              ? SunoBridge.userName : "Suno member"
@@ -76,6 +77,33 @@ Rectangle {
                 ToolTip.text: "Secure credential storage is unavailable, so a session cannot be stored. Import a session cookie or bearer token below."
                 ToolTip.delay: 350
                 Accessible.name: "Sign in with Google"
+            }
+
+            AppButton {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 220
+                // T0199: the missing half of T0181. Opening the browser could
+                // never return a credential, because Clerk completes the
+                // exchange server-side. But for a user who is ALREADY signed
+                // in, the durable credential (`__client`, ~1 year, HttpOnly)
+                // is sitting in the browser's on-disk cookie store the whole
+                // time -- HttpOnly stops a page script, not a local reader.
+                // This reads the suno.com Clerk cookies out of it.
+                //
+                // Plain, not highlighted: it is the complement, not the
+                // primary, and the first press makes macOS ask the user to let
+                // ChadVis read that browser's Safe Storage secret -- which is
+                // the consent moment, stated in the tooltip rather than
+                // hidden from the user.
+                text: "Already signed in? Import the session"
+                enabled: root.googleLoginAvailable
+                buttonRadius: Theme.radiusMedium
+                onClicked: root.importRequested()
+                ToolTip.text: "Reads the Suno session cookies from your browser's own "
+                              + "cookie store. macOS will ask once for permission."
+                ToolTip.visible: hovered
+                ToolTip.delay: 350
+                Accessible.name: "Import the Suno session from your browser"
             }
 
             Text {

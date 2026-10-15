@@ -80,6 +80,23 @@ B8/B9 are the GL-context lifetime rule: `VideoView` must stay instantiated for t
 
 D4 matters: any document or review note that tells a user to paste a bare session token is describing a flow the app cannot use. The panel text is the authority.
 
+### MT-001-D2 — Browser session import (T0189-adjacent, added with T0199)
+
+A **headless run proves nothing about any of these** — the whole feature is a
+consent prompt and a read of the user's own browser, so every row needs the
+person whose machine it is.
+
+| ID | Step | Pass | Fail | Notes |
+| --- | --- | --- | --- | --- |
+| D2.1 | Signed in to suno.com in the default browser, open `Settings > Account`. The card shows **Already signed in? Import the session** below the Google button, enabled. | | | |
+| D2.2 | Press it. macOS shows a consent dialog naming the browser's *Safe Storage* item (e.g. "Brave Safe Storage"). Allow it. | | | If no prompt appears and the import succeeds, the grant was remembered from an earlier run — note that, do not fail it. |
+| D2.3 | The Account page transitions to the signed-in state: user name, plan, and credits appear, and the main-window account chip updates. | | | This is the end-to-end proof: store → decrypt → header → `setCookie` → bearer fetch → account. |
+| D2.4 | Quit and relaunch. Still signed in — the credential came from the browser's `__client` (≈1 year) and was persisted through `CredentialStore`. | | | |
+| D2.5 | Read the log output for the run. **No cookie value, no bearer, and no filesystem path appears** — the import log line names neither the browser nor the profile. | | | A single `session imported from a browser` line with no identifying detail is the intended ceiling. |
+| D2.6 | Decline the consent dialog. The Account page shows the reason ("keychain item not available"), and nothing is imported. The app stays usable. | | | |
+| D2.7 | With **no** Suno session in any browser (e.g. signed out everywhere), press the import button. The error names the browsers that were searched and tells the user to sign in once at suno.com. It does not crash, and it does not open a browser unprompted. | | | |
+| D2.8 | Multiple browsers installed, only one signed in. The import uses the signed-in one, and the error path does not read the others' Keychain items — only one consent prompt appears. | | | |
+
 ### MT-001-E — Settings persistence
 
 | ID | Step | Pass | Fail | Notes |
