@@ -43,17 +43,39 @@ Item {
     /// on Cancel is not enough -- `value` no longer holds the original. This is
     /// the original, and Cancel re-emits it.
     property color committed: value
-    onOpened: {
-        root.working = root.value
-        root.committed = root.value
-    }
 
     implicitWidth: Theme.inputHeight
     implicitHeight: Theme.inputHeight
 
-    // HSV decomposition of the working colour. Qt.hsva(color) returns
-    // { h, s, v, a } with each component normalised to 0..1.
-    readonly property var workingHsv: Qt.hsva(working)
+    // HSV decomposition of the working colour, components normalised to 0..1.
+    //
+    // Written out rather than delegated because `Qt.hsva()` has no single-colour
+    // overload — only Qt.hsva(h, s, v, a). Qt can go colour → hsva and hsva →
+    // colour, but not colour → hsva, so the middle step has to happen in JS.
+    // (This was "Unable to determine callable overload", which QML reports as a
+    // *warning* while the property silently evaluates to undefined — and then
+    // every colour the picker offers is black.)
+    function hsvOf(c) {
+        const r = c.r, g = c.g, b = c.b
+        const max = Math.max(r, g, b)
+        const min = Math.min(r, g, b)
+        const d = max - min
+        let h = 0
+        if (d !== 0) {
+            if (max === r)
+                h = ((g - b) / d) % 6
+            else if (max === g)
+                h = (b - r) / d + 2
+            else
+                h = (r - g) / d + 4
+            h /= 6
+            if (h < 0)
+                h += 1
+        }
+        return { h: h, s: max === 0 ? 0 : d / max, v: max, a: c.a }
+    }
+
+    readonly property var workingHsv: hsvOf(working)
     readonly property real workingHue: workingHsv ? workingHsv.h : 0.0
     readonly property real workingSat: workingHsv ? workingHsv.s : 0.0
     readonly property real workingVal: workingHsv ? workingHsv.v : 0.0
@@ -117,6 +139,16 @@ Item {
         padding: Theme.spacingMedium
         width: svArea.width + padding * 2
 
+        // Reset both working and committed each time the popup opens. On the
+        // root Item this is not merely misplaced: `opened` is Popup's signal,
+        // so an `onOpened` on the Item is QML assigning to a non-existent
+        // property, which fails the *whole file* -- and with it the settings
+        // window and the main window. Only the launching app finds that.
+        onOpened: {
+            root.working = root.value
+            root.committed = root.value
+        }
+
         background: Rectangle {
             color: Theme.surfaceOverlay
             radius: Theme.radiusMedium
@@ -148,16 +180,16 @@ Item {
 
                 Rectangle {
                     anchors.fill: parent
-                    gradient: LinearGradient {
-                        horizontal: true
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
                         GradientStop { position: 0.0; color: "#FFFFFF" }
                         GradientStop { position: 1.0; color: Qt.hsva(root.workingHue, 1.0, 1.0, 1.0) }
                     }
                 }
                 Rectangle {
                     anchors.fill: parent
-                    gradient: LinearGradient {
-                        vertical: true
+                    gradient: Gradient {
+                        orientation: Gradient.Vertical
                         GradientStop { position: 0.0; color: "#00000000" }
                         GradientStop { position: 1.0; color: "#FF000000" }
                     }
@@ -204,8 +236,8 @@ Item {
                 radius: Theme.radiusSmall
                 clip: true
 
-                gradient: LinearGradient {
-                    horizontal: true
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
                     GradientStop { position: 0.00; color: "#FFFF0000" }
                     GradientStop { position: 0.17; color: "#FFFFFF00" }
                     GradientStop { position: 0.33; color: "#FF00FF00" }
@@ -281,8 +313,8 @@ Item {
 
                 Rectangle {
                     anchors.fill: parent
-                    gradient: LinearGradient {
-                        horizontal: true
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
                         GradientStop {
                             position: 0.0
                             color: Qt.hsva(root.workingHue, root.workingSat, root.workingVal, 0.0)

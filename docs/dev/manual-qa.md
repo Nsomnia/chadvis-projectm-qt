@@ -91,6 +91,17 @@ D4 matters: any document or review note that tells a user to paste a bare sessio
 
 ### MT-001-G — Themes and colour
 
+**Evidence so far (2026-10-15, not a human pass).** G1–G4 have partial
+evidence: the binary was launched with `--theme gruvbox` and the window was
+read from a screen capture — gruvbox's warm ground, cream text and `#83A598`
+accent render across the whole window, so CLI → session override → engine →
+pixels works. `config.toml`'s md5 was unchanged across that launch, which is the
+T0192 guarantee, and `TestQmlStartup::settingsWindowOpensOnNavigate` passes,
+which means the panel, the picker and the `Popup` inside it all instantiate.
+**Everything below G5 is untested by anyone or anything.** In particular no
+screenshot yet exists of the picker open, of the theme selector, or of a colour
+being dragged — and the four palettes were contrast-*measured*, never seen.
+
 Added with the theme engine. **A headless run is not evidence for anything on
 this list** — these all depend on what the eye sees, so `PASS` here has to come
 from a person looking at the window.
