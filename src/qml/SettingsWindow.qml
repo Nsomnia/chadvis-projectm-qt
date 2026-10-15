@@ -121,6 +121,9 @@ ApplicationWindow {
 
     Dialog {
         id: resetDialog
+        // Named so the integration test can open and assert it by identity
+        // (tests/integration/test_main.cpp, escapeRespectsTheResetDialog).
+        objectName: "resetDialog"
         title: "Reset all settings?"
         modal: true
         width: 420
@@ -155,7 +158,16 @@ ApplicationWindow {
 
     Shortcut {
         sequence: "Esc"
-        enabled: root.visible
+        objectName: "settingsEscapeShortcut"
+        // T0074. A QML Shortcut is processed BEFORE the item key handling that a
+        // Dialog uses to reject on Esc, so a window-scope Esc here fired while
+        // the modal reset confirmation was open -- dismissing the whole window
+        // and every unsaved edit with it, exactly the loss T0046 fixed by other
+        // means. Disabled while any modal dialog is up, so Esc backs out of the
+        // confirmation (its own meaning) instead of the window. resetDialog is
+        // the only modal in this file; if a second one is added, this predicate
+        // must include it.
+        enabled: root.visible && !resetDialog.opened
         onActivated: root.close()
     }
 }

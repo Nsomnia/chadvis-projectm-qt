@@ -471,7 +471,7 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       OverlayPanel.qml MouseArea T0004's file list already contains, and the
       "different panel" claim contradicted its own citation. Fixed and
       verified under T0004.
-- [ ] T0074 `Escape` closes the whole Settings window while the "Reset all settings?" dialog is up (`src/qml/SettingsWindow.qml:156-160`) #risk-high
+- [x] T0074 `Escape` closes the whole Settings window while the "Reset all settings?" dialog is up (`src/qml/SettingsWindow.qml:156-160`) #risk-high
       Window-scope `Esc` outranks the modal dialog, so a user backing out of a destructive
       confirmation instead dismisses the window — losing unsaved edits per T0046. Directly
       contradicts `main.qml:560-561`.

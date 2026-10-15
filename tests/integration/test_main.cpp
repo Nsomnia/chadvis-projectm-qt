@@ -266,6 +266,58 @@ private slots:
                 QStringLiteral("navigate(\"settings\") reported: %1").arg(error)));
         }
     }
+
+    /// T0074. A QML Shortcut is processed before a Dialog's own Esc handling,
+    /// so the window-scope Esc used to close the whole Settings window while the
+    /// modal "Reset all settings?" confirmation was open — a user backing out of
+    /// a destructive confirmation lost every unsaved edit instead.
+    ///
+    /// The test asserts the SHORTCUT's enabled state rather than sending key
+    /// events, because synthetic keys do not reach QML shortcuts under the
+    /// offscreen platform plugin: the first version of this test sent Esc and
+    /// passed against the very build that had the bug, which is the vacuous
+    /// green the red-check exists to catch. The contract being pinned is ours —
+    /// "the Esc shortcut is disabled while a modal dialog is up" — and that is
+    /// a property, observable without focus plumbing.
+    void escapeRespectsTheResetDialog()
+    {
+        vc::AudioEngine audio;
+        QQmlApplicationEngine engine;
+        auto* window = loadShell(audio, engine);
+        QVERIFY(window);
+        auto* settings = findSettingsWindow(window);
+        QVERIFY(settings);
+
+        settings->show();
+        QTRY_VERIFY(settings->isVisible());
+
+        auto* shortcut =
+            settings->findChild<QObject*>(QStringLiteral("settingsEscapeShortcut"));
+        QVERIFY2(shortcut, "SettingsWindow declares no Shortcut named "
+                           "\"settingsEscapeShortcut\" — the Esc path changed "
+                           "and this test has nothing to pin");
+        auto* dialog = settings->findChild<QObject*>(QStringLiteral("resetDialog"));
+        QVERIFY(dialog);
+
+        // Window up, nothing modal: Esc is armed.
+        QTRY_COMPARE(shortcut->property("enabled").toBool(), true);
+
+        // Open the reset confirmation the way the footer does. The shortcut
+        // must disarm — this is the whole of T0074.
+        QVERIFY(QMetaObject::invokeMethod(settings, "requestReset"));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QTRY_COMPARE_WITH_TIMEOUT(
+            shortcut->property("enabled").toBool(), false, 1000);
+
+        // Close the confirmation; the shortcut must re-arm, because Esc with
+        // nothing modal is the ordinary dismiss and must keep working.
+        QVERIFY(QMetaObject::invokeMethod(dialog, "close"));
+        QTRY_VERIFY(!dialog->property("opened").toBool());
+        QTRY_COMPARE(shortcut->property("enabled").toBool(), true);
+
+        settings->hide();
+        QVERIFY(!settings->isVisible());
+    }
 };
 
 int main(int argc, char* argv[])
