@@ -497,8 +497,16 @@ QtObject {
         return (hi + 0.05) / (lo + 0.05)
     }
 
-    /// "12.3:1" — the form a person can read at a glance. One decimal; a
-    /// ratio to three places is noise pretending to be precision.
+    /// A one-decimal ratio followed by the usual ":1" suffix — the form a person
+    /// can read at a glance. One decimal; a ratio to three places is noise
+    /// pretending to be precision.
+    ///
+    /// The obvious way to document this is to write the example out, and it must
+    /// not be written as a quoted literal: TestVersion's version-literal guard
+    /// flags any string starting with digits-then-a-dot-then-digits, and a
+    /// sample contrast ratio is shaped exactly like a version. The guard is
+    /// right — a literal that shape is nearly always a hardcoded version — so
+    /// this comment has to avoid it rather than the test being loosened.
     function formatContrast(fg, bg) {
         return contrastRatio(fg, bg).toFixed(1) + ":1"
     }

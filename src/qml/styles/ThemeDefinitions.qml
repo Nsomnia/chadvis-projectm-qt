@@ -32,6 +32,8 @@
  * @version 1.0.0
  */
 
+pragma Singleton
+
 import QtQuick
 
 QtObject {

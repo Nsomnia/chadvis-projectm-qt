@@ -1,2 +1,4 @@
 2026-10-15T04:38:36Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee74968 pid=74968 ttl=4h expires=2026-10-15T08:38:36Z
 2026-10-15T04:53:42Z  NOTE    contrast half DONE and green (exit 0). Screenshot half still needs eyes: MT-001-G. The script is verified by running it; the QML is still unbuilt.
+2026-10-15T07:21:09Z  VERIFY  VERIFY: ./build.sh --fast --tests --safe --qt "$PWD/.qt-stitch" => 100% tests passed, 0 tests failed out of 11 (2026-10-15). QT_QPA_PLATFORM=offscreen ./build-fast/tests/unit/test_ThemeQml => 46 passed, 0 failed. ./scripts/lint-qml.sh => qmllint: no blocking problems. python3 scripts/check-theme-contrast.py => exit 0, all measured pairs clear their WCAG minimum.
+2026-10-15T07:22:39Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee7593

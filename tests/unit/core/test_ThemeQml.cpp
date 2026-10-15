@@ -41,6 +41,7 @@
 #include <QtTest>
 
 #include <QColor>
+#include <QQmlComponent>
 #include <QQmlEngine>
 #include <QVariant>
 #include <QVariantMap>
@@ -82,13 +83,60 @@ class test_ThemeQml : public QObject {
     /// Call a function on the Theme singleton. QML `function foo(x)` declarations
     /// land in the metaobject, so invokeMethod reaches them; the return value of
     /// `Qt.rgba(...)` arrives as a QColor in a QVariant.
-    QVariant call(const char* fn, const QVariantList& args)
+    /// Reports a function or property that is not in the metaobject at all.
+    ///
+    /// Separate from `call`/`prop` because QVERIFY2 expands to a bare `return`,
+    /// which cannot compile inside a function that returns a value. Inlining the
+    /// assert is the obvious thing and it fails with "non-void function 'call'
+    /// should return a value" — which reads as a typo rather than as the macro
+    /// it actually is.
+    static void require(bool ok, const QString& what)
+    {
+        QVERIFY2(ok, qPrintable(what));
+    }
+
+    /// `args` defaults because half of the engine's surface takes none — the
+    /// no-argument ones are exactly the ones that make a convenient mistake
+    /// (a catalogue read that reads the wrong singleton, or an apply that
+    /// silently succeeds having changed nothing), so they are called the most.
+    QVariant call(const char* fn, const QVariantList& args = {})
     {
         QVariant out;
-        const bool ok = QMetaObject::invokeMethod(
-            theme_, fn, Qt::DirectConnection, Q_RETURN_ARG(QVariant, out),
-            QGenericArgument("QVariantList", args));
-        QVERIFY2(ok, qPrintable(QStringLiteral("Theme.%1() is not invokable").arg(QLatin1String(fn))));
+        // QML functions reach the metaobject with one QVariant parameter per
+        // declared parameter -- NOT as a trailing QVariantList. `ramp(QVariant,
+        // QVariant)` is the evidence, and the first cut assumed a list and
+        // failed every multi-argument call with "No such method".
+        // Q_ARG takes the address of a non-const QVariant lvalue, so these must
+        // be locals rather than temporaries — `Q_ARG(QVariant, args.value(0))`
+        // dangles before the call is made.
+        QVariant a0 = args.value(0);
+        QVariant a1 = args.value(1);
+        QVariant a2 = args.value(2);
+
+        bool ok = false;
+        switch (args.size()) {
+        case 0:
+            ok = QMetaObject::invokeMethod(theme_, fn, Qt::DirectConnection,
+                                           Q_RETURN_ARG(QVariant, out));
+            break;
+        case 1:
+            ok = QMetaObject::invokeMethod(theme_, fn, Qt::DirectConnection,
+                                           Q_RETURN_ARG(QVariant, out),
+                                           Q_ARG(QVariant, a0));
+            break;
+        case 2:
+            ok = QMetaObject::invokeMethod(theme_, fn, Qt::DirectConnection,
+                                           Q_RETURN_ARG(QVariant, out),
+                                           Q_ARG(QVariant, a0), Q_ARG(QVariant, a1));
+            break;
+        default:
+            ok = QMetaObject::invokeMethod(theme_, fn, Qt::DirectConnection,
+                                           Q_RETURN_ARG(QVariant, out),
+                                           Q_ARG(QVariant, a0), Q_ARG(QVariant, a1),
+                                           Q_ARG(QVariant, a2));
+            break;
+        }
+        require(ok, QStringLiteral("Theme.%1() is not invokable").arg(QLatin1String(fn)));
         return out;
     }
 
@@ -100,7 +148,7 @@ class test_ThemeQml : public QObject {
     QColor prop(const char* name) const
     {
         const QVariant v = theme_->property(name);
-        QVERIFY2(v.isValid(), qPrintable(QStringLiteral("Theme has no property '%1'").arg(QLatin1String(name))));
+        require(v.isValid(), QStringLiteral("Theme has no property '%1'").arg(QLatin1String(name)));
         return v.value<QColor>();
     }
 
@@ -121,7 +169,11 @@ private slots:
         // Theme.qml's `import ChadVis` resolves SettingsBridge that way; nothing
         // has to construct it for the pure-function tests below.
         QQmlComponent probe(engine_.get());
-        probe.setData("import ChadVis\nQtObject{}", QUrl(QStringLiteral("qrc:/theme_probe.qml")));
+        // QtQml, not QtQuick: QtObject is a QtQml type, and a probe that imports the
+        // heavier module would be asserting that QtQuick loads rather than that
+        // ChadVis does.
+        probe.setData("import QtQml\nimport ChadVis\nQtObject{}",
+                      QUrl(QStringLiteral("qrc:/theme_probe.qml")));
         QObject* probeObject = probe.create();
         QVERIFY2(probeObject, qPrintable(QStringLiteral("cannot import the ChadVis module: %1")
                                              .arg(probe.errorString().toUtf8().constData())));
@@ -425,17 +477,21 @@ private slots:
     /// `overrides.accent` in place) is the tempting one-liner and it breaks here.
     void replacingOverridesInvalidatesTheTokens()
     {
-        const QString before = propString("accent");
+        const QColor before = prop("accent");
 
         QVariantMap next;
         next.insert(QStringLiteral("accent"), QStringLiteral("#FF00AAFF"));
         theme_->setProperty("overrides", next);
 
-        QCOMPARE(propString("accent"), QStringLiteral("#FF00AAFF"));
+        // Compared as QColor, not as a string. QColor::toString() drops the
+        // alpha byte when the colour is opaque, so a string comparison of an
+        // opaque accent asserts on "#ff00aa" and would pass while the alpha
+        // channel — the channel T0047 lost — was wrong.
+        COMPARE_COLOR(prop("accent"), QColor("#FF00AA"));
 
         QVariantMap empty;
         theme_->setProperty("overrides", empty);
-        QCOMPARE(propString("accent"), before);
+        COMPARE_COLOR(prop("accent"), before);
     }
 };
 

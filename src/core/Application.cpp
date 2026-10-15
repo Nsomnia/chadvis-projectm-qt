@@ -412,7 +412,11 @@ Result<void> Application::init(const AppOptions& opts) {
     // engine consumes ui().theme it would overwrite the user's saved theme on
     // every launch. So it goes to the session-only static instead, and the
     // user's persisted theme is left alone unless Settings says otherwise.
-    SettingsBridge::setSessionTheme(opts.theme);
+    // Empty (not "material") means no --theme was given, which is what lets the
+    // saved theme through. A CLI_STRING parse yields std::optional<std::string>
+    // so "absent" and "present" are distinguishable at all.
+    qml_bridge::SettingsBridge::setSessionTheme(
+        opts.theme ? QString::fromStdString(*opts.theme) : QString());
 
     QSurfaceFormat format;
     format.setVersion(3, 3);
