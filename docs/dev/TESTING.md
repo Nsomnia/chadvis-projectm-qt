@@ -147,6 +147,17 @@ Eleven entries: nine in `tests/unit/CMakeLists.txt`, two in `tests/integration/C
 | `test_ClerkAuthClient` | Standalone unit | console |
 | `integration_tests` | Offscreen QML startup and render; GL tests skip under `offscreen` | `QT_QPA_PLATFORM=offscreen` |
 | `integration_gl_tests` | 7 native-OpenGL framebuffer tests, same binary | native plugin (no override), 120 s timeout |
+| `test_ThemeQml` | Standalone unit; loads the `ChadVis` QML module and the `Theme` singleton | `QT_QPA_PLATFORM=offscreen` |
+
+### Outside ctest: two checks that are not CTest entries
+
+Both are run by hand and both need to be run by hand, because ctest is not a
+place either of them belongs.
+
+| Check | Command | Why it is not a CTest entry |
+| --- | --- | --- |
+| QML lint | `./scripts/lint-qml.sh` | Runs the build's own `project_lib_qmllint` target, so it needs a configured build directory. Invoking `qmllint` directly cannot resolve this tree — `main.qml` uses relative imports. |
+| Theme contrast | `python3 scripts/check-theme-contrast.py` | Needs neither Qt nor a build: it re-implements `Theme.qml`'s ramp and WCAG relative luminance in Python and reads the tokens straight out of `src/qml/styles/ThemeDefinitions.qml`. Exits non-zero when a gated pair fails, so it can gate CI; `--suggest` prints measured replacements instead of guesses. It answers "is this text legible", **not** "does this look right" — the latter is MT-001-G. |
 
 ## Running One Suite
 

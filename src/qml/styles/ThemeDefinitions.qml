@@ -95,23 +95,32 @@ QtObject {
 
         "gruvbox": {
             displayName: "Gruvbox",
-            description: "Gruvbox dark. Warm retro palette, muted blue accent.",
+            description: "Gruvbox dark. Warm retro palette, muted teal accent.",
             isDark: true,
             author: "ChadVis (built-in)",
             colors: {
-                accent:          "#458588FF",
-                background:      "#282828FF",
-                surface:         "#3C3836FF",
-                surfaceRaised:   "#504945FF",
-                textPrimary:     "#EBDBB2FF",
-                textSecondary:   "#A89984FF",
-                textDisabled:    "#7C6F64FF",
-                textOnAccent:    "#282828FF",
-                success:         "#B8BB26FF",
-                warning:         "#FABD2FFF",
-                error:           "#FB4934FF",
-                border:          "#504945FF",
-                borderLight:     "#665C54FF"
+                // bg0/bg1/bg2/bg3. surfaceRaised is NOT bg2: gruvbox's own fg2
+                // (#a89984) measures 3.17:1 on bg2, so text-bearing raised
+                // controls would have shipped at a third of AA. This sits
+                // between bg1 and bg2 instead and keeps the warm progression.
+                // Measured by scripts/check-theme-contrast.py, not by eye.
+                accent:          "#83A598FF",   // gruvbox fg4, not the dark #458588
+                background:      "#282828FF",   // bg0
+                surface:         "#3C3836FF",   // bg1
+                surfaceRaised:   "#454039FF",   // between bg1 and bg2
+                textPrimary:     "#EBDBB2FF",   // fg1
+                textSecondary:   "#DCB378FF",   // between fg2 and fg1; fg2 fails AA on bg1
+                textDisabled:    "#7C6F64FF",   // gray
+                textOnAccent:    "#282828FF",   // bg0 on the light fg4
+                // Links are TEXT and clear 4.5:1; the accent only has to clear
+                // 3:1 as a focus ring. gruvbox fg4 is 3.81:1 on the raised
+                // surface, so the link is a lighter step of the same teal.
+                textLink:        "#98B4AAFF",
+                success:         "#B8BB26FF",   // green
+                warning:         "#FABD2FFF",   // yellow
+                error:           "#FB5B48FF",   // red, 10% toward white (2.98:1 unmodified)
+                border:          "#504945FF",   // bg2
+                borderLight:     "#665C54FF"    // bg3
             }
         },
 
@@ -121,19 +130,27 @@ QtObject {
             isDark: true,
             author: "ChadVis (built-in)",
             colors: {
-                accent:          "#88C0D0FF",
-                background:      "#2E3440FF",
-                surface:         "#3B4252FF",
-                surfaceRaised:   "#434C5EFF",
-                textPrimary:     "#ECEFF4FF",
-                textSecondary:   "#D8DEE9FF",
-                textDisabled:    "#7B88A1FF",
-                textOnAccent:    "#2E3440FF",
-                success:         "#A3BE8CFF",
-                warning:         "#EBCB8BFF",
-                error:           "#BF616AFF",
-                border:          "#4C566AFF",
-                borderLight:     "#5E6B85FF"
+                // nord0 (#3b4252) is nord's own elevated surface; nord1
+                // (#434c5e) is its polar-night highlight and frost2 sits at
+                // 4.31:1 on it, just under AA for a link. So the raised step is
+                // nord0 and nord1 is reserved for the overlay, where it does
+                // not carry body text.
+                accent:          "#88C0D0FF",   // frost2
+                background:      "#2E3440FF",   // nord0 base
+                surface:         "#3B4252FF",   // nord0
+                surfaceRaised:   "#3B4252FF",   // nord0
+                textPrimary:     "#ECEFF4FF",   // snow storm
+                textSecondary:   "#D8DEE9FF",   // snow storm
+                textDisabled:    "#7B88A1FF",   // frost3
+                textOnAccent:    "#2E3440FF",   // nord0 on frost2
+                // nord's aurora red is 2.46:1 on nord0 -- just under the 3:1 a
+                // status colour needs. One step lighter, still unmistakably
+                // aurora red. Measured, not eyeballed.
+                error:           "#C97980FF",   // aurora red, 15% toward white
+                success:         "#A3BE8CFF",   // aurora green
+                warning:         "#EBCB8BFF",   // aurora yellow
+                border:          "#4C566AFF",   // nord2
+                borderLight:     "#5E6B85FF"    // nord3
             }
         }
     })
