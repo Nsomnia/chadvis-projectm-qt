@@ -1,0 +1,2 @@
+2026-10-15T04:38:36Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee74949 pid=74949 ttl=4h expires=2026-10-15T08:38:36Z
+2026-10-15T04:46:20Z  NOTE    code written, NOT verified: no build directory is configured because Homebrew's Qt is mid-upgrade. Add STATUS/T0195.log rows are written; G1-G20 all need a human eye and none of them can be evidenced by ctest.

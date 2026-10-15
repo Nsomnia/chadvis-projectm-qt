@@ -9,6 +9,7 @@
 #include "lyrics/LyricsSync.hpp"
 #include "qml_bridge/BridgeRegistration.hpp"
 #include "qml_bridge/RecordingBridge.hpp"
+#include "qml_bridge/SettingsBridge.hpp"
 #include "recorder/VideoRecorderCore.hpp"
 #include "suno/SunoModels.hpp"
 #include "ui/controllers/SunoController.hpp"
@@ -404,7 +405,14 @@ Result<void> Application::init(const AppOptions& opts) {
     applyOverride(opts.karaokeYPosition, CONFIG.karaoke().yPosition, "karaoke.yPosition");
 
     // UI overrides
-    applyOverride(opts.theme, CONFIG.ui().theme, "ui.theme");
+    //
+    // T0192. --theme used to be applyOverride(opts.theme, CONFIG.ui().theme,
+    // "ui.theme"), which writes into the live Config and is therefore persisted
+    // by the next save. Harmless only while the flag did nothing; now that the
+    // engine consumes ui().theme it would overwrite the user's saved theme on
+    // every launch. So it goes to the session-only static instead, and the
+    // user's persisted theme is left alone unless Settings says otherwise.
+    SettingsBridge::setSessionTheme(opts.theme);
 
     QSurfaceFormat format;
     format.setVersion(3, 3);
@@ -689,7 +697,7 @@ void Application::printHelp() {
     Cli::printOption("--test-lyrics <path>", "Test with SRT/LRC file");
 
     Cli::printSection("UI Options");
-    Cli::printOption("--theme <name>", "UI theme (dark/gruvbox/nord)", "dark");
+    Cli::printOption("--theme <name>", "UI theme for this session only (material/chadvis-dark/gruvbox/nord)", "material");
 
     Cli::printSection("Examples");
     std::cout << " " << brightCyan() << "chadvis-projectm-qt ~/Music/*.flac" << reset() << "\n"

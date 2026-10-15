@@ -289,6 +289,19 @@ void SettingsBridge::setAudioError(const QString& message)
     emit audioErrorChanged();
 }
 
+// T0192. See the Q_PROPERTY comment on sessionTheme.
+QString SettingsBridge::s_sessionTheme;
+
+void SettingsBridge::setSessionTheme(const QString& theme)
+{
+    s_sessionTheme = theme;
+}
+
+QString SettingsBridge::sessionTheme() const
+{
+    return s_sessionTheme;
+}
+
 void SettingsBridge::setAudioEngine(vc::AudioEngine* engine)
 {
     s_audioEngine = engine;

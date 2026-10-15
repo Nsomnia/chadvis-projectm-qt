@@ -157,7 +157,13 @@ struct AudioConfig {
 
 // UI configuration
 struct UIConfig {
-    std::string theme{"dark"};
+    // T0190. This used to default to "dark", a value that was stored, printed in
+    // --help, and read by nothing. The theme engine now consumes it. "material"
+    // is the default for a *fresh* install; an existing config still says "dark",
+    // which Theme.qml maps to chadvis-dark, so no existing user sees their
+    // appearance change on upgrade. Changing this default does NOT migrate
+    // anyone, and must not.
+    std::string theme{"material"};
     bool showPlaylist{true};
     bool showPresets{true};
     bool showDebugPanel{false};

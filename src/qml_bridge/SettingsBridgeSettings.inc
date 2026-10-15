@@ -60,6 +60,12 @@ SETTING_BOOL(karaokeEnabled, KaraokeEnabled, karaoke().enabled)
 // touched the in-memory singleton and the colours reset on every launch.
 SETTING_COLOR(accentColor, AccentColor, ui().accentColor)
 SETTING_COLOR(backgroundColor, BackgroundColor, ui().backgroundColor)
+// The active theme id (THEME-ENGINE-PLAN.md §9.3.1). Deliberately a raw
+// string with no validation here: ConfigParsers validates on load, and Theme
+// .qml's resolveThemeId() runs the fallback chain on the way to applying, so an
+// unrecognised id is reported as what is actually on screen rather than being
+// silently replaced at the point of entry. See T0190.
+SETTING_STRING(themeName, ThemeName, ui().theme)
 
 // ─── UI State ─────────────────────────────────────────────────
 SETTING_STRING(expandedPanel, ExpandedPanel, ui().expandedPanel)

@@ -43,6 +43,7 @@
 #include <QColor>
 #include <QQmlEngine>
 #include <QVariant>
+#include <QVariantMap>
 
 #include <memory>
 
@@ -311,6 +312,130 @@ private slots:
         QCOMPARE(dark, 0.0);
         QCOMPARE(light, 1.0);
         QVERIFY(grey > dark && grey < light);
+    }
+
+    // ── 5. The fallback chain (T0190) ────────────────────────────────────────
+
+    /// `resolveThemeId` is the only part of the engine that can be called without
+    /// writing to SettingsBridge, and it is the part with the sharpest failure
+    /// mode: an unknown id that resolves to nothing leaves the window with no
+    /// palette at all. Every row must return a real id.
+    void resolveFallsBackRatherThanFailing_data()
+    {
+        QTest::addColumn<QString>("requested");
+        QTest::addColumn<QString>("expected");
+
+        // A fresh install, and a config that has lost its theme line.
+        QTest::newRow("empty")        << ""          << "material";
+        QTest::newRow("whitespace")   << "   "       << "material";
+        // The pre-engine id. It was stored but never read, so EVERY existing
+        // config has it; resolving it to the default would silently restyle
+        // everyone on upgrade.
+        QTest::newRow("legacy dark")  << "dark"      << "chadvis-dark";
+        // Case and padding are user-editable, so they are not an error.
+        QTest::newRow("mixed case")   << "GruvBox"   << "gruvbox";
+        QTest::newRow("padded")       << " nord "    << "nord";
+        // Genuinely unknown: must resolve, and must NOT be silently accepted.
+        QTest::newRow("typo")         << "grpuvbox"  << "material";
+        QTest::newRow("never existed")<< "dracula"   << "material";
+        QTest::newRow("a file path")  << "../../etc/passwd" << "material";
+        // `custom` is synthetic, never a file, and passes through untouched.
+        QTest::newRow("custom")       << "custom"    << "custom";
+    }
+
+    void resolveFallsBackRatherThanFailing()
+    {
+        QFETCH(QString, requested);
+        QFETCH(QString, expected);
+        QCOMPARE(call("resolveThemeId", {requested}).toString(), expected);
+    }
+
+    /// Whatever comes in, what comes out is a theme the catalogue can actually
+    /// paint with -- including `custom`, which is not in the catalogue by design.
+    void everyResolutionIsUsable()
+    {
+        const QStringList ids{ {}, "dark", "material", "nord", "nonsense", "custom" };
+        for (const QString& requested : ids) {
+            const QString resolved = call("resolveThemeId", {requested}).toString();
+            QVERIFY2(!resolved.isEmpty(),
+                     qPrintable(QStringLiteral("resolveThemeId(%1) returned nothing").arg(requested)));
+            // ThemeDefinitions is a QML singleton, not a C++ type; membership is
+            // asked of the catalogue the same way the dropdown asks for it.
+            const QVariantList ids = call("availableThemeIds").toList();
+            bool usable = false;
+            for (const QVariant& id : ids)
+                usable = usable || id.toString() == resolved;
+            usable = usable || resolved == QStringLiteral("custom");
+            QVERIFY2(usable,
+                     qPrintable(QStringLiteral("resolveThemeId(%1) -> '%2', which is neither a "
+                                               "built-in nor 'custom'").arg(requested).arg(resolved)));
+        }
+    }
+
+    /// The dropdown is built from the catalogue, so a definition that cannot name
+    /// itself is a row of blanks in Settings.
+    void everyBuiltInIsPresentable_data()
+    {
+        QTest::addColumn<QString>("id");
+        const QVariantList ids = call("availableThemeIds").toList();
+        for (const QVariant& id : ids)
+            QTest::newRow(id.toString().toUtf8().constData()) << id.toString();
+    }
+
+    void everyBuiltInIsPresentable()
+    {
+        QFETCH(QString, id);
+        const QString name = call("themeDisplayName", {id}).toString();
+        QVERIFY2(!name.isEmpty(),
+                 qPrintable(QStringLiteral("theme '%1' has no display name").arg(id)));
+        QVERIFY2(name != id,
+                 qPrintable(QStringLiteral("theme '%1' falls back to its raw id, so the "
+                                           "dropdown shows ids instead of names").arg(id)));
+    }
+
+    /// The custom pseudo-theme is a UI concept, not a definition. It must still
+    /// have a name and a line of copy, or the combo and the description under it
+    /// go blank the moment someone picks a colour.
+    void customIsPresentable()
+    {
+        QCOMPARE(call("themeDisplayName", {QStringLiteral("custom")}).toString(),
+                 QStringLiteral("Custom"));
+        QVERIFY(!call("themeDescription", {QStringLiteral("custom")}).toString().isEmpty());
+    }
+
+    /// `custom` must never appear in the dropdown: selecting it is not an action,
+    /// it is the *result* of editing a colour.
+    void customIsNotOfferedAsAChoice()
+    {
+        const QVariantList ids = call("availableThemeIds").toList();
+        for (const QVariant& id : ids) {
+            QVERIFY2(id.toString() != QStringLiteral("custom"),
+                     "'custom' is in the selectable theme list; picking a colour should "
+                     "be what sets it, not choosing it from the dropdown");
+        }
+    }
+
+    /// The ordering this file cannot verify by inspection, stated as a test
+    /// instead: `overrides` is replaced wholesale, and the tokens bound to it
+    /// must see the NEW value on the very next read.
+    ///
+    /// This is the failure that would be invisible from the UI -- every colour
+    /// would look a whole theme stale -- and it is exactly why `overrides` is
+    /// assigned rather than mutated. The alternative (mutating
+    /// `overrides.accent` in place) is the tempting one-liner and it breaks here.
+    void replacingOverridesInvalidatesTheTokens()
+    {
+        const QString before = propString("accent");
+
+        QVariantMap next;
+        next.insert(QStringLiteral("accent"), QStringLiteral("#FF00AAFF"));
+        theme_->setProperty("overrides", next);
+
+        QCOMPARE(propString("accent"), QStringLiteral("#FF00AAFF"));
+
+        QVariantMap empty;
+        theme_->setProperty("overrides", empty);
+        QCOMPARE(propString("accent"), before);
     }
 };
 

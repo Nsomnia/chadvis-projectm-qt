@@ -255,6 +255,45 @@ another document already owns — it records only *why* the constraints exist.
   see the 6 CPM pins or the 9 `find_package` lookups. Do not let it imply coverage
   it does not have, and do not add a fabricated ecosystem section to imply it.
 
+## Theme tokens
+
+The reasoning behind each rule here is in
+[`THEME-ENGINE-PLAN.md`](THEME-ENGINE-PLAN.md) §3; this is the short list of things
+that will silently break if broken.
+
+- **Seed the theme from `main.qml`'s `Component.onCompleted`, never from
+  `Theme.qml`'s own.** A singleton in a `qt_add_qml_module` is instantiated
+  lazily and is not ordered after `SettingsBridge`'s construction, so seeding
+  there produced a stale blue accent that looked like the theme refusing to save
+  (T0047). The comment block above `applyTheme()` in `main.qml` is load-bearing.
+- **Every hex crossing the bridge is `#RRGGBBAA`, and it never passes through
+  Qt's parser or `toString()`.** Qt reads an 8-digit hex as `#AARRGGBB` and emits
+  it the same way, so `#000000FF` — opaque black — becomes fully transparent, and
+  the whole window turns into whatever is behind it. `Theme.parseRgbaHex()` and
+  `Theme.toRgbaHex()` exist for this and must stay a matched pair. A colour-only
+  test assertion will not catch it: `#000000FF` and `#00000000` have identical
+  RGB. `src/util/Color.hpp` is correct on its own; it is Qt that disagrees.
+- **Assign `Theme.overrides` wholesale.** Never mutate a member of it. QML does
+  not reliably re-evaluate a binding that reads a member of a `var` object that
+  was changed underneath it, so the tokens would silently keep the old colours.
+- **One apply path: `Theme.applyThemeById()`.** Startup, the Settings selector,
+  the picker and reset all go through it. A second one is how the window and
+  `config.toml` disagree.
+- **No C++ type may be registered under the name `Theme`.** The QML singleton
+  owns it. `ThemeBridge` was compiled, linked and unreachable for exactly this
+  reason and was deleted as dead code (T0055); the catalog is `ThemeCatalog`.
+- **A key `ConfigParsers` writes must be in a `CHADVIS_*_FIELDS` table.**
+  `serialize()` rebuilds the entire file, so a field missing from the table is
+  silently dropped on the next save — which reads as "the setting reverted".
+- **A hex field bound to `text` loses its binding the first time the user types,
+  and QML cannot restore it imperatively.** Track it with a `Connections` handler
+  on `Theme.themeChanged()` instead. Binding `Theme.accent` (a `color`) straight
+  into `text` (a `string`) is also `incompatible-type` to qmllint, and was the
+  reason T0047's fix deleted the colour editor instead of retyping it.
+- **An unknown theme id must not be rewritten into the config.** Resolve it for
+  the run and leave the file alone, or a theme that failed to load once — a
+  temporarily unreadable file — is erased permanently.
+
 ## Suno evidence
 
 These rules are about evidence discipline, not code. They exist because the Suno

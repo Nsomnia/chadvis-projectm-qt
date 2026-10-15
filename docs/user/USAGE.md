@@ -44,6 +44,18 @@ The Video view remains alive while the main window is open. Navigating away only
 
 Selecting Settings opens a separate application-modal window. Its page rail contains Account, Audio, Visualizer, Recording, Karaoke, Appearance, Performance, Shortcuts, and Profiles pages.
 
+### Appearance — themes and colours
+
+Appearance has two halves, and they behave differently on purpose.
+
+**Theme** is a whole set of colours. Pick one of Material, ChadVis Dark, Gruvbox or Nord from the dropdown and the change is **previewed live** across the entire window — not just this panel. Nothing is saved until you press **Apply**, so if you pick the wrong one, pick another one; the preview is not a choice until it is applied. **Reset to Default** previews the default theme, and still waits for Apply, for the same reason.
+
+**Accent** and **Background** are yours. Click a swatch to open the picker — a saturation/value field, a hue strip, and an alpha strip over a checkerboard — or type a hex value directly. Either one applies immediately and saves itself; the picker has its own Cancel, so a colour change is only committed once you have finished dragging.
+
+Using either picker switches the theme to **Custom**: your accent and background, with the rest of the palette derived from them. It inherits from whichever theme you were on, so changing the accent under Gruvbox keeps Gruvbox's text colours.
+
+`--theme` on the command line applies a theme for that launch only. It does not change what is saved.
+
 Configuration-backed `SettingsBridge` values are saved after two seconds of inactivity. The Save action writes the configuration immediately, the window's close action saves again, and closing the main window also calls `SettingsBridge.save()`.
 
 ## Suno Account and Sign-In

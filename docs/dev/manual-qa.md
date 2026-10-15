@@ -87,7 +87,36 @@ D4 matters: any document or review note that tells a user to paste a bare sessio
 | E1 | In `Settings > Visualizer`, change `FPS Limit` to a disposable non-default value. | | | |
 | E2 | Close Settings, then close the main window. | | | |
 | E3 | Relaunch and confirm the FPS value was saved. | | | |
-| E4 | Confirm the debounce path also persists: change the value, wait roughly two seconds without another change, and kill the process from the terminal. The value should already be on disk — the auto-save is not close-gated. | | | |
+| E4 | Confirm the debounce path also persists: change the value, wait roughly two seconds without another change, and kill the process from the terminal. The value should already be on disk — the auto-save is not close-gated. |
+
+### MT-001-G — Themes and colour
+
+Added with the theme engine. **A headless run is not evidence for anything on
+this list** — these all depend on what the eye sees, so `PASS` here has to come
+from a person looking at the window.
+
+| ID | Step | Pass | Fail | Notes |
+| --- | --- | --- | --- | --- |
+| G1 | Open `Settings > Appearance`. Four themes are listed in the dropdown. | | | |
+| G2 | Select **Gruvbox** without pressing Apply. The **whole window** changes, not only the Settings panel — rail, transport, status bar, buttons, borders, and the glow on the focused control. | | | |
+| G3 | Select **Nord**, then **ChadVis Dark**, then **Material**. Each repaints completely. No token is left over from the previous theme — look especially at borders, hover states, and the sidebar's selected-item fill. | | | |
+| G4 | Confirm the same for **Material → Gruvbox**: the glass borders and the focus glow follow the accent. They used to be hardcoded cyan and were the reason a colour change looked half-applied. | | | |
+| G5 | Press **Apply**, close Settings, relaunch. The window opens on the applied theme. | | | |
+| G6 | Select Gruvbox, do **not** press Apply, then select **ChadVis Dark** instead. Quit Settings via the window close button rather than applying. The persisted theme is unchanged — a preview is not a choice. | | | |
+| G7 | Click the **Accent** swatch. A picker opens with a saturation/value field, a hue strip, and an alpha strip over a checkerboard. | | | |
+| G8 | Drag in the SV field and along the hue strip. The window previews the colour live as you drag. Drag the alpha strip to about half; the background of the strip shows through the checkerboard and the window itself becomes translucent. | | | |
+| G9 | Press **Cancel**. The colour returns to what it was before the drag. Cancel is the reason colour edits need no Apply button. | | | |
+| G10 | Pick a colour and **Done**. The dropdown now reads **Custom**. The hex field beside the swatch shows the value. | | | |
+| G11 | Type a hex directly into the Accent field (`#FFAA00`), press Enter. The window updates and the field shows a normalised `#FFAA00FF`. | | | |
+| G12 | Type `#12345` — an invalid length — and press Enter. The field snaps back to the previous valid value rather than turning the window into an undefined colour. | | | |
+| G13 | Under **Gruvbox**, pick a new accent. Gruvbox's text colours and borders stay gruvbox's; only the accent family changes. | | | |
+| G14 | Read `config.toml`: `theme` is `custom`, and `accent_color` / `visualizer_background` hold the picked values as `#RRGGBBAA`. | | | |
+| G15 | Relaunch. The window opens on the custom theme — this is the exact regression that produced the uniform transparent-blue window on 12 Oct. | | | |
+| G16 | `Settings > Appearance > Reset to Default`, then **Apply**. The window returns to Material and `config.toml` says `theme = 'material'`. | | | |
+| G17 | Launch once with `./build/chadvis-projectm-qt --theme nord`. The window opens on Nord. Quit and relaunch **without** the flag: the window opens on the previously saved theme, not Nord. | | | |
+| G18 | Set an unknown id by hand (`theme = 'dracula'`) in `config.toml` and launch. The app starts on a valid theme, logs what it fell back to, and **leaves `dracula` in the file**. | | | |
+| G19 | Read every secondary text label, the disabled labels, and the status bar against their backgrounds. Nothing should be unreadable grey-on-grey. `textDisabled` shipped at 1.95–2.77:1 on the old theme and the four palettes here are new colour guesses — T0191 tracks the measurement this depends on. | | | |
+| G20 | Resize the window from ~400 px to full width. Nav rail collapses and expands, and every threshold crossing re-reads the theme rather than reverting to the built-in defaults. | | | |
 
 ### MT-001-F — Process output
 

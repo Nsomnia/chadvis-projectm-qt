@@ -135,6 +135,9 @@ endif()
 
     # Mark QML singletons before qt_add_qml_module
 set_source_files_properties(src/qml/styles/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# Palette data for the theme engine. Both singletons are auto-registered with the
+# ChadVis module, so QML reaches them by name with no import path change.
+set_source_files_properties(src/qml/styles/ThemeDefinitions.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(project_lib
     URI ChadVis

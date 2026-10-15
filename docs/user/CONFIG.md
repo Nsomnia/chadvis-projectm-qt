@@ -93,15 +93,46 @@ These are exposed read-only to the UI (notify signals, no write setters in `Sett
 
 | Key | Type | Default | Meaning |
 | :--- | :--- | :--- | :--- |
-| `theme` | string | `'dark'` | Theme name |
+| `theme` | string | `'material'` | Active theme id: `material`, `chadvis-dark`, `gruvbox`, `nord`, or `custom`. See [Themes](#themes) |
 | `show_playlist` | bool | `true` | Playlist panel visible |
 | `show_presets` | bool | `true` | Preset panel visible |
 | `show_debug_panel` | bool | `false` | Debug panel visible |
-| `visualizer_background` | color | `'#000000FF'` | Visualizer background (maps to `UIConfig::backgroundColor`) |
-| `accent_color` | color | `'#00FF88FF'` | Accent color |
+| `visualizer_background` | color | `'#000000FF'` | **UI** background colour despite the key name — it maps to `UIConfig::backgroundColor` and the visualizer canvas does not read it |
+| `accent_color` | color | `'#00FF88FF'` | Accent colour |
 | `expanded_panel` | string | `'playback'` | Which sidebar accordion panel is open |
 | `sidebar_width` | integer | `280` | Sidebar width in px, clamped to 200–400 |
 | `drawer_open` | bool | `false` | Drawer state for narrow layouts |
+
+#### Themes
+
+`[ui] theme` names a **theme** — a whole set of colours, not a single value.
+Settings → Appearance changes it; nothing else writes it.
+
+| Id | Look |
+| :--- | :--- |
+| `material` | Material 3 dark — purple accent, neutral greys. **The default for a new install.** |
+| `chadvis-dark` | The original ChadVis look — green accent on black. |
+| `gruvbox` | Warm retro palette, muted blue accent. |
+| `nord` | Cool arctic palette, frost blue accent. |
+| `custom` | **Not a file, and not directly selectable.** Means "the accent and background in `accent_color` / `visualizer_background` are yours; everything else is derived". Picking a colour in the picker sets this. |
+
+An unrecognised id does **not** blank the window and is **not** rewritten in your
+config file: the app falls back to the default for that run, reports it in the
+log, and leaves the stored value alone so that theme loads again next launch. The
+legacy value `dark` maps to `chadvis-dark`, so a config written before the theme
+engine existed keeps the appearance it had.
+
+#### `--theme` does not save
+
+`--theme <id>` applies a theme **for that session only** and never writes
+`[ui] theme`. A scripted launch with `--theme nord` will not replace whatever you
+picked in Settings. To change the saved theme, use Settings, or edit
+`config.toml` yourself.
+
+`accent_color` and `visualizer_background` remain in the file because they are the
+two values a `custom` theme needs. They are kept in sync by whichever theme is
+active, so hand-editing them while `theme` names a built-in will be undone on the
+next launch.
 
 ### `[visualizer]`
 
