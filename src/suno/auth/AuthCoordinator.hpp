@@ -39,6 +39,22 @@ public:
     /// arrives afterwards through installCredentials(), which is the paste
     /// path, and that is a property of the flow rather than a fallback.
     bool beginGoogleSignIn(QString* safeError = nullptr);
+    /// Import the Suno session from a local browser's cookie store (T0199).
+    ///
+    /// The complement to beginGoogleSignIn(), and the half that was missing:
+    /// opening the browser could never return a credential, because Clerk
+    /// delivers the code server-side. For a user who is already signed in,
+    /// the durable credential (`__client`, ~1 year, HttpOnly) is sitting in
+    /// the browser's on-disk store the entire time. This reads the Clerk
+    /// cookie family for suno.com from it and hands the header to
+    /// SunoClient::setCookie() -- the same call the paste path makes, which
+    /// persists through CredentialStore and starts a bearer fetch.
+    ///
+    /// Returns false with `safeError` when no browser had a session.
+    /// Reading a browser's Safe Storage secret prompts for permission on
+    /// first use, which is why this exists as an explicit user action and
+    /// is never called on startup.
+    bool importSessionFromBrowser(QString* safeError = nullptr);
     void signOutSuno();
 
     [[nodiscard]] QString googleLoginState() const { return state_; }

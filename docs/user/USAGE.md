@@ -60,9 +60,13 @@ Configuration-backed `SettingsBridge` values are saved after two seconds of inac
 
 ## Suno Account and Sign-In
 
-Open `Settings > Account` to manage the Suno session. The page includes a `Sign in with Google` card, but browser sign-in is not enabled in the current build. The captured Suno/Clerk flow has not demonstrated a desktop callback that ChadVis can safely receive, so the Google action must not start an unverified native sign-in handshake.
+Open `Settings > Account` to manage the Suno session.
 
-Use the manual path instead:
+**If you are already signed in to suno.com in a browser**, press **Already signed in? Import the session**. ChadVis reads the Suno session cookies out of that browser's own cookie store and installs them — no copy-paste, no developer tools. macOS asks once, per browser, for permission to read that browser's "Safe Storage" keychain item; allow it and the import completes. Which browsers are read, in order: Brave, Chrome, Chromium, Edge, Vivaldi — the first one with a Suno session wins.
+
+**If you are not signed in yet**, press **Sign in with Google**. Your browser opens on Suno's sign-in page; complete the sign-in there, come back to ChadVis, and press the import button. Note that ChadVis cannot receive the sign-in itself: Suno's OAuth (Clerk) completes on `auth.suno.com` and never sends a code to a local address. That is a property of the captured flow, not a limitation of this app.
+
+The manual path remains for everything else:
 
 1. Expand `▾ Paste session cookie header instead`.
 2. Paste the **complete `Cookie:` request header** — copied straight from a signed-in browser's request to `auth.suno.com/v1/client` — into the **Complete Cookie request header** field.
@@ -70,7 +74,7 @@ Use the manual path instead:
 
 A lone session JWT is **not** enough. The `__client…` cookies are the part that actually authenticates the Studio session; supplying only a bearer/session JWT produces a non-working session, and the Account page shows the cookie-header hint when the pasted value contains no `=`. Extra cookies are ignored.
 
-`SettingsBridge` sends this value to `CredentialStore`; it is stored in the OS keychain and is never written to `config.toml` or to logs. When the session becomes valid, the Account page and main-window account chip can display the user name, plan, and credit balance from `SunoAccountManager`.
+`SettingsBridge` sends this value to `CredentialStore`; it is stored in the OS keychain and is never written to `config.toml` or to logs. The import path stores through the same `CredentialStore`, and reads **only** `suno.com` cookies — of those, only the Clerk `__client`/`__session` family; everything else in the store is left unread. When the session becomes valid, the Account page and main-window account chip can display the user name, plan, and credit balance from `SunoAccountManager`.
 
 ## Shell Keyboard Controls
 

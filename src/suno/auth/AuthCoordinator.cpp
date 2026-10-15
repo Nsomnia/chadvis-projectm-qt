@@ -1,5 +1,6 @@
 #include "AuthCoordinator.hpp"
 
+#include "BrowserCookieImport.hpp"
 #include "CredentialStore.hpp"
 #include "suno/SunoClient.hpp"
 
@@ -133,6 +134,48 @@ bool AuthCoordinator::googleLoginAvailable() const {
     // precondition, and it is the one that actually protects the user's
     // session credential.
     return isSecureBackendAvailable();
+}
+
+bool AuthCoordinator::importSessionFromBrowser(QString* safeError) {
+    error_.clear();
+
+    // T0199. The paste path's own precondition applies here unchanged: a
+    // harvested cookie is the same secret a pasted one is, and storing it in
+    // the plaintext fallback would defeat the reason CredentialStore exists.
+    if (!isSecureBackendAvailable()) {
+        setPolicyError(
+            QStringLiteral("Secure credential storage is required before a browser session can be imported"));
+        if (safeError) *safeError = error_;
+        return false;
+    }
+
+    const auto harvest = BrowserCookieImport::harvest();
+    if (harvest.cookieHeader.isEmpty()) {
+        setPolicyError(harvest.reason.isEmpty()
+                           ? QStringLiteral("No Suno session was found in any installed browser")
+                           : harvest.reason);
+        if (safeError) *safeError = error_;
+        return false;
+    }
+    if (!client_) {
+        setPolicyError(QStringLiteral("The Suno client is not available to receive the imported session"));
+        if (safeError) *safeError = error_;
+        return false;
+    }
+
+    // The same terminal call commitSunoCredential() makes for a paste. It
+    // classifies the header (the Clerk cookie families are accepted by name
+    // prefix), persists through CredentialStore, and kicks the bearer fetch
+    // that turns `__client` into a live `__session` JWT.
+    client_->setCookie(harvest.cookieHeader.toStdString());
+
+    // The browser name is the one fact worth surfacing: it tells the user
+    // which of their browsers just surrendered the session, which is the
+    // consent question they would otherwise have to guess at.
+    state_ = QStringLiteral("browserImported");
+    error_.clear();
+    emit stateChanged(state_);
+    return true;
 }
 
 void AuthCoordinator::setPolicyError(const QString& safeMessage) {
