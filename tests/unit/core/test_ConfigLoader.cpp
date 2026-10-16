@@ -136,12 +136,12 @@ void populate(Config& c, int seed) {
 
     c.setDebug(seed % 2 == 1);
 
-    auto& audio = c.audio();
+    auto& audio = c.audioMut();
     audio.device = "device-" + tag;
     audio.bufferSize = 1024u;
     audio.sampleRate = 48000u;
 
-    auto& vis = c.visualizer();
+    auto& vis = c.visualizerMut();
     vis.presetPath = fs::path("/tmp/presets-" + tag);
     vis.width = 1280u;
     vis.height = 720u;
@@ -158,7 +158,7 @@ void populate(Config& c, int seed) {
     vis.meshY = 12u;
     vis.texturePaths = {fs::path("/tmp/tex-a.png"), fs::path("/tmp/tex-b.png")};
 
-    auto& rec = c.recording();
+    auto& rec = c.recordingMut();
     rec.enabled = false;
     rec.autoRecord = true;
     rec.recordEntireSong = true;
@@ -177,7 +177,7 @@ void populate(Config& c, int seed) {
     rec.audio.codec = "libopus";
     rec.audio.bitrate = 128u;
 
-    auto& ui = c.ui();
+    auto& ui = c.uiMut();
     ui.theme = "light-" + tag;
     ui.showPlaylist = false;
     ui.showPresets = false;
@@ -188,7 +188,7 @@ void populate(Config& c, int seed) {
     ui.sidebarWidth = 333;
     ui.drawerOpen = true;
 
-    auto& keys = c.keyboard();
+    auto& keys = c.keyboardMut();
     keys.playPause = "p" + tag;
     keys.nextTrack = "n" + tag;
     keys.prevTrack = "b" + tag;
@@ -197,7 +197,7 @@ void populate(Config& c, int seed) {
     keys.nextPreset = "right" + tag;
     keys.prevPreset = "left" + tag;
 
-    auto& suno = c.suno();
+    auto& suno = c.sunoMut();
     suno.deviceId = "device-" + tag;
     // Legacy credential, exactly as SunoClient's failed migration leaves it.
     // Neither may ever reach the serializer.
@@ -211,7 +211,7 @@ void populate(Config& c, int seed) {
     suno.debugLyrics = true;
     suno.debugLyricsFile = fs::path("/tmp/dbg-" + tag + ".json");
 
-    auto& karaoke = c.karaoke();
+    auto& karaoke = c.karaokeMut();
     karaoke.enabled = false;
     karaoke.fontFamily = "Serif-" + tag;
     karaoke.fontSize = 48u;
@@ -221,7 +221,7 @@ void populate(Config& c, int seed) {
     karaoke.inactiveColor = Color::fromHex("#00FFFFFF");
     karaoke.shadowColor = Color::fromHex("#00000080");
 
-    auto& overlay = c.overlay();
+    auto& overlay = c.overlayMut();
     overlay.enabled = seed % 2 == 0;
     overlay.elements.clear();
     OverlayElementConfig element;
@@ -359,14 +359,14 @@ private slots:
     }
 
     void cleanupTestCase() {
-        config().audio() = savedAudio_;
-        config().visualizer() = savedVisualizer_;
-        config().recording() = savedRecording_;
-        config().ui() = savedUi_;
-        config().keyboard() = savedKeyboard_;
-        config().suno() = savedSuno_;
-        config().karaoke() = savedKaraoke_;
-        config().overlay() = savedOverlay_;
+        config().audioMut() = savedAudio_;
+        config().visualizerMut() = savedVisualizer_;
+        config().recordingMut() = savedRecording_;
+        config().uiMut() = savedUi_;
+        config().keyboardMut() = savedKeyboard_;
+        config().sunoMut() = savedSuno_;
+        config().karaokeMut() = savedKaraoke_;
+        config().overlayMut() = savedOverlay_;
         config().setDebug(savedDebug_);
     }
 
@@ -500,13 +500,13 @@ private slots:
         // encoder values field by field, which is how it came to assert gop_size,
         // b_frames, sample_rate and channels that it had never actually set --
         // a test that failed for the right reason and the wrong value at once.
-        config().recording() = distinctiveEncoders();
+        config().recordingMut() = distinctiveEncoders();
 
         const auto saved = ConfigLoader::save(config(), path);
         QVERIFY2(saved.isOk(), saved.isErr() ? saved.error().message.c_str() : "");
 
         // Clobber to pure struct defaults, so nothing can survive from memory.
-        config().recording() = RecordingConfig{};
+        config().recordingMut() = RecordingConfig{};
         QCOMPARE(config().recording().video.codec, std::string("libx264"));
 
         const auto loaded = ConfigLoader::load(config(), path);
@@ -685,7 +685,7 @@ private slots:
         const auto path = fs::path(dir.path().toStdString()) / "config.toml";
 
         populate(config(), 2);
-        config().overlay().enabled = false;
+        config().overlayMut().enabled = false;
         auto saved = ConfigLoader::save(config(), path);
         QVERIFY2(saved.isOk(), saved.isErr() ? saved.error().message.c_str() : "");
         auto loaded = ConfigLoader::load(config(), path);
@@ -695,7 +695,7 @@ private slots:
         // would leave the struct default `true`, and `!true` would pass.
         QCOMPARE(config().overlay().enabled, false);
 
-        config().overlay().enabled = true;
+        config().overlayMut().enabled = true;
         saved = ConfigLoader::save(config(), path);
         QVERIFY2(saved.isOk(), saved.isErr() ? saved.error().message.c_str() : "");
         loaded = ConfigLoader::load(config(), path);

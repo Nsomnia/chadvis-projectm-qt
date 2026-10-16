@@ -204,7 +204,7 @@ public:
 
     ~DownloadPathGuard()
     {
-        CONFIG.suno().downloadPath = path_;
+        CONFIG.sunoMut().downloadPath = path_;
     }
 
 private:
@@ -1151,7 +1151,7 @@ private slots:
         file.close();
 
         DownloadPathGuard pathGuard(CONFIG.suno().downloadPath);
-        CONFIG.suno().downloadPath = directory.path().toStdString();
+        CONFIG.sunoMut().downloadPath = directory.path().toStdString();
 
         QTemporaryDir sessionDirectory;
         QVERIFY(sessionDirectory.isValid());

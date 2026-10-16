@@ -215,7 +215,7 @@ void RecordingBridge::setVideoCodec(const QString& codec)
     if (codec.isEmpty() || codec == videoCodec())
         return;
 
-    vc::Config::instance().recording().video.codec = codec.toStdString();
+    vc::Config::instance().recordingMut().video.codec = codec.toStdString();
     emit videoCodecChanged();
 }
 

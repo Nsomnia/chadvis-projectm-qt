@@ -13,20 +13,33 @@
  *
  * @section Patterns
  * - Singleton: Global access point for configuration.
- * - Thread-Safety: mutex_ protects exactly the file-backed operations --
- *   load(), save(), loadDefault() and the overlay-element mutations. The
- *   section accessors return direct references and are NOT lock-protected
- *   (a returned reference outlives any lock the accessor could hold):
- *   read through the const overloads (never marks dirty), write through
- *   the mutable overloads (marks dirty) from the same thread that calls
- *   save(). The dirty flag itself is atomic because the unsynchronised
- *   accessor writes race the flag updates inside the locked paths.
+ * - Thread-Safety: THE CONTRACT (T0022). All Config access is main-thread
+ *   affine. The thread that first calls instance() owns the object; every
+ *   mutating path -- the *Mut() write accessors, setDebug(), load(),
+ *   loadDefault(), save() and the overlay-element mutations -- asserts that
+ *   affinity in debug builds (assertAffinity(), Config.cpp). Workers must copy
+ *   what they need on the main thread; nothing in the tree reads or writes a
+ *   section from another thread today.
+ *   - Reads: the const accessors (audio(), ui(), ...). They never mark the
+ *     config dirty. Because instance() returns a non-const reference, a plain
+ *     `CONFIG.suno()` selects the const overload ONLY because the mutable
+ *     overloads no longer share its name -- which is exactly why the write
+ *     accessors are named *Mut(). Before T0022 the mutable overloads were
+ *     name-identical overloads, every read in the tree silently selected them,
+ *     and isDirty() was effectively always true at quit.
+ *   - Writes: `CONFIG.sunoMut().deviceId = ...` etc. Marks dirty, asserts
+ *     affinity. A write through the old spelling is now a compile error, so
+ *     "this site only reads" is enforced by the compiler instead of trusted.
+ * - The mutex_ still serializes the file-backed paths (load/save/loadDefault/
+ *   overlay mutations) as defence in depth; the dirty flag is atomic because
+ *   quit-time save() reads it while QML getters read sections.
  */
 
 #pragma once
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <utility>
 #include "ConfigData.hpp"
 #include "util/Result.hpp"
@@ -44,11 +57,19 @@ public:
     fs::path configPath() const { return configPath_; }
     bool debug() const { return debug_; }
     void setDebug(bool v) {
+        assertAffinity();
         debug_ = v;
         markDirty();
     }
 
-    // Section accessors (const)
+    // True when the calling thread is the one that owns the config (the thread
+    // that first called instance()). Exposed so tests can pin the affinity
+    // contract without triggering the debug assert.
+    [[nodiscard]] bool onConfigThread() const {
+        return std::this_thread::get_id() == owner_;
+    }
+
+    // Section accessors (const) -- the read path. Never marks dirty.
     const AudioConfig& audio() const { return audio_; }
     const VisualizerConfig& visualizer() const { return visualizer_; }
     const RecordingConfig& recording() const { return recording_; }
@@ -58,36 +79,50 @@ public:
     const KaraokeConfig& karaoke() const { return karaoke_; }
     const OverlayConfig& overlay() const { return overlay_; }
 
-    // Section accessors (mutable)
-    AudioConfig& audio() {
+    // Section write accessors (T0022). Deliberately NOT overloads of the const
+    // names: with `Config::instance()` handing out a non-const reference, an
+    // overload pair made every plain read -- `CONFIG.visualizer().fps`,
+    // `const auto& v = CONFIG.visualizer()` -- bind to the MUTABLE overload and
+    // mark the config dirty, so quit-time isDirty() was almost always true.
+    // Distinct names make the read path const by default and make every write
+    // site say "write" where grep (and review) can see it.
+    AudioConfig& audioMut() {
+        assertAffinity();
         markDirty();
         return audio_;
     }
-    VisualizerConfig& visualizer() {
+    VisualizerConfig& visualizerMut() {
+        assertAffinity();
         markDirty();
         return visualizer_;
     }
-    RecordingConfig& recording() {
+    RecordingConfig& recordingMut() {
+        assertAffinity();
         markDirty();
         return recording_;
     }
-    UIConfig& ui() {
+    UIConfig& uiMut() {
+        assertAffinity();
         markDirty();
         return ui_;
     }
-    KeyboardConfig& keyboard() {
+    KeyboardConfig& keyboardMut() {
+        assertAffinity();
         markDirty();
         return keyboard_;
     }
-    SunoConfig& suno() {
+    SunoConfig& sunoMut() {
+        assertAffinity();
         markDirty();
         return suno_;
     }
-    KaraokeConfig& karaoke() {
+    KaraokeConfig& karaokeMut() {
+        assertAffinity();
         markDirty();
         return karaoke_;
     }
-    OverlayConfig& overlay() {
+    OverlayConfig& overlayMut() {
+        assertAffinity();
         markDirty();
         return overlay_;
     }
@@ -102,7 +137,17 @@ public:
     void markClean() const { dirty_.store(false, std::memory_order_relaxed); }
 
 private:
-    Config() = default;
+    // The thread that first calls instance() owns the object. Magic-static
+    // initialisation publishes `owner_` to every later caller of instance()
+    // with a happens-before edge, so reading it from any thread that reached
+    // the singleton legally is race-free.
+    Config() : owner_(std::this_thread::get_id()) {}
+
+    // Debug-build enforcement of the affinity contract: every mutating path
+    // calls this. A violation is UB, not a benign stale read (std::string
+    // tears), so failing loudly in debug/sanitizer builds is the point.
+    void assertAffinity() const;
+
     void markDirty() { dirty_.store(true, std::memory_order_relaxed); }
 
     friend class ConfigLoader;
@@ -118,6 +163,8 @@ private:
     SunoConfig suno_;
     KaraokeConfig karaoke_;
     OverlayConfig overlay_;
+
+    std::thread::id owner_;
 
     // `mutable` so the const save() can clear it on success (T0023: save()
     // never cleared the flag, so the file was rewritten on every quit).

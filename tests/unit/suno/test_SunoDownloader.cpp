@@ -56,11 +56,11 @@ class DownloadConfigGuard {
 public:
     DownloadConfigGuard()
         : path_(CONFIG.suno().downloadPath), format_(CONFIG.suno().downloadFormat) {
-        CONFIG.suno().downloadFormat = SunoDownloadFormat::MP3;
+        CONFIG.sunoMut().downloadFormat = SunoDownloadFormat::MP3;
     }
     ~DownloadConfigGuard() {
-        CONFIG.suno().downloadPath = path_;
-        CONFIG.suno().downloadFormat = format_;
+        CONFIG.sunoMut().downloadPath = path_;
+        CONFIG.sunoMut().downloadFormat = format_;
     }
 
 private:
@@ -169,7 +169,7 @@ private slots:
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         QTemporaryDir sessionDir;
         QVERIFY(sessionDir.isValid());
@@ -241,7 +241,7 @@ private slots:
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         QTemporaryDir sessionDir;
         QVERIFY(sessionDir.isValid());
@@ -279,7 +279,7 @@ private slots:
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         QTemporaryDir sessionDir;
         QVERIFY(sessionDir.isValid());
@@ -324,7 +324,7 @@ private slots:
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         // A real, tagged MP3 carrying a DIFFERENT clip's id -- the shape a
         // previous session's completed download leaves behind.
@@ -376,7 +376,7 @@ private slots:
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         SunoClip mine = completeClip("mine-from-last-time", "Neon Arch");
         const fs::path stale = fs::path(downloadDir.path().toStdString()) / "Neon Arch.mp3";
@@ -406,7 +406,7 @@ private slots:
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         QTemporaryDir sessionDir;
         QVERIFY(sessionDir.isValid());
@@ -462,7 +462,7 @@ private slots:
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         QTemporaryDir sessionDir;
         QVERIFY(sessionDir.isValid());
@@ -495,7 +495,7 @@ private slots:
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         QTemporaryDir sessionDir;
         QVERIFY(sessionDir.isValid());
@@ -525,7 +525,7 @@ private slots:
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         QTemporaryDir sessionDir;
         QVERIFY(sessionDir.isValid());
@@ -569,7 +569,7 @@ private slots:
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         QTemporaryDir sessionDir;
         QVERIFY(sessionDir.isValid());
@@ -604,10 +604,10 @@ private slots:
 
     void wavIsRefusedBeforeAnythingIsResolved() {
         DownloadConfigGuard config;
-        CONFIG.suno().downloadFormat = SunoDownloadFormat::WAV;
+        CONFIG.sunoMut().downloadFormat = SunoDownloadFormat::WAV;
         QTemporaryDir downloadDir;
         QVERIFY(downloadDir.isValid());
-        CONFIG.suno().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
 
         QTemporaryDir sessionDir;
         QVERIFY(sessionDir.isValid());

@@ -350,30 +350,30 @@ Result<void> Application::init(const AppOptions& opts) {
 
     // Override default preset from command line
     if (opts.useDefaultPreset) {
-        CONFIG.visualizer().useDefaultPreset = true;
+        CONFIG.visualizerMut().useDefaultPreset = true;
     } else {
-        CONFIG.visualizer().useDefaultPreset = false;
+        CONFIG.visualizerMut().useDefaultPreset = false;
     }
 
     // Set debug lyrics from command line
     if (opts.testLyricsFile) {
-        CONFIG.suno().debugLyrics = true;
-        CONFIG.suno().debugLyricsFile = *opts.testLyricsFile;
+        CONFIG.sunoMut().debugLyrics = true;
+        CONFIG.sunoMut().debugLyricsFile = *opts.testLyricsFile;
         LOG_INFO("Debug lyrics enabled: {}", opts.testLyricsFile->string());
     }
 
     // ─── Apply CLI overrides to config ────────────────────────────────────
     // Audio overrides. parseAudio applies no range clamps to its fields, so
     // there is nothing to re-run after these the way there is below.
-    applyOverride(opts.audioDevice, CONFIG.audio().device, "audio.device");
-    applyOverride(opts.audioBufferSize, CONFIG.audio().bufferSize, "audio.bufferSize");
-    applyOverride(opts.audioSampleRate, CONFIG.audio().sampleRate, "audio.sampleRate");
+    applyOverride(opts.audioDevice, CONFIG.audioMut().device, "audio.device");
+    applyOverride(opts.audioBufferSize, CONFIG.audioMut().bufferSize, "audio.bufferSize");
+    applyOverride(opts.audioSampleRate, CONFIG.audioMut().sampleRate, "audio.sampleRate");
 
     // Visualizer overrides
-    applyOverride(opts.visualizerFps, CONFIG.visualizer().fps, "visualizer.fps");
-    applyOverride(opts.visualizerWidth, CONFIG.visualizer().width, "visualizer.width");
-    applyOverride(opts.visualizerHeight, CONFIG.visualizer().height, "visualizer.height");
-    applyOverride(opts.visualizerShuffle, CONFIG.visualizer().shufflePresets,
+    applyOverride(opts.visualizerFps, CONFIG.visualizerMut().fps, "visualizer.fps");
+    applyOverride(opts.visualizerWidth, CONFIG.visualizerMut().width, "visualizer.width");
+    applyOverride(opts.visualizerHeight, CONFIG.visualizerMut().height, "visualizer.height");
+    applyOverride(opts.visualizerShuffle, CONFIG.visualizerMut().shufflePresets,
                   "visualizer.shufflePresets");
     // Overrides write raw values into CONFIG after ConfigParsers has already
     // clamped the file-loaded values, so an out-of-range flag would sail past
@@ -381,28 +381,28 @@ Result<void> Application::init(const AppOptions& opts) {
     // `fps > 0` guard in VisualizerRenderer::initialize and silently kept the
     // 60 default, i.e. the flag did nothing. Re-run the parser's own clamp
     // helpers so a flag meets the same bounds as the file.
-    ConfigParsers::clampVisualizer(CONFIG.visualizer());
+    ConfigParsers::clampVisualizer(CONFIG.visualizerMut());
     warnIfClamped(opts.visualizerFps, CONFIG.visualizer().fps, "visualizer.fps");
     warnIfClamped(opts.visualizerWidth, CONFIG.visualizer().width, "visualizer.width");
     warnIfClamped(opts.visualizerHeight, CONFIG.visualizer().height, "visualizer.height");
 
     // Recording overrides. Same rationale as the visualizer clamp above:
     // --recording-crf writes past parseRecording's clamp(crf, 0, 51).
-    applyOverride(opts.recordingCodec, CONFIG.recording().video.codec, "recording.video.codec");
-    applyOverride(opts.recordingCrf, CONFIG.recording().video.crf, "recording.video.crf");
-    applyOverride(opts.recordingPreset, CONFIG.recording().video.preset, "recording.video.preset");
-    ConfigParsers::clampVideoEncoder(CONFIG.recording().video);
+    applyOverride(opts.recordingCodec, CONFIG.recordingMut().video.codec, "recording.video.codec");
+    applyOverride(opts.recordingCrf, CONFIG.recordingMut().video.crf, "recording.video.crf");
+    applyOverride(opts.recordingPreset, CONFIG.recordingMut().video.preset, "recording.video.preset");
+    ConfigParsers::clampVideoEncoder(CONFIG.recordingMut().video);
     warnIfClamped(opts.recordingCrf, CONFIG.recording().video.crf, "recording.video.crf");
 
     // Suno overrides
-    applyOverride(opts.sunoDownloadPath, CONFIG.suno().downloadPath, "suno.downloadPath");
-    applyOverride(opts.sunoAutoDownload, CONFIG.suno().autoDownload, "suno.autoDownload");
+    applyOverride(opts.sunoDownloadPath, CONFIG.sunoMut().downloadPath, "suno.downloadPath");
+    applyOverride(opts.sunoAutoDownload, CONFIG.sunoMut().autoDownload, "suno.autoDownload");
 
     // Karaoke overrides
-    applyOverride(opts.karaokeEnabled, CONFIG.karaoke().enabled, "karaoke.enabled");
-    applyOverride(opts.karaokeFont, CONFIG.karaoke().fontFamily, "karaoke.fontFamily");
-    applyOverride(opts.karaokeFontSize, CONFIG.karaoke().fontSize, "karaoke.fontSize");
-    applyOverride(opts.karaokeYPosition, CONFIG.karaoke().yPosition, "karaoke.yPosition");
+    applyOverride(opts.karaokeEnabled, CONFIG.karaokeMut().enabled, "karaoke.enabled");
+    applyOverride(opts.karaokeFont, CONFIG.karaokeMut().fontFamily, "karaoke.fontFamily");
+    applyOverride(opts.karaokeFontSize, CONFIG.karaokeMut().fontSize, "karaoke.fontSize");
+    applyOverride(opts.karaokeYPosition, CONFIG.karaokeMut().yPosition, "karaoke.yPosition");
 
     // UI overrides
     //

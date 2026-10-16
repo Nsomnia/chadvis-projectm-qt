@@ -62,6 +62,17 @@ another document already owns — it records only *why* the constraints exist.
   `AudioEngine::positionChanged` is deliberately still unconsumed, and a mutex is
   worse than the hazard (two writers plus an unguarded `lyrics_.vector`).
 
+ - **`Config` is main-thread-affine: reads are const, writes go through the
+   `*Mut()` accessors (T0022).** `Config::instance()` hands out a non-const
+   reference, so before T0022 the const and mutable section accessors shared one
+   name and *every* plain read - `CONFIG.visualizer().fps`, `const auto& v =
+   CONFIG.visualizer()`, every QML property getter - silently selected the
+   mutable overload and marked the config dirty, making quit-time `isDirty()`
+   almost always true and defeating T0023. The write accessors now carry the
+   `Mut` suffix; a write through the old spelling is a compile error. Mutating
+   paths assert affinity in debug builds (`Config::assertAffinity()`), and a
+   worker that needs config data copies it on the main thread. The owning doc is
+   the `Config.hpp` header comment; `test_Config.cpp` pins the contract.
 ## Buffers and lifetime
 
 - **`Signal::emitSignal` perfect-forwarding only pays off at N == 1.**

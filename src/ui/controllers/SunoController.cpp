@@ -29,12 +29,14 @@ namespace {
 /// Stable per-install Device-Id for the studio-api header set. Generated once
 /// and persisted as a plain (non-secret) UUID in config.toml [suno].
 QString resolveOrCreateDeviceId() {
-    auto& cfg = CONFIG.suno();
+    // Const read first: binding the mutable accessor would mark the config
+    // dirty on every call, rewriting the file at quit for no change (T0022).
+    const auto& cfg = CONFIG.suno();
     if (!cfg.deviceId.empty()) {
         return QString::fromStdString(cfg.deviceId);
     }
     const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    cfg.deviceId = id.toStdString();
+    CONFIG.sunoMut().deviceId = id.toStdString();
     std::ignore = CONFIG.save(CONFIG.configPath());
     LOG_INFO("SunoController: generated new Device-Id {}", id.toStdString());
     return id;

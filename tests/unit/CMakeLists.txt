@@ -3,6 +3,7 @@ add_executable(unit_tests
     core/test_Logger.cpp
     core/test_ConfigParsers.cpp
     core/test_ConfigLoader.cpp
+    core/test_Config.cpp
     core/test_FileUtils.cpp
     core/test_Version.cpp
     core/test_Signal.cpp

@@ -108,11 +108,11 @@ class EntitlementConfigGuard {
 public:
     EntitlementConfigGuard()
         : path_(CONFIG.suno().downloadPath), format_(CONFIG.suno().downloadFormat) {
-        CONFIG.suno().downloadFormat = SunoDownloadFormat::MP3;
+        CONFIG.sunoMut().downloadFormat = SunoDownloadFormat::MP3;
     }
     ~EntitlementConfigGuard() {
-        CONFIG.suno().downloadPath = path_;
-        CONFIG.suno().downloadFormat = format_;
+        CONFIG.sunoMut().downloadPath = path_;
+        CONFIG.sunoMut().downloadFormat = format_;
     }
 
 private:
@@ -175,7 +175,7 @@ public:
         if (!downloadDir_.isValid()) {
             return;
         }
-        CONFIG.suno().downloadPath = downloadDir_.path().toStdString();
+        CONFIG.sunoMut().downloadPath = downloadDir_.path().toStdString();
         if (!database_.init(":memory:")) {
             return;
         }
@@ -831,7 +831,7 @@ private slots:
             // The WAV gate is a separate decision with its own sentence, and it
             // is the one message that legitimately names a format — the format
             // the user asked for, not the filter.
-            CONFIG.suno().downloadFormat = SunoDownloadFormat::WAV;
+            CONFIG.sunoMut().downloadFormat = SunoDownloadFormat::WAV;
             Fixture fixture;
             QVERIFY(fixture.valid());
             auto result = fixture.downloader().download(fetchableClip("leak-wav", "Leak Wav"));

@@ -425,7 +425,7 @@ void SunoClient::restoreSession(RestoreMode mode) {
 
 void SunoClient::applyRestoreResult(RestoreMode mode, CredentialStoreWorker::Outcome result) {
     if (result.migratedLegacy) {
-        auto& cfg = CONFIG.suno();
+        auto& cfg = CONFIG.sunoMut();
         cfg.cookie.clear();
         cfg.token.clear();
         std::ignore = CONFIG.save(CONFIG.configPath());
