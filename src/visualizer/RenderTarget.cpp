@@ -18,7 +18,8 @@ RenderTarget::RenderTarget(RenderTarget&& other) noexcept
       depthBuffer_(std::exchange(other.depthBuffer_, 0)),
       width_(std::exchange(other.width_, 0)),
       height_(std::exchange(other.height_, 0)),
-      hasDepth_(std::exchange(other.hasDepth_, false)) {
+      hasDepth_(std::exchange(other.hasDepth_, false)),
+      createdWith_(std::exchange(other.createdWith_, nullptr)) {
 }
 
 RenderTarget& RenderTarget::operator=(RenderTarget&& other) noexcept {
@@ -30,6 +31,7 @@ RenderTarget& RenderTarget::operator=(RenderTarget&& other) noexcept {
         width_ = std::exchange(other.width_, 0);
         height_ = std::exchange(other.height_, 0);
         hasDepth_ = std::exchange(other.hasDepth_, false);
+        createdWith_ = std::exchange(other.createdWith_, nullptr);
     }
     return *this;
 }
@@ -50,7 +52,10 @@ Result<void> RenderTarget::create(u32 width, u32 height, bool withDepth) {
                 "Failed to initialize OpenGL functions for RenderTarget");
     }
 
+    // Destroy the previous generation under ITS creating context (still in
+    // createdWith_) before adopting the new one.
     destroy();
+    createdWith_ = ctx;
 
     width_ = width;
     height_ = height;
@@ -112,6 +117,27 @@ void RenderTarget::destroy() {
         texture_ = 0;
         fbo_ = 0;
         width_ = height_ = 0;
+        createdWith_ = nullptr;
+        return;
+    }
+
+    // T0026: GL object names live in the creating context's share group.
+    // Deleting while ANY other context is current can remove unrelated names
+    // from that context's namespace -- the wrong-namespace hazard that makes
+    // contextless GL teardown dangerous. Zero and leak instead; a leak is
+    // strictly better. createdWith_ == nullptr means there are no live names
+    // (never created, already destroyed, or already abandoned), so fall
+    // through to the no-op deletes.
+    if (createdWith_ != nullptr && ctx != createdWith_) {
+        LOG_WARN("RenderTarget: destroying without its creating context "
+                 "current -- leaking fbo/texture/depth rather than deleting "
+                 "in the wrong namespace");
+        depthBuffer_ = 0;
+        texture_ = 0;
+        fbo_ = 0;
+        width_ = height_ = 0;
+        hasDepth_ = false;
+        createdWith_ = nullptr;
         return;
     }
 
@@ -131,6 +157,20 @@ void RenderTarget::destroy() {
         fbo_ = 0;
     }
     width_ = height_ = 0;
+    // The names are gone; nothing left for a later destroy() to match against.
+    createdWith_ = nullptr;
+}
+
+void RenderTarget::abandon() {
+    // No GL calls, no context inspection (T0026): zeroing the names makes
+    // every later destroy() a no-op, so the abandoned objects can never be
+    // deleted in the wrong namespace. They leak; that is the point.
+    depthBuffer_ = 0;
+    texture_ = 0;
+    fbo_ = 0;
+    width_ = height_ = 0;
+    hasDepth_ = false;
+    createdWith_ = nullptr;
 }
 
 Result<void> RenderTarget::resize(u32 width, u32 height) {

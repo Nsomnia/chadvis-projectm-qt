@@ -38,6 +38,14 @@ public:
     void shutdown();
 
     /**
+     * @brief Drop the handle without destroying it (T0026).
+     *
+     * Teardown with no usable GL context: the native destroy path may reach
+     * core state whose GL objects are deliberately leaked. The handle leaks.
+     */
+    void abandon();
+
+    /**
      * @brief Clear all items from the playlist.
      */
     void clear();

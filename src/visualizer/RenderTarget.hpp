@@ -9,6 +9,10 @@
 #include "util/Result.hpp"
 #include "util/Types.hpp"
 
+QT_BEGIN_NAMESPACE
+class QOpenGLContext;
+QT_END_NAMESPACE
+
 namespace vc {
 
 class RenderTarget : protected QOpenGLFunctions_3_3_Core {
@@ -27,6 +31,11 @@ public:
     // Initialize with size
     Result<void> create(u32 width, u32 height, bool withDepth = false);
     void destroy();
+    /// Drop the GL object names WITHOUT issuing any GL call (T0026). For
+    /// teardown when no -- or the wrong -- GL context is current: deleting
+    /// then is undefined behaviour that can remove names from another
+    /// context's namespace. A leak is strictly better.
+    void abandon();
 
     // Resize (recreates buffers)
     Result<void> resize(u32 width, u32 height);
@@ -67,6 +76,12 @@ private:
     u32 width_{0};
     u32 height_{0};
     bool hasDepth_{false};
+    /// The context the objects were created under (T0026). destroy() deletes
+    /// only when THIS context is current: GL object names are per-context
+    /// (per-share-group), so deleting while any other context is current can
+    /// remove unrelated names -- the same hazard that makes contextless
+    /// projectm_destroy() dangerous.
+    QOpenGLContext* createdWith_{nullptr};
 };
 
 } // namespace vc
