@@ -226,9 +226,9 @@ public:
     RendererHarness(GlContextFixture& fixture, u32 size)
         : fixture_(fixture), presetDir_(), renderer_(presetManager_) {
         const auto savedPresetPath = Config::instance().visualizer().presetPath;
-        Config::instance().visualizer().presetPath = fs::path(presetDir_.path().toStdString());
+        Config::instance().visualizerMut().presetPath = fs::path(presetDir_.path().toStdString());
         renderer_.initialize(size, size);
-        Config::instance().visualizer().presetPath = savedPresetPath;
+        Config::instance().visualizerMut().presetPath = savedPresetPath;
     }
 
     [[nodiscard]] bool isInitialized() const { return renderer_.projectM().isInitialized(); }
@@ -554,7 +554,7 @@ private slots:
         QTemporaryDir presetDir;
         QVERIFY(presetDir.isValid());
         const fs::path savedPresetPath = Config::instance().visualizer().presetPath;
-        Config::instance().visualizer().presetPath = fs::path(presetDir.path().toStdString());
+        Config::instance().visualizerMut().presetPath = fs::path(presetDir.path().toStdString());
 
         PresetManager windowPresets;
         VisualizerWindow window(windowPresets);
@@ -582,7 +582,7 @@ private slots:
             QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
         }
         window.stopRecording();
-        Config::instance().visualizer().presetPath = savedPresetPath;
+        Config::instance().visualizerMut().presetPath = savedPresetPath;
 
         QVERIFY2(!captured.empty(), "the live window never captured a frame");
         QCOMPARE(capturedWidth, kFrameSize);

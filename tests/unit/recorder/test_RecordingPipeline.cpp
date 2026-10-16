@@ -1042,7 +1042,7 @@ private slots:
         QVERIFY(dir.isValid());
 
         const auto original = Config::instance().recording();
-        auto& recording = Config::instance().recording();
+        auto& recording = Config::instance().recordingMut();
         recording.outputDirectory = fs::path(dir.path().toStdString());
         recording.defaultFilename = "capture.v2/{date}_{time}.mp4";
         recording.container = "mkv";
@@ -1066,7 +1066,7 @@ private slots:
             settings.video.codec == VideoCodec::H265;
         const bool crfWasApplied = settings.video.crf == 17;
 
-        Config::instance().recording() = original;
+        Config::instance().recordingMut() = original;
         QVERIFY(!settings.outputPath.empty());
         QVERIFY(!hasPathSeparator);
         QVERIFY(basenamePreserved);

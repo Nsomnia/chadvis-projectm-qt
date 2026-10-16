@@ -105,8 +105,8 @@ void discardTemp(const fs::path& temp) {
 /// default state, so both paths funnel through here.
 void resolveFirstRunPaths(Config& config) {
     const auto dataDir = file::dataDir();
-    config.visualizer().presetPath = file::presetsDir();
-    config.recording().outputDirectory = dataDir / "recordings";
+    config.visualizerMut().presetPath = file::presetsDir();
+    config.recordingMut().outputDirectory = dataDir / "recordings";
     (void)file::ensureDir(config.recording().outputDirectory);
 }
 
@@ -127,14 +127,14 @@ Result<void> ConfigLoader::load(Config& config, const fs::path& path) {
             config.setDebug(debug);
         }
 
-        ConfigParsers::parseAudio(tbl, config.audio());
-        ConfigParsers::parseVisualizer(tbl, config.visualizer());
-        ConfigParsers::parseRecording(tbl, config.recording());
-        ConfigParsers::parseOverlay(tbl, config.overlay());
-        ConfigParsers::parseUI(tbl, config.ui());
-        ConfigParsers::parseKeyboard(tbl, config.keyboard());
-        ConfigParsers::parseSuno(tbl, config.suno());
-        ConfigParsers::parseKaraoke(tbl, config.karaoke());
+        ConfigParsers::parseAudio(tbl, config.audioMut());
+        ConfigParsers::parseVisualizer(tbl, config.visualizerMut());
+        ConfigParsers::parseRecording(tbl, config.recordingMut());
+        ConfigParsers::parseOverlay(tbl, config.overlayMut());
+        ConfigParsers::parseUI(tbl, config.uiMut());
+        ConfigParsers::parseKeyboard(tbl, config.keyboardMut());
+        ConfigParsers::parseSuno(tbl, config.sunoMut());
+        ConfigParsers::parseKaraoke(tbl, config.karaokeMut());
 
         config.markClean();
         LOG_INFO("Config loaded from: {}", path.string());

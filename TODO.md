@@ -148,7 +148,7 @@ line to describe an item is describing it in the wrong place. Finished work move
       destructor is `= default` (.cpp:60). A `SunoClient` outliving the manager calls a
       freed `this`. Same in `SunoLyricsManager.cpp:12-18`. Fix: retain the `SlotId` and
       disconnect in the destructor.
-- [ ] T0022 **`Config`'s mutex protects almost nothing, and any read marks it dirty** (`src/core/Config.hpp:73-104,110-121`) #risk-high
+- [x] T0022 **`Config`'s mutex protects almost nothing, and any read marks it dirty** (`src/core/Config.hpp:73-104,110-121`) #risk-high
       `mutex_` is taken only by load/save/loadDefault/addOverlayElement/removeOverlayElement;
       every section accessor bypasses it and returns a **non-const** reference, so
       `CONFIG.suno().x = y` races `Config::save`. All eight accessors call `markDirty()`
@@ -156,6 +156,21 @@ line to describe an item is describing it in the wrong place. Finished work move
       `VisualizerRenderer.cpp:27,222`, `SunoDownloader.cpp:79,226`, `SunoClient.cpp:383`).
       The header comment at :5 ("Thread-Safe: Mutex-protected access") **overstates the
       code.** (after: T0023)
+      **Closed, and the diagnosis understated the defect.** Because `Config::instance()` hands out a
+      non-const reference, the const/mutable overload pair was worse than "any read marks it dirty":
+      *every* plain read - `CONFIG.visualizer().fps`, `const auto& v = CONFIG.visualizer()`, all 26
+      X-macro QML getters - selected the **mutable** overload (overload resolution looks at the
+      object expression, not the binding), so the const overloads were nearly dead code and
+      `isDirty()` at quit was almost always true, silently defeating T0023. The write accessors now
+      carry distinct names (`audioMut()` ... `overlayMut()`), so reads are const by construction and
+      a write through the old spelling is a **compile error**; the compiler then enumerated 30+ real
+      write sites (CLI overrides, the SettingMacros X-table - which now takes read and write paths -
+      `resetToDefaults`, credential migration, first-run device-id minting, six test suites).
+      Mutating paths also assert main-thread affinity in debug builds (`Config::assertAffinity()`);
+      the survey confirmed all Config access is GUI-thread today, so the "races save()" hazard is
+      latent, and the assert converts it from a silent race into a loud failure the day a worker
+      writes. Contract tests in `tests/unit/core/test_Config.cpp`; the invariant is recorded in
+      `docs/dev/INVARIANTS.md` (Threads and ownership).
 - [x] T0023 **`Config::save()` never clears the dirty flag** (`src/core/Config.cpp:23-26`) #risk-high
       `ConfigLoader::save` succeeds (:299) but nothing calls `markClean()`, so with T0022
       the file is rewritten on every quit regardless of change.

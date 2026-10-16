@@ -164,7 +164,7 @@ void SettingsBridge::setAudioDevice(const QString& device)
     // comparable across platforms and languages.
     const QString stored =
         (device == kSystemDefaultLabel) ? defaultDeviceSentinel() : device;
-    vc::Config::instance().audio().device = stored.toStdString();
+    vc::Config::instance().audioMut().device = stored.toStdString();
     emit audioDeviceChanged();
     scheduleAutoSave();
     pushAudioConfigToEngine();
@@ -260,7 +260,7 @@ void SettingsBridge::pushAudioConfigToEngine()
         // the stored setting and the open output cannot disagree.
         const QString live = QString::fromStdString(m_audioEngine->audioConfig().device);
         if (audioDevice() != live) {
-            vc::Config::instance().audio().device = live.toStdString();
+            vc::Config::instance().audioMut().device = live.toStdString();
             emit audioDeviceChanged();
             scheduleAutoSave();
         }
@@ -350,7 +350,7 @@ QString SettingsBridge::sunoDownloadPath() const
 void SettingsBridge::setSunoDownloadPath(const QString& path)
 {
     if (path != sunoDownloadPath()) {
-        vc::Config::instance().suno().downloadPath = path.toStdString();
+        vc::Config::instance().sunoMut().downloadPath = path.toStdString();
         emit sunoDownloadPathChanged();
         scheduleAutoSave();
     }
@@ -431,12 +431,12 @@ void SettingsBridge::resetToDefaults()
     m_autoSaveTimer.stop();
 
     // Reset each section to default-constructed values
-    config.audio() = vc::AudioConfig{};
-    config.visualizer() = vc::VisualizerConfig{};
-    config.recording() = vc::RecordingConfig{};
-    config.karaoke() = vc::KaraokeConfig{};
-    config.suno() = vc::SunoConfig{};
-    config.ui() = vc::UIConfig{};
+    config.audioMut() = vc::AudioConfig{};
+    config.visualizerMut() = vc::VisualizerConfig{};
+    config.recordingMut() = vc::RecordingConfig{};
+    config.karaokeMut() = vc::KaraokeConfig{};
+    config.sunoMut() = vc::SunoConfig{};
+    config.uiMut() = vc::UIConfig{};
 
     // Emit all changed signals — generated from X-macro table
 #undef SETTING_INT
