@@ -92,6 +92,15 @@ Flickable {
         feedbackIsError = isError
     }
 
+    function cancelGoogleSignIn() {
+        // T0199: a real cancel for the "Finish in your browser" wait. Stale
+        // feedback goes first so the card returns to page 0 clean.
+        feedbackMessage = ""
+        feedbackIsError = false
+        if (bridgeSupports("cancelGoogleSignIn"))
+            bridgeApi["cancelGoogleSignIn"]()
+    }
+
     function beginGoogleSignIn() {
         // T0181. "Sign in with Google" now means "open your browser on Suno's
         // sign-in page", because that is the only place the Google exchange can
@@ -531,6 +540,7 @@ readonly property string noteText: row.note !== undefined
             signingOut: root.signingOut
             onSignInRequested: root.beginGoogleSignIn()
             onImportRequested: root.importSessionFromBrowser()
+            onCancelRequested: root.cancelGoogleSignIn()
             onSignOutRequested: root.signOutSuno()
         }
 

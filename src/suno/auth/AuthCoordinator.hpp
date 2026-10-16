@@ -22,6 +22,10 @@ public:
         std::function<bool()> installCredentials;
         std::function<void()> clearLocalCredentials;
         std::function<bool()> secureBackendAvailable;
+        /// How the browser is opened. Defaults to QDesktopServices; the seam
+        /// keeps a test from opening one and lets the happy path be asserted
+        /// offscreen.
+        std::function<bool(const QUrl&)> launchBrowser;
     };
 
     explicit AuthCoordinator(vc::suno::SunoClient* client, QObject* parent = nullptr);
@@ -55,6 +59,13 @@ public:
     /// first use, which is why this exists as an explicit user action and
     /// is never called on startup.
     bool importSessionFromBrowser(QString* safeError = nullptr);
+    /// Abandon a sign-in that is merely waiting for the user's browser
+    /// (T0181's waiting state). There is no client-side work to interrupt —
+    /// nothing is running, the browser is the user's own — so this is a pure
+    /// state reset: back to "signedOut", error cleared. Without it the UI
+    /// stayed on the "Finish in your browser" page until the app restarted,
+    /// which is the second defect of the reported session.
+    void cancelGoogleSignIn();
     void signOutSuno();
 
     [[nodiscard]] QString googleLoginState() const { return state_; }
@@ -71,6 +82,7 @@ private:
     vc::suno::SunoClient* client_;
     std::function<bool()> installCredentials_;
     std::function<void()> clearLocalCredentials_;
+    std::function<bool(const QUrl&)> launchBrowser_;
     std::function<bool()> secureBackendAvailable_;
     QString state_ = QStringLiteral("signedOut");
     QString error_;

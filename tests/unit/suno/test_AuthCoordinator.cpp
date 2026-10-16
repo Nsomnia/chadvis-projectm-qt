@@ -82,6 +82,81 @@ private slots:
         QCOMPARE(clearCalls, 2);
     }
 
+    /// T0181, plus the waiting-state Cancel the first report of the import
+    /// failure demanded: open the browser (through the seam, never a real
+    /// QDesktopServices call), sit in "browserOpen" for as long as the user
+    /// wants, and get back to "signedOut" with no error when they change
+    /// their mind. Restarting the app used to be the only way out.
+    void browserOpenStateCancelsBackToSignedOut() {
+        AuthCoordinator::Dependencies dependencies;
+        dependencies.secureBackendAvailable = [] { return true; };
+        int launches = 0;
+        QUrl launched;
+        dependencies.launchBrowser = [&](const QUrl& url) {
+            ++launches;
+            launched = url;
+            return true;
+        };
+        AuthCoordinator coordinator(nullptr, std::move(dependencies));
+        QSignalSpy states(&coordinator, &AuthCoordinator::stateChanged);
+
+        QVERIFY(coordinator.beginGoogleSignIn());
+        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("browserOpen"));
+        QCOMPARE(launches, 1);
+        // The seam received the sign-in page and only that: https, Suno's
+        // host, nothing that could carry a credential.
+        QCOMPARE(launched.toString(),
+                 QStringLiteral("https://suno.com/create?redirected_from=signin"));
+
+        coordinator.cancelGoogleSignIn();
+        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("signedOut"));
+        QVERIFY(coordinator.googleLoginError().isEmpty());
+        QCOMPARE(states.count(), 2);
+        QCOMPARE(states.at(1).at(0).toString(), QStringLiteral("signedOut"));
+
+        // A cancel is not a dead end: cancelling twice stays consistent.
+        coordinator.cancelGoogleSignIn();
+        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("signedOut"));
+    }
+
+    /// beginGoogleSignIn clears a previous error, so a retry after a failed
+    /// Import does not start from yesterday's verdict.
+    void aFailedAttemptIsClearedOnRetry() {
+        // One flag drives both attempts so the SAME coordinator crosses the
+        // threshold mid-test: the claim under test is the error reset, not
+        // the secure backend.
+        bool secure = false;
+        AuthCoordinator::Dependencies dependencies;
+        dependencies.secureBackendAvailable = [&secure] { return secure; };
+        dependencies.launchBrowser = [](const QUrl&) { return true; };
+        AuthCoordinator coordinator(nullptr, std::move(dependencies));
+
+        QString error;
+        QVERIFY(!coordinator.beginGoogleSignIn(&error));
+        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("error"));
+        QVERIFY(!error.isEmpty());
+
+        secure = true;
+        QVERIFY(coordinator.beginGoogleSignIn());
+        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("browserOpen"));
+        QVERIFY(coordinator.googleLoginError().isEmpty());
+    }
+
+    /// T0199: the import refuses an insecure backend BEFORE any keychain or
+    /// store read. This is the paste path's rule applied to the harvest, and
+    /// the only place it can be asserted without touching either.
+    void importRefusesAnInsecureBackend() {
+        AuthCoordinator::Dependencies dependencies;
+        dependencies.secureBackendAvailable = [] { return false; };
+        AuthCoordinator coordinator(nullptr, std::move(dependencies));
+        QString error;
+        QVERIFY(!coordinator.importSessionFromBrowser(&error));
+        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("error"));
+        QVERIFY(!error.isEmpty());
+        QVERIFY(!error.contains(QStringLiteral("Bearer")));
+        QVERIFY(!error.contains(QStringLiteral("__client=")));
+    }
+
     void keychainReadStatusMappingIsDistinguishable() {
         using Status = CredentialStore::KeychainReadStatus;
         QCOMPARE(CredentialStore::classifyKeychainReadStatus(0), Status::Success);

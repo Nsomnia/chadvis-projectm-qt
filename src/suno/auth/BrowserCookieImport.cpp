@@ -106,15 +106,20 @@ QByteArray keychainSecret(const QString& service)
     security.start(QStringLiteral("security"),
                    {QStringLiteral("find-generic-password"),
                     QStringLiteral("-w"), QStringLiteral("-s"), service});
-    if (!security.waitForFinished(10000)) {
+    // 30 s, not 10 s: the read is the first per-binary consent prompt, and
+    // the first shipped version killed `security` after ten seconds — a
+    // user who saw the prompt, took a breath, and clicked Allow instead got
+    // "no Suno session was found", which is the failure the signed-in
+    // report describes. Killing the CLI mid-prompt is the one way a clicked
+    // Allow still ends in nothing.
+    if (!security.waitForFinished(30000)) {
         LOG_WARN("BrowserCookieImport: keychain read for a browser timed out "
                  "(no value read)");
         return {};
     }
     if (security.exitCode() != 0) {
-        // The common case: the browser is installed but the keychain item
-        // does not exist, or the user declined the prompt. Service name only —
-        // never a secret.
+        // The common cases: the keychain item does not exist, or the user
+        // declined the prompt. Service name only — never a secret.
         LOG_INFO("BrowserCookieImport: keychain item not available (service "
                  "present, user may have declined)");
         return {};
@@ -148,6 +153,68 @@ QString copyToTemporary(const QString& source)
 }
 
 } // namespace
+
+bool BrowserCookieImport::headerCarriesUsableCredential(const QString& header)
+{
+    // Only the name matters, never a value. Split on the separators
+    // assembleCookieHeader emits and inspect what precedes the first '='.
+    for (const QString& part : header.split(QStringLiteral("; "), Qt::SkipEmptyParts)) {
+        const QString name = part.section(QLatin1Char('='), 0, 0);
+        if (name.startsWith(QLatin1String("__session"))) {
+            return true;
+        }
+        if (name.startsWith(QLatin1String("__client")) &&
+            !name.startsWith(QLatin1String("__client_uat"))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+QString BrowserCookieImport::reasonForStore(const StoreObservation& seen,
+                                            const QString& browserName)
+{
+    if (seen.keyMissing) {
+        // The two shapes of "macOS did not let us read the secret": the user
+        // declined the prompt, or the prompt outlived the wait. The first
+        // shipped version gave both the generic "no Suno session was found"
+        // message to a user who WAS signed in — the exact "did not work"
+        // report this file now diagnoses.
+        return QStringLiteral(
+                   "%1 did not hand over its cookie-store key. Press Import "
+                   "again and click Allow if macOS asks for permission.")
+            .arg(browserName);
+    }
+    if (seen.sawSignedOut) {
+        // The prepared signed-out store: `__client_uat` rows present, every
+        // value "0", and no `__client` at all. The old message said "no Suno
+        // session was found" — true but blaming, when the store itself is
+        // telling us exactly what is wrong.
+        return QStringLiteral(
+                   "%1 says you are signed out of suno.com. Sign in there "
+                   "first, then press Import once more.").arg(browserName);
+    }
+    if (seen.clerkRows > 0 && seen.decrypted == 0) {
+        // Rows exist, none decrypt. A wrong key decrypts to noise the
+        // printable check rejects; this is the closest thing to a real
+        // signal the store gives us.
+        return QStringLiteral(
+                   "Suno's session cookies were found in %1 but could not be "
+                   "decoded. Press Import again; if it keeps failing, this "
+                   "build's format support needs updating.").arg(browserName);
+    }
+    if (seen.clerkRows > 0 && !seen.hadCredential) {
+        // Rows decoded, but the durable credential is absent — a half
+        // signed-out store. Same remedy as signed out, worded for it.
+        return QStringLiteral(
+                   "The Suno cookies in %1 carry no usable session. Sign in "
+                   "at suno.com there, then press Import once more.")
+            .arg(browserName);
+    }
+    return QStringLiteral(
+               "No Suno cookies were found in %1. Visit suno.com there once, "
+               "then press Import again.").arg(browserName);
+}
 
 QStringList BrowserCookieImport::candidateBrowserNames()
 {
@@ -316,8 +383,19 @@ QString BrowserCookieImport::assembleCookieHeader(
 QList<QPair<QString, QString>> BrowserCookieImport::readStore(const QString& databasePath,
                                                              const QByteArray& key)
 {
+    return readStore(databasePath, key, nullptr);
+}
+
+QList<QPair<QString, QString>> BrowserCookieImport::readStore(const QString& databasePath,
+                                                              const QByteArray& key,
+                                                              StoreObservation* observation)
+{
+    StoreObservation local;
+    StoreObservation& seen = observation ? *observation : local;
+    seen = {};
+    seen.keyMissing = key.isEmpty() || key.size() != kAesKeyBytes;
     QList<QPair<QString, QString>> found;
-    if (key.isEmpty() || key.size() != kAesKeyBytes) {
+    if (seen.keyMissing) {
         return found;
     }
 
@@ -353,12 +431,30 @@ QList<QPair<QString, QString>> BrowserCookieImport::readStore(const QString& dat
                     if (!nameIsAccepted(name)) {
                         continue;
                     }
+                    ++seen.clerkRows;
                     const QByteArray encrypted = query.value(2).toByteArray();
                     const QByteArray plain = decryptChromiumValue(encrypted, key);
                     if (plain.isEmpty()) {
                         continue;
                     }
-                    found.push_back(qMakePair(name, QString::fromUtf8(plain)));
+                    const QString value = QString::fromUtf8(plain);
+                    ++seen.decrypted;
+                    if (name.startsWith(QLatin1String("__session"))) {
+                        seen.hadCredential = true;
+                    } else if (name.startsWith(QLatin1String("__client")) &&
+                               !name.startsWith(QLatin1String("__client_uat"))) {
+                        seen.hadCredential = true;
+                    } else if (name.startsWith(QLatin1String("__client_uat"))) {
+                        if (value != QLatin1String("0")) {
+                            // A signed-in timestamp with no `__client` is a
+                            // half signed-out store: not a session (the
+                            // durability bar above still gatekeeps), but
+                            // also not evidence the user is signed out.
+                        } else {
+                            seen.sawSignedOut = true;
+                        }
+                    }
+                    found.push_back(qMakePair(name, value));
                 }
             } else {
                 LOG_INFO("BrowserCookieImport: cookie query refused");
@@ -373,6 +469,8 @@ QList<QPair<QString, QString>> BrowserCookieImport::readStore(const QString& dat
 BrowserCookieHarvest BrowserCookieImport::harvest()
 {
     BrowserCookieHarvest result;
+    QString firstReason;
+    int firstReasonRank = -1;
     for (const auto& browser : kBrowsers) {
         const QString name = QLatin1String(browser.name);
         const QString profileRoot = QDir::home().filePath(
@@ -408,30 +506,50 @@ BrowserCookieHarvest BrowserCookieImport::harvest()
             // user action. readStore() takes the derived key rather than
             // reading it so tests never trigger the consent prompt.
             const QString service = QLatin1String(browser.keychainService);
+            StoreObservation seen;
             const QByteArray key = deriveChromiumKey(keychainSecret(service));
-            const auto pairs = readStore(store, key);
-            if (pairs.isEmpty()) {
-                continue;
+            const auto pairs = readStore(store, key, &seen);
+
+            // The durability bar: a header without a `__client` (non-`uat`)
+            // or `__session` member carries no credential. The first shipped
+            // version treated ANY decodable Clerk cookie as success, so a
+            // signed-out store yielded `__client_uat=0`, was silently stored
+            // through setCookie(), and made the whole button read as broken.
+            const QString header = assembleCookieHeader(pairs);
+            if (!header.isEmpty() && headerCarriesUsableCredential(header)) {
+                result.cookieHeader = header;
+                result.browserName = name;
+                // One durable credential is the whole goal. The first store
+                // that yields it wins; later browsers are not read.
+                LOG_INFO("BrowserCookieImport: session imported from a browser "
+                         "(name and profile count only)");
+                return result;
             }
-            result.cookieHeader = assembleCookieHeader(pairs);
-            if (result.cookieHeader.isEmpty()) {
-                continue;
+
+            // No credential here. Keep this store's diagnosis only if it is
+            // more informative than anything recorded so far. A store with
+            // no suno.com rows at all (the browser never visited) is the
+            // least informative; a signed-out store is the most — its message
+            // is the one the user can act on directly.
+            const int rank = [&seen] {
+                if (seen.sawSignedOut) return 5;
+                if (seen.keyMissing) return 4;
+                if (seen.clerkRows > 0 && seen.decrypted == 0) return 3;
+                if (seen.clerkRows > 0) return 2; // rows, no usable credential
+                return 1;                          // nothing Clerk-named
+            }();
+            if (rank > firstReasonRank) {
+                firstReasonRank = rank;
+                firstReason = reasonForStore(seen, name);
             }
-            result.browserName = name;
-            // One durable credential is the whole goal. The first store that
-            // yields it wins; later browsers are not read.
-            LOG_INFO("BrowserCookieImport: session imported from a browser "
-                     "(name and profile count only)");
-            return result;
         }
     }
 
-    result.reason = result.browsersSearched.isEmpty()
-        ? QStringLiteral("No installed browser was found to import from")
-        : QStringLiteral(
-              "No Suno session was found in %1. Sign in at suno.com in that "
-              "browser once, then import again.")
-              .arg(result.browsersSearched.join(QStringLiteral(", ")));
+    if (result.browsersSearched.isEmpty()) {
+        result.reason = QStringLiteral("No installed browser was found to import from");
+    } else {
+        result.reason = firstReason;
+    }
     return result;
 }
 
