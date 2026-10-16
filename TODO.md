@@ -184,7 +184,7 @@ line to describe an item is describing it in the wrong place. Finished work move
       `Application::init` reaches `Logger::init` (`Application.cpp:275`) race on the
       pointer assignment and on `spdlog::register_logger`. Fix: Meyers singleton +
       `std::call_once`.
-- [ ] T0026 **projectM can be destroyed with no current GL context — and it WILL issue GL calls** (`src/visualizer/projectm/Engine.cpp:56-61`, `src/visualizer/VisualizerWindow.cpp:30-35`) #risk-high
+- [x] T0026 **projectM can be destroyed with no current GL context — and it WILL issue GL calls** (`src/visualizer/projectm/Engine.cpp:56-61`, `src/visualizer/VisualizerWindow.cpp:30-35`) #risk-high
       `~VisualizerWindow` only cleans up if `makeCurrent` **succeeds** (:31); if it fails,
       `~VisualizerRenderer` (`:17-19`) cleans up anyway with no context, then
       `projectm_destroy()` runs contextless. Verified upstream: `projectm_destroy` →
@@ -196,6 +196,16 @@ line to describe an item is describing it in the wrong place. Finished work move
       `makeCurrent` succeeded, and if it did **not, leak the handle deliberately** — a leak is
       strictly better than deleting GL objects in the wrong context. `RenderTarget::destroy()`
       has the matching hole (zeroes names, leaks them, `RenderTarget.cpp:109-116`).
+      **Closed as prescribed: leak, never delete without the context.** `~VisualizerWindow` now
+      asserts `makeCurrent` succeeded and, when it did not, calls the new
+      `VisualizerRenderer::abandonGlObjects()` — which drops every GL-owning handle (projectM
+      instance via `pm::Bridge::abandon()` → `Engine::abandon()`, the native playlist via
+      `Playlist::abandon()`, the PBOs, the capture target via `RenderTarget::abandon()`) **without
+      issuing a single GL call**, and sets a flag that makes the destructor's later `cleanup()` a
+      no-op. `RenderTarget::destroy()` additionally records its creating context and deletes only
+      under it, closing the wrong-namespace hole the item noted (it previously checked only that
+      *some* context was current). Headless ctest cannot exercise a real GL teardown — the runtime
+      path is read-verified only, per the board's own rule that a green run is not GL evidence.
 - [ ] T0027 **GL state is set but never saved or restored around projectM — upstream will not fix it** (`src/visualizer/VisualizerRenderer.cpp:88-106`) #risk-high
       Sets viewport, scissor, `GL_SCISSOR_TEST`, `glColorMask`; never reads the previous
       values, and `GL_BLEND`/`GL_DEPTH_TEST` are neither set nor restored. Contained today

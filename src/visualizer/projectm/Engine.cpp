@@ -60,6 +60,16 @@ void Engine::shutdown() {
     }
 }
 
+void Engine::abandon() {
+    // T0026: drop the handle WITHOUT destroying it, for teardown with no --
+    // or the wrong -- GL context current. projectm_destroy() walks the owned
+    // GL objects and calls glDeleteTextures unconditionally (upstream
+    // ~ProjectM is an empty body that clears no state), so destroying here is
+    // undefined behaviour that can delete names in another context's
+    // namespace. Losing the instance leaks it; that is strictly better.
+    handle_ = nullptr;
+}
+
 void Engine::render() {
     if (handle_)
         projectm_opengl_render_frame(handle_);

@@ -55,6 +55,15 @@ public:
     void shutdown();
 
     /**
+     * @brief Drop the handle without destroying it (T0026).
+     *
+     * For teardown with no current GL context: projectm_destroy() would issue
+     * GL calls with no (or the wrong) context current. The instance leaks on
+     * purpose -- see the definition for why that is the correct trade.
+     */
+    void abandon();
+
+    /**
      * @brief Check if engine is initialized.
      */
     bool isInitialized() const {

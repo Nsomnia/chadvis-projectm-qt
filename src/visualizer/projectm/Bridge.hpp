@@ -24,6 +24,9 @@ public:
 
     Result<void> init(const ProjectMConfig& config);
     void shutdown();
+    /// T0026: drop every native handle without destroying it (no GL context
+    /// at teardown). Nothing is called; the handles leak.
+    void abandon();
     bool isInitialized() const { return engine_.isInitialized(); }
     Result<void> scanPresets(const fs::path& path);
 

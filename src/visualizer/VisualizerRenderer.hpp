@@ -46,6 +46,13 @@ public:
 
     void initialize(u32 width, u32 height);
     void cleanup();
+    /// T0026: teardown when no usable GL context exists (the window's
+    /// makeCurrent failed at destruction). Abandons every GL-owning handle --
+    /// projectM instance, PBOs, capture target -- without issuing a single GL
+    /// call, so nothing can be deleted with no context or the wrong context
+    /// current. Everything abandoned leaks; see Engine::abandon() for why a
+    /// leak is the correct trade. cleanup() after this is a safe no-op.
+    void abandonGlObjects();
 
     void render(u32 width, u32 height, bool isExposed);
     void render(u32 x, u32 y, u32 width, u32 height, bool isExposed);
@@ -94,6 +101,11 @@ private:
     RenderTarget captureTarget_;
 
     bool recording_{false};
+    /// T0026: set by abandonGlObjects() when teardown has no usable GL
+    /// context. cleanup() then touches no GL state at all -- the destructor
+    /// still calls cleanup(), and it must not try to delete what was
+    /// deliberately leaked.
+    bool abandoned_{false};
     u32 recordWidth_{1920};
     u32 recordHeight_{1080};
     GLuint pbos_[2]{0, 0};

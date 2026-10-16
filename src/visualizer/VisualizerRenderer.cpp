@@ -39,9 +39,31 @@ void VisualizerRenderer::initialize(u32 width, u32 height) {
 
 void VisualizerRenderer::cleanup() {
     recording_ = false;
+    if (abandoned_) {
+        // T0026: the GL handles were deliberately leaked by abandonGlObjects()
+        // because there was no usable context to delete them under. Touching
+        // them again here would repeat the exact hazard the abandon avoided.
+        initialized_ = false;
+        return;
+    }
     destroyPBOs();
     projectM_.shutdown();
     captureTarget_.destroy();
+    initialized_ = false;
+}
+
+void VisualizerRenderer::abandonGlObjects() {
+    recording_ = false;
+    // Order matters only for clarity: each abandon is independent and none
+    // issues a GL call. destroyPBOs() is skipped -- it would glDeleteBuffers
+    // under whatever context (if any) happens to be current -- so the PBO
+    // names are zeroed here and the buffers leak.
+    pbos_[0] = pbos_[1] = 0;
+    pboIndex_ = 0;
+    pboAvailable_ = false;
+    captureTarget_.abandon();
+    projectM_.abandon();
+    abandoned_ = true;
     initialized_ = false;
 }
 

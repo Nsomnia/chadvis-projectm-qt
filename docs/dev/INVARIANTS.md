@@ -75,6 +75,20 @@ another document already owns — it records only *why* the constraints exist.
    the `Config.hpp` header comment; `test_Config.cpp` pins the contract.
 ## Buffers and lifetime
 
+ - **GL objects are deleted only under their creating context — otherwise they
+   are leaked on purpose (T0026).** GL object names live in the creating
+   context's share group; deleting with no context current is undefined
+   behaviour, and deleting while a *different* context is current can remove
+   unrelated names (on macOS a current Qt Quick context can make the
+   wrong-namespace delete succeed silently). projectM's own destroy path is the
+   worst offender: upstream `~ProjectM` clears no state and `~Texture` calls
+   `glDeleteTextures` unconditionally. So `VisualizerWindow`'s destructor
+   asserts `makeCurrent` succeeded; if it did not, `abandonGlObjects()` drops
+   every handle (projectM, playlist, PBOs, capture target) without issuing a
+   single GL call. A leak is strictly better than a wrong-namespace delete.
+   `RenderTarget::destroy()` enforces the same rule per-object via
+   `createdWith_`. Do not "fix" the leak.
+
 - **`Signal::emitSignal` perfect-forwarding only pays off at N == 1.**
   `frameCaptured` has exactly one production subscriber, so the hot path steals
   the 6 MB buffer with zero copies. `Slot` is deliberately left alone:

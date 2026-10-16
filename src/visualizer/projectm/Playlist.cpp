@@ -37,6 +37,16 @@ void Playlist::shutdown() {
     }
 }
 
+void Playlist::abandon() {
+    // T0026: drop the handle without destroying it, for teardown with no
+    // usable GL context. The playlist wrapper holds a reference to the core
+    // engine handle (not owned), so its destroy path may reach core state
+    // whose GL objects are being deliberately leaked by Engine::abandon();
+    // issuing native calls against that state is not worth the risk when the
+    // alternative is losing a few path strings.
+    handle_ = nullptr;
+}
+
 void Playlist::clear() {
     if (handle_)
         projectm_playlist_clear(handle_);

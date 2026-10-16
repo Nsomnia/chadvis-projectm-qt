@@ -78,6 +78,14 @@ void Bridge::shutdown() {
     engine_.shutdown();
 }
 
+void Bridge::abandon() {
+    // T0026: teardown with no usable GL context -- leak both native handles
+    // rather than running their destroy paths. See Engine::abandon() and
+    // Playlist::abandon(); this issues no calls at all.
+    playlist_.abandon();
+    engine_.abandon();
+}
+
 Result<void> Bridge::scanPresets(const fs::path& path) {
     bool playlistEmpty = !playlist_.handle() || playlist_.size() == 0;
 

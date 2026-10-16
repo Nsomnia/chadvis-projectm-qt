@@ -29,9 +29,25 @@ VisualizerWindow::VisualizerWindow(PresetManager& presetManager, QWindow* parent
 }
 
 VisualizerWindow::~VisualizerWindow() {
-    if (context_ && context_->makeCurrent(this)) {
+    // T0026: cleanup() must run with THIS window's context current, or not at
+    // all. If makeCurrent fails there is no usable context: letting
+    // ~VisualizerRenderer run its default cleanup would call
+    // projectm_destroy() contextless -- upstream ~ProjectM clears no state and
+    // ~Texture calls glDeleteTextures unconditionally, so the delete lands in
+    // no context, or in the wrong one (on macOS a current Qt Quick context
+    // can even make the wrong-namespace delete succeed silently). The handle
+    // is abandoned -- leaked -- instead, and cleanup()'s destructor pass is a
+    // no-op by the abandoned_ flag.
+    const bool current = context_ && context_->makeCurrent(this);
+    Q_ASSERT(context_ == nullptr || current);
+    if (current) {
         renderer_->cleanup();
         context_->doneCurrent();
+    } else if (context_) {
+        LOG_ERROR("VisualizerWindow: no usable GL context at destruction -- "
+                  "abandoning (leaking) the GL handles instead of deleting "
+                  "them in the wrong namespace");
+        renderer_->abandonGlObjects();
     }
 }
 
