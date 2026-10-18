@@ -8,9 +8,33 @@
 #     find_path/find_library fallbacks so vcpkg-style layouts work without
 #     pkg-config (e.g. Windows).
 #   * projectM v4 detection lives in FindProjectM4.cmake.
+#   * With -DCHADVIS_AUTO_INSTALL_DEPS=ON, a missed probe gets one attempt at
+#     installing the dependency through the host package manager
+#     (cmake/DependencyBootstrap.cmake) before the fallback applies.
 
-find_package(Qt6 REQUIRED COMPONENTS
+include(DependencyBootstrap)
+
+find_package(Qt6 QUIET COMPONENTS
     Core Gui Multimedia Network Quick Qml QuickControls2 Sql DBus)
+if(NOT Qt6_FOUND)
+    # One attempt at a host package install before failing with a message a
+    # human can act on (find_package(REQUIRED) alone would fail too, tersely).
+    chadvis_try_install_dependency(QT6)
+    if(CHADVIS_INSTALL_OK)
+        find_package(Qt6 QUIET COMPONENTS
+            Core Gui Multimedia Network Quick Qml QuickControls2 Sql DBus)
+    endif()
+endif()
+if(NOT Qt6_FOUND)
+    message(FATAL_ERROR
+        "Qt6 (6.7+) with components Core Gui Multimedia Network Quick Qml "
+        "QuickControls2 Sql DBus was not found. Install it with the Qt online "
+        "installer, 'pip install aqtinstall', 'brew install qt' (macOS), or "
+        "your distro's Qt6 packages, then re-run CMake. "
+        "-DCHADVIS_AUTO_INSTALL_DEPS=ON attempts the install automatically on "
+        "Homebrew/MacPorts/Arch/Fedora (Debian/Ubuntu's Qt is older than the "
+        "6.7 floor, so it is deliberately not attempted there).")
+endif()
 
 # Qt 6.7 floor, and not for a new feature. `QNetworkRequest::setTransferTimeout`
 # arrived in 6.7, and on anything older the call does not exist -- so without the
@@ -29,7 +53,20 @@ find_package(PkgConfig QUIET)
 
 # OpenGL - used directly by the visualizer renderers. The bare "OpenGL"
 # link name only worked by accident on Linux; OpenGL::GL is portable.
-find_package(OpenGL REQUIRED)
+find_package(OpenGL QUIET)
+if(NOT OPENGL_FOUND)
+    chadvis_try_install_dependency(OPENGL)
+    if(CHADVIS_INSTALL_OK)
+        find_package(OpenGL QUIET)
+    endif()
+endif()
+if(NOT OPENGL_FOUND)
+    message(FATAL_ERROR
+        "OpenGL not found. Install your platform's OpenGL development files "
+        "(e.g. 'libgl1-mesa-dev' on Debian/Ubuntu, 'mesa-libGL-devel' on "
+        "Fedora, 'mesa' on Arch) or re-run with "
+        "-DCHADVIS_AUTO_INSTALL_DEPS=ON to attempt the install automatically.")
+endif()
 
 # ---------------------------------------------------------------------------
 # CPM.cmake bootstrap (downloaded at configure time, cached locally)
@@ -48,6 +85,12 @@ include(${CMAKE_SOURCE_DIR}/cmake/CPM.cmake)
 
 # spdlog - logging
 find_package(spdlog CONFIG QUIET)
+if(NOT TARGET spdlog::spdlog)
+    chadvis_try_install_dependency(SPDLOG)
+    if(CHADVIS_INSTALL_OK)
+        find_package(spdlog CONFIG QUIET)
+    endif()
+endif()
 if(TARGET spdlog::spdlog)
     message(STATUS "Using system spdlog")
 else()
@@ -61,6 +104,12 @@ endif()
 
 # fmt - string formatting
 find_package(fmt CONFIG QUIET)
+if(NOT TARGET fmt::fmt)
+    chadvis_try_install_dependency(FMT)
+    if(CHADVIS_INSTALL_OK)
+        find_package(fmt CONFIG QUIET)
+    endif()
+endif()
 if(TARGET fmt::fmt)
     message(STATUS "Using system fmt")
 else()
@@ -74,6 +123,12 @@ endif()
 
 # toml++ - config parsing
 find_package(tomlplusplus CONFIG QUIET)
+if(NOT TARGET tomlplusplus::tomlplusplus)
+    chadvis_try_install_dependency(TOMLPLUSPLUS)
+    if(CHADVIS_INSTALL_OK)
+        find_package(tomlplusplus CONFIG QUIET)
+    endif()
+endif()
 if(TARGET tomlplusplus::tomlplusplus)
     message(STATUS "Using system tomlplusplus")
 else()
@@ -115,58 +170,150 @@ endif()
 # System libraries: pkg-config first, find_path/find_library fallback
 # ---------------------------------------------------------------------------
 
-# TagLib - audio metadata
-set(TAGLIB_LIBRARY_NAMES tag)
-set(TAGLIB_INCLUDE_HINT taglib/tag.h)
-if(PKG_CONFIG_FOUND)
-    pkg_check_modules(TAGLIB taglib)
+# TagLib - audio metadata.
+# The probe is a function so a miss can be retried after a package install
+# without re-running the whole file.
+function(_chadvis_probe_taglib)
+    # find_path/find_library cache their results; clear for a deterministic
+    # re-probe after an install.
+    unset(_taglib_inc CACHE)
+    unset(_taglib_lib CACHE)
+
+    set(_found FALSE)
+    set(_via "")
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(TAGLIB taglib)
+        if(TAGLIB_FOUND)
+            set(_found TRUE)
+            set(_via "pkg-config (${TAGLIB_VERSION})")
+        endif()
+    endif()
+    if(NOT _found)
+        # Manual fallback, so vcpkg-style layouts work without pkg-config.
+        find_path(_taglib_inc taglib/tag.h)
+        find_library(_taglib_lib NAMES tag)
+        if(_taglib_inc AND _taglib_lib)
+            set(TAGLIB_INCLUDE_DIRS "${_taglib_inc}")
+            set(TAGLIB_LIBRARIES "${_taglib_lib}")
+            set(_found TRUE)
+            set(_via "manual search (${_taglib_lib})")
+        endif()
+    endif()
+    set(TAGLIB_FOUND ${_found} PARENT_SCOPE)
+    set(TAGLIB_INCLUDE_DIRS "${TAGLIB_INCLUDE_DIRS}" PARENT_SCOPE)
+    set(TAGLIB_LIBRARIES "${TAGLIB_LIBRARIES}" PARENT_SCOPE)
+    set(TAGLIB_VERSION "${TAGLIB_VERSION}" PARENT_SCOPE)
+    set(_CHADVIS_TAGLIB_VIA "${_via}" PARENT_SCOPE)
+endfunction()
+
+_chadvis_probe_taglib()
+if(NOT TAGLIB_FOUND)
+    chadvis_try_install_dependency(TAGLIB)
+    if(CHADVIS_INSTALL_OK)
+        _chadvis_probe_taglib()
+    endif()
 endif()
 if(TAGLIB_FOUND)
-    message(STATUS "TagLib found via pkg-config (${TAGLIB_VERSION})")
+    message(STATUS "TagLib found via ${_CHADVIS_TAGLIB_VIA}")
 else()
-    message(STATUS "TagLib: trying manual search (pkg-config unavailable or no match)")
-    find_path(TAGLIB_INCLUDE_DIRS ${TAGLIB_INCLUDE_HINT})
-    find_library(TAGLIB_LIBRARIES NAMES ${TAGLIB_LIBRARY_NAMES})
-    if(NOT TAGLIB_INCLUDE_DIRS OR NOT TAGLIB_LIBRARIES)
-        message(FATAL_ERROR
-            "TagLib not found. Install taglib (with development headers) "
-            "or point CMake at a prefix containing it.")
-    endif()
-    message(STATUS "TagLib found via manual search: ${TAGLIB_LIBRARIES}")
+    message(FATAL_ERROR
+        "TagLib not found. Install taglib (with development headers) "
+        "or point CMake at a prefix containing it. "
+        "-DCHADVIS_AUTO_INSTALL_DEPS=ON attempts the install automatically.")
 endif()
 
 # glm - math library (config package on Linux/macOS/Homebrew/vcpkg)
-find_package(glm REQUIRED)
-
-# FFmpeg - libavcodec libavformat libavutil libswscale libswresample
-set(CHADVIS_FFMPEG_COMPONENTS avcodec avformat avutil swscale swresample)
-if(PKG_CONFIG_FOUND)
-    pkg_check_modules(FFMPEG
-        libavcodec libavformat libavutil libswscale libswresample)
+find_package(glm QUIET)
+if(NOT glm_FOUND)
+    chadvis_try_install_dependency(GLM)
+    if(CHADVIS_INSTALL_OK)
+        find_package(glm QUIET)
+    endif()
 endif()
-if(FFMPEG_FOUND)
-    message(STATUS "FFmpeg found via pkg-config (${FFMPEG_VERSION})")
-else()
-    message(STATUS "FFmpeg: trying per-component manual search")
+if(NOT glm_FOUND)
+    message(FATAL_ERROR
+        "glm not found. Install it ('libglm-dev' on Debian/Ubuntu, "
+        "'glm-devel' on Fedora, 'glm' on Arch/Homebrew/MacPorts/vcpkg) or "
+        "re-run with -DCHADVIS_AUTO_INSTALL_DEPS=ON to attempt the install "
+        "automatically.")
+endif()
+
+# FFmpeg - libavcodec libavformat libavutil libswscale libswresample.
+# The probe is a function so a miss can be retried after a package install.
+set(CHADVIS_FFMPEG_COMPONENTS avcodec avformat avutil swscale swresample)
+function(_chadvis_probe_ffmpeg)
     foreach(_comp IN LISTS CHADVIS_FFMPEG_COMPONENTS)
         string(TOUPPER "${_comp}" _comp_uc)
-        find_path(FFMPEG_${_comp_uc}_INCLUDE_DIR
-            lib${_comp}/${_comp}.h)
-        find_library(FFMPEG_${_comp_uc}_LIBRARY
-            NAMES ${_comp})
-        if(NOT FFMPEG_${_comp_uc}_INCLUDE_DIR OR NOT FFMPEG_${_comp_uc}_LIBRARY)
-            message(FATAL_ERROR
-                "FFmpeg component '${_comp}' not found. Install ffmpeg "
-                "development packages or ensure the import libraries are "
-                "on CMake's search path (e.g. via vcpkg toolchain file).")
-        endif()
-        list(APPEND FFMPEG_INCLUDE_DIRS ${FFMPEG_${_comp_uc}_INCLUDE_DIR})
-        list(APPEND FFMPEG_LIBRARIES ${FFMPEG_${_comp_uc}_LIBRARY})
+        unset(FFMPEG_${_comp_uc}_INCLUDE_DIR CACHE)
+        unset(FFMPEG_${_comp_uc}_LIBRARY CACHE)
     endforeach()
-    unset(_comp)
-    unset(_comp_uc)
-    list(REMOVE_DUPLICATES FFMPEG_INCLUDE_DIRS)
-    message(STATUS "FFmpeg found via manual search: ${FFMPEG_LIBRARIES}")
+
+    set(_found FALSE)
+    set(_via "")
+    set(_missing "")
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(FFMPEG
+            libavcodec libavformat libavutil libswscale libswresample)
+        if(FFMPEG_FOUND)
+            set(_found TRUE)
+            set(_via "pkg-config (${FFMPEG_VERSION})")
+        endif()
+    endif()
+    if(NOT _found)
+        # Per-component manual search, so vcpkg-style layouts work without
+        # pkg-config (e.g. Windows).
+        set(_inc_dirs "")
+        set(_libs "")
+        foreach(_comp IN LISTS CHADVIS_FFMPEG_COMPONENTS)
+            string(TOUPPER "${_comp}" _comp_uc)
+            find_path(FFMPEG_${_comp_uc}_INCLUDE_DIR
+                lib${_comp}/${_comp}.h)
+            find_library(FFMPEG_${_comp_uc}_LIBRARY
+                NAMES ${_comp})
+            if(NOT FFMPEG_${_comp_uc}_INCLUDE_DIR OR NOT FFMPEG_${_comp_uc}_LIBRARY)
+                list(APPEND _missing ${_comp})
+            else()
+                list(APPEND _inc_dirs ${FFMPEG_${_comp_uc}_INCLUDE_DIR})
+                list(APPEND _libs ${FFMPEG_${_comp_uc}_LIBRARY})
+            endif()
+        endforeach()
+        if(_missing STREQUAL "")
+            list(REMOVE_DUPLICATES _inc_dirs)
+            set(FFMPEG_INCLUDE_DIRS "${_inc_dirs}")
+            set(FFMPEG_LIBRARIES "${_libs}")
+            set(_found TRUE)
+            set(_via "manual search (${_libs})")
+        endif()
+    endif()
+    set(FFMPEG_FOUND ${_found} PARENT_SCOPE)
+    set(FFMPEG_INCLUDE_DIRS "${FFMPEG_INCLUDE_DIRS}" PARENT_SCOPE)
+    set(FFMPEG_LIBRARIES "${FFMPEG_LIBRARIES}" PARENT_SCOPE)
+    set(FFMPEG_VERSION "${FFMPEG_VERSION}" PARENT_SCOPE)
+    set(_CHADVIS_FFMPEG_VIA "${_via}" PARENT_SCOPE)
+    set(_CHADVIS_FFMPEG_MISSING "${_missing}" PARENT_SCOPE)
+endfunction()
+
+_chadvis_probe_ffmpeg()
+if(NOT FFMPEG_FOUND)
+    chadvis_try_install_dependency(FFMPEG)
+    if(CHADVIS_INSTALL_OK)
+        _chadvis_probe_ffmpeg()
+    endif()
+endif()
+if(FFMPEG_FOUND)
+    message(STATUS "FFmpeg found via ${_CHADVIS_FFMPEG_VIA}")
+else()
+    if(_CHADVIS_FFMPEG_MISSING)
+        set(_missing_msg " Missing components: ${_CHADVIS_FFMPEG_MISSING}.")
+    else()
+        set(_missing_msg "")
+    endif()
+    message(FATAL_ERROR
+        "FFmpeg not found.${_missing_msg} Install ffmpeg development "
+        "packages (libavcodec, libavformat, libavutil, libswscale, "
+        "libswresample) or ensure the import libraries are on CMake's "
+        "search path (e.g. via vcpkg toolchain file). "
+        "-DCHADVIS_AUTO_INSTALL_DEPS=ON attempts the install automatically.")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -202,10 +349,44 @@ option(CHADVIS_POSTPROCESS
     "FFmpeg post-pass: burn a subtitle track into the pixels of a finished file"
     ON)
 
-set(CHADVIS_HAS_AVFILTER OFF)
-if(CHADVIS_POSTPROCESS)
+# libavfilter probe as a function so a miss can be retried after a package
+# install. Stays non-fatal: a miss only disables burn-in at runtime.
+function(_chadvis_probe_avfilter)
+    unset(AVFILTER_INCLUDE_DIR CACHE)
+    unset(AVFILTER_LIBRARY CACHE)
+
+    set(_found FALSE)
     if(PKG_CONFIG_FOUND)
         pkg_check_modules(AVFILTER QUIET libavfilter)
+        if(AVFILTER_FOUND)
+            set(_found TRUE)
+        endif()
+    endif()
+    if(NOT _found)
+        # Non-fatal manual fallback, mirroring the FFmpeg loop above.
+        find_path(AVFILTER_INCLUDE_DIR libavfilter/avfilter.h)
+        find_library(AVFILTER_LIBRARY NAMES avfilter)
+        if(AVFILTER_INCLUDE_DIR AND AVFILTER_LIBRARY)
+            set(AVFILTER_INCLUDE_DIRS "${AVFILTER_INCLUDE_DIR}")
+            set(AVFILTER_LIBRARIES "${AVFILTER_LIBRARY}")
+            set(_found TRUE)
+        endif()
+    endif()
+    set(AVFILTER_FOUND ${_found} PARENT_SCOPE)
+    set(AVFILTER_INCLUDE_DIRS "${AVFILTER_INCLUDE_DIRS}" PARENT_SCOPE)
+    set(AVFILTER_LIBRARIES "${AVFILTER_LIBRARIES}" PARENT_SCOPE)
+    set(AVFILTER_LIBRARY_DIRS "${AVFILTER_LIBRARY_DIRS}" PARENT_SCOPE)
+    set(AVFILTER_VERSION "${AVFILTER_VERSION}" PARENT_SCOPE)
+endfunction()
+
+set(CHADVIS_HAS_AVFILTER OFF)
+if(CHADVIS_POSTPROCESS)
+    _chadvis_probe_avfilter()
+    if(NOT AVFILTER_FOUND)
+        chadvis_try_install_dependency(AVFILTER)
+        if(CHADVIS_INSTALL_OK)
+            _chadvis_probe_avfilter()
+        endif()
     endif()
     if(AVFILTER_FOUND)
         set(CHADVIS_HAS_AVFILTER ON)
@@ -216,26 +397,19 @@ if(CHADVIS_POSTPROCESS)
         if(AVFILTER_LIBRARY_DIRS)
             link_directories(${AVFILTER_LIBRARY_DIRS})
         endif()
-        message(STATUS
-            "Post-pass: libavfilter ${AVFILTER_VERSION} found -- burn-in enabled")
-    else()
-        # Non-fatal manual fallback, mirroring the loop above.
-        find_path(AVFILTER_INCLUDE_DIR libavfilter/avfilter.h)
-        find_library(AVFILTER_LIBRARY NAMES avfilter)
-        if(AVFILTER_INCLUDE_DIR AND AVFILTER_LIBRARY)
-            set(CHADVIS_HAS_AVFILTER ON)
-            list(APPEND FFMPEG_INCLUDE_DIRS ${AVFILTER_INCLUDE_DIR})
-            list(APPEND FFMPEG_LIBRARIES ${AVFILTER_LIBRARY})
-            message(STATUS
-                "Post-pass: libavfilter found via manual search (${AVFILTER_LIBRARY})"
-                " -- burn-in enabled")
+        if(AVFILTER_VERSION)
+            set(_avfilter_desc "libavfilter ${AVFILTER_VERSION}")
         else()
-            message(STATUS
-                "Post-pass: libavfilter NOT found. CHADVIS_POSTPROCESS is ON but "
-                "burn-in will report itself unsupported at runtime. This is not a "
-                "build error; every other feature is unaffected. Install "
-                "libavfilter, or pass -DCHADVIS_POSTPROCESS=OFF to skip the probe.")
+            set(_avfilter_desc "libavfilter (${AVFILTER_LIBRARIES})")
         endif()
+        message(STATUS
+            "Post-pass: ${_avfilter_desc} found -- burn-in enabled")
+    else()
+        message(STATUS
+            "Post-pass: libavfilter NOT found. CHADVIS_POSTPROCESS is ON but "
+            "burn-in will report itself unsupported at runtime. This is not a "
+            "build error; every other feature is unaffected. Install "
+            "libavfilter, or pass -DCHADVIS_POSTPROCESS=OFF to skip the probe.")
     endif()
 else()
     message(STATUS
