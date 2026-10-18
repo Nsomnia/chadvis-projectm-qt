@@ -1,0 +1,5 @@
+2026-10-18T11:50:00Z  CLAIM    agent=muse-spark/dev-muse-dev ttl=4h
+2026-10-18T11:50:00Z  NOTE     T0206: window close and Qt.quit() never ran Application::quit(), so last_session.m3u save and CONFIG.save-if-dirty were lost on the most common exit paths (ratings were already on aboutToQuit). Added savePersistentState(), wired to aboutToQuit; quit() reaches it via the aboutToQuit that qapp_->quit() fires, and no longer persists inline.
+2026-10-18T11:50:00Z  COMMIT   b4f088a80b672a895637b7c5a5097b6bcfd09c61 (hpp: savePersistentState decl)
+2026-10-18T11:50:00Z  COMMIT   f1d570f391f6bed319d0a8dbdd2b0c3e4b0d4642 (cpp: savePersistentState impl + aboutToQuit wire + quit() slimmed)
+2026-10-18T11:50:00Z  NOTE     VERIFY PENDING: no Qt build in this VM (no Qt dev headers). Needs ./build.sh --fast --tests on desktop; on green, move T0206 to [x] with VERIFY line.
