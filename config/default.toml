@@ -15,8 +15,8 @@ prev_track = 'P'
 toggle_fullscreen = 'F'
 toggle_record = 'R'
 
+# T0204: `[overlay] enabled` deleted (zero consumers).
 [overlay]
-enabled = true
 
     [[overlay.elements]]
     anchor = 'left'
@@ -48,15 +48,12 @@ enabled = true
         x = 0.5
         y = 0.05000000074505806
 
+# T0204: `enabled`, `auto_record`, `record_entire_song`,
+# `restart_track_on_record`, `stop_at_track_end` deleted (zero consumers).
 [recording]
-auto_record = false
 container = 'mp4'
 default_filename = 'chadvis-projectm-qt_{date}_{time}'
-enabled = true
 output_directory = '~/Videos/ChadVis'
-record_entire_song = false
-restart_track_on_record = false
-stop_at_track_end = false
 
     [recording.audio]
     bitrate = 320
@@ -120,5 +117,5 @@ debug_lyrics_file = ''
 device_id = ''
 download_format = 'mp3'
 download_path = ''
-embed_metadata = true
+# T0204: `embed_metadata` deleted (zero consumers).
 save_lyrics = true

@@ -51,7 +51,7 @@ struct OverlayElementConfig {
 // JSON store and the visualizer renders overlay elements from its own sources.
 // See TODO.md before assuming a `false` here hides anything on screen.
 struct OverlayConfig {
-    bool enabled{true};
+    // T0204: the former `enabled` master toggle had zero consumers — deleted.
     std::vector<OverlayElementConfig> elements;
 };
 
@@ -117,11 +117,9 @@ struct AudioEncoderConfig {
 
 // Recording configuration
 struct RecordingConfig {
-    bool enabled{true};
-    bool autoRecord{false};
-    bool recordEntireSong{false};
-    bool restartTrackOnRecord{false};
-    bool stopAtTrackEnd{false};
+    // T0204: `enabled`, `auto_record`, `record_entire_song`,
+    // `restart_track_on_record`, `stop_at_track_end` had zero consumers —
+    // deleted rather than wired, to avoid inventing features.
     fs::path outputDirectory;
     std::string defaultFilename{"chadvis-projectm-qt_{date}_{time}"};
     std::string container{"mp4"};
@@ -206,7 +204,8 @@ struct SunoConfig {
     fs::path downloadPath;
     bool autoDownload{false};
     bool saveLyrics{true};
-    bool embedMetadata{true};
+    // T0204: `embed_metadata` had zero consumers — deleted. Tagging is
+    // unconditional in tagAudioFile; there is no toggle to wire it to.
     SunoDownloadFormat downloadFormat{SunoDownloadFormat::MP3};
 
     // Debugging

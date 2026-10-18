@@ -167,11 +167,6 @@ next launch.
 
 | Key | Type | Default | Meaning |
 | :--- | :--- | :--- | :--- |
-| `enabled` | bool | `true` | Master recorder enable |
-| `auto_record` | bool | `false` | Start recording automatically |
-| `record_entire_song` | bool | `false` | Keep recording past the track end |
-| `restart_track_on_record` | bool | `false` | Restart the track when recording starts |
-| `stop_at_track_end` | bool | `false` | Stop exactly at track end |
 | `default_filename` | string | `'chadvis-projectm-qt_{date}_{time}'` | Filename template; `{date}` and `{time}` are substituted |
 | `container` | string | `'mp4'` | Output container |
 | `output_directory` | path | `'~/Videos/ChadVis'` | Fallback only. First run rewrites it to `<dataDir>/recordings` |
@@ -207,7 +202,6 @@ Video codec and CRF live **inside the nested `[recording.video]` table**, not at
 
 | Key | Type | Default | Meaning |
 | :--- | :--- | :--- | :--- |
-| `enabled` | bool | `true` | Parsed and round-tripped, but **no consumer reads it** — the visualizer renders overlay elements from its own sources. Setting it `false` will not hide anything. See the caveat below |
 | `elements` | array of tables | 2 elements in the template | Overlay text elements |
 
 Per-element keys:
@@ -258,7 +252,7 @@ Parsed, serialized, and shipped. The table is present in full in `config/default
 | `download_format` | string | `'mp3'` | `mp3` or `wav`; anything else falls back to `mp3` |
 | `auto_download` | bool | `false` | Download automatically |
 | `save_lyrics` | bool | `true` | Write lyrics alongside downloads |
-| `embed_metadata` | bool | `true` | Embed tags in downloaded files |
+
 | `debug_lyrics` | bool | `false` | Dump lyrics to `debug_lyrics_file` |
 | `debug_lyrics_file` | path | `''` | Target path for the lyrics dump |
 | `token` | string | *not written* | **Legacy secret, parse-only.** See below — the serializer physically cannot emit it |

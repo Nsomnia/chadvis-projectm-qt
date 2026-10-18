@@ -105,12 +105,9 @@ fs::path expandPath(std::string_view path) {
     X("mesh_y", meshY, U32)
 
 // output_directory handled manually (see parseRecording).
+// T0204: `enabled`, `auto_record`, `record_entire_song`,
+// `restart_track_on_record`, `stop_at_track_end` deleted (zero consumers).
 #define CHADVIS_RECORDING_FIELDS(X)                                                                \
-    X("enabled", enabled, BOOL)                                                                    \
-    X("auto_record", autoRecord, BOOL)                                                             \
-    X("record_entire_song", recordEntireSong, BOOL)                                                \
-    X("restart_track_on_record", restartTrackOnRecord, BOOL)                                       \
-    X("stop_at_track_end", stopAtTrackEnd, BOOL)                                                   \
     X("default_filename", defaultFilename, STR)                                                    \
     X("container", container, STR)
 
@@ -175,7 +172,6 @@ fs::path expandPath(std::string_view path) {
     X("device_id", deviceId, STR)                                                                  \
     X("auto_download", autoDownload, BOOL)                                                         \
     X("save_lyrics", saveLyrics, BOOL)                                                             \
-    X("embed_metadata", embedMetadata, BOOL)                                                       \
     X("debug_lyrics", debugLyrics, BOOL)                                                           \
     X("debug_lyrics_file", debugLyricsFile, PATH)
 
@@ -335,8 +331,7 @@ void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
     auto* overlay = tbl["overlay"].as_table();
     if (!overlay) return;
 
-    const OverlayConfig def{};
-    cfg.enabled = get(*overlay, "enabled", def.enabled);
+    // T0204: the `enabled` master toggle had zero consumers — deleted.
 
     if (auto elementsArr = (*overlay)["elements"].as_array()) {
         for (const auto& elem : *elementsArr) {
@@ -485,7 +480,8 @@ toml::table ConfigParsers::serialize(const AudioConfig& audio, const VisualizerC
                 {"anchor", elem.anchor},
                 {"visible", elem.visible}});
     }
-    root.insert("overlay", toml::table{{"enabled", overlay.enabled}, {"elements", elementsArr}});
+    // T0204: `enabled` deleted (zero consumers).
+    root.insert("overlay", toml::table{{"elements", elementsArr}});
 
     {
         toml::table out;
