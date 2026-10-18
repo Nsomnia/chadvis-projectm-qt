@@ -307,6 +307,15 @@ void warnIfClamped(const std::optional<int>& optVal, u32 effective, std::string_
     }
 }
 
+// T0209: float overload for karaoke.y_position.
+void warnIfClamped(const std::optional<float>& optVal, float effective, std::string_view name) {
+    if (optVal && *optVal != effective) {
+        LOG_WARN("CLI override {} = {} is out of range, clamped to {} "
+                 "(the same bounds the config file enforces)",
+                 name, *optVal, effective);
+    }
+}
+
 } // anonymous namespace
 
 Result<void> Application::init(const AppOptions& opts) {
@@ -351,11 +360,14 @@ Result<void> Application::init(const AppOptions& opts) {
     }
 
     // ─── Apply CLI overrides to config ────────────────────────────────────
-    // Audio overrides. parseAudio applies no range clamps to its fields, so
-    // there is nothing to re-run after these the way there is below.
+    // Audio overrides. T0209: parseAudio now clamps buffer_size/sample_rate,
+    // so re-run the parser's clamp the way the visualizer lane does below.
     applyOverride(opts.audioDevice, CONFIG.audio().device, "audio.device");
     applyOverride(opts.audioBufferSize, CONFIG.audio().bufferSize, "audio.bufferSize");
     applyOverride(opts.audioSampleRate, CONFIG.audio().sampleRate, "audio.sampleRate");
+    ConfigParsers::clampAudio(CONFIG.audio());
+    warnIfClamped(opts.audioBufferSize, CONFIG.audio().bufferSize, "audio.bufferSize");
+    warnIfClamped(opts.audioSampleRate, CONFIG.audio().sampleRate, "audio.sampleRate");
 
     // Visualizer overrides
     applyOverride(opts.visualizerFps, CONFIG.visualizer().fps, "visualizer.fps");
@@ -386,16 +398,23 @@ Result<void> Application::init(const AppOptions& opts) {
     applyOverride(opts.recordingPreset, CONFIG.recording().video.preset, "recording.video.preset");
     ConfigParsers::clampVideoEncoder(CONFIG.recording().video);
     warnIfClamped(opts.recordingCrf, CONFIG.recording().video.crf, "recording.video.crf");
+    // T0209: a --recording-codec/--recording-preset typo would otherwise sail
+    // past parseRecording's validation; warn here too.
+    ConfigParsers::validateRecording(CONFIG.recording());
 
     // Suno overrides
     applyOverride(opts.sunoDownloadPath, CONFIG.suno().downloadPath, "suno.downloadPath");
     applyOverride(opts.sunoAutoDownload, CONFIG.suno().autoDownload, "suno.autoDownload");
 
-    // Karaoke overrides
+    // Karaoke overrides. T0209: re-run the parser's clamp so a flag meets
+    // the same bounds as the file.
     applyOverride(opts.karaokeEnabled, CONFIG.karaoke().enabled, "karaoke.enabled");
     applyOverride(opts.karaokeFont, CONFIG.karaoke().fontFamily, "karaoke.fontFamily");
     applyOverride(opts.karaokeFontSize, CONFIG.karaoke().fontSize, "karaoke.fontSize");
     applyOverride(opts.karaokeYPosition, CONFIG.karaoke().yPosition, "karaoke.yPosition");
+    ConfigParsers::clampKaraoke(CONFIG.karaoke());
+    warnIfClamped(opts.karaokeFontSize, CONFIG.karaoke().fontSize, "karaoke.fontSize");
+    warnIfClamped(opts.karaokeYPosition, CONFIG.karaoke().yPosition, "karaoke.yPosition");
 
     // UI overrides
     //
