@@ -202,7 +202,8 @@ Result<void> ConfigLoader::loadDefault(Config& config) {
     // other platforms there is no guaranteed location, so skip straight to
     // the generated default instead of probing a path that cannot exist.
 #ifdef __linux__
-    constexpr fs::path systemDefault =
+    // Note: fs::path is not a literal type, so this cannot be constexpr.
+    const fs::path systemDefault =
             "/usr/share/chadvis-projectm-qt/config/default.toml";
     if (fs::exists(systemDefault)) {
         std::error_code ec;
