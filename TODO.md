@@ -1057,32 +1057,39 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 
 ### P0 — the product is broken, data is corrupted, or a secret is exposed
 
-- [ ] T0200 **Production `SunoDownloader` never emits `fileSaved`** (`src/suno/SunoDownloader.cpp`) #risk-high
+- [?] T0200 **Production `SunoDownloader` never emits `fileSaved`** (`src/suno/SunoDownloader.cpp`) #risk-high
       Prod ctor never connects `finalizeFinished`; transferred files never auto-play. Fix: connect in prod ctor + add a test constructing via prod ctor.
-- [ ] T0201 **Mutations `Rejected` unreachable** (`src/suno/SunoLibraryMutations.cpp`) #risk-high
+      STATUS/T0200.log: initFinalize() shared by both ctors (2b1b233, eec8f87); prodCtorConnectsFinalizeFinished added (2004edc). VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
+- [?] T0201 **Mutations `Rejected` unreachable** (`src/suno/SunoLibraryMutations.cpp`) #risk-high
       `transportReason()` never returns empty, so every non-2xx settles as `Failed` (retryable) and server `detail` is never delivered. Fix: check HTTP status first, `Rejected` for 4xx with `rejectionReason(body)`, `Failed` only for transport/no-status.
-- [ ] T0202 **`SunoDownloader::embeddedSunoId` unchecked `fieldList()[1]`** (`src/suno/SunoDownloader.cpp`) #risk-high
+      STATUS/T0201.log: status-first classification in handleReply (471b2d6). VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
+- [?] T0202 **`SunoDownloader::embeddedSunoId` unchecked `fieldList()[1]`** (`src/suno/SunoDownloader.cpp`) #risk-high
       TXXX frame with description but no value → out-of-bounds read. Fix: guard `size() >= 2` (test helper already guards).
+      STATUS/T0202.log: size() >= 2 guard, skip frame otherwise (578ff1d). VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
 
 ### P1 — correctness / robustness
 
-- [ ] T0203 **Wire or delete five dead CLI paths** (`src/core/CliArgs.inc`, `src/core/Application.cpp`)
+- [?] T0203 **Wire or delete five dead CLI paths** (`src/core/CliArgs.inc`, `src/core/Application.cpp`)
       `--preset`, `--output`, `--suno-id`, `--record` (GUI), positional input files. Help advertises them; none has a consumer.
-- [ ] T0204 **Wire or delete dead config keys** (`src/core/Config*.cpp`, `config/default.toml`)
+      STATUS/T0203.log: wired all five (d5c4289) — --preset->forcePreset, files->playlist, --suno-id->playClipById, --record->RecordingBridge::startRecording honoring --output. VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
+- [?] T0204 **Wire or delete dead config keys** (`src/core/Config*.cpp`, `config/default.toml`)
       Five `[recording]` keys (`enabled`, `auto_record`, `record_entire_song`, `restart_track_on_record`, `stop_at_track_end`) + `[suno] embed_metadata` + `[overlay] enabled` — zero consumers each.
-- [ ] T0205 **`useDefaultPreset` clobber** (`src/core/Application.cpp`)
+      STATUS/T0204.log: deleted all seven (95f0343) across struct, X-macro tables, default.toml, CONFIG.md, loader test. VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
+- [?] T0205 **`useDefaultPreset` clobber** (`src/core/Application.cpp`)
       Plain `bool` in `AppOptions` cannot distinguish "flag absent" from "flag false", so every launch without `--default-preset` forces `CONFIG.visualizer().useDefaultPreset = false`, erasing config `true`. Fix: `std::optional<bool>`, apply only when present.
-- [ ] T0206 **Normal exit skips `Application::quit()`** (`src/core/Application.cpp`)
+      STATUS/T0205.log: optional<bool> field (ffba96f) + apply-only-when-present (ca374a9). VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
+- [?] T0206 **Normal exit skips `Application::quit()`** (`src/core/Application.cpp`)
       Window close / `Qt.quit()` bypass `last_session.m3u` save + `CONFIG.save-if-dirty`. Fix: move persistence to `aboutToQuit` handler.
-- [ ] T0207 **Generate help/completion/topic text from `CliArgs.inc`** (`src/core/CliArgs.inc`, `src/core/HelpSystem.cpp`)
+      STATUS/T0206.log: savePersistentState() on aboutToQuit (b4f088a, f1d570f); quit() slimmed. VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
+- [?] T0207 **Generate help/completion/topic text from `CliArgs.inc`** (`src/core/CliArgs.inc`, `src/core/HelpSystem.cpp`)
       Use `CliArg`; fix `printHelp` docs URL `yourusername` → `Nsomnia`; fix completion staleness (completion lacks `--visualizer-fps` etc.).
-- [ ] T0208 **Unknown-config-key warnings + `--dump-config` / `--print-config`** (`src/core/ConfigLoader.cpp`, `src/core/CliArgs.inc`)
+- [?] T0208 **Unknown-config-key warnings + `--dump-config` / `--print-config`** (`src/core/ConfigLoader.cpp`, `src/core/CliArgs.inc`)
       Typo'd config key silently yields default and vanishes on save. Add parse-time `LOG_WARN` per section + a flag printing effective config and exiting.
-- [ ] T0209 **Missing clamps/validations** (`src/core/ConfigParsers.cpp`)
+- [?] T0209 **Missing clamps/validations** (`src/core/ConfigParsers.cpp`)
       `[audio]` (both keys), `[karaoke]` `font_size`/`y_position`/`bold`/colors, `[overlay]` `opacity`/`font_size`/`animation_speed`/`anchor`, `[keyboard]`, `[visualizer] preset_duration`, `[recording]` strings (`container`, `codec`, `preset`, `pixel_format` — no allow-list). Minimum: clamp `karaoke.y_position` 0–1, `karaoke.font_size` sane range, `overlay.opacity` 0–1, validate `anchor`/`container`/`pixel_format` against known sets with warning on unknown.
-- [ ] T0210 **Fix `default.toml` drift** (`config/default.toml`)
+- [?] T0210 **Fix `default.toml` drift** (`config/default.toml`)
       `theme='dark'` vs struct `'material'`; float precision artifacts (`0.69999998807907104` etc. — write `0.7`, `0.02`, `0.95`, `0.9`, `0.05`); template ≠ generated config (template promises 2 overlay elements, `preset_path=''`, `~/Videos/ChadVis`; generated has zero overlays, resolved-absolute `preset_path`, `<dataDir>/recordings`); three defaults for `recording.output_directory`. Collapse to one.
-- [ ] T0211 **CLI parsing defects** (`src/core/CliArgs.cpp`)
+- [?] T0211 **CLI parsing defects** (`src/core/CliArgs.cpp`)
       Empty-`argv` UB (`arg[0]` on empty `string_view`); `stoi`/`stof` prefix parsing (`--visualizer-fps 12x` → 12 — validate whole token via `std::from_chars` + full-consumption); `stoi -1` → `u32` 4294967295 before clamp; unknown-option suggestion misses short names + `--help`/`--version`/`--help-topics`/`--generate-completion`; `findClosestMatch` Hamming + length diff, threshold ≤3 (transpositions cost 2); `--help <bad-topic>` exits 0; `--generate-completion <bad-shell>` exits 0.
 - [ ] T0212 **`FileUtils::writeText` weaker than `ConfigLoader::save`** (`src/core/FileUtils.cpp`)
       No fsync, no 0600, no Windows replace handling. Upgrade or document "not durable".
