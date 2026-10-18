@@ -98,7 +98,20 @@ jobs:
           target: 'desktop'
           install-deps: true
           cache: true
-          cache-key-prefix: qt-linux-6.8.3
+          cache-key-prefix: qt-linux-6.8.3-r2
+          modules: 'qtmultimedia'
+
+      # Fail fast with a clear message if the Qt install is broken, rather
+      # than letting cmake fail cryptically at find_package(Qt6).
+      - name: Verify Qt installation
+        run: |
+          set -euo pipefail
+          : "${QT_ROOT_DIR:?QT_ROOT_DIR was not exported by install-qt-action}"
+          echo "QT_ROOT_DIR=$QT_ROOT_DIR"
+          if [ ! -f "$QT_ROOT_DIR/lib/cmake/Qt6/Qt6Config.cmake" ]; then
+            echo "::error::Qt6Config.cmake not found under $QT_ROOT_DIR -- Qt installation is incomplete."
+            exit 1
+          fi
 
       - name: Configure the instrumented tree
         run: |
@@ -229,7 +242,20 @@ jobs:
           target: 'desktop'
           install-deps: true
           cache: true
-          cache-key-prefix: qt-linux-6.8.3
+          cache-key-prefix: qt-linux-6.8.3-r2
+          modules: 'qtmultimedia'
+
+      # Fail fast with a clear message if the Qt install is broken, rather
+      # than letting cmake fail cryptically at find_package(Qt6).
+      - name: Verify Qt installation
+        run: |
+          set -euo pipefail
+          : "${QT_ROOT_DIR:?QT_ROOT_DIR was not exported by install-qt-action}"
+          echo "QT_ROOT_DIR=$QT_ROOT_DIR"
+          if [ ! -f "$QT_ROOT_DIR/lib/cmake/Qt6/Qt6Config.cmake" ]; then
+            echo "::error::Qt6Config.cmake not found under $QT_ROOT_DIR -- Qt installation is incomplete."
+            exit 1
+          fi
 
       - name: Configure the instrumented tree
         run: |
@@ -309,4 +335,4 @@ jobs:
           if [ ! -s ubsan-run.log ]; then
             echo "::error title=UndefinedBehaviorSanitizer lane never ran::ubsan-run.log is absent or empty. This is not a clean lane; it is a lane that produced no measurement."
             exit 1
-          fi
+          fi          fi
