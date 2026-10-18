@@ -18,6 +18,7 @@
 
 #include <QtTest>
 #include <QFile>
+#include <QNetworkAccessManager>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
@@ -600,6 +601,38 @@ private slots:
         // No id, no request.
         auto anonymous = downloader.download(SunoClip{});
         QVERIFY(!anonymous.has_value());
+    }
+
+    /// T0200: the production constructor must wire the finalize worker.
+    /// Previously only the test-seam ctor connected finalizeFinished and
+    /// started finalizeThread_, so production transfers never emitted
+    /// fileSaved and never auto-played. This constructs via the production
+    /// ctor and verifies the finalizeFinished -> fileSaved path is live.
+    void prodCtorConnectsFinalizeFinished() {
+        DownloadConfigGuard config;
+        QTemporaryDir sessionDir;
+        QVERIFY(sessionDir.isValid());
+        AudioEngine audio(fs::path(sessionDir.path().toStdString()) / "last_session.m3u");
+        QVERIFY(audio.init());
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+
+        QNetworkAccessManager nam;
+        SunoDownloader downloader(nullptr, database, &audio, &nam);
+
+        QSignalSpy saved(&downloader, &SunoDownloader::fileSaved);
+        QVERIFY(saved.isValid());
+
+        // The connection is Qt::QueuedConnection, so the delivery needs the
+        // event loop — QSignalSpy::wait() pumps it.
+        emit downloader.finalizeFinished(QStringLiteral("prod-clip"),
+                                         QStringLiteral("/tmp/prod-clip.mp3"),
+                                         false);
+        QVERIFY2(saved.wait(2000),
+                 "fileSaved was not emitted: prod ctor did not connect finalizeFinished (T0200)");
+        QCOMPARE(saved.count(), 1);
+        QCOMPARE(saved.at(0).at(0).toString(), QStringLiteral("prod-clip"));
+        QCOMPARE(saved.at(0).at(1).toString(), QStringLiteral("/tmp/prod-clip.mp3"));
     }
 
     void wavIsRefusedBeforeAnythingIsResolved() {
