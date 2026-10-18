@@ -651,7 +651,14 @@ std::optional<std::string> SunoDownloader::embeddedSunoId(const fs::path& path) 
                     // field 0 -- so toString() renders "SUNO_ID <value>" and could
                     // never equal a clip id, while [1] is exactly what the tagger
                     // put there. Reading what was written, not a rendering of it.
-                    return std::string(txxx->fieldList()[1].to8Bit());
+                    // T0202: a TXXX frame can carry a description with no value
+                    // (fieldList().size() == 1), and [1] on that is an
+                    // out-of-bounds read. Guard like the test helper does.
+                    const TagLib::StringList fields = txxx->fieldList();
+                    if (fields.size() < 2) {
+                        continue;
+                    }
+                    return std::string(fields[1].to8Bit());
                 }
             }
             return std::nullopt;
