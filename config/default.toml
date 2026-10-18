@@ -16,44 +16,17 @@ toggle_fullscreen = 'F'
 toggle_record = 'R'
 
 # T0204: `[overlay] enabled` deleted (zero consumers).
+# T0210: no [[overlay.elements]] here -- a generated config has zero, so the
+# template matches it. Add your own elements below to discover the format.
 [overlay]
-
-    [[overlay.elements]]
-    anchor = 'left'
-    animation = 'none'
-    animation_speed = 1.0
-    color = '#FFFFFFFF'
-    font_size = 24
-    id = 'watermark'
-    opacity = 0.69999998807907104
-    text = 'ChadVis Player'
-    visible = true
-
-        [overlay.elements.position]
-        x = 0.019999999552965164
-        y = 0.94999998807907104
-
-    [[overlay.elements]]
-    anchor = 'center'
-    animation = 'fade_pulse'
-    animation_speed = 1.0
-    color = '#00FF88FF'
-    font_size = 36
-    id = 'now_playing'
-    opacity = 0.89999997615814209
-    text = '{artist} - {title}'
-    visible = true
-
-        [overlay.elements.position]
-        x = 0.5
-        y = 0.05000000074505806
 
 # T0204: `enabled`, `auto_record`, `record_entire_song`,
 # `restart_track_on_record`, `stop_at_track_end` deleted (zero consumers).
 [recording]
 container = 'mp4'
 default_filename = 'chadvis-projectm-qt_{date}_{time}'
-output_directory = '~/Videos/ChadVis'
+# T0210: omitted -- the parser default (<dataDir>/recordings) applies.
+# output_directory = '~/Videos/ChadVis'
 
     [recording.audio]
     bitrate = 320
@@ -90,7 +63,7 @@ show_debug_panel = false
 show_playlist = true
 show_presets = true
 sidebar_width = 280
-theme = 'dark'
+theme = 'material'
 visualizer_background = '#000000FF'
 
 [visualizer]

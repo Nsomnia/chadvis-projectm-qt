@@ -169,7 +169,7 @@ next launch.
 | :--- | :--- | :--- | :--- |
 | `default_filename` | string | `'chadvis-projectm-qt_{date}_{time}'` | Filename template; `{date}` and `{time}` are substituted |
 | `container` | string | `'mp4'` | Output container |
-| `output_directory` | path | `'~/Videos/ChadVis'` | Fallback only. First run rewrites it to `<dataDir>/recordings` |
+| `output_directory` | path | `'<dataDir>/recordings'` | Single default (T0210): parser fallback and first-run resolution agree; the template omits it |
 
 ### `[recording.video]` (nested)
 

@@ -370,10 +370,12 @@ void ConfigParsers::parseRecording(const toml::table& tbl, RecordingConfig& cfg)
         CHADVIS_RECORDING_FIELDS(VC_PARSE_FIELD)
     }
 
-    // output_directory intentionally keeps its legacy fallback ("~/Videos/
-    // ChadVis"); the struct default is empty because loadDefault() resolves
-    // a real path at first-run time.
-    cfg.outputDirectory = expandPath(get(*t, "output_directory", std::string("~/Videos/ChadVis")));
+    // T0210: single default. The struct default is empty; loadDefault()'s
+    // resolveFirstRunPaths sets <dataDir>/recordings for fresh installs, and
+    // this fallback covers configs that omit the key -- including the
+    // template, which no longer hardcodes a path. ~/Videos/ChadVis is gone.
+    cfg.outputDirectory = expandPath(
+        get(*t, "output_directory", (file::dataDir() / "recordings").string()));
 
     if (auto* vt = (*t)["video"].as_table()) {
         // Defaults come straight from ConfigData.hpp: crf 18, "medium",
