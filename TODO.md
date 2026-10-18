@@ -1081,9 +1081,9 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 - [?] T0206 **Normal exit skips `Application::quit()`** (`src/core/Application.cpp`)
       Window close / `Qt.quit()` bypass `last_session.m3u` save + `CONFIG.save-if-dirty`. Fix: move persistence to `aboutToQuit` handler.
       STATUS/T0206.log: savePersistentState() on aboutToQuit (b4f088a, f1d570f); quit() slimmed. VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
-- [ ] T0207 **Generate help/completion/topic text from `CliArgs.inc`** (`src/core/CliArgs.inc`, `src/core/HelpSystem.cpp`)
+- [?] T0207 **Generate help/completion/topic text from `CliArgs.inc`** (`src/core/CliArgs.inc`, `src/core/HelpSystem.cpp`)
       Use `CliArg`; fix `printHelp` docs URL `yourusername` → `Nsomnia`; fix completion staleness (completion lacks `--visualizer-fps` etc.).
-- [ ] T0208 **Unknown-config-key warnings + `--dump-config` / `--print-config`** (`src/core/ConfigLoader.cpp`, `src/core/CliArgs.inc`)
+- [?] T0208 **Unknown-config-key warnings + `--dump-config` / `--print-config`** (`src/core/ConfigLoader.cpp`, `src/core/CliArgs.inc`)
       Typo'd config key silently yields default and vanishes on save. Add parse-time `LOG_WARN` per section + a flag printing effective config and exiting.
 - [ ] T0209 **Missing clamps/validations** (`src/core/ConfigParsers.cpp`)
       `[audio]` (both keys), `[karaoke]` `font_size`/`y_position`/`bold`/colors, `[overlay]` `opacity`/`font_size`/`animation_speed`/`anchor`, `[keyboard]`, `[visualizer] preset_duration`, `[recording]` strings (`container`, `codec`, `preset`, `pixel_format` — no allow-list). Minimum: clamp `karaoke.y_position` 0–1, `karaoke.font_size` sane range, `overlay.opacity` 0–1, validate `anchor`/`container`/`pixel_format` against known sets with warning on unknown.
