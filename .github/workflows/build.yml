@@ -185,7 +185,7 @@ jobs:
         run: ccache --zero-stats
 
       - name: Restore ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/ccache
