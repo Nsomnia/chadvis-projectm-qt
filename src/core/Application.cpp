@@ -591,6 +591,11 @@ Result<void> Application::init(const AppOptions& opts) {
             LOG_DEBUG("Saved preset ratings");
         }
     });
+    // T0206: persist the session playlist and dirty config on EVERY exit.
+    // Window close and Qt.quit() never run quit(); aboutToQuit fires for all
+    // of them (including quit()-driven ones, via qapp_->quit() below).
+    connect(qapp_.get(), &QGuiApplication::aboutToQuit, this,
+            [this]() { savePersistentState(); });
 
     LOG_INFO("Initialization complete. Let's get this bread.");
 
@@ -605,6 +610,28 @@ int Application::exec() {
     return qapp_->exec();
 }
 
+// T0206: the single persistence path for every exit. aboutToQuit is the one
+// universal exit hook — a QML window close or Qt.quit() ends the event loop
+// without ever invoking Application::quit() (that slot only runs from the
+// SIGINT/SIGTERM handlers), so the session playlist and dirty config are saved
+// here. quit() reaches this too, through the aboutToQuit that qapp_->quit()
+// fires, which is why quit() no longer persists inline.
+void Application::savePersistentState() {
+    if (audioEngine_) {
+        auto lastSession = file::configDir() / "last_session.m3u";
+        if (auto result = audioEngine_->playlist().saveM3U(lastSession); !result) {
+            LOG_WARN("Failed to save session playlist to {}: {}", lastSession.string(),
+                     result.error().message);
+        } else {
+            LOG_DEBUG("Saved session playlist to {}", lastSession.string());
+        }
+    }
+
+    if (CONFIG.isDirty()) {
+        (void)CONFIG.save(CONFIG.configPath());
+    }
+}
+
 void Application::quit() {
     LOG_INFO("Shutting down...");
 
@@ -616,23 +643,10 @@ void Application::quit() {
         (void)videoRecorder_->stop();
     }
 
-    // Stop audio
+    // Stop audio. Persistence (session playlist, dirty config) is handled by
+    // savePersistentState() on aboutToQuit, which qapp_->quit() fires below.
     if (audioEngine_) {
-        // Save last session playlist
-        auto lastSession = file::configDir() / "last_session.m3u";
-        if (auto result = audioEngine_->playlist().saveM3U(lastSession); !result) {
-            LOG_WARN("Failed to save session playlist to {}: {}", lastSession.string(),
-                     result.error().message);
-        } else {
-            LOG_DEBUG("Saved session playlist to {}", lastSession.string());
-        }
-
         audioEngine_->stop();
-    }
-
-    // Save config if dirty
-    if (CONFIG.isDirty()) {
-        (void)CONFIG.save(CONFIG.configPath());
     }
 
     if (qapp_) {
