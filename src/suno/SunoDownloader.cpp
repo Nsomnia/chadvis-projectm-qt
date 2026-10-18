@@ -51,6 +51,9 @@ SunoDownloader::SunoDownloader(SunoClient*,
       // The queue adopts the controller-provided manager; this is the one
       // QNetworkAccessManager for clip downloads (no ad-hoc managers here).
       queue_(std::make_unique<DownloadQueue>(networkManager, this)) {
+    // T0200: the finalize worker must run in production too — without this,
+    // transferred files never emit fileSaved and never auto-play.
+    initFinalize();
     wireQueue();
 }
 
@@ -61,20 +64,7 @@ SunoDownloader::SunoDownloader(SunoDatabase& db,
       db_(db),
       audioEngine_(audioEngine),
       queue_(std::make_unique<DownloadQueue>(std::move(replyFactory), this)) {
-    // T0037: the finalize worker. Queued connection, so the handler below runs on
-    // the GUI thread where addAndPlay and the QML-facing signals belong, and Qt
-    // drops the delivery if `this` is gone by then.
-    connect(this, &SunoDownloader::finalizeFinished, this,
-            [this](const QString& clipId, const QString& destPath, bool play) {
-                if (play) {
-                    static_cast<void>(addAndPlay(fs::path(destPath.toStdString()),
-                                                 clipId.toStdString()));
-                }
-                emit fileSaved(clipId, destPath);
-            },
-            Qt::QueuedConnection);
-    finalizeThread_.setObjectName(QStringLiteral("SunoDownloader::finalize"));
-    finalizeThread_.start();
+    initFinalize();
     wireQueue();
 }
 
@@ -104,6 +94,25 @@ void SunoDownloader::runFinalize(std::function<void()> job) {
     QMetaObject::invokeMethod(
             &finalizeThread_, [work = std::move(job)]() { work(); },
             Qt::QueuedConnection);
+}
+
+void SunoDownloader::initFinalize() {
+    // T0037: the finalize worker. Queued connection, so the handler below runs on
+    // the GUI thread where addAndPlay and the QML-facing signals belong, and Qt
+    // drops the delivery if `this` is gone by then.
+    // T0200: this must run in BOTH constructors — the production ctor previously
+    // skipped it, so transferred files never emitted fileSaved and never auto-played.
+    connect(this, &SunoDownloader::finalizeFinished, this,
+            [this](const QString& clipId, const QString& destPath, bool play) {
+                if (play) {
+                    static_cast<void>(addAndPlay(fs::path(destPath.toStdString()),
+                                                 clipId.toStdString()));
+                }
+                emit fileSaved(clipId, destPath);
+            },
+            Qt::QueuedConnection);
+    finalizeThread_.setObjectName(QStringLiteral("SunoDownloader::finalize"));
+    finalizeThread_.start();
 }
 
 void SunoDownloader::wireQueue() {
