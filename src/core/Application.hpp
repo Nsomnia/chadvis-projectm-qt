@@ -42,6 +42,9 @@ struct AppOptions {
     // General
     bool debug{false};
     bool headless{false};
+    // T0208: action flag (print effective config and exit), not a config
+    // override -- a plain bool is correct here.
+    bool dumpConfig{false};
     std::optional<fs::path> configFile;
     std::vector<fs::path> inputFiles;
 

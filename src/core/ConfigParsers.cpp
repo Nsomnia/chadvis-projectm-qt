@@ -213,6 +213,24 @@ fs::path expandPath(std::string_view path) {
 #define VC_SER_PATH(key, member) out.insert(key, obj.member.string());
 #define VC_SER_COLOR(key, member) out.insert(key, obj.member.toHex());
 
+// ── Unknown-key warning expansion (T0208) ────────────────────────────
+#define VC_KEY_NAME(key, member, TYPE) #key,
+
+namespace {
+// T0208: a typo'd config key silently yields the default and vanishes on the
+// next save. Warn once per unknown key so the user learns their config did
+// not do what they thought it did.
+void warnUnknownKeys(const toml::table& t, std::string_view section,
+                     std::initializer_list<std::string_view> known) {
+    for (const auto& [key, node] : t) {
+        const std::string_view k = key.str();
+        if (std::find(known.begin(), known.end(), k) == known.end()) {
+            LOG_WARN("Unknown config key '{}.{}' -- ignoring it", section, k);
+        }
+    }
+}
+} // namespace
+
 } // namespace
 
 void ConfigParsers::parseAudio(const toml::table& tbl, AudioConfig& cfg) {
@@ -221,6 +239,7 @@ void ConfigParsers::parseAudio(const toml::table& tbl, AudioConfig& cfg) {
     const AudioConfig def{};
     auto& obj = cfg;
     CHADVIS_AUDIO_FIELDS(VC_PARSE_FIELD)
+    warnUnknownKeys(*t, "audio", {CHADVIS_AUDIO_FIELDS(VC_KEY_NAME)});
 }
 
 void ConfigParsers::clampVisualizer(VisualizerConfig& cfg) {
@@ -258,6 +277,11 @@ void ConfigParsers::parseVisualizer(const toml::table& tbl, VisualizerConfig& cf
             if (auto s = p.value<std::string>()) cfg.texturePaths.push_back(expandPath(*s));
         }
     }
+
+    // preset_path / texture_paths are hand-handled above (custom fallback),
+    // so they are known keys even though they are not in the field table.
+    warnUnknownKeys(*t, "visualizer",
+                    {"preset_path", "texture_paths", CHADVIS_VISUALIZER_FIELDS(VC_KEY_NAME)});
 }
 
 void ConfigParsers::clampVideoEncoder(VideoEncoderConfig& cfg) {
@@ -324,6 +348,12 @@ void ConfigParsers::parseRecording(const toml::table& tbl, RecordingConfig& cfg)
         cfg.audio.sampleRate = std::clamp(cfg.audio.sampleRate, 8000u, 192000u);
         cfg.audio.channels = std::clamp(cfg.audio.channels, 1u, 2u);
     }
+
+    // output_directory is hand-handled (legacy fallback); video/audio are
+    // subtables checked against their own tables above.
+    warnUnknownKeys(*t, "recording",
+                    {"output_directory", "video", "audio",
+                     CHADVIS_RECORDING_FIELDS(VC_KEY_NAME)});
 }
 
 void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
@@ -352,6 +382,8 @@ void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
             }
         }
     }
+
+    warnUnknownKeys(*overlay, "overlay", {"elements"});
 }
 
 void ConfigParsers::parseUI(const toml::table& tbl, UIConfig& cfg) {
@@ -362,6 +394,7 @@ void ConfigParsers::parseUI(const toml::table& tbl, UIConfig& cfg) {
     CHADVIS_UI_FIELDS(VC_PARSE_FIELD)
 
     cfg.sidebarWidth = std::clamp(cfg.sidebarWidth, 200, 400);
+    warnUnknownKeys(*t, "ui", {CHADVIS_UI_FIELDS(VC_KEY_NAME)});
 }
 
 void ConfigParsers::parseKeyboard(const toml::table& tbl, KeyboardConfig& cfg) {
@@ -370,6 +403,7 @@ void ConfigParsers::parseKeyboard(const toml::table& tbl, KeyboardConfig& cfg) {
     const KeyboardConfig def{};
     auto& obj = cfg;
     CHADVIS_KEYBOARD_FIELDS(VC_PARSE_FIELD)
+    warnUnknownKeys(*t, "keyboard", {CHADVIS_KEYBOARD_FIELDS(VC_KEY_NAME)});
 }
 
 void ConfigParsers::parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg) {
@@ -378,6 +412,7 @@ void ConfigParsers::parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg) {
     const KaraokeConfig def{};
     auto& obj = cfg;
     CHADVIS_KARAOKE_FIELDS(VC_PARSE_FIELD)
+    warnUnknownKeys(*t, "karaoke", {CHADVIS_KARAOKE_FIELDS(VC_KEY_NAME)});
 }
 
 void ConfigParsers::parseSuno(const toml::table& tbl, SunoConfig& cfg) {
@@ -402,6 +437,12 @@ void ConfigParsers::parseSuno(const toml::table& tbl, SunoConfig& cfg) {
 
     auto fmtStr = get(*t, "download_format", std::string("mp3"));
     cfg.downloadFormat = (fmtStr == "wav") ? SunoDownloadFormat::WAV : SunoDownloadFormat::MP3;
+
+    // download_path/download_format are hand-handled (path expansion + enum
+    // mapping); token/cookie are legacy parse-only secrets (migrated once).
+    warnUnknownKeys(*t, "suno",
+                    {"download_path", "download_format", "token", "cookie",
+                     CHADVIS_SUNO_FIELDS(VC_KEY_NAME)});
 }
 
 toml::table ConfigParsers::serialize(const AudioConfig& audio, const VisualizerConfig& visualizer,

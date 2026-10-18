@@ -411,6 +411,23 @@ Result<void> Application::init(const AppOptions& opts) {
     qml_bridge::SettingsBridge::setSessionTheme(
         opts.theme ? QString::fromStdString(*opts.theme) : QString());
 
+    // T0208: print the effective config and exit. Placed after every CLI
+    // override above so the dump reflects exactly what the app would run
+    // with -- before any GUI, audio, or network object is created.
+    if (opts.dumpConfig) {
+        try {
+            const toml::table tbl = ConfigParsers::serialize(
+                CONFIG.audio(), CONFIG.visualizer(), CONFIG.recording(),
+                CONFIG.ui(), CONFIG.keyboard(), CONFIG.suno(),
+                CONFIG.karaoke(), CONFIG.overlay(), CONFIG.debug());
+            std::cout << tbl;
+        } catch (const std::exception& e) {
+            LOG_ERROR("Failed to serialize config for --dump-config: {}", e.what());
+            std::exit(1);
+        }
+        std::exit(0);
+    }
+
     QSurfaceFormat format;
     format.setVersion(3, 3);
     format.setProfile(QSurfaceFormat::CoreProfile);

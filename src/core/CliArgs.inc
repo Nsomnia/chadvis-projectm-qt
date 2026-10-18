@@ -33,6 +33,7 @@ CLI_BOOL("--headless",       "",    "Run without GUI (batch mode)",     "no",  "
 // ─── Config ─────────────────────────────────────────────────
 CLI_SECTION("Config")
 CLI_PATH("--config",         "-c",  "Use custom config file",           "",    "",                            configFile,         _)
+CLI_BOOL("--dump-config",    "",    "Print effective config and exit",    "no",  "",                            dumpConfig,         _)
 // ─── Audio ──────────────────────────────────────────────────
 CLI_SECTION("Audio Options")
 CLI_STRING("--audio-device", "",    "Audio output device",              "default","",                          audioDevice,        audio().device)
