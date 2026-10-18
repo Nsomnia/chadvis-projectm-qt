@@ -127,6 +127,10 @@ private:
     /// Generate list of all flag names from CliArgs.inc table (for findClosestMatch)
     static std::vector<std::string_view> allFlagNames();
 
+    /// T0206: the single persistence path for every exit (session playlist +
+    /// dirty config). Wired to aboutToQuit, the universal exit hook.
+    void savePersistentState();
+
     static Application* instance_;
 
     std::unique_ptr<QGuiApplication> qapp_;
