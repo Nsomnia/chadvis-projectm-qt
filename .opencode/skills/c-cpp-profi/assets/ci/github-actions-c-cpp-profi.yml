@@ -1,0 +1,68 @@
+# c-cpp-profi evidence gates (portable CI template)
+#
+# This is a TEMPLATE a consumer copies into their own repo, NOT the skill-dev
+# repo's CI. To adopt it:
+#
+#   1. Vendor the skill at  .opencode/skills/c-cpp-profi/  in your repo (git submodule,
+#      subtree, or a plain copy). Every path below assumes that location; if
+#      you vendor it elsewhere, update the paths.
+#   2. Copy this file to  .github/workflows/c-cpp-profi.yml  in your repo.
+#   3. Set GATE_REPORT below to the committed gate report you maintain for the
+#      change under review (produced from cpp_gate_report.sh and then filled in).
+#   4. ripgrep (rg) must be available for the --self-test steps; this template
+#      installs it on the ubuntu-latest runner in the "Install ripgrep" step.
+#
+# What each step enforces:
+#   - Skill contract: the vendored skill is structurally intact (references,
+#     examples, assets, script syntax).
+#   - Helper self-tests: backlog / comprehension-map / domain-detect / docs-check
+#     each prove their own behavior on a throwaway fixture.
+#   - Evidence gate: the committed gate report passes cpp_evidence_check.py with
+#     --derive-profiles, so the enforced profiles are read from the report's own
+#     "## Change Scope" answers instead of being self-attested on the CLI.
+
+name: c-cpp-profi
+
+on:
+  push:
+  pull_request:
+
+env:
+  # EDIT THIS: path to the committed, filled-in gate report for the change.
+  # Generate a skeleton with:
+  #   bash .opencode/skills/c-cpp-profi/scripts/cpp_gate_report.sh . > docs/gate-report.md
+  # then fill in every gate row and the Change Scope before committing it.
+  GATE_REPORT: docs/gate-report.md
+
+jobs:
+  c-cpp-profi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Validate skill contract
+        run: python3 .opencode/skills/c-cpp-profi/scripts/validate_skill_contract.py .opencode/skills/c-cpp-profi
+
+      - name: Helper self-tests
+        run: |
+          bash .opencode/skills/c-cpp-profi/scripts/cpp_backlog.sh --self-test
+          bash .opencode/skills/c-cpp-profi/scripts/cpp_comprehension_map.sh --self-test
+          bash .opencode/skills/c-cpp-profi/scripts/cpp_domain_detect.sh --self-test
+          python3 .opencode/skills/c-cpp-profi/scripts/cpp_docs_check.py --self-test
+
+      - name: Evidence gate (derive profiles from report scope)
+        run: |
+          if [ ! -f "$GATE_REPORT" ]; then
+            echo "gate report not found at: $GATE_REPORT"
+            echo "set the GATE_REPORT env var at the top of this workflow to your committed report"
+            exit 1
+          fi
+          python3 .opencode/skills/c-cpp-profi/scripts/cpp_evidence_check.py "$GATE_REPORT" --derive-profiles
