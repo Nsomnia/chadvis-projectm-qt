@@ -1,0 +1,4 @@
+2026-10-18T06:58:00Z  CLAIM    agent=muse-spark/dev-muse-dev ttl=4h
+2026-10-18T06:58:00Z  NOTE     T0202: embeddedSunoId indexed txxx->fieldList()[1] with no size guard; a TXXX frame with description but no value (size()==1) is an out-of-bounds read. Test helper stillTagged already guarded; production did not.
+2026-10-18T06:58:00Z  COMMIT   578ff1d2a69d5d1d149841e30df11d9eeb0de4df (cpp: copy fieldList, continue unless size() >= 2)
+2026-10-18T06:58:00Z  NOTE     VERIFY PENDING: no Qt build in this VM (no Qt dev headers). Needs ./build.sh --fast --tests on desktop; on green, move T0202 to [x] with VERIFY line.
