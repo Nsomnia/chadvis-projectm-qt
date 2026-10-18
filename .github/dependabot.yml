@@ -12,9 +12,11 @@
 #   template that has never run reads as coverage and delivers none.
 #
 #   What this repo DOES have is exactly one Dependabot-supported ecosystem:
-#   `github-actions`. The single workflow, .github/workflows/opencode.yml, uses
-#   actions/checkout and anomalyco/opencode/github, both of which are version-
-#   pinnable and both of which are a supply-chain risk worth tracking.
+#   `github-actions`. The six workflows under .github/workflows/ use
+#   actions/checkout, jurplel/install-qt-action, actions/cache,
+#   actions/upload-artifact, actions/download-artifact, ilammy/msvc-dev-cmd,
+#   and anomalyco/opencode/github, all of which are version-pinnable and all
+#   of which are a supply-chain risk worth tracking.
 #
 #   To track the CMake dependencies instead, the options are (a) none, (b) a
 #   scheduled CI job that greps Dependencies.cmake and opens an issue, or
