@@ -47,7 +47,10 @@ struct AppOptions {
 
     // Visualizer
     std::optional<std::string> presetName;
-    bool useDefaultPreset{false};
+    // T0205: optional so "flag absent" is distinguishable from "flag false".
+    // A plain bool clobbered a saved `true` back to false on every launch
+    // without --default-preset.
+    std::optional<bool> useDefaultPreset;
     std::optional<int> visualizerFps;
     std::optional<int> visualizerWidth;
     std::optional<int> visualizerHeight;
