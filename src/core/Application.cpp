@@ -375,6 +375,11 @@ Result<void> Application::init(const AppOptions& opts) {
     applyOverride(opts.visualizerHeight, CONFIG.visualizerMut().height, "visualizer.height");
     applyOverride(opts.visualizerShuffle, CONFIG.visualizerMut().shufflePresets,
                   "visualizer.shufflePresets");
+    // T0203: --preset was parsed but never consumed. It now feeds the existing
+    // visualizer.forcePreset key, which pm::Bridge honors at init via
+    // selectByName (useDefaultPreset still takes precedence there).
+    applyOverride(opts.presetName, CONFIG.visualizer().forcePreset,
+                  "visualizer.forcePreset");
     // Overrides write raw values into CONFIG after ConfigParsers has already
     // clamped the file-loaded values, so an out-of-range flag would sail past
     // every bound the parser enforces: --visualizer-fps 0 skipped the
@@ -445,6 +450,14 @@ Result<void> Application::init(const AppOptions& opts) {
     if (auto result = audioEngine_->init(CONFIG.audio()); !result) {
         LOG_ERROR("Audio engine init failed: {}", result.error().message);
         return result;
+    }
+
+    // T0203: positional input files are loaded into the playlist at startup.
+    // They were collected by the parser and never consumed — the first help
+    // example (`chadvis-projectm-qt ~/Music/*.flac`) loaded nothing.
+    if (!opts.inputFiles.empty()) {
+        audioEngine_->playlist().addFiles(opts.inputFiles);
+        LOG_INFO("Added {} input file(s) to the playlist", opts.inputFiles.size());
     }
 
 
@@ -522,6 +535,18 @@ Result<void> Application::init(const AppOptions& opts) {
         sunoController_ = std::make_unique<suno::SunoController>(audioEngine_.get(),
                                                                  lyricsSync_.get(), nullptr);
 
+        // T0203: --suno-id plays a Suno clip by ID. It resolves against the
+        // library/database, so an unknown ID warns instead of silently
+        // doing nothing (sync the library first).
+        if (opts.sunoId) {
+            if (sunoController_->playClipById(*opts.sunoId)) {
+                LOG_INFO("--suno-id: playing clip '{}'", *opts.sunoId);
+            } else {
+                LOG_WARN("--suno-id: clip '{}' not found in library; sync the library first",
+                         *opts.sunoId);
+            }
+        }
+
         // Pin a non-native Quick Controls style BEFORE the engine exists. The
         // macOS native style silently discards the custom `background` /
         // `contentItem` on every control, so the themed Settings window and
@@ -570,6 +595,25 @@ Result<void> Application::init(const AppOptions& opts) {
         }
         if (!window->isVisible()) {
             window->show();
+        }
+
+        // T0203: --record now starts recording in GUI mode. (--headless +
+        // --record is rejected at parse time: no window, no frames.) The
+        // RecordingBridge singleton exists by now — main.qml references it,
+        // so the load above constructed it — and setVisualizer wired the
+        // frame source. An empty outputPath keeps the bridge's default naming.
+        if (opts.startRecording) {
+            const QString outputPath = opts.outputFile
+                ? QString::fromStdString(opts.outputFile->string())
+                : QString();
+            if (auto* bridge = qml_bridge::RecordingBridge::instance()) {
+                bridge->startRecording(outputPath);
+                LOG_INFO("--record: recording started");
+            } else {
+                LOG_WARN("--record: RecordingBridge unavailable; recording not started");
+            }
+        } else if (opts.outputFile) {
+            LOG_WARN("--output has no effect without --record");
         }
     }
 
