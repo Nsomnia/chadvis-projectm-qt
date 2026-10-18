@@ -1,0 +1,4 @@
+2026-10-18T14:30:00Z  CLAIM    agent=muse-spark/dev-muse-dev ttl=4h
+2026-10-18T14:30:00Z  NOTE     T0208: typo'd config keys silently yielded defaults and vanished on save. Every parse section (audio/visualizer/recording+video+audio subtables/overlay/ui/keyboard/suno/karaoke) now LOG_WARNs unknown keys via warnUnknownKeys(), with hand-handled keys (preset_path, texture_paths, output_directory, download_path/format, token/cookie, subtable names) allowlisted. New --dump-config flag prints the effective config (post-CLI-overrides, via ConfigParsers::serialize) to stdout and exits 0 before any GUI/audio/network init.
+2026-10-18T14:30:00Z  COMMIT   049a87e796f09204dd3bb8dfbec5c926d4b540ad (5 files: ConfigParsers.cpp, CliArgs.inc, Application.hpp/cpp, test_CliArgs.cpp)
+2026-10-18T14:30:00Z  NOTE     VERIFY PENDING: no Qt build in this VM. Needs ./build.sh --fast --tests on desktop; on green, move T0208 to [x] with VERIFY line. Note: key.str() relies on toml++ v3 API.
