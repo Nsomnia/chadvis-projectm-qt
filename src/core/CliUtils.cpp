@@ -146,6 +146,33 @@ void printUnknownFlagError(std::string_view flag,
     }
 }
 
+namespace {
+// T0211: Damerau-Levenshtein (optimal string alignment): adjacent
+// transpositions cost 1, not 2. The old Hamming+length-diff scored
+// `--recrod` vs `--record` as 2; a typo'd flag should suggest at distance 1.
+size_t editDistance(std::string_view a, std::string_view b) {
+    const size_t n = a.size(), m = b.size();
+    if (n == 0) return m;
+    if (m == 0) return n;
+    // Two rows suffice for OSA.
+    std::vector<size_t> prev(m + 1), cur(m + 1);
+    for (size_t j = 0; j <= m; ++j) prev[j] = j;
+    for (size_t i = 1; i <= n; ++i) {
+        cur[0] = i;
+        for (size_t j = 1; j <= m; ++j) {
+            const size_t cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+            size_t best = std::min({prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost});
+            if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) {
+                best = std::min(best, prev[j - 2] + 1); // transposition
+            }
+            cur[j] = best;
+        }
+        prev.swap(cur);
+    }
+    return prev[m];
+}
+} // namespace
+
 std::optional<std::string> findClosestMatch(
 	std::string_view input,
 	std::initializer_list<std::string_view> candidates) {
@@ -154,19 +181,9 @@ std::optional<std::string> findClosestMatch(
 	size_t bestDistance = std::numeric_limits<size_t>::max();
 
 	for (const auto& candidate : candidates) {
-		// Simple Levenshtein distance approximation for short strings
-		size_t distance = 0;
-		size_t minLen = std::min(input.length(), candidate.length());
+		const size_t distance = editDistance(input, candidate);
 
-		for (size_t i = 0; i < minLen; ++i) {
-			if (input[i] != candidate[i]) {
-				distance++;
-			}
-		}
-
-		distance += std::abs(static_cast<int>(input.length()) - static_cast<int>(candidate.length()));
-
-		// Only suggest if reasonably close (max 3 differences for typical flags)
+		// Only suggest if reasonably close (max 3 edits for typical flags)
 		if (distance < bestDistance && distance <= 3) {
 			bestDistance = distance;
 			bestMatch = std::string(candidate);
@@ -184,17 +201,9 @@ std::optional<std::string> findClosestMatch(
 	size_t bestDistance = std::numeric_limits<size_t>::max();
 
 	for (const auto& candidate : candidates) {
-		size_t distance = 0;
-		size_t minLen = std::min(input.length(), candidate.length());
+		const size_t distance = editDistance(input, candidate);
 
-		for (size_t i = 0; i < minLen; ++i) {
-			if (input[i] != candidate[i]) {
-				distance++;
-			}
-		}
-
-		distance += std::abs(static_cast<int>(input.length()) - static_cast<int>(candidate.length()));
-
+		// Only suggest if reasonably close (max 3 edits for typical flags)
 		if (distance < bestDistance && distance <= 3) {
 			bestDistance = distance;
 			bestMatch = std::string(candidate);

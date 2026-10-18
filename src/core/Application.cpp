@@ -23,6 +23,8 @@
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
 #include <QtQuickControls2/QQuickStyle>
+#include <cerrno>
+#include <charconv>
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
@@ -76,13 +78,22 @@ Application::~Application() {
 std::vector<std::string_view> Application::allFlagNames() {
     // T0207: expanded from CliArgs.inc via Cli::cliArgTable() — the table is
     // the single source of truth, so typo suggestions can never go stale.
+    // T0211: also cover short names and the meta flags, which live outside
+    // the table (special cases in parseArgsFrom) and were previously
+    // unsuggestable.
     std::vector<std::string_view> names;
     for (const auto& arg : Cli::cliArgTable()) {
         names.push_back(arg.longName);
+        if (!arg.shortName.empty()) {
+            names.push_back(arg.shortName);
+        }
         if (!arg.negationName.empty()) {
             names.push_back(arg.negationName);
         }
     }
+    names.insert(names.end(),
+                 {"-h", "--help", "-v", "--version", "--help-topics",
+                  "--generate-completion"});
     return names;
 }
 
@@ -94,6 +105,47 @@ Result<AppOptions> Application::parseArgs() { return parseArgsFrom(argc_, argv_)
 // parameter names deliberately carry the member convention: the table-driven
 // body below reads argc_/argv_ throughout, and in this static scope those are
 // parameters, not members.
+namespace {
+// T0211: strict number parsing. std::stoi/std::stof accept prefixes
+// ("12x" -> 12) and throw on garbage; from_chars + full-consumption rejects
+// both. Floats avoid std::from_chars (spotty libstdc++ support) via a strict
+// decimal validator + strtof on the validated token.
+bool parseStrictInt(std::string_view s, int& out) {
+    if (s.empty()) return false;
+    const char* first = s.data();
+    const char* last = first + s.size();
+    const auto [ptr, ec] = std::from_chars(first, last, out);
+    return ec == std::errc() && ptr == last;
+}
+
+bool parseStrictFloat(std::string_view s, float& out) {
+    if (s.empty()) return false;
+    size_t i = 0;
+    if (s[i] == '+' || s[i] == '-') ++i;
+    bool digits = false;
+    while (i < s.size() && s[i] >= '0' && s[i] <= '9') { ++i; digits = true; }
+    if (i < s.size() && s[i] == '.') {
+        ++i;
+        while (i < s.size() && s[i] >= '0' && s[i] <= '9') { ++i; digits = true; }
+    }
+    if (!digits) return false;
+    if (i < s.size() && (s[i] == 'e' || s[i] == 'E')) {
+        ++i;
+        if (i < s.size() && (s[i] == '+' || s[i] == '-')) ++i;
+        bool expDigits = false;
+        while (i < s.size() && s[i] >= '0' && s[i] <= '9') { ++i; expDigits = true; }
+        if (!expDigits) return false;
+    }
+    if (i != s.size()) return false;
+    // Well-formed decimal float: strtof cannot fail (overflow -> HUGE_VAL,
+    // caught by the errno check).
+    const std::string tmp(s);
+    errno = 0;
+    out = std::strtof(tmp.c_str(), nullptr);
+    return errno == 0;
+}
+} // namespace
+
 Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_[]) {
     AppOptions opts;
 
@@ -103,13 +155,18 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
         // ─── Special cases (manual) ────────────────────────
         if (arg == "-h" || arg == "--help") {
             if (i + 1 < argc_) {
+                // T0211: nextArg[0] on an empty view is UB (e.g. `--help ""`).
                 std::string_view nextArg(argv_[i + 1]);
-                if (nextArg[0] != '-') {
+                if (!nextArg.empty() && nextArg[0] != '-') {
                     auto topic = HelpSystem::parseTopic(std::string(nextArg));
                     if (topic) {
                         HelpSystem::printHelp(*topic);
                         std::exit(0);
                     }
+                    // T0211: unknown topic is a usage error, not success.
+                    Cli::printError("Unknown help topic: " + std::string(nextArg) +
+                                    " (try --help-topics)");
+                    std::exit(1);
                 }
             }
             printHelp();
@@ -128,8 +185,11 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
                 Cli::printError("--generate-completion requires a shell argument (bash/zsh/fish)");
                 std::exit(1);
             }
-            Cli::generateCompletionScript(argv_[++i]);
-            std::exit(0);
+            // T0211: unknown shell is a usage error; generateCompletionScript
+            // reports it, we set the exit code.
+            const std::string_view shell(argv_[++i]);
+            Cli::generateCompletionScript(shell);
+            std::exit(shell == "bash" || shell == "zsh" || shell == "fish" ? 0 : 1);
         }
 
         // ─── Table-driven flag parsing ─────────────────────
@@ -164,11 +224,17 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
             Cli::printError(std::string(longName) + " requires an argument");                      \
             return Result<AppOptions>::err("Missing argument");                                    \
         }                                                                                          \
-        try {                                                                                      \
-            opts.optsField = std::stoi(argv_[++i]);                                                \
-        } catch (...) {                                                                            \
-            Cli::printError("Invalid integer for " + std::string(longName));                       \
-            return Result<AppOptions>::err("Invalid value");                                       \
+        {                                                                                              \
+            int parsed = 0;                                                                        \
+            /* T0211: strict whole-token parse; negatives rejected -- every     */                 \
+            /* CLI_INT flag feeds an unsigned config field, so -1 must not wrap */                 \
+            /* to 4294967295 before the clamp sees it.                      */                     \
+            if (!parseStrictInt(argv_[++i], parsed) || parsed < 0) {                                \
+                Cli::printError("Invalid integer for " + std::string(longName) +                    \
+                                " (expected a non-negative whole number)");                         \
+                return Result<AppOptions>::err("Invalid value");                                   \
+            }                                                                                      \
+            opts.optsField = parsed;                                                               \
         }                                                                                          \
     }
 
@@ -181,11 +247,14 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
             Cli::printError(std::string(longName) + " requires an argument");                      \
             return Result<AppOptions>::err("Missing argument");                                    \
         }                                                                                          \
-        try {                                                                                      \
-            opts.optsField = std::stof(argv_[++i]);                                                \
-        } catch (...) {                                                                            \
-            Cli::printError("Invalid float for " + std::string(longName));                         \
-            return Result<AppOptions>::err("Invalid value");                                       \
+        {                                                                                              \
+            float parsed = 0.0f;                                                                    \
+            /* T0211: strict whole-token parse ("12x" no longer parses as 12). */                   \
+            if (!parseStrictFloat(argv_[++i], parsed)) {                                            \
+                Cli::printError("Invalid float for " + std::string(longName));                       \
+                return Result<AppOptions>::err("Invalid value");                                   \
+            }                                                                                      \
+            opts.optsField = parsed;                                                               \
         }                                                                                          \
     }
 
@@ -224,7 +293,8 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
         if (argHandled) continue;
 
         // ─── Positional input file ─────────────────────────
-        if (arg[0] != '-') {
+        // T0211: arg[0] on an empty view is UB (e.g. `chadvis ""`).
+        if (!arg.empty() && arg[0] != '-') {
             opts.inputFiles.push_back(fs::path(arg));
             continue;
         }
