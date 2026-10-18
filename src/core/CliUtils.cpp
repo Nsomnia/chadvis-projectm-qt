@@ -208,7 +208,104 @@ std::string formatPath(const std::filesystem::path& path) {
 	return std::string(CliColor::brightCyan()) + path.string() + CliColor::reset();
 }
 
+// ─── T0207: CliArgs.inc as data ─────────────────────────────────────────────
+// The table is the single source of truth for --help, --help <topic>, and
+// shell completion. Every consumer below expands it; no hand-written flag
+// list to drift when a flag is added or removed.
+
+namespace {
+
+std::string lowerFirst(std::string_view s) {
+    std::string out(s);
+    if (!out.empty()) {
+        out[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(out[0])));
+    }
+    return out;
+}
+
+} // namespace
+
+const std::vector<CliArg>& Cli::cliArgTable() {
+    static const std::vector<CliArg> table = [] {
+        std::vector<CliArg> out;
+        std::string_view section;
+#define CLI_SECTION(name) section = name;
+#define CLI_BOOL(l, s, h, hd, n, f, c) out.push_back({l, s, CliArgType::Bool, h, hd, n, section});
+#define CLI_INT(l, s, h, hd, n, f, c) out.push_back({l, s, CliArgType::Int, h, hd, n, section});
+#define CLI_FLOAT(l, s, h, hd, n, f, c) out.push_back({l, s, CliArgType::Float, h, hd, n, section});
+#define CLI_STRING(l, s, h, hd, n, f, c) out.push_back({l, s, CliArgType::String, h, hd, n, section});
+#define CLI_PATH(l, s, h, hd, n, f, c) out.push_back({l, s, CliArgType::Path, h, hd, n, section});
+#include "CliArgs.inc"
+#undef CLI_SECTION
+#undef CLI_BOOL
+#undef CLI_INT
+#undef CLI_FLOAT
+#undef CLI_STRING
+#undef CLI_PATH
+        return out;
+    }();
+    return table;
+}
+
+std::string Cli::formatFlags(const CliArg& arg) {
+    std::string s;
+    if (!arg.shortName.empty()) {
+        s += arg.shortName;
+        s += ", ";
+    }
+    s += arg.longName;
+    switch (arg.type) {
+        case CliArgType::Int: s += " <n>"; break;
+        case CliArgType::Float: s += " <n>"; break;
+        case CliArgType::String: s += " <value>"; break;
+        case CliArgType::Path: s += " <path>"; break;
+        case CliArgType::Bool: break;
+    }
+    return s;
+}
+
+void Cli::printCliArg(const CliArg& arg) {
+    printOption(formatFlags(arg), arg.helpText,
+                arg.helpDefault.empty()
+                    ? std::optional<std::string_view>{}
+                    : std::optional<std::string_view>{arg.helpDefault});
+    if (!arg.negationName.empty()) {
+        // Derived from the flag it negates, so it can't drift.
+        printOption(std::string(arg.negationName), "Disable " + lowerFirst(arg.helpText));
+    }
+}
+
+void Cli::printOptionsForSection(std::string_view section) {
+    for (const auto& arg : cliArgTable()) {
+        if (arg.section == section) {
+            printCliArg(arg);
+        }
+    }
+}
+
 void generateCompletionScript(std::string_view shell) {
+    // T0207: every list below is expanded from CliArgs.inc via cliArgTable(),
+    // so completion can never go stale when a flag is added. Meta flags
+    // (--help/--version/--help-topics/--generate-completion) are handled as
+    // special cases in parseArgsFrom, outside the table, and listed here.
+    const auto& table = cliArgTable();
+
+    std::string longOpts;
+    std::string pathOpts; // flags taking a filesystem path (file completion)
+    for (const auto& arg : table) {
+        longOpts += arg.longName;
+        longOpts += ' ';
+        if (!arg.negationName.empty()) {
+            longOpts += arg.negationName;
+            longOpts += ' ';
+        }
+        if (arg.type == CliArgType::Path) {
+            if (!pathOpts.empty()) pathOpts += '|';
+            pathOpts += arg.longName;
+        }
+    }
+    longOpts += "--help --version --help-topics --generate-completion";
+
     if (shell == "bash") {
         std::cout << R"(
 # ChadVis Bash Completion
@@ -219,14 +316,9 @@ _chadvis_complete() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    
-    opts="--help --version --debug --config --preset --default-preset
-          --record --output --headless --test-lyrics --suno-id
-          --audio-device --audio-buffer --visualizer-fps --visualizer-width
-          --visualizer-height --recording-codec --recording-crf"
-    
+)" << "\n    opts=\"" << longOpts << "\"\n" << R"(
     case "${prev}" in
-        --config|--output|--test-lyrics)
+)" << "\n        " << pathOpts << ")\n" << R"(
             COMPREPLY=( $(compgen -f -- "${cur}") )
             return 0
             ;;
@@ -237,7 +329,7 @@ _chadvis_complete() {
         *)
             ;;
     esac
-    
+
     COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
     return 0
 }
@@ -252,21 +344,32 @@ complete -F _chadvis_complete chadvis-projectm-qt
 #compdef chadvis-projectm-qt
 
 _arguments \
-    '(-h --help)'{-h,--help}'[Show help message]' \
-    '(-v --version)'{-v,--version}'[Show version information]' \
-    '(-d --debug)'{-d,--debug}'[Enable debug logging]' \
-    '--headless[Run without GUI]' \
-    '(-c --config)'{-c,--config}'[Config file path]:config file:_files' \
-    '(-p --preset)'{-p,--preset}'[Visualizer preset]:preset:' \
-    '--default-preset[Use default projectM preset]' \
-    '(-r --record)'{-r,--record}'[Start recording immediately]' \
-    '(-o --output)'{-o,--output}'[Recording output path]:output file:_files' \
-    '--test-lyrics[Test lyrics file]:lyrics file:_files' \
-    '--suno-id[Fetch Suno song by ID]:Suno UUID:' \
-    '--audio-device[Audio device]:device:' \
-    '--audio-buffer[Audio buffer size]:size:' \
-    '*:audio file:_files'
 )";
+        std::cout << "    '(-h --help)'{-h,--help}'[Show help message]' \\\n";
+        std::cout << "    '(-v --version)'{-v,--version}'[Show version information]' \\\n";
+        for (const auto& arg : table) {
+            std::string shorts;
+            if (!arg.shortName.empty()) {
+                shorts = "'(" + std::string(arg.shortName) + " " + std::string(arg.longName) + ")'" +
+                         "{" + std::string(arg.shortName) + "," + std::string(arg.longName) + "}'";
+            } else {
+                shorts = "'"+ std::string(arg.longName) + "'";
+            }
+            std::string action;
+            if (arg.type == CliArgType::Path) {
+                action = ":path:_files";
+            } else if (arg.type != CliArgType::Bool) {
+                action = ":value:";
+            }
+            std::cout << "    " << shorts << "'[" << arg.helpText << "]'" << action << " \\\n";
+            if (!arg.negationName.empty()) {
+                std::cout << "    '" << arg.negationName << "[Disable "
+                          << lowerFirst(arg.helpText) << "]' \\\n";
+            }
+        }
+        std::cout << "    '--help-topics[List help topics]' \\\n";
+        std::cout << "    '--generate-completion[Generate completion script]:shell:(bash zsh fish)'\n";
+        std::cout << "    '*:audio file:_files'\n";
     } else if (shell == "fish") {
         std::cout << R"(
 # ChadVis Fish Completion
@@ -274,16 +377,27 @@ _arguments \
 
 complete -c chadvis-projectm-qt -s h -l help -d "Show help message"
 complete -c chadvis-projectm-qt -s v -l version -d "Show version information"
-complete -c chadvis-projectm-qt -s d -l debug -d "Enable debug logging"
-complete -c chadvis-projectm-qt -l headless -d "Run without GUI"
-complete -c chadvis-projectm-qt -s c -l config -d "Config file path" -r
-complete -c chadvis-projectm-qt -s p -l preset -d "Visualizer preset"
-complete -c chadvis-projectm-qt -l default-preset -d "Use default projectM preset"
-complete -c chadvis-projectm-qt -s r -l record -d "Start recording immediately"
-complete -c chadvis-projectm-qt -s o -l output -d "Recording output path" -r
-complete -c chadvis-projectm-qt -l test-lyrics -d "Test lyrics file" -r
-complete -c chadvis-projectm-qt -l suno-id -d "Fetch Suno song by ID"
 )";
+        for (const auto& arg : table) {
+            std::string line = "complete -c chadvis-projectm-qt";
+            if (!arg.shortName.empty()) {
+                line += " -s ";
+                line += arg.shortName.substr(1); // "-d" -> "d"
+            }
+            // longName always starts with "--"
+            line += " -l ";
+            line += arg.longName.substr(2);
+            line += " -d \"" + std::string(arg.helpText) + "\"";
+            if (arg.type == CliArgType::Path) {
+                line += " -r";
+            }
+            std::cout << line << "\n";
+            if (!arg.negationName.empty()) {
+                std::cout << "complete -c chadvis-projectm-qt -l "
+                          << arg.negationName.substr(2) << " -d \"Disable "
+                          << lowerFirst(arg.helpText) << "\"\n";
+            }
+        }
     } else {
         std::cerr << "Unknown shell: " << shell << "\n";
         std::cerr << "Supported shells: bash, zsh, fish\n";
@@ -305,9 +419,9 @@ using enum Topic;
         Cli::printSection("Common Options");
         Cli::printOption("-h, --help", "Show help message");
         Cli::printOption("-v, --version", "Show version information");
-        Cli::printOption("-d, --debug", "Enable debug logging");
-        Cli::printOption("-c, --config <path>", "Use custom config file");
-        Cli::printOption("--headless", "Run without GUI (batch mode)");
+        // T0207: generated from CliArgs.inc.
+        Cli::printOptionsForSection("General Options");
+        Cli::printOptionsForSection("Config");
         
         Cli::printSection("Keyboard Shortcuts");
         std::cout << "  " << CliColor::brightYellow() << "Space" << CliColor::reset() << "  Play/Pause\n"
@@ -321,9 +435,8 @@ using enum Topic;
     case Audio:
         Cli::printHeader("ChadVis Help - Audio Configuration");
         Cli::printSection("CLI Options");
-        Cli::printOption("--audio-device <name>", "Audio output device", "default");
-        Cli::printOption("--audio-buffer <size>", "Buffer size in samples", "2048");
-        Cli::printOption("--audio-rate <rate>", "Sample rate in Hz", "44100");
+        // T0207: generated from CliArgs.inc.
+        Cli::printOptionsForSection("Audio Options");
         
         Cli::printSection("Config File");
         std::cout << "  [audio]\n"
@@ -335,12 +448,8 @@ using enum Topic;
     case Visualizer:
         Cli::printHeader("ChadVis Help - Visualizer Configuration");
         Cli::printSection("CLI Options");
-        Cli::printOption("-p, --preset <name>", "Load specific preset on startup");
-        Cli::printOption("--default-preset", "Use projectM default (no preset file)");
-        Cli::printOption("--visualizer-fps <n>", "Target frame rate", "60");
-        Cli::printOption("--visualizer-width <n>", "Render width", "1920");
-        Cli::printOption("--visualizer-height <n>", "Render height", "1080");
-        Cli::printOption("--visualizer-shuffle", "Shuffle presets randomly", "yes");
+        // T0207: generated from CliArgs.inc.
+        Cli::printOptionsForSection("Visualizer Options");
         
         Cli::printSection("Config File");
         std::cout << "  [visualizer]\n"
@@ -354,11 +463,8 @@ using enum Topic;
     case Recording:
         Cli::printHeader("ChadVis Help - Video Recording");
         Cli::printSection("CLI Options");
-        Cli::printOption("-r, --record", "Start recording immediately on launch");
-        Cli::printOption("-o, --output <path>", "Output file path");
-        Cli::printOption("--recording-codec <codec>", "Video codec (libx264/libx265/nvenc)", "libx264");
-        Cli::printOption("--recording-crf <n>", "Quality (0-51, lower=better)", "18");
-        Cli::printOption("--recording-preset <name>", "Encoding speed (ultrafast to veryslow)", "medium");
+        // T0207: generated from CliArgs.inc.
+        Cli::printOptionsForSection("Recording Options");
         
         Cli::printSection("Hardware Acceleration");
         std::cout << "  " << CliColor::brightGreen() << "NVENC" << CliColor::reset() << "  (NVIDIA)   - Use codec 'h264_nvenc' or 'hevc_nvenc'\n"
@@ -369,9 +475,8 @@ using enum Topic;
     case Suno:
         Cli::printHeader("ChadVis Help - Suno AI Integration");
         Cli::printSection("CLI Options");
-        Cli::printOption("--suno-id <uuid>", "Fetch and play a Suno song by ID");
-        Cli::printOption("--suno-download-path <path>", "Download directory for Suno songs");
-        Cli::printOption("--suno-auto-download", "Auto-download when playing", "no");
+        // T0207: generated from CliArgs.inc.
+        Cli::printOptionsForSection("Suno Options");
         
         Cli::printSection("Authentication");
         std::cout << "  Suno uses browser-based authentication.\n"
@@ -381,11 +486,8 @@ using enum Topic;
     case Karaoke:
         Cli::printHeader("ChadVis Help - Karaoke/Lyrics System");
         Cli::printSection("CLI Options");
-        Cli::printOption("--karaoke-enabled", "Enable karaoke lyrics display", "yes");
-        Cli::printOption("--karaoke-font <name>", "Font family", "Arial");
-        Cli::printOption("--karaoke-font-size <n>", "Font size in pixels", "32");
-        Cli::printOption("--karaoke-y-position <0-1>", "Vertical position (0=top, 1=bottom)", "0.5");
-        Cli::printOption("--test-lyrics <path>", "Test with local SRT/LRC file");
+        // T0207: generated from CliArgs.inc.
+        Cli::printOptionsForSection("Karaoke Options");
         
         Cli::printSection("Features");
         std::cout << "  • Word-level time-synced lyrics highlighting\n"

@@ -74,32 +74,15 @@ Application::~Application() {
 
 // ─── Table-driven flag name list for findClosestMatch ──────────────────────
 std::vector<std::string_view> Application::allFlagNames() {
+    // T0207: expanded from CliArgs.inc via Cli::cliArgTable() — the table is
+    // the single source of truth, so typo suggestions can never go stale.
     std::vector<std::string_view> names;
-    // Per-type macros: all just collect the long name (and negation for bools)
-#define CLI_BOOL(longName, shortName, helpText, helpDefault, negationName, optsField,              \
-                 configAccessor)                                                                   \
-    names.push_back(longName);                                                                     \
-    if (!std::string_view(negationName).empty()) {                                                 \
-        names.push_back(negationName);                                                             \
+    for (const auto& arg : Cli::cliArgTable()) {
+        names.push_back(arg.longName);
+        if (!arg.negationName.empty()) {
+            names.push_back(arg.negationName);
+        }
     }
-#define CLI_INT(longName, shortName, helpText, helpDefault, negationName, optsField,               \
-                configAccessor)                                                                    \
-    names.push_back(longName);
-#define CLI_FLOAT(longName, shortName, helpText, helpDefault, negationName, optsField,             \
-                  configAccessor)                                                                  \
-    names.push_back(longName);
-#define CLI_STRING(longName, shortName, helpText, helpDefault, negationName, optsField,            \
-                   configAccessor)                                                                 \
-    names.push_back(longName);
-#define CLI_PATH(longName, shortName, helpText, helpDefault, negationName, optsField,              \
-                 configAccessor)                                                                   \
-    names.push_back(longName);
-#include "CliArgs.inc"
-#undef CLI_BOOL
-#undef CLI_INT
-#undef CLI_FLOAT
-#undef CLI_STRING
-#undef CLI_PATH
     return names;
 }
 
@@ -159,6 +142,7 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
 
         bool argHandled = false;
 
+#define CLI_SECTION(name)
 #define CLI_BOOL(longName, shortName, helpText, helpDefault, negationName, optsField,              \
                  configAccessor)                                                                   \
     if (!argHandled &&                                                                             \
@@ -230,6 +214,7 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
     }
 
 #include "CliArgs.inc"
+#undef CLI_SECTION
 #undef CLI_BOOL
 #undef CLI_INT
 #undef CLI_FLOAT
@@ -705,52 +690,24 @@ void Application::printHelp() {
               << " " << dim() << "chadvis-projectm-qt --help-topics # List help topics" << reset()
               << "\n\n";
 
-    Cli::printSection("General Options");
+    // T0207: every option below is generated from CliArgs.inc via
+    // Cli::cliArgTable(). Adding a flag to the table is sufficient — no
+    // hand-written list to drift. Meta flags handled as special cases in
+    // parseArgsFrom (outside the table) are listed explicitly.
     Cli::printOption("-h, --help [topic]", "Show this help or detailed topic help");
     Cli::printOption("--help-topics", "List available help topics");
     Cli::printOption("-v, --version", "Show version information");
-    Cli::printOption("-d, --debug", "Enable debug logging", "no");
-    Cli::printOption("-c, --config <path>", "Use custom config file");
-    Cli::printOption("--headless", "Run without GUI (batch mode)");
     Cli::printOption("--generate-completion <shell>", "Generate shell completion script");
-
-    Cli::printSection("Audio Options");
-    Cli::printOption("--audio-device <name>", "Audio output device", "default");
-    Cli::printOption("--audio-buffer <size>", "Buffer size in samples", "2048");
-    Cli::printOption("--audio-rate <rate>", "Sample rate in Hz", "44100");
-
-    Cli::printSection("Visualizer Options");
-    Cli::printOption("-p, --preset <name>", "Start with specific preset");
-    Cli::printOption("--default-preset", "Use projectM's default (no preset)");
-    Cli::printOption("--visualizer-fps <n>", "Target frame rate", "60");
-    Cli::printOption("--visualizer-width <n>", "Render width", "1920");
-    Cli::printOption("--visualizer-height <n>", "Render height", "1080");
-    Cli::printOption("--visualizer-shuffle", "Shuffle presets");
-    Cli::printOption("--no-visualizer-shuffle", "Don't shuffle presets");
-
-    Cli::printSection("Recording Options");
-    Cli::printOption("-r, --record", "Start recording immediately");
-    Cli::printOption("-o, --output <path>", "Recording output file");
-    Cli::printOption("--recording-codec <codec>", "Video codec (libx264/nvenc/vaapi)");
-    Cli::printOption("--recording-crf <n>", "Quality 0-51 (lower=better)", "18");
-    Cli::printOption("--recording-preset <name>", "Encoding speed", "medium");
-
-    Cli::printSection("Suno Options");
-    Cli::printOption("--suno-id <uuid>", "Fetch and play Suno song by ID");
-    Cli::printOption("--suno-download-path <path>", "Download directory");
-    Cli::printOption("--suno-auto-download", "Auto-download when playing");
-    Cli::printOption("--no-suno-auto-download", "Don't auto-download");
-
-    Cli::printSection("Karaoke Options");
-    Cli::printOption("--karaoke-enabled", "Enable karaoke display");
-    Cli::printOption("--no-karaoke", "Disable karaoke display");
-    Cli::printOption("--karaoke-font <name>", "Font family", "Arial");
-    Cli::printOption("--karaoke-font-size <n>", "Font size in pixels", "32");
-    Cli::printOption("--karaoke-y-position <0-1>", "Vertical position", "0.5");
-    Cli::printOption("--test-lyrics <path>", "Test with SRT/LRC file");
-
-    Cli::printSection("UI Options");
-    Cli::printOption("--theme <name>", "UI theme for this session only (material/chadvis-dark/gruvbox/nord)", "material");
+    {
+        std::string_view lastSection;
+        for (const auto& arg : Cli::cliArgTable()) {
+            if (arg.section != lastSection) {
+                Cli::printSection(arg.section);
+                lastSection = arg.section;
+            }
+            Cli::printCliArg(arg);
+        }
+    }
 
     Cli::printSection("Examples");
     std::cout << " " << brightCyan() << "chadvis-projectm-qt ~/Music/*.flac" << reset() << "\n"
@@ -775,7 +732,7 @@ void Application::printHelp() {
               << reset() << "\n"
               << "Logs: " << brightYellow() << "~/.cache/chadvis-projectm-qt/logs/" << reset()
               << "\n\n"
-              << "Docs: " << brightBlue() << "https://github.com/yourusername/chadvis-projectm-qt"
+              << "Docs: " << brightBlue() << "https://github.com/Nsomnia/chadvis-projectm-qt"
               << reset() << "\n"
               << dim() << "Or don't. We're not your mom." << reset() << "\n\n";
 }

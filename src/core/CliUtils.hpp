@@ -10,12 +10,14 @@
  */
 
 #pragma once
+#include "CliArg.hpp"
 #include <filesystem>
 #include <iostream>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace vc {
 
@@ -148,8 +150,39 @@ namespace Cli {
     
     /**
      * @brief Generate shell completion script
+     *
+     * T0207: flag lists are expanded from CliArgs.inc, so completion can
+     * never go stale when a flag is added.
      */
     void generateCompletionScript(std::string_view shell);
+
+    /**
+     * @brief The CliArgs.inc table as data, in table order (T0207).
+     *
+     * Single source of truth for --help, --help <topic>, and shell
+     * completion: adding a flag to CliArgs.inc is sufficient, no
+     * hand-written list to drift.
+     */
+    [[nodiscard]] const std::vector<CliArg>& cliArgTable();
+
+    /**
+     * @brief "-p, --preset <value>" / "--debug" — flags display for help.
+     *
+     * Value hints are derived from the arg type (INT/FLOAT <n>,
+     * STRING <value>, PATH <path>); BOOL flags show no hint.
+     */
+    [[nodiscard]] std::string formatFlags(const CliArg& arg);
+
+    /**
+     * @brief Print one table entry: the flag line plus a negation line
+     * for BOOL flags that have one ("Disable ..." derived from helpText).
+     */
+    void printCliArg(const CliArg& arg);
+
+    /**
+     * @brief Print every table entry in `section` (T0207).
+     */
+    void printOptionsForSection(std::string_view section);
 } // namespace Cli
 
 /**
