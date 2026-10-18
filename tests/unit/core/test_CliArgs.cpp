@@ -88,8 +88,8 @@ void TestCliArgs::absentDefaultPresetOverrideStaysUnset() {
 
 void TestCliArgs::cliArgTableCoversAllFlags() {
     const auto& table = Cli::cliArgTable();
-    // 26 entries as of T0207; bump when adding a flag to CliArgs.inc.
-    QCOMPARE(table.size(), std::size_t{26});
+    // 27 entries as of T0207 (--dump-config added by T0208); bump when adding a flag to CliArgs.inc.
+    QCOMPARE(table.size(), std::size_t{27});
 
     auto has = [&](std::string_view name) {
         return std::any_of(table.begin(), table.end(),
