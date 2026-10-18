@@ -32,6 +32,11 @@ private slots:
     void cliArgTableCoversAllFlags();
     void cliArgTableHasNoDuplicateLongNames();
     void cliArgTableSectionsAreNonEmpty();
+    // T0211: strict number parsing and empty-arg safety.
+    void intPrefixIsRejected();
+    void negativeIntIsRejected();
+    void floatPrefixIsRejected();
+    void emptyArgDoesNotCrash();
 };
 
 namespace {
@@ -107,6 +112,37 @@ void TestCliArgs::cliArgTableHasNoDuplicateLongNames() {
                  qPrintable(QStringLiteral("duplicate flag: %1").arg(arg.longName)));
         seen.insert(arg.longName);
     }
+}
+
+void TestCliArgs::intPrefixIsRejected() {
+    // T0211: std::stoi parsed "12x" as 12; the strict parser rejects it.
+    QVERIFY(!parse({"--visualizer-fps", "12x"}).isOk());
+    QVERIFY(!parse({"--audio-rate", "44100hz"}).isOk());
+    // ...but a clean integer still parses.
+    auto ok = parse({"--visualizer-fps", "120"});
+    QVERIFY(ok.isOk());
+    QCOMPARE(ok.value().visualizerFps.value_or(0), 120);
+}
+
+void TestCliArgs::negativeIntIsRejected() {
+    // T0211: -1 wrapped to 4294967295 in the u32 field before the clamp.
+    // Every CLI_INT flag feeds an unsigned quantity; reject at parse.
+    QVERIFY(!parse({"--visualizer-fps", "-1"}).isOk());
+    QVERIFY(!parse({"--recording-crf", "-5"}).isOk());
+}
+
+void TestCliArgs::floatPrefixIsRejected() {
+    // T0211: std::stof parsed "0.5x" as 0.5; the strict parser rejects it.
+    QVERIFY(!parse({"--karaoke-y-position", "0.5x"}).isOk());
+    auto ok = parse({"--karaoke-y-position", "0.75"});
+    QVERIFY(ok.isOk());
+    QVERIFY(qFuzzyCompare(ok.value().karaokeYPosition.value_or(0.0f), 0.75f));
+}
+
+void TestCliArgs::emptyArgDoesNotCrash() {
+    // T0211: arg[0] on an empty string_view is UB. An empty arg is not a
+    // flag and not a file; it must not crash (reported as unknown).
+    QVERIFY(!parse({""}).isOk());
 }
 
 void TestCliArgs::cliArgTableSectionsAreNonEmpty() {
