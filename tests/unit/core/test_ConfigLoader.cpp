@@ -736,6 +736,57 @@ private slots:
         QVERIFY(reparsed.contains("audio"));
     }
 
+    // T0209: the new range clamps actually clamp.
+    void t0209ClampsEnforced() {
+        // karaoke: y_position 0-1, font_size 8-256.
+        {
+            KaraokeConfig k;
+            ConfigParsers::parseKaraoke(toml::parse("[karaoke]\ny_position = 1.5\nfont_size = 4\n"), k);
+            QCOMPARE(k.yPosition, 1.0f);
+            QCOMPARE(k.fontSize, 8u);
+        }
+        {
+            KaraokeConfig k;
+            ConfigParsers::parseKaraoke(toml::parse("[karaoke]\ny_position = -0.5\nfont_size = 999\n"), k);
+            QCOMPARE(k.yPosition, 0.0f);
+            QCOMPARE(k.fontSize, 256u);
+        }
+        // audio: buffer_size 64-8192, sample_rate 8000-192000.
+        {
+            AudioConfig a;
+            ConfigParsers::parseAudio(toml::parse("[audio]\nbuffer_size = 16\nsample_rate = 4000\n"), a);
+            QCOMPARE(a.bufferSize, 64u);
+            QCOMPARE(a.sampleRate, 8000u);
+        }
+        // visualizer: preset_duration 1-3600.
+        {
+            VisualizerConfig v;
+            ConfigParsers::parseVisualizer(toml::parse("[visualizer]\npreset_duration = 0\n"), v);
+            QCOMPARE(v.presetDuration, 1u);
+        }
+        // overlay element: opacity 0-1, font_size 8-256, bad anchor -> left.
+        {
+            OverlayConfig o;
+            ConfigParsers::parseOverlay(
+                toml::parse("[overlay]\n[[overlay.elements]]\nopacity = 2.5\nfont_size = 3\nanchor = 'diagonal'\n"),
+                o);
+            QVERIFY(!o.elements.empty());
+            QCOMPARE(o.elements[0].opacity, 1.0f);
+            QCOMPARE(o.elements[0].fontSize, 8u);
+            QCOMPARE(QString::fromStdString(o.elements[0].anchor), QStringLiteral("left"));
+        }
+        // recording: unknown strings warn but are NOT clobbered (round-trip
+        // fixtures use probe values like "libx265probe").
+        {
+            RecordingConfig r;
+            ConfigParsers::parseRecording(
+                toml::parse("[recording]\ncontainer = 'bogus'\n[recording.video]\ncodec = 'nope'\n"),
+                r);
+            QCOMPARE(QString::fromStdString(r.container), QStringLiteral("bogus"));
+            QCOMPARE(QString::fromStdString(r.video.codec), QStringLiteral("nope"));
+        }
+    }
+
     void corruptFileIsDiagnosedWithoutThrowing() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

@@ -255,7 +255,13 @@ void ConfigParsers::parseAudio(const toml::table& tbl, AudioConfig& cfg) {
     const AudioConfig def{};
     auto& obj = cfg;
     CHADVIS_AUDIO_FIELDS(VC_PARSE_FIELD)
+    clampAudio(cfg);
     warnUnknownKeys(*t, "audio", {CHADVIS_AUDIO_FIELDS(VC_KEY_NAME)});
+}
+
+void ConfigParsers::clampAudio(AudioConfig& cfg) {
+    cfg.bufferSize = std::clamp(cfg.bufferSize, 64u, 8192u);
+    cfg.sampleRate = std::clamp(cfg.sampleRate, 8000u, 192000u);
 }
 
 void ConfigParsers::clampVisualizer(VisualizerConfig& cfg) {
@@ -267,6 +273,7 @@ void ConfigParsers::clampVisualizer(VisualizerConfig& cfg) {
     cfg.hardCutSensitivity = std::clamp(cfg.hardCutSensitivity, 0.1f, 10.0f);
     cfg.meshX = std::clamp(cfg.meshX, 8u, 512u);
     cfg.meshY = std::clamp(cfg.meshY, 8u, 512u);
+    cfg.presetDuration = std::clamp(cfg.presetDuration, 1u, 3600u);
 }
 
 void ConfigParsers::parseVisualizer(const toml::table& tbl, VisualizerConfig& cfg) {
@@ -298,6 +305,59 @@ void ConfigParsers::parseVisualizer(const toml::table& tbl, VisualizerConfig& cf
     // so they are known keys even though they are not in the field table.
     warnUnknownKeys(*t, "visualizer",
                     {"preset_path", "texture_paths", CHADVIS_VISUALIZER_FIELDS(VC_KEY_NAME)});
+}
+
+namespace {
+// T0209: the encoder only knows these. Warn, don't clobber -- a future
+// FFmpeg may accept more, and the error at record time names the codec.
+bool isKnownValue(std::string_view v, std::initializer_list<std::string_view> known) {
+    return std::find(known.begin(), known.end(), v) != known.end();
+}
+} // namespace
+
+void ConfigParsers::validateRecording(RecordingConfig& cfg) {
+    // Codec slugs from VideoRecorderFFmpeg::initVideoStream.
+    if (!isKnownValue(cfg.video.codec,
+                      {"libx264", "libx265", "libvpx-vp9", "libaom-av1", "prores_ks",
+                       "ffv1", "h264_nvenc", "hevc_nvenc", "h264_vaapi", "hevc_vaapi"})) {
+        LOG_WARN("Unknown recording video codec '{}' -- recording will fail at start",
+                 cfg.video.codec);
+    }
+    // x264/x265 preset names; passed through as preset=<name>.
+    if (!isKnownValue(cfg.video.preset,
+                      {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium",
+                       "slow", "slower", "veryslow", "placebo"})) {
+        LOG_WARN("Unknown recording video preset '{}' -- encoder may reject it",
+                 cfg.video.preset);
+    }
+    if (!isKnownValue(cfg.video.pixelFormat,
+                      {"yuv420p", "yuv422p", "yuv444p", "rgb24", "nv12", "p010le"})) {
+        LOG_WARN("Unknown recording pixel_format '{}'", cfg.video.pixelFormat);
+    }
+    // Container slugs from the batch render schema vocabulary.
+    if (!isKnownValue(cfg.container, {"mp4", "mkv", "webm", "mov", "avi"})) {
+        LOG_WARN("Unknown recording container '{}' -- muxer may fail", cfg.container);
+    }
+}
+
+void ConfigParsers::validateKeyboard(KeyboardConfig& cfg) {
+    // T0209: an empty shortcut silently never fires. (Full key-name
+    // validation would need QKeySequence/QtGui; the parser stays QtCore.)
+    auto check = [](std::string_view name, const std::string& key) {
+        if (key.empty()) LOG_WARN("Empty keyboard shortcut for '{}' -- it will never fire", name);
+    };
+    check("play_pause", cfg.playPause);
+    check("next_track", cfg.nextTrack);
+    check("prev_track", cfg.prevTrack);
+    check("toggle_record", cfg.toggleRecord);
+    check("toggle_fullscreen", cfg.toggleFullscreen);
+    check("next_preset", cfg.nextPreset);
+    check("prev_preset", cfg.prevPreset);
+}
+
+void ConfigParsers::clampKaraoke(KaraokeConfig& cfg) {
+    cfg.fontSize = std::clamp(cfg.fontSize, 8u, 256u);
+    cfg.yPosition = std::clamp(cfg.yPosition, 0.0f, 1.0f);
 }
 
 void ConfigParsers::clampVideoEncoder(VideoEncoderConfig& cfg) {
@@ -370,6 +430,7 @@ void ConfigParsers::parseRecording(const toml::table& tbl, RecordingConfig& cfg)
     warnUnknownKeys(*t, "recording",
                     {"output_directory", "video", "audio",
                      CHADVIS_RECORDING_FIELDS(VC_KEY_NAME)});
+    validateRecording(cfg);
 }
 
 void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
@@ -395,6 +456,17 @@ void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
                 element.animationSpeed = get(*elemTbl, "animation_speed", 1.0f);
                 element.anchor = get(*elemTbl, "anchor", std::string("left"));
                 element.visible = get(*elemTbl, "visible", true);
+                // T0209: an out-of-range opacity/font size silently misrenders;
+                // an unknown anchor silently falls back in the renderer.
+                element.opacity = std::clamp(element.opacity, 0.0f, 1.0f);
+                element.fontSize = std::clamp(element.fontSize, 8u, 256u);
+                element.animationSpeed = std::clamp(element.animationSpeed, 0.1f, 10.0f);
+                if (element.anchor != "left" && element.anchor != "center" &&
+                    element.anchor != "right") {
+                    LOG_WARN("Unknown overlay anchor '{}' for element '{}' -- using 'left'",
+                             element.anchor, element.id);
+                    element.anchor = "left";
+                }
                 cfg.elements.push_back(std::move(element));
             }
         }
@@ -421,6 +493,7 @@ void ConfigParsers::parseKeyboard(const toml::table& tbl, KeyboardConfig& cfg) {
     auto& obj = cfg;
     CHADVIS_KEYBOARD_FIELDS(VC_PARSE_FIELD)
     warnUnknownKeys(*t, "keyboard", {CHADVIS_KEYBOARD_FIELDS(VC_KEY_NAME)});
+    validateKeyboard(cfg);
 }
 
 void ConfigParsers::parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg) {
@@ -429,6 +502,7 @@ void ConfigParsers::parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg) {
     const KaraokeConfig def{};
     auto& obj = cfg;
     CHADVIS_KARAOKE_FIELDS(VC_PARSE_FIELD)
+    clampKaraoke(cfg);
     warnUnknownKeys(*t, "karaoke", {CHADVIS_KARAOKE_FIELDS(VC_KEY_NAME)});
 }
 
