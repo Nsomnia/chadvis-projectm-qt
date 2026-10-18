@@ -348,11 +348,14 @@ Result<void> Application::init(const AppOptions& opts) {
         Logger::init("chadvis-projectm-qt", true);
     }
 
-    // Override default preset from command line
+    // T0205: --default-preset is std::optional<bool>, applied only when the
+    // flag was actually passed. A plain bool could not distinguish "flag
+    // absent" from "flag false", so every launch without --default-preset
+    // clobbered a saved `true` back to false.
     if (opts.useDefaultPreset) {
-        CONFIG.visualizer().useDefaultPreset = true;
-    } else {
-        CONFIG.visualizer().useDefaultPreset = false;
+        CONFIG.visualizer().useDefaultPreset = *opts.useDefaultPreset;
+        LOG_INFO("CLI override: visualizer.useDefaultPreset = {}",
+                 *opts.useDefaultPreset);
     }
 
     // Set debug lyrics from command line
