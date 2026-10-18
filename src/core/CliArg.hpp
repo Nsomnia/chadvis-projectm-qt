@@ -42,6 +42,7 @@ struct CliArg {
 	std::string_view helpText;       ///< e.g. "Target frame rate"
 	std::string_view helpDefault;    ///< e.g. "60" or "" if none
 	std::string_view negationName;   ///< e.g. "--no-visualizer-shuffle" or ""
+	std::string_view section;        ///< T0207: CLI_SECTION group, e.g. "Audio Options"
 };
 
 } // namespace vc

@@ -1,9 +1,13 @@
 #include <QtTest>
 
 #include "core/Application.hpp"
+#include "core/CliUtils.hpp"
 
+#include <algorithm>
 #include <initializer_list>
+#include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace vc;
@@ -22,6 +26,12 @@ private slots:
     void recordAloneParses();
     void headlessPlusRecordIsRefusedInBothOrders();
     void shortRecordFormIsAlsoRefused();
+    // T0207: the CliArgs.inc table is the single source of truth for
+    // --help, topics, and completion — pin its shape so a malformed
+    // table edit fails here instead of silently emitting bad help.
+    void cliArgTableCoversAllFlags();
+    void cliArgTableHasNoDuplicateLongNames();
+    void cliArgTableSectionsAreNonEmpty();
 };
 
 namespace {
@@ -59,6 +69,54 @@ void TestCliArgs::headlessPlusRecordIsRefusedInBothOrders() {
 void TestCliArgs::shortRecordFormIsAlsoRefused() {
     QVERIFY(!parse({"-r", "--headless"}).isOk());
     QVERIFY(!parse({"--headless", "-r"}).isOk());
+}
+
+void TestCliArgs::cliArgTableCoversAllFlags() {
+    const auto& table = Cli::cliArgTable();
+    // 26 entries as of T0207; bump when adding a flag to CliArgs.inc.
+    QCOMPARE(table.size(), std::size_t{26});
+
+    auto has = [&](std::string_view name) {
+        return std::any_of(table.begin(), table.end(),
+                           [&](const CliArg& a) { return a.longName == name; });
+    };
+    // Flags the T0207 audit found missing from hand-written completion.
+    QVERIFY(has("--visualizer-fps"));
+    QVERIFY(has("--audio-rate"));
+    QVERIFY(has("--recording-preset"));
+    QVERIFY(has("--suno-download-path"));
+    QVERIFY(has("--suno-auto-download"));
+    QVERIFY(has("--karaoke-enabled"));
+    QVERIFY(has("--karaoke-font"));
+    QVERIFY(has("--theme"));
+    // Negations live on the entry, not as separate entries.
+    const auto shuffle =
+        std::find_if(table.begin(), table.end(), [&](const CliArg& a) {
+            return a.longName == "--visualizer-shuffle";
+        });
+    QVERIFY(shuffle != table.end());
+    QCOMPARE(shuffle->negationName, std::string_view("--no-visualizer-shuffle"));
+    QVERIFY(!has("--no-visualizer-shuffle"));
+}
+
+void TestCliArgs::cliArgTableHasNoDuplicateLongNames() {
+    const auto& table = Cli::cliArgTable();
+    std::set<std::string_view> seen;
+    for (const auto& arg : table) {
+        QVERIFY2(!seen.contains(arg.longName),
+                 qPrintable(QStringLiteral("duplicate flag: %1").arg(arg.longName)));
+        seen.insert(arg.longName);
+    }
+}
+
+void TestCliArgs::cliArgTableSectionsAreNonEmpty() {
+    const auto& table = Cli::cliArgTable();
+    QVERIFY(!table.empty());
+    for (const auto& arg : table) {
+        QVERIFY2(!arg.section.empty(),
+                 qPrintable(QStringLiteral("flag missing section: %1").arg(arg.longName)));
+        QVERIFY(!arg.helpText.empty());
+    }
 }
 
 #include "test_CliArgs.moc"
