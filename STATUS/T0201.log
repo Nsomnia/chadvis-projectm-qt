@@ -1,0 +1,5 @@
+2026-10-18T06:58:00Z  CLAIM    agent=muse-spark/dev-muse-dev ttl=4h
+2026-10-18T06:58:00Z  NOTE     T0201: transportReason() never returns empty, so the transport-first order in handleReply buried every 4xx server refusal as Failed (retryable); Rejected + rejectionReason were dead code.
+2026-10-18T06:58:00Z  COMMIT   471b2d656f13c9a4582fd1804d7c90294ed148a1 (cpp: status-first classification — 4xx -> Rejected with rejectionReason(body), else Failed with transport text)
+2026-10-18T06:58:00Z  NOTE     No new test: SunoLibraryMutations has zero test coverage (no test file exists; needs fake SunoClient + fake QNetworkReply harness). Test gap tracked under T0253. Classification verified by reading handleReply end-to-end.
+2026-10-18T06:58:00Z  NOTE     VERIFY PENDING: no Qt build in this VM (no Qt dev headers). Needs ./build.sh --fast --tests on desktop; on green, move T0201 to [x] with VERIFY line.
