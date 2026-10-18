@@ -1,0 +1,6 @@
+{
+  "plugins": [
+    // Senior lean quality code skill plugin
+    "@dietrichgebert/ponytail"
+  ]
+}
