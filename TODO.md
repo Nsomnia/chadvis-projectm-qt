@@ -1060,10 +1060,12 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 - [?] T0200 **Production `SunoDownloader` never emits `fileSaved`** (`src/suno/SunoDownloader.cpp`) #risk-high
       Prod ctor never connects `finalizeFinished`; transferred files never auto-play. Fix: connect in prod ctor + add a test constructing via prod ctor.
       STATUS/T0200.log: initFinalize() shared by both ctors (2b1b233, eec8f87); prodCtorConnectsFinalizeFinished added (2004edc). VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
-- [ ] T0201 **Mutations `Rejected` unreachable** (`src/suno/SunoLibraryMutations.cpp`) #risk-high
+- [?] T0201 **Mutations `Rejected` unreachable** (`src/suno/SunoLibraryMutations.cpp`) #risk-high
       `transportReason()` never returns empty, so every non-2xx settles as `Failed` (retryable) and server `detail` is never delivered. Fix: check HTTP status first, `Rejected` for 4xx with `rejectionReason(body)`, `Failed` only for transport/no-status.
-- [ ] T0202 **`SunoDownloader::embeddedSunoId` unchecked `fieldList()[1]`** (`src/suno/SunoDownloader.cpp`) #risk-high
+      STATUS/T0201.log: status-first classification in handleReply (471b2d6). VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
+- [?] T0202 **`SunoDownloader::embeddedSunoId` unchecked `fieldList()[1]`** (`src/suno/SunoDownloader.cpp`) #risk-high
       TXXX frame with description but no value → out-of-bounds read. Fix: guard `size() >= 2` (test helper already guards).
+      STATUS/T0202.log: size() >= 2 guard, skip frame otherwise (578ff1d). VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
 
 ### P1 — correctness / robustness
 
