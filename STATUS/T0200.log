@@ -1,0 +1,6 @@
+2026-10-18T06:15:00Z  CLAIM    agent=muse-spark/dev-muse-dev ttl=4h
+2026-10-18T06:15:00Z  NOTE     T0200: prod SunoDownloader ctor never connected finalizeFinished nor started finalizeThread_. Added initFinalize() shared by both ctors; prod ctor now calls it.
+2026-10-18T06:15:00Z  COMMIT   2b1b233394c22b84df38633ef39873bd37f55624 (hpp: initFinalize decl)
+2026-10-18T06:15:00Z  COMMIT   eec8f878ffb284eae89a1ef6f6556bf4411ad465 (cpp: initFinalize impl + both ctors call it)
+2026-10-18T06:15:00Z  COMMIT   2004edc216f2c8fd2faecff88b1fd7932023a18a (test: prodCtorConnectsFinalizeFinished)
+2026-10-18T06:15:00Z  NOTE     VERIFY PENDING: no Qt build in this VM (no Qt dev headers). Needs ./build.sh --fast --tests on desktop; on green, move T0200 to [x] with VERIFY line.
