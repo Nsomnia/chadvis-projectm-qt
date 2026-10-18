@@ -42,12 +42,18 @@ struct AppOptions {
     // General
     bool debug{false};
     bool headless{false};
+    // T0208: action flag (print effective config and exit), not a config
+    // override -- a plain bool is correct here.
+    bool dumpConfig{false};
     std::optional<fs::path> configFile;
     std::vector<fs::path> inputFiles;
 
     // Visualizer
     std::optional<std::string> presetName;
-    bool useDefaultPreset{false};
+    // T0205: optional so "flag absent" is distinguishable from "flag false".
+    // A plain bool clobbered a saved `true` back to false on every launch
+    // without --default-preset.
+    std::optional<bool> useDefaultPreset;
     std::optional<int> visualizerFps;
     std::optional<int> visualizerWidth;
     std::optional<int> visualizerHeight;
@@ -123,6 +129,10 @@ private:
 
     /// Generate list of all flag names from CliArgs.inc table (for findClosestMatch)
     static std::vector<std::string_view> allFlagNames();
+
+    /// T0206: the single persistence path for every exit (session playlist +
+    /// dirty config). Wired to aboutToQuit, the universal exit hook.
+    void savePersistentState();
 
     static Application* instance_;
 

@@ -184,6 +184,7 @@ private:
     /// Sanitize a title and fall back to the clip id when the result is empty.
     [[nodiscard]] static std::string safeStem(std::string_view title, const std::string& clipId);
 
+    void initFinalize();
     void wireQueue();
     void enqueueAudio(const SunoClip& clip, const std::string& url, DownloadAction action);
     void handleItemState(const std::string& clipId, DownloadState state);

@@ -23,6 +23,8 @@
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
 #include <QtQuickControls2/QQuickStyle>
+#include <cerrno>
+#include <charconv>
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
@@ -74,32 +76,24 @@ Application::~Application() {
 
 // ─── Table-driven flag name list for findClosestMatch ──────────────────────
 std::vector<std::string_view> Application::allFlagNames() {
+    // T0207: expanded from CliArgs.inc via Cli::cliArgTable() — the table is
+    // the single source of truth, so typo suggestions can never go stale.
+    // T0211: also cover short names and the meta flags, which live outside
+    // the table (special cases in parseArgsFrom) and were previously
+    // unsuggestable.
     std::vector<std::string_view> names;
-    // Per-type macros: all just collect the long name (and negation for bools)
-#define CLI_BOOL(longName, shortName, helpText, helpDefault, negationName, optsField,              \
-                 configAccessor)                                                                   \
-    names.push_back(longName);                                                                     \
-    if (!std::string_view(negationName).empty()) {                                                 \
-        names.push_back(negationName);                                                             \
+    for (const auto& arg : Cli::cliArgTable()) {
+        names.push_back(arg.longName);
+        if (!arg.shortName.empty()) {
+            names.push_back(arg.shortName);
+        }
+        if (!arg.negationName.empty()) {
+            names.push_back(arg.negationName);
+        }
     }
-#define CLI_INT(longName, shortName, helpText, helpDefault, negationName, optsField,               \
-                configAccessor)                                                                    \
-    names.push_back(longName);
-#define CLI_FLOAT(longName, shortName, helpText, helpDefault, negationName, optsField,             \
-                  configAccessor)                                                                  \
-    names.push_back(longName);
-#define CLI_STRING(longName, shortName, helpText, helpDefault, negationName, optsField,            \
-                   configAccessor)                                                                 \
-    names.push_back(longName);
-#define CLI_PATH(longName, shortName, helpText, helpDefault, negationName, optsField,              \
-                 configAccessor)                                                                   \
-    names.push_back(longName);
-#include "CliArgs.inc"
-#undef CLI_BOOL
-#undef CLI_INT
-#undef CLI_FLOAT
-#undef CLI_STRING
-#undef CLI_PATH
+    names.insert(names.end(),
+                 {"-h", "--help", "-v", "--version", "--help-topics",
+                  "--generate-completion"});
     return names;
 }
 
@@ -111,6 +105,47 @@ Result<AppOptions> Application::parseArgs() { return parseArgsFrom(argc_, argv_)
 // parameter names deliberately carry the member convention: the table-driven
 // body below reads argc_/argv_ throughout, and in this static scope those are
 // parameters, not members.
+namespace {
+// T0211: strict number parsing. std::stoi/std::stof accept prefixes
+// ("12x" -> 12) and throw on garbage; from_chars + full-consumption rejects
+// both. Floats avoid std::from_chars (spotty libstdc++ support) via a strict
+// decimal validator + strtof on the validated token.
+bool parseStrictInt(std::string_view s, int& out) {
+    if (s.empty()) return false;
+    const char* first = s.data();
+    const char* last = first + s.size();
+    const auto [ptr, ec] = std::from_chars(first, last, out);
+    return ec == std::errc() && ptr == last;
+}
+
+bool parseStrictFloat(std::string_view s, float& out) {
+    if (s.empty()) return false;
+    size_t i = 0;
+    if (s[i] == '+' || s[i] == '-') ++i;
+    bool digits = false;
+    while (i < s.size() && s[i] >= '0' && s[i] <= '9') { ++i; digits = true; }
+    if (i < s.size() && s[i] == '.') {
+        ++i;
+        while (i < s.size() && s[i] >= '0' && s[i] <= '9') { ++i; digits = true; }
+    }
+    if (!digits) return false;
+    if (i < s.size() && (s[i] == 'e' || s[i] == 'E')) {
+        ++i;
+        if (i < s.size() && (s[i] == '+' || s[i] == '-')) ++i;
+        bool expDigits = false;
+        while (i < s.size() && s[i] >= '0' && s[i] <= '9') { ++i; expDigits = true; }
+        if (!expDigits) return false;
+    }
+    if (i != s.size()) return false;
+    // Well-formed decimal float: strtof cannot fail (overflow -> HUGE_VAL,
+    // caught by the errno check).
+    const std::string tmp(s);
+    errno = 0;
+    out = std::strtof(tmp.c_str(), nullptr);
+    return errno == 0;
+}
+} // namespace
+
 Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_[]) {
     AppOptions opts;
 
@@ -120,13 +155,18 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
         // ─── Special cases (manual) ────────────────────────
         if (arg == "-h" || arg == "--help") {
             if (i + 1 < argc_) {
+                // T0211: nextArg[0] on an empty view is UB (e.g. `--help ""`).
                 std::string_view nextArg(argv_[i + 1]);
-                if (nextArg[0] != '-') {
+                if (!nextArg.empty() && nextArg[0] != '-') {
                     auto topic = HelpSystem::parseTopic(std::string(nextArg));
                     if (topic) {
                         HelpSystem::printHelp(*topic);
                         std::exit(0);
                     }
+                    // T0211: unknown topic is a usage error, not success.
+                    Cli::printError("Unknown help topic: " + std::string(nextArg) +
+                                    " (try --help-topics)");
+                    std::exit(1);
                 }
             }
             printHelp();
@@ -145,8 +185,11 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
                 Cli::printError("--generate-completion requires a shell argument (bash/zsh/fish)");
                 std::exit(1);
             }
-            Cli::generateCompletionScript(argv_[++i]);
-            std::exit(0);
+            // T0211: unknown shell is a usage error; generateCompletionScript
+            // reports it, we set the exit code.
+            const std::string_view shell(argv_[++i]);
+            Cli::generateCompletionScript(shell);
+            std::exit(shell == "bash" || shell == "zsh" || shell == "fish" ? 0 : 1);
         }
 
         // ─── Table-driven flag parsing ─────────────────────
@@ -159,6 +202,7 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
 
         bool argHandled = false;
 
+#define CLI_SECTION(name)
 #define CLI_BOOL(longName, shortName, helpText, helpDefault, negationName, optsField,              \
                  configAccessor)                                                                   \
     if (!argHandled &&                                                                             \
@@ -180,11 +224,17 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
             Cli::printError(std::string(longName) + " requires an argument");                      \
             return Result<AppOptions>::err("Missing argument");                                    \
         }                                                                                          \
-        try {                                                                                      \
-            opts.optsField = std::stoi(argv_[++i]);                                                \
-        } catch (...) {                                                                            \
-            Cli::printError("Invalid integer for " + std::string(longName));                       \
-            return Result<AppOptions>::err("Invalid value");                                       \
+        {                                                                                              \
+            int parsed = 0;                                                                        \
+            /* T0211: strict whole-token parse; negatives rejected -- every     */                 \
+            /* CLI_INT flag feeds an unsigned config field, so -1 must not wrap */                 \
+            /* to 4294967295 before the clamp sees it.                      */                     \
+            if (!parseStrictInt(argv_[++i], parsed) || parsed < 0) {                                \
+                Cli::printError("Invalid integer for " + std::string(longName) +                    \
+                                " (expected a non-negative whole number)");                         \
+                return Result<AppOptions>::err("Invalid value");                                   \
+            }                                                                                      \
+            opts.optsField = parsed;                                                               \
         }                                                                                          \
     }
 
@@ -197,11 +247,14 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
             Cli::printError(std::string(longName) + " requires an argument");                      \
             return Result<AppOptions>::err("Missing argument");                                    \
         }                                                                                          \
-        try {                                                                                      \
-            opts.optsField = std::stof(argv_[++i]);                                                \
-        } catch (...) {                                                                            \
-            Cli::printError("Invalid float for " + std::string(longName));                         \
-            return Result<AppOptions>::err("Invalid value");                                       \
+        {                                                                                              \
+            float parsed = 0.0f;                                                                    \
+            /* T0211: strict whole-token parse ("12x" no longer parses as 12). */                   \
+            if (!parseStrictFloat(argv_[++i], parsed)) {                                            \
+                Cli::printError("Invalid float for " + std::string(longName));                       \
+                return Result<AppOptions>::err("Invalid value");                                   \
+            }                                                                                      \
+            opts.optsField = parsed;                                                               \
         }                                                                                          \
     }
 
@@ -230,6 +283,7 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
     }
 
 #include "CliArgs.inc"
+#undef CLI_SECTION
 #undef CLI_BOOL
 #undef CLI_INT
 #undef CLI_FLOAT
@@ -239,7 +293,8 @@ Result<AppOptions> Application::parseArgsFrom(int argc_, const char* const argv_
         if (argHandled) continue;
 
         // ─── Positional input file ─────────────────────────
-        if (arg[0] != '-') {
+        // T0211: arg[0] on an empty view is UB (e.g. `chadvis ""`).
+        if (!arg.empty() && arg[0] != '-') {
             opts.inputFiles.push_back(fs::path(arg));
             continue;
         }
@@ -322,6 +377,15 @@ void warnIfClamped(const std::optional<int>& optVal, u32 effective, std::string_
     }
 }
 
+// T0209: float overload for karaoke.y_position.
+void warnIfClamped(const std::optional<float>& optVal, float effective, std::string_view name) {
+    if (optVal && *optVal != effective) {
+        LOG_WARN("CLI override {} = {} is out of range, clamped to {} "
+                 "(the same bounds the config file enforces)",
+                 name, *optVal, effective);
+    }
+}
+
 } // anonymous namespace
 
 Result<void> Application::init(const AppOptions& opts) {
@@ -348,11 +412,14 @@ Result<void> Application::init(const AppOptions& opts) {
         Logger::init("chadvis-projectm-qt", true);
     }
 
-    // Override default preset from command line
+    // T0205: --default-preset is std::optional<bool>, applied only when the
+    // flag was actually passed. A plain bool could not distinguish "flag
+    // absent" from "flag false", so every launch without --default-preset
+    // clobbered a saved `true` back to false.
     if (opts.useDefaultPreset) {
-        CONFIG.visualizer().useDefaultPreset = true;
-    } else {
-        CONFIG.visualizer().useDefaultPreset = false;
+        CONFIG.visualizer().useDefaultPreset = *opts.useDefaultPreset;
+        LOG_INFO("CLI override: visualizer.useDefaultPreset = {}",
+                 *opts.useDefaultPreset);
     }
 
     // Set debug lyrics from command line
@@ -363,11 +430,14 @@ Result<void> Application::init(const AppOptions& opts) {
     }
 
     // ─── Apply CLI overrides to config ────────────────────────────────────
-    // Audio overrides. parseAudio applies no range clamps to its fields, so
-    // there is nothing to re-run after these the way there is below.
+    // Audio overrides. T0209: parseAudio now clamps buffer_size/sample_rate,
+    // so re-run the parser's clamp the way the visualizer lane does below.
     applyOverride(opts.audioDevice, CONFIG.audio().device, "audio.device");
     applyOverride(opts.audioBufferSize, CONFIG.audio().bufferSize, "audio.bufferSize");
     applyOverride(opts.audioSampleRate, CONFIG.audio().sampleRate, "audio.sampleRate");
+    ConfigParsers::clampAudio(CONFIG.audio());
+    warnIfClamped(opts.audioBufferSize, CONFIG.audio().bufferSize, "audio.bufferSize");
+    warnIfClamped(opts.audioSampleRate, CONFIG.audio().sampleRate, "audio.sampleRate");
 
     // Visualizer overrides
     applyOverride(opts.visualizerFps, CONFIG.visualizer().fps, "visualizer.fps");
@@ -375,6 +445,11 @@ Result<void> Application::init(const AppOptions& opts) {
     applyOverride(opts.visualizerHeight, CONFIG.visualizer().height, "visualizer.height");
     applyOverride(opts.visualizerShuffle, CONFIG.visualizer().shufflePresets,
                   "visualizer.shufflePresets");
+    // T0203: --preset was parsed but never consumed. It now feeds the existing
+    // visualizer.forcePreset key, which pm::Bridge honors at init via
+    // selectByName (useDefaultPreset still takes precedence there).
+    applyOverride(opts.presetName, CONFIG.visualizer().forcePreset,
+                  "visualizer.forcePreset");
     // Overrides write raw values into CONFIG after ConfigParsers has already
     // clamped the file-loaded values, so an out-of-range flag would sail past
     // every bound the parser enforces: --visualizer-fps 0 skipped the
@@ -393,16 +468,23 @@ Result<void> Application::init(const AppOptions& opts) {
     applyOverride(opts.recordingPreset, CONFIG.recording().video.preset, "recording.video.preset");
     ConfigParsers::clampVideoEncoder(CONFIG.recording().video);
     warnIfClamped(opts.recordingCrf, CONFIG.recording().video.crf, "recording.video.crf");
+    // T0209: a --recording-codec/--recording-preset typo would otherwise sail
+    // past parseRecording's validation; warn here too.
+    ConfigParsers::validateRecording(CONFIG.recording());
 
     // Suno overrides
     applyOverride(opts.sunoDownloadPath, CONFIG.suno().downloadPath, "suno.downloadPath");
     applyOverride(opts.sunoAutoDownload, CONFIG.suno().autoDownload, "suno.autoDownload");
 
-    // Karaoke overrides
+    // Karaoke overrides. T0209: re-run the parser's clamp so a flag meets
+    // the same bounds as the file.
     applyOverride(opts.karaokeEnabled, CONFIG.karaoke().enabled, "karaoke.enabled");
     applyOverride(opts.karaokeFont, CONFIG.karaoke().fontFamily, "karaoke.fontFamily");
     applyOverride(opts.karaokeFontSize, CONFIG.karaoke().fontSize, "karaoke.fontSize");
     applyOverride(opts.karaokeYPosition, CONFIG.karaoke().yPosition, "karaoke.yPosition");
+    ConfigParsers::clampKaraoke(CONFIG.karaoke());
+    warnIfClamped(opts.karaokeFontSize, CONFIG.karaoke().fontSize, "karaoke.fontSize");
+    warnIfClamped(opts.karaokeYPosition, CONFIG.karaoke().yPosition, "karaoke.yPosition");
 
     // UI overrides
     //
@@ -417,6 +499,23 @@ Result<void> Application::init(const AppOptions& opts) {
     // so "absent" and "present" are distinguishable at all.
     qml_bridge::SettingsBridge::setSessionTheme(
         opts.theme ? QString::fromStdString(*opts.theme) : QString());
+
+    // T0208: print the effective config and exit. Placed after every CLI
+    // override above so the dump reflects exactly what the app would run
+    // with -- before any GUI, audio, or network object is created.
+    if (opts.dumpConfig) {
+        try {
+            const toml::table tbl = ConfigParsers::serialize(
+                CONFIG.audio(), CONFIG.visualizer(), CONFIG.recording(),
+                CONFIG.ui(), CONFIG.keyboard(), CONFIG.suno(),
+                CONFIG.karaoke(), CONFIG.overlay(), CONFIG.debug());
+            std::cout << tbl;
+        } catch (const std::exception& e) {
+            LOG_ERROR("Failed to serialize config for --dump-config: {}", e.what());
+            std::exit(1);
+        }
+        std::exit(0);
+    }
 
     QSurfaceFormat format;
     format.setVersion(3, 3);
@@ -445,6 +544,14 @@ Result<void> Application::init(const AppOptions& opts) {
     if (auto result = audioEngine_->init(CONFIG.audio()); !result) {
         LOG_ERROR("Audio engine init failed: {}", result.error().message);
         return result;
+    }
+
+    // T0203: positional input files are loaded into the playlist at startup.
+    // They were collected by the parser and never consumed — the first help
+    // example (`chadvis-projectm-qt ~/Music/*.flac`) loaded nothing.
+    if (!opts.inputFiles.empty()) {
+        audioEngine_->playlist().addFiles(opts.inputFiles);
+        LOG_INFO("Added {} input file(s) to the playlist", opts.inputFiles.size());
     }
 
 
@@ -522,6 +629,18 @@ Result<void> Application::init(const AppOptions& opts) {
         sunoController_ = std::make_unique<suno::SunoController>(audioEngine_.get(),
                                                                  lyricsSync_.get(), nullptr);
 
+        // T0203: --suno-id plays a Suno clip by ID. It resolves against the
+        // library/database, so an unknown ID warns instead of silently
+        // doing nothing (sync the library first).
+        if (opts.sunoId) {
+            if (sunoController_->playClipById(*opts.sunoId)) {
+                LOG_INFO("--suno-id: playing clip '{}'", *opts.sunoId);
+            } else {
+                LOG_WARN("--suno-id: clip '{}' not found in library; sync the library first",
+                         *opts.sunoId);
+            }
+        }
+
         // Pin a non-native Quick Controls style BEFORE the engine exists. The
         // macOS native style silently discards the custom `background` /
         // `contentItem` on every control, so the themed Settings window and
@@ -571,6 +690,25 @@ Result<void> Application::init(const AppOptions& opts) {
         if (!window->isVisible()) {
             window->show();
         }
+
+        // T0203: --record now starts recording in GUI mode. (--headless +
+        // --record is rejected at parse time: no window, no frames.) The
+        // RecordingBridge singleton exists by now — main.qml references it,
+        // so the load above constructed it — and setVisualizer wired the
+        // frame source. An empty outputPath keeps the bridge's default naming.
+        if (opts.startRecording) {
+            const QString outputPath = opts.outputFile
+                ? QString::fromStdString(opts.outputFile->string())
+                : QString();
+            if (auto* bridge = qml_bridge::RecordingBridge::instance()) {
+                bridge->startRecording(outputPath);
+                LOG_INFO("--record: recording started");
+            } else {
+                LOG_WARN("--record: RecordingBridge unavailable; recording not started");
+            }
+        } else if (opts.outputFile) {
+            LOG_WARN("--output has no effect without --record");
+        }
     }
 
     // Connect quit signal
@@ -588,6 +726,11 @@ Result<void> Application::init(const AppOptions& opts) {
             LOG_DEBUG("Saved preset ratings");
         }
     });
+    // T0206: persist the session playlist and dirty config on EVERY exit.
+    // Window close and Qt.quit() never run quit(); aboutToQuit fires for all
+    // of them (including quit()-driven ones, via qapp_->quit() below).
+    connect(qapp_.get(), &QGuiApplication::aboutToQuit, this,
+            [this]() { savePersistentState(); });
 
     LOG_INFO("Initialization complete. Let's get this bread.");
 
@@ -602,6 +745,28 @@ int Application::exec() {
     return qapp_->exec();
 }
 
+// T0206: the single persistence path for every exit. aboutToQuit is the one
+// universal exit hook — a QML window close or Qt.quit() ends the event loop
+// without ever invoking Application::quit() (that slot only runs from the
+// SIGINT/SIGTERM handlers), so the session playlist and dirty config are saved
+// here. quit() reaches this too, through the aboutToQuit that qapp_->quit()
+// fires, which is why quit() no longer persists inline.
+void Application::savePersistentState() {
+    if (audioEngine_) {
+        auto lastSession = file::configDir() / "last_session.m3u";
+        if (auto result = audioEngine_->playlist().saveM3U(lastSession); !result) {
+            LOG_WARN("Failed to save session playlist to {}: {}", lastSession.string(),
+                     result.error().message);
+        } else {
+            LOG_DEBUG("Saved session playlist to {}", lastSession.string());
+        }
+    }
+
+    if (CONFIG.isDirty()) {
+        (void)CONFIG.save(CONFIG.configPath());
+    }
+}
+
 void Application::quit() {
     LOG_INFO("Shutting down...");
 
@@ -613,23 +778,10 @@ void Application::quit() {
         (void)videoRecorder_->stop();
     }
 
-    // Stop audio
+    // Stop audio. Persistence (session playlist, dirty config) is handled by
+    // savePersistentState() on aboutToQuit, which qapp_->quit() fires below.
     if (audioEngine_) {
-        // Save last session playlist
-        auto lastSession = file::configDir() / "last_session.m3u";
-        if (auto result = audioEngine_->playlist().saveM3U(lastSession); !result) {
-            LOG_WARN("Failed to save session playlist to {}: {}", lastSession.string(),
-                     result.error().message);
-        } else {
-            LOG_DEBUG("Saved session playlist to {}", lastSession.string());
-        }
-
         audioEngine_->stop();
-    }
-
-    // Save config if dirty
-    if (CONFIG.isDirty()) {
-        (void)CONFIG.save(CONFIG.configPath());
     }
 
     if (qapp_) {
@@ -656,52 +808,24 @@ void Application::printHelp() {
               << " " << dim() << "chadvis-projectm-qt --help-topics # List help topics" << reset()
               << "\n\n";
 
-    Cli::printSection("General Options");
+    // T0207: every option below is generated from CliArgs.inc via
+    // Cli::cliArgTable(). Adding a flag to the table is sufficient — no
+    // hand-written list to drift. Meta flags handled as special cases in
+    // parseArgsFrom (outside the table) are listed explicitly.
     Cli::printOption("-h, --help [topic]", "Show this help or detailed topic help");
     Cli::printOption("--help-topics", "List available help topics");
     Cli::printOption("-v, --version", "Show version information");
-    Cli::printOption("-d, --debug", "Enable debug logging", "no");
-    Cli::printOption("-c, --config <path>", "Use custom config file");
-    Cli::printOption("--headless", "Run without GUI (batch mode)");
     Cli::printOption("--generate-completion <shell>", "Generate shell completion script");
-
-    Cli::printSection("Audio Options");
-    Cli::printOption("--audio-device <name>", "Audio output device", "default");
-    Cli::printOption("--audio-buffer <size>", "Buffer size in samples", "2048");
-    Cli::printOption("--audio-rate <rate>", "Sample rate in Hz", "44100");
-
-    Cli::printSection("Visualizer Options");
-    Cli::printOption("-p, --preset <name>", "Start with specific preset");
-    Cli::printOption("--default-preset", "Use projectM's default (no preset)");
-    Cli::printOption("--visualizer-fps <n>", "Target frame rate", "60");
-    Cli::printOption("--visualizer-width <n>", "Render width", "1920");
-    Cli::printOption("--visualizer-height <n>", "Render height", "1080");
-    Cli::printOption("--visualizer-shuffle", "Shuffle presets");
-    Cli::printOption("--no-visualizer-shuffle", "Don't shuffle presets");
-
-    Cli::printSection("Recording Options");
-    Cli::printOption("-r, --record", "Start recording immediately");
-    Cli::printOption("-o, --output <path>", "Recording output file");
-    Cli::printOption("--recording-codec <codec>", "Video codec (libx264/nvenc/vaapi)");
-    Cli::printOption("--recording-crf <n>", "Quality 0-51 (lower=better)", "18");
-    Cli::printOption("--recording-preset <name>", "Encoding speed", "medium");
-
-    Cli::printSection("Suno Options");
-    Cli::printOption("--suno-id <uuid>", "Fetch and play Suno song by ID");
-    Cli::printOption("--suno-download-path <path>", "Download directory");
-    Cli::printOption("--suno-auto-download", "Auto-download when playing");
-    Cli::printOption("--no-suno-auto-download", "Don't auto-download");
-
-    Cli::printSection("Karaoke Options");
-    Cli::printOption("--karaoke-enabled", "Enable karaoke display");
-    Cli::printOption("--no-karaoke", "Disable karaoke display");
-    Cli::printOption("--karaoke-font <name>", "Font family", "Arial");
-    Cli::printOption("--karaoke-font-size <n>", "Font size in pixels", "32");
-    Cli::printOption("--karaoke-y-position <0-1>", "Vertical position", "0.5");
-    Cli::printOption("--test-lyrics <path>", "Test with SRT/LRC file");
-
-    Cli::printSection("UI Options");
-    Cli::printOption("--theme <name>", "UI theme for this session only (material/chadvis-dark/gruvbox/nord)", "material");
+    {
+        std::string_view lastSection;
+        for (const auto& arg : Cli::cliArgTable()) {
+            if (arg.section != lastSection) {
+                Cli::printSection(arg.section);
+                lastSection = arg.section;
+            }
+            Cli::printCliArg(arg);
+        }
+    }
 
     Cli::printSection("Examples");
     std::cout << " " << brightCyan() << "chadvis-projectm-qt ~/Music/*.flac" << reset() << "\n"
@@ -726,7 +850,7 @@ void Application::printHelp() {
               << reset() << "\n"
               << "Logs: " << brightYellow() << "~/.cache/chadvis-projectm-qt/logs/" << reset()
               << "\n\n"
-              << "Docs: " << brightBlue() << "https://github.com/yourusername/chadvis-projectm-qt"
+              << "Docs: " << brightBlue() << "https://github.com/Nsomnia/chadvis-projectm-qt"
               << reset() << "\n"
               << dim() << "Or don't. We're not your mom." << reset() << "\n\n";
 }

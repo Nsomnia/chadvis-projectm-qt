@@ -159,11 +159,8 @@ void populate(Config& c, int seed) {
     vis.texturePaths = {fs::path("/tmp/tex-a.png"), fs::path("/tmp/tex-b.png")};
 
     auto& rec = c.recording();
-    rec.enabled = false;
-    rec.autoRecord = true;
-    rec.recordEntireSong = true;
-    rec.restartTrackOnRecord = true;
-    rec.stopAtTrackEnd = true;
+    // T0204: `enabled`, `auto_record`, `record_entire_song`,
+    // `restart_track_on_record`, `stop_at_track_end` deleted (zero consumers).
     rec.outputDirectory = fs::path("/tmp/rec-" + tag);
     rec.defaultFilename = "clip-" + tag;
     rec.container = "mkv";
@@ -206,7 +203,7 @@ void populate(Config& c, int seed) {
     suno.downloadPath = fs::path("/tmp/dl-" + tag);
     suno.autoDownload = true;
     suno.saveLyrics = false;
-    suno.embedMetadata = false;
+    // T0204: `embed_metadata` deleted (zero consumers).
     suno.downloadFormat = SunoDownloadFormat::WAV;
     suno.debugLyrics = true;
     suno.debugLyricsFile = fs::path("/tmp/dbg-" + tag + ".json");
@@ -222,7 +219,7 @@ void populate(Config& c, int seed) {
     karaoke.shadowColor = Color::fromHex("#00000080");
 
     auto& overlay = c.overlay();
-    overlay.enabled = seed % 2 == 0;
+    // T0204: `[overlay] enabled` deleted (zero consumers).
     overlay.elements.clear();
     OverlayElementConfig element;
     element.id = "el-" + tag;
@@ -266,11 +263,6 @@ void verifyPopulated(const Config& c, const std::string& tag) {
     QCOMPARE(c.visualizer().texturePaths[0].string(), std::string("/tmp/tex-a.png"));
     QCOMPARE(c.visualizer().texturePaths[1].string(), std::string("/tmp/tex-b.png"));
 
-    QCOMPARE(c.recording().enabled, false);
-    QCOMPARE(c.recording().autoRecord, true);
-    QCOMPARE(c.recording().recordEntireSong, true);
-    QCOMPARE(c.recording().restartTrackOnRecord, true);
-    QCOMPARE(c.recording().stopAtTrackEnd, true);
     QCOMPARE(c.recording().outputDirectory.string(), "/tmp/rec-" + tag);
     QCOMPARE(c.recording().defaultFilename, "clip-" + tag);
     QCOMPARE(c.recording().container, std::string("mkv"));
@@ -306,7 +298,6 @@ void verifyPopulated(const Config& c, const std::string& tag) {
     QCOMPARE(c.suno().downloadPath.string(), "/tmp/dl-" + tag);
     QCOMPARE(c.suno().autoDownload, true);
     QCOMPARE(c.suno().saveLyrics, false);
-    QCOMPARE(c.suno().embedMetadata, false);
     QCOMPARE(c.suno().debugLyrics, true);
     QCOMPARE(c.suno().debugLyricsFile.string(), "/tmp/dbg-" + tag + ".json");
     QVERIFY(c.suno().downloadFormat == SunoDownloadFormat::WAV);
@@ -320,7 +311,6 @@ void verifyPopulated(const Config& c, const std::string& tag) {
     QCOMPARE(c.karaoke().inactiveColor.toHex(), std::string("#00FFFFFF"));
     QCOMPARE(c.karaoke().shadowColor.toHex(), std::string("#00000080"));
 
-    QCOMPARE(c.overlay().enabled, tag == "2");
     QCOMPARE(c.overlay().elements.size(), std::size_t{1});
     if (!c.overlay().elements.empty()) {
         const auto& element = c.overlay().elements.front();
@@ -679,29 +669,8 @@ private slots:
         QCOMPARE(cfg.deviceId, std::string("device-x"));
     }
 
-    void overlayEnabledRoundTripsInBothStates() {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const auto path = fs::path(dir.path().toStdString()) / "config.toml";
-
-        populate(config(), 2);
-        config().overlay().enabled = false;
-        auto saved = ConfigLoader::save(config(), path);
-        QVERIFY2(saved.isOk(), saved.isErr() ? saved.error().message.c_str() : "");
-        auto loaded = ConfigLoader::load(config(), path);
-        QVERIFY2(loaded.isOk(), loaded.isErr() ? loaded.error().message.c_str() : "");
-
-        // Exact `false`, NOT `!enabled`: a parser that silently ignored the key
-        // would leave the struct default `true`, and `!true` would pass.
-        QCOMPARE(config().overlay().enabled, false);
-
-        config().overlay().enabled = true;
-        saved = ConfigLoader::save(config(), path);
-        QVERIFY2(saved.isOk(), saved.isErr() ? saved.error().message.c_str() : "");
-        loaded = ConfigLoader::load(config(), path);
-        QVERIFY2(loaded.isOk(), loaded.isErr() ? loaded.error().message.c_str() : "");
-        QCOMPARE(config().overlay().enabled, true);
-    }
+    // T0204: `overlayEnabledRoundTripsInBothStates` removed with the
+    // `[overlay] enabled` key itself (zero consumers).
 
     void unknownKeysAreDropped() {
         QTemporaryDir dir;
@@ -734,6 +703,57 @@ private slots:
         QVERIFY(!visualizer->contains("future_key"));
         QVERIFY(!reparsed.contains("my_own_table"));
         QVERIFY(reparsed.contains("audio"));
+    }
+
+    // T0209: the new range clamps actually clamp.
+    void t0209ClampsEnforced() {
+        // karaoke: y_position 0-1, font_size 8-256.
+        {
+            KaraokeConfig k;
+            ConfigParsers::parseKaraoke(toml::parse("[karaoke]\ny_position = 1.5\nfont_size = 4\n"), k);
+            QCOMPARE(k.yPosition, 1.0f);
+            QCOMPARE(k.fontSize, 8u);
+        }
+        {
+            KaraokeConfig k;
+            ConfigParsers::parseKaraoke(toml::parse("[karaoke]\ny_position = -0.5\nfont_size = 999\n"), k);
+            QCOMPARE(k.yPosition, 0.0f);
+            QCOMPARE(k.fontSize, 256u);
+        }
+        // audio: buffer_size 64-8192, sample_rate 8000-192000.
+        {
+            AudioConfig a;
+            ConfigParsers::parseAudio(toml::parse("[audio]\nbuffer_size = 16\nsample_rate = 4000\n"), a);
+            QCOMPARE(a.bufferSize, 64u);
+            QCOMPARE(a.sampleRate, 8000u);
+        }
+        // visualizer: preset_duration 1-3600.
+        {
+            VisualizerConfig v;
+            ConfigParsers::parseVisualizer(toml::parse("[visualizer]\npreset_duration = 0\n"), v);
+            QCOMPARE(v.presetDuration, 1u);
+        }
+        // overlay element: opacity 0-1, font_size 8-256, bad anchor -> left.
+        {
+            OverlayConfig o;
+            ConfigParsers::parseOverlay(
+                toml::parse("[overlay]\n[[overlay.elements]]\nopacity = 2.5\nfont_size = 3\nanchor = 'diagonal'\n"),
+                o);
+            QVERIFY(!o.elements.empty());
+            QCOMPARE(o.elements[0].opacity, 1.0f);
+            QCOMPARE(o.elements[0].fontSize, 8u);
+            QCOMPARE(QString::fromStdString(o.elements[0].anchor), QStringLiteral("left"));
+        }
+        // recording: unknown strings warn but are NOT clobbered (round-trip
+        // fixtures use probe values like "libx265probe").
+        {
+            RecordingConfig r;
+            ConfigParsers::parseRecording(
+                toml::parse("[recording]\ncontainer = 'bogus'\n[recording.video]\ncodec = 'nope'\n"),
+                r);
+            QCOMPARE(QString::fromStdString(r.container), QStringLiteral("bogus"));
+            QCOMPARE(QString::fromStdString(r.video.codec), QStringLiteral("nope"));
+        }
     }
 
     void corruptFileIsDiagnosedWithoutThrowing() {

@@ -105,12 +105,9 @@ fs::path expandPath(std::string_view path) {
     X("mesh_y", meshY, U32)
 
 // output_directory handled manually (see parseRecording).
+// T0204: `enabled`, `auto_record`, `record_entire_song`,
+// `restart_track_on_record`, `stop_at_track_end` deleted (zero consumers).
 #define CHADVIS_RECORDING_FIELDS(X)                                                                \
-    X("enabled", enabled, BOOL)                                                                    \
-    X("auto_record", autoRecord, BOOL)                                                             \
-    X("record_entire_song", recordEntireSong, BOOL)                                                \
-    X("restart_track_on_record", restartTrackOnRecord, BOOL)                                       \
-    X("stop_at_track_end", stopAtTrackEnd, BOOL)                                                   \
     X("default_filename", defaultFilename, STR)                                                    \
     X("container", container, STR)
 
@@ -175,7 +172,6 @@ fs::path expandPath(std::string_view path) {
     X("device_id", deviceId, STR)                                                                  \
     X("auto_download", autoDownload, BOOL)                                                         \
     X("save_lyrics", saveLyrics, BOOL)                                                             \
-    X("embed_metadata", embedMetadata, BOOL)                                                       \
     X("debug_lyrics", debugLyrics, BOOL)                                                           \
     X("debug_lyrics_file", debugLyricsFile, PATH)
 
@@ -217,6 +213,24 @@ fs::path expandPath(std::string_view path) {
 #define VC_SER_PATH(key, member) out.insert(key, obj.member.string());
 #define VC_SER_COLOR(key, member) out.insert(key, obj.member.toHex());
 
+// ── Unknown-key warning expansion (T0208) ────────────────────────────
+#define VC_KEY_NAME(key, member, TYPE) #key,
+
+namespace {
+// T0208: a typo'd config key silently yields the default and vanishes on the
+// next save. Warn once per unknown key so the user learns their config did
+// not do what they thought it did.
+void warnUnknownKeys(const toml::table& t, std::string_view section,
+                     std::initializer_list<std::string_view> known) {
+    for (const auto& [key, node] : t) {
+        const std::string_view k = key.str();
+        if (std::find(known.begin(), known.end(), k) == known.end()) {
+            LOG_WARN("Unknown config key '{}.{}' -- ignoring it", section, k);
+        }
+    }
+}
+} // namespace
+
 } // namespace
 
 void ConfigParsers::parseAudio(const toml::table& tbl, AudioConfig& cfg) {
@@ -225,6 +239,13 @@ void ConfigParsers::parseAudio(const toml::table& tbl, AudioConfig& cfg) {
     const AudioConfig def{};
     auto& obj = cfg;
     CHADVIS_AUDIO_FIELDS(VC_PARSE_FIELD)
+    clampAudio(cfg);
+    warnUnknownKeys(*t, "audio", {CHADVIS_AUDIO_FIELDS(VC_KEY_NAME)});
+}
+
+void ConfigParsers::clampAudio(AudioConfig& cfg) {
+    cfg.bufferSize = std::clamp(cfg.bufferSize, 64u, 8192u);
+    cfg.sampleRate = std::clamp(cfg.sampleRate, 8000u, 192000u);
 }
 
 void ConfigParsers::clampVisualizer(VisualizerConfig& cfg) {
@@ -236,6 +257,7 @@ void ConfigParsers::clampVisualizer(VisualizerConfig& cfg) {
     cfg.hardCutSensitivity = std::clamp(cfg.hardCutSensitivity, 0.1f, 10.0f);
     cfg.meshX = std::clamp(cfg.meshX, 8u, 512u);
     cfg.meshY = std::clamp(cfg.meshY, 8u, 512u);
+    cfg.presetDuration = std::clamp(cfg.presetDuration, 1u, 3600u);
 }
 
 void ConfigParsers::parseVisualizer(const toml::table& tbl, VisualizerConfig& cfg) {
@@ -262,6 +284,64 @@ void ConfigParsers::parseVisualizer(const toml::table& tbl, VisualizerConfig& cf
             if (auto s = p.value<std::string>()) cfg.texturePaths.push_back(expandPath(*s));
         }
     }
+
+    // preset_path / texture_paths are hand-handled above (custom fallback),
+    // so they are known keys even though they are not in the field table.
+    warnUnknownKeys(*t, "visualizer",
+                    {"preset_path", "texture_paths", CHADVIS_VISUALIZER_FIELDS(VC_KEY_NAME)});
+}
+
+namespace {
+// T0209: the encoder only knows these. Warn, don't clobber -- a future
+// FFmpeg may accept more, and the error at record time names the codec.
+bool isKnownValue(std::string_view v, std::initializer_list<std::string_view> known) {
+    return std::find(known.begin(), known.end(), v) != known.end();
+}
+} // namespace
+
+void ConfigParsers::validateRecording(RecordingConfig& cfg) {
+    // Codec slugs from VideoRecorderFFmpeg::initVideoStream.
+    if (!isKnownValue(cfg.video.codec,
+                      {"libx264", "libx265", "libvpx-vp9", "libaom-av1", "prores_ks",
+                       "ffv1", "h264_nvenc", "hevc_nvenc", "h264_vaapi", "hevc_vaapi"})) {
+        LOG_WARN("Unknown recording video codec '{}' -- recording will fail at start",
+                 cfg.video.codec);
+    }
+    // x264/x265 preset names; passed through as preset=<name>.
+    if (!isKnownValue(cfg.video.preset,
+                      {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium",
+                       "slow", "slower", "veryslow", "placebo"})) {
+        LOG_WARN("Unknown recording video preset '{}' -- encoder may reject it",
+                 cfg.video.preset);
+    }
+    if (!isKnownValue(cfg.video.pixelFormat,
+                      {"yuv420p", "yuv422p", "yuv444p", "rgb24", "nv12", "p010le"})) {
+        LOG_WARN("Unknown recording pixel_format '{}'", cfg.video.pixelFormat);
+    }
+    // Container slugs from the batch render schema vocabulary.
+    if (!isKnownValue(cfg.container, {"mp4", "mkv", "webm", "mov", "avi"})) {
+        LOG_WARN("Unknown recording container '{}' -- muxer may fail", cfg.container);
+    }
+}
+
+void ConfigParsers::validateKeyboard(KeyboardConfig& cfg) {
+    // T0209: an empty shortcut silently never fires. (Full key-name
+    // validation would need QKeySequence/QtGui; the parser stays QtCore.)
+    auto check = [](std::string_view name, const std::string& key) {
+        if (key.empty()) LOG_WARN("Empty keyboard shortcut for '{}' -- it will never fire", name);
+    };
+    check("play_pause", cfg.playPause);
+    check("next_track", cfg.nextTrack);
+    check("prev_track", cfg.prevTrack);
+    check("toggle_record", cfg.toggleRecord);
+    check("toggle_fullscreen", cfg.toggleFullscreen);
+    check("next_preset", cfg.nextPreset);
+    check("prev_preset", cfg.prevPreset);
+}
+
+void ConfigParsers::clampKaraoke(KaraokeConfig& cfg) {
+    cfg.fontSize = std::clamp(cfg.fontSize, 8u, 256u);
+    cfg.yPosition = std::clamp(cfg.yPosition, 0.0f, 1.0f);
 }
 
 void ConfigParsers::clampVideoEncoder(VideoEncoderConfig& cfg) {
@@ -290,10 +370,12 @@ void ConfigParsers::parseRecording(const toml::table& tbl, RecordingConfig& cfg)
         CHADVIS_RECORDING_FIELDS(VC_PARSE_FIELD)
     }
 
-    // output_directory intentionally keeps its legacy fallback ("~/Videos/
-    // ChadVis"); the struct default is empty because loadDefault() resolves
-    // a real path at first-run time.
-    cfg.outputDirectory = expandPath(get(*t, "output_directory", std::string("~/Videos/ChadVis")));
+    // T0210: single default. The struct default is empty; loadDefault()'s
+    // resolveFirstRunPaths sets <dataDir>/recordings for fresh installs, and
+    // this fallback covers configs that omit the key -- including the
+    // template, which no longer hardcodes a path. ~/Videos/ChadVis is gone.
+    cfg.outputDirectory = expandPath(
+        get(*t, "output_directory", (file::dataDir() / "recordings").string()));
 
     if (auto* vt = (*t)["video"].as_table()) {
         // Defaults come straight from ConfigData.hpp: crf 18, "medium",
@@ -328,6 +410,13 @@ void ConfigParsers::parseRecording(const toml::table& tbl, RecordingConfig& cfg)
         cfg.audio.sampleRate = std::clamp(cfg.audio.sampleRate, 8000u, 192000u);
         cfg.audio.channels = std::clamp(cfg.audio.channels, 1u, 2u);
     }
+
+    // output_directory is hand-handled (legacy fallback); video/audio are
+    // subtables checked against their own tables above.
+    warnUnknownKeys(*t, "recording",
+                    {"output_directory", "video", "audio",
+                     CHADVIS_RECORDING_FIELDS(VC_KEY_NAME)});
+    validateRecording(cfg);
 }
 
 void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
@@ -335,8 +424,7 @@ void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
     auto* overlay = tbl["overlay"].as_table();
     if (!overlay) return;
 
-    const OverlayConfig def{};
-    cfg.enabled = get(*overlay, "enabled", def.enabled);
+    // T0204: the `enabled` master toggle had zero consumers — deleted.
 
     if (auto elementsArr = (*overlay)["elements"].as_array()) {
         for (const auto& elem : *elementsArr) {
@@ -353,10 +441,23 @@ void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
                 element.animationSpeed = get(*elemTbl, "animation_speed", 1.0f);
                 element.anchor = get(*elemTbl, "anchor", std::string("left"));
                 element.visible = get(*elemTbl, "visible", true);
+                // T0209: an out-of-range opacity/font size silently misrenders;
+                // an unknown anchor silently falls back in the renderer.
+                element.opacity = std::clamp(element.opacity, 0.0f, 1.0f);
+                element.fontSize = std::clamp(element.fontSize, 8u, 256u);
+                element.animationSpeed = std::clamp(element.animationSpeed, 0.1f, 10.0f);
+                if (element.anchor != "left" && element.anchor != "center" &&
+                    element.anchor != "right") {
+                    LOG_WARN("Unknown overlay anchor '{}' for element '{}' -- using 'left'",
+                             element.anchor, element.id);
+                    element.anchor = "left";
+                }
                 cfg.elements.push_back(std::move(element));
             }
         }
     }
+
+    warnUnknownKeys(*overlay, "overlay", {"elements"});
 }
 
 void ConfigParsers::parseUI(const toml::table& tbl, UIConfig& cfg) {
@@ -367,6 +468,7 @@ void ConfigParsers::parseUI(const toml::table& tbl, UIConfig& cfg) {
     CHADVIS_UI_FIELDS(VC_PARSE_FIELD)
 
     cfg.sidebarWidth = std::clamp(cfg.sidebarWidth, 200, 400);
+    warnUnknownKeys(*t, "ui", {CHADVIS_UI_FIELDS(VC_KEY_NAME)});
 }
 
 void ConfigParsers::parseKeyboard(const toml::table& tbl, KeyboardConfig& cfg) {
@@ -375,6 +477,8 @@ void ConfigParsers::parseKeyboard(const toml::table& tbl, KeyboardConfig& cfg) {
     const KeyboardConfig def{};
     auto& obj = cfg;
     CHADVIS_KEYBOARD_FIELDS(VC_PARSE_FIELD)
+    warnUnknownKeys(*t, "keyboard", {CHADVIS_KEYBOARD_FIELDS(VC_KEY_NAME)});
+    validateKeyboard(cfg);
 }
 
 void ConfigParsers::parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg) {
@@ -383,6 +487,8 @@ void ConfigParsers::parseKaraoke(const toml::table& tbl, KaraokeConfig& cfg) {
     const KaraokeConfig def{};
     auto& obj = cfg;
     CHADVIS_KARAOKE_FIELDS(VC_PARSE_FIELD)
+    clampKaraoke(cfg);
+    warnUnknownKeys(*t, "karaoke", {CHADVIS_KARAOKE_FIELDS(VC_KEY_NAME)});
 }
 
 void ConfigParsers::parseSuno(const toml::table& tbl, SunoConfig& cfg) {
@@ -407,6 +513,12 @@ void ConfigParsers::parseSuno(const toml::table& tbl, SunoConfig& cfg) {
 
     auto fmtStr = get(*t, "download_format", std::string("mp3"));
     cfg.downloadFormat = (fmtStr == "wav") ? SunoDownloadFormat::WAV : SunoDownloadFormat::MP3;
+
+    // download_path/download_format are hand-handled (path expansion + enum
+    // mapping); token/cookie are legacy parse-only secrets (migrated once).
+    warnUnknownKeys(*t, "suno",
+                    {"download_path", "download_format", "token", "cookie",
+                     CHADVIS_SUNO_FIELDS(VC_KEY_NAME)});
 }
 
 toml::table ConfigParsers::serialize(const AudioConfig& audio, const VisualizerConfig& visualizer,
@@ -485,7 +597,8 @@ toml::table ConfigParsers::serialize(const AudioConfig& audio, const VisualizerC
                 {"anchor", elem.anchor},
                 {"visible", elem.visible}});
     }
-    root.insert("overlay", toml::table{{"enabled", overlay.enabled}, {"elements", elementsArr}});
+    // T0204: `enabled` deleted (zero consumers).
+    root.insert("overlay", toml::table{{"elements", elementsArr}});
 
     {
         toml::table out;

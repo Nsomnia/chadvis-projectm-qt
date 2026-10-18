@@ -51,6 +51,9 @@ SunoDownloader::SunoDownloader(SunoClient*,
       // The queue adopts the controller-provided manager; this is the one
       // QNetworkAccessManager for clip downloads (no ad-hoc managers here).
       queue_(std::make_unique<DownloadQueue>(networkManager, this)) {
+    // T0200: the finalize worker must run in production too — without this,
+    // transferred files never emit fileSaved and never auto-play.
+    initFinalize();
     wireQueue();
 }
 
@@ -61,20 +64,7 @@ SunoDownloader::SunoDownloader(SunoDatabase& db,
       db_(db),
       audioEngine_(audioEngine),
       queue_(std::make_unique<DownloadQueue>(std::move(replyFactory), this)) {
-    // T0037: the finalize worker. Queued connection, so the handler below runs on
-    // the GUI thread where addAndPlay and the QML-facing signals belong, and Qt
-    // drops the delivery if `this` is gone by then.
-    connect(this, &SunoDownloader::finalizeFinished, this,
-            [this](const QString& clipId, const QString& destPath, bool play) {
-                if (play) {
-                    static_cast<void>(addAndPlay(fs::path(destPath.toStdString()),
-                                                 clipId.toStdString()));
-                }
-                emit fileSaved(clipId, destPath);
-            },
-            Qt::QueuedConnection);
-    finalizeThread_.setObjectName(QStringLiteral("SunoDownloader::finalize"));
-    finalizeThread_.start();
+    initFinalize();
     wireQueue();
 }
 
@@ -104,6 +94,25 @@ void SunoDownloader::runFinalize(std::function<void()> job) {
     QMetaObject::invokeMethod(
             &finalizeThread_, [work = std::move(job)]() { work(); },
             Qt::QueuedConnection);
+}
+
+void SunoDownloader::initFinalize() {
+    // T0037: the finalize worker. Queued connection, so the handler below runs on
+    // the GUI thread where addAndPlay and the QML-facing signals belong, and Qt
+    // drops the delivery if `this` is gone by then.
+    // T0200: this must run in BOTH constructors — the production ctor previously
+    // skipped it, so transferred files never emitted fileSaved and never auto-played.
+    connect(this, &SunoDownloader::finalizeFinished, this,
+            [this](const QString& clipId, const QString& destPath, bool play) {
+                if (play) {
+                    static_cast<void>(addAndPlay(fs::path(destPath.toStdString()),
+                                                 clipId.toStdString()));
+                }
+                emit fileSaved(clipId, destPath);
+            },
+            Qt::QueuedConnection);
+    finalizeThread_.setObjectName(QStringLiteral("SunoDownloader::finalize"));
+    finalizeThread_.start();
 }
 
 void SunoDownloader::wireQueue() {
@@ -642,7 +651,14 @@ std::optional<std::string> SunoDownloader::embeddedSunoId(const fs::path& path) 
                     // field 0 -- so toString() renders "SUNO_ID <value>" and could
                     // never equal a clip id, while [1] is exactly what the tagger
                     // put there. Reading what was written, not a rendering of it.
-                    return std::string(txxx->fieldList()[1].to8Bit());
+                    // T0202: a TXXX frame can carry a description with no value
+                    // (fieldList().size() == 1), and [1] on that is an
+                    // out-of-bounds read. Guard like the test helper does.
+                    const TagLib::StringList fields = txxx->fieldList();
+                    if (fields.size() < 2) {
+                        continue;
+                    }
+                    return std::string(fields[1].to8Bit());
                 }
             }
             return std::nullopt;
