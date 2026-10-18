@@ -1069,10 +1069,12 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 
 ### P1 — correctness / robustness
 
-- [ ] T0203 **Wire or delete five dead CLI paths** (`src/core/CliArgs.inc`, `src/core/Application.cpp`)
+- [?] T0203 **Wire or delete five dead CLI paths** (`src/core/CliArgs.inc`, `src/core/Application.cpp`)
       `--preset`, `--output`, `--suno-id`, `--record` (GUI), positional input files. Help advertises them; none has a consumer.
-- [ ] T0204 **Wire or delete dead config keys** (`src/core/Config*.cpp`, `config/default.toml`)
+      STATUS/T0203.log: wired all five (d5c4289) — --preset->forcePreset, files->playlist, --suno-id->playClipById, --record->RecordingBridge::startRecording honoring --output. VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
+- [?] T0204 **Wire or delete dead config keys** (`src/core/Config*.cpp`, `config/default.toml`)
       Five `[recording]` keys (`enabled`, `auto_record`, `record_entire_song`, `restart_track_on_record`, `stop_at_track_end`) + `[suno] embed_metadata` + `[overlay] enabled` — zero consumers each.
+      STATUS/T0204.log: deleted all seven (95f0343) across struct, X-macro tables, default.toml, CONFIG.md, loader test. VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
 - [?] T0205 **`useDefaultPreset` clobber** (`src/core/Application.cpp`)
       Plain `bool` in `AppOptions` cannot distinguish "flag absent" from "flag false", so every launch without `--default-preset` forces `CONFIG.visualizer().useDefaultPreset = false`, erasing config `true`. Fix: `std::optional<bool>`, apply only when present.
       STATUS/T0205.log: optional<bool> field (ffba96f) + apply-only-when-present (ca374a9). VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
