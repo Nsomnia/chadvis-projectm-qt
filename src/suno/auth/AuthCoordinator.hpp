@@ -66,7 +66,19 @@ public:
     /// stayed on the "Finish in your browser" page until the app restarted,
     /// which is the second defect of the reported session.
     void cancelGoogleSignIn();
+    /// Local-only sign-out. Clears the stored credential AND resets this
+    /// coordinator to "signedOut": the old version only cleared the
+    /// credential, so after a sign-out the card could still report the
+    /// stale "browserImported" wait or yesterday's error.
     void signOutSuno();
+    /// The imported session was not accepted (SunoClient went NeedsReauth
+    /// while this coordinator was waiting on the import's verification).
+    /// Converts the "browserImported" wait into a named error so the card
+    /// stops saying "Imported. Verifying" for a verification that already
+    /// failed. No-op from any other state: a NeedsReauth that arrives
+    /// while the user is merely browsing, or after an unrelated failure,
+    /// must not rewrite the state that failure already set.
+    void noteVerificationFailed();
 
     [[nodiscard]] QString googleLoginState() const { return state_; }
     [[nodiscard]] QString googleLoginError() const { return error_; }

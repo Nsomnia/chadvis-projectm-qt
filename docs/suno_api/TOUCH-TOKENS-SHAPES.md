@@ -19,7 +19,8 @@ Body is an object with exactly one member:
 
 This **confirms with a real body** what the inventory only asserted from
 header capture: this route mints the `__session` bearer. `ClerkAuthClient`
-parses `object` → `jwt` → `Authorization: Bearer`. No other members were
+parses the body by member name (`jwt`) and emits the decoded bearer; it
+does not require the body to have exactly one member. No other members were
 observed; treat any future extra members as additive (parse by member name,
 ignore what is not read).
 
@@ -46,7 +47,12 @@ The two routes are **not alternatives; both answered 200 on one working
 session**: `tokens` is the bearer-minting route the client drives; `touch`
 is the client keep-alive the browser drives, and its response happens to
 carry the same bearer. Preference order stays as T0141 prescribes:
-`tokens`-first for the client, `touch` not needed by us today.
+`tokens`-first for the client, with `touch` retained as the fallback when
+`tokens` fails with a protocol or shape error (implemented 2026-10-17,
+below) — not "not needed by us today" as an earlier revision of this file
+said. Neither route is proven sufficient alone (inventory Appendix A), so
+the client treats tokens as preferred and touch as the backup, not as a
+replaced route.
 
 Also captured in the same session (`from the Clerk script chunks`):
 `POST /v1/client/sign_ins` with `strategy: "oauth_google"` and
@@ -55,6 +61,23 @@ OAuth URL, ~1 KB with `state`). This re-confirms T0199's premise — the
 `code` goes to Clerk's redirect, never to a loopback — and that the canary
 redirect_url r pair the app observes (`sso-callback?redirect_url=…` in the
 chunk that builds them) is composed client-side per attempt.
+
+## Implemented (2026-10-17)
+
+The client now implements tokens-first (`ClerkAuthClient::mintBearerViaTokens`,
+`SunoClient::ensureFreshBearer`):
+
+- Known session → `POST /v1/client/sessions/{sid}/tokens`, empty form body,
+  Clerk cookies. 200 body `{ "jwt": ... }` → bearer (expiry validated the
+  same way envelope tokens are).
+- `tokens` failing with a protocol or shape error → one fallback to
+  `touch()` on the same session, same logical exchange (no second
+  user-visible failure). A rejected credential does not fall back —
+  touch would be rejected with the same cookies.
+- Unknown session → `GET /v1/client`, which both discovers the session and
+  returns a bearer, so no second round trip is needed.
+- `touch` stays wired as the fallback only; it is no longer the primary
+  mint route.
 
 ## Risk note
 

@@ -144,6 +144,14 @@ public:
     void setCookie(const std::string& cookie);
     /// Set a raw bearer JWT directly (e.g. pasted into settings).
     void setToken(const std::string& token);
+
+    /// Force a fresh bearer exchange for the currently stored credential,
+    /// even when setCookie() considered it unchanged. Import re-presses
+    /// land here: setCookie() no-ops on an identical header, so without
+    /// this a re-import after a failed verification would kick no network
+    /// request and leave the card on "verifying" forever. Safe to call
+    /// when an exchange is already in flight (it returns early).
+    void reverifyStoredCredential();
     std::string getCookie() const { return credentials_.cookieHeader.toStdString(); }
     QString configuredCredential() const { return configuredCredential_; }
     QString token() const { return bearer_.jwt; }
@@ -404,8 +412,16 @@ private:
     std::atomic<auth::AuthFailureKind> authFailureKind_{auth::AuthFailureKind::None};
     QString lastActiveSessionId_;
     QString deviceId_;
-    QTimer* refreshTimer_;       ///< Proactive touch at expiry-minus-margin.
-    bool touchInFlight_ = false; ///< One Clerk exchange at a time.
+    QTimer* refreshTimer_;       ///< Proactive bearer refresh at expiry-minus-margin.
+    bool clerkExchangeInFlight_ = false; ///< One Clerk exchange at a time.
+    /// The outstanding exchange is a tokens request. Only then may a
+    /// protocol/shape failure fall back to touch (see
+    /// onClerkAuthFailedInternal); a rejected credential must fail at once,
+    /// because touch would be rejected with the same cookies.
+    bool tokensExchangeInFlight_ = false;
+    /// Touch has already been tried as the fallback for the current logical
+    /// exchange, so a second failure is terminal rather than a loop.
+    bool touchFallbackAttempted_ = false;
     bool refreshAfterRestore_ = false;
     quint64 authExchangeEpoch_ = 0;
 

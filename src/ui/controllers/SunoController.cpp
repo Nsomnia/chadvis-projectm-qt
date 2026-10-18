@@ -88,8 +88,30 @@ SunoController::SunoController(AudioEngine* audioEngine, LyricsSync* lyricsSync,
     // --- Connect Signals ---
 
     // Auth state (client runs restore/migrate in its constructor)
-    connect(client_.get(), &SunoClient::needsReauth, this,
-            [this]() { emit authenticationRequired(); });
+    //
+    // The import wait is tracked here, not in the coordinator: the
+    // coordinator's state stays "browserImported" after a successful
+    // verification (the bridge synthesises "authenticated" from the
+    // client), so the coordinator alone cannot tell a verification that
+    // is still pending from one that succeeded an hour ago. This flag
+    // is set by the coordinator's own state transitions and cleared by
+    // the client's verdict — ActiveValid (verified) or Disconnected
+    // (abandoned) — so a later NeedsReauth from an expired bearer never
+    // masquerades as a failed import.
+    connect(authCoordinator_.get(), &auth::AuthCoordinator::stateChanged, this,
+            [this](const QString& state) {
+                importVerificationPending_ = (state == QStringLiteral("browserImported"));
+            });
+    connect(client_.get(), &SunoClient::needsReauth, this, [this]() {
+        // A verification that fails while an import is waiting must land
+        // on the card: without this the card keeps saying "Imported.
+        // Verifying" for a verification that already failed, because the
+        // coordinator never hears about SunoClient's verdict.
+        if (importVerificationPending_ && authCoordinator_) {
+            authCoordinator_->noteVerificationFailed();
+        }
+        emit authenticationRequired();
+    });
     connect(client_.get(), &SunoClient::authFailureKindChanged, this,
             &SunoController::authFailureKindChanged);
     connect(client_.get(), &SunoClient::authStateChanged, this, [this]() {
@@ -97,6 +119,10 @@ SunoController::SunoController(AudioEngine* audioEngine, LyricsSync* lyricsSync,
             case auth::AuthState::ActiveValid:
                 emit statusMessage("Suno authentication active");
                 emit authenticationSuccess();
+                // The import's verification succeeded: the wait is over,
+                // and a later NeedsReauth must not be mistaken for a
+                // failed import (see the pending-flag note above).
+                importVerificationPending_ = false;
                 // Session catalog + billing bootstrap (once per activation).
                 if (accountManager_) {
                     accountManager_->refreshAll();
@@ -108,6 +134,14 @@ SunoController::SunoController(AudioEngine* audioEngine, LyricsSync* lyricsSync,
                 }
                 break;
             case auth::AuthState::Disconnected:
+                // A disconnect while an import is waiting (a sign-out
+                // landing here from another path) abandons the wait
+                // instead of stranding it on "Imported. Verifying".
+                importVerificationPending_ = false;
+                if (authCoordinator_ &&
+                    authCoordinator_->googleLoginState() == QStringLiteral("browserImported")) {
+                    authCoordinator_->cancelGoogleSignIn();
+                }
                 if (accountManager_) {
                     accountManager_->clearSnapshots();
                 }

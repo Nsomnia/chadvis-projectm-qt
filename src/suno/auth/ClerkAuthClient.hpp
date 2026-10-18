@@ -73,6 +73,16 @@ public:
     /// POST a touch for `sessionId` to mint a fresh bearer token.
     void touch(const Credentials& creds, const QString& sessionId);
 
+    /// POST `sessions/{sessionId}/tokens` and emit bearerReady() with the
+    /// minted bearer, or authFailed().
+    ///
+    /// The tokens-first bearer route (T0141, `docs/suno_api/TOUCH-TOKENS-
+    /// SHAPES.md`): the 2026-09-24 capture shows an empty form body and a
+    /// 200 response of exactly `{ "jwt": "<bearer>" }`. The caller
+    /// (SunoClient) falls back to touch() when this fails with a protocol
+    /// or shape error, because neither route is proven sufficient alone.
+    void mintBearerViaTokens(const Credentials& creds, const QString& sessionId);
+
     /// Classification of the most recently completed request. Reset to None
     /// when a request starts and after a successful bearer exchange.
     [[nodiscard]] AuthFailureKind failureKind() const noexcept { return failureKind_; }
@@ -86,24 +96,33 @@ private:
 
     /// Everything a reply handler needs for one logical request.
     struct CallContext {
+        /// Which route this reply belongs to: the body parser is chosen by
+        /// it (the tokens `{jwt}` shape is not an envelope).
+        enum class Kind { FetchBearer, Touch, Tokens };
         Credentials creds;
         QString sessionId; ///< Empty for fetchBearer.
+        Kind kind = Kind::FetchBearer;
     };
 
     void startClientFetch(CallContext ctx);
     void startTouch(CallContext ctx);
+    void startTokens(CallContext ctx);
 
     /// Arm the response cap, issue the request, and wire the pump. Returns
     /// nullptr (after emitting a named failure) when a cap could not be
     /// established -- a body we cannot bound must not be requested at all.
+    /// `ctx` is retained until the reply finishes so handleReply can
+    /// dispatch on the route that produced it.
     QNetworkReply* startBounded(const QNetworkRequest& request,
-                                const std::optional<QByteArray>& postBody);
+                                const std::optional<QByteArray>& postBody,
+                                CallContext ctx);
 
     /// One incremental, bounded read of whatever the reply currently holds.
     void pumpBody(QNetworkReply* reply);
 
     void handleReply(QNetworkReply* reply);
     void handleEnvelopeBody(const QByteArray& body, const CallContext& ctx);
+    void handleTokensBody(const QByteArray& body, const CallContext& ctx);
 
     [[nodiscard]] static AuthFailureKind classifyHttpFailure(int status) noexcept;
     [[nodiscard]] static QString httpFailureReason(int status);
@@ -125,6 +144,10 @@ private:
     /// than slurped in `finished()`. This is the response cap; the entry is erased
     /// in handleReply and the whole map cleared in abortInflight().
     QHash<QNetworkReply*, vc::suno::http::BodyReader> readers_;
+
+    /// One context per in-flight reply, same lifecycle as readers_: retained
+    /// in startBounded so handleReply knows which route a body came from.
+    QHash<QNetworkReply*, CallContext> contexts_;
 
     QString lastObservedSessionId_;
 

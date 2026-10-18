@@ -3,6 +3,8 @@
 #include "suno/auth/JwtUtils.hpp"
 #include <QtTest>
 
+#include <QSignalSpy>
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -22,6 +24,14 @@ public:
     static void processEnvelope(ClerkAuthClient& client, const QByteArray& body)
     {
         client.handleEnvelopeBody(body, ClerkAuthClient::CallContext{});
+    }
+
+    static void processTokensBody(ClerkAuthClient& client, const QByteArray& body,
+                                  const QString& sessionId)
+    {
+        client.handleTokensBody(
+            body, ClerkAuthClient::CallContext{Credentials{}, sessionId,
+                                                ClerkAuthClient::CallContext::Kind::Tokens});
     }
 
     static QNetworkRequest makeRequest(const QUrl& url, const Credentials& credentials,
@@ -109,6 +119,29 @@ ParseOutcome parseBody(const QByteArray& body)
                      });
 
     ClerkAuthClientTestAccess::processEnvelope(client, body);
+    outcome.sessionId = ClerkAuthClientTestAccess::lastObservedSessionId(client);
+    outcome.failureKind = client.failureKind();
+    return outcome;
+}
+
+/// The tokens-body counterpart of parseBody: feeds a `{ "jwt": ... }` body
+/// through the tokens parser and reports what it emitted.
+ParseOutcome parseTokensBody(const QByteArray& body, const QString& sessionId)
+{
+    ClerkAuthClient client;
+    ParseOutcome outcome;
+    QObject::connect(&client, &ClerkAuthClient::bearerReady, &client,
+                     [&outcome](const BearerToken& bearer) {
+                         ++outcome.bearerCount;
+                         outcome.bearer = bearer;
+                     });
+    QObject::connect(&client, &ClerkAuthClient::authFailed, &client,
+                     [&outcome](const QString& reason) {
+                         ++outcome.failureCount;
+                         outcome.error = reason;
+                     });
+
+    ClerkAuthClientTestAccess::processTokensBody(client, body, sessionId);
     outcome.sessionId = ClerkAuthClientTestAccess::lastObservedSessionId(client);
     outcome.failureKind = client.failureKind();
     return outcome;
@@ -415,6 +448,87 @@ private slots:
         QVERIFY(!outcome.error.contains(queryCanary));
         QVERIFY(!ClerkAuthClientTestAccess::httpFailureReason(401).contains(cookieCanary));
         QVERIFY(!ClerkAuthClientTestAccess::httpFailureReason(401).contains(queryCanary));
+    }
+
+    /// The tokens route's `{ "jwt": ... }` body parses to a bearer, and the
+    /// observed session is the one the call asked about — the body names no
+    /// session itself, and the caller (SunoClient's touch fallback) needs
+    /// one to name.
+    void tokensBodyParses()
+    {
+        const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
+        const QString jwt = fakeJwt(QStringLiteral("tokens-session"), expiry);
+        const QByteArray body = jsonBody({{"jwt", jwt}});
+
+        const ParseOutcome outcome = parseTokensBody(body, QStringLiteral("sess_tokens"));
+        verifySuccess(outcome, QStringLiteral("tokens-session"), expiry);
+        QCOMPARE(outcome.sessionId, QStringLiteral("sess_tokens"));
+    }
+
+    /// A tokens body without a usable `jwt` is a shape error, not a bearer:
+    /// missing, non-string, and empty all fail the same way, and none of
+    /// them may be mistaken for an envelope (which would fail differently).
+    void tokensBodyWithoutJwtIsMalformed()
+    {
+        for (const QByteArray& body :
+             {jsonBody({}), jsonBody({{"jwt", 123}}), jsonBody({{"jwt", QString()}}),
+              jsonBody({{"response", QJsonObject{}}})}) {
+            const ParseOutcome outcome =
+                parseTokensBody(body, QStringLiteral("sess_tokens"));
+            QCOMPARE(outcome.bearerCount, 0);
+            QCOMPARE(outcome.failureCount, 1);
+            QCOMPARE(outcome.failureKind, AuthFailureKind::MalformedResponse);
+            QCOMPARE(outcome.error, QStringLiteral("unexpected Clerk response shape"));
+        }
+    }
+
+    /// A tokens body is parsed by member name: future additive members must
+    /// not turn a working mint into a shape error.
+    void tokensBodyIgnoresExtraMembers()
+    {
+        const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
+        const QString jwt = fakeJwt(QStringLiteral("tokens-extra"), expiry);
+        const QByteArray body =
+            jsonBody({{"jwt", jwt}, {"object", "session_token"}, {"future", true}});
+
+        const ParseOutcome outcome = parseTokensBody(body, QStringLiteral("sess_tokens"));
+        verifySuccess(outcome, QStringLiteral("tokens-extra"), expiry);
+    }
+
+    /// An expired tokens JWT is rejected with the same expiry failure as an
+    /// expired envelope token, and the JWT value never appears in the error.
+    void tokensBodyWithExpiredJwtReportsExpiry()
+    {
+        const QString jwt = fakeJwt(QStringLiteral("tokens-expired"),
+                                    QDateTime::currentSecsSinceEpoch() - 60);
+        const QByteArray body = jsonBody({{"jwt", jwt}});
+
+        const ParseOutcome outcome = parseTokensBody(body, QStringLiteral("sess_tokens"));
+        QCOMPARE(outcome.bearerCount, 0);
+        QCOMPARE(outcome.failureCount, 1);
+        QCOMPARE(outcome.failureKind, AuthFailureKind::ProtocolMismatch);
+        QVERIFY(!outcome.error.contains(jwt));
+    }
+
+    /// The tokens entry point validates before any network request, the way
+    /// touch() does: no session id is a protocol error, no credential is
+    /// a missing-session error, and neither emits a bearer.
+    void tokensRequestRequiresSessionIdAndCredential()
+    {
+        ClerkAuthClient client;
+        QSignalSpy failures(&client, &ClerkAuthClient::authFailed);
+        QSignalSpy bearers(&client, &ClerkAuthClient::bearerReady);
+
+        const Credentials creds{QStringLiteral("__client=x")};
+        client.mintBearerViaTokens(creds, QStringLiteral(""));
+        QCOMPARE(failures.count(), 1);
+        QCOMPARE(client.failureKind(), AuthFailureKind::ProtocolMismatch);
+
+        client.mintBearerViaTokens(Credentials{}, QStringLiteral("sess_1"));
+        QCOMPARE(failures.count(), 2);
+        QCOMPARE(client.failureKind(), AuthFailureKind::NoActiveSession);
+
+        QCOMPARE(bearers.count(), 0);
     }
 };
 

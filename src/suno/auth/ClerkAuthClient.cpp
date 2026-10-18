@@ -185,6 +185,30 @@ std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByt
     return ParsedEnvelope{*bearer, candidate->sessionId};
 }
 
+/// Parse the tokens route's `{ "jwt": ... }` body. Unlike the envelope
+/// parser this has no session to select: the caller asked about one
+/// session, and the JWT's own `sid` claim is what SunoClient reads back
+/// out of it. Extra members are ignored, not rejected: the capture shows
+/// exactly one member today, and a future additive member must not turn a
+/// working mint into a shape error.
+std::expected<BearerToken, EnvelopeParseError> parseTokensBody(const QByteArray& body)
+{
+    QJsonParseError parseError{};
+    const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return std::unexpected(malformedResponse());
+    }
+    const QString jwt = doc.object()[QStringLiteral("jwt")].toString();
+    if (jwt.isEmpty()) {
+        return std::unexpected(malformedResponse());
+    }
+    auto bearer = decodeUsableBearer(jwt);
+    if (!bearer) {
+        return std::unexpected(bearer.error());
+    }
+    return *bearer;
+}
+
 /// The three Clerk cookie families relevant to the captured sign-in flow,
 /// longest first. Clerk **instance-key-suffixes** the name it writes, so family
 /// membership is a prefix test and never equality: the 2026-08-25 capture puts
@@ -350,6 +374,9 @@ void ClerkAuthClient::abortInflight() {
     // than leaving it to the reply's deletion is what keeps a torn-down client
     // from holding that much until the last reply dies.
     readers_.clear();
+    // Contexts share the readers' lifecycle: a torn-down client must not
+    // keep per-reply state for replies it just aborted.
+    contexts_.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -378,7 +405,24 @@ void ClerkAuthClient::touch(const Credentials& creds, const QString& sessionId) 
                     QStringLiteral("touch request requires a session id"));
         return;
     }
-    startTouch(CallContext{std::move(normalized), sessionId});
+    CallContext ctx{std::move(normalized), sessionId, CallContext::Kind::Touch};
+    startTouch(std::move(ctx));
+}
+
+void ClerkAuthClient::mintBearerViaTokens(const Credentials& creds, const QString& sessionId) {
+    failureKind_ = AuthFailureKind::None;
+    Credentials normalized{normalizeCookieHeader(creds.cookieHeader)};
+    if (normalized.cookieHeader.isEmpty()) {
+        emitFailure(AuthFailureKind::NoActiveSession, noActiveSessionReason());
+        return;
+    }
+    if (sessionId.isEmpty()) {
+        emitFailure(AuthFailureKind::ProtocolMismatch,
+                    QStringLiteral("tokens request requires a session id"));
+        return;
+    }
+    CallContext ctx{std::move(normalized), sessionId, CallContext::Kind::Tokens};
+    startTokens(std::move(ctx));
 }
 
 // ---------------------------------------------------------------------------
@@ -417,19 +461,31 @@ static QString sessionUrl(const QString& sessionId, const QString& action) {
 }
 
 void ClerkAuthClient::startClientFetch(CallContext ctx) {
+    ctx.kind = CallContext::Kind::FetchBearer;
     (void)startBounded(
             makeRequest(QUrl(QStringLiteral("%1/client").arg(AUTH_BASE)), ctx.creds, false),
-            std::nullopt);
+            std::nullopt, std::move(ctx));
 }
 
 void ClerkAuthClient::startTouch(CallContext ctx) {
+    ctx.kind = CallContext::Kind::Touch;
     (void)startBounded(
             makeRequest(QUrl(sessionUrl(ctx.sessionId, QStringLiteral("touch"))), ctx.creds, true),
-            QByteArrayLiteral("intent=focus"));
+            QByteArrayLiteral("intent=focus"), std::move(ctx));
+}
+
+void ClerkAuthClient::startTokens(CallContext ctx) {
+    ctx.kind = CallContext::Kind::Tokens;
+    // Captured shape (2026-09-24): POST, form-urlencoded, EMPTY body. The
+    // empty QByteArray is has_value on purpose: nullopt would send a GET.
+    (void)startBounded(
+            makeRequest(QUrl(sessionUrl(ctx.sessionId, QStringLiteral("tokens"))), ctx.creds, true),
+            QByteArray{}, std::move(ctx));
 }
 
 QNetworkReply* ClerkAuthClient::startBounded(const QNetworkRequest& request,
-                                             const std::optional<QByteArray>& postBody) {
+                                             const std::optional<QByteArray>& postBody,
+                                             CallContext ctx) {
     auto reader = http::makeBodyReader(http::RequestClass::Auth,
                                        http::maxResponseBytes(http::RequestClass::Auth));
     if (!reader) {
@@ -445,6 +501,7 @@ QNetworkReply* ClerkAuthClient::startBounded(const QNetworkRequest& request,
             postBody.has_value() ? nam_->post(request, *postBody) : nam_->get(request);
     inflight_.push_back(reply);
     readers_.insert(reply, *reader);
+    contexts_.insert(reply, std::move(ctx));
 
     // Drain on readyRead, not at finished(). This is the difference between a cap
     // and a post-hoc check: an origin streaming forever is aborted one chunk past
@@ -536,6 +593,10 @@ void ClerkAuthClient::handleReply(QNetworkReply* reply) {
 
     reply->deleteLater();
     inflight_.removeOne(reply);
+    // The route this reply belongs to decides which body parser runs. A
+    // missing entry defaults to the envelope path, which is the shape the
+    // two envelope routes share; tokens replies always carry theirs.
+    const CallContext ctx = contexts_.take(reply);
 
     if (capFailure.has_value()) {
         // Protocol mismatch, not a credential problem: an origin answering with
@@ -546,11 +607,30 @@ void ClerkAuthClient::handleReply(QNetworkReply* reply) {
     }
 
     if (ok) {
-        handleEnvelopeBody(body, {});
+        if (ctx.kind == CallContext::Kind::Tokens) {
+            handleTokensBody(body, ctx);
+        } else {
+            handleEnvelopeBody(body, ctx);
+        }
         return;
     }
 
     emitFailure(classifyHttpFailure(status), httpFailureReason(status));
+}
+
+void ClerkAuthClient::handleTokensBody(const QByteArray& body, const CallContext& ctx) {
+    auto tokens = parseTokensBody(body);
+    if (!tokens) {
+        emitFailure(tokens.error().kind, tokens.error().reason);
+        return;
+    }
+
+    // The tokens body names no session; the session is the one this call
+    // asked about, and it is what SunoClient's fallback (touch) needs if a
+    // later exchange has to name one.
+    lastObservedSessionId_ = ctx.sessionId;
+    failureKind_ = AuthFailureKind::None;
+    emit bearerReady(*tokens);
 }
 
 void ClerkAuthClient::handleEnvelopeBody(const QByteArray& body, const CallContext&) {
