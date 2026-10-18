@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-10-14
+updated: 2026-10-18
 ---
 
 # ChadVis backlog
@@ -1045,3 +1045,227 @@ A task is not complete from a stale binary, a declaration, a scan string, or a h
 5. **A green run is not evidence for GL, burn-in, or audio.** Those tests skip on a headless runner and ctest
    counts a skip as success. Anything in those subsystems needs a real runtime observation or a human on a screen.
 6. Record user-visible or behavioural outcomes in [`CHANGELOG.md`](CHANGELOG.md).
+
+## Additions from 2026-10-18 agent-memory parse
+
+Source: full-repo agent-memory parse at clone HEAD `4e8deab` (2026-10-18).
+Entries compressed to board grammar; each entry's fix is summarized inline.
+Skipped as duplicates of already-tracked items: poster-frame export (T0125),
+library sort/filter UI (T0128), notification polling (T0067 — new polling entry
+below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
+`pixel_format` / `fromConfig()` detail (T0171), `encodeAudio` O(n²) (T0162).
+
+### P0 — the product is broken, data is corrupted, or a secret is exposed
+
+- [ ] T0200 **Production `SunoDownloader` never emits `fileSaved`** (`src/suno/SunoDownloader.cpp`) #risk-high
+      Prod ctor never connects `finalizeFinished`; transferred files never auto-play. Fix: connect in prod ctor + add a test constructing via prod ctor.
+- [ ] T0201 **Mutations `Rejected` unreachable** (`src/suno/SunoLibraryMutations.cpp`) #risk-high
+      `transportReason()` never returns empty, so every non-2xx settles as `Failed` (retryable) and server `detail` is never delivered. Fix: check HTTP status first, `Rejected` for 4xx with `rejectionReason(body)`, `Failed` only for transport/no-status.
+- [ ] T0202 **`SunoDownloader::embeddedSunoId` unchecked `fieldList()[1]`** (`src/suno/SunoDownloader.cpp`) #risk-high
+      TXXX frame with description but no value → out-of-bounds read. Fix: guard `size() >= 2` (test helper already guards).
+
+### P1 — correctness / robustness
+
+- [ ] T0203 **Wire or delete five dead CLI paths** (`src/core/CliArgs.inc`, `src/core/Application.cpp`)
+      `--preset`, `--output`, `--suno-id`, `--record` (GUI), positional input files. Help advertises them; none has a consumer.
+- [ ] T0204 **Wire or delete dead config keys** (`src/core/Config*.cpp`, `config/default.toml`)
+      Five `[recording]` keys (`enabled`, `auto_record`, `record_entire_song`, `restart_track_on_record`, `stop_at_track_end`) + `[suno] embed_metadata` + `[overlay] enabled` — zero consumers each.
+- [ ] T0205 **`useDefaultPreset` clobber** (`src/core/Application.cpp`)
+      Plain `bool` in `AppOptions` cannot distinguish "flag absent" from "flag false", so every launch without `--default-preset` forces `CONFIG.visualizer().useDefaultPreset = false`, erasing config `true`. Fix: `std::optional<bool>`, apply only when present.
+- [ ] T0206 **Normal exit skips `Application::quit()`** (`src/core/Application.cpp`)
+      Window close / `Qt.quit()` bypass `last_session.m3u` save + `CONFIG.save-if-dirty`. Fix: move persistence to `aboutToQuit` handler.
+- [ ] T0207 **Generate help/completion/topic text from `CliArgs.inc`** (`src/core/CliArgs.inc`, `src/core/HelpSystem.cpp`)
+      Use `CliArg`; fix `printHelp` docs URL `yourusername` → `Nsomnia`; fix completion staleness (completion lacks `--visualizer-fps` etc.).
+- [ ] T0208 **Unknown-config-key warnings + `--dump-config` / `--print-config`** (`src/core/ConfigLoader.cpp`, `src/core/CliArgs.inc`)
+      Typo'd config key silently yields default and vanishes on save. Add parse-time `LOG_WARN` per section + a flag printing effective config and exiting.
+- [ ] T0209 **Missing clamps/validations** (`src/core/ConfigParsers.cpp`)
+      `[audio]` (both keys), `[karaoke]` `font_size`/`y_position`/`bold`/colors, `[overlay]` `opacity`/`font_size`/`animation_speed`/`anchor`, `[keyboard]`, `[visualizer] preset_duration`, `[recording]` strings (`container`, `codec`, `preset`, `pixel_format` — no allow-list). Minimum: clamp `karaoke.y_position` 0–1, `karaoke.font_size` sane range, `overlay.opacity` 0–1, validate `anchor`/`container`/`pixel_format` against known sets with warning on unknown.
+- [ ] T0210 **Fix `default.toml` drift** (`config/default.toml`)
+      `theme='dark'` vs struct `'material'`; float precision artifacts (`0.69999998807907104` etc. — write `0.7`, `0.02`, `0.95`, `0.9`, `0.05`); template ≠ generated config (template promises 2 overlay elements, `preset_path=''`, `~/Videos/ChadVis`; generated has zero overlays, resolved-absolute `preset_path`, `<dataDir>/recordings`); three defaults for `recording.output_directory`. Collapse to one.
+- [ ] T0211 **CLI parsing defects** (`src/core/CliArgs.cpp`)
+      Empty-`argv` UB (`arg[0]` on empty `string_view`); `stoi`/`stof` prefix parsing (`--visualizer-fps 12x` → 12 — validate whole token via `std::from_chars` + full-consumption); `stoi -1` → `u32` 4294967295 before clamp; unknown-option suggestion misses short names + `--help`/`--version`/`--help-topics`/`--generate-completion`; `findClosestMatch` Hamming + length diff, threshold ≤3 (transpositions cost 2); `--help <bad-topic>` exits 0; `--generate-completion <bad-shell>` exits 0.
+- [ ] T0212 **`FileUtils::writeText` weaker than `ConfigLoader::save`** (`src/core/FileUtils.cpp`)
+      No fsync, no 0600, no Windows replace handling. Upgrade or document "not durable".
+- [ ] T0213 **Bad-config `markDirty()` contradiction** (`src/core/ConfigLoader.cpp`)
+      Corrupt `config.toml` marked dirty then overwritten on quit (signal path), contradicting "not overwritten / only on next settings save" comment. Decide one behavior, make comment match.
+- [ ] T0214 **Overlay `position` partial-table asymmetry** (`src/core/ConfigParsers.cpp`)
+      Missing `x`/`y` → `0.0`, missing table → `0.5,0.5`. Fix `parseVec2` default to `{0.5,0.5}` in overlay path.
+- [ ] T0215 **401-only retry asymmetry** (`src/suno/SunoClient.cpp`)
+      `handleReplyFinished` retries only 401; 403 (also `isAuthFailure`) goes straight to `handleNetworkError` → `NeedsReauth` with no refresh attempt.
+- [ ] T0216 **No 429/430/5xx handling in `SunoClient`/`ClerkAuthClient`** (`src/suno/SunoClient.cpp`)
+      429 with JSON error body flows into `handleJsonReply` → parsed as if success. Add backoff, `Retry-After` read, user-facing quota sentence.
+- [ ] T0217 **Mutations races** (`src/suno/SunoLibraryMutations.cpp`) #risk-medium
+      Unbounded concurrency, no per-subject serialisation, last-write-wins by COMPLETION order; no dedup/coalescing; gate/switch TOCTOU; `setEnabled(false)` mid-flight does not cancel; destroyed-mid-flight `QPointer` guard drops reply silently with no settlement + `inFlight_` leak; `handleReply` double-entry unguarded.
+- [ ] T0218 **`SunoLibraryManager` races** (`src/suno/SunoLibraryManager.cpp`)
+      `page>1` refresh path can leave sync never-settled if `hasMorePages_` false; manual `requestNextPage()` during 1.1 s auto-page timer races timer; `errorOccurred` fires for ANY client error while `isSyncing_`; second `refreshLibrary` silently dropped, no queueing.
+- [ ] T0219 **`SunoLyricsManager` races** (`src/suno/SunoLyricsManager.cpp`)
+      Jitter uses `rand()` (global, unseeded, not thread-safe); `needsReauth` clears queue but already-scheduled `QTimer::singleShot` callbacks still fire; progress accounting never resets (`totalLyricsToFetch_` only grows; in-flight items counted as processed).
+- [ ] T0220 **`SunoExploreManager` races** (`src/suno/SunoExploreManager.cpp`)
+      No dedup — repeated/overlapping cursor pages duplicate feeds/clips; `refresh()`/`authStateChanged` interplay can strand in-flight `reloadStoredCredentials` outcome.
+- [ ] T0221 **Notifications: good list discarded, `markAllRead()` blocked** (`src/suno/SunoNotificationService.cpp`)
+      List reply succeeds but badge reply fails → `failRefresh` discards good list; `markAllRead()` blocked whenever `loading_` true.
+- [ ] T0222 **`SunoAccountManager`: duplicate refreshes, reply-time auth check** (`src/suno/SunoAccountManager.cpp`)
+      No in-flight guard; handlers check `isAuthenticated()` at reply time, not request time. Also: handlers never check HTTP status.
+- [ ] T0223 **`SunoController::directLyricsCache_` unbounded** (`src/suno/SunoController.cpp`)
+      Grows one entry per fetched clip, never cleared.
+- [ ] T0224 **DB error handling** (`src/suno/SunoDatabase.cpp`)
+      `getAllClips` exec failure ignored → `ok(empty)`; `saveAlignedLyrics` to nonexistent id succeeds silently; `hasLyrics` exec failure → `false`; migration failures `LOG_ERROR`-only, init still succeeds.
+- [ ] T0225 **`SunoWorkspace::workspaceId_` collision + non-atomic save** (`src/suno/SunoWorkspace.cpp`)
+      MD5 of date-only string; two workspaces same day share id; `loadWorkspace` ignores stored id. Save is trunc + write, no temp-file/rename/fsync.
+- [ ] T0226 **Wire or delete `SunoWorkspace`** (`src/suno/SunoWorkspace.cpp`)
+      Never instantiated outside tests — entire local-creation surface unreachable in shipped app.
+- [ ] T0227 **Wire or delete callerless subsystems** (`src/lyrics/LyricTiming.*`, `src/audio/LoudnessAnalysis.*`)
+      `LyricTiming` (pins, reflow, nudges, undo, plausibility, `.chadtiming` TOML — no QML bridge, no UI, no `LyricsData` conversion) and `LoudnessAnalysis` (full BS.1770 implementation, no caller).
+- [ ] T0228 **No lyric offset** (`src/lyrics/LyricsSync.*`, `qml/`)
+      No global/per-track karaoke delay/offset config or UI, no sync calibration.
+- [ ] T0229 **LRC line-level only** (`src/lyrics/LyricsAligner.cpp`)
+      Multi-timestamp lines, `[offset:]`, `[ti/ar/al/by]` tags, A2 word-level tags unsupported; last LRC line gets fabricated `+5 s` end.
+- [ ] T0230 **Karaoke rendering: no per-word timing for LRC/SRT, no ASS style config** (`src/lyrics/LyricsExport.cpp`)
+      Words list empty → no karaoke sweep, only line highlight; ASS style/font/size hardcoded (Arial 60 @ 1920×1080 in `toAssDocument`); `KaraokeConfig` (font/colors/y-position) separate QML-side config not wired to ASS writer.
+- [ ] T0231 **No crossfade; no true gapless** (`src/audio/AudioEngine.cpp`)
+      `swapPlayers()` instant cut; preload reduces warm-up but no overlap/sample-accurate handoff; no gapless toggle/test.
+- [ ] T0232 **No EQ/effects; no per-track gain/fade/mute; no resampler** (`src/audio/AudioEngine.cpp`)
+      No EQ bands, bass/treble, balance, compressor, limiter, reverb, loudness button; no per-track gain, fade-in/out, mute state, volume persistence; 44.1 kHz sink PCM fed as-is; surround truncated; UInt8/Int32 sinks drop all audio.
+- [ ] T0233 **Preset: no preview/editor/per-preset duration/hotkeys/beat signal/load-error** (`src/visualizer/`)
+      No preset preview/thumbnail, preset editor, per-preset duration/transition override, preset hotkeys beyond Next/Prev, beat/BPM signal out, preset-load error signal (`loadPreset` returns void).
+- [ ] T0234 **MilkDrop compat: none beyond extension** (`src/visualizer/PresetManager.cpp`)
+      No `.milk` parsing/validation, version/preset-format check, warning for presets projectM v4 cannot render.
+- [ ] T0235 **`PresetManager` O(n) copies/search; `playCount` write-only** (`src/visualizer/PresetManager.cpp`)
+      `setFavorite`/`setBlacklisted` copy-on-write O(n) full-list copy per toggle; `search` O(n) per keystroke, no index; `selectByName` up to 3 linear passes; `playCount` incremented but never persisted/displayed/sorted/filtered/reset.
+- [ ] T0236 **`RatingManager` singleton, unsynchronised, no auto-save; name-keyed collisions** (`src/visualizer/RatingManager.cpp`, `src/qml_bridge/PresetBridge.cpp`)
+      Unsynchronised map, no auto-save; `setRating` rejects 0 so ratings never clearable from QML; name-keyed fav/blacklist/rating: same-stem presets in different folders collide; renaming file loses fav/blacklist/rating/play-count.
+- [ ] T0237 **Settings coverage gaps (config exists, no UI)** (`qml/panels/settings/`)
+      `[recording]` auto_record / record_entire_song / restart_track_on_record / stop_at_track_end / output_directory / default_filename / container, `[recording.video]` pixel_format / gop_size / b_frames, `[recording.audio]` sample_rate / channels, `[suno]` auto_download / save_lyrics / embed_metadata / download_format, `[visualizer]` force_preset / use_default_preset / hard_cut_sensitivity / preset_path / texture_paths, `[karaoke]` font_family / font_size / bold / colors, keyboard editor, overlay enable/disable + per-element editor (currently JSON-only via OverlayPanel, `[overlay]` config orphaned — pick ONE store and delete other).
+- [ ] T0238 **Duplication: palette block, two "current preset" sources, two overlay colour systems** (`qml/`)
+      `main.qml` palette block vs `SettingsWindow.qml` palette block (identical 19-line mapping, hand-synced — extract to shared component/function); two "current preset" sources (`VisualizerBridge.currentPreset` vs `PresetBridge.currentPreset` — pick one source of truth); two overlay colour systems (OverlayPanel 12-colour palette vs Theme); `AppearancePage.qml:32` hardcodes theme names — generate from `Theme.availableThemeIds()`.
+- [ ] T0239 **Accessibility** (`qml/`)
+      `Accessible.*` in only 31 lines across 12 files. Missing: all `panels/settings/*` controls, `TransportBar`, `PresetsPanel` stars/buttons, `OverlayPanel`, `RecordingPanel`, `SunoPanel`, `VideoView` dock tabs, `Create`/`Discover`/`Notifications` views. `AppSwitch`/`AppSlider`/`AppComboBox`/`SettingSpinRow` have no accessibility hooks. No visible focus indicator audit; no font-size / UI-scale setting; no reduced-motion setting; no keyboard navigation into `GridView`/`ListView` delegates.
+- [ ] T0240 **Keyboard shortcuts** (`qml/main.qml`)
+      Implemented in `main.qml:560-665` + unconditional `F11`, `Escape` (fullscreen-only), hardcoded `M` (rail toggle). All disabled while `settingsWindow.visible`. Missing: mute/volume, next/prev view, open Settings, karaoke toggle, preset search focus. `M` undocumented (not in Shortcuts page, not in Config — hardcoded, unremappable, invisible). Shortcuts page lists only 7 Config keys; `F11`, `Escape`, `M` missing. No keybinding editor (`QKeySequenceEdit`-style capture + conflict check + persistence).
+- [ ] T0241 **Theme gaps: no light theme, no per-token editor, no export** (`qml/theme/`)
+      NO light theme (branching exists, no definition exercises it — light-mode ramp unproven); NO per-token custom editor (Phase 4): only accent + background editable; NO "Export as theme" button; `Theme.qml` fallback literals `#00bcd4`/`#1a1a1a` intentional, keep.
+- [ ] T0242 **Chapters from `RenderJob.scenes[]`** (`src/recorder/`)
+      Scenes ARE chapter data (preset name + duration) — emit `AVChapter` entries from scenes, opt-in via `[recording] chapters = true`.
+- [ ] T0243 **Pause/resume recording: NO state, NO API** (`src/recorder/VideoRecorderCore.*`)
+      `RecordingState` has no `Paused`. For a music-video tool, pause-on-track-change / resume is real workflow (cf. `restart_track_on_record`, `stop_at_track_end` keys that DO exist).
+- [ ] T0244 **Disk-space preflight: none** (`src/recorder/`)
+      No free-space check before 3-min render. `ENOSPC` classified Permanent only AFTER render fails. Preflight (`statvfs` × expected size estimate) in `VideoRecorder::start` / `RenderQueue::enqueue` would fail fast.
+- [ ] T0245 **Audio-only / video-only toggles: NO config key** (`src/recorder/`)
+      Missing codec → silent video-only fallback exists but accidental; no audio-without-video path. Explicit `[recording] audio_enabled / video_enabled` would make fallback intentional + testable.
+- [ ] T0246 **Output filename tokens: `{date}`/`{time}` only** (`src/recorder/EncoderSettings.cpp`)
+      Add `{title}`, `{artist}`, `{preset}`, `{codec}`, `{resolution}`. `formatDefaultFilename` is seam.
+- [ ] T0247 **10-bit / HDR: `p010le` schema-legal but encoder-hardcoded YUV420P kills it** (`src/recorder/`)
+      No HDR metadata (Mastering Display / Content Light Level) anywhere. Phase-2 (after T0171).
+- [ ] T0248 **`CHADVIS_*_FIELDS` X-macros: 5 hand-handled keys + `general.debug` + overlay elements outside tables** (`src/core/Config*.cpp`, `tests/`)
+      "Single source" claim is 90% true. Compile-time or test-time check that every struct member has a table entry; keep + extend `roundTripPreservesEveryField` for every new field.
+- [ ] T0249 **Header-essay dedup** (`src/recorder/`, `docs/dev/TESTING.md`)
+      macOS drawable finding narrated in full in `OffscreenRenderSpike.hpp`, `RenderQueue.hpp`, AND `RenderExecutor.hpp`. Keep essay in ONE home (spike header), replace other two with 3-line pointer + one number that matters locally (ceiling=1; writeFailed sticky). Same for `sws`/`swr`/`ENOSPC` lore across `VideoRecorderFFmpeg.hpp` + `RenderQueue.hpp` + `TESTING.md`. Do not strip rationale — strip repetition.
+- [ ] T0250 **Rationale essays in headers** (`src/audio/LoudnessAnalysis.hpp`, `src/lyrics/LyricTiming.hpp`, `src/lyrics/LyricsExport.*`, `src/visualizer/Playlist.hpp`, `src/visualizer/PresetManager.hpp`, `src/audio/AudioEngine.hpp`, `src/lyrics/LyricsData.hpp`, `src/lyrics/LyricsSync.hpp`)
+      `LoudnessAnalysis.hpp` + `LyricTiming.hpp` ~70–80% rationale essays: move rationale to `docs/dev/` companion, keep terse header. Same pattern smaller in the other headers. `LyricsExport` ASS rationale split across header + cpp — consolidate into header.
+- [ ] T0251 **`SunoClient.cpp` / `ClerkAuthClient.cpp` / `CredentialStore.cpp` long explanatory comments** (`src/suno/`)
+      Some 30–60 lines per decision, with full bug archaeology. Keep one canonical "decision log" per invariant in doc, trim call-site comments to one-line pointer.
+- [ ] T0252 **TODO.md grammar: essays inside entries repeat code comments** (`TODO.md`)
+      Rule: TODO entry = one-line problem + one-line fix + file:line + risk tag. Long archaeology moves to `docs/backlog/TXXXX.md` (one file per item, linked from TODO.md). Keep TODO.md as index, not journal.
+- [ ] T0253 **No tests for `SunoAccountManager`, `SunoController`, `SunoLyrics`/`LyricsAligner`, `SunoOrchestrator`, `ClipResolver`, `generate`/`pollWavFile`** (`tests/`)
+      All service tests are pure/static-function tests; no test exercises live or mocked network reply, `QNetworkReply`, or cross-service interaction (e.g. Controller lyrics fan-out, Bridge wiring).
+- [ ] T0254 **No tests for `AudioEngine`, `AudioQueue`, `PresetPersistence`, `RatingManager`, `pm::Bridge`/`Engine`/`Playlist`, `VisualizerRenderer`, `VisualizerWindow`, `RenderTarget`, `LyricsSync`, `MediaMetadata`, `LyricsFactory`** (`tests/`)
+- [ ] T0255 **No tests for SettingsBridge setters/auto-save/reset, PresetBridge search/category, OverlayBridge JSON round-trip, `pendingThemeId`, RecordingBridge codec persistence, KaraokeSettings glow** (`tests/`)
+      PresetBridge search/category test would have caught dead search.
+- [ ] T0256 **No tests for VP9/AV1/ProRes/FFV1 encode, HW accel, `RenderExecutor::pumpLoop`, crossfade, receipt `bFrames`/`videoBitrate`, metadata/faststart, `fromConfig()` `pixel_format`, `SunoLyricsManager`, `AudioFileDecoder` stereo→mono** (`tests/`)
+- [ ] T0257 **CI: no leg with `CHADVIS_POSTPROCESS=OFF`, `CHADVIS_USE_SOXR_ENGINE=0`, FFmpeg 9.x vs 8.x matrix, or `TESTING.md` counts vs `ctest -N` check** (`.github/workflows/`)
+      Code has `#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61,13,100)` branches — only CI's FFmpeg version exercised.
+- [ ] T0258 **CI believes it tests burn-in but Ubuntu's libavfilter lacks `ass` filter** (`.github/workflows/`, `tests/`)
+      Burn-in always reports unavailable there; test asserts *report*, not render, passes vacuously on Ubuntu. Add lane with libass-enabled libavfilter, or mark burn-in render test as known-skipped on Ubuntu.
+
+### P3 — features
+
+- [ ] T0259 **Generation submit/poll/complete: none** (`src/suno/`)
+      NO `submitted → streaming → complete` polling, generation timeout, cancellation. Needs captcha-token flow + durable-processing contract captures first (human decision: never solve Turnstile — browser handoff + import). Hazard: `POST /api/generate/v2-web/` reportedly answers `200 {"status":"error","clips":[]}` after drawing credits — empty `clips[]` must not read as success.
+- [ ] T0260 **Extend / remix creation: none** (`src/suno/`)
+      NO `extend` endpoint/method anywhere; remix *relations* exist as endpoint constants but no caller implements remix/extend creation or listing. Upload `completed(uploadId)` has no downstream consumer.
+- [ ] T0261 **Stem separation: no request, download, or stem-aware naming** (`src/suno/`)
+      `isStem()` + feed `stem` filter + `metadata.type` exist, but no stem-split request, stem download, or stem-aware naming; stem metadata fields (`history`, `infillLyrics`) dropped by parser; `stems` deleted from `WorkspaceState`.
+- [ ] T0262 **Cover: constant exists, no download/upload** (`src/suno/`)
+      `PLAYLIST_V2_COVER_IMAGE` constant exists; no cover download/upload in downloader; `image_url` never fetched.
+- [ ] T0263 **Personas: ABSENT** (`src/suno/`, `qml/`)
+      No persona struct, endpoint, UI, or mention (except `is_persona_root` bool on clip).
+- [ ] T0264 **Playlists sync / CRUD reads: ABSENT as reads** (`src/suno/`)
+      No playlist model, fetch-list/get-tracks, create/delete/duplicate, local playlist cache/table, or reconciliation. Mutations can add/remove/reorder/rename/cover-image but never read back; Explore silently drops `type=="playlist"` items.
+- [ ] T0265 **Video: `video_url` parsed, no download or status polling** (`src/suno/`)
+      `VIDEO_GENERATE_STATUS` / `VIDEO_GEN_PENDING_BATCHES` constants exist; no video download or status polling.
+- [ ] T0266 **WAV: conversion + `pollWavFile` stubs; `downloadFormat==WAV` refused** (`src/suno/SunoDownloader.cpp`)
+      `m4a-opus` download refused (pinned P1 defect).
+- [ ] T0267 **Like/unlike, trash/restore, permanent delete: NO verb, NO endpoint** (`src/suno/`) (capture-gated)
+      Deliberate — no captured contract; `POST /api/clips/delete/` 404'd. DB *stores* `is_liked`/`is_trashed`, so read side implies verbs that don't exist.
+- [ ] T0268 **Clip rename: NO clip-title rename verb** (`src/suno/`) (capture-gated)
+      Only *playlist* rename via `setPlaylistMetadata`.
+- [ ] T0269 **Batch ops: ONLY playlist add/remove accept batch (1–100 `clip_ids`)** (`src/suno/`)
+      No batch visibility, batch feedback, batch share, batch download/delete/tag, bulk mark-read (only mark-*all*-read), or multi-subject atomic op. No chunking helper for >100 ids.
+- [ ] T0270 **Filters / search: DB + FTS + search endpoint** (`src/suno/`)
+      NO liked/trashed/public/status/type/model filter in Manager or DB API; `searchClips` 5-column substring only, no FTS, no pagination, wildcard-unsafe. No search endpoint/query in Explore or anywhere. Explore body cursor-only. (T0128 covers the UI side: sort/filter/multi-select/context menu.)
+- [ ] T0271 **Export: none** (`src/suno/`)
+      NO export (JSON/CSV/playlist file) of library, clips, or lyrics. No LRC export, no plain-text synced export, no user-triggered "export lyrics" action. Only automatic `.srt` sidecar on download + `.txt` metadata sidecar.
+- [ ] T0272 **Download queue UX: NO pause, NO priority, NO persistence, NO user-facing resume** (`src/suno/`, `qml/`)
+      Byte-zero restart only.
+- [ ] T0273 **Notification actions: NO per-item read/delete/open** (`src/suno/`)
+      `contentId` carried but never acted on; no pagination, no filter by type/read-state.
+- [ ] T0274 **Multi-account / switching: ABSENT** (`src/suno/`)
+      No sign-out/logout method.
+- [ ] T0275 **Lyrics export: ABSENT as user feature** (`src/suno/`)
+      Only automatic `.srt` sidecar.
+- [ ] T0276 **Polling: NONE for Explore/Account** (`src/suno/`)
+      All manual/event-driven. (T0067 covers the Notifications side.)
+- [ ] T0277 **Credits/quota UX: read-only snapshot** (`src/suno/`, `qml/`)
+      No low-credit warning, spend tracking, purchase/upgrade flow, refresh scheduling, per-feature cost model.
+- [ ] T0278 **Missing endpoints to wire (with capture)** (`src/suno/`) (capture-gated)
+      `POST /v1/client/verify` (heartbeat, 204), `GET /v1/environment`, `POST /v1/client/sign_ins`, social legs, `GET /v1/client/handshake`; `DELETE /v1/client` (remote sign-out) never observed → sign-out local-only; `[T1]`-but-absent constants (increment_play_count/v2, listen_milestone, notification/v2/clear-badge, onboarding/current|start, statsig/forked-onboarding, labs/configs, challenge/progress). Adding any requires constant + call site + test.
+- [ ] T0279 **Feature-flag visibility: none** (`src/suno/`, `qml/`)
+      Diagnostics panel from `GateResolver::evaluateAll()` (already deterministic) + raw `flags` map viewer + `configs.gen-endpoint` display + per-gate "why" sentences.
+- [ ] T0280 **Staging toggle: `TierPolicy::raiseTo(Staging)` exists, NO UI/config wiring** (`src/suno/`, `config/`)
+      Add `suno.tier = "production"|"staging"` (explicit opt-in) with exact-match warning (raising to staging *narrows* to staging-only, prod becomes unreachable — surprising, must be surfaced).
+- [ ] T0281 **Per-route toggles: `suno.enable_generation`, `suno.enable_mutations` as explicit opt-ins** (`src/suno/`, `config/`)
+      Currently `SunoBridge` sets them; no user control. Atop `GateResolver` switches.
+- [ ] T0282 **Observability: no structured auth-event log, queue-depth / in-flight diagnostics, last-`Retry-After`** (`src/suno/`)
+      Log timestamps, route, status, failure kind — no secrets.
+- [ ] T0283 **Auth diagnostics (no secrets): surface `AuthFailureKind` + last refusal + `exp` countdown + cookie age in Settings → Account** (`src/suno/`, `qml/`)
+      All data already exists; only `authFailureKindChanged` exposed. Add "Test session" button = forced `GET /v1/client`.
+- [ ] T0284 **Browser import options: `suno.import_browsers` order override, Firefox/Safari, "import from profile X"** (`src/suno/`, `config/`)
+      "Which browser did it come from" already surfaced via `browserName`.
+- [ ] T0285 **Credential hygiene: "Revoke / rotate", "export diagnostic (redacted)", "forget this browser import", per-profile keychain naming** (`src/suno/`, `qml/`) (revoke capture-gated)
+      "Revoke" needs `DELETE /v1/client` capture.
+- [ ] T0286 **`[general]`: `log_level`, `log_file`/`log_max_size`/`log_max_files`, `log_to_file`, `config_version`, `check_for_updates`** (`config/`, `src/core/`)
+      Today: only bool log switch; log file hardcoded 5 MiB × 3.
+- [ ] T0287 **`[audio]`: `volume`, `mute`, `crossfade_seconds`, `gapless`, `replaygain` / `normalization` / `loudness_target_lufs`, `output_channels`, `exclusive_mode`, `resample_quality`, `audio_delay_ms`, `balance`, `eq_*` / `eq_preset`, `device_refresh`, per-device profiles** (`config/`, `src/core/`, `src/audio/`)
+      BS.1770 loudness analysis exists with NO config surface.
+- [ ] T0288 **`[visualizer]`: `render_scale`, `vsync`, `fullscreen_on_start`, `window_geometry`, `preset_transition`, `preset_duration_min/max`, `preset_blacklist` / `preset_favorites` / `min_preset_rating`, `quality`, `idle_preset` / `idle_timeout`, `beat_sensitivity` per-preset override, `texture_quality`, `fps_display` vs `fps_render` split, `preset_transition_curve`, `preset_random_mode`, `preset_blacklist_enforced_in_rotation`, `texture_size`, `beat_sync_preset_switch`, `show_beat_indicator`** (`config/`, `src/core/`, `src/visualizer/`)
+- [ ] T0289 **`[recording]`: filename-template placeholders, `split_by_track`, `audio_only`, `bitrate_mode`, `hardware_encoder`, `max_file_size`, `max_duration`, `burn_in_subtitles` toggle, `thumbnail`, `chapters`, `output_name_collision`, `record_fps`, `[recording.video] bitrate_kbps` + `maxrate`/`bufsize`, `[recording.video] hw_accel` + `hw_device`, `[recording] title_template` / `artist` + `av_dict_set` metadata, `[recording] audio_enabled / video_enabled`** (`config/`, `src/core/`, `src/recorder/`)
+      Filename template today only `{date}`/`{time}`; add `{artist}`, `{title}`, `{album}`, `{preset}`, `{codec}`, `{resolution}`. `hardware_encoder`: `auto`/`nvenc`/`vaapi`/`software` — today raw codec string with no validation.
+- [ ] T0290 **`[suno]`: `download_concurrency`, `preferred_quality` / `lossless`, `auto_download_filter`, `lyrics_format`, `download_filename_template`, `generation_model_default`, `generation_style_default`, `auto_like`, `history_retention_days`, `api_timeout` / `api_retries`, `cache_dir`, `offline_mode`, `download_lyrics_format`, `refresh_margin_secs` (300), `refresh_max_delay_secs` (3300), `staleness_cap_secs` (opt-in 1800), `force_refresh_on_start`, `request_timeout_secs`, `upload_timeout_secs`, `max_requests_per_sec` (1.0), `max_concurrent_requests` (1), `retry_401` (true), `retry_on_429` + `retry_after_max_secs`, `response_cap_mb`** (`config/`, `src/core/`, `src/suno/`)
+      `lyrics_format`: `srt`/`lrc`/`ass` — writer exists per format, no selector. `retry_on_429` needs T0216 first (after: T0216).
+- [ ] T0291 **`[karaoke]`: `timing_offset_ms`, `outline_width`/`glow`/`blur`, `highlight_mode`, `lines_visible`, `font_fallback` list, `shadow_offset`, `animation` as validated enum, `karaoke_in_recording`, `offset_ms`, `ass_font`, `ass_font_size`, `word_sweep_enabled`** (`config/`, `src/core/`, `src/lyrics/`)
+      `animation` today: string renderer ignores in favor of numeric index — string↔index mapping is actual bug. `karaoke_in_recording`: burn-in toggle; today overlays/karaoke never appear in recordings (T0170). `word_sweep_enabled` wires ASS `\kf` vs line highlight.
+- [ ] T0292 **`[overlay]`: `global_opacity`, `default_font`, `safe_area`, `toggle_shortcut`, per-element `rotation`/`scale`/`blend_mode`** (`config/`, `src/core/`)
+- [ ] T0293 **`[ui]`: `window_geometry`, `always_on_top`, `start_minimized`, `system_tray`, `language`/`locale`, `font_scale`, `notifications` toggle, `confirm_on_close`** (`config/`, `src/core/`)
+- [ ] T0294 **`[keyboard]`: seek `±5s`/`±10s`, volume up/down, mute, shuffle toggle, repeat mode, preset-random, screenshot, stop-recording, lyrics toggle, overlay toggle, theme cycle, `random_preset`, `lock_preset`, `favorite_preset`, `blacklist_preset`, `rate_preset_up/down`, `seek_forward/back_seconds`, `lyrics_offset_up/down`, plus modifier-grammar validation + conflict detection** (`config/`, `src/core/`)
+      Today any string accepted, duplicates silently collide.
+- [ ] T0295 **New sections: `[performance]`, `[network]`, `[privacy]`, `[profiles]`, `[lyrics]`, `[presets]`** (`config/`, `src/core/`)
+      `[performance]` (thread pool, GPU selection, memory caps), `[network]` (proxy, timeout, retry, user-agent override policy), `[privacy]` (telemetry/analytics switches), `[profiles]` (named config profiles — Settings has Profiles page but no config section), `[lyrics]` (provider preference, cache TTL, auto-fetch), `[presets]` (ratings/favorites/blacklist persistence — today split across `preset_state.txt` + ratings files, not config).
+- [ ] T0296 **New CLI flags: `--list-devices`, `--list-presets`, `--dry-run`, `--log-level`, `--print-config`/`--dump-config`, `--reset-config`, `--config-dir`, `--recording-fps`, `--recording-width/height`, `--volume`, `--seek`, `--theme-list`** (`src/core/CliArgs.inc`)
+      `--dump-config` + unknown-key warnings (T0208) together close most "my config did nothing" reports.
+
+### Candidates for removal (verify before deleting)
+
+- `[recording] enabled`, `auto_record`, `record_entire_song`, `restart_track_on_record`, `stop_at_track_end` — zero consumers (see T0204).
+- `[suno] embed_metadata`, `[overlay] enabled` — zero consumers (see T0204).
+- `[ui] show_playlist`, `show_presets`, `show_debug_panel` — no QML reader found; wire or delete.
+- `Config::addOverlayElement` / `removeOverlayElement` / `findOverlayElement` — zero callers; overlay state lives in `overlays.json` via `OverlayBridge`.
+- `main.cpp` `g_app` — written twice, never read.
+- `CliArg` / `CliArgType` — never instantiated; use to generate help/completion (see T0207) or delete.
+- `Logger::setLevel` — zero callers.
+- `Result<T>` monadic surface + `TRY`/`TRY_VOID` — unused and non-compiling (see T0061).
+- `VideoSettings::extraOptions`, `twoPass`; `EncoderSettings::title/artist/comment`; `RenderJob::twoPass` — never consumed/written; wire or delete.
+- `Container::AVI` — compatibility trap; consider removing or pinning to H264+MP3/PCM.
+- `EncoderPreset::Placebo` — keep in schema (frozen vocab), remove from UI preset list.
+- `scripts/check_deps.sh`, `install_projectm_v4_local.sh`, `run_debug.sh`, `setup-arch.sh` (see T0112).
+- `SESSION_CATALOG` alias, `PROMPTS` LEAD constant, `ORCHESTRATOR_*` LEAD constants, `CDN_CLIP_*` LEAD paths, `CLERK_API_VERSION` phantom comment, stub-behind code (`onGenerateReply` unreachable, `cancelledPolls_`, wav-poll machinery) — delete or gate.
+- Callerless/duplicate QML + Suno members per T0071/T0060 (incl. `VisualizerWindow::feedAudio` stub, `Engine::addPCMData` duplicate, `RenderTarget::bind()/unbind()`, `LyricsSync::Config::lookaheadTime`, `SunoOrchestrator::onMessageFinished/onHistoryFinished`, `SunoClient::onGenerateReply/onWavConversionInitiated`, `cancelledPolls_`, `DownloadQueue::Item.metadata`, `SunoDownloader::tagAudioFile` FLAC branch, `ClipParser::selectImageUrl` fallback param, `parseClipArray` `expected` path, `SunoLibraryManager::clipUpdated` signal, `SunoDatabase::saveClip` single, `SunoLibraryManager::syncDatabase` rename-or-implement, `LyricsAligner::estimateTimings/parseLrc`, `SunoLyricsManager` "Lyrics processing:" branch, `SunoWorkspace` saved `workspace_id`/`version`, `SunoAudioUploadService` dead guards, `SunoController` debug-lyrics scaffolding).

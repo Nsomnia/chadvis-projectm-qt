@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    // Senior lean quality code skill plugin
+    "@dietrichgebert/ponytail"
+  ],
+  "mcp": {
+    // Hosted Qt API documentation lookup (Qt 6.8 LTS / 6.11) — no auth required
+    "qt-documentation": {
+      "type": "remote",
+      "url": "https://qt-docs-mcp.qt.io/mcp",
+      "oauth": false
+    }
+  }
+}

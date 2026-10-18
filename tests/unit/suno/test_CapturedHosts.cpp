@@ -32,11 +32,11 @@ constexpr std::array<Role, 9> kAllRoles{
 
 constexpr std::array<Tier, 3> kAllTiers{Tier::Production, Tier::Staging, Tier::Experimental};
 
-/// The eleven hosts, in the order the registry is contractually sorted. Spelled
+/// The twelve hosts, in the order the registry is contractually sorted. Spelled
 /// out rather than derived, because the assertion's whole value is that a silent
 /// edit to the table -- a renamed host, a re-ordered row, a dropped entry -- fails
 /// here instead of being absorbed by a helper that reads the table back at us.
-constexpr std::array<std::string_view, 11> kExpectedHosts{
+constexpr std::array<std::string_view, 12> kExpectedHosts{
     "audiopipe.suno.ai",
     "auth.suno.com",
     "cdn1.suno.ai",
@@ -47,6 +47,7 @@ constexpr std::array<std::string_view, 11> kExpectedHosts{
     "studio-api-staging.suno.com",
     "suno-ai--orpheus-prod-web.modal.run",
     "suno-uploads.s3.amazonaws.com",
+    "suno.ai",
     "suno.com",
 };
 
@@ -154,7 +155,7 @@ class TestCapturedHosts : public QObject
 private slots:
     // ── registry structure ──────────────────────────────────────────────────
 
-    void theRegistryIsElevenHostsAlphabeticalAndStrictlyUnique()
+    void theRegistryIsTwelveHostsAlphabeticalAndStrictlyUnique()
     {
         // One assertion covers size, spelling, order and uniqueness at once, and
         // fails with the whole actual list beside it. The static_assert in the .cpp
@@ -162,7 +163,7 @@ private slots:
         // this suite exists is to prove that assertion is NOT vacuous, which means
         // proving it against a list transcribed here rather than read back out of
         // the table it is meant to constrain.
-        QCOMPARE(static_cast<int>(hostRegistry().size()), 11);
+        QCOMPARE(static_cast<int>(hostRegistry().size()), 12);
 
         QStringList expected;
         for (const std::string_view host : kExpectedHosts) {
@@ -203,16 +204,14 @@ private slots:
         }
     }
 
-    void theTierCensusIsNineProductionOneStagingOneExperimental()
+    void theTierCensusIsTenProductionOneStagingOneExperimental()
     {
         // Hardcoded on purpose, and the numbers are NOT derivable from each other:
-        // CapturedHosts.hpp:200 documents this view as "one at Staging, one at
-        // Experimental, eight at Production" while the table has nine at
-        // Production. That header comment is stale and the table is right (this
-        // test is the measurement), so a census written as "expected = whatever the
+        // CapturedHosts.hpp documents this view as ten at Production, and this
+        // test is the measurement, so a census written as "expected = whatever the
         // views sum to" would happily agree with either. These numbers are what a
         // future session should check before believing a "production only" claim.
-        QCOMPARE(static_cast<int>(hostsForTier(Tier::Production).size()), 9);
+        QCOMPARE(static_cast<int>(hostsForTier(Tier::Production).size()), 10);
         QCOMPARE(static_cast<int>(hostsForTier(Tier::Staging).size()), 1);
         QCOMPARE(static_cast<int>(hostsForTier(Tier::Experimental).size()), 1);
 
@@ -221,7 +220,7 @@ private slots:
         QCOMPARE(hostsOf(hostsForTier(Tier::Experimental)),
                  QStringList({QStringLiteral("suno-ai--orpheus-prod-web.modal.run")}));
 
-        // The nine, so a host silently moved from Staging to Production fails here.
+        // The ten, so a host silently moved from Staging to Production fails here.
         QCOMPARE(hostsOf(hostsForTier(Tier::Production)),
                  QStringList({QStringLiteral("audiopipe.suno.ai"),
                               QStringLiteral("auth.suno.com"),
@@ -231,21 +230,27 @@ private slots:
                               QStringLiteral("main.realtime.ably.net"),
                               QStringLiteral("studio-api-prod.suno.com"),
                               QStringLiteral("suno-uploads.s3.amazonaws.com"),
+                              QStringLiteral("suno.ai"),
                               QStringLiteral("suno.com")}));
     }
 
-    void theRoleCensusIsTwoStudioApiTwoArtworkAndOneOfEveryOtherRole()
+    void theRoleCensusIsThreeDoublesAndOneOfEveryOtherRole()
     {
-        // Two roles carry two hosts and the other seven carry one each, which is
-        // 11. Both doubles are deliberate: StudioApi spans both tiers of the one
-        // API surface, and the cdn1/cdn2 artwork pair is two captured hosts rather
-        // than a wildcard, because "some Suno CDN" is not a captured fact.
+        // Three roles carry two hosts and the other six carry one each, which is
+        // 12. The doubles are deliberate: StudioApi spans both tiers of the one
+        // API surface, the cdn1/cdn2 artwork pair is two captured hosts rather
+        // than a wildcard, because "some Suno CDN" is not a captured fact, and
+        // WebApp covers both Suno web domains (suno.com and its suno.ai alias)
+        // rather than a wildcard, because "some Suno domain" is not a captured
+        // fact either.
         QCOMPARE(static_cast<int>(hostsForRole(Role::StudioApi).size()), 2);
         QCOMPARE(static_cast<int>(hostsForRole(Role::ArtworkOrigin).size()), 2);
+        QCOMPARE(static_cast<int>(hostsForRole(Role::WebApp).size()), 2);
 
         std::size_t total = 0;
         for (const Role role : kAllRoles) {
-            if (role != Role::StudioApi && role != Role::ArtworkOrigin) {
+            if (role != Role::StudioApi && role != Role::ArtworkOrigin &&
+                role != Role::WebApp) {
                 QCOMPARE(static_cast<int>(hostsForRole(role).size()), 1);
             }
             total += hostsForRole(role).size();
@@ -253,7 +258,7 @@ private slots:
         QCOMPARE(static_cast<int>(total), static_cast<int>(hostRegistry().size()));
     }
 
-    void theGradeCensusIsNineCapturedOneResponseValueAndOneLead()
+    void theGradeCensusIsTenCapturedOneResponseValueAndOneLead()
     {
         // Zero rows graded `Registered`, asserted deliberately. The grade gate
         // permits `Registered` and the next test pins that, so the two facts have
@@ -261,7 +266,7 @@ private slots:
         // is no longer theoretical and this number is what says so. Same for the
         // one `ResponseValue` row, which is the realtime push host and the whole
         // subject of the most important assertion in this file.
-        QCOMPARE(static_cast<int>(countEvidence(Evidence::Captured)), 9);
+        QCOMPARE(static_cast<int>(countEvidence(Evidence::Captured)), 10);
         QCOMPARE(static_cast<int>(countEvidence(Evidence::ResponseValue)), 1);
         QCOMPARE(static_cast<int>(countEvidence(Evidence::Registered)), 0);
         QCOMPARE(static_cast<int>(countEvidence(Evidence::Lead)), 1);
@@ -416,7 +421,8 @@ private slots:
                  QStringList({QStringLiteral("cdn1.suno.ai"), QStringLiteral("cdn2.suno.ai")}));
         QCOMPARE(hostsOf(hostsForRole(Role::CloudFront)),
                  QStringList({QStringLiteral("d2lwuy8qc234o3.cloudfront.net")}));
-        QCOMPARE(hostsOf(hostsForRole(Role::WebApp)), QStringList({QStringLiteral("suno.com")}));
+        QCOMPARE(hostsOf(hostsForRole(Role::WebApp)),
+                 QStringList({QStringLiteral("suno.ai"), QStringLiteral("suno.com")}));
         QCOMPARE(hostsOf(hostsForRole(Role::Realtime)),
                  QStringList({QStringLiteral("main.realtime.ably.net")}));
         QCOMPARE(hostsOf(hostsForRole(Role::UploadOrigin)),
@@ -755,6 +761,24 @@ private slots:
         QVERIFY(!mayBeFetched(QUrl{QStringLiteral("https://audiopipe.suno.ai")}, Tier::Production));
     }
 
+    /// suno.ai is Suno's alternate web domain (308 to suno.com), so the
+    /// bare host is recognised — but as a bare host only, the way
+    /// suno.com is: a subdomain such as api.suno.ai stays refused
+    /// (pinned in the host-unknown test), and a bare origin is not a
+    /// fetchable resource (pinned by mayBeFetchedDoesNotGradeOnEvidence
+    /// for audiopipe).
+    void sunoAiWebDomainIsRecognisedAsABareHostOnly()
+    {
+        QVERIFY(mayReceiveCredential(QUrl{QStringLiteral("https://suno.ai/")},
+                                     Tier::Production));
+        QVERIFY(mayBeFetched(QUrl{QStringLiteral("https://suno.ai/sign-in")},
+                             Tier::Production));
+        QVERIFY(!mayBeFetched(QUrl{QStringLiteral("https://suno.ai")},
+                              Tier::Production));
+        QVERIFY(ruleFor("suno.ai").has_value());
+        QCOMPARE(ruleFor("suno.ai")->role, Role::WebApp);
+    }
+
     void aTrailingDotHostIsRefusedAsHostUnknown()
     {
         // Deliberate, and pinned so a future "fix" is a conscious act rather than a
@@ -982,16 +1006,16 @@ private slots:
 
     void describeRefusalAgreesWithThePredicateForEveryHostAtEveryTier()
     {
-        // Every registered host against every tier: 33 combinations, and exactly
-        // NINE of them permitted. The count is worth spelling out, because the
+        // Every registered host against every tier: 36 combinations, and exactly
+        // TEN of them permitted. The count is worth spelling out, because the
         // obvious arithmetic gets it wrong:
         //
-        //   9 Production hosts at the Production tier  -> but the realtime push
-        //       origin is ResponseValue, so it refuses, leaving EIGHT
+        //   10 Production hosts at the Production tier -> but the realtime push
+        //       origin is ResponseValue, so it refuses, leaving NINE
         //   1 Staging host at the Staging tier          -> one
         //   1 Experimental host at the Experimental tier -> refused, permanently
         //
-        // So 8 + 1 = 9, and the grade gate costs exactly one of the ten pairs the
+        // So 9 + 1 = 10, and the grade gate costs exactly one of the eleven pairs the
         // tier structure alone would allow. That is the whole point of keeping the
         // two axes orthogonal: this number moves if either is tampered with.
         const TierPolicy policy;
@@ -1006,7 +1030,7 @@ private slots:
                 }
             }
         }
-        QCOMPARE(permittedPairs, 9);
+        QCOMPARE(permittedPairs, 10);
     }
 
     void everyTierAndRefusalNameIsDistinctAndStable()

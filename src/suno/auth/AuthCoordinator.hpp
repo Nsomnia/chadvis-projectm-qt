@@ -22,6 +22,10 @@ public:
         std::function<bool()> installCredentials;
         std::function<void()> clearLocalCredentials;
         std::function<bool()> secureBackendAvailable;
+        /// How the browser is opened. Defaults to QDesktopServices; the seam
+        /// keeps a test from opening one and lets the happy path be asserted
+        /// offscreen.
+        std::function<bool(const QUrl&)> launchBrowser;
     };
 
     explicit AuthCoordinator(vc::suno::SunoClient* client, QObject* parent = nullptr);
@@ -55,7 +59,26 @@ public:
     /// first use, which is why this exists as an explicit user action and
     /// is never called on startup.
     bool importSessionFromBrowser(QString* safeError = nullptr);
+    /// Abandon a sign-in that is merely waiting for the user's browser
+    /// (T0181's waiting state). There is no client-side work to interrupt —
+    /// nothing is running, the browser is the user's own — so this is a pure
+    /// state reset: back to "signedOut", error cleared. Without it the UI
+    /// stayed on the "Finish in your browser" page until the app restarted,
+    /// which is the second defect of the reported session.
+    void cancelGoogleSignIn();
+    /// Local-only sign-out. Clears the stored credential AND resets this
+    /// coordinator to "signedOut": the old version only cleared the
+    /// credential, so after a sign-out the card could still report the
+    /// stale "browserImported" wait or yesterday's error.
     void signOutSuno();
+    /// The imported session was not accepted (SunoClient went NeedsReauth
+    /// while this coordinator was waiting on the import's verification).
+    /// Converts the "browserImported" wait into a named error so the card
+    /// stops saying "Imported. Verifying" for a verification that already
+    /// failed. No-op from any other state: a NeedsReauth that arrives
+    /// while the user is merely browsing, or after an unrelated failure,
+    /// must not rewrite the state that failure already set.
+    void noteVerificationFailed();
 
     [[nodiscard]] QString googleLoginState() const { return state_; }
     [[nodiscard]] QString googleLoginError() const { return error_; }
@@ -71,6 +94,7 @@ private:
     vc::suno::SunoClient* client_;
     std::function<bool()> installCredentials_;
     std::function<void()> clearLocalCredentials_;
+    std::function<bool(const QUrl&)> launchBrowser_;
     std::function<bool()> secureBackendAvailable_;
     QString state_ = QStringLiteral("signedOut");
     QString error_;

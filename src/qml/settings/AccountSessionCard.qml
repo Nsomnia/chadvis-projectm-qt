@@ -17,6 +17,10 @@ Rectangle {
     signal signInRequested()
     signal signOutRequested()
     signal importRequested()
+    signal cancelRequested()
+
+    readonly property bool importedPending: loginState === "browserImported"
+                                            && !root.authenticated
 
     readonly property string displayName: SunoBridge.userName.length > 0
                                              ? SunoBridge.userName : "Suno member"
@@ -88,7 +92,7 @@ Rectangle {
                 // in, the durable credential (`__client`, ~1 year, HttpOnly)
                 // is sitting in the browser's on-disk cookie store the whole
                 // time -- HttpOnly stops a page script, not a local reader.
-                // This reads the suno.com Clerk cookies out of it.
+                // This reads the suno.com / suno.ai Clerk cookies out of it.
                 //
                 // Plain, not highlighted: it is the complement, not the
                 // primary, and the first press makes macOS ask the user to let
@@ -109,7 +113,19 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignHCenter
-                text: "Your browser opens for Google, then ChadVis receives the Suno session."
+                visible: root.importedPending
+                text: "Imported. Verifying your session — this updates when "
+                      + "suno.com answers."
+                color: Theme.success
+                font: Theme.fontCaption
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignHCenter
+                text: "Sign in with Google in your browser, then press Import below — ChadVis reads the session from your browser."
                 color: Theme.textSecondary
                 font: Theme.fontCaption
                 horizontalAlignment: Text.AlignHCenter
@@ -143,25 +159,26 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: "ChadVis opened Suno in your browser. Sign in with Google "
-                      + "there, then paste your session cookie below."
+                text: "ChadVis opened suno.com in your browser. Sign in with "
+                      + "Google there. When the browser shows you signed in, "
+                      + "come back here and press "
+                      + "\"Already signed in? Import the session\" -- that "
+                      + "reads the session out of the browser."
                 color: Theme.textSecondary
                 font: Theme.fontCaption
             }
 
-            Text {
-                Layout.fillWidth: true
+            // T0199, second defect. The old comment argued "there is nothing
+            // to cancel" and concluded from it that no button was needed --
+            // technically true for the browser, false for THIS window, which
+            // sat on this page until the app restarted. Changing your mind
+            // should not cost a restart.
+            AppButton {
                 Layout.alignment: Qt.AlignHCenter
-                text: "Finish Google sign-in there; this window will update when Suno returns the session."
-                color: Theme.textSecondary
-                font: Theme.fontBody
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
+                text: "Never mind -- back to sign-in"
+                onClicked: root.cancelRequested()
+                Accessible.name: "Cancel waiting for the browser"
             }
-
-            // No Cancel button (T0181). There is nothing to cancel: the browser
-            // is the user's own, this app cannot close it, and the flow it is in
-            // has no client-side state left to abandon.
 
             Item { Layout.fillHeight: true }
         }

@@ -16,7 +16,7 @@
  *     reload disagree about whether the credential changed, which is the
  *     "setting reverted" class of bug.
  *   - `readStore` is covered against a synthetic SQLite file so the
- *     suno.com host restriction and the Clerk-family name filter are asserted
+ *     suno.com / suno.ai host restriction and the Clerk-family name filter are asserted
  *     from the outside: a Stripe cookie on the same row must NOT come back,
  *     and a non-suno host must not even be read.
  *
@@ -245,6 +245,116 @@ private slots:
                  QStringLiteral("__client=v"));
     }
 
+    // ── The signed-out discriminator (the "did not work" report) ──────────
+    //
+    // A logged-out Clerk store holds `__client_uat = 0` and no `__client`.
+    // The first shipped version harvested exactly that into a header, stored
+    // it through setCookie(), and reported success with no visible change --
+    // the button read as broken. These two asserts are the bar that closed
+    // it: the header must carry a credential to leave this module.
+
+    void uatOnlyHeaderCarriesNoCredential()
+    {
+        using vc::suno::auth::BrowserCookieImport;
+        QVERIFY(!BrowserCookieImport::headerCarriesUsableCredential(
+            QStringLiteral("__client_uat=0; __client_uat_Jnxw-muT=0")));
+        // The third-party-refresh half of the family: `__client_Jnxw-muT` IS
+        // a credential, and `__client_uat` must not shadow it away.
+        QVERIFY(BrowserCookieImport::headerCarriesUsableCredential(
+            QStringLiteral("__client=jwt; __client_uat=1787705821")));
+        QVERIFY(BrowserCookieImport::headerCarriesUsableCredential(
+            QStringLiteral("__client_Jnxw-muT=jwt")));
+        QVERIFY(BrowserCookieImport::headerCarriesUsableCredential(
+            QStringLiteral("__session")));
+        QVERIFY(!BrowserCookieImport::headerCarriesUsableCredential({}));
+    }
+
+    /// The prepared signed-out store: both `__client_uat` variants read as
+    /// "0", no `__client` anywhere. readStore must report `sawSignedOut`,
+    /// zero credential rows, and return the two uat pairs -- which the
+    /// HARVEST then refuses, so this observation is the evidence the refusal
+    /// was not an unobserved fall-through.
+    void signedOutStoreIsObservedAsSignedOut()
+    {
+        using vc::suno::auth::BrowserCookieImport;
+        StoreFixture store;
+        const QByteArray key = BrowserCookieImport::deriveChromiumKey(
+            QByteArrayLiteral("fixture secret"));
+        store.insert(QStringLiteral(".suno.com"),
+                     QStringLiteral("__client_uat"),
+                     chromiumEncrypt(QByteArrayLiteral("0"), key));
+        store.insert(QStringLiteral(".suno.com"),
+                     QStringLiteral("__client_uat_Jnxw-muT"),
+                     chromiumEncrypt(QByteArrayLiteral("0"), key));
+
+        vc::suno::auth::StoreObservation seen;
+        const auto found = BrowserCookieImport::readStore(store.path, key, &seen);
+
+        QCOMPARE(found.size(), 2);
+        QVERIFY(!seen.keyMissing);
+        QCOMPARE(seen.clerkRows, 2);
+        QCOMPARE(seen.decrypted, 2);
+        QVERIFY(!seen.hadCredential);
+        QVERIFY(seen.sawSignedOut);
+
+        // And the user-facing sentence names the actual situation, not
+        // "no session was found".
+        const QString reason = BrowserCookieImport::reasonForStore(
+            seen, QStringLiteral("Brave"));
+        QVERIFY(reason.contains(QStringLiteral("signed out")));
+        QVERIFY(reason.contains(QStringLiteral("Brave")));
+        QVERIFY(reason.contains(QStringLiteral("Import")));
+    }
+
+    /// A keychain refusal must NOT read as "no Suno session was found" -- the
+    /// user was signed in when the report was written, and the real cause was
+    /// macOS not handing over the Safe Storage secret. The message must ask
+    /// for the retry that actually fixes it.
+    void keychainRefusalMessageAsksForTheRetry()
+    {
+        using vc::suno::auth::BrowserCookieImport;
+        vc::suno::auth::StoreObservation seen;
+        seen.keyMissing = true;
+        const QString reason = BrowserCookieImport::reasonForStore(
+            seen, QStringLiteral("Brave"));
+        QVERIFY(reason.contains(QStringLiteral("cookie-store key")));
+        QVERIFY(reason.contains(QStringLiteral("Allow")));
+    }
+
+    /// Rows present, none decodable: a distinct diagnosis from "signed out"
+    /// and from "never visited suno.com".
+    void undecryptableRowsAreNamedAsADecodeFailure()
+    {
+        using vc::suno::auth::BrowserCookieImport;
+        vc::suno::auth::StoreObservation seen;
+        seen.clerkRows = 2;
+        seen.decrypted = 0;
+        const QString reason = BrowserCookieImport::reasonForStore(
+            seen, QStringLiteral("Brave"));
+        QVERIFY(reason.contains(QStringLiteral("could not be decoded")));
+        // Priority: the decode failure wins over the generic empty message
+        // a same-row-nothing store would produce.
+        QVERIFY(!reason.contains(QStringLiteral("No Suno cookies were found")));
+    }
+
+    /// A store with rows but no credential anywhere (half signed out) gets
+    /// its own wording, and an empty Clerk set keeps the generic one.
+    void rowsWithoutCredentialAndEmptyRowsAreDistinguished()
+    {
+        using vc::suno::auth::BrowserCookieImport;
+        vc::suno::auth::StoreObservation half;
+        half.clerkRows = 1;
+        half.decrypted = 1;
+        const QString halfReason = BrowserCookieImport::reasonForStore(
+            half, QStringLiteral("Brave"));
+        QVERIFY(halfReason.contains(QStringLiteral("carry no usable session")));
+
+        vc::suno::auth::StoreObservation empty;
+        const QString emptyReason = BrowserCookieImport::reasonForStore(
+            empty, QStringLiteral("Brave"));
+        QVERIFY(emptyReason.contains(QStringLiteral("No Suno cookies were found")));
+    }
+
     /// The store query is host-restricted and name-filtered from the outside:
     /// a Stripe cookie on a suno.com row and a Clerk cookie on an unrelated
     /// host must both stay out of the result. The first is the privacy
@@ -291,6 +401,59 @@ private slots:
                  QStringLiteral("__client=refresh-token; "
                                "__client_uat_Jnxw-muT=1787705821; "
                                "__session=bearer"));
+    }
+
+    /// suno.ai is a Suno host too (it 308-redirects to suno.com), so its
+    /// rows are read — but the host match is exact-plus-dot-subdomain, so
+    /// lookalikes that merely END in suno.com / suno.ai stay out. The old
+    /// `LIKE '%suno.com'` clause admitted `evilsuno.com`; this test is the
+    /// one that would have caught it.
+    void readStoreTakesSunoAiAndRejectsSuffixLookalikes()
+    {
+        using vc::suno::auth::BrowserCookieImport;
+        StoreFixture store;
+        const QByteArray key = BrowserCookieImport::deriveChromiumKey(
+            QByteArrayLiteral("fixture secret"));
+
+        store.insert(QStringLiteral("suno.ai"), QStringLiteral("__client"),
+                     chromiumEncrypt(QByteArrayLiteral("ai-refresh"), key));
+        store.insert(QStringLiteral("www.suno.ai"), QStringLiteral("__session"),
+                     chromiumEncrypt(QByteArrayLiteral("ai-bearer"), key));
+        store.insert(QStringLiteral(".suno.ai"),
+                     QStringLiteral("__client_uat_Jnxw-muT"),
+                     chromiumEncrypt(QByteArrayLiteral("1787705821"), key));
+        // Right name, lookalike host: no dot boundary before the domain.
+        store.insert(QStringLiteral("evilsuno.com"), QStringLiteral("__client"),
+                     chromiumEncrypt(QByteArrayLiteral("not ours"), key));
+        store.insert(QStringLiteral("notsuno.ai"), QStringLiteral("__client"),
+                     chromiumEncrypt(QByteArrayLiteral("not ours"), key));
+        // Right name, the domain as a subdomain of an unrelated host.
+        store.insert(QStringLiteral("suno.com.evil.com"), QStringLiteral("__client"),
+                     chromiumEncrypt(QByteArrayLiteral("not ours"), key));
+
+        const auto found = BrowserCookieImport::readStore(store.path, key);
+
+        QCOMPARE(found.size(), 3);
+        QCOMPARE(BrowserCookieImport::assembleCookieHeader(found),
+                 QStringLiteral("__client=ai-refresh; "
+                               "__client_uat_Jnxw-muT=1787705821; "
+                               "__session=ai-bearer"));
+    }
+
+    /// The credential check splits on the ';' separator, not on "; ":
+    /// a header reassembled with a bare ';' must read the same as one
+    /// assembled with "; ". Splitting on "; " read the whole header as
+    /// one pair named after its first cookie, so a usable `__client`
+    /// after a bare ';' was invisible.
+    void headerCredentialCheckAcceptsBareSemicolonSeparators()
+    {
+        using vc::suno::auth::BrowserCookieImport;
+        QVERIFY(BrowserCookieImport::headerCarriesUsableCredential(
+            QStringLiteral("other=1;__client=jwt")));
+        QVERIFY(BrowserCookieImport::headerCarriesUsableCredential(
+            QStringLiteral("__client_uat=0;__client=jwt")));
+        QVERIFY(!BrowserCookieImport::headerCarriesUsableCredential(
+            QStringLiteral("__client_uat=0;other=1")));
     }
 
     /// The candidate list must not name a browser that is not installed —

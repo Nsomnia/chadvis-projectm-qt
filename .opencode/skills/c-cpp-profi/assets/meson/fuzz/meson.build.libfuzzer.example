@@ -1,0 +1,22 @@
+fuzz_args = [
+  '-fsanitize=fuzzer,address,undefined',
+  '-fno-omit-frame-pointer',
+  '-g',
+  '-O1',
+]
+
+example_fuzzer = executable(
+  'example_fuzzer',
+  'fuzz/example_fuzzer.cc',
+  dependencies: [project_library_under_test_dep],
+  cpp_args: fuzz_args,
+  link_args: ['-fsanitize=fuzzer,address,undefined'],
+  install: false,
+)
+
+test(
+  'example_fuzzer_corpus_replay',
+  example_fuzzer,
+  args: ['-runs=1', meson.current_source_dir() / 'fuzz' / 'corpus'],
+  timeout: 60,
+)

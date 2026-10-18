@@ -46,6 +46,21 @@ include(${CMAKE_SOURCE_DIR}/cmake/CPM.cmake)
 # Header-only / small libraries: system first, CPM fallback
 # ---------------------------------------------------------------------------
 
+# fmt - string formatting (must come before spdlog: spdlog is built with
+# SPDLOG_FMT_EXTERNAL ON, so the fmt::fmt target must already exist when
+# spdlog's CMake runs find_package(fmt)).
+find_package(fmt CONFIG QUIET)
+if(TARGET fmt::fmt)
+    message(STATUS "Using system fmt")
+else()
+    CPMAddPackage(
+        NAME fmt
+        GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+        GIT_TAG 11.0.2
+        OPTIONS "FMT_INSTALL OFF"
+    )
+endif()
+
 # spdlog - logging
 find_package(spdlog CONFIG QUIET)
 if(TARGET spdlog::spdlog)
@@ -56,19 +71,6 @@ else()
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
         VERSION 1.14.1
         OPTIONS "SPDLOG_BUILD_SHARED OFF" "SPDLOG_FMT_EXTERNAL ON"
-    )
-endif()
-
-# fmt - string formatting
-find_package(fmt CONFIG QUIET)
-if(TARGET fmt::fmt)
-    message(STATUS "Using system fmt")
-else()
-    CPMAddPackage(
-        NAME fmt
-        GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        VERSION 11.0.2
-        OPTIONS "FMT_INSTALL OFF"
     )
 endif()
 

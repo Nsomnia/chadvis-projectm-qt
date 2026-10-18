@@ -126,12 +126,23 @@ constexpr HostRule kUploadTarget{"suno-uploads.s3.amazonaws.com", Tier::Producti
 constexpr HostRule kSunoWeb{"suno.com", Tier::Production, Evidence::Captured, Role::WebApp,
                             "Origin/Referer header value and OAuth final destination"};
 
+// suno.ai. The same treatment as suno.com: Suno's alternate web domain,
+// which answers 308 Permanent Redirect to https://suno.com/ (checked
+// 2026-10-17). `Origin`/`Referer` only, never a request target — the
+// client still speaks to suno.com (Clerk's configured origin), and this
+// row exists so the registry recognises the domain a user may have
+// landed on instead of refusing it as unknown. A bare host, not a
+// wildcard: subdomains such as api.suno.ai stay refused.
+constexpr HostRule kSunoAi{"suno.ai", Tier::Production, Evidence::Captured, Role::WebApp,
+                           "Alternate Suno web domain; 308-redirects to suno.com (checked "
+                           "2026-10-17). Origin/Referer only, like suno.com"};
+
 // Alphabetical by host, which is a reviewable order *and* an indexable one. The
 // compile-time assertions below are what keep it alphabetical.
-constexpr std::array<HostRule, 11> kRegistry{
+constexpr std::array<HostRule, 12> kRegistry{
     kAudiopipe,   kAuthSuno, kCdn1,        kCdn2,          kCloudFront,
     kAbly,        kStudioProd, kStudioStaging, kOrpheus,  kUploadTarget,
-    kSunoWeb,
+    kSunoAi,      kSunoWeb,
 };
 
 // Per-role and per-tier views. Members are the named constants above, never a
@@ -140,15 +151,16 @@ constexpr std::array<HostRule, 1> kMediaOrigins{kAudiopipe};
 constexpr std::array<HostRule, 1> kClerkAuthHosts{kAuthSuno};
 constexpr std::array<HostRule, 2> kArtworkOrigins{kCdn1, kCdn2};
 constexpr std::array<HostRule, 1> kCloudFrontHosts{kCloudFront};
-constexpr std::array<HostRule, 1> kWebAppHosts{kSunoWeb};
+constexpr std::array<HostRule, 2> kWebAppHosts{kSunoAi, kSunoWeb};
 constexpr std::array<HostRule, 1> kRealtimeHosts{kAbly};
 constexpr std::array<HostRule, 1> kUploadOrigins{kUploadTarget};
 constexpr std::array<HostRule, 2> kStudioApiHosts{kStudioProd, kStudioStaging};
 constexpr std::array<HostRule, 1> kOrchestratorHosts{kOrpheus};
 
-constexpr std::array<HostRule, 9> kProductionHosts{kAudiopipe, kAuthSuno, kCdn1,
-                                                   kCdn2,       kCloudFront, kAbly,
-                                                   kStudioProd, kUploadTarget, kSunoWeb};
+constexpr std::array<HostRule, 10> kProductionHosts{kAudiopipe, kAuthSuno, kCdn1,
+                                                    kCdn2,       kCloudFront, kAbly,
+                                                    kStudioProd, kUploadTarget, kSunoAi,
+                                                    kSunoWeb};
 constexpr std::array<HostRule, 1> kStagingHosts{kStudioStaging};
 constexpr std::array<HostRule, 1> kExperimentalHosts{kOrpheus};
 

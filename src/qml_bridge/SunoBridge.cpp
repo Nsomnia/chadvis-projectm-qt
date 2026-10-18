@@ -1013,6 +1013,17 @@ void SunoBridge::importSessionFromBrowser() {
     }
 }
 
+void SunoBridge::cancelGoogleSignIn() {
+    // The companion to importSessionFromBrowser(): the "Finish in your
+    // browser" page stays up until the user abandons it, and before this
+    // existed that meant restarting the app. Pure state reset — nothing is
+    // running to interrupt.
+    if (!s_controller) return;
+    if (auto* coordinator = s_controller->authCoordinator()) {
+        coordinator->cancelGoogleSignIn();
+    }
+}
+
 void SunoBridge::signOutSuno() {
     // LOCAL ONLY: no capture-proven remote Suno logout endpoint exists.
     // This clears local credentials and stops local refresh work only.

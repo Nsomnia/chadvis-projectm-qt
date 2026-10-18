@@ -1,0 +1,4 @@
+interface:
+  display_name: "c-cpp-profi"
+  short_description: "Hardening, testing, and performance for C/C++"
+  default_prompt: "Use $c-cpp-profi to implement or review this C/C++ change with safety, performance, testing, and portability gates."

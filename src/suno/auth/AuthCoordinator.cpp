@@ -62,7 +62,8 @@ AuthCoordinator::AuthCoordinator(vc::suno::SunoClient* client, Dependencies depe
       client_(client),
       installCredentials_(std::move(dependencies.installCredentials)),
       clearLocalCredentials_(std::move(dependencies.clearLocalCredentials)),
-      secureBackendAvailable_(std::move(dependencies.secureBackendAvailable)) {
+      secureBackendAvailable_(std::move(dependencies.secureBackendAvailable)),
+      launchBrowser_(std::move(dependencies.launchBrowser)) {
     if (!clearLocalCredentials_) {
         clearLocalCredentials_ = [client] {
             if (client) client->clearLocalCredentials();
@@ -74,8 +75,9 @@ AuthCoordinator::AuthCoordinator(vc::suno::SunoClient* client, Dependencies depe
             return store.isSecureBackend();
         };
     }
-
-
+    if (!launchBrowser_) {
+        launchBrowser_ = [](const QUrl& url) { return QDesktopServices::openUrl(url); };
+    }
 }
 
 bool AuthCoordinator::isSecureBackendAvailable() const {
@@ -113,7 +115,7 @@ bool AuthCoordinator::beginGoogleSignIn(QString* safeError) {
         if (safeError) *safeError = error_;
         return false;
     }
-    if (!QDesktopServices::openUrl(target)) {
+    if (!launchBrowser_(target)) {
         setPolicyError(QStringLiteral("Could not open your web browser"));
         if (safeError) *safeError = error_;
         return false;
@@ -124,8 +126,36 @@ bool AuthCoordinator::beginGoogleSignIn(QString* safeError) {
     return true;
 }
 
+void AuthCoordinator::cancelGoogleSignIn() {
+    // Nothing is running and nothing is owned by this process -- the browser
+    // is the user's own. A cancel is therefore only a state reset, and it is
+    // valid from any state: "browserOpen" (the abandoned wait), "error" (a
+    // dismissed failure) and even success (a user who immediately signs out).
+    // Clearing error_ here is what lets the same card be reused for a fresh
+    // attempt without showing yesterday's verdict.
+    state_ = QStringLiteral("signedOut");
+    error_.clear();
+    emit stateChanged(state_);
+    emit errorChanged(error_);
+}
+
 void AuthCoordinator::signOutSuno() {
+    // State first: if clearing the credential trips a NeedsReauth/Disconnect
+    // transition that the controller feeds back into this coordinator, the
+    // reset below must already have happened, not be overwritten by it.
+    state_ = QStringLiteral("signedOut");
+    error_.clear();
+    emit stateChanged(state_);
+    emit errorChanged(error_);
     if (clearLocalCredentials_) clearLocalCredentials_();
+}
+
+void AuthCoordinator::noteVerificationFailed() {
+    if (state_ != QStringLiteral("browserImported")) {
+        return;
+    }
+    setPolicyError(QStringLiteral(
+        "The imported session was not accepted by Suno. Sign in in your browser, then press Import again."));
 }
 
 bool AuthCoordinator::googleLoginAvailable() const {
@@ -157,6 +187,19 @@ bool AuthCoordinator::importSessionFromBrowser(QString* safeError) {
         if (safeError) *safeError = error_;
         return false;
     }
+
+    // The durability bar, restated at the handover: harvest() already
+    // gatekeeps this, but the header crosses a module boundary here and the
+    // failure of the first shipped build was precisely a credential-less
+    // header sailing through. Names only — this never logs or stores the
+    // header itself.
+    if (!BrowserCookieImport::headerCarriesUsableCredential(harvest.cookieHeader)) {
+        setPolicyError(QStringLiteral(
+            "The session that was read carried no usable Suno credential"));
+        if (safeError) *safeError = error_;
+        return false;
+    }
+
     if (!client_) {
         setPolicyError(QStringLiteral("The Suno client is not available to receive the imported session"));
         if (safeError) *safeError = error_;
@@ -168,6 +211,13 @@ bool AuthCoordinator::importSessionFromBrowser(QString* safeError) {
     // prefix), persists through CredentialStore, and kicks the bearer fetch
     // that turns `__client` into a live `__session` JWT.
     client_->setCookie(harvest.cookieHeader.toStdString());
+    // And a forced re-verification on top: setCookie() no-ops when the
+    // header is identical to the one already installed, so a re-import
+    // after a failed verification would otherwise kick no exchange at all
+    // and strand the card on "Imported. Verifying". reverify is a no-op
+    // when an exchange is already in flight, so the fresh-import path
+    // pays for one early return, not a second exchange.
+    client_->reverifyStoredCredential();
 
     // The browser name is the one fact worth surfacing: it tells the user
     // which of their browsers just surrendered the session, which is the
