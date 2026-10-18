@@ -1,0 +1,4 @@
+2026-10-18T12:50:00Z  CLAIM    agent=muse-spark/dev-muse-dev ttl=4h
+2026-10-18T12:50:00Z  NOTE     T0203: five CLI paths were parsed and advertised but had no consumer. Wired (not deleted): --preset -> CONFIG.visualizer().forcePreset (pm::Bridge selectByName at init); positional files -> AudioEngine::playlist().addFiles at startup; --suno-id -> SunoController::playClipById with warn-on-unknown; --record -> RecordingBridge::startRecording after window creation honoring --output; --output without --record now LOG_WARNs instead of silently doing nothing.
+2026-10-18T12:50:00Z  COMMIT   d5c42893574e09b4508c7cf817ef6acef9426ef1 (cpp: five wirings in Application::init)
+2026-10-18T12:50:00Z  NOTE     VERIFY PENDING: no Qt build in this VM (no Qt dev headers). Needs ./build.sh --fast --tests on desktop; on green, move T0203 to [x] with VERIFY line.
