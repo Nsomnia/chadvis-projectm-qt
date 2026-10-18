@@ -50,6 +50,16 @@ The dependencies fall into three tiers, and confusing them is what produces "it 
 
 Any distribution that can provide the libraries above works — Fedora, openSUSE, Debian, and friends. The pacman line is just the one we happen to test against.
 
+### Automatic dependency installation (opt-in)
+
+Pass `-DCHADVIS_AUTO_INSTALL_DEPS=ON` to the CMake configure step and a missed dependency probe gets one attempt at installing the missing piece through the host's package manager before configure falls back to the previous behaviour — `apt`/`dnf`/`pacman` on Linux, MacPorts then Homebrew on macOS, `vcpkg`/`winget`/`choco` on Windows. The probe re-runs after the install; if it still fails, the old rules apply: a CPM source build where one exists (fmt, spdlog, toml++, projectM), otherwise the same `FATAL_ERROR` as before. (`build.sh` does not forward extra `-D` flags, so run the configure step yourself, e.g. `cmake -S . -B build -DCHADVIS_AUTO_INSTALL_DEPS=ON`.)
+
+Three things to know:
+
+*   It is **off by default** and it touches your system, so it is opt-in on purpose. On Linux/macOS the privileged managers run through non-interactive `sudo`; if passwordless `sudo` is unavailable (and you are not root) those managers are skipped with a warning rather than hanging on a password prompt. A failed install never fails the configure — the fallbacks still apply.
+*   Qt is only attempted where the packaged version clears the 6.7 floor (Homebrew, MacPorts, Arch, Fedora) — Debian/Ubuntu's Qt is deliberately skipped — and projectM v4 is only attempted where a manager actually carries v4 (most distros ship v3, and Homebrew's `projectm` formula is pinned to 3.1.12, so the CPM source build stays the primary path there).
+*   `-DCHADVIS_AUTO_INSTALL_DRY_RUN=ON` prints the install commands instead of running them.
+
 ---
 
 ## 🏗️ The Build Process
