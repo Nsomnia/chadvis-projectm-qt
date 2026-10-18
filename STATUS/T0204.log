@@ -1,0 +1,4 @@
+2026-10-18T13:00:00Z  CLAIM    agent=muse-spark/dev-muse-dev ttl=4h
+2026-10-18T13:00:00Z  NOTE     T0204: seven config keys had zero production consumers (verified by repo-wide search; only test_ConfigLoader.cpp referenced them): [recording] enabled/auto_record/record_entire_song/restart_track_on_record/stop_at_track_end, [suno] embed_metadata, [overlay] enabled. Deleted rather than wired — wiring would invent features. Removed from ConfigData struct, X-macro tables (parse+serialize), default.toml, CONFIG.md, and the loader test (incl. overlayEnabledRoundTripsInBothStates).
+2026-10-18T13:00:00Z  COMMIT   95f0343930566bba401b7fa3823dfb06295a8843 (5 files: ConfigData.hpp, ConfigParsers.cpp, default.toml, CONFIG.md, test_ConfigLoader.cpp)
+2026-10-18T13:00:00Z  NOTE     VERIFY PENDING: no Qt build in this VM (no Qt dev headers). Needs ./build.sh --fast --tests on desktop; on green, move T0204 to [x] with VERIFY line.
