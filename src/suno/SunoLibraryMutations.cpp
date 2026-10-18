@@ -491,12 +491,21 @@ void SunoLibraryMutations::handleReply(QNetworkReply* reply, const MutationVerb 
         settle(verb, subjectId, MutationOutcome::Accepted, status, {});
         return;
     }
-    if (!transport.isEmpty()) {
-        settle(verb, subjectId, MutationOutcome::Failed, status, transport);
+    if (status >= 400 && status < 500) {
+        // T0201: a 4xx is the server's verdict on the request itself — a
+        // permanent refusal, not a retryable transport failure — so it
+        // settles as Rejected with the server's detail when it has one.
+        // The status is checked FIRST because transportReason() never
+        // returns empty, which previously buried every refusal as Failed
+        // and made Rejected (and rejectionReason) unreachable dead code.
+        settle(verb, subjectId, MutationOutcome::Rejected, status,
+               rejectionReason(body, status));
         return;
     }
-    settle(verb, subjectId, MutationOutcome::Rejected, status,
-           rejectionReason(body, status));
+    // Anything else non-2xx carries no HTTP verdict from the server
+    // (transport failure, no status, 3xx, 5xx): Failed — retryable —
+    // with the transport's own wording.
+    settle(verb, subjectId, MutationOutcome::Failed, status, transport);
 }
 
 void SunoLibraryMutations::settle(const MutationVerb verb, const QString& subjectId,
