@@ -1073,10 +1073,12 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       `--preset`, `--output`, `--suno-id`, `--record` (GUI), positional input files. Help advertises them; none has a consumer.
 - [ ] T0204 **Wire or delete dead config keys** (`src/core/Config*.cpp`, `config/default.toml`)
       Five `[recording]` keys (`enabled`, `auto_record`, `record_entire_song`, `restart_track_on_record`, `stop_at_track_end`) + `[suno] embed_metadata` + `[overlay] enabled` — zero consumers each.
-- [ ] T0205 **`useDefaultPreset` clobber** (`src/core/Application.cpp`)
+- [?] T0205 **`useDefaultPreset` clobber** (`src/core/Application.cpp`)
       Plain `bool` in `AppOptions` cannot distinguish "flag absent" from "flag false", so every launch without `--default-preset` forces `CONFIG.visualizer().useDefaultPreset = false`, erasing config `true`. Fix: `std::optional<bool>`, apply only when present.
-- [ ] T0206 **Normal exit skips `Application::quit()`** (`src/core/Application.cpp`)
+      STATUS/T0205.log: optional<bool> field (ffba96f) + apply-only-when-present (ca374a9). VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
+- [?] T0206 **Normal exit skips `Application::quit()`** (`src/core/Application.cpp`)
       Window close / `Qt.quit()` bypass `last_session.m3u` save + `CONFIG.save-if-dirty`. Fix: move persistence to `aboutToQuit` handler.
+      STATUS/T0206.log: savePersistentState() on aboutToQuit (b4f088a, f1d570f); quit() slimmed. VERIFY PENDING — no Qt build in VM; needs ./build.sh --fast --tests on desktop.
 - [ ] T0207 **Generate help/completion/topic text from `CliArgs.inc`** (`src/core/CliArgs.inc`, `src/core/HelpSystem.cpp`)
       Use `CliArg`; fix `printHelp` docs URL `yourusername` → `Nsomnia`; fix completion staleness (completion lacks `--visualizer-fps` etc.).
 - [ ] T0208 **Unknown-config-key warnings + `--dump-config` / `--print-config`** (`src/core/ConfigLoader.cpp`, `src/core/CliArgs.inc`)
