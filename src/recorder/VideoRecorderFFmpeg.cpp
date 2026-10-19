@@ -1002,7 +1002,14 @@ int VideoRecorderFFmpeg::resampleIntoAudioFrame(AVFrame* frame,
     injectedResampleFailures_.fetch_sub(1, std::memory_order_acq_rel);
     return AVERROR(EINVAL);
   }
-  return swr_convert(swrCtx_.get(), frame->data, frameSize, srcData, frameSize);
+  // swr_convert takes `const uint8_t**`: a mutable array of const-data
+  // pointers. srcData's entries are const pointers, so passing it directly
+  // drops intermediate constness -- a hard error, not just a warning. Copy
+  // the plane pointer into a local mutable array instead of casting away
+  // constness. The resampler input is always packed (AV_SAMPLE_FMT_FLT), so
+  // there is exactly one plane, and the only caller passes a 1-element array.
+  const uint8_t* inPlane = srcData[0];
+  return swr_convert(swrCtx_.get(), frame->data, frameSize, &inPlane, frameSize);
 }
 
 bool VideoRecorderFFmpeg::consumeInjectedWriteFailure() {
