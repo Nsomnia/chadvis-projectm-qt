@@ -335,4 +335,4 @@ jobs:
           if [ ! -s ubsan-run.log ]; then
             echo "::error title=UndefinedBehaviorSanitizer lane never ran::ubsan-run.log is absent or empty. This is not a clean lane; it is a lane that produced no measurement."
             exit 1
-          fi          fi
+          fi
