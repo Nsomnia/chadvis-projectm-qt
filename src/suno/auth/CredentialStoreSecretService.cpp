@@ -171,10 +171,14 @@ QDBusArgument secretStructure(const QString& sessionPath, const QByteArray& valu
 /// Delete over the session bus.
 class SecretServiceBackend final : public CredentialStore::ISecretBackend {
 public:
-    /// Named constructor: the ctor stays private so only this factory (and
-    /// friend-less callers through it) can build one.
+    /// Named constructor: the ctor stays private so only this factory can
+    /// build one. NOTE: std::make_unique cannot be used here -- the
+    /// constructor call inside make_unique is evaluated in std's template
+    /// context, which has no access to this private ctor, even though
+    /// create() itself is a member. The explicit new below is evaluated in
+    /// this member function's context, so access is allowed.
     static std::unique_ptr<SecretServiceBackend> create(QDBusConnection bus) {
-        return std::make_unique<SecretServiceBackend>(std::move(bus));
+        return std::unique_ptr<SecretServiceBackend>(new SecretServiceBackend(std::move(bus)));
     }
 
     [[nodiscard]] bool isSecure() const noexcept override { return true; }
