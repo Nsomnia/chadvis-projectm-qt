@@ -263,12 +263,24 @@ std::expected<void, DecodeError> AudioFileDecoder::Impl::resampleFrame(AVFrame& 
     u8* outPlanes[1] = {reinterpret_cast<u8*>(scratch.data())};
     // extended_data, never data[0]: a planar codec (FLAC, most AAC) has one
     // pointer per plane there and swr expects the array, so passing data[0] would
-    // read only the first plane. The reinterpret_cast is the one FFmpeg's own
-    // examples use; it is a qualification change across two pointer levels, which
-    // no implicit conversion performs.
+    // read only the first plane.
+    //
+    // swr_convert takes `const uint8_t**`: a mutable array of const-data
+    // pointers. Casting extended_data to `const u8* const*` expresses the right
+    // qualification, but it cannot convert further to `const uint8_t**` --
+    // dropping the intermediate constness is a hard error, not just a warning.
+    // Copy the plane pointers into a local mutable array instead of casting
+    // constness away. One entry per channel when the input is planar, one when
+    // packed.
+    const int inPlanes = av_sample_fmt_is_planar(static_cast<AVSampleFormat>(decoded.format))
+                             ? decoded.ch_layout.nb_channels
+                             : 1;
+    std::vector<const uint8_t*> inPlanePtrs(static_cast<usize>(inPlanes));
+    for (int i = 0; i < inPlanes; ++i) {
+        inPlanePtrs[static_cast<usize>(i)] = decoded.extended_data[i];
+    }
     const int produced =
-            swr_convert(resampler.get(), outPlanes, capacity,
-                        reinterpret_cast<const u8* const*>(decoded.extended_data), inSamples);
+            swr_convert(resampler.get(), outPlanes, capacity, inPlanePtrs.data(), inSamples);
     if (produced < 0) {
         return fail(DecodeErrorKind::ResamplerFailed, "swr_convert failed", produced);
     }
