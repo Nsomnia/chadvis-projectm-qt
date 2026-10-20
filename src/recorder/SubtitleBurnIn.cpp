@@ -222,7 +222,7 @@ Result<void> burnInSubtitles(const BurnInOptions& options) {
 
   // ── input, read-only ──
   AVFormatContext* rawInput = nullptr;
-  if (avformat_open_input(&rawInput, options.inputVideo.c_str(), nullptr,
+  if (avformat_open_input(&rawInput, options.inputVideo.string().c_str(), nullptr,
                           nullptr) < 0) {
     return Result<void>::err("Could not open " + options.inputVideo.string());
   }
@@ -269,7 +269,7 @@ Result<void> burnInSubtitles(const BurnInOptions& options) {
 
   AVFormatContext* rawOutput = nullptr;
   if (avformat_alloc_output_context2(&rawOutput, nullptr, nullptr,
-                                    options.outputVideo.c_str()) < 0) {
+                                    options.outputVideo.string().c_str()) < 0) {
     return Result<void>::err("No muxer for " + options.outputVideo.string());
   }
   AVFormatContextOutPtr output(rawOutput);
@@ -350,7 +350,7 @@ Result<void> burnInSubtitles(const BurnInOptions& options) {
   }
 
   if (!(output->oformat->flags & AVFMT_NOFILE)) {
-    ret = avio_open(&output->pb, options.outputVideo.c_str(), AVIO_FLAG_WRITE);
+    ret = avio_open(&output->pb, options.outputVideo.string().c_str(), AVIO_FLAG_WRITE);
     if (ret < 0) {
       return Result<void>::err("Could not open " +
                                options.outputVideo.string() + ": " +

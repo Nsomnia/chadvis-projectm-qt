@@ -74,6 +74,11 @@ if(MSVC)
         /utf-8
         /MP          # parallel compilation
         /bigobj      # heavy Qt/QML template instantiation
+        # windows.h defines min()/max() as macros unless this is set, which
+        # breaks every std::max/std::min/numeric_limits<T>::max() in the tree
+        # with "illegal token on right side of '::'". It is a macro, so it has
+        # to precede the header on the command line, not be #undef'd per file.
+        /DNOMINMAX
     )
 else()
     # GNU/Clang: senior-level warnings.

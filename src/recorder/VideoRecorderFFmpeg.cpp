@@ -17,6 +17,7 @@
 #include <vector>
 #include <fmt/core.h>
 #ifdef _WIN32
+#include <fcntl.h>   // _O_CREAT / _O_EXCL / _O_WRONLY / _O_BINARY
 #include <io.h>
 #include <windows.h>
 #include <sys/stat.h>
@@ -218,7 +219,9 @@ Result<void> VideoRecorderFFmpeg::init(const EncoderSettings& settings,
   while (true) {
     // Exclusive create prevents racing another recorder instance; the lock
     // then claims the file for the lifetime of this recording.
-    fd = openExclusive(finalPath.c_str());
+    // .string(), not .c_str(): path::value_type is wchar_t on Windows and
+    // openExclusive takes a narrow path.
+    fd = openExclusive(finalPath.string().c_str());
     if (fd >= 0) {
       // Successfully created a unique file, now lock it
       if (!lockExclusive(fd)) {

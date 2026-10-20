@@ -44,7 +44,7 @@ namespace {
 
 #ifdef Q_OS_WIN
 
-int nativeHandleOf(QFile& file) { return _get_osfhandle(static_cast<int>(file.nativeHandle())); }
+int nativeHandleOf(QFile& file) { return _get_osfhandle(static_cast<int>(file.handle())); }
 
 bool lockExclusive(const int fd) {
     OVERLAPPED overlapped{};

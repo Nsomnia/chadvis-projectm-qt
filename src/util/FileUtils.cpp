@@ -605,7 +605,7 @@ std::optional<Duration> parseDuration(std::string_view str) {
     std::regex pattern(R"((?:(\d+):)?(\d+):(\d+))");
     std::cmatch match;
 
-    if (std::regex_match(str.begin(), str.end(), match, pattern)) {
+    if (std::regex_match(str.data(), str.data() + str.size(), match, pattern)) {
         i64 hours = match[1].matched ? std::stoll(match[1].str()) : 0;
         i64 minutes = std::stoll(match[2].str());
         i64 seconds = std::stoll(match[3].str());

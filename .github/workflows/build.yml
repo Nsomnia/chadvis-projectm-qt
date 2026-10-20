@@ -27,6 +27,19 @@
 #   matrix that exercised only one branch would leave the other untested
 #   forever, which is the exact failure this file exists to prevent.
 #
+# THE macOS RUNNER MUST BE ONE HOMEBREW STILL BOTTLES FOR
+#   Homebrew dropped macOS 14 (Sonoma): `brew install` there builds every
+#   dependency from source and says so -- "We (and Apple) do not provide
+#   support for this old version ... Homebrew no longer builds bottles for this
+#   configuration. Consider MacPorts". Measured on run 39422343797: 1h23m of
+#   compiling openssl/cmake/python/qt/qtmultimedia/ffmpeg, ending in a
+#   qtmultimedia build failure and a red lane. `macos-15` is bottled, so the
+#   same step pours in a couple of minutes. `brew update` is deliberately NOT
+#   run: it pulls the newest formula versions, which are the ones most likely
+#   to be unbottled for the runner's release. The image's own formulae are
+#   already built for its own OS, so pouring them is the fast and the correct
+#   path.
+#
 # LINUX QT VERSION IS NOT THE SAME QT AS macOS
 #   Ubuntu 24.04's apt ships Qt 6.4.2, and cmake/Dependencies.cmake:20-25
 #   FATAL_ERRORs below 6.7, so apt is not an option at all. install-qt-action
@@ -75,7 +88,7 @@ jobs:
             compiler: gcc
           - os: ubuntu-24.04
             compiler: clang
-          - os: macos-14
+          - os: macos-15
             compiler: apple-clang
 
     steps:
@@ -166,9 +179,13 @@ jobs:
 
       - name: Install macOS system dependencies (Homebrew)
         if: runner.os == 'macOS'
+        env:
+          # Both are the "use what the image already built for itself" rule.
+          # See the header: an updated, unbottled formula is the failure mode.
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
           set -euo pipefail
-          brew update
           # Each of these maps to a probe in cmake/Dependencies.cmake:
           #   qt            find_package(Qt6 ...) -- KEG-ONLY, so CMAKE_PREFIX_PATH
           #                 must be set explicitly or find_package misses it.
@@ -178,9 +195,15 @@ jobs:
           #   ffmpeg        pkg_check_modules(libavcodec ...) + libavfilter.
           #                 KEG-ONLY.
           #   glm           find_package(glm REQUIRED)
+          #   libprojectm   projectM4Config.cmake, which cmake/FindProjectM4.cmake
+          #                 probes FIRST (QUIET) and falls back from to a CPM
+          #                 source build that costs minutes. Optional on purpose:
+          #                 if the formula is missing or the version is not v4,
+          #                 the probe simply misses and CPM builds it as before.
           #   ccache        Compiler.cmake auto-detects it, which is what makes
           #                 the cache below possible.
-          brew install cmake ninja ccache qt spdlog fmt tomlplusplus taglib ffmpeg glm
+          brew install cmake ninja ccache qt spdlog fmt tomlplusplus taglib \
+            ffmpeg glm libprojectm
           # CMake config packages for spdlog/fmt/tomlplusplus/glm are not
           # keg-only, so /usr/local is already on CMake's search path and no
           # prefix hint is needed for them. The two pkg-config consumers are
@@ -380,6 +403,49 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # ---------------------------------------------------------------------
+      # Package the build into a runnable artifact.
+      #
+      # `cpack` (cmake/Install.cmake) emits TGZ/ZIP everywhere plus a .dmg on
+      # macOS, and this is the same generator set release.yml publishes -- so a
+      # green push produces the exact artifact shape a tag would, one `cp`
+      # away from a release instead of one more guess about the build.
+      #
+      # Debug on purpose, because that is what this job built: this artifact
+      # answers "does the binary run on another machine", not "is this the
+      # shipping build". release.yml builds Release. Do not read a Debug
+      # artifact's speed as a product fact.
+      # ---------------------------------------------------------------------
+
+      - name: Package (cpack)
+        run: |
+          set -euo pipefail
+          cmake --build "$BUILD_DIR" --target package --parallel
+          # Fail here rather than at upload-artifact, which reports "no files
+          # found" with none of the cpack context.
+          found=$(find "$BUILD_DIR" -maxdepth 1 \
+            \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.dmg' \) | wc -l | tr -d ' ')
+          if [ "$found" -lt 1 ]; then
+            echo "::error::cpack produced no archive in $BUILD_DIR."
+            exit 1
+          fi
+          ls -lh "$BUILD_DIR"/*.tar.gz "$BUILD_DIR"/*.zip 2>/dev/null || true
+          ls -lh "$BUILD_DIR"/*.dmg 2>/dev/null || true
+
+      - name: Upload the packaged build
+        uses: actions/upload-artifact@v7
+        with:
+          name: chadvis-${{ matrix.os }}-${{ matrix.compiler }}-debug
+          path: |
+            ${{ env.BUILD_DIR }}/*.tar.gz
+            ${{ env.BUILD_DIR }}/*.zip
+            ${{ env.BUILD_DIR }}/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+      # `|| true` on both: a missing ccache must not fail an otherwise-green
+      # job. It did exactly that on run 39422343797 (exit 127) after the brew
+      # install above had aborted, which reads as a build failure and is not.
       - name: Report ccache statistics
         if: always()
         run: |
@@ -388,6 +454,6 @@ jobs:
             echo "### ccache -- ${{ matrix.compiler }}"
             echo
             echo '```'
-            ccache --show-stats 2>/dev/null || ccache -s
+            ccache --show-stats 2>/dev/null || ccache -s 2>/dev/null || echo "ccache not installed"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

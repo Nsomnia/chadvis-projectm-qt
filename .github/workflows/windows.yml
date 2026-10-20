@@ -217,3 +217,44 @@ jobs:
           } else {
             $defs | ForEach-Object { Write-Host $_ }
           }
+
+      # ---------------------------------------------------------------------
+      # Package a runnable archive.
+      #
+      # Deliberately not `cpack`: the tree has a full macOS deployment chain
+      # (macdeployqt + install_name rewriting, cmake/TargetSetup.cmake) and no
+      # Windows equivalent, so CPack's Windows ZIP would carry the .exe and its
+      # config but none of the Qt DLLs -- an archive that only runs on a machine
+      # that already has this exact Qt. `windeployqt` is the Qt-supplied answer
+      # and is already installed by install-qt-action.
+      #
+      # FFmpeg/taglib/spdlog are static (vcpkg `x64-windows-static`), so Qt is
+      # the whole dynamic closure. If windeployqt is wrong this step fails and
+      # the lane says so; it does not silently ship a broken zip.
+      # ---------------------------------------------------------------------
+      - name: Package (windeployqt + zip)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse -Path "$env:BUILD_DIR" -Filter 'chadvis-projectm-qt.exe' |
+            Where-Object { $_.FullName -notmatch 'CMakeFiles' } |
+            Select-Object -First 1
+          if (-not $exe) { Write-Error "::error::no chadvis-projectm-qt.exe under $env:BUILD_DIR"; exit 1 }
+          $stage = Join-Path $env:RUNNER_TEMP 'stage/ChadVis'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item $exe.FullName $stage
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" `
+            --release --no-translations --no-compiler-runtime `
+            --dir $stage (Join-Path $stage $exe.Name)
+          if ($LASTEXITCODE -ne 0) { Write-Error "::error::windeployqt failed"; exit 1 }
+          if (Test-Path 'config') { Copy-Item -Recurse -Force 'config' (Join-Path $stage 'config') }
+          $zip = Join-Path $env:BUILD_DIR 'chadvis-windows-x64.zip'
+          Compress-Archive -Path $stage -DestinationPath $zip -Force
+          Get-Item $zip | Format-Table Name, Length
+
+      - name: Upload the packaged build
+        uses: actions/upload-artifact@v7
+        with:
+          name: chadvis-windows-x64-msvc-debug
+          path: ${{ env.BUILD_DIR }}/chadvis-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14

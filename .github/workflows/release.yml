@@ -101,7 +101,7 @@ jobs:
             # required: true means a Linux failure blocks the release. That is
             # the leg that must always succeed.
             required: true
-          - os: macos-14
+          - os: macos-15
             id: macos-dmg
             generator: DragNDrop
             # required: true (T0039). This used to be false, on the premise that
@@ -183,16 +183,25 @@ jobs:
 
       - name: Install macOS system dependencies (Homebrew)
         if: runner.os == 'macOS'
+        env:
+          # Same rule as build.yml: use the formulae the runner image already
+          # bottled for its own macOS. `brew update` pulls versions Homebrew no
+          # longer bottles for this release, and every one then builds from
+          # source (measured at 1h23m on macos-14).
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
           set -euo pipefail
-          brew update
           # qt is keg-only, so it needs an explicit CMAKE_PREFIX_PATH at
           # configure time; ffmpeg and taglib are keg-only pkg-config
           # consumers and need PKG_CONFIG_PATH. spdlog/fmt/tomlplusplus/glm are
           # neither -- their CMake config packages land in /usr/local and are
           # already on CMake's search path, which is the system branch of
           # cmake/Dependencies.cmake that this job exists to exercise.
-          brew install cmake ninja ccache qt spdlog fmt tomlplusplus taglib ffmpeg glm
+          # libprojectm is a probe-first optimization: if the formula is absent
+          # or not v4, cmake/FindProjectM4.cmake falls back to CPM unchanged.
+          brew install cmake ninja ccache qt spdlog fmt tomlplusplus taglib \
+            ffmpeg glm libprojectm
           echo "PKG_CONFIG_PATH=$(brew --prefix ffmpeg)/lib/pkgconfig:$(brew --prefix taglib)/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Configure

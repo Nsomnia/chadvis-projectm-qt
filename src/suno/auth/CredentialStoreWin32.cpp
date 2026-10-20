@@ -165,11 +165,10 @@ public:
         const std::wstring target = toWide(targetName);
 
         PCREDENTIALW raw = nullptr;
-        // CRED_PERSIST_LOCAL_MACHINE (fLocalMachine): match the machine-scoped
-        // entry that store() wrote. Passing CRED_PERSIST_ANY here would be a
-        // silent widening - it would happily read a session- or
-        // enterprise-scoped credential some other install created.
-        if (!CredReadW(target.c_str(), CRED_TYPE_GENERIC, 0, CRED_PERSIST_LOCAL_MACHINE, &raw)) {
+        // The third argument is CredRead's reserved Flags field and must be 0.
+        // (CRED_PERSIST_LOCAL_MACHINE is a CredWrite-only notion, and passing
+        // it here does not compile.)
+        if (!CredReadW(target.c_str(), CRED_TYPE_GENERIC, 0, &raw)) {
             const DWORD code = GetLastError();
             switch (classifyCredReadStatus(code)) {
                 case CredReadStatus::NotFound:
