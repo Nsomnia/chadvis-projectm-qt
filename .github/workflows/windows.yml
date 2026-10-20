@@ -63,7 +63,12 @@ env:
   CMAKE_BUILD_TYPE: Debug
   # MSVC 19.3x+ is Compiler.cmake's floor (>= 19.29). windows-latest ships
   # VS 2022.
-  VCPKG_ROOT: C:\vcpkg
+  #
+  # NOT `VCPKG_ROOT`: ilammy/msvc-dev-cmd@v1 overwrites that variable with
+  # Visual Studio's bundled vcpkg, so a later `"$env:VCPKG_ROOT\vcpkg.exe"`
+  # resolves to a different tree than the one the job configured against.
+  # A private name keeps the two independent.
+  CHADVIS_VCPKG_ROOT: C:\vcpkg
 
 jobs:
   windows:
@@ -88,9 +93,9 @@ jobs:
       # in one block means the diff when someone does add a manifest is
       # readable.
       - name: Install native dependencies (vcpkg)
+        shell: pwsh
         run: |
-          set -b
-          & "$env:VCPKG_ROOT\vcpkg.exe" install `
+          & "$env:CHADVIS_VCPKG_ROOT\vcpkg.exe" install `
             spdlog:x64-windows-static `
             fmt:x64-windows-static `
             tomlplusplus:x64-windows-static `
@@ -106,7 +111,15 @@ jobs:
 
       - name: Report vcpkg's view of the dependency set
         if: always()
-        run: "& \"$env:VCPKG_ROOT\vcpkg.exe\" list"
+        shell: pwsh
+        # A LITERAL block, not a double-quoted scalar. In YAML double-quoted
+        # strings `\v` is the vertical-tab escape, so
+        #   run: "& \"$env:VCPKG_ROOT\vcpkg.exe\" list"
+        # reached PowerShell as `...vcpkgcpkg.exe` and failed the job at this
+        # step while every build step after it was skipped.
+        run: |
+          $vcpkg = "$env:CHADVIS_VCPKG_ROOT\vcpkg.exe"
+          if (Test-Path $vcpkg) { & $vcpkg list } else { Write-Warning "vcpkg not found at $vcpkg" }
 
       - name: Install Qt 6.8.3
         uses: jurplel/install-qt-action@v4
@@ -122,8 +135,8 @@ jobs:
         run: |
           cmake -S . -B $env:BUILD_DIR `
             -DCMAKE_BUILD_TYPE=$env:CMAKE_BUILD_TYPE `
-            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR;$env:VCPKG_ROOT\installed\x64-windows-static" `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR;$env:CHADVIS_VCPKG_ROOT\installed\x64-windows-static" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:CHADVIS_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
         run: cmake --build $env:BUILD_DIR --config $env:CMAKE_BUILD_TYPE --parallel
