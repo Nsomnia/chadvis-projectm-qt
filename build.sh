@@ -209,7 +209,10 @@ case "$PROFILE" in
     *)       die "unknown profile '$PROFILE'" ;;
 esac
 if [[ -z "$QT_OVERRIDE" ]]; then
-    for candidate in /opt/homebrew/opt/qt /usr/local/opt/qt /usr/lib/qt6; do
+    # The Homebrew `qt` umbrella is intentionally not installed: it pulls
+    # qtwebengine -> node -> rust -> llvm, none of which build on macOS 14.
+    # The per-component formulae are, and scripts/qt-stitch.sh merges them.
+    for candidate in "$PWD/.qt-stitch" /opt/homebrew/opt/qt /usr/local/opt/qt /usr/lib/qt6; do
         if [[ -d "$candidate" ]]; then
             QT_OVERRIDE="$candidate"
             break
