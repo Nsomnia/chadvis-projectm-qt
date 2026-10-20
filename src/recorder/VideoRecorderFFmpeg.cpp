@@ -18,8 +18,7 @@
 #include <fmt/core.h>
 #ifdef _WIN32
 #include <fcntl.h>   // _O_CREAT / _O_EXCL / _O_WRONLY / _O_BINARY
-#include <io.h>
-#include <windows.h>
+#include <io.h>      // _open / _close
 #include <sys/stat.h>
 #else
 #include <fcntl.h>
@@ -37,9 +36,17 @@ namespace vc {
 namespace {
 
 // Exclusive-create + advisory-lock primitives for claiming an output file.
-// The POSIX branches preserve the historical open/flock behavior exactly;
-// the Win32 branches use the CRT _open family plus LockFileEx over
-// _get_osfhandle for an equivalent byte-range lock.
+//
+// On POSIX the claim is `flock`, which is advisory: the muxer opens and writes
+// the same path through its own handle and never notices. Windows has no
+// advisory lock -- `LockFileEx` is mandatory for every other handle -- so the
+// Win32 branch deliberately claims with `_O_EXCL` alone and holds the handle
+// open. Locking here was not merely redundant, it broke recording outright:
+// the muxer's `avio_open` handle could not write a byte and every file came
+// back "Failed to write header: Permission denied" (the Windows lane, run
+// 39499466204). `_O_EXCL` still fails if the name exists, which is the claim
+// that matters; what is lost is stopping a third party from replacing the file
+// mid-recording, and that is not worth making every recording empty.
 
 #ifdef _WIN32
 
@@ -50,18 +57,12 @@ int openExclusive(const char* path) {
 }
 
 bool lockExclusive(int fd) {
-    OVERLAPPED overlapped{};
-    const HANDLE handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
-    return LockFileEx(handle,
-                      LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
-                      0, MAXDWORD, MAXDWORD, &overlapped) != FALSE;
+    (void)fd;
+    return true;
 }
 
 void unlockExclusive(int fd) {
-    OVERLAPPED overlapped{};
-    LockFileEx(reinterpret_cast<HANDLE>(_get_osfhandle(fd)),
-               LOCKFILE_FAIL_IMMEDIATELY,
-               0, MAXDWORD, MAXDWORD, &overlapped);
+    (void)fd;
 }
 
 void closeExclusive(int fd) {

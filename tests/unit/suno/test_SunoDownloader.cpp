@@ -18,6 +18,7 @@
 
 #include <QtTest>
 #include <QFile>
+#include <QFileInfo>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
@@ -304,7 +305,10 @@ private slots:
 
         QCOMPARE(server.replies.size(), std::size_t{0});  // no transfer was started
         QCOMPARE(saved.count(), 1);
-        QCOMPARE(saved.takeFirst().at(1).toString(), alreadyThere.fileName());
+        // Canonical paths, not strings: the downloader emits the native path
+        // and this test would otherwise pin "/" against "\" on Windows.
+        QCOMPARE(QFileInfo(saved.takeFirst().at(1).toString()).canonicalFilePath(),
+                 QFileInfo(alreadyThere.fileName()).canonicalFilePath());
         QCOMPARE(ready.count(), 0);
         QCOMPARE(audio.playlist().size(), usize{0});
     }
@@ -427,7 +431,8 @@ private slots:
 
         QCOMPARE(saved.count(), 2);
         // The first claim keeps the plain name; only the collision is suffixed.
-        QCOMPARE(saved.at(0).at(1).toString(), downloadDir.filePath(QStringLiteral("Neon Arch.mp3")));
+        QCOMPARE(QFileInfo(saved.at(0).at(1).toString()).canonicalFilePath(),
+                 QFileInfo(downloadDir.filePath(QStringLiteral("Neon Arch.mp3"))).canonicalFilePath());
         const QString second = saved.at(1).at(1).toString();
         QVERIFY2(second != saved.at(0).at(1).toString(), "the second clip overwrote the first");
         QVERIFY2(second.endsWith(QStringLiteral("twin-b.mp3")), qPrintable(second));

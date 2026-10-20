@@ -51,6 +51,7 @@
 #include <QtTest>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -775,9 +776,12 @@ private slots:
         QVERIFY(allowed.has_value());
         QVERIFY(fixture.succeedTransfer(QStringLiteral("allowed")));
         QCOMPARE(saved.count(), 1);
-        QVERIFY2(saved.takeFirst().at(1).toString().endsWith(QStringLiteral("/Shared Title.mp3")),
-                 "the refused clip claimed a destination the allowed clip then "
-                 "had to be disambiguated away from");
+        // The file NAME, not a "/"-joined suffix: the path is native, so a
+        // suffix assertion pins the separator of whichever OS wrote it.
+        const QString landed = saved.takeFirst().at(1).toString();
+        QVERIFY2(QFileInfo(landed).fileName() == QStringLiteral("Shared Title.mp3"),
+                 qPrintable(QStringLiteral("the refused clip claimed a destination the allowed "
+                                           "clip then had to be disambiguated away from: ") + landed));
     }
 
     // ── 3. messages must not overclaim ───────────────────────────────────────

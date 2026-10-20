@@ -44,28 +44,36 @@ namespace {
 
 #ifdef Q_OS_WIN
 
-int nativeHandleOf(QFile& file) { return _get_osfhandle(static_cast<int>(file.handle())); }
+// A HANDLE, not a CRT fd: `_get_osfhandle` returns an intptr_t, and narrowing
+// it to int truncates a 64-bit handle into an invalid one -- every LockFileEx
+// then fails, and every existing part file reads as a live writer.
+using NativeHandle = intptr_t;
 
-bool lockExclusive(const int fd) {
+NativeHandle nativeHandleOf(QFile& file) { return _get_osfhandle(static_cast<int>(file.handle())); }
+
+bool lockExclusive(const NativeHandle handle) {
     OVERLAPPED overlapped{};
-    const HANDLE handle = reinterpret_cast<HANDLE>(static_cast<intptr_t>(fd));
-    return LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, MAXDWORD,
-                      MAXDWORD, &overlapped) != FALSE;
+    return LockFileEx(reinterpret_cast<HANDLE>(handle),
+                      LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+                      0, MAXDWORD, MAXDWORD, &overlapped) != FALSE;
 }
 
-void unlockExclusive(const int fd) {
+void unlockExclusive(const NativeHandle handle) {
     OVERLAPPED overlapped{};
-    LockFileEx(reinterpret_cast<HANDLE>(static_cast<intptr_t>(fd)), LOCKFILE_FAIL_IMMEDIATELY, 0,
-               MAXDWORD, MAXDWORD, &overlapped);
+    LockFileEx(reinterpret_cast<HANDLE>(handle),
+               LOCKFILE_FAIL_IMMEDIATELY,
+               0, MAXDWORD, MAXDWORD, &overlapped);
 }
 
 #else
 
-int nativeHandleOf(QFile& file) { return file.handle(); }
+using NativeHandle = int;
 
-bool lockExclusive(const int fd) { return flock(fd, LOCK_EX | LOCK_NB) == 0; }
+NativeHandle nativeHandleOf(QFile& file) { return file.handle(); }
 
-void unlockExclusive(const int fd) { flock(fd, LOCK_UN); }
+bool lockExclusive(const NativeHandle fd) { return flock(fd, LOCK_EX | LOCK_NB) == 0; }
+
+void unlockExclusive(const NativeHandle fd) { flock(fd, LOCK_UN); }
 
 #endif
 
@@ -77,7 +85,7 @@ bool claimIfUnlocked(const fs::path& path) {
     QFile probe(QString::fromStdString(path.string()));
     if (!probe.open(QIODevice::ReadOnly)) return true;
 
-    const int fd = nativeHandleOf(probe);
+    const NativeHandle fd = nativeHandleOf(probe);
     if (fd < 0) return true;
 
     const bool locked = lockExclusive(fd);
@@ -485,13 +493,25 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
         return nullptr;
     };
     const auto lockCreated = [](QFile& file) {
-        const int fd = nativeHandleOf(file);
+        const NativeHandle fd = nativeHandleOf(file);
         return fd < 0 || lockExclusive(fd); // no native handle: nothing to lock
     };
 
+    // A symlink at the part path is never legitimate -- nothing here creates
+    // one -- and on Windows CREATE_NEW resolves the reparse point instead of
+    // refusing it, so openOnce() *succeeds* by creating the link's TARGET and
+    // the download is written through the link. The later rename then moves
+    // that target and leaves the link behind (Windows lane, run 39499466204).
+    // O_EXCL already refuses a dangling link on POSIX; unlinking first makes
+    // both platforms behave the same and strengthens the "never followed"
+    // promise above rather than narrowing it.
+    std::error_code linkEc;
+    if (fs::symlink_status(path, linkEc).type() == fs::file_type::symlink) {
+        fs::remove(path, linkEc);
+    }
+
     if (auto file = openOnce()) {
-        if (!lockCreated(*file)) {
-            // We hold the only exclusive claim on a path we just created, so a
+        if (!lockCreated(*file)) {            // We hold the only exclusive claim on a path we just created, so a
             // refusal here means a holder arrived in the gap between create and
             // lock. Unlink what we made and report rather than share the file.
             LOG_WARN("DownloadQueue: lost the race for {} immediately after creating it", pathStr);

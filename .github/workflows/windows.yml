@@ -103,13 +103,20 @@ jobs:
       #
       # Keyed on a hand-bumped tag rather than a hash: the cache holds compiled
       # binaries, and busting it on every workflow edit costs half an hour.
-      # Bump `v1` when the port list or the triplet changes.
+      # Bump it when the port list or the triplet changes -- v2 is the
+      # `ffmpeg[x264]` build. v1 had already been saved under the key, so the
+      # x264 package was built again and then thrown away by the cache-hit
+      # guard, twice.
       - name: Restore the vcpkg binary cache
         id: vcpkg-cache
         uses: actions/cache/restore@v6
         with:
           path: C:\vcpkg-cache
-          key: vcpkg-dynamic-v1
+          key: vcpkg-dynamic-v2
+          # A prefix fallback, so bumping the key seeds from the previous
+          # generation instead of rebuilding every port: the ports are stored
+          # per package hash, and only the changed one (ffmpeg, here) is a miss.
+          restore-keys: vcpkg-dynamic-
 
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -300,4 +307,4 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: C:\vcpkg-cache
-          key: vcpkg-dynamic-v1
+          key: vcpkg-dynamic-v2
