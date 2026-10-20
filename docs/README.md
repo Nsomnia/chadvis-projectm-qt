@@ -25,6 +25,7 @@ fact, that is a bug — fix it here rather than adding a third copy.
 | [QML linting](dev/QML-LINTING.md) | `./scripts/lint-qml.sh`: what it checks, what it deliberately does not, and how to read its three buckets. Written for someone who does not know QML. |
 | [Manual QA](dev/manual-qa.md) | The MT-001 GUI checklist. Real-GUI versus offscreen coverage, per item. |
 | [Contributing](dev/CONTRIBUTING.md) | C++23 conventions, error handling, and PR process. |
+| [Agent skills](dev/SKILLS.md) | Which skill covers what, the vendored Qt set and its upstream, the harness directory layout, and where the gaps are. |
 
 ## Suno API research
 
