@@ -1099,6 +1099,7 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       Plain `bool` in `AppOptions` cannot distinguish "flag absent" from "flag false", so every launch without `--default-preset` forces `CONFIG.visualizer().useDefaultPreset = false`, erasing config `true`. Fix: `std::optional<bool>`, apply only when present.
 - [ ] T0206 **Normal exit skips `Application::quit()`** (`src/core/Application.cpp`)
       Window close / `Qt.quit()` bypass `last_session.m3u` save + `CONFIG.save-if-dirty`. Fix: move persistence to `aboutToQuit` handler.
+      Verified 2026-10-20: the hook exists and is half-fed — `aboutToQuit` is a signal chained from `QGuiApplication::aboutToQuit` (`:577`, declared `signals:` `Application.hpp:115`), and the ratings save already lives in its lambda (`:584-590`, the T0014 fix) while the m3u save (`:619`) and `CONFIG.save` (`:631`) remain in `quit()`, which its own comment (`:579-583`) says only the signal handlers call. Same skip applies to `quit()`'s recorder stop (`:610`): the only window-close QML handler runs `SettingsBridge.save()` (`main.qml:219`), the `RecordingBridge.stopRecording` call at `main.qml:641` is the R-key toggle, so a mid-flight recording is finalized only by destructor teardown.
 - [ ] T0207 **Generate help/completion/topic text from `CliArgs.inc`** (`src/core/CliArgs.inc`, `src/core/HelpSystem.cpp`)
       Use `CliArg`; fix `printHelp` docs URL `yourusername` → `Nsomnia`; fix completion staleness (completion lacks `--visualizer-fps` etc.).
 - [ ] T0208 **Unknown-config-key warnings + `--dump-config` / `--print-config`** (`src/core/ConfigLoader.cpp`, `src/core/CliArgs.inc`)
@@ -1309,7 +1310,7 @@ terse per T0252; long evidence belongs in `docs/backlog/TXXXX.md`.
 
 - [ ] T0298 **The Windows lane has never built anything, and still has no installable artifact** (`cmake/Install.cmake:51-53`, `.github/workflows/windows.yml:73`) #risk-high #blocks-release
       **Four root causes found and fixed in this change.** (1) A tracked directory named `ci-cd-and-automation ` (trailing space) made `git checkout` fail on Windows with `error: invalid path`; every run died at checkout, nine build steps were `skipped`, and `continue-on-error: true` reported the *workflow* as green (run `39387718520`: job `failure` in 18 s). (2) `ilammy/msvc-dev-cmd@v1` overwrites `VCPKG_ROOT` with Visual Studio's bundled vcpkg, so the install and configure steps pointed at two different trees; the job now uses a private `CHADVIS_VCPKG_ROOT`. (3) The vcpkg report step was a YAML **double-quoted** scalar, where `\v` is the vertical-tab escape — it reached PowerShell as `vcpkgcpkg.exe` and failed the job at that step (run `39389710671`, checkout and MSVC setup now green). (4) `install-qt-action` does not install Qt Multimedia by default, and `cmake/Dependencies.cmake:13` requires `Qt6::Multimedia`; configure died at "Failed to find required Qt component Multimedia" (run `39390322979`). Every Qt step now passes `modules: 'qtmultimedia'`, and that run reached **Configure** — the first time any Windows run has got past dependency setup. (5) Configure then died at `Could NOT find GLEW (missing: GLEW_INCLUDE_DIRS GLEW_LIBRARIES)` raised from `build-ci/_deps/projectm-src/CMakeLists.txt:190`: projectM v4 is built from source by CPM when no system copy is found, and it needs GLEW, which the explicit vcpkg list did not name. `glew:x64-windows-static` is added, and the vcpkg install is split so `continue-on-error` covers only ffmpeg — the old shape let a missing `glew` report green at that step and fail twenty seconds later in configure, which reads like a code problem. **Still open:** prove the lane green end-to-end, then drop `continue-on-error`; and run `cpack` so the NSIS generator configured at `Install.cmake:52` actually emits an installer — no `.exe` has ever been produced. Windows is the stated major userbase.
-      **A sixth, found once configure and the ports finally went green (run `39458868479`).** Every one of the twelve targets then failed at link with LNK2038 on `tag.lib`/`av*.lib`: `_ITERATOR_DEBUG_LEVEL` 0 vs 2, `MT_StaticRelease` vs `MDd_DynamicDebug`. The static triplet is built against the static CRT, and matching it would mean building our objects `/MT` — a CRT mismatch against Qt's own `/MD` binaries, which neither vendor supports. The lane now uses the dynamic **`x64-windows`** triplet with a **Release** config: the same runtime as Qt, and the one triplet vcpkg publishes prebuilt binaries for, so ffmpeg is a download where the static triplets make it a ~30-minute source build on every run. The ports' DLLs are copied into the zip beside windeployqt's Qt set, and `--compiler-runtime` stays on because the closure is `/MD`.
+      **A sixth, found once configure and the ports finally went green (run `39458868479`).** Every one of the twelve targets then failed at link with LNK2038 on `tag.lib`/`av*.lib`: `_ITERATOR_DEBUG_LEVEL` 0 vs 2, `MT_StaticRelease` vs `MDd_DynamicDebug`. The static triplet is built against the static CRT, and matching it would mean building our objects `/MT` — a CRT mismatch against Qt's own `/MD` binaries, which neither vendor supports. The lane now uses the dynamic **`x64-windows`** triplet with a **Release** config — the same runtime as Qt. The ports' DLLs are copied into the zip beside windeployqt's Qt set, and `--compiler-runtime` stays on because the closure is `/MD`. Speed was not a reason and must not be recorded as one: the published vcpkg binary feed missed every port (the runner's vcpkg is newer than the feed), so ffmpeg built from source for **32 minutes** on this triplet too. A persisted `VCPKG_BINARY_SOURCES` cache, saved under `always()` because `actions/cache` throws the whole thing away when a later step fails, is what makes the second run cheaper.
 
 ### P2 — production scaffolding and doc drift
 
@@ -1427,3 +1428,44 @@ P3 unless a gate is named. Terse per T0252; the long form belongs in `docs/backl
       (waveform timing editor), T0121 (karaoke render strategies), T0108 (libavfilter/libass
       burn-in), T0230 (ASS style hardcoded). One evaluator, two consumers — a second
       implementation is how the preview stops matching the file.
+
+## Additions from the 2026-10-20 audit rerun
+
+Source: the user-requested full-repo ponytail audit of 2026-10-20 (whole tree, 20 ranked
+findings delivered as the audit report). Every finding maps to an already-open ID, so the pass
+is a **confirmation pass, not a new-defect pass** — recorded here as a rank index over existing
+items rather than 20 duplicate lines, per one-fact-one-document hygiene. Two suspected NEW
+findings were checked and closed clean before writing anything:
+
+- **The add_test census.** An unanchored grep counts 13 hits in `tests/unit/CMakeLists.txt`; the
+  anchored count is 12 registered `add_test` lines (through `test_ClerkAuthClient` at :365) +
+  2 in `tests/integration/CMakeLists.txt` = **14**, exactly the number T0303 closed with — no
+  T0040/T0297-class recurrence. The 13th hit is a mid-line token, not a registration.
+- **`test_PresetManager.cpp`** is still absent from every registration surface (never compiled,
+  never run) — T0306 stands as filed.
+
+The audit's Must group, in its "fix first" order: **T0201 → T0200 → T0202 → T0153 → T0154+T0155 →
+T0215+T0216 → T0160+T0161 → T0156+T0157 → T0205 → T0206** (T0206 additionally extended in place above with
+the window-close recorder wrinkle). Should group: **T0011+T0100 · T0058+T0059 · T0224+T0223+T0219 ·
+T0067+T0221 · T0081+T0082+T0239 · T0072+T0086 · T0208+T0204+T0210 · T0298+T0311** (T0299, T0095
+and T0039/T0111 ride the same release lane). Nice group: **T0063+T0064+T0238** (four tolerant-JSON
+helper sets that disagree on `"True"`, three auth-vocabulary copies, two hand-synced palette
+blocks, two current-preset sources) and the dead-code ledger **T0065+T0060+T0068+T0071+T0061+T0226+T0227+T0112+T0306**.
+Smaller hits already tracked individually: T0088, T0230, T0244, T0207 (`printHelp` `yourusername`
+verified live at `Application.cpp:729`), T0079, T0110.
+
+In-session re-verification beyond the board's own record: prod `SunoDownloader` ctor (`:43-55`)
+wires none of `finalizeFinished` while only the test ctor (`:57-79`) does; `transportReason`
+(`SunoLibraryMutations.cpp:86-90`) provably never returns empty, so `Rejected` at `:498-499` is
+unreached; `fieldList()[1]` (`SunoDownloader.cpp:645`) is unguarded; zero `429`/`Retry-After`
+tokens in `SunoClient.cpp`; zero `reuseItems` in `src/qml`; zero `CFBundleIconFile` in `cmake/`;
+the T0205 branch (`Application.cpp:352-355`) is the unconditional else-branch clobber.
+
+Lean upper bound, measured with `wc -l` over the delete candidates named on the board (several
+are wire-or-delete decisions, not verdicts — see T0226/T0227/T0011): LyricTiming 2,042 +
+LoudnessAnalysis 1,362 + SunoWorkspace 785 + SunoLibraryMutations 1,228 + SunoBridge mutation
+forwarders ~950 + dead scripts 327 + SunoOrchestrator 103 + test_PresetManager 211 + dead
+structs/members ~450 → **≈ 6.1k lines** possible. **-0 dependencies**: every third-party dep has
+an in-tree consumer (spdlog, toml++, readerwriterqueue `AudioQueue.hpp:15`, projectM, FFmpeg,
+Qt, TagLib). Foundations note: deleting LyricTiming/LoudnessAnalysis kills T0120/T0129's
+substrate — those two are park-or-wire, not delete-to-today's-numbers.
