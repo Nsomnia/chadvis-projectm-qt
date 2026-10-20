@@ -80,6 +80,10 @@ env:
   # source for 32 minutes), so persist what gets built. `default` keeps the
   # upstream read-only feed for ports it does have.
   VCPKG_BINARY_SOURCES: clear;default,readwrite;files,C:\vcpkg-cache,readwrite
+  # A dynamic triplet installs a port for debug AND release by default, and
+  # ffmpeg's debug half cost another ten minutes per cold build. Nothing here
+  # ever links a debug vcpkg library -- this job is Release only.
+  VCPKG_BUILD_TYPE: release
 
 jobs:
   windows:
@@ -101,21 +105,18 @@ jobs:
       # build threw the whole cache away (run 39465642575, post step skipped).
       # Save under `always()` and a failing run still pays forward.
       #
-      # Keyed on a hand-bumped tag rather than a hash: the cache holds compiled
-      # binaries, and busting it on every workflow edit costs half an hour.
-      # Bump it when the port list or the triplet changes -- v2 is the
-      # `ffmpeg[x264]` build. v1 had already been saved under the key, so the
-      # x264 package was built again and then thrown away by the cache-hit
-      # guard, twice.
+      # Keyed per run with a prefix restore, so the newest archive always wins
+      # and a hand-bumped generation number cannot strand a build. That is not
+      # theoretical: `v2` was saved once, `cache-hit` then reported true on
+      # every later run, and the x264/ffmpeg packages that a cold run had just
+      # spent 30 minutes building were skipped by the save guard -- so the next
+      # run rebuilt them, twice.
       - name: Restore the vcpkg binary cache
         id: vcpkg-cache
         uses: actions/cache/restore@v6
         with:
           path: C:\vcpkg-cache
-          key: vcpkg-dynamic-v2
-          # A prefix fallback, so bumping the key seeds from the previous
-          # generation instead of rebuilding every port: the ports are stored
-          # per package hash, and only the changed one (ffmpeg, here) is a miss.
+          key: vcpkg-dynamic-${{ github.run_id }}
           restore-keys: vcpkg-dynamic-
 
       - name: Set up MSVC environment
@@ -246,8 +247,12 @@ jobs:
         # platform would ever have noticed.
         shell: pwsh
         run: |
-          $defs = Get-Content -Recurse -Include '*.vcxproj','flags.make','*.rsp' `
-            -Path "$env:BUILD_DIR" -ErrorAction SilentlyContinue |
+          # Get-ChildItem, not Get-Content: `-Recurse` is not a Get-Content
+          # parameter, and this step had never run before the tests first went
+          # green, so it failed on its first execution with "A parameter cannot
+          # be found that matches parameter name 'Recurse'".
+          $defs = Get-ChildItem -Path "$env:BUILD_DIR" -Recurse `
+            -Include '*.vcxproj','flags.make','*.rsp' -ErrorAction SilentlyContinue |
             Select-String -Pattern 'CHADVIS_HAS_(WIN32_CREDENTIALS|KEYCHAIN|SECRET_SERVICE)' |
             Select-Object -ExpandProperty Line -Unique
           if (-not $defs) {
@@ -302,9 +307,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # A unique key every run, so this always saves. It is the only way a
+      # failing run pays for the next one.
       - name: Save the vcpkg binary cache
-        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        if: always()
         uses: actions/cache/save@v6
         with:
           path: C:\vcpkg-cache
-          key: vcpkg-dynamic-v2
+          key: vcpkg-dynamic-${{ github.run_id }}
