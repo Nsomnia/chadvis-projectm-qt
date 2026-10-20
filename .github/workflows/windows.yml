@@ -288,8 +288,15 @@ jobs:
           $stage = Join-Path $env:RUNNER_TEMP 'stage/ChadVis'
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item $exe.FullName $stage
+          # --qmldir is not optional for a Qt Quick app: the QML itself is
+          # compiled into the exe, but the IMPORT plugins (QtQuick,
+          # QtQuick.Controls, QtMultimedia) live in the Qt tree, and without
+          # them the zip starts and shows nothing -- "module QtQuick.Controls is
+          # not installed". windeployqt only asks qmlimportscanner when told
+          # where the QML is.
           & "$env:QT_ROOT_DIR\bin\windeployqt.exe" `
             --release --no-translations `
+            --qmldir src/qml `
             --dir $stage (Join-Path $stage $exe.Name)
           if ($LASTEXITCODE -ne 0) { Write-Error "::error::windeployqt failed"; exit 1 }
           Copy-Item "$env:CHADVIS_VCPKG_ROOT\installed\x64-windows\bin\*.dll" $stage
