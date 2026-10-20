@@ -146,11 +146,16 @@ jobs:
       # only the port that needs it -- the previous shape let a missing `glew`
       # or `taglib` report green here and fail twenty seconds later in
       # configure, which reads like a code problem and is not one.
+      # `[x264]` is not optional. libx264 is the app's default recording codec
+      # (ConfigData.hpp `video.codec`), and vcpkg's ffmpeg port does not enable
+      # it by default: without it a Windows build starts, plays audio and
+      # records nothing, reported as "Video codec not found: libx264". It is
+      # the same GPL encoder Homebrew's ffmpeg gives the macOS build.
       - name: Install ffmpeg (vcpkg, allowed to miss)
         shell: pwsh
         continue-on-error: true
         run: |
-          & "$env:CHADVIS_VCPKG_ROOT\vcpkg.exe" install ffmpeg:x64-windows
+          & "$env:CHADVIS_VCPKG_ROOT\vcpkg.exe" install "ffmpeg[x264]:x64-windows"
 
       - name: Report vcpkg's view of the dependency set
         if: always()

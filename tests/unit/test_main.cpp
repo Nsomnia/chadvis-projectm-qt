@@ -1,11 +1,10 @@
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 #include <QtTest>
 
 #include <cstdio>
-
-#ifdef Q_OS_WIN
-#include <io.h>
-#endif
+#include <vector>
 
 int runTestLogger(int argc, char** argv);
 int runTestConfigParsers(int argc, char** argv);
@@ -55,7 +54,28 @@ int runTestSunoBridge(int argc, char** argv);
 static int runSuite(const char* name, int (*fn)(int, char**), int argc, char** argv) {
     std::fprintf(stderr, "[suite] %s\n", name);
     std::fflush(stderr);
-    const int rc = fn(argc, argv);
+
+    // Qt Test's own `-o file,txt` logger is the only way to see assertions on
+    // the Windows lane: eleven test binaries produced not one line of stdout
+    // there, even with fd 1 re-pointed at fd 2 (run 39496998294). stderr does
+    // reach the log, so a failing suite's log is echoed into it.
+    const QString logPath = QDir::tempPath() + QStringLiteral("/chadvis-suite-log.txt");
+    QByteArray logSpec = logPath.toUtf8() + ",txt";  // Qt Test: -o file,format
+    std::vector<char*> args(argv, argv + argc);
+    args.push_back(const_cast<char*>("-o"));
+    args.push_back(logSpec.data());
+    args.push_back(nullptr);
+
+    const int rc = fn(argc + 2, args.data());
+    if (rc != 0) {
+        QFile log(logPath);
+        if (log.open(QIODevice::ReadOnly)) {
+            const QByteArray body = log.readAll();
+            std::fwrite(body.constData(), 1, static_cast<size_t>(body.size()), stderr);
+        }
+    }
+    QFile::remove(logPath);
+
     std::fprintf(stderr, "[suite] %s -> %d\n", name, rc);
     return rc;
 }
@@ -63,14 +83,6 @@ static int runSuite(const char* name, int (*fn)(int, char**), int argc, char** a
 #define RUN_SUITE(name) runSuite(#name, &run##name, argc, argv)
 
 int main(int argc, char* argv[]) {
-#ifdef Q_OS_WIN
-    // Not one line of qtest output reached the CI log across eleven test
-    // binaries on the Windows lane (run 39494556417: five suites failed, and
-    // the log could only say their names because those go through stderr).
-    // Send stdout where stderr already goes, so the assertions are readable.
-    std::fflush(stdout);
-    _dup2(2, 1);
-#endif
     QCoreApplication app(argc, argv);
 
     int status = 0;
