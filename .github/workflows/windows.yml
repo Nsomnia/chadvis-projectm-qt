@@ -128,6 +128,10 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
+          # Multimedia is an add-on module, not part of the base install, and
+          # cmake/Dependencies.cmake:13 requires Qt6::Multimedia. Without it
+          # configure fails at "Failed to find required Qt component Multimedia".
+          modules: 'qtmultimedia'
           cache: true
           cache-key-prefix: qt-windows-6.8.3
 

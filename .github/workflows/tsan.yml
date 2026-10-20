@@ -139,6 +139,7 @@ jobs:
           version: '6.8.3'
           host: 'linux'
           target: 'desktop'
+          modules: 'qtmultimedia'
           install-deps: true
           cache: true
           cache-key-prefix: qt-linux-6.8.3-r2

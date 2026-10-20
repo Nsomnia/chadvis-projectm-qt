@@ -141,6 +141,9 @@ jobs:
           version: '6.8.3'
           host: 'linux'
           target: 'desktop'
+          # Multimedia is an add-on module, not part of the base install, and
+          # cmake/Dependencies.cmake:13 requires Qt6::Multimedia.
+          modules: 'qtmultimedia'
           # Qt's own Linux build deps (xcb, EGL, fontconfig, ...). Leaving this
           # false is a guaranteed runtime failure in the GL entries.
           install-deps: true
