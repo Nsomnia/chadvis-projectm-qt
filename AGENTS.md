@@ -80,6 +80,13 @@ when reading a badge:
 * The three runtime-environment entries (`integration_tests`, `integration_gl_tests`,
   `test_OffscreenRenderSpike`) skip headless and ctest counts a skip as success. A green
   run is not evidence for GL, burn-in, or audio.
+* **A workflow file that parses is not a workflow file GitHub accepts.** GitHub rejects a
+  mapping with a repeated key outright; `yaml.safe_load` keeps the last one and reports
+  nothing, so every local check stays green while the workflow goes dark. The symptom is a
+  run with **zero jobs** and the summary "This run likely failed because of a workflow file
+  issue" — not a compile or test failure, and `gh run rerun` refuses it. Run
+  `./scripts/check-workflows.py` after touching `.github/workflows/`; it catches duplicate
+  keys, tab indentation, and a missing `jobs:`.
 
 ## Do not
 

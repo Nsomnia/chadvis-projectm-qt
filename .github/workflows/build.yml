@@ -150,7 +150,6 @@ jobs:
           # Cached: ~2 GB that would otherwise be re-downloaded on every push.
           cache: true
           cache-key-prefix: qt-linux-6.8.3-r2
-          modules: 'qtmultimedia'
 
       # Fail fast with a clear message if the Qt install is broken, rather
       # than letting cmake fail cryptically at find_package(Qt6).
