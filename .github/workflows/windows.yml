@@ -26,10 +26,12 @@
 # EXPECT IT TO FAIL ON THE FIRST RUN
 #   There is no vcpkg.json in this repository, and creating one is outside the
 #   scope of this change, so the native dependencies below are installed by
-#   explicit `vcpkg install` lines. vcpkg's ffmpeg port in particular builds
-#   most of the world on first use, which is minutes, not seconds. The job is
-#   non-blocking precisely so that a slow or incomplete first run is signal
-#   rather than breakage.
+#   explicit `vcpkg install` lines. ffmpeg is a port that can build most of the
+#   world from source, which is why the triplet below is the dynamic one: vcpkg
+#   publishes prebuilt binaries for `x64-windows` and for none of the static
+#   triplets, so the same port is a download here and a 30-minute source build
+#   there. The job is non-blocking precisely so that a slow or incomplete first
+#   run is signal rather than breakage.
 #
 # WHAT IS ACTUALLY WORTH DOING HERE
 #   1. Does it CONFIGURE? That is the highest-value question on this platform,
@@ -60,16 +62,13 @@ permissions:
 
 env:
   BUILD_DIR: build-ci
-  # Release, not Debug, and /MT, not /MD: vcpkg's `x64-windows-static`
-  # triplet builds its ports with the static Release CRT (`MT_StaticRelease`,
-  # iterator debug level 0). MSVC refuses to link objects built against a
-  # different runtime flavour, so a Debug CMake config (MDd, level 2) fails
-  # every target at link with LNK2038 on tag.lib and the av*.lib set -- run
-  # 39458868479, twelve projects, all the same mismatch. Release + /MT is the
-  # configuration that triplet was built for, and it is also what ships.
-  # The /MT half is passed as a literal at the Configure step, not through a
-  # variable: a `$env:` reference there reached CMake unexpanded (run
-  # 39465642575) while the same form worked two lines above it.
+  # Release, and the dynamic `x64-windows` triplet. Two reasons, both learnt
+  # from runs that failed: the static triplets are built against the static
+  # CRT, so linking our objects against them needed a matching /MT flag, and
+  # /MT is a CRT mismatch against Qt's own /MD binaries -- unsupported by both
+  # vendors. The dynamic triplet matches Qt's runtime, has prebuilt vcpkg
+  # binaries (no 30-minute ffmpeg source build), and costs only the DLLs the
+  # package step copies into the zip.
   CMAKE_BUILD_TYPE: Release
   # MSVC 19.3x+ is Compiler.cmake's floor (>= 19.29). windows-latest ships
   # VS 2022.
@@ -79,10 +78,6 @@ env:
   # resolves to a different tree than the one the job configured against.
   # A private name keeps the two independent.
   CHADVIS_VCPKG_ROOT: C:\vcpkg
-  # vcpkg ships no prebuilt binaries for the static triplets, so ffmpeg is
-  # built from source -- measured at ~30 minutes. Point its binary cache at a
-  # directory actions/cache persists and the second run onwards is seconds.
-  VCPKG_BINARY_SOURCES: clear;files,C:\vcpkg-cache,readwrite
 
 jobs:
   windows:
@@ -90,32 +85,13 @@ jobs:
     runs-on: windows-latest
     # See the header. Do not remove this without reading it first.
     continue-on-error: true
-    # First run builds ffmpeg from source (~30 min, measured); cached vcpkg
-    # binary artifacts make every later run a fraction of that. Keep this
-    # above the sum of the two or the slow run is the one that gets killed.
-    timeout-minutes: 120
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-
-      # Restore/save are separate steps on purpose. `actions/cache` only saves
-      # when the job succeeds, and this lane is being brought up from red --
-      # so a run that failed AFTER vcpkg spent 30 minutes building ffmpeg
-      # threw the whole cache away (run 39465642575, post step skipped). Save
-      # under `always()` and a failing run still pays forward.
-      #
-      # Keyed on a hand-bumped tag, not a hash: the cache is a build artefact
-      # store, and busting it on every workflow edit would cost 30 minutes a
-      # push. Bump `v1` whenever the port list or the triplet changes.
-      - name: Restore the vcpkg binary cache
-        id: vcpkg-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: C:\vcpkg-cache
-          key: vcpkg-static-v1
 
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -136,12 +112,12 @@ jobs:
         shell: pwsh
         run: |
           & "$env:CHADVIS_VCPKG_ROOT\vcpkg.exe" install `
-            spdlog:x64-windows-static `
-            fmt:x64-windows-static `
-            tomlplusplus:x64-windows-static `
-            glm:x64-windows-static `
-            glew:x64-windows-static `
-            taglib:x64-windows-static
+            spdlog:x64-windows `
+            fmt:x64-windows `
+            tomlplusplus:x64-windows `
+            glm:x64-windows `
+            glew:x64-windows `
+            taglib:x64-windows
 
       # ffmpeg is the long pole and the likeliest single point of failure.
       # It is allowed to miss on its own without taking the Qt install with
@@ -156,7 +132,7 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: |
-          & "$env:CHADVIS_VCPKG_ROOT\vcpkg.exe" install ffmpeg:x64-windows-static
+          & "$env:CHADVIS_VCPKG_ROOT\vcpkg.exe" install ffmpeg:x64-windows
 
       - name: Report vcpkg's view of the dependency set
         if: always()
@@ -188,12 +164,8 @@ jobs:
         run: |
           cmake -S . -B $env:BUILD_DIR `
             -DCMAKE_BUILD_TYPE=$env:CMAKE_BUILD_TYPE `
-            -DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=MultiThreaded `
-            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR;$env:CHADVIS_VCPKG_ROOT\installed\x64-windows-static" `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR;$env:CHADVIS_VCPKG_ROOT\installed\x64-windows" `
             -DCMAKE_TOOLCHAIN_FILE="$env:CHADVIS_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-          # Evidence for the /MT decision above rather than a guess: the value
-          # CMake actually resolved, printed before the multi-minute build.
-          Select-String -Path "$env:BUILD_DIR\CMakeCache.txt" -Pattern '^CMAKE_MSVC_RUNTIME_LIBRARY'
 
       - name: Build
         run: cmake --build $env:BUILD_DIR --config $env:CMAKE_BUILD_TYPE --parallel
@@ -265,9 +237,11 @@ jobs:
       # that already has this exact Qt. `windeployqt` is the Qt-supplied answer
       # and is already installed by install-qt-action.
       #
-      # FFmpeg/taglib/spdlog are static (vcpkg `x64-windows-static`), so Qt is
-      # the whole dynamic closure. If windeployqt is wrong this step fails and
-      # the lane says so; it does not silently ship a broken zip.
+      # Qt is not the whole dynamic closure: the vcpkg ports are DLLs too, and
+      # windeployqt knows nothing about them. They are copied from the
+      # triplet's bin/ below. `--compiler-runtime` stays ON (the default) --
+      # these ports and Qt are /MD, so the zip needs the VC redistributable
+      # DLLs a machine without Visual Studio may not have.
       # ---------------------------------------------------------------------
       - name: Package (windeployqt + zip)
         shell: pwsh
@@ -280,9 +254,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item $exe.FullName $stage
           & "$env:QT_ROOT_DIR\bin\windeployqt.exe" `
-            --release --no-translations --no-compiler-runtime `
+            --release --no-translations `
             --dir $stage (Join-Path $stage $exe.Name)
           if ($LASTEXITCODE -ne 0) { Write-Error "::error::windeployqt failed"; exit 1 }
+          Copy-Item "$env:CHADVIS_VCPKG_ROOT\installed\x64-windows\bin\*.dll" $stage
+          Get-ChildItem $stage -Filter '*.dll' | Select-Object -ExpandProperty Name
           if (Test-Path 'config') { Copy-Item -Recurse -Force 'config' (Join-Path $stage 'config') }
           $zip = Join-Path $env:BUILD_DIR 'chadvis-windows-x64.zip'
           Compress-Archive -Path $stage -DestinationPath $zip -Force
@@ -295,10 +271,3 @@ jobs:
           path: ${{ env.BUILD_DIR }}/chadvis-windows-x64.zip
           if-no-files-found: error
           retention-days: 14
-
-      - name: Save the vcpkg binary cache
-        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: C:\vcpkg-cache
-          key: vcpkg-static-v1
