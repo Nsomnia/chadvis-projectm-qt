@@ -195,16 +195,16 @@ jobs:
           #   ffmpeg        pkg_check_modules(libavcodec ...) + libavfilter.
           #                 KEG-ONLY.
           #   glm           find_package(glm REQUIRED)
-          #   projectm      projectM4Config.cmake (formula name, not "libprojectm"),
-          #                 which cmake/FindProjectM4.cmake
-          #                 probes FIRST (QUIET) and falls back from to a CPM
-          #                 source build that costs minutes. Optional on purpose:
-          #                 if the formula is missing or the version is not v4,
-          #                 the probe simply misses and CPM builds it as before.
+          #   projectm      NOT installed: Homebrew's formula is 3.1.12, and
+          #                 cmake/FindProjectM4.cmake wants v4. Installing a v3
+          #                 library only to have the probe reject it costs CI
+          #                 time and leaves a wrong-ABI dylib on the search path,
+          #                 so the CPM source build (v4.1.6, ~25 s) is the macOS
+          #                 path by design.
           #   ccache        Compiler.cmake auto-detects it, which is what makes
           #                 the cache below possible.
           brew install cmake ninja ccache qt spdlog fmt tomlplusplus taglib \
-            ffmpeg glm projectm
+            ffmpeg glm
           # CMake config packages for spdlog/fmt/tomlplusplus/glm are not
           # keg-only, so /usr/local is already on CMake's search path and no
           # prefix hint is needed for them. The two pkg-config consumers are

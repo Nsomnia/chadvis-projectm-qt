@@ -198,10 +198,11 @@ jobs:
           # neither -- their CMake config packages land in /usr/local and are
           # already on CMake's search path, which is the system branch of
           # cmake/Dependencies.cmake that this job exists to exercise.
-          # projectm is a probe-first optimization: if the formula is absent
-          # or not v4, cmake/FindProjectM4.cmake falls back to CPM unchanged.
+          # projectm is deliberately NOT installed: Homebrew's formula is
+          # 3.1.12, and cmake/FindProjectM4.cmake wants v4, so CPM builds the
+          # source copy exactly as it does for every other lane.
           brew install cmake ninja ccache qt spdlog fmt tomlplusplus taglib \
-            ffmpeg glm projectm
+            ffmpeg glm
           echo "PKG_CONFIG_PATH=$(brew --prefix ffmpeg)/lib/pkgconfig:$(brew --prefix taglib)/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Configure

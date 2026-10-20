@@ -489,7 +489,12 @@ private slots:
         REQUIRE_MACOS_SAFE_STORAGE();
         using vc::suno::auth::BrowserCookieImport;
         const QStringList names = BrowserCookieImport::candidateBrowserNames();
-        QVERIFY(!names.isEmpty());
+        // A CI runner has Safari and nothing else. An empty list is that
+        // host's correct answer, not a failure; asserting otherwise made the
+        // suite depend on which browsers the developer happened to install.
+        if (names.isEmpty()) {
+            QSKIP("No Chromium-family browser installed on this host.");
+        }
         QVERIFY(!names.contains(QStringLiteral("Vivaldi")));
     }
 };
