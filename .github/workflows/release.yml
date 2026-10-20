@@ -198,10 +198,10 @@ jobs:
           # neither -- their CMake config packages land in /usr/local and are
           # already on CMake's search path, which is the system branch of
           # cmake/Dependencies.cmake that this job exists to exercise.
-          # libprojectm is a probe-first optimization: if the formula is absent
+          # projectm is a probe-first optimization: if the formula is absent
           # or not v4, cmake/FindProjectM4.cmake falls back to CPM unchanged.
           brew install cmake ninja ccache qt spdlog fmt tomlplusplus taglib \
-            ffmpeg glm libprojectm
+            ffmpeg glm projectm
           echo "PKG_CONFIG_PATH=$(brew --prefix ffmpeg)/lib/pkgconfig:$(brew --prefix taglib)/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Configure

@@ -53,20 +53,6 @@ tools that configured it**, so migrating a package manager silently breaks every
 with a misleading `FAILED: [code=127] … No such file or directory` that reads like a broken
 install and is not one. `build.sh` detects this and reconfigures.
 
-## Branches
-
-`main`, `dev/bleeding-edge`, and `recover/development` are kept **identical**. There is one
-line of development, not three:
-
-* Land work on `main`. Never let the other two accumulate unique commits.
-* To sync, bring the work *into* `main` first, then fast-forward the other two to the same
-  SHA. `recover/development` has no remote counterpart; `dev/bleeding-edge` does.
-* Before any force-update, push a `backup/pre-sync-<branch>-<date>` tag so the old tip is
-  recoverable from the remote, not just the local reflog.
-
-Verify with `git rev-parse main dev/bleeding-edge recover/development` — three identical
-SHAs, or the invariant is broken.
-
 ## CI reality
 
 The workflows are honest about what they can and cannot prove, and the difference matters

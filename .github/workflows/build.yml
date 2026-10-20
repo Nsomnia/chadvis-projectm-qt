@@ -195,7 +195,8 @@ jobs:
           #   ffmpeg        pkg_check_modules(libavcodec ...) + libavfilter.
           #                 KEG-ONLY.
           #   glm           find_package(glm REQUIRED)
-          #   libprojectm   projectM4Config.cmake, which cmake/FindProjectM4.cmake
+          #   projectm      projectM4Config.cmake (formula name, not "libprojectm"),
+          #                 which cmake/FindProjectM4.cmake
           #                 probes FIRST (QUIET) and falls back from to a CPM
           #                 source build that costs minutes. Optional on purpose:
           #                 if the formula is missing or the version is not v4,
@@ -203,7 +204,7 @@ jobs:
           #   ccache        Compiler.cmake auto-detects it, which is what makes
           #                 the cache below possible.
           brew install cmake ninja ccache qt spdlog fmt tomlplusplus taglib \
-            ffmpeg glm libprojectm
+            ffmpeg glm projectm
           # CMake config packages for spdlog/fmt/tomlplusplus/glm are not
           # keg-only, so /usr/local is already on CMake's search path and no
           # prefix hint is needed for them. The two pkg-config consumers are

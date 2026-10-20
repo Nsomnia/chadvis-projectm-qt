@@ -23,9 +23,10 @@ docs/SUNO_API_CPP_QT6_INTEGRATION_GUIDE.md
 # Agent internals
 #.agent/notes/
 # .workbuddy-ai/
-# Deliberately NOT ignored: agent memory under .workbuddy-ai/memory/ is tracked,
-# so the next session inherits it. Do not re-add an ignore here without asking —
-# it would stop future daily logs being tracked while leaving the existing ones in.
+# Agent memory under .workbuddy-ai/memory/ is not tracked: a daily log duplicates the
+# commit message, TODO.md and the workflow headers, which are the durable places for
+# the same facts. `.workbuddy-ai/skills` stays tracked (it is a symlink to .opencode/skills).
+.workbuddy-ai/memory/
 .backup_graveyard/
 logs/
 scratch/
