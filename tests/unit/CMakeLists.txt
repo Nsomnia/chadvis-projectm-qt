@@ -395,6 +395,7 @@ if(CHADVIS_SANITIZER)
         test_ClerkAuthClient
         test_CapturedHosts
         test_FeatureFlags
+        test_ThemeQml
         # These two are registered ctest entries and get built by the sanitizer
         # profile like every other target here, but they were missing from this
         # list -- so under --tsan they ran WITHOUT exitcode=66 and without the

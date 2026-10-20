@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-10-18
+updated: 2026-10-20
 ---
 
 # ChadVis backlog
@@ -1294,3 +1294,45 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 - `scripts/check_deps.sh`, `install_projectm_v4_local.sh`, `run_debug.sh`, `setup-arch.sh` (see T0112).
 - `SESSION_CATALOG` alias, `PROMPTS` LEAD constant, `ORCHESTRATOR_*` LEAD constants, `CDN_CLIP_*` LEAD paths, `CLERK_API_VERSION` phantom comment, stub-behind code (`onGenerateReply` unreachable, `cancelledPolls_`, wav-poll machinery) — delete or gate.
 - Callerless/duplicate QML + Suno members per T0071/T0060 (incl. `VisualizerWindow::feedAudio` stub, `Engine::addPCMData` duplicate, `RenderTarget::bind()/unbind()`, `LyricsSync::Config::lookaheadTime`, `SunoOrchestrator::onMessageFinished/onHistoryFinished`, `SunoClient::onGenerateReply/onWavConversionInitiated`, `cancelledPolls_`, `DownloadQueue::Item.metadata`, `SunoDownloader::tagAudioFile` FLAC branch, `ClipParser::selectImageUrl` fallback param, `parseClipArray` `expected` path, `SunoLibraryManager::clipUpdated` signal, `SunoDatabase::saveClip` single, `SunoLibraryManager::syncDatabase` rename-or-implement, `LyricsAligner::estimateTimings/parseLrc`, `SunoLyricsManager` "Lyrics processing:" branch, `SunoWorkspace` saved `workspace_id`/`version`, `SunoAudioUploadService` dead guards, `SunoController` debug-lyrics scaffolding).
+
+## Additions from 2026-10-20 production sweep
+
+Source: full sweep of `src/`, `docs/`, `.github/workflows/`, `cmake/`, `scripts/`, and
+`.opencode/skills/` at `7c60fe4` (2026-10-20), plus the live GitHub Actions history. Every
+claim below was re-checked against the tree or the run log, not carried from prose. Kept
+terse per T0252; long evidence belongs in `docs/backlog/TXXXX.md`.
+
+### P1 — gates that do not gate
+
+- [x] T0297 **`test_ThemeQml` is built and registered but runs in no gate at all** (`build.sh:50-63`, `.github/workflows/build.yml:290-318`, `windows.yml:150-168`, `release.yml:239-252`, `tsan.yml:168`) #risk-high
+      `tests/unit/CMakeLists.txt:255,272` adds the executable and the test. `SAFE_TESTS` omitted it; the `build.yml` discovery list and its 10-entry `-R` regex omitted it; `windows.yml`, `release.yml` and `tsan.yml` omitted it too. The theme round-trip guard T0186 exists to provide had therefore **never executed** in CI or under `--safe`. This is the T0040 class recurring: a registered entry silently outside the allow-list. **Closed:** added to `SAFE_TESTS`, all four discovery lists and `-R` regexes, and the `CHADVIS_SANITIZER` `set_tests_properties` block. The board's own drift check is now an exact set match — 12 registered non-integration entries, 12 in `SAFE_TESTS`, `diff` empty — and `test_ThemeQml` runs 46 passed / 0 failed / 0 skipped. `VERIFY` in `STATUS/T0297.log`.
+
+- [ ] T0298 **The Windows lane has never built anything, and still has no installable artifact** (`cmake/Install.cmake:51-53`, `.github/workflows/windows.yml:73`) #risk-high #blocks-release
+      **Root cause found and fixed in this change:** a tracked directory named `ci-cd-and-automation ` (trailing space) made `git checkout` fail on Windows with `error: invalid path`. Every run died at checkout; all build steps were skipped; `continue-on-error: true` reported the *workflow* as success. Example: run `39387718520` — job `failure` in 18 s, checkout step failed, nine steps `skipped`. The path is renamed, so the lane can finally reach configure. **Still open:** prove it green end-to-end, then drop `continue-on-error`; and run `cpack` so the NSIS generator configured at `Install.cmake:52` actually emits an installer — no `.exe` has ever been produced. Windows is the stated major userbase.
+
+### P2 — production scaffolding and doc drift
+
+- [ ] T0299 **Linux ships only TGZ/ZIP — no `.deb`, `.rpm`, AppImage, or Flatpak** (`cmake/Install.cmake:43`) #feature
+      `CPACK_GENERATOR` is `TGZ;ZIP`, with `DragNDrop`/`NSIS` appended per platform. `scripts/PKGBUILD` exists but no CI job builds it and no distro package is emitted anywhere. Decide the supported formats, add the CPack generators, and add a packaging lane that installs the result.
+
+- [ ] T0300 **Nothing measures coverage** (`.github/workflows/`, `CMakeLists.txt`, `cmake/`) #risk-med
+      Zero hits for `gcov`, `llvm-cov`, `lcov`, or `coverage` outside comments. A green gate says the 14 suites pass, not what fraction of `src/` they execute. Add a `CHADVIS_COVERAGE` option and one reporting lane; the untested surfaces are already enumerated by T0100 and T0253–T0256.
+
+- [ ] T0301 **No static-analysis, SBOM, or dependency-vulnerability lane** (`.github/workflows/`) #security
+      No CodeQL, no CycloneDX/SPDX SBOM, no `vcpkg.json` (T0091), and Dependabot watches only `github-actions` (`.github/dependabot.yml:14-17`). The CPM-pinned and system dependencies have **no CVE signal at all**. Add CodeQL for C++ and an SBOM step; keep CPM pins on a manual review list until a manifest exists.
+
+- [ ] T0302 **No SECURITY.md, CODEOWNERS, issue/PR templates, or `.editorconfig`** (repo root, `.github/`) #cleanup
+      `docs/dev/CONTRIBUTING.md` exists, but the GitHub-recognised surfaces do not: a security report has no private channel and a first-time contributor gets a blank issue box. Add `SECURITY.md` (private disclosure), `CODEOWNERS`, `.github/ISSUE_TEMPLATE/{bug,feature}.yml`, `.github/PULL_REQUEST_TEMPLATE.md`, and an `.editorconfig` matching `.clang-format`.
+
+- [x] T0303 **The test counts in both docs were stale and mutually inconsistent** (`docs/README.md:24`, `docs/dev/TESTING.md:3,46,100,155`) #doc
+      Actual today: **14** CTest entries — `unit_tests`, **11** standalone unit executables (including `test_ThemeQml`), and 2 entries over `integration_tests`. `docs/README.md:24` said "19 `unit_tests` sources, the 6 standalone executables"; `TESTING.md:3` said "eleven … eight standalone"; `:46` said "out of 11"; `:100` said 31 sources; `:155` said "Eleven entries: nine in tests/unit". All corrected to 38 aggregate sources, 11 standalone, 14 entries. `VERIFY` recorded in `STATUS/T0303.log`.
+
+- [ ] T0304 **`docs/GEMINI_FLASH_ANALYSYS.md` is an orphan with a misspelled filename** (`docs/`) #doc #cleanup
+      No document links it and the hub (`docs/README.md`) does not list it. Either fold its content into a linked doc and delete the file, or rename it (`ANALYSIS`) and add a hub row. An orphan doc is the "two files claim one fact" failure the hub's own rule forbids.
+
+- [ ] T0305 **Four overlapping C++ skills, two of them with unclear provenance** (`.opencode/skills/`) #cleanup
+      `c-cpp-profi`, `modern-cpp`, `cpp-coding-standards` and `cpp-pro` all cover modern C++ standards/idioms. `c-cpp-profi` has no upstream license; `cpp-pro` has no license file either. Consolidate to one standards skill and one security/idioms skill, record the license for each, and delete the rest. Skill sprawl costs context on every task that loads them.
+
+- [ ] T0306 **`tests/unit/visualizer/test_PresetManager.cpp` is committed but declared nowhere** (`tests/unit/visualizer/test_PresetManager.cpp`) #cleanup #risk-med
+      211 lines with a `test_PresetManager.moc` include, added in `f721ae0`. It is absent from `tests/unit/CMakeLists.txt` and from `test_main.cpp`, so it neither builds nor runs — the exact "compiled-but-unrun" class `TESTING.md` warns about, in its worse form: not even compiled. Either declare it (and add the `runTest*` call) or delete it. `PresetManager` is a T024/T0235 subject, so the tests may be worth keeping; wire them.
+

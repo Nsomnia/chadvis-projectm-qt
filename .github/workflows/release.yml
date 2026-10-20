@@ -237,7 +237,7 @@ jobs:
             exit 1
           fi
           for t in unit_tests test_HttpPolicy test_CapturedHosts test_FeatureFlags \
-                   test_RenderExecutor test_SunoAudioUploadService test_SunoRequestEpoch \
+                   test_RenderExecutor test_ThemeQml test_SunoAudioUploadService test_SunoRequestEpoch \
                    test_SunoExploreService test_SunoNotificationService test_ClerkAuthClient; do
             printf '%s\n' "$LIST" | grep -Eq "^ *Test +#[0-9]+: ${t}\$" || {
               echo "::error::ctest entry '$t' is built but ctest did not discover it"
@@ -245,10 +245,10 @@ jobs:
             }
           done
 
-      - name: Run the headless gate (10 entries)
+      - name: Run the headless gate (11 entries)
         run: |
           ctest --test-dir build-release/tests --output-on-failure \
-            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
+            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
 
       - name: Run the runtime-environment entries (reported, non-gating)
         continue-on-error: true
@@ -454,7 +454,7 @@ jobs:
             echo "## What was verified before packaging"
             echo
             echo "On every platform that produced an artifact: a full CMake configure and"
-            echo "build, then the 10 headless ctest entries (\`unit_tests\` plus 9 standalone"
+            echo "build, then the 11 headless ctest entries (\`unit_tests\` plus 10 standalone"
             echo "suites). Three further entries — \`integration_tests\`,"
             echo "\`integration_gl_tests\`, \`test_OffscreenRenderSpike\` — need a real"
             echo "drawable, and \`integration_tests\` also constructs a real \`AudioEngine\`,"

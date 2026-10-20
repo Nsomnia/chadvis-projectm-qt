@@ -53,6 +53,34 @@ tools that configured it**, so migrating a package manager silently breaks every
 with a misleading `FAILED: [code=127] … No such file or directory` that reads like a broken
 install and is not one. `build.sh` detects this and reconfigures.
 
+## Branches
+
+`main`, `dev/bleeding-edge`, and `recover/development` are kept **identical**. There is one
+line of development, not three:
+
+* Land work on `main`. Never let the other two accumulate unique commits.
+* To sync, bring the work *into* `main` first, then fast-forward the other two to the same
+  SHA. `recover/development` has no remote counterpart; `dev/bleeding-edge` does.
+* Before any force-update, push a `backup/pre-sync-<branch>-<date>` tag so the old tip is
+  recoverable from the remote, not just the local reflog.
+
+Verify with `git rev-parse main dev/bleeding-edge recover/development` — three identical
+SHAs, or the invariant is broken.
+
+## CI reality
+
+The workflows are honest about what they can and cannot prove, and the difference matters
+when reading a badge:
+
+* `build.yml` is the gate: Ubuntu × {gcc, clang} + macOS, 11 headless entries out of 14 registered.
+* `windows.yml` is **non-blocking** (`continue-on-error`), so a *workflow* "success" can
+  still contain a failed job. Check the job conclusion, not the run conclusion.
+* `asan.yml`, `ubsan.yml`, `tsan.yml` report and count; they do not gate. A lane that
+  produced no log is a broken lane, not a clean one.
+* The three runtime-environment entries (`integration_tests`, `integration_gl_tests`,
+  `test_OffscreenRenderSpike`) skip headless and ctest counts a skip as success. A green
+  run is not evidence for GL, burn-in, or audio.
+
 ## Do not
 
 * **Never commit credentials.** No raw captures, cookies, tokens, account or clip identifiers,
@@ -99,6 +127,22 @@ official Qt set from [TheQtCompanyRnD/agent-skills](https://github.com/TheQtComp
 
 The rest (`code-reviewer`, `test-engineer`, `debugging-and-error-recovery`, …) are
 project-authored workflow skills. When both apply, prefer the Qt skill over the generic one.
+
+**Layout rule: every skill is a directory with a `SKILL.md` at
+`.opencode/skills/<name>/SKILL.md`, and `<name>` must equal the frontmatter `name`.** A loose
+`.md` at the skills root is not discovered, and a directory name with a trailing space is
+not just cosmetic — it makes `git checkout` fail on Windows with `invalid path`, which kills
+the entire Windows job at checkout while `continue-on-error` reports the run as green. Both
+mistakes have happened here.
+
+* Repo verification — `chadvis-verify`: the build-profile rule, the ctest zero-tests trap,
+  the `SAFE_TESTS` drift check, the sanitizer lanes, and "green is not GL evidence". Run it
+  before claiming any task complete.
+* C++ standards — `cpp-coding-standards` (C++ Core Guidelines): the rule set behind the
+  C++23 requirement, complementary to `modern-cpp`'s security emphasis.
+* C++ specialist — `cpp-pro`: a general modern-C++ systems prompt; no license file, treat as
+  unlicensed third-party content, do not redistribute beyond this repo.
+* CI/CD — `ci-cd-and-automation`: pipeline setup and quality-gate guidance.
 
 * C++ systems engineering — `c-cpp-profi` ([MuhDur/c-cpp-profi](https://github.com/MuhDur/c-cpp-profi)):
   evidence-grade workflow with a gate ladder (inventory → compile → static → sanitizers →

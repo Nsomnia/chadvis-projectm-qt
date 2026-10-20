@@ -5,11 +5,10 @@
 # need no hardware still pass? Ubuntu x {gcc, clang} plus macOS 14.
 #
 # WHY THIS DOES NOT CALL ./build.sh
-#   build.sh has no CI mode, and its --tests action is an ALLOW-LIST of eight
-#   targets (SAFE_TESTS, build.sh:50-59) that exists to make the local edit loop
+#   build.sh has no CI mode, and its --tests action is an ALLOW-LIST of twelve
+#   targets (SAFE_TESTS, build.sh:50-63) that exists to make the local edit loop
 #   fast. Two of its consequences make it wrong here:
-#     * it builds and runs 8 of the 13 ctest entries. test_CapturedHosts,
-#       test_FeatureFlags, test_OffscreenRenderSpike and both integration
+#     * it builds and runs 12 of the 14 ctest entries. Only the two integration
 #       entries are outside it, so CI built on it would never compile or run
 #       them;
 #     * --clean / --rebuild move the build directory into .backup_graveyard/
@@ -308,6 +307,7 @@ jobs:
             test_FeatureFlags \
             test_OffscreenRenderSpike \
             test_RenderExecutor \
+            test_ThemeQml \
             test_SunoAudioUploadService \
             test_SunoRequestEpoch \
             test_SunoExploreService \
@@ -323,12 +323,12 @@ jobs:
           done
           [ "$MISSING" -eq 0 ] || exit 1
 
-          echo "All 13 expected entries discovered; ctest reports $TOTAL."
+          echo "All 14 expected entries discovered; ctest reports $TOTAL."
 
-      - name: Run the headless gate (10 entries)
+      - name: Run the headless gate (11 entries)
         run: |
           ctest --test-dir "$BUILD_DIR/tests" --output-on-failure \
-            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
+            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
 
       # ---------------------------------------------------------------------
       # Runtime-environment entries: reported, not gating.

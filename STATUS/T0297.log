@@ -1,0 +1,6 @@
+2026-10-20T07:53:56Z  CLAIM    wire test_ThemeQml into SAFE_TESTS, all four workflow gates, and the sanitizer block
+2026-10-20T07:53:56Z  VERIFY   ctest --test-dir build-fast/tests -N | grep -E 'Test +#' -> 14 entries; non-integration subset (12) diffed against SAFE_TESTS (12): EXACT MATCH.
+2026-10-20T07:53:56Z  VERIFY   QT_QPA_PLATFORM=offscreen ./build-fast/tests/unit/test_ThemeQml -> Totals: 46 passed, 0 failed, 0 skipped, 0 blacklisted. (Binary built 2026-10-16; src/qml/styles/ and tests/unit/core/test_ThemeQml.cpp unchanged since, per git log.)
+2026-10-20T07:53:56Z  VERIFY   grep -l test_ThemeQml build.sh .github/workflows/*.yml -> build.sh, build.yml, windows.yml, release.yml, tsan.yml.
+2026-10-20T07:53:56Z  VERIFY   python3 yaml.safe_load on build/windows/release/tsan/asan -> all parse, jobs intact.
+2026-10-20T07:53:56Z  COMMIT   TODO.md T0297 -> [x]

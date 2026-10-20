@@ -21,7 +21,7 @@ fact, that is a bug — fix it here rather than adding a third copy.
 | [Architecture](dev/ARCHITECTURE.md) | Process ownership, init and teardown order, the QML shell, bridge registration, Suno data flow. |
 | [Invariants](dev/INVARIANTS.md) | Hard-won constraints that must not be violated: threading contracts, buffer lifetime, timestamp rules, and testing traps. |
 | [Theme engine plan](dev/THEME-ENGINE-PLAN.md) | What a theme is, where definitions live, the hex byte-order trap, and the remaining phases. |
-| [Testing](dev/TESTING.md) | The 19 `unit_tests` sources, the 6 standalone executables, and the integration harness. How to actually run them. |
+| [Testing](dev/TESTING.md) | The 38 `unit_tests` sources, the 11 standalone executables, and the two integration entries. How to actually run them. |
 | [QML linting](dev/QML-LINTING.md) | `./scripts/lint-qml.sh`: what it checks, what it deliberately does not, and how to read its three buckets. Written for someone who does not know QML. |
 | [Manual QA](dev/manual-qa.md) | The MT-001 GUI checklist. Real-GUI versus offscreen coverage, per item. |
 | [Contributing](dev/CONTRIBUTING.md) | C++23 conventions, error handling, and PR process. |

@@ -59,6 +59,7 @@ SAFE_TESTS=(
     test_CapturedHosts
     test_FeatureFlags
     test_OffscreenRenderSpike
+    test_ThemeQml
 )
 
 # integration_tests and integration_gl_tests are registered ctest entries and are

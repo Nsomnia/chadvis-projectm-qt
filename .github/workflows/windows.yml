@@ -148,7 +148,7 @@ jobs:
             exit 1
           }
           foreach ($t in @('unit_tests','test_HttpPolicy','test_CapturedHosts','test_FeatureFlags',
-                          'test_RenderExecutor','test_SunoAudioUploadService','test_SunoRequestEpoch',
+                          'test_RenderExecutor','test_ThemeQml','test_SunoAudioUploadService','test_SunoRequestEpoch',
                           'test_SunoExploreService','test_SunoNotificationService','test_ClerkAuthClient')) {
             $pattern = "Test\s+#\d+:\s+$([regex]::Escape($t))(\s|$)"
             if ($list -notmatch $pattern) {
@@ -156,15 +156,15 @@ jobs:
               exit 1
             }
           }
-          Write-Host "All 10 gating entries discovered; ctest reports $total."
+          Write-Host "All 11 gating entries discovered; ctest reports $total."
 
-      # Same 10 entries build.yml gates on. The three runtime-environment
+      # Same 11 entries build.yml gates on. The three runtime-environment
       # entries are deliberately absent: no GPU, no meaningful GL driver, and
       # AudioEngine with no output device. Nothing here would be signal.
-      - name: Run the headless gate (10 entries)
+      - name: Run the headless gate (11 entries)
         run: |
           ctest --test-dir $env:BUILD_DIR/tests --output-on-failure -C $env:CMAKE_BUILD_TYPE `
-            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
+            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
 
       - name: Report the credential backend this build selected
         # The one question this platform can uniquely answer. `CHADVIS_HAS_KEYCHAIN`

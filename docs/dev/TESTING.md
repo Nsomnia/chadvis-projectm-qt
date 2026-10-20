@@ -1,6 +1,6 @@
 # Testing ChadVis
 
-The test tree is wired through CMake and registers **eleven** CTest entries: one aggregate `unit_tests` binary, **eight** standalone unit executables, and two entries over a *single* `integration_tests` binary — an offscreen QML startup check, and a native-OpenGL framebuffer suite that selects only the GL test functions. A green `ctest` run is 11 tests, not 8 or 9.
+The test tree is wired through CMake and registers **fourteen** CTest entries: one aggregate `unit_tests` binary, **eleven** standalone unit executables, and two entries over a *single* `integration_tests` binary — an offscreen QML startup check, and a native-OpenGL framebuffer suite that selects only the GL test functions. A green `ctest` run is 14 tests, not 11 or 12.
 
 This file documents the **automated** tests and how to run them. The interactive GUI checklist lives in [manual-qa.md](manual-qa.md) as MT-001.
 
@@ -43,7 +43,7 @@ ls build/tests/CTestTestfile.cmake   # exists
 ls build/CTestTestfile.cmake         # does not exist
 ```
 
-CTest treats "no tests found" as a success exit code, so the wrong directory is indistinguishable from a real pass unless you read the test count. Use `build/tests`. A correct run prints 11 tests and ends with `100% tests passed, 0 tests failed out of 11`.
+CTest treats "no tests found" as a success exit code, so the wrong directory is indistinguishable from a real pass unless you read the test count. Use `build/tests`. A correct run prints 14 tests and ends with `100% tests passed, 0 tests failed out of 14`.
 
 `build.sh` performs an incremental build by default and preserves the existing CMake configuration. Use `./build.sh --rebuild` (or `--clean`) for a clean rebuild; `-d`/`--debug` and `-r`/`--release` explicitly select a configuration. The script does not accept a `run` argument.
 
@@ -97,7 +97,7 @@ CTest treats "no tests found" as a success exit code, so the wrong directory is 
 
 The aggregate runner invokes **38** suites (`tests/unit/test_main.cpp`): logger, config parsers, config loader, file utils, version, signal, CLI args, recorder, audio file decoder, render queue, playlist, preset scanner, preset bridge, Suno endpoints, Suno auth failure, auth module, stored-credential classification, credential restore worker, library manager, lyrics fetch queue, Suno database, auth coordinator, loopback listener, OAuth login service, clip parser, download queue, credential store policy, Suno downloader, download entitlement, bounded body, Suno workspace, lyrics pipeline, lyrics export, lyric timing, PCM format, loudness analysis, path safety, and Suno bridge.
 
-**Every one of the 31 sources above is invoked.** There are no compiled-but-unrun translation units in the aggregate target, and there are no static-initialization test hooks. Verified by set difference on this session: the 31 aggregate sources plus the 8 standalone sources account for **all 39** `.cpp` files under `tests/unit/`, with nothing declared-but-absent and nothing on-disk-but-undeclared. That was not always true, and the failure mode is the one this repository keeps re-learning:
+**Every one of the 38 sources above is invoked.** There are no compiled-but-unrun translation units in the aggregate target, and there are no static-initialization test hooks. Verified by set difference on this session: the 38 aggregate sources plus the 11 standalone sources account for **50 of the 51** `.cpp` files under `tests/unit/`. The one exception, `visualizer/test_PresetManager.cpp`, is declared nowhere and never builds (T0306). That was not always true, and the failure mode is the one this repository keeps re-learning:
 
 - `test_PresetScanner.cpp` was in `CMakeLists.txt` for a long time with no `runTest*` entry point in the runner, so its assertions never executed. `runTestPresetScanner` is now declared at `tests/unit/test_main.cpp:14` and called at `:49`.
 - `test_SunoEndpoints.cpp` ran from a static initializer and `std::abort()`ed on failure, which masked the failure behind a process kill instead of the aggregate exit code. `runTestSunoEndpoints` is now declared at `tests/unit/test_main.cpp:15` and called at `:50` like every other suite.
@@ -153,7 +153,7 @@ If it reports skips, read the reason. "QOpenGLContext failed to create; this QPA
 
 ### Registered suites at a glance
 
-Eleven entries: nine in `tests/unit/CMakeLists.txt`, two in `tests/integration/CMakeLists.txt`.
+Fourteen entries: twelve in `tests/unit/CMakeLists.txt`, two in `tests/integration/CMakeLists.txt`.
 
 | Suite | Kind | Environment |
 | --- | --- | --- |
