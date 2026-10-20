@@ -20,9 +20,9 @@ docs/suno_api_reference.md
 docs/SUNO_API_CPP_QT6_INTEGRATION_GUIDE.md
 
 
-# Agent internal notes
-.agent/notes/
-.workbuddy-ai/
+# Agent internals
+#.agent/notes/
+# .workbuddy-ai/
 .backup_graveyard/
 logs/
 scratch/
