@@ -1349,3 +1349,81 @@ terse per T0252; long evidence belongs in `docs/backlog/TXXXX.md`.
       `build.yml` triggers on `push: branches: [main]`, runs the 11-entry gate, and stops: `permissions: contents: read`, no `cpack`, no `upload-artifact`. A binary exists only when someone pushes a `v*` tag and `release.yml` runs. Wire the gate to a publish job: after the 11 entries pass, package the same build with `cpack`, then `gh release create` (or `gh release upload --clobber`) a **pre-release** versioned from `version.txt` plus the commit — `v<version>-build.<run_number>` or `v<version>+<short_sha>` — and never `latest`, so a CI build cannot masquerade as a cut release. Three constraints: (a) `contents: write` on the publish job only, never on the build matrix; (b) never publish from a red, cancelled, or skipped run — `needs:` the gate and read the **job** conclusion, since `continue-on-error` is exactly how the Windows lane reports green today (T0298); (c) the macOS `.app` is ad-hoc signed and not notarised (T0039), so the generated notes must keep saying so. Start with the Linux/macOS archives `cpack` already produces; add Windows once T0298's NSIS artifact exists, and follow T0299 for the Linux formats.
       **Partially delivered 2026-10-20: the artifact half is done, the publish half is not.** `build.yml` now runs `cmake --build --target package` and uploads TGZ/ZIP (+`.dmg` on macOS) as `chadvis-<os>-<compiler>-debug` on every push, and `windows.yml` uploads a `windeployqt`-deployed ZIP — so every lane now emits a runnable binary, which was the "no artifact at all" defect. Deliberately **not** wired to `gh release create`: publishing on every push is a policy call (constraint (a)/(b) above) and the version scheme is a human decision. `release.yml` still publishes only on `v*`, still Linux + macOS only; a Windows leg is waiting on T0298 going green.
 
+## Additions from 2026-10-20 user request
+
+Source: the user's own feature request. Every entry below is a **feature**, so they sit in
+P3 unless a gate is named. Terse per T0252; the long form belongs in `docs/backlog/TXXXX.md`.
+
+### P3 — features
+
+- [ ] T0312 **QML's JavaScript as the UI logic layer: bindings, item functions, imported `.js` namespaces** (`src/qml/js/`, `src/qml/styles/Theme.qml`, `src/qml/main.qml`) #feature #cod-high
+      54 QML files, **zero** `.js` files and **zero** `.js` imports, so every shared behaviour is a
+      binding or a per-file copy of the same expression — the 19-line palette block is duplicated
+      between `main.qml` and `SettingsWindow.qml` (T0238). Qt Quick documents exactly three JS
+      affordances — expressions in bindings, functions on items, and `.js` files imported as
+      namespaces (`qtquick-usecase-integratingjs.html`) — so the shared layer is a directory of
+      plain `.js` files, one concern per file, imported as `import "js/theme.js" as ThemeMath`.
+      The engine is **not** a browser runtime: no DOM, no `fetch`, no `require`, no module
+      system (a `.js` file is a flat global namespace, hence one concern per file), and anything
+      touching the network, the filesystem or a mutex stays in C++. There is no QML test harness
+      yet (T0135), so the JS layer needs one before it grows.
+- [ ] T0313 **One playlist of Suno clips and local files, with the format set owned by the Qt Multimedia plugins** (`src/audio/AudioEngine.cpp`, `src/audio/Playlist.cpp`, `src/qml/panels/PlaylistPanel.qml`) #feature
+      Playback already runs on `QMediaPlayer` + `QAudioBufferOutput` + `QMediaDevices`
+      (`AudioEngine.cpp:91,207,231`), so the *decoded* format set is whatever the FFmpeg backend
+      ships — do not hand-roll a format table, and do not shell out to `ffmpeg` for a second
+      decoder. What is missing is the **input** half: no capture device, no local-file import,
+      and a playlist whose entries are Suno clip ids only. Fix: one source model where an entry
+      is `remote clip | local file`, `QMediaPlayer` as the single playback path for both, and the
+      unsupported-format case surfaced as a message rather than a silent no-op. Anchors: T0115
+      (import must work with no Suno account), T0116 (a render-job model with no producer),
+      T0264 (playlist reads absent as reads).
+- [ ] T0314 **End-user theme creation and sharing** (`src/qml/panels/settings/AppearanceSettings.qml`, `src/qml/styles/ThemeDefinitions.qml`, `docs/user/CONFIG.md`) #feature
+      The engine ships four built-ins and a C++ `ThemeCatalog` is being built (T0193), but there is
+      no per-token editor, no light-theme definition, no export, no import, and therefore no
+      sharing. T0241 owns the token editor and the export button; T0191 owns measured palettes.
+      Sharing is **file-based**: a theme is one JSON file, exportable, importable by path, and
+      copy-to-clipboard for a forum post — no server, no account. The gate is T0191's checker:
+      `scripts/check-theme-contrast.py` re-implements the ramp and WCAG luminance, so a submitted
+      theme that fails a gated pair is **refused**, not warned about — a shared theme is the one
+      path by which an unmeasured palette reaches another user's screen. A light theme has to be a
+      measured definition, not a branch the ramp happens to take. (after: T0193, T0241)
+- [ ] T0315 **Mine the local recon corpus for suno.com's generation contract** (`docs/suno_api/ENDPOINT-INVENTORY.md`, `docs/suno_api/OBSERVED-LEADS.md`, `src/suno/SunoEndpoints.hpp`) #feature #blocks-capture
+      `POST /api/generate/v2-web/` is already `[T1]`-captured — request keys (captcha token,
+      generation type, prompt, model key, flags, metadata, cover/continue/artist/persona refs,
+      client transaction id, lyrics-project linkage) and response keys (batch id, `clips[]`,
+      batch/model/status metadata, creation time, batch size) are recorded in the inventory §5.4 —
+      and it is still `declared-unused`, because the **web client's own current call sequence** is
+      not in the repo's evidence and the captcha gate is unresolved. The corpora are on this
+      machine: `~/Documents/suno-recon/` (Next.js bundles and source maps, `js-maps/`,
+      `API-SPY-API-PROBE/`, `bin/`) and `~/Documents/suno-recon-cat-stealth-modekl/`
+      (`captured_endpoints*.json`, `network-endpoints.txt`, `reports/api_paths_from_assets.txt`,
+      `reports/feature_flags_client.txt`, `reports/recon_summary.md`, `out/`, `bin/*.py`). Answer
+      four questions and write them down: which route the create page calls today
+      (`configs.gen-endpoint` **names** it server-side — read the flag, do not hardcode the
+      path), the model-list source, the captcha-token mint route, and the completion channel
+      (`POST /api/feed/v3` and `GET /api/clips/get_songs_by_ids` are known; `GET /api/gen/{id}`
+      stays a `[LEAD]`). The deliverable is graded rows plus a capture plan — **not** a client.
+      Discipline: a string in a bundle is a **lead, never evidence** (AGENTS.md); every route
+      still needs an authenticated capture before wiring (T0148 hygiene, T0146 hosts), and the
+      generation route stays unwired until the captcha handoff is decided — the board's standing
+      answer is *never solve Turnstile; hand off to the browser and import the result*. Distinct
+      from T0259 (implementing the flow), T0142 (error envelopes) and T0143 (mutation shapes).
+- [ ] T0316 **Advanced scene designer: a scripted "music video" stagecraft** (`src/recorder/RenderJob.hpp`, `src/qml/panels/OverlayPanel.qml`, `src/lyrics/LyricsExport.cpp`, `src/suno/SunoDownloader.cpp`) #feature #cod-high
+      A scene today is `{presetName, durationSeconds, crossfadeSeconds}` (`RenderJob.hpp:240-244`)
+      — a preset and a duration, nothing else. There is no textual element, no position, no
+      colour, no per-time script, and the overlay JSON that `OverlayPanel` persists never reaches
+      the recorded video (T0170 — the FFmpeg post-pass is mandatory, not optional). Lyrics
+      structure and meta tags (`[Verse]`, `[Chorus]`, `<meta>`) are not parsed at all: zero hits
+      in `src/lyrics/`. Fix, in four parts: (a) extend the scene model with typed elements (text,
+      image, colour, position) and a time script — absolute seconds, track-relative, or percent of
+      the track; (b) a small declarative script language for the scene graph, **evaluated by C++ at
+      render time, never by QML at draw time**, so the burned-in video and the live preview cannot
+      disagree; (c) a timeline editor UI over that model; (d) lyric tag filtering — a rule set of
+      regex/wildcard patterns marking structure and meta tags keep/drop/rewrite, applied to
+      Suno-supplied lyrics and to the ID3 `USLT`/`SYLT` frames `SunoDownloader::tagAudioFile`
+      already writes, with the original text kept in the sidecar so nothing is lost. The scene
+      inputs are the Suno clip metadata (title/artist/tags/prompt) and the ID3 frames (`TXXX`,
+      `USLT`, `SYLT`) already written today. Anchors: T0242 (chapters from scenes), T0120
+      (waveform timing editor), T0121 (karaoke render strategies), T0108 (libavfilter/libass
+      burn-in), T0230 (ASS style hardcoded). One evaluator, two consumers — a second
+      implementation is how the preview stops matching the file.
