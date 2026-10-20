@@ -3,6 +3,10 @@
 
 #include <cstdio>
 
+#ifdef Q_OS_WIN
+#include <io.h>
+#endif
+
 int runTestLogger(int argc, char** argv);
 int runTestConfigParsers(int argc, char** argv);
 int runTestConfigLoader(int argc, char** argv);
@@ -59,6 +63,14 @@ static int runSuite(const char* name, int (*fn)(int, char**), int argc, char** a
 #define RUN_SUITE(name) runSuite(#name, &run##name, argc, argv)
 
 int main(int argc, char* argv[]) {
+#ifdef Q_OS_WIN
+    // Not one line of qtest output reached the CI log across eleven test
+    // binaries on the Windows lane (run 39494556417: five suites failed, and
+    // the log could only say their names because those go through stderr).
+    // Send stdout where stderr already goes, so the assertions are readable.
+    std::fflush(stdout);
+    _dup2(2, 1);
+#endif
     QCoreApplication app(argc, argv);
 
     int status = 0;
