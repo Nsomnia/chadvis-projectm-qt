@@ -1129,6 +1129,11 @@ private slots:
         // stack — which is a use-after-free on the queue's own containers.
         int depth = 0;
         int maxDepth = 0;
+        // The queue reports through a pointer to itself rather than through a
+        // captured `queue`: the name is in scope in its own initializer, but
+        // MSVC rejects the capture with C2326 "function cannot access
+        // 'queue'". A pointer set immediately after construction is portable.
+        RenderQueue* self = nullptr;
         RenderQueue queue([&](RenderJob job) {
             ++depth;
             maxDepth = std::max(maxDepth, depth);
@@ -1136,9 +1141,10 @@ private slots:
             receipt.outcome = RenderState::Completed;
             receipt.framesExpected = job.expectedFrames;
             receipt.framesWritten = job.expectedFrames;
-            queue.finish(job.id, std::move(receipt));
+            self->finish(job.id, std::move(receipt));
             --depth;
         });
+        self = &queue;
         queue.setMaxConcurrent(1);
 
         for (int i = 0; i < 6; ++i) {
