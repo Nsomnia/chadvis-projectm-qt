@@ -80,3 +80,44 @@ install and is not one. `build.sh` detects this and reconfigures.
 * Add tests where they let logic be verified — threads, raw memory, FFmpeg return codes — and
   run the sanitizers before merging recorder or session work.
 * Keep the "Chad / Arch, BTW" register in prose. Never a substitute for fact.
+
+## Agent skills
+
+`.opencode/skills/` holds agent skills, auto-discovered by OpenCode. Thirteen are the
+official Qt set from [TheQtCompanyRnD/agent-skills](https://github.com/TheQtCompanyRnD/agent-skills)
+(refresh from upstream rather than hand-editing vendored copies):
+
+* Review — `qt-cpp-review`, `qt-qml-review`: deterministic lint plus deep-analysis passes
+  for Qt C++ and QML. Run before merging, alongside the sanitizer profiles.
+* Authoring — `qt-qml`, `qt-canvas2d`, `qt-ui-design`, `qt-cmake-project`: correct the
+  systematic LLM biases around bindings, scoping, qmake-isms, and legacy `qt5_*` macros.
+* Docs & tests — `qt-cpp-docs`, `qt-qml-docs`, `qt-qml-test`, `qt-qml-test-run`: generate
+  reference docs and Qt Quick Test cases; `-run` builds and executes them through CMake.
+* Profiling — `qt-qml-profiler`: `qmlprofiler` trace analysis for 2D QML hotspots.
+* Figma — `qt-figma-token-extraction`, `qt-figma-component-generation`: design tokens to
+  QML singletons, Figma components to Qt Quick Controls 2. Need Figma API access.
+
+The rest (`code-reviewer`, `test-engineer`, `debugging-and-error-recovery`, …) are
+project-authored workflow skills. When both apply, prefer the Qt skill over the generic one.
+
+* C++ systems engineering — `c-cpp-profi` ([MuhDur/c-cpp-profi](https://github.com/MuhDur/c-cpp-profi)):
+  evidence-grade workflow with a gate ladder (inventory → compile → static → sanitizers →
+  tests → fuzz → perf → portability), scripts plus a report checker. Script paths were
+  rewritten from `skill/c-cpp-profi/` to `.opencode/skills/c-cpp-profi/` when vendoring.
+  No license file upstream — treat as unlicensed third-party content, do not redistribute
+  beyond this repo.
+* Modern C++ idioms — `modern-cpp` ([trailofbits/skills](https://github.com/trailofbits/skills),
+  CC-BY-SA-4.0): C++20/23/26 idioms with a security emphasis — hardening flags, sanitizer
+  setup, safe idioms by vulnerability class. The skill form of the C++23 rule above.
+* Debugging discipline — `systematic-debugging` ([obra/superpowers](https://github.com/obra/superpowers),
+  MIT): the root-cause-before-fix iron law. (The repo's own `debugging-and-error-recovery`
+  is currently a stub.)
+* Finishing discipline — `verification-before-completion` (superpowers, MIT): no completion
+  claim without fresh verification evidence — the skill form of "Ship verified work".
+* Design — `brainstorming` (superpowers, MIT): question-driven design refinement before
+  building anything non-trivial.
+
+`.opencode/opencode.jsonc` also registers the hosted **Qt Documentation MCP**
+(`https://qt-docs-mcp.qt.io/mcp`, no auth) for live Qt 6.8 LTS / 6.11 API lookup — prefer
+it over training-data recall for Qt API questions. OpenCode auto-detects `clangd` for
+C/C++ LSP diagnostics when it is installed, which gives live compiler feedback mid-task.

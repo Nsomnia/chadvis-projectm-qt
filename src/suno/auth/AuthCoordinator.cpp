@@ -140,7 +140,22 @@ void AuthCoordinator::cancelGoogleSignIn() {
 }
 
 void AuthCoordinator::signOutSuno() {
+    // State first: if clearing the credential trips a NeedsReauth/Disconnect
+    // transition that the controller feeds back into this coordinator, the
+    // reset below must already have happened, not be overwritten by it.
+    state_ = QStringLiteral("signedOut");
+    error_.clear();
+    emit stateChanged(state_);
+    emit errorChanged(error_);
     if (clearLocalCredentials_) clearLocalCredentials_();
+}
+
+void AuthCoordinator::noteVerificationFailed() {
+    if (state_ != QStringLiteral("browserImported")) {
+        return;
+    }
+    setPolicyError(QStringLiteral(
+        "The imported session was not accepted by Suno. Sign in in your browser, then press Import again."));
 }
 
 bool AuthCoordinator::googleLoginAvailable() const {
@@ -196,6 +211,13 @@ bool AuthCoordinator::importSessionFromBrowser(QString* safeError) {
     // prefix), persists through CredentialStore, and kicks the bearer fetch
     // that turns `__client` into a live `__session` JWT.
     client_->setCookie(harvest.cookieHeader.toStdString());
+    // And a forced re-verification on top: setCookie() no-ops when the
+    // header is identical to the one already installed, so a re-import
+    // after a failed verification would otherwise kick no exchange at all
+    // and strand the card on "Imported. Verifying". reverify is a no-op
+    // when an exchange is already in flight, so the fresh-import path
+    // pays for one early return, not a second exchange.
+    client_->reverifyStoredCredential();
 
     // The browser name is the one fact worth surfacing: it tells the user
     // which of their browsers just surrendered the session, which is the

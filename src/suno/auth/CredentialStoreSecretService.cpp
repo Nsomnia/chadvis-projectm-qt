@@ -171,6 +171,16 @@ QDBusArgument secretStructure(const QString& sessionPath, const QByteArray& valu
 /// Delete over the session bus.
 class SecretServiceBackend final : public CredentialStore::ISecretBackend {
 public:
+    /// Named constructor: the ctor stays private so only this factory can
+    /// build one. NOTE: std::make_unique cannot be used here -- the
+    /// constructor call inside make_unique is evaluated in std's template
+    /// context, which has no access to this private ctor, even though
+    /// create() itself is a member. The explicit new below is evaluated in
+    /// this member function's context, so access is allowed.
+    static std::unique_ptr<SecretServiceBackend> create(QDBusConnection bus) {
+        return std::unique_ptr<SecretServiceBackend>(new SecretServiceBackend(std::move(bus)));
+    }
+
     [[nodiscard]] bool isSecure() const noexcept override { return true; }
 
     Result<void> store(const QString& nsKey, const QString& secret) override {
@@ -393,7 +403,9 @@ private:
 
     static QStringList objectPaths(const QVariant& value) {
         QStringList out;
-        const QDBusArgument arg = qdbus_cast<QDBusArgument>(value);
+        // qdbus_cast<QDBusArgument> is not valid: nothing demarshals INTO a
+        // QDBusArgument via operator>>, so take the stored value directly.
+        const QDBusArgument arg = value.value<QDBusArgument>();
         // currentSignature() distinguishes a bare 'o' (a single path, which is
         // what a one-element reply can look like after demarshalling) from 'ao'.
         if (arg.currentSignature().startsWith(QLatin1Char('o'))) {
@@ -432,7 +444,9 @@ private:
         if (reply.arguments().isEmpty()) {
             return {};
         }
-        const QDBusArgument arg = qdbus_cast<QDBusArgument>(reply.arguments().first());
+        // Same as objectPaths: take the stored QDBusArgument directly rather
+        // than qdbus_cast<QDBusArgument>, which has no operator>> to demarshal.
+        const QDBusArgument arg = reply.arguments().first().value<QDBusArgument>();
         if (!arg.currentSignature().startsWith(QLatin1Char('('))) {
             return {};
         }
@@ -525,7 +539,7 @@ std::unique_ptr<CredentialStore::ISecretBackend> makeSecretServiceBackend() {
     if (!bus.isConnected()) {
         return nullptr;
     }
-    return std::make_unique<SecretServiceBackend>(std::move(bus));
+    return SecretServiceBackend::create(std::move(bus));
 #else
     return nullptr;
 #endif

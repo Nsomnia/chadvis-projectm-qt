@@ -43,7 +43,9 @@ case "${1:-}" in
     *)        echo "lint-qml: unknown option '$1' (see the header)" >&2; exit 1 ;;
 esac
 
-BUILD_DIR="${QML_BUILD_DIR:-$ROOT/build-fast}"
+# CI exports BUILD_DIR for the job (e.g. build-ci); the local default stays
+# build-fast. QML_BUILD_DIR still wins when set explicitly.
+BUILD_DIR="${QML_BUILD_DIR:-${BUILD_DIR:-$ROOT/build-fast}}"
 
 # The build must exist: the lint target is a ninja target, and it needs the
 # generated qmldir and qmltypes to resolve `import ChadVis`.

@@ -110,6 +110,12 @@ private:
 
     std::unique_ptr<SunoClient> client_;
     std::unique_ptr<auth::AuthCoordinator> authCoordinator_;
+    /// True while the coordinator is in its "browserImported" wait and
+    /// SunoClient has not yet delivered a verdict. Set by the
+    /// coordinator's stateChanged, cleared by ActiveValid (verified),
+    /// Disconnected (abandoned), or the failure path itself. See the
+    /// pending-flag note at the auth-state connects in SunoController.cpp.
+    bool importVerificationPending_ = false;
     std::unique_ptr<vc::SunoOrchestrator> orchestrator_;
     SunoDatabase db_;
 

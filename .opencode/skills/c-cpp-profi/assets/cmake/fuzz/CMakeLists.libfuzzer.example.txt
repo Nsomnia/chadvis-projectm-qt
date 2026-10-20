@@ -1,0 +1,10 @@
+include(cmake/CppSystemsSanitizers.cmake)
+
+add_executable(example_fuzzer EXCLUDE_FROM_ALL
+  fuzz/example_fuzzer.cc)
+
+target_link_libraries(example_fuzzer PRIVATE
+  project_library_under_test)
+
+cpp_systems_enable_libfuzzer(example_fuzzer
+  SANITIZERS address undefined)

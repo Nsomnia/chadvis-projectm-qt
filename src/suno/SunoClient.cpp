@@ -626,7 +626,7 @@ bool SunoClient::isAuthenticated() const {
     if (authState_ == auth::AuthState::ActiveValid && !bearer_.jwt.isEmpty()) {
         return true;
     }
-    if (authState_ == auth::AuthState::NeedsReauth && touchInFlight_ &&
+    if (authState_ == auth::AuthState::NeedsReauth && clerkExchangeInFlight_ &&
         !credentials_.cookieHeader.isEmpty()) {
         return true;
     }
@@ -756,7 +756,9 @@ void SunoClient::invalidateRequestEpoch(const QString& reason) {
 }
 
 void SunoClient::resetClerkClient() {
-    touchInFlight_ = false;
+    clerkExchangeInFlight_ = false;
+    tokensExchangeInFlight_ = false;
+    touchFallbackAttempted_ = false;
     authExchangeEpoch_ = 0;
     if (clerk_) {
         QObject::disconnect(clerk_, nullptr, this, nullptr);
@@ -936,24 +938,36 @@ void SunoClient::ensureFreshBearer(bool force) {
     if (!force && !bearer_.jwt.isEmpty()) {
         return; // have something usable; the 401 path handles staleness
     }
-    if (!hasCredentials() || touchInFlight_) {
+    if (!hasCredentials() || clerkExchangeInFlight_) {
         return;
     }
-    touchInFlight_ = true;
+    clerkExchangeInFlight_ = true;
     authExchangeEpoch_ = requestEpoch_;
     setAuthFailureKind(auth::AuthFailureKind::None);
+    tokensExchangeInFlight_ = false;
+    touchFallbackAttempted_ = false;
     if (!lastActiveSessionId_.isEmpty()) {
-        clerk_->touch(credentials_, lastActiveSessionId_);
+        // Tokens-first (T0141): the mint route the client drives. When the
+        // session is unknown, fetchBearer's GET /v1/client both discovers
+        // it and returns a bearer, so no second round trip is needed.
+        tokensExchangeInFlight_ = true;
+        clerk_->mintBearerViaTokens(credentials_, lastActiveSessionId_);
     } else {
         clerk_->fetchBearer(credentials_);
     }
+}
+
+void SunoClient::reverifyStoredCredential() {
+    ensureFreshBearer(/*force=*/true);
 }
 
 void SunoClient::onBearerReadyInternal(const auth::BearerToken& token) {
     if (authExchangeEpoch_ == 0 || authExchangeEpoch_ != requestEpoch_) {
         return;
     }
-    touchInFlight_ = false;
+    clerkExchangeInFlight_ = false;
+    tokensExchangeInFlight_ = false;
+    touchFallbackAttempted_ = false;
     authExchangeEpoch_ = 0;
     applyBearer(token);
 
@@ -982,8 +996,28 @@ void SunoClient::onClerkAuthFailedInternal(const QString& reason, auth::AuthFail
     if (authExchangeEpoch_ == 0 || authExchangeEpoch_ != requestEpoch_) {
         return;
     }
+    // Tokens failed with a protocol or shape error: one fallback to touch,
+    // which is a different route to the same bearer and was the client's
+    // mint route before tokens. The epoch, the in-flight flag, and the
+    // pending work all stay live — this is one logical exchange, not a
+    // second one — and the user hears nothing unless touch fails too.
+    // Rejected credentials and missing sessions do NOT fall back: touch
+    // would fail with the same cookies, and a second request buys nothing
+    // but a slower no.
+    if (tokensExchangeInFlight_ && !touchFallbackAttempted_ &&
+        (kind == auth::AuthFailureKind::ProtocolMismatch ||
+         kind == auth::AuthFailureKind::MalformedResponse) &&
+        !lastActiveSessionId_.isEmpty()) {
+        touchFallbackAttempted_ = true;
+        tokensExchangeInFlight_ = false;
+        LOG_WARN("SunoClient: tokens exchange failed ({}); falling back to touch", reason.toStdString());
+        clerk_->touch(credentials_, lastActiveSessionId_);
+        return;
+    }
     bearer_ = auth::BearerToken{};
-    touchInFlight_ = false;
+    clerkExchangeInFlight_ = false;
+    tokensExchangeInFlight_ = false;
+    touchFallbackAttempted_ = false;
     authExchangeEpoch_ = 0;
     setAuthFailureKind(kind);
     LOG_ERROR("SunoClient: clerk auth exchange failed: {}", reason.toStdString());
@@ -1029,7 +1063,7 @@ void SunoClient::withValidToken(std::function<void()> proceed) {
         return;
     }
     if (!hasCredentials() || authState_ == auth::AuthState::Disconnected ||
-        (authState_ == auth::AuthState::NeedsReauth && !touchInFlight_)) {
+        (authState_ == auth::AuthState::NeedsReauth && !clerkExchangeInFlight_)) {
         if (!hasCredentials()) {
             setState(auth::AuthState::Disconnected);
         }

@@ -145,7 +145,7 @@ enum class Role {
     ArtworkOrigin,
     /// Captured progressive-media CloudFront distribution.
     CloudFront,
-    /// suno.com itself. `Origin`/`Referer` only - never a request target.
+    /// suno.com / suno.ai themselves. `Origin`/`Referer` only - never a request target.
     WebApp,
     /// Ably SSE push. Known only as a response value; see the registry note.
     Realtime,
@@ -197,11 +197,11 @@ struct HostRule {
 /// wants `Role::MediaOrigin`, the clip parser wants `Role::ArtworkOrigin`.
 [[nodiscard]] std::span<const HostRule> hostsForRole(Role role) noexcept;
 
-/// Rows for one tier. One host at Staging, one at Experimental, nine at
-/// Production. (Was "eight" here; the table grew by the upload origin and this
-/// sentence was not updated with it. `test_CapturedHosts.cpp` now pins the
-/// census 9/1/1, so a future divergence fails a test rather than misleading a
-/// reader.)
+/// Rows for one tier. One host at Staging, one at Experimental, ten at
+/// Production. (Was "nine" here; the table grew by the suno.ai web domain
+/// and this sentence was updated with it. `test_CapturedHosts.cpp` pins
+/// the census 10/1/1, so a future divergence fails a test rather than
+/// misleading a reader.)
 [[nodiscard]] std::span<const HostRule> hostsForTier(Tier tier) noexcept;
 
 /// Exact host lookup, case-insensitive, no allocation. `nullptr` when the host is

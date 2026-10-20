@@ -16,7 +16,7 @@
  *     reload disagree about whether the credential changed, which is the
  *     "setting reverted" class of bug.
  *   - `readStore` is covered against a synthetic SQLite file so the
- *     suno.com host restriction and the Clerk-family name filter are asserted
+ *     suno.com / suno.ai host restriction and the Clerk-family name filter are asserted
  *     from the outside: a Stripe cookie on the same row must NOT come back,
  *     and a non-suno host must not even be read.
  *
@@ -401,6 +401,59 @@ private slots:
                  QStringLiteral("__client=refresh-token; "
                                "__client_uat_Jnxw-muT=1787705821; "
                                "__session=bearer"));
+    }
+
+    /// suno.ai is a Suno host too (it 308-redirects to suno.com), so its
+    /// rows are read — but the host match is exact-plus-dot-subdomain, so
+    /// lookalikes that merely END in suno.com / suno.ai stay out. The old
+    /// `LIKE '%suno.com'` clause admitted `evilsuno.com`; this test is the
+    /// one that would have caught it.
+    void readStoreTakesSunoAiAndRejectsSuffixLookalikes()
+    {
+        using vc::suno::auth::BrowserCookieImport;
+        StoreFixture store;
+        const QByteArray key = BrowserCookieImport::deriveChromiumKey(
+            QByteArrayLiteral("fixture secret"));
+
+        store.insert(QStringLiteral("suno.ai"), QStringLiteral("__client"),
+                     chromiumEncrypt(QByteArrayLiteral("ai-refresh"), key));
+        store.insert(QStringLiteral("www.suno.ai"), QStringLiteral("__session"),
+                     chromiumEncrypt(QByteArrayLiteral("ai-bearer"), key));
+        store.insert(QStringLiteral(".suno.ai"),
+                     QStringLiteral("__client_uat_Jnxw-muT"),
+                     chromiumEncrypt(QByteArrayLiteral("1787705821"), key));
+        // Right name, lookalike host: no dot boundary before the domain.
+        store.insert(QStringLiteral("evilsuno.com"), QStringLiteral("__client"),
+                     chromiumEncrypt(QByteArrayLiteral("not ours"), key));
+        store.insert(QStringLiteral("notsuno.ai"), QStringLiteral("__client"),
+                     chromiumEncrypt(QByteArrayLiteral("not ours"), key));
+        // Right name, the domain as a subdomain of an unrelated host.
+        store.insert(QStringLiteral("suno.com.evil.com"), QStringLiteral("__client"),
+                     chromiumEncrypt(QByteArrayLiteral("not ours"), key));
+
+        const auto found = BrowserCookieImport::readStore(store.path, key);
+
+        QCOMPARE(found.size(), 3);
+        QCOMPARE(BrowserCookieImport::assembleCookieHeader(found),
+                 QStringLiteral("__client=ai-refresh; "
+                               "__client_uat_Jnxw-muT=1787705821; "
+                               "__session=ai-bearer"));
+    }
+
+    /// The credential check splits on the ';' separator, not on "; ":
+    /// a header reassembled with a bare ';' must read the same as one
+    /// assembled with "; ". Splitting on "; " read the whole header as
+    /// one pair named after its first cookie, so a usable `__client`
+    /// after a bare ';' was invisible.
+    void headerCredentialCheckAcceptsBareSemicolonSeparators()
+    {
+        using vc::suno::auth::BrowserCookieImport;
+        QVERIFY(BrowserCookieImport::headerCarriesUsableCredential(
+            QStringLiteral("other=1;__client=jwt")));
+        QVERIFY(BrowserCookieImport::headerCarriesUsableCredential(
+            QStringLiteral("__client_uat=0;__client=jwt")));
+        QVERIFY(!BrowserCookieImport::headerCarriesUsableCredential(
+            QStringLiteral("__client_uat=0;other=1")));
     }
 
     /// The candidate list must not name a browser that is not installed —

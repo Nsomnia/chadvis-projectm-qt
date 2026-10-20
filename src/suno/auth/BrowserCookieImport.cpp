@@ -156,10 +156,14 @@ QString copyToTemporary(const QString& source)
 
 bool BrowserCookieImport::headerCarriesUsableCredential(const QString& header)
 {
-    // Only the name matters, never a value. Split on the separators
-    // assembleCookieHeader emits and inspect what precedes the first '='.
-    for (const QString& part : header.split(QStringLiteral("; "), Qt::SkipEmptyParts)) {
-        const QString name = part.section(QLatin1Char('='), 0, 0);
+    // Only the name matters, never a value. Split on the ';' separator
+    // itself, not on "; ": assembleCookieHeader emits "; ", but a header
+    // pasted or reassembled elsewhere may separate with a bare ';', and
+    // splitting on "; " would then read the whole header as one pair
+    // named after its first cookie. Each part is trimmed, so both
+    // separator spellings (and stray whitespace) read the same.
+    for (const QString& part : header.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+        const QString name = part.trimmed().section(QLatin1Char('='), 0, 0);
         if (name.startsWith(QLatin1String("__session"))) {
             return true;
         }
@@ -418,13 +422,21 @@ QList<QPair<QString, QString>> BrowserCookieImport::readStore(const QString& dat
             LOG_INFO("BrowserCookieImport: a cookie store could not be opened");
         } else {
             QSqlQuery query(db);
-            // host-restricted to suno.com in the SQL itself, so the query
-            // never materialises the rest of the jar. `_gcl_au`, `__stripe_*`
-            // and friends sit on the same rows and stay unread.
+            // Host-restricted to suno.com and suno.ai in the SQL itself,
+            // so the query never materialises the rest of the jar.
+            // suno.ai 308-redirects to suno.com (checked 2026-10-17), so
+            // a browser that first landed on suno.ai may hold the Clerk
+            // cookies under suno.ai host keys. Each domain is an exact
+            // match plus a dot-prefixed subdomain match: the old third
+            // clause, `LIKE '%suno.com'`, also matched any host merely
+            // ENDING in suno.com (`evilsuno.com`) with no dot boundary,
+            // which is not a Suno host at all.
+            // `_gcl_au`, `__stripe_*` and friends sit on the same rows and
+            // stay unread.
             query.prepare(QStringLiteral(
                 "SELECT host_key, name, encrypted_value FROM cookies "
                 "WHERE (host_key = 'suno.com' OR host_key LIKE '%.suno.com' "
-                "       OR host_key LIKE '%suno.com')"));
+                "       OR host_key = 'suno.ai' OR host_key LIKE '%.suno.ai')"));
             if (query.exec()) {
                 while (query.next()) {
                     const QString name = query.value(1).toString();
@@ -496,18 +508,31 @@ BrowserCookieHarvest BrowserCookieImport::harvest()
                   });
         profiles.append(numbered);
 
+        // Collect the stores that actually exist BEFORE the Keychain read:
+        // a browser installed but never run has a profile root and no
+        // Cookies file, and it must not cost a consent prompt. The Keychain
+        // read then happens once per browser with a store, on an explicit
+        // user action. The Safe Storage secret is per-browser, not
+        // per-profile, so deriving it once per browser is also what keeps
+        // a three-profile browser to one consent prompt instead of three.
+        // readStore() takes the derived key rather than reading it so
+        // tests never trigger the consent prompt.
+        QStringList stores;
         for (const QString& profile : profiles) {
             const QString store = profileRoot + QLatin1Char('/') + profile +
                                  QStringLiteral("/Cookies");
-            if (!QFileInfo::exists(store)) {
-                continue;
+            if (QFileInfo::exists(store)) {
+                stores.push_back(store);
             }
-            // The Keychain read happens here, once per browser, on an explicit
-            // user action. readStore() takes the derived key rather than
-            // reading it so tests never trigger the consent prompt.
-            const QString service = QLatin1String(browser.keychainService);
+        }
+        if (stores.isEmpty()) {
+            continue;
+        }
+        const QString service = QLatin1String(browser.keychainService);
+        const QByteArray key = deriveChromiumKey(keychainSecret(service));
+
+        for (const QString& store : stores) {
             StoreObservation seen;
-            const QByteArray key = deriveChromiumKey(keychainSecret(service));
             const auto pairs = readStore(store, key, &seen);
 
             // The durability bar: a header without a `__client` (non-`uat`)

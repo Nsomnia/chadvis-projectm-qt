@@ -1,6 +1,6 @@
 /**
  * @file BrowserCookieImport.hpp
- * @brief Read the Clerk session cookies for suno.com out of a local browser's
+ * @brief Read the Clerk session cookies for suno.com / suno.ai out of a local browser's
  *        on-disk cookie store.
  *
  * T0199. "Sign in with Google" opens the system browser and then extracts
@@ -17,8 +17,10 @@
  *   - `POST /v1/client/sign_ins` sets `__client` — a refresh JWT, `HttpOnly`,
  *     `Secure`, `SameSite=None`, **Max-Age 31536000 (≈1 year)**, payload
  *     `"token_type":"refresh"`.
- *   - `POST /v1/client/sessions/{sid}/tokens` mints a fresh `__session` bearer
- *     from it. `SunoClient` already drives that via `ClerkAuthClient::touch()`.
+ *   - `POST /v1/client/sessions/{sid}/tokens` mints a fresh `__session`
+ *     bearer from it. `SunoClient` drives that through
+ *     `ClerkAuthClient::mintBearerViaTokens()`, falling back to `touch()`
+ *     when tokens fails with a protocol or shape error.
  *   - `HttpOnly` stops `document.cookie` (which is why the T0182 bookmarklet
  *     was dropped) but does not protect the on-disk SQLite store.
  *
@@ -30,8 +32,14 @@
  *
  * Scope rules, in the order a reviewer will look for them:
  *
- *   1. **suno.com hosts only.** The SQL restricts on `host_key`; nothing else
- *      is read out of the store. This module never enumerates a cookie jar.
+ *   1. **suno.com and suno.ai hosts only.** The SQL restricts on `host_key`;
+ *      nothing else is read out of the store. suno.ai is included because
+ *      it 308-redirects to suno.com (checked 2026-10-17), so a browser
+ *      that first landed on suno.ai may hold the Clerk cookies under
+ *      suno.ai host keys. Each domain is an exact match plus a
+ *      dot-prefixed subdomain match — never a bare suffix match, which
+ *      would also catch lookalikes like `evilsuno.com`. This module
+ *      never enumerates a cookie jar.
  *   2. **The Clerk family only.** `__client` (which prefixes `__client_uat`)
  *      and `__session`. Stripe, analytics and Django session cookies are left
  *      alone even when they sit on the same rows.
@@ -103,7 +111,7 @@ public:
     /// sign-in the user just performed actually landed.
     static QStringList candidateBrowserNames();
 
-    /// Read the suno.com Clerk cookies out of the first candidate that has
+    /// Read the suno.com / suno.ai Clerk cookies out of the first candidate that has
     /// them. Never throws; failure is reported through `reason`.
     static BrowserCookieHarvest harvest();
 
@@ -136,7 +144,7 @@ public:
     /// work" reached a user who was signed out.
     static bool headerCarriesUsableCredential(const QString& header);
 
-    /// Query a cookie database file for the suno.com Clerk family, decrypting
+    /// Query a cookie database file for the suno.com / suno.ai Clerk family, decrypting
     /// with `key`. The key is a parameter rather than an internal keychain
     /// read so a test can drive this with its own key: shells out to the
     /// Keychain, which prompts, and a test that prompts interrupts whoever

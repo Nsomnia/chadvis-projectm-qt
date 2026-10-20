@@ -82,6 +82,50 @@ private slots:
         QCOMPARE(clearCalls, 2);
     }
 
+    /// Sign-out resets the coordinator's own state, not just the stored
+    /// credential: after a failed import (state "error") a sign-out must
+    /// return the card to "signedOut" with no stale verdict, and after a
+    /// plain sign-out the state must already be clean. The old version
+    /// only cleared the credential, so an error survived the sign-out.
+    void signOutResetsCoordinatorStateAndError() {
+        AuthCoordinator::Dependencies dependencies;
+        dependencies.secureBackendAvailable = [] { return false; };
+        dependencies.clearLocalCredentials = [] {};
+        AuthCoordinator coordinator(nullptr, std::move(dependencies));
+
+        QString error;
+        QVERIFY(!coordinator.beginGoogleSignIn(&error));
+        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("error"));
+        QVERIFY(!coordinator.googleLoginError().isEmpty());
+
+        coordinator.signOutSuno();
+        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("signedOut"));
+        QVERIFY(coordinator.googleLoginError().isEmpty());
+    }
+
+    /// noteVerificationFailed() only converts the import wait ("browserImported")
+    /// into an error. From any other state it is a no-op, so a NeedsReauth
+    /// that arrives while the user is merely browsing, or after an
+    /// unrelated failure, cannot rewrite the state that failure set.
+    void verificationFailureIsIgnoredUnlessAnImportIsWaiting() {
+        AuthCoordinator::Dependencies dependencies;
+        dependencies.secureBackendAvailable = [] { return true; };
+        AuthCoordinator coordinator(nullptr, std::move(dependencies));
+
+        coordinator.noteVerificationFailed();
+        QCOMPARE(coordinator.googleLoginState(), QStringLiteral("signedOut"));
+
+        AuthCoordinator::Dependencies failedDependencies;
+        failedDependencies.secureBackendAvailable = [] { return false; };
+        AuthCoordinator failed(nullptr, std::move(failedDependencies));
+        QString error;
+        QVERIFY(!failed.beginGoogleSignIn(&error));
+        QCOMPARE(failed.googleLoginState(), QStringLiteral("error"));
+        failed.noteVerificationFailed();
+        QCOMPARE(failed.googleLoginState(), QStringLiteral("error"));
+        QCOMPARE(failed.googleLoginError(), error);
+    }
+
     /// T0181, plus the waiting-state Cancel the first report of the import
     /// failure demanded: open the browser (through the seam, never a real
     /// QDesktopServices call), sit in "browserOpen" for as long as the user

@@ -92,7 +92,7 @@ Rectangle {
                 // in, the durable credential (`__client`, ~1 year, HttpOnly)
                 // is sitting in the browser's on-disk cookie store the whole
                 // time -- HttpOnly stops a page script, not a local reader.
-                // This reads the suno.com Clerk cookies out of it.
+                // This reads the suno.com / suno.ai Clerk cookies out of it.
                 //
                 // Plain, not highlighted: it is the complement, not the
                 // primary, and the first press makes macOS ask the user to let
@@ -125,7 +125,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignHCenter
-                text: "Your browser opens for Google, then ChadVis receives the Suno session."
+                text: "Sign in with Google in your browser, then press Import below — ChadVis reads the session from your browser."
                 color: Theme.textSecondary
                 font: Theme.fontCaption
                 horizontalAlignment: Text.AlignHCenter

@@ -150,12 +150,14 @@ Audit method and boundaries, so the column is not over-read:
 - The audit surface is the constant set in `src/suno/SunoEndpoints.hpp`
   (77 constants at the 2026-09-26 audit: 12 referenced from `src/`, 65
   unreferenced). A reference in a comment does not count; only a use in code.
-- The two implemented Clerk host-relative routes (`GET /v1/client` and
-  `POST /v1/client/sessions/{sid}/touch`) are built in
+- The three implemented Clerk host-relative routes (`GET /v1/client`,
+  `POST /v1/client/sessions/{sid}/touch`, and
+  `POST /v1/client/sessions/{sid}/tokens`) are built in
   `src/suno/auth/ClerkAuthClient.cpp` from `ClerkAuthClient::AUTH_BASE`, because
   Clerk constants deliberately live outside `SunoEndpoints.hpp`. A path built
-  and dispatched from a client source file is audited as `wired`. The captured
-  `/tokens` route has no such builder and is `not-in-code`.
+  and dispatched from a client source file is audited as `wired`. `tokens`
+  was wired 2026-10-17 as the tokens-first mint route, with `touch` as the
+  fallback for protocol/shape failures (see `TOUCH-TOKENS-SHAPES.md`).
 - `wired` on those two routes does not mean either captured variant is
   implemented. As of the 2026-09-28 review they send **no**
   `__clerk_api_version`/`_clerk_js_version` query keys and hardcode
@@ -395,7 +397,7 @@ them remain recorded in [Appendix A](#appendix-a--explicit-conflict-register).
 |---|---|---|---|---|---|
 | GET | `/v1/client` | Clerk cookies | Fetch client/session state and initial bearer | `[T1]` Burp 2026-08-25 and 2026-09-24 | wired |
 | POST | `/v1/client/sessions/{sid}/touch` | Clerk cookies | Touch active session and obtain a fresh bearer from client/session envelopes | `[T1]` Burp 2026-08-25 and 2026-09-24; request variants coexist | wired |
-| POST | `/v1/client/sessions/{sid}/tokens` | Clerk cookies | Mint/return a session bearer as top-level `jwt` | `[T1]` Burp 2026-09-24 | not-in-code |
+| POST | `/v1/client/sessions/{sid}/tokens` | Clerk cookies | Mint/return a session bearer as top-level `jwt` | `[T1]` Burp 2026-09-24 | wired (tokens-first, touch fallback, 2026-10-17) |
 | POST | `/v1/client/sign_ins` | Clerk/browser context | Begin Clerk sign-in attempt; the captured form carries a `redirect_url` naming a Suno-owned SSO completion path | `[T1]` request-only recon 2026-09-22; form flow also in Burp 2026-08-25 | not-in-code |
 | GET | `/social/login/google-oauth2/` | Browser/Clerk context | Provider redirect initiation; captured 302 to the provider, `Set-Cookie: sessionid` (HttpOnly, `SameSite=None`, Secure) | `[T1]` request-only recon 2026-09-22; Burp 2026-08-25 request/response | not-in-code |
 | GET | `/social/complete/google-oauth2/` | Provider callback context | Suno-owned Google callback; captured 302 to the captured `next` target, sets a Clerk `__client` cookie | `[T1]` request-only recon 2026-09-22; Burp 2026-08-25 request/response | not-in-code |
@@ -403,9 +405,10 @@ them remain recorded in [Appendix A](#appendix-a--explicit-conflict-register).
 | POST | `/v1/client/verify` | Clerk cookies | Captcha-gated Clerk session heartbeat/keepalive; 204 No Content every observed time | `[T1]` Burp 2026-08-25, 5 items | not-in-code |
 | GET | `/v1/environment` | Clerk/public instance context | Clerk instance/environment configuration | `[T1]` Burp 2026-08-25 | not-in-code |
 
-`POST /v1/client/sessions/{sid}/tokens` is `[T1]` and `not-in-code`: captured,
-not implemented. That combination is the intended use of the `Implemented`
-column — see section 1.3.
+`POST /v1/client/sessions/{sid}/tokens` is `[T1]` and `wired` since
+2026-10-17 (tokens-first mint route, `touch` fallback). Before that it was
+`not-in-code`: captured, not implemented. That combination was the intended
+use of the `Implemented` column — see section 1.3.
 
 **`sign_ins` form contract — `[T1]`.** The 2026-08-25 capture recorded a
 form-encoded body whose field names, in captured order, were `strategy`,
@@ -1462,7 +1465,7 @@ no owner.
 
 | Subject | Conflicting claims | Canonical resolution | State |
 |---|---|---|---|
-| Clerk session-token exchange | Older material rejected `/tokens`; the 2026-09-24 export directly captured both `POST /v1/client/sessions/{sid}/tokens` and `POST .../touch`. | Both are `[T1]` observed same-host session routes. `/tokens` returned a top-level `jwt`; `touch` returned client/session envelopes. `/tokens/api` remains unobserved. Which route a client should prefer, and whether either is universally required, remains `[VERIFY]`. | **Resolved coexistence; selection `[VERIFY]`** |
+| Clerk session-token exchange | Older material rejected `/tokens`; the 2026-09-24 export directly captured both `POST /v1/client/sessions/{sid}/tokens` and `POST .../touch`. | Both are `[T1]` observed same-host session routes. `/tokens` returned a top-level `jwt`; `touch` returned client/session envelopes. `/tokens/api` remains unobserved. This client resolves the preference as tokens-first with touch fallback (2026-10-17, see `TOUCH-TOKENS-SHAPES.md`); whether either route is universally required remains `[VERIFY]`. | **Resolved coexistence; client selection tokens-first + touch fallback** |
 | `/v1/client/verify` | Older auth material disagreed between GET and POST. | The 2026-08-25 `auth.suno.com` export observed `POST` five times, all `204 No Content`, with a `captcha_action=heartbeat` form body. It is a captcha-gated Clerk session heartbeat and, having no body, cannot return a bearer. Not-in-code, and not a refresh or generic-preflight route. | **Resolved for method and purpose** |
 | `/v1/verify` | Older auth material disagreed between POST and GET. | No reviewed capture establishes either method or response contract. The 2026-08-25 `auth.suno.com` export resolved `/v1/client/verify` and touched nothing here; the two routes stay separate. | **Unresolved `[VERIFY]`** |
 | `client?_method=PATCH` | Older auth material disagreed between GET and POST. | `_method=PATCH` suggests an override form, but neither transport method is captured. Do not synthesize a request. | **Unresolved `[VERIFY]`** |
@@ -1479,7 +1482,7 @@ no owner.
 | Orpheus paths/models | Claims range from `/session-history` to orchestrator paths and OpenAI-compatible `/api/v1/...` paths; model names were listed without a direct contract capture. | All are `[LEAD]` or `[VERIFY]`; no supported Orpheus API is canonical. | **Unresolved** |
 | Following-feed pagination | The first-page request/response is captured; no next-page token or cursor was captured. | First page stays `[T1]`; later-page behavior is `[VERIFY]` and must not be synthesized. | **Unresolved `[VERIFY]`** |
 | Server-side library search | No reviewed request contains `searchText`. | Local filtering only. Any remote-search field is a `[LEAD]`. | **Unresolved** |
-| Route preference across Clerk routes | Both `tokens` and `touch` are captured; neither is proven sufficient alone. | No automatic fallback order; a client must not synthesize a hybrid. | **Unresolved `[VERIFY]`** |
+| Route preference across Clerk routes | Both `tokens` and `touch` are captured; neither is proven sufficient alone. | This client resolves it as tokens-first with one touch fallback on protocol/shape failure (2026-10-17); a client must not assume either route is universally sufficient. Universal requiredness remains `[VERIFY]`. | **Resolved for this client; universal requiredness `[VERIFY]`** |
 | Captcha provider behind `POST /api/c/check` | Three incompatible statements coexisted: this row said "not captured", section 3.4 said "resolved to `[LEAD]`: Cloudflare Turnstile v2", and section 5.4 said "deliberately left unstated". The two other captcha surfaces being separately resolved is what invited reading one route's provider as another's. | **Resolved to `[T1]`: Cloudflare Turnstile, version `2`.** The 2026-09-30 recon captured the response body of `POST /api/c/check` — `200` with `{"required": <bool>, "captcha_version": 2}` — and `captcha_version` maps to a provider directly (`1` = hCaptcha, `2` = Turnstile). The bundle constants that previously carried this as `[LEAD]` were corroboration, not the basis. Clerk auth remains Turnstile `[T1]` and the `suno.com` sign-in UI remains hCaptcha `[T1]`; this third route is Turnstile by its own captured response. The captured `required: false` is one account's trust-threshold answer — not universal, and not authorization to automate a challenge. | **Resolved for provider; per-account `required` remains per-account** |
 | Session identifier source | The implementation re-derives the active session id from the access token's `sid` claim instead of selecting `response.last_active_session_id`, which reads as a deviation from the section 3.1 selector rule. | In the 2026-08-25 capture the envelope's `last_active_session_id`, `sessions[0].id`, the `sid` claim, and the `touch` `{sid}` segment are all the same value, which **corroborates** the substitution. That is one capture with a single session, and the instance reports `single_session_mode: true`, so equivalence for a multi-session account is unproved. Select from the envelope; do not assume array position. | **Corroborated single-session; multi-session unproved** |
 | Acceptance of a non-`suno.com` handshake `redirect_url` | Both captured handshake `redirect_url` values were `https://suno.com/…`, so it is unclear whether Clerk validates or honours an arbitrary absolute target. | Not this file's question. The handshake contract is captured in section 3.3; the loopback gate and its five proof requirements are owned solely by [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) and are unchanged. | **Unresolved — gate held** |
