@@ -125,6 +125,12 @@ if(PKG_CONFIG_FOUND)
 endif()
 if(TAGLIB_FOUND)
     message(STATUS "TagLib found via pkg-config (${TAGLIB_VERSION})")
+    # pkg_check_modules reports bare names in TAGLIB_LIBRARIES, so a keg-only
+    # prefix (Homebrew /opt/homebrew/opt/taglib, /opt/local) resolves to
+    # `-ltag` with nothing on the search path -- `ld: library 'tag' not found`.
+    if(TAGLIB_LIBRARY_DIRS)
+        link_directories(${TAGLIB_LIBRARY_DIRS})
+    endif()
 else()
     message(STATUS "TagLib: trying manual search (pkg-config unavailable or no match)")
     find_path(TAGLIB_INCLUDE_DIRS ${TAGLIB_INCLUDE_HINT})
@@ -148,6 +154,10 @@ if(PKG_CONFIG_FOUND)
 endif()
 if(FFMPEG_FOUND)
     message(STATUS "FFmpeg found via pkg-config (${FFMPEG_VERSION})")
+    # Same bare-name gap as TagLib above.
+    if(FFMPEG_LIBRARY_DIRS)
+        link_directories(${FFMPEG_LIBRARY_DIRS})
+    endif()
 else()
     message(STATUS "FFmpeg: trying per-component manual search")
     foreach(_comp IN LISTS CHADVIS_FFMPEG_COMPONENTS)
@@ -213,8 +223,8 @@ if(CHADVIS_POSTPROCESS)
         set(CHADVIS_HAS_AVFILTER ON)
         list(APPEND FFMPEG_INCLUDE_DIRS ${AVFILTER_INCLUDE_DIRS})
         list(APPEND FFMPEG_LIBRARIES ${AVFILTER_LIBRARIES})
-        # pkg-config can name a prefix that is not on the default search path.
-        # The FFMPEG block above has the same latent gap; this one is closed.
+        # pkg-config can name a prefix that is not on the default search path;
+        # the FFMPEG block above closes the same gap the same way.
         if(AVFILTER_LIBRARY_DIRS)
             link_directories(${AVFILTER_LIBRARY_DIRS})
         endif()
