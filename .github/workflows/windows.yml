@@ -92,6 +92,13 @@ jobs:
       # No vcpkg.json exists, so the ports are named explicitly. Keeping them
       # in one block means the diff when someone does add a manifest is
       # readable.
+      #
+      # `glew` is not for us: projectM v4 is built from source by CPM when no
+      # system copy is found, and its own CMakeLists.txt:190 calls
+      # find_package(GLEW REQUIRED). Without it, configure dies at
+      # "Could NOT find GLEW (missing: GLEW_INCLUDE_DIRS GLEW_LIBRARIES)"
+      # inside the projectM subproject (run 39398976104, the first Windows run
+      # ever to reach Configure with Qt Multimedia present).
       - name: Install native dependencies (vcpkg)
         shell: pwsh
         run: |
@@ -100,14 +107,23 @@ jobs:
             fmt:x64-windows-static `
             tomlplusplus:x64-windows-static `
             glm:x64-windows-static `
-            taglib:x64-windows-static `
-            ffmpeg:x64-windows-static
-        # ffmpeg is the long pole and the likeliest single point of failure.
-        # It is allowed to miss on its own without taking the Qt install with
-        # it: cmake/Dependencies.cmake falls back to a manual
-        # find_path/find_library search, so a missing port surfaces as a clear
-        # configure-time error rather than as a confusing link failure later.
+            glew:x64-windows-static `
+            taglib:x64-windows-static
+
+      # ffmpeg is the long pole and the likeliest single point of failure.
+      # It is allowed to miss on its own without taking the Qt install with
+      # it: cmake/Dependencies.cmake falls back to a manual
+      # find_path/find_library search, so a missing port surfaces as a clear
+      # configure-time error rather than as a confusing link failure later.
+      # It is split out from the step above so that `continue-on-error` covers
+      # only the port that needs it -- the previous shape let a missing `glew`
+      # or `taglib` report green here and fail twenty seconds later in
+      # configure, which reads like a code problem and is not one.
+      - name: Install ffmpeg (vcpkg, allowed to miss)
+        shell: pwsh
         continue-on-error: true
+        run: |
+          & "$env:CHADVIS_VCPKG_ROOT\vcpkg.exe" install ffmpeg:x64-windows-static
 
       - name: Report vcpkg's view of the dependency set
         if: always()

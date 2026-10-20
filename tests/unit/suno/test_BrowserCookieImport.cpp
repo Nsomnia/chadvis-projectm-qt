@@ -43,6 +43,26 @@
 #include <CommonCrypto/CommonCrypto.h>
 #endif
 
+/// Seven of these tests need a real Safe Storage key *and* a real `v10` blob,
+/// and both exist only on macOS: `deriveChromiumKey` is CommonCrypto PBKDF2 and
+/// returns an empty key everywhere else **by design**
+/// (`BrowserCookieImport.cpp:257`), and `candidateBrowserNames` probes
+/// `~/Library/Application Support/`. On the Linux gate they therefore encrypted
+/// to nothing and asserted against empty results -- six red asserts for a
+/// feature that is not built on that platform at all. That is a test defect,
+/// not a product one, so off macOS they say so instead of failing. The pure
+/// header tests keep running everywhere: assembly order and the signed-out
+/// discriminator are platform-independent, and they are the half that has
+/// actually caught shipped bugs.
+#ifdef Q_OS_MACOS
+#define REQUIRE_MACOS_SAFE_STORAGE() ((void)0)
+#else
+#define REQUIRE_MACOS_SAFE_STORAGE()                                          \
+    QSKIP("macOS-only: Chromium's Safe Storage key is derived with "           \
+          "CommonCrypto, and deriveChromiumKey() returns {} off macOS by "     \
+          "design (BrowserCookieImport.cpp:257)")
+#endif
+
 namespace {
 
 /// Encrypt exactly the way Chromium on macOS does, so the decrypt under test
@@ -153,6 +173,7 @@ private slots:
     /// is the failure that decrypts to nothing rather than to noise.
     void keyDerivationProducesA16ByteKey()
     {
+        REQUIRE_MACOS_SAFE_STORAGE();
         const QByteArray key = vc::suno::auth::BrowserCookieImport::
             deriveChromiumKey(QByteArrayLiteral("a keychain secret"));
         QCOMPARE(key.size(), 16);
@@ -168,6 +189,7 @@ private slots:
     /// out. This is the exact path a real `__client` value takes.
     void decryptRoundTripsAChromiumShapedValue()
     {
+        REQUIRE_MACOS_SAFE_STORAGE();
         const QByteArray key = vc::suno::auth::BrowserCookieImport::
             deriveChromiumKey(QByteArrayLiteral("round trip secret"));
         const QByteArray plain =
@@ -187,6 +209,7 @@ private slots:
     /// this is the test that keeps it there.
     void wrongKeyYieldsNothingUsable()
     {
+        REQUIRE_MACOS_SAFE_STORAGE();
         const QByteArray right = vc::suno::auth::BrowserCookieImport::
             deriveChromiumKey(QByteArrayLiteral("round trip secret"));
         const QByteArray wrong = vc::suno::auth::BrowserCookieImport::
@@ -276,6 +299,7 @@ private slots:
     /// was not an unobserved fall-through.
     void signedOutStoreIsObservedAsSignedOut()
     {
+        REQUIRE_MACOS_SAFE_STORAGE();
         using vc::suno::auth::BrowserCookieImport;
         StoreFixture store;
         const QByteArray key = BrowserCookieImport::deriveChromiumKey(
@@ -365,6 +389,7 @@ private slots:
     /// would interrupt whoever ran the suite.
     void readStoreTakesOnlySunoClerkCookies()
     {
+        REQUIRE_MACOS_SAFE_STORAGE();
         using vc::suno::auth::BrowserCookieImport;
         StoreFixture store;
         const QByteArray key = BrowserCookieImport::deriveChromiumKey(
@@ -410,6 +435,7 @@ private slots:
     /// one that would have caught it.
     void readStoreTakesSunoAiAndRejectsSuffixLookalikes()
     {
+        REQUIRE_MACOS_SAFE_STORAGE();
         using vc::suno::auth::BrowserCookieImport;
         StoreFixture store;
         const QByteArray key = BrowserCookieImport::deriveChromiumKey(
@@ -460,6 +486,7 @@ private slots:
     /// the UI would offer an import that can only fail.
     void candidatesAreAllInstalled()
     {
+        REQUIRE_MACOS_SAFE_STORAGE();
         using vc::suno::auth::BrowserCookieImport;
         const QStringList names = BrowserCookieImport::candidateBrowserNames();
         QVERIFY(!names.isEmpty());
