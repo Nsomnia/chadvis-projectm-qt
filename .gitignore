@@ -23,10 +23,9 @@ docs/SUNO_API_CPP_QT6_INTEGRATION_GUIDE.md
 # Agent internals
 #.agent/notes/
 # .workbuddy-ai/
-# Local session memory: machine-specific paths and observations, never history.
-# The `skills` entry beside it IS tracked -- it is a symlink to .opencode/skills,
-# so both harnesses read one copy.
-.workbuddy-ai/memory/
+# Deliberately NOT ignored: agent memory under .workbuddy-ai/memory/ is tracked,
+# so the next session inherits it. Do not re-add an ignore here without asking —
+# it would stop future daily logs being tracked while leaving the existing ones in.
 .backup_graveyard/
 logs/
 scratch/
