@@ -67,8 +67,10 @@ env:
   # every target at link with LNK2038 on tag.lib and the av*.lib set -- run
   # 39458868479, twelve projects, all the same mismatch. Release + /MT is the
   # configuration that triplet was built for, and it is also what ships.
+  # The /MT half is passed as a literal at the Configure step, not through a
+  # variable: a `$env:` reference there reached CMake unexpanded (run
+  # 39465642575) while the same form worked two lines above it.
   CMAKE_BUILD_TYPE: Release
-  CHADVIS_MSVC_RUNTIME: MultiThreaded
   # MSVC 19.3x+ is Compiler.cmake's floor (>= 19.29). windows-latest ships
   # VS 2022.
   #
@@ -99,11 +101,18 @@ jobs:
         with:
           persist-credentials: false
 
+      # Restore/save are separate steps on purpose. `actions/cache` only saves
+      # when the job succeeds, and this lane is being brought up from red --
+      # so a run that failed AFTER vcpkg spent 30 minutes building ffmpeg
+      # threw the whole cache away (run 39465642575, post step skipped). Save
+      # under `always()` and a failing run still pays forward.
+      #
       # Keyed on a hand-bumped tag, not a hash: the cache is a build artefact
       # store, and busting it on every workflow edit would cost 30 minutes a
       # push. Bump `v1` whenever the port list or the triplet changes.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: C:\vcpkg-cache
           key: vcpkg-static-v1
@@ -179,9 +188,12 @@ jobs:
         run: |
           cmake -S . -B $env:BUILD_DIR `
             -DCMAKE_BUILD_TYPE=$env:CMAKE_BUILD_TYPE `
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=$env:CHADVIS_MSVC_RUNTIME `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=MultiThreaded `
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR;$env:CHADVIS_VCPKG_ROOT\installed\x64-windows-static" `
             -DCMAKE_TOOLCHAIN_FILE="$env:CHADVIS_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          # Evidence for the /MT decision above rather than a guess: the value
+          # CMake actually resolved, printed before the multi-minute build.
+          Select-String -Path "$env:BUILD_DIR\CMakeCache.txt" -Pattern '^CMAKE_MSVC_RUNTIME_LIBRARY'
 
       - name: Build
         run: cmake --build $env:BUILD_DIR --config $env:CMAKE_BUILD_TYPE --parallel
@@ -279,7 +291,14 @@ jobs:
       - name: Upload the packaged build
         uses: actions/upload-artifact@v7
         with:
-          name: chadvis-windows-x64-msvc-debug
+          name: chadvis-windows-x64-msvc
           path: ${{ env.BUILD_DIR }}/chadvis-windows-x64.zip
           if-no-files-found: error
           retention-days: 14
+
+      - name: Save the vcpkg binary cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: C:\vcpkg-cache
+          key: vcpkg-static-v1
