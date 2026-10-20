@@ -42,11 +42,21 @@ int runTestLoudnessAnalysis(int argc, char** argv);
 int runTestPathSafety(int argc, char** argv);
 int runTestSunoBridge(int argc, char** argv);
 
-// A breadcrumb per suite, on stderr. qtest writes its own progress to stdout,
-// which Windows block-buffers when it is a pipe, so a crash loses everything
-// the suite had not flushed -- run 39479544129 ended at 64 s with no FAIL! and
-// no Totals and no way to tell which suite died. stderr is unbuffered.
-#define RUN_SUITE(name) (std::fprintf(stderr, "[suite] %s\n", #name), run##name(argc, argv))
+// Breadcrumbs on stderr, one line in and one line out per suite. qtest writes
+// its own progress to stdout, and on the Windows lane no stdout from any test
+// binary reaches the log at all -- run 39479544129 ended with no FAIL!, no
+// Totals and no way to tell which of the 39 suites it was. stderr survives, so
+// the name and the return code are printed there instead. A non-zero code
+// names the failing suite; a missing trailing line names the suite that died.
+static int runSuite(const char* name, int (*fn)(int, char**), int argc, char** argv) {
+    std::fprintf(stderr, "[suite] %s\n", name);
+    std::fflush(stderr);
+    const int rc = fn(argc, argv);
+    std::fprintf(stderr, "[suite] %s -> %d\n", name, rc);
+    return rc;
+}
+
+#define RUN_SUITE(name) runSuite(#name, &run##name, argc, argv)
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
@@ -93,7 +103,7 @@ int main(int argc, char* argv[]) {
 
     // Printed after the last suite returns, so a crash after this line is
     // teardown rather than a test.
-    std::fprintf(stderr, "[suite] all suites returned\n");
+    std::fprintf(stderr, "[suite] all suites returned, status %d\n", status);
 
     return status;
 }
