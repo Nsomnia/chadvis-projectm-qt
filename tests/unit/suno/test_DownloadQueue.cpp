@@ -1034,7 +1034,13 @@ private slots:
         DownloadQueue queue(server.factory());
         QTemporaryDir dir;
 
-        const QString part = dir.filePath("dangling.mp3.part");
+        // The queue's OWN scratch name for `dang.mp3`, not a lookalike: an
+        // earlier spelling was "dangling.mp3.part", which the queue never
+        // touches, so the trailing assertion could only ever be true. It read
+        // as a pass on macOS because QFile::exists() follows a dangling link
+        // and answers false, and failed on Windows because it answers true --
+        // two answers about a path nothing in the product had looked at.
+        const QString part = dir.filePath("dang.mp3.part");
         QVERIFY(makeSymlink(dir.filePath("does-not-exist"), part));
         // symlink_status does not follow links, so a dangling link reports
         // symlink rather than not_found -- which is exactly what lets the queue

@@ -498,13 +498,10 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
     };
 
     // A symlink at the part path is never legitimate -- nothing here creates
-    // one -- and on Windows CREATE_NEW resolves the reparse point instead of
-    // refusing it, so openOnce() *succeeds* by creating the link's TARGET and
-    // the download is written through the link. The later rename then moves
-    // that target and leaves the link behind (Windows lane, run 39499466204).
-    // O_EXCL already refuses a dangling link on POSIX; unlinking first makes
-    // both platforms behave the same and strengthens the "never followed"
-    // promise above rather than narrowing it.
+    // one -- so it goes before the claim is attempted. On POSIX O_EXCL already
+    // refuses any existing entry, but Windows resolves a reparse point for
+    // CREATE_NEW, which would let a dangling link turn into a write to its
+    // target. Unlinking first is the only form that holds on both.
     std::error_code linkEc;
     if (fs::symlink_status(path, linkEc).type() == fs::file_type::symlink) {
         fs::remove(path, linkEc);

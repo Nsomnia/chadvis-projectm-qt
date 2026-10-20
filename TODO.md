@@ -1324,6 +1324,14 @@ terse per T0252; long evidence belongs in `docs/backlog/TXXXX.md`.
       platforms. Three test assertions were separator-specific (`/`-joined suffixes and full
       paths compared against native ones) and now compare canonical paths or file names. With
       `ffmpeg[x264]` (see the sixth) the Windows build finally produced real files.
+      **One failure was the test's own**, and it had never tested what it claimed:
+      `aDanglingSymlinkAtThePartPathIsNotMistakenForACrashedRun` put the hostile link at
+      `dangling.mp3.part` while the queue's scratch name for `dang.mp3` is `dang.mp3.part`, so
+      the trailing `!QFile::exists(part)` asserted the removal of a path nothing had opened. It
+      read as a pass on macOS because `QFile::exists()` follows a dangling link and answers
+      false, and as a failure on Windows because Qt answers true. Renaming the link fixes the
+      coverage. The lane itself is at `[?]`: it builds, discovers 15 entries, and 14/15 entries
+      pass — the remaining one was this assertion.
       **A sixth, found once configure and the ports finally went green (run `39458868479`).** Every one of the twelve targets then failed at link with LNK2038 on `tag.lib`/`av*.lib`: `_ITERATOR_DEBUG_LEVEL` 0 vs 2, `MT_StaticRelease` vs `MDd_DynamicDebug`. The static triplet is built against the static CRT, and matching it would mean building our objects `/MT` — a CRT mismatch against Qt's own `/MD` binaries, which neither vendor supports. The lane now uses the dynamic **`x64-windows`** triplet with a **Release** config — the same runtime as Qt. The ports' DLLs are copied into the zip beside windeployqt's Qt set, and `--compiler-runtime` stays on because the closure is `/MD`. Speed was not a reason and must not be recorded as one: the published vcpkg binary feed missed every port (the runner's vcpkg is newer than the feed), so ffmpeg built from source for **32 minutes** on this triplet too. A persisted `VCPKG_BINARY_SOURCES` cache, saved under `always()` because `actions/cache` throws the whole thing away when a later step fails, is what makes the second run cheaper.
 
 ### P2 — production scaffolding and doc drift
