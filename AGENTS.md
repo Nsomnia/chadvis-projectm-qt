@@ -59,8 +59,10 @@ The workflows are honest about what they can and cannot prove, and the differenc
 when reading a badge:
 
 * `build.yml` is the gate: Ubuntu × {gcc, clang} + macOS, 11 headless entries out of 14 registered.
-* `windows.yml` is **non-blocking** (`continue-on-error`), so a *workflow* "success" can
-  still contain a failed job. Check the job conclusion, not the run conclusion.
+* `windows.yml` is a **gate** as of 2026-10-20: it builds Release, runs the same 11
+  headless entries, and uploads a `windeployqt` bundle with the vcpkg DLLs beside it.
+  It was `continue-on-error` until it went green, and a non-blocking job rots unnoticed;
+  if it starts failing, fix or revert it rather than re-arming `continue-on-error`.
 * `asan.yml`, `ubsan.yml`, `tsan.yml` report and count; they do not gate. A lane that
   produced no log is a broken lane, not a clean one.
 * The three runtime-environment entries (`integration_tests`, `integration_gl_tests`,

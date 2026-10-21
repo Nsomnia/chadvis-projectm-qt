@@ -1,48 +1,22 @@
 # ===========================================================================
-# windows.yml -- Windows build signal. Reports; does NOT block a PR.
+# windows.yml -- the Windows gate: build, headless tests, deployable bundle.
 #
-# WHY IT EXISTS AND WHY IT IS NON-BLOCKING
-#   Windows 10/11 is the major userbase (AGENTS.md §7) and it is also the
-#   platform with the worst current credential story: the TODO records that
-#   `CHADVIS_HAS_KEYCHAIN` was only ever defined inside `if(APPLE ...)`, so
-#   Windows fell through to the file backend and wrote the Clerk credential —
-#   a `token_type: "refresh"` credential with `Max-Age=31536000`, i.e. a
-#   ONE-YEAR secret — in the clear. CredentialStoreWin32.cpp now exists, but
-#   "the code is written" is not "the code has ever been compiled on the
-#   platform it targets", and a lane that has never run is indistinguishable
-#   from a lane that would have passed.
+# Windows 10/11 is the major userbase, so this is a gate, not a smoke alarm.
+# It builds Release against the dynamic `x64-windows` triplet (the static one
+# is a CRT mismatch against Qt's /MD binaries), runs the same headless entries
+# as Linux and macOS, and uploads a `windeployqt` bundle with the vcpkg DLLs
+# beside it -- an archive that runs on a machine that has never seen Qt.
 #
-#   So: `continue-on-error: true` at the job level. A Windows failure is
-#   visible on the check, it shows up in the Actions tab, and it does not stop
-#   a PR from merging.
+# Before "simplifying" any step, read T0298 in TODO.md. This lane had never
+# built a single target until 2026-10-20, and the seven defects that took it
+# from "git checkout fails" to green include three that fail silently or
+# misleadingly: the Qt `modules:` list, the private CHADVIS_VCPKG_ROOT, and
+# `ffmpeg[x264]` (without x264 the app records nothing, and says so only in a
+# log line).
 #
-#   THE TRADE-OFF, STATED PLAINLY: a non-blocking job rots unnoticed. If this
-#   workflow is failing on every push and nobody reads it, it has stopped
-#   being a signal and become decoration — the same fate as a permanently
-#   failing gate, only quieter. Whoever owns this needs to watch it for a few
-#   pushes after it first goes green. The honest fix is to get it green and
-#   then make it blocking; until then it is a smoke alarm with the battery out.
-#
-# EXPECT IT TO FAIL ON THE FIRST RUN
-#   There is no vcpkg.json in this repository, and creating one is outside the
-#   scope of this change, so the native dependencies below are installed by
-#   explicit `vcpkg install` lines. vcpkg's ffmpeg port in particular builds
-#   most of the world from source on first use -- measured at 32 minutes on the
-#   dynamic triplet, because the runner's vcpkg is newer than the published
-#   binary feed and every port misses it. The job caches the result (see the
-#   restore/save steps) so only the first run pays; it is non-blocking
-#   precisely so that a slow or incomplete first run is signal, not breakage.
-#
-# WHAT IS ACTUALLY WORTH DOING HERE
-#   1. Does it CONFIGURE? That is the highest-value question on this platform,
-#      because it is the one that has never been asked: the `FileBackend` ->
-#      `CredWrite` path, the OpenGL lookup, and the Qt component list have all
-#      been written by inference.
-#   2. Does it BUILD?
-#   3. Do the headless suites LINK and RUN?
-#   Not the drawable suites. A GitHub Windows runner has no GPU and no
-#   meaningful GL driver, so `integration_gl_tests` would fail for
-#   environmental reasons and tell us nothing.
+# Not covered: the GL suites. A runner has no GPU, so `integration_gl_tests`
+# and the offscreen spike would fail for environmental reasons and prove
+# nothing.
 # ===========================================================================
 
 name: windows
@@ -87,11 +61,10 @@ env:
 
 jobs:
   windows:
-    name: windows-latest / MSVC (signal only, non-blocking)
+    name: windows-latest / MSVC
     runs-on: windows-latest
-    # See the header. Do not remove this without reading it first.
-    continue-on-error: true
-    # 32 minutes of that is vcpkg building ffmpeg from source on a cold cache.
+    # A cold vcpkg cache means building ffmpeg from source; a warm one runs
+    # the whole job in about twelve minutes.
     timeout-minutes: 120
 
     steps:
@@ -134,6 +107,19 @@ jobs:
       # "Could NOT find GLEW (missing: GLEW_INCLUDE_DIRS GLEW_LIBRARIES)"
       # inside the projectM subproject (run 39398976104, the first Windows run
       # ever to reach Configure with Qt Multimedia present).
+      # vcpkg does not prune `installed/` when a port is upgraded, and the
+      # package step copies every DLL it finds there: the first bundle carried
+      # two FFmpeg generations (avformat-61 and avformat-63) and vcpkg's own
+      # build-time pkgconf-8.dll. Starting from an empty tree costs a few
+      # seconds of extraction from the binary cache and ships only what is
+      # linked.
+      - name: Clear the vcpkg installed tree
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:CHADVIS_VCPKG_ROOT\installed") {
+            Remove-Item -Recurse -Force "$env:CHADVIS_VCPKG_ROOT\installed"
+          }
+
       - name: Install native dependencies (vcpkg)
         shell: pwsh
         run: |
@@ -145,23 +131,20 @@ jobs:
             glew:x64-windows `
             taglib:x64-windows
 
-      # ffmpeg is the long pole and the likeliest single point of failure.
-      # It is allowed to miss on its own without taking the Qt install with
-      # it: cmake/Dependencies.cmake falls back to a manual
-      # find_path/find_library search, so a missing port surfaces as a clear
-      # configure-time error rather than as a confusing link failure later.
-      # It is split out from the step above so that `continue-on-error` covers
-      # only the port that needs it -- the previous shape let a missing `glew`
-      # or `taglib` report green here and fail twenty seconds later in
-      # configure, which reads like a code problem and is not one.
-      # `[x264]` is not optional. libx264 is the app's default recording codec
-      # (ConfigData.hpp `video.codec`), and vcpkg's ffmpeg port does not enable
-      # it by default: without it a Windows build starts, plays audio and
-      # records nothing, reported as "Video codec not found: libx264". It is
-      # the same GPL encoder Homebrew's ffmpeg gives the macOS build.
-      - name: Install ffmpeg (vcpkg, allowed to miss)
+      # ffmpeg is the long pole and the likeliest single point of failure, so
+      # it gets its own step and its own log. It is NOT allowed to miss: the
+      # recording pipeline is the product, and cmake/Dependencies.cmake already
+      # fails at configure without it -- letting this step report green only
+      # moves the same failure twenty seconds later and makes it read like a
+      # code problem.
+      #
+      # `[x264]` is not optional either. libx264 is the app's default recording
+      # codec (ConfigData.hpp `video.codec`), and vcpkg's ffmpeg port does not
+      # enable it by default: without it a Windows build starts, plays audio and
+      # records nothing, reported as "Video codec not found: libx264". It is the
+      # same GPL encoder Homebrew's ffmpeg gives the macOS build.
+      - name: Install ffmpeg (vcpkg)
         shell: pwsh
-        continue-on-error: true
         run: |
           & "$env:CHADVIS_VCPKG_ROOT\vcpkg.exe" install "ffmpeg[x264]:x64-windows"
 
