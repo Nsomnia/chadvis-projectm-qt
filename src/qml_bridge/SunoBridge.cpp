@@ -727,6 +727,7 @@ void SunoBridge::playClip(const QString& clipId) {
         return;
     }
 
+    LOG_INFO("SunoBridge: play requested for clip {}", clipId.toStdString());
     setErrorMessage({});
     activeDownloadClipId_ = clipId;
     // Marked separately from activeDownloadClipId_, which is the single
@@ -738,6 +739,10 @@ void SunoBridge::playClip(const QString& clipId) {
     setStatusMessage(QStringLiteral("Preparing %1 for playback").arg(title));
     setDownloadStatusForClip(clipId, QStringLiteral("Preparing %1 for playback").arg(title));
     if (!s_controller->playClipById(clipId.toStdString())) {
+        // The controller logs the branch; this line ties the refusal to the
+        // gesture the user made, so a terminal capture is enough to tell "the
+        // click never arrived" from "the click arrived and play was refused".
+        LOG_WARN("SunoBridge: play request for {} was refused by the controller", clipId.toStdString());
         playRequestClipId_.clear();
         activeDownloadClipId_.clear();
         setErrorMessage(QStringLiteral("This clip has no playable media yet."));

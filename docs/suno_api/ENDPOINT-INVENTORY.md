@@ -696,7 +696,7 @@ may be wired on the strength of a neighbouring row.
 | GET | `/api/clips/remixes` | Bearer | Clip remixes | `[T1]` Burp 2026-08-25 | declared-unused |
 | GET | `/api/clips/remixes/count` | Bearer | Remix count | `[T1]` Burp 2026-08-25 | declared-unused |
 | GET | `/api/clips/get_similar/` | Bearer | Similar clips | `[T1]` Burp 2026-08-25 | declared-unused |
-| POST | `/api/mango/rights` | Bearer **or anonymous** (guest token in the response) | Content key + CTR counter for an encrypted media body | `[T1]` Burp 2026-08-25; **shape reproduced and exercised 2026-10-22**, section 5.11 | declared-unused |
+| POST | `/api/mango/rights` | Bearer **or anonymous** (guest token in the response) | Content key + CTR counter for an encrypted media body | `[T1]` Burp 2026-08-25; **shape reproduced and exercised live 2026-10-22**, section 5.11 | wired (`SunoClient::requestContentKey`) |
 | GET | `/api/video/generate/{clip_id}/status/` | Bearer | Video-render status | `[T1]` Burp 2026-08-25 | declared-unused |
 | POST | `/api/video_gen/pending_batches` | Bearer | Pending video batch identifiers | `[T1]` Burp 2026-08-25 | declared-unused |
 | POST | `/api/uploads/audio/` | Bearer | Initialize an audio upload and return a temporary direct-upload URL/policy | `[T1]` Burp 2026-09-24; JSON request/response | wired |
@@ -1449,6 +1449,51 @@ above rather than taken from the bundle.
 
 Reproduction: [`capture/README.md`](capture/README.md). No key, token, clip
 id, or complete media URL from this capture appears in this repository.
+
+### 5.12 Which host answers the rights call, and what it costs -- 2026-10-22
+
+Three routes were probed live on 2026-10-22 while wiring the decrypt, because a
+second-hand claim said the endpoint had moved to `suno.com/api`. It has not,
+and the correction matters: a wrong host is a 404 that reads like a dead route.
+
+| URL | Result |
+|---|---|
+| `https://studio-api-prod.suno.com/api/mango/rights` | **200**, `key`/`iv`/`glt` (anonymous) |
+| `https://studio-api.prod.suno.com/api/mango/rights` | **200** (anonymous) |
+| `https://suno.com/api/mango/rights` | **404** -- a Next.js error page, not an API |
+
+The site's own client agrees with the first row. Its service worker is handed
+its API base by the page, and the value in the 2026-10-16 bundle is literally
+`sendApiSetup(token ? {Authorization: Bearer <token>} : {},
+"https://studio-api-prod.suno.com")`. The worker then fetches
+`${apiBase}/api/mango/rights` (`suno.com/sw.js`, the `fetchDrmKey` path). So
+the desktop client's route and the browser's route are the same route, on the
+same host, with the same body.
+
+**What the call is for, and what it is not.** It is the PLAYBACK licence: the
+site calls it when a clip starts, behind a client-side limiter of one request
+per second (50 per 50 s in the bundle), and caches the result per clip for one
+hour (`CONTENT_KEY_CACHE_TIME = 3 600 000`, keyed `content_id:content_type`,
+reporting `keySource` cache-vs-network). It answers a fully anonymous request,
+which a metered account-credit route could not do. The metered route is the
+DOWNLOAD product -- `GET /api/download/clip/{clip_id}?format=mp3`, which returns
+a prepared `download_url`, and is what the site's Download button and its
+"download credits" upsell are about. The desktop client calls none of it.
+
+**Suno's own browser-only shortcut.** The site's worker also exposes
+`/_sw-mango/manifest.m3u8?contentId=&src=&contentType=` and
+`/_sw-mango/passthrough?contentId=&src=&contentType=`, which fetch the encrypted
+asset, call the same rights route, and serve the DECRYPTED bytes as HLS or a
+whole file. Two current third-party downloaders use that: one drives a real
+Chromium page with Playwright and fetches the passthrough URL from inside it;
+another downloads the plaintext HLS segments and remuxes them with no crypto at
+all. Both are working because the browser is doing the licence call -- the
+worker they lean on IS the `POST /api/mango/rights` + AES-CTR chain above, just
+running in the browser instead of in the client. A service worker only
+intercepts fetches made by pages it controls, so a native client cannot call
+`/_sw-mango/*`; it has to reimplement the worker's two steps. That is what
+`MangoLicense` + `MangoCrypto` + `SunoDownloader` do, and it is why this client
+makes one licence request per clip per hour rather than one per play.
 
 ## 6. Errors, statuses, and rate limits
 

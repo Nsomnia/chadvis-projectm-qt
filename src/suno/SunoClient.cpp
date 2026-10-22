@@ -1085,8 +1085,12 @@ void SunoClient::requestContentKey(const std::string& clipId,
     const QByteArray payload = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
     // The bearer is the token the request carries, and the server wraps the
-    // key under its digest. It is captured here because by the time the reply
-    // arrives the token may have been refreshed.
+    // key under its digest. It is captured at send time because by the time the
+    // reply arrives the token may have been refreshed -- which is also why the
+    // reply handler falls back to the CURRENT token: a 401 retry re-sends the
+    // request under a new bearer, and the wrap follows whatever the server
+    // actually received. The GCM tag decides which candidate is right, so
+    // trying more than one is a verification, never a guess.
     const QByteArray bearer = token().toUtf8();
 
     enqueueAuthenticatedRequest(qstr(vc::suno::endpoints::MANGO_RIGHTS), "POST", payload,
@@ -1107,8 +1111,13 @@ void SunoClient::requestContentKey(const std::string& clipId,
                                                                "is not JSON.")));
                                         return;
                                     }
-                                    callback(unwrapContentKey(document.object(), bearer,
-                                                             QString::fromStdString(clipId)));
+                                    const QString clip = QString::fromStdString(clipId);
+                                    auto key = unwrapContentKey(document.object(), bearer, clip);
+                                    const QByteArray current = token().toUtf8();
+                                    if (!key && !current.isEmpty() && current != bearer) {
+                                        key = unwrapContentKey(document.object(), current, clip);
+                                    }
+                                    callback(std::move(key));
                                 });
 }
 

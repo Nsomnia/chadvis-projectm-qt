@@ -105,6 +105,21 @@ person whose machine it is.
 | D2.14 | While signed in (via Import), press Import again with the same browser session. The card re-verifies and stays signed in — no hang, no duplicate sign-in, no "Imported. Verifying" left standing. | | | The second press used to no-op on an unchanged cookie header (`setCookie` early return); `reverifyStoredCredential()` forces a fresh exchange, and the in-flight guard keeps it to one. |
 | D2.15 | With a signed-out browser store (D2.9 state), press Import and let it fail, then press **Sign in with Google** and cancel, then press Import again. Each attempt shows the current verdict — no stale "Imported. Verifying", no stale error from the previous attempt. | | | Sign-out resets the coordinator state; a failed verification converts the import wait into a named error instead of stranding the card. |
 
+### MT-001-D3 — Encrypted playback and the local decrypt (T0317)
+
+Every layer under this gesture is verified in code and against the live server; the
+gesture itself is not, because it needs a signed-in account and a screen. ctest
+proves nothing here.
+
+| ID | Step | Pass | Fail | Notes |
+| --- | --- | --- | --- | --- |
+| D3.1 | Signed in, press Play on a clip whose media is `m4a-opus`/`progressive` (every synced clip). The clip downloads, the saved file is an `.m4a`, and audio starts. | | | The captured form is ciphertext until the content key arrives. |
+| D3.2 | Play a clip Suno marks as locked for its download product (the library's own clips are mostly in this state). It still plays. The log contains one line beginning `SunoDownloader: clip … is locked in Suno's download product` and the transfer proceeds. | | | This is the T0317 regression guard: the lock is reported, never enforced. |
+| D3.3 | Open the saved file outside the app (`afplay <file>`, or `afinfo <file>`). It plays, and reports Opus 48 kHz stereo. | | | macOS AudioToolbox reads Opus-in-MP4; a player that refuses it is a separate, named limitation. |
+| D3.4 | Press Play on the same clip again within the hour (delete or keep the file — both paths are valid). No second license request is made: the log says `reusing the content key`. | | | `CONTENT_KEY_CACHE_TIME` parity with the site: one `/api/mango/rights` call per clip per hour. |
+| D3.5 | Read the log for the run. No cookie, no bearer, and no complete media URL appears. | | | Neither the downloader nor the queue logs a URL at all, and the rights response is never logged. A host or path appearing here would be a new leak. |
+| D3.6 | Play a clip whose media this client will not fetch, or let the server refuse one (403/401). The Library shows the refusal sentence; the card does not sit on "Saving" forever. | | | Fail-closed paths: `noUsableMediaMessage`, `clipSaveRefused`, `finalizeFailed`. |
+
 ### MT-001-E — Settings persistence
 
 | ID | Step | Pass | Fail | Notes |

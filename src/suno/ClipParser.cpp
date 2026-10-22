@@ -181,21 +181,19 @@ std::expected<SunoClip, QString> ClipParser::parseClip(const QJsonObject& obj) {
     //
     // Presence is separated from value deliberately, because `optBool` alone
     // cannot tell "the server said no" from "this payload never carried the
-    // field", and the download gate must act differently on the two.
+    // field", and the two are reported differently.
     //
     // CORRECTION to an earlier version of this comment, which said "absent must
     // fail closed rather than inherit a permissive default". That describes the
     // OPPOSITE of what ships: absent leaves `is_download_unlocked` unset, and
-    // `downloadEntitlementRefusal` reads `value_or(true)`, so absent is
-    // permissive. The reasoning lives with the gate that implements it —
-    // briefly: the same object sets `audio_url` to the `/api/forbidden` sentinel,
-    // so the server states denial explicitly when it means to, and absence of the
-    // flag is absence of a denial. Requiring an explicit `true` would also make
-    // every clip persisted before this field existed unsaveable.
+    // `downloadProductLock` reads `value_or(true)`, so absent is permissive.
+    // The reasoning lives with the gate that implements it — briefly: the same
+    // object sets `audio_url` to the `/api/forbidden` sentinel, so the server
+    // states denial explicitly when it means to, and absence of the flag is
+    // absence of a denial. Requiring an explicit `true` would also make every
+    // clip persisted before this field existed look locked.
     //
-    // Do not "fix" this into fail-closed on the strength of a comment. The rule
-    // is pinned from both directions by test_DownloadEntitlement.cpp, including
-    // a mutant that changes `value_or(true)` to `value_or(false)`.
+    // The rule is pinned from both directions by test_DownloadEntitlement.cpp.
     //
     // Reusing `optBool` for the value keeps its string-tolerant reading (captured
     // filters also arrive as "True"/"False" strings) without duplicating that

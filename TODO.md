@@ -82,6 +82,8 @@ line to describe an item is describing it in the wrong place. Finished work move
 
 ## P1 — correctness, robustness, and debt that will bite
 
+- [ ] T0319 **The Library card's play overlay was reported doing nothing while the playlist played the same file** (`src/qml/components/ClipCard.qml`, `src/ui/controllers/SunoController.cpp`) #blocks-ui #risk-high
+      User report 2026-10-22: a clip fetched from the remote library decrypted, saved to `~/Music/EVERYDAY WE HUSTLIN.m4a`, and played (the log shows `DownloadQueue: completed`, `Tagging file`, `LyricsSync: Loaded 1 lines`), and the playlist played it perfectly — but pressing the card's ▶ overlay afterwards produced no download, no request and no error. **Root cause NOT established.** Two silent refusals were removed on the way: `SunoController::playClipById` gated playback on `CONFIG.suno().downloadFormat`, so a WAV download preference turned every play button into a no-op with no message, and every false return there (and in `SunoBridge::playClip`) was silent. Playback now always selects the m4a stream regardless of the save format, and both layers log (`SunoBridge: play requested for clip …`, then a WARN naming the branch). **Next run's log decides**: no `play requested` line means the QML click never arrived (hit-testing or a recycled delegate); a `play refused for …` line names the cause; `is locked … fetching` means the download path ran. Reproduce before changing any QML.
 - [ ] T0011 **The whole 11-route library/playlist mutation surface is runtime-unreachable and unobservable** (`src/suno/SunoLibraryMutations.hpp:493`, `src/suno/SunoLibraryMutations.cpp:394-397`) #risk-high
       `bool enabled_{false}` and `dispatch()` always refuses. `setEnabled` is declared
       (:281) and defined (:141) with **zero production callers**. Separately, **no QML
@@ -396,6 +398,8 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 
 ## P2 — robustness, cleanup, and debt
 
+- [ ] T0318 **The saved stream carries no lyrics, and there are no user-settable tags for it to carry** (`src/suno/SunoDownloader.cpp:832-900`, `src/suno/SunoDownloader.cpp:1085`) #feature #risk-medium
+      The file that now plays back is tagged with title/artist/album/comment and the four `SUNO_*` freeform atoms, and **nothing else**. Two separate facts, both measured on this machine's 2,147-clip library on 2026-10-22: `lyrics` is empty for **2,147 of 2,147** clips (the feed field is blank; **775** clips carry `aligned_lyrics_json`), and the MP4 branch of `tagAudioFile` writes **no lyrics atom at all** — `©lyr` is never set, unlike the MP3 branch's `USLT`. So the `.txt` sidecar's `Lyrics:` line is empty too, while the Library shows lyrics for the playing track because it reads the aligned data from the DB. Fix: (a) write `©lyr` (and a SYLT/`©lyr` equivalent where the container allows) from `clip.metadata.lyrics` when present, falling back to the DB's aligned-lyrics text for the same clip id; (b) fill the sidecar from the same source; (c) **there is no tag override to apply** — no Settings field sets artist/album/title, and `artist` is the Suno handle (`clip.display_name`) while `album` is the constant "Suno AI Generations", so the report's "custom tags the user can set" describes a feature that does not exist yet. Decide the override schema in `[suno]` (`artist_template`, `album`, `write_lyrics`) and thread it here; do not invent per-file prompts in the dialog first.
 - [ ] T0051 `QTP0004` is deliberately disabled while 58 QML files live away from the `qt_add_qml_module` call (`cmake/TargetSetup.cmake:129-134`) #risk-medium
       Qt calls this layout "a frequent source of mistakes" and 6.8 can generate per-directory
       `qmldir`s (`NO_GENERATE_EXTRA_QMLDIRS`). Either enable it and fix the relative imports,
@@ -878,6 +882,11 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       Local text search only; no sort, no multi-select, no bulk action; `ClipCard.qml` has
       exactly one `onClicked`. **This is the difference between a viewer and something you can
       organise a library with.** The remote-verb half is capture-gated; the local half is not.
+- [ ] T0320 **No like/dislike anywhere, and the rest of the Suno surface has no UI entry point** (`src/qml/views/LibraryView.qml`, `src/qml/views/ListenView.qml`, `src/suno/SunoLibraryMutations.*`) #feature #blocks-ui
+      The user's request, and the shape of the gap: `is_liked` is parsed, persisted and filterable in the feed request, and the UI has **no affordance to set it** — not on a Library card, not in the detail sheet, not on the Listen view. The verbs themselves are capture-gated (`T0267`: no captured like/unlike route; `T0011`: 11 mutation verbs exist in `SunoLibraryMutations` but the switch is off and no QML connects `clipMutationSettled`/`clipSaveRefused`), so the honest split is: **(a) now, no capture needed** — a thumb control on `ClipCard`, `ClipDetailSheet` and `ListenView` bound to `is_liked`, disabled with a reason while the verb is unavailable, plus the local optimistic state and a "queued for when mutations are enabled" path; **(b) one authenticated capture** — like/unlike, trash/restore, add-to-playlist, follow (T0267's ~30-minute session), then flip `SunoLibraryMutations::setEnabled` and connect the four signals. This is the visible half of a much larger list already on the board and deliberately not duplicated here: playlists read-back and CRUD (T0264), search/filters/FTS (T0270), stems (T0261), personas (T0263), video (T0265), export (T0271, T0275), batch ops (T0269), per-item notification actions (T0273), credits/quota UX (T0277), and the generation surface (T0259, T0315). Read T0011 first: the missing QML layer, not the missing C++, is what keeps all of it unreachable.
+
+- [ ] T0321 **Playback controls exist only inside the Listen view — there is no global transport for the current track** (`src/qml/components/TransportBar.qml`, `src/qml/main.qml`, `src/qml/views/LibraryView.qml`) #feature #blocks-ui
+      `TransportBar` is instantiated in exactly one place (`ListenView.qml:145`), so from the Library, Discover, Notifications, Playlist or Settings the user can start a track but has no visible way to pause it, skip it or scrub it. The keyboard shortcuts exist (`main.qml:560-575`: space/next/prev) but are invisible and undocumented in the UI (T0240 lists the rest). **One transport, not two:** a persistent bar in the shell bound to `AudioBridge`, showing now-playing title/artist and elapsed/total, with play/pause, previous/next, seek, volume/mute, and a queue affordance. It must operate on the **current track whether it came from a remote Suno clip or a local file** — the two are not different players, they are playlist entries whose `PlaylistItem` metadata came from different sources (`remote clip | local file`, T0313), so the bar reads from the playlist's current item and never from a Suno-specific bridge. Disabled states when the queue is empty; the Listen view's copy collapses into the same component rather than staying a second implementation.
 - [ ] T0129 ReplayGain presented honestly (`src/audio/LoudnessAnalysis.cpp`) #feature #retention
       The retention feature: it is what makes the app worth keeping open between render jobs,
       and the one thing that still works if every Suno surface dies.
@@ -1266,36 +1275,6 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       `m4a-opus` download refused (pinned P1 defect) -- **the refusal is now specified**: the
       captured progressive body is AES-128-CTR encrypted and needs a content-rights call
       (T0317); the `m4a-opus` form is no longer "unsupported", it is "not yet decrypted".
-- [?] T0317 **Encrypted ("mango") media: content-rights call + AES-128-CTR decrypt, and the mp3-only selection retired** (`src/suno/`, `src/suno/SunoDownloader.cpp`) #risk-high
-      `selectDownloadUrl()` accepts only `content_type == "mp3"` on `audiopipe.suno.ai`, and
-      2140 of 2140 captured `media_urls[]` entries are `m4a-opus`/`progressive`/`encoding
-      "1.0.0"` on the allowlisted CloudFront host -- so every playable clip resolves to
-      nothing and the play buttons do nothing. The 2026-10-22 capture (ENDPOINT-INVENTORY
-      section 5.11) pins the contract: `POST /api/mango/rights` with
-      `{content_params:{content_id,content_type:"clip"}}` returns base64 `key`/`iv` (+ `glt`
-      when anonymous), each a 12-byte GCM nonce + 16-byte payload + 16-byte tag, unwrapped
-      with `SHA-256(bearer or glt)` as the AES-GCM key and AAD = the clip id, yielding a
-      16-byte AES-128 key and a 16-byte CTR counter; the media body is one AES-128-CTR
-      stream that decrypts to a plain `audio/mp4`. Implement: the rights call, the unwrap
-      (authenticated, GCM-tag verified), the streaming CTR decrypt, the container sniff
-      (mp4/webm) that decides the file extension, and a selection that prefers an encrypted
-      entry and falls back to the old mp3 path. Fail closed with a reason: the GCM tag and
-      the container magic are the two checks that make "no playable media" honest.
-      **Progress:** the crypto is done and verified -- `src/suno/MangoCrypto.{hpp,cpp}` holds
-      the AES-GCM unwrap and the AES-128-CTR stream, pinned by the published NIST SP 800-38D
-      vectors and by WebCrypto-generated ones (`tests/unit/suno/test_MangoCrypto.cpp`, 18
-      assertions). The AES block cipher is libavutil's, so no new native dependency. Left:
-      the rights HTTP call, the downloader's selection and decrypt step, and the container
-      sniff. `STATUS/T0317.log`.
-      **Now implemented, and the code half is verified:** the rights call
-      (`SunoClient::requestContentKey`), the unwrap (`src/suno/MangoLicense.{hpp,cpp}`), the
-      selection that prefers the encrypted form, the `.m4a` extension that follows the
-      container, the streaming decrypt with a container check, and the MP4 tagging. The whole
-      path is driven by `anEncryptedBodyBecomesAudio` with no network, and the crypto is
-      pinned by the NIST vectors and by WebCrypto. `[?]` and not `[x]` because the LIVE half
-      is unverified: a real rights response, a real 7 MB body, and the player opening the
-      result in the app. That is one press of Play away, and it is the last thing standing
-      between this task and done. `STATUS/T0317.log`.
 - [ ] T0267 **Like/unlike, trash/restore, permanent delete: NO verb, NO endpoint** (`src/suno/`) (capture-gated)
       Deliberate — no captured contract; `POST /api/clips/delete/` 404'd. DB *stores* `is_liked`/`is_trashed`, so read side implies verbs that don't exist.
 - [ ] T0268 **Clip rename: NO clip-title rename verb** (`src/suno/`) (capture-gated)

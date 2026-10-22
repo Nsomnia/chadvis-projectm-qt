@@ -228,6 +228,72 @@ private slots:
         QCOMPARE(written.readAll(), clear);
     }
 
+    /// The license route is the site's PLAYBACK path, and the site caches a
+    /// content key for an hour rather than asking once per play
+    /// (CONTENT_KEY_CACHE_TIME = 3 600 000 in its own bundle). This pins the
+    /// same behaviour here: the second transfer of one clip reuses the key, so
+    /// a replay or a re-save spends no `/api/mango/rights` call.
+    ///
+    /// The file is deleted between the two downloads on purpose: while it is on
+    /// disk the already-on-disk shortcut would skip the transfer (and the key)
+    /// entirely, which would pass this assertion without testing the cache.
+    void aContentKeyIsReusedWithinTheHour() {
+        DownloadConfigGuard config;
+        QTemporaryDir downloadDir;
+        QVERIFY(downloadDir.isValid());
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
+
+        QTemporaryDir sessionDir;
+        QVERIFY(sessionDir.isValid());
+        AudioEngine audio(fs::path(sessionDir.path().toStdString()) / "last_session.m3u8");
+        QVERIFY(audio.init());
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+
+        SunoClip clip;
+        clip.id = "5c0e11ff-0000-4000-8000-00000000cace";
+        clip.title = "Cached Key Song";
+        clip.status = "complete";
+        clip.media_urls = {{"https://d2lwuy8qc234o3.cloudfront.net/1/clip/" + clip.id + ".m4a",
+                            "m4a-opus", "progressive", "1.0.0"}};
+
+        const QByteArray key = QByteArray::fromHex("2001d3ad2262d52aaf9d542552ece3d8");
+        const QByteArray counter = QByteArray::fromHex("42c4e33256c76560f665ab5a7acddcbd");
+        QByteArray clear("chadvis-cached-key-clear-audio-payload");
+        clear.replace(0, 8, QByteArray("\x00\x00\x00\x18" "ftyp", 8));
+        const QByteArray encrypted = vc::suno::ctrCrypt(clear, key, counter);
+
+        FakeServer server;
+        SunoDownloader downloader(database, &audio, server.factory());
+        int keyRequests = 0;
+        downloader.setContentKeyFetcher(
+            [&keyRequests, key, counter](const std::string&,
+                                         std::function<void(std::expected<ContentKey, QString>)> done) {
+                ++keyRequests;
+                done(std::expected<ContentKey, QString>(ContentKey{key, counter}));
+            });
+        QSignalSpy saved(&downloader, &SunoDownloader::fileSaved);
+
+        QVERIFY(downloader.download(clip).has_value());
+        QCOMPARE(static_cast<int>(server.replies.size()), 1);
+        server.replies[0]->succeed(encrypted);
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 10000);
+        QCOMPARE(keyRequests, 1);
+
+        const QString path = saved.at(0).at(1).toString();
+        QVERIFY(QFile::remove(path));
+
+        QVERIFY(downloader.download(clip).has_value());
+        QCOMPARE(static_cast<int>(server.replies.size()), 2);
+        server.replies[1]->succeed(encrypted);
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 2, 10000);
+        QCOMPARE(keyRequests, 1);
+
+        QFile written(saved.at(1).at(1).toString());
+        QVERIFY(written.open(QIODevice::ReadOnly));
+        QCOMPARE(written.readAll(), clear);
+    }
+
     /// T0200: the property under test is "the *production* constructor wires
     /// the finalize completion". That wiring used to exist only in the
     /// ReplyFactory constructor, so the shipped downloader emitted

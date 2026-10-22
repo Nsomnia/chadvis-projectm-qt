@@ -302,16 +302,30 @@ SunoController::~SunoController() = default;
 void SunoController::downloadAndPlay(const SunoClip& clip) { downloader_->downloadAndPlay(clip); }
 
 bool SunoController::playClipById(const std::string& clipId) {
+    // Every false return here is a dead gesture, so each one says why. A silent
+    // refusal is indistinguishable from a broken button, and that is exactly the
+    // bug report this diagnostic exists for.
     if (clipId.empty()) {
+        LOG_WARN("SunoController: play requested with no clip id");
         return false;
     }
 
     auto clip = resolveClip(libraryManager_->accumulatedClips(), db_, clipId);
     if (!clip) {
+        LOG_WARN("SunoController: play refused for {}: the clip is neither in the synced "
+                 "library nor in the database",
+                 clipId);
         return false;
     }
 
-    if (!SunoDownloader::selectDownloadUrl(*clip, CONFIG.suno().downloadFormat)) {
+    // Deliberately MP3 here and NOT CONFIG.suno().downloadFormat. Playback is
+    // not a file-format request: the only form fetched is the progressive
+    // m4a-opus stream, so gating the play gesture on a *download* preference
+    // meant a WAV setting turned every play button into a no-op. The format
+    // setting belongs to download(), which owns the (unimplemented) transcode.
+    if (!SunoDownloader::selectDownloadUrl(*clip, vc::SunoDownloadFormat::MP3)) {
+        LOG_WARN("SunoController: play refused for {}: no fetchable media form (status '{}')",
+                 clipId, clip->status);
         return false;
     }
 

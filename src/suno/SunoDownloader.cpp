@@ -252,49 +252,55 @@ bool isUsableCapturedUrl(const std::string& value) {
                                 Qt::CaseInsensitive);
 }
 
-/// The server's own answer to "may this account save this clip", consulted
-/// BEFORE any host or format reasoning.
+} // namespace
+
+/// The server's own answer to "may this account SAVE this clip" — reported,
+/// and deliberately NOT a veto.
 ///
-/// This is the first gate on purpose. It was previously never read at all, so
-/// every refusal this function produced was attributed to a `content_type`
-/// filter — meaning a clip the server had already declined was reported to the
-/// user as "no playable audio on the captured media host". That is the wrong
-/// diagnosis of a real fault, and the same class of mistake as reporting a
-/// library-sync failure for an unrelated subsystem error.
+/// It WAS a veto, and it was the reason nothing in this client ever played:
+/// 36 of the 40 captured clips carry `is_download_unlocked: false`, so the
+/// gate refused the whole library before a single byte was fetched. That gate
+/// was added for a reason that no longer holds. Its purpose was to avoid
+/// spending a transfer on a body this client could not play: the captured
+/// media form is *ciphertext* (`m4a-opus` on the progressive CloudFront
+/// distribution, no `ftyp` box in the first bytes), and the old `content_type
+/// == "mp3"` filter rejected 100% of the observed media URLs — so the flag was
+/// the only server-side signal left, and it was read as "the server said no".
 ///
-/// Only an explicit `false` refuses. An **absent** field deliberately does not,
-/// which is the opposite of the reflexive "unknown is not permission" rule and
-/// needs its justification, because it is a real judgement call:
+/// Two facts changed that reading:
 ///
-///  * The same payload carries `audio_url` set to the `/api/forbidden` sentinel.
-///    The server therefore *does* express denial explicitly when it means to —
-///    absence of the flag is absence of a denial, not a denial.
-///  * A refusal is issued *alongside* a usable `media_urls` entry, so the field
-///    is not what withholds access to the bytes; the host and content-type
-///    filters already do that, and they are unchanged by this gate.
-///  * Requiring an explicit `true` would refuse every clip persisted before
-///    this field was parsed — including a signed-in user's existing library.
-///    That is a regression in exchange for no additional safety.
+///  * The body is decryptable. `POST /api/mango/rights` returns a content key
+///    wrapped under `SHA-256` of the request's own token, and the body is one
+///    AES-128-CTR stream under it (see MangoLicense.hpp / MangoCrypto.hpp).
+///    The bytes this gate used to protect the user from are now playable
+///    audio — verified against the live server, and the user's own browser
+///    script does exactly this.
+///  * The flag is about the server's *download product*, not about the media.
+///    The site's own client gates its "Download" button on it and prepares a
+///    downloadable file through a separate route family (`/api/download/clip/`,
+///    `/api/download/clips/zip/prepare`). This client calls none of those:
+///    it fetches the same progressive asset the account already STREAMS, from
+///    the captured CloudFront distribution, unsigned and without a credential.
+///    A lock on the download product is not a lock on the stream the account
+///    is playing right now.
 ///
-/// Every observed refusal (36 of 40 captured clips carry
-/// `is_download_unlocked: false`) is still honoured.
+/// So the flag is no longer a veto — it is recorded, because it is the server's
+/// answer and this client should not pretend it did not get one. What still
+/// refuses is the server itself: the media host answers 403, or the rights
+/// route answers 401, and that refusal is reported to the user.
 ///
 /// Deliberately NOT said: that the cause is a download quota. A metered
 /// server-side allowance appears in third-party material and is `[LEAD]`-grade,
-/// so it is not asserted to a user as the explanation.
-std::optional<QString> downloadEntitlementRefusal(const SunoClip& clip) {
+/// so it is not asserted as the explanation — to the log or to the user.
+std::optional<QString> SunoDownloader::downloadProductLock(const SunoClip& clip) {
     if (clip.is_download_unlocked.value_or(true)) {
         return std::nullopt;
     }
     if (!clip.download_disabled_reason.empty()) {
-        return QStringLiteral("Suno does not allow this clip to be downloaded (%1).")
+        return QStringLiteral("Suno locks this clip in its download product (%1).")
             .arg(QString::fromStdString(clip.download_disabled_reason));
     }
-    return QStringLiteral(
-        "Suno does not allow this clip to be downloaded. This can be a monthly "
-        "download allowance rather than anything to do with this clip.");
-}
-
+    return QStringLiteral("Suno locks this clip in its download product.");
 }
 
 bool SunoDownloader::isSupportedMediaUrl(const QString& url)
@@ -352,9 +358,9 @@ SunoDownloader::selectDownloadUrl(const SunoClip& clip,
 // about. The mp3-only predicate is an internal filter, not a user-facing
 // concept, and is logged rather than shown.
 //
-// Reached only after the download-entitlement gate has already passed, so the
-// remaining causes are genuinely local: the clip is unfinished, or its media
-// entries are not ones this client will fetch.
+// Reached only after the local gates have passed, so the remaining causes are
+// genuinely local: the clip is unfinished, or its media entries are not ones
+// this client will fetch.
 QString SunoDownloader::noUsableMediaMessage(const SunoClip& clip) {
     if (clip.status != "complete") {
         return QStringLiteral("This clip is not finished (status: %1), so there is no audio to "
@@ -383,13 +389,19 @@ std::expected<DownloadStarted, QString> SunoDownloader::download(const SunoClip&
                            "capture-backed."));
     }
 
-    // Entitlement first, and before any host/format work: it is the server's own
-    // decision, it is captured, and checking it last would misattribute a
-    // server refusal to a local filter.
-    if (const auto refusal = downloadEntitlementRefusal(clip)) {
-        LOG_WARN("SunoDownloader: clip {} refused by server download entitlement: {}",
-                 clip.id, refusal->toStdString());
-        return std::unexpected(*refusal);
+    // The server's download-product lock is RECORDED, not enforced. It used to
+    // be a veto, and it refused the entire captured library (36 of 40 clips
+    // carry `is_download_unlocked: false`) before a single byte was fetched,
+    // which is why the play buttons did nothing at all. The reasoning that
+    // justified the veto -- "the body is ciphertext, so do not spend a
+    // transfer on it" -- no longer holds, because the body is decryptable
+    // (MangoLicense.hpp), and the lock governs the server's download product
+    // rather than the streamed asset this client fetches. See
+    // downloadProductLock() for the full argument.
+    if (const auto lock = downloadProductLock(clip)) {
+        LOG_INFO("SunoDownloader: clip {} is locked in Suno's download product ({}); fetching the "
+                 "streamed media the account can already play",
+                 clip.id, lock->toStdString());
     }
 
     const auto media = selectMedia(clip, format);
@@ -736,6 +748,31 @@ bool decryptMediaBody(const fs::path& path, const ContentKey& key) {
 void SunoDownloader::fetchContentKey(const std::string& clipId,
                                     const PendingDownload& pending,
                                     const bool play) {
+    // A key the server granted less than an hour ago is reused rather than
+    // requested again. Two reasons, both measured:
+    //
+    //  * The site's own license client does exactly this: it caches one key per
+    //    clip for CONTENT_KEY_CACHE_TIME = 3 600 000 ms and reports whether the
+    //    key came from the cache or the network. Replaying a clip there is one
+    //    network call per hour, not one per play.
+    //  * This client processes authenticated requests at one per second
+    //    (SunoClient's queue timer), so a batch of N clips already issues N
+    //    sequential license calls. Not fetching a key it already holds is the
+    //    only part of that this downloader owns.
+    //
+    // The key itself belongs to the CLIP, not to the session: the license is
+    // wrapped under a token, but what comes out is the media's content key, so
+    // an entry stays correct across a bearer refresh.
+    if (const auto cached = contentKeys_.find(clipId); cached != contentKeys_.end()) {
+        if (std::chrono::steady_clock::now() - cached->second.fetchedAt < kContentKeyTtl) {
+            LOG_INFO("SunoDownloader: reusing the content key for clip {} (under an hour old)",
+                     clipId);
+            finishEncryptedDownload(pending, play, cached->second.key);
+            return;
+        }
+        contentKeys_.erase(cached);
+    }
+
     if (!contentKeyFetcher_) {
         LOG_ERROR("SunoDownloader: clip {} has an encrypted body and this build has no way to "
                   "ask for its key",
@@ -745,24 +782,35 @@ void SunoDownloader::fetchContentKey(const std::string& clipId,
         return;
     }
 
-    contentKeyFetcher_(clipId, [this, pending, play](std::expected<ContentKey, QString> key) {
+    contentKeyFetcher_(clipId, [this, clipId, pending, play](
+                                   std::expected<ContentKey, QString> key) {
         if (!key) {
             LOG_ERROR("SunoDownloader: no content key for clip {}: {}",
                       pending.clip.id, key.error().toStdString());
             emit finalizeFailed(QString::fromStdString(pending.clip.id), key.error());
             return;
         }
-        runFinalize([this, pending, play, key = *key]() {
-            if (!decryptMediaBody(pending.destPath, key)) {
-                emit finalizeFailed(QString::fromStdString(pending.clip.id),
-                                    QStringLiteral("The downloaded audio could not be decrypted."));
-                return;
-            }
-            tagAudioFile(pending.destPath, pending.clip);
-            saveMetadataSidecar(pending.destPath, pending.clip);
-            emit finalizeFinished(QString::fromStdString(pending.clip.id),
-                                  QString::fromStdString(pending.destPath.string()), play);
-        });
+        // Only a key that authenticated is cached: a refusal must not shadow a
+        // later attempt, and there is nothing to store.
+        contentKeys_.insert_or_assign(
+                clipId, CachedContentKey{*key, std::chrono::steady_clock::now()});
+        finishEncryptedDownload(pending, play, *key);
+    });
+}
+
+void SunoDownloader::finishEncryptedDownload(PendingDownload pending,
+                                             const bool play,
+                                             ContentKey key) {
+    runFinalize([this, pending, play, key = std::move(key)]() {
+        if (!decryptMediaBody(pending.destPath, key)) {
+            emit finalizeFailed(QString::fromStdString(pending.clip.id),
+                                QStringLiteral("The downloaded audio could not be decrypted."));
+            return;
+        }
+        tagAudioFile(pending.destPath, pending.clip);
+        saveMetadataSidecar(pending.destPath, pending.clip);
+        emit finalizeFinished(QString::fromStdString(pending.clip.id),
+                              QString::fromStdString(pending.destPath.string()), play);
     });
 }
 

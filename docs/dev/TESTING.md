@@ -91,7 +91,7 @@ CTest treats "no tests found" as a success exit code, so the wrong directory is 
 | `test_SunoAuthFailure.cpp` | `tests/unit/suno/test_SunoAuthFailure.cpp` | Auth-failure classification on the status axis only. |
 | `test_SunoDatabase.cpp` | `tests/unit/suno/test_SunoDatabase.cpp` | Registration lifecycle, pragmas observed through a second connection, clip round trips. |
 | `test_LyricsFetchQueue.cpp` | `tests/unit/suno/test_LyricsFetchQueue.cpp` | Deduplication, FIFO fairness when over cap, "still processing" re-entry. |
-| `test_DownloadEntitlement.cpp` | `tests/unit/suno/test_DownloadEntitlement.cpp` | Per-clip download entitlement decisions. |
+| `test_DownloadEntitlement.cpp` | `tests/unit/suno/test_DownloadEntitlement.cpp` | The download-product lock is reported, never enforced: a locked clip still transfers, the notice claims no quota, and the format/status/on-disk branches are unchanged. |
 | `test_SunoWorkspace.cpp` | `tests/unit/suno/test_SunoWorkspace.cpp` | Workspace refusal kinds and the honest-state suite. |
 | `test_PresetBridge.cpp` | `tests/unit/visualizer/test_PresetBridge.cpp` | A filtered row selects and favourites *itself*, never slot 0 (the `T0002`/`T0003` regression guard). |
 

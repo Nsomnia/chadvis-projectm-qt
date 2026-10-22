@@ -1,48 +1,43 @@
 // test_DownloadEntitlement — the server's own "may this account save this
-// clip" answer, consulted before anything else.
+// clip" answer, and the judgement that it is NOT a veto.
 //
-// The change under test adds `downloadEntitlementRefusal()` to
-// SunoDownloader::download(), reading SunoClip::is_download_unlocked
-// (`std::optional<bool>`) and SunoClip::download_disabled_reason, both newly
-// parsed by ClipParser::parseClip.
+// ClipParser reads SunoClip::is_download_unlocked (std::optional<bool>) and
+// SunoClip::download_disabled_reason. SunoDownloader::downloadProductLock()
+// turns them into one sentence; SunoDownloader::download() RECORDS that
+// sentence and proceeds.
 //
-// It exists because the gate that ran *first* — `content_type == "mp3"` on one
-// captured media host — rejects 100% of the media URLs in the evidence corpus
-// (40/40 observed entries are `m4a-opus` on a CloudFront origin; `mp3` never
-// occurs). So every refusal a user could see was attributed to a local filter
-// while the server's actual decision went unread: a clip Suno had already
-// declined was reported as "no playable audio on the captured media host",
-// which is the wrong diagnosis of a real fault.
+// ── Why it stopped being a gate ─────────────────────────────────────────────
 //
-// ── The judgement call, which is the reason this suite exists ───────────────
+// It was a gate, and it refused the entire captured library: 36 of 40 captured
+// clips carry `is_download_unlocked: false`, so no clip ever played. The gate
+// had a real purpose — the captured media bodies were ciphertext, so fetching
+// one produced 3.9 MB of noise — and that purpose is gone. The body is
+// decryptable (POST /api/mango/rights -> content key, AES-128-CTR for the
+// body; see MangoLicense.hpp), and the user's own working browser script does
+// exactly this.
 //
-// ABSENT is deliberately NOT a refusal. That is the opposite of the reflexive
-// "unknown is not permission" rule, so it is pinned from both directions:
+// The flag itself is about Suno's DOWNLOAD PRODUCT, not about the media. The
+// site gates its Download button on it and prepares a downloadable file through
+// a different route family (`/api/download/clip/`), which this client never
+// calls. What this client fetches is the same progressive asset the account
+// already streams, from the captured CloudFront distribution, unsigned and
+// without a credential.
 //
-//   absent         -> proceeds   (absentEntitlementIsNotARefusal)
-//   present+false  -> refuses    (lockedClipWithReasonQuotesItVerbatim, ...)
-//   present+true   -> proceeds   (unlockedClipProceeds)
-//   present+garbage-> refuses    (presentButUnreadableValueIsLockedNotAbsent)
+// So what refuses now is the server: the media host's 403, or the rights
+// route's 401. Those are real answers, and they are reported.
 //
-// The load-bearing risk is a one-character change nobody notices: flipping
-// `value_or(true)` to `value_or(false)` refuses every clip persisted before
-// this field was parsed — including a signed-in user's entire existing
-// library — and buys no additional safety, because a refusal is already issued
-// *alongside* a usable `media_urls` entry and the host/content-type filters do
-// the withholding regardless. So `absentEntitlementIsNotARefusal` does not
-// merely assert "not refused": it pins the ABSENT clip reaching the *format*
-// gate and being refused *there*, with the exact format sentence. That is the
-// only way to tell "proceeded past the entitlement gate" from "was refused by
-// it", because both are refusals.
+// ── What this suite pins ────────────────────────────────────────────────────
 //
-// ── Why the fake server, and what is asserted about it ──────────────────────
+//   locked (reason / no reason) -> download proceeds (a real request is made)
+//   absent                      -> proceeds   (absentEntitlementIsNotARefusal)
+//   present+true                -> proceeds   (unlockedClipProceeds)
+//   present+garbage             -> proceeds, and is REPORTED as locked
 //
-// The gate must cost nothing when it refuses. One that decided after starting
-// a transfer would spend a metered resource on a clip the server had already
-// declined. So every refusal case asserts `server.requests` is EMPTY — not
-// merely that no reply came back — and that no `fileSaved` fired. The
-// destination-claim case (`aRefusedClipClaimsNoDestination`) pins the same
-// idea for local state: a refusal leaves no trace in `destOwner_` either.
+// The load-bearing risk is the opposite of the old one: a one-character change
+// that puts the veto back (`return std::unexpected(*lock)`) makes every play
+// button dead again, and it would look like a security improvement. The cases
+// below assert a transfer actually starts, not merely that no error string came
+// back, so the veto cannot return quietly.
 //
 // Nothing leaves the machine. Replies come from DownloadQueue's injectable
 // ReplyFactory seam (FakeNetworkReply.hpp), exactly as test_SunoDownloader
@@ -77,24 +72,17 @@ using fake_net::FakeServer;
 
 namespace {
 
-// ── the two refusal sentences, pinned exactly ─────────────────────────────────
+// ── the lock notice, pinned exactly ──────────────────────────────────────────
 //
-// Pinned as whole sentences rather than as substrings. Both sentences are the
-// product of this change — the reason a user is told anything at all — and a
-// substring assertion cannot distinguish "the reason is quoted" from "the
-// reason is quoted somewhere in a longer, differently-shaped sentence that also
-// speculates". A reword is then a one-line change here, deliberately.
-//
-// The no-reason sentence is the one carrying a claim the evidence does not
-// support, so its hedge is asserted separately in
-// `lockedClipWithNoReasonOffersTheAllowanceAsPossibilityNotFact`.
+// These are the sentences the downloader LOGS when the server has locked the
+// clip's download product. They no longer reach the user as a refusal, so they
+// are asserted against downloadProductLock() directly rather than through
+// download()'s error path.
 
-const QString kRefusalWithReason =
-    QStringLiteral("Suno does not allow this clip to be downloaded (%1).");
+const QString kLockWithReason =
+    QStringLiteral("Suno locks this clip in its download product (%1).");
 
-const QString kRefusalNoReason = QStringLiteral(
-    "Suno does not allow this clip to be downloaded. This can be a monthly "
-    "download allowance rather than anything to do with this clip.");
+const QString kLockNoReason = QStringLiteral("Suno locks this clip in its download product.");
 
 /// The format gate's own sentence. Reached only when the entitlement gate let
 /// the clip through, which is what makes it usable as a marker.
@@ -534,11 +522,14 @@ private slots:
         QVERIFY(page->nextCursor.isEmpty());
     }
 
-    // ── 2. the gate, through the public download() ────────────────────────────
+    // ── 2. the lock is REPORTED, never enforced, through download() ───────────
 
-    /// Branch one: the server named a reason, so it is quoted and nothing is
-    /// speculated. `remix_contest` is the only value in the corpus.
-    void lockedClipWithReasonQuotesItVerbatim() {
+    /// The regression guard for the whole change: a locked clip downloads.
+    ///
+    /// Asserted as "a request was issued and a file landed", not as "no error
+    /// string came back" — both refusal and success are quiet at the return,
+    /// so only the transfer distinguishes them.
+    void aLockedClipWithAReasonStillDownloads() {
         EntitlementConfigGuard config;
         Fixture fixture;
         QVERIFY(fixture.valid());
@@ -546,153 +537,79 @@ private slots:
 
         auto clip = serverLocked(fetchableClip("locked-remix", "Locked Remix"), "remix_contest");
         auto result = fixture.downloader().download(clip);
-        QVERIFY(!result.has_value());
-        QCOMPARE(result.error(), kRefusalWithReason.arg(QStringLiteral("remix_contest")));
-        // Exact equality above already excludes the speculative sentence: when
-        // the server DOES say why, the client does not guess.
-        QVERIFY(!result.error().contains(QStringLiteral("monthly")));
+        if (!result) {
+            QFAIL(qPrintable(QStringLiteral("a download-product lock refused the clip: %1")
+                                 .arg(result.error())));
+        }
+        QCOMPARE(result->clipId, std::string("locked-remix"));
+        QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);
+        QVERIFY(fixture.succeedTransfer(QStringLiteral("locked-remix")));
+        QCOMPARE(saved.count(), 1);
 
-        // The whole point of consulting the server first: nothing is fetched.
-        QVERIFY2(fixture.server().requests.empty(),
-                 "the gate refused but a request was still issued");
-        QVERIFY(fixture.server().replies.empty());
-        QCOMPARE(saved.count(), 0);
-
-        // Nothing local either — no destination file, no scratch file.
-        QVERIFY(!QFile::exists(fixture.dir() + QStringLiteral("/Locked Remix.mp3")));
-        QVERIFY(!QFile::exists(fixture.dir() + QStringLiteral("/Locked Remix.mp3.part")));
+        // The notice exists, and it is the reason-carrying one.
+        QCOMPARE(SunoDownloader::downloadProductLock(clip),
+                 std::optional<QString>(kLockWithReason.arg(QStringLiteral("remix_contest"))));
     }
 
-    /// Branch two: locked, no stated reason. 32 of the 40 captured clips are in
-    /// this state, so it is the common case and must not read as a broken
-    /// message.
-    void lockedClipWithNoReasonGetsADifferentSentence() {
+    /// 32 of the 40 captured clips are locked with NO stated reason. That is
+    /// the common case, so it is the one that must not quietly veto.
+    void aLockedClipWithNoReasonStillDownloads() {
         EntitlementConfigGuard config;
         Fixture fixture;
         QVERIFY(fixture.valid());
+        QSignalSpy saved(&fixture.downloader(), &SunoDownloader::fileSaved);
 
         auto clip = serverLocked(fetchableClip("locked-quiet", "Locked Quiet"));
         auto result = fixture.downloader().download(clip);
-        QVERIFY(!result.has_value());
-        QCOMPARE(result.error(), kRefusalNoReason);
+        QVERIFY2(result.has_value(), "a reasonless download-product lock refused the clip");
+        QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);
+        QVERIFY(fixture.succeedTransfer(QStringLiteral("locked-quiet")));
+        QCOMPARE(saved.count(), 1);
 
-        // Two different shapes of refusal, two different sentences.
-        QVERIFY2(result.error() != kRefusalWithReason.arg(QStringLiteral("remix_contest")),
-                 "a reasonless refusal was given the reason-carrying sentence");
-        QVERIFY(!result.error().contains(QStringLiteral("()")));
-
-        QVERIFY(fixture.server().requests.empty());
+        QCOMPARE(SunoDownloader::downloadProductLock(clip),
+                 std::optional<QString>(kLockNoReason));
+        // Two different shapes of lock, two different sentences.
+        QVERIFY(kLockWithReason.arg(QStringLiteral("remix_contest")) != kLockNoReason);
+        QVERIFY(!kLockNoReason.contains(QStringLiteral("()")));
     }
 
-    /// The hedge is the load-bearing part of that sentence, and the quota behind
-    /// it is `[LEAD]`-grade: a metered per-plan allowance is documented by a
-    /// third party, never by a capture. Asserting it to a user as the
-    /// explanation would be an AGENTS.md §1 violation wearing a sentence, so the
-    /// certainty words are asserted absent.
-    void lockedClipWithNoReasonOffersTheAllowanceAsPossibilityNotFact() {
-        EntitlementConfigGuard config;
-        Fixture fixture;
-        QVERIFY(fixture.valid());
+    /// The notice must not assert a quota. A metered per-plan allowance appears
+    /// in third-party material and is `[LEAD]`-grade, never in a capture, so
+    /// stating it as the explanation would be an AGENTS.md §1 violation in a
+    /// log line. The hedge words are asserted absent.
+    void theLockNoticeDoesNotClaimToBeAQuota() {
+        SunoClip locked = serverLocked(fetchableClip("hedged", "Hedged"));
+        const auto notice = SunoDownloader::downloadProductLock(locked);
+        QVERIFY(notice.has_value());
 
-        auto result = fixture.downloader().download(
-            serverLocked(fetchableClip("locked-hedged", "Locked Hedged")));
-        QVERIFY(!result.has_value());
-        const QString sentence = result.error();
-
-        QVERIFY2(sentence.contains(QStringLiteral("can be")), qPrintable(sentence));
         for (const QString& overclaim : {QStringLiteral("quota"),
+                                         QStringLiteral("credit"),
                                          QStringLiteral("limit"),
                                          QStringLiteral("exhaust"),
                                          QStringLiteral("used up"),
                                          QStringLiteral("because")}) {
-            QVERIFY2(!sentence.contains(overclaim, Qt::CaseInsensitive),
-                     qPrintable(QStringLiteral("refusal states the %1 allowance as fact: %2")
-                                    .arg(overclaim, sentence)));
+            QVERIFY2(!notice->contains(overclaim, Qt::CaseInsensitive),
+                     qPrintable(QStringLiteral("the lock notice states %1: %2")
+                                    .arg(overclaim, *notice)));
         }
     }
 
-    /// THE regression guard. Absent must not refuse.
-    ///
-    /// Two halves, and the second is the one that carries the meaning: an absent
-    /// clip that the format gate rejects produces the *format* sentence, which
-    /// can only come from `noUsableMediaMessage()` — a function that runs
-    /// strictly after the entitlement gate. Asserting "not refused" alone would
-    /// pass just as well if the clip had been refused for an unrelated reason.
-    void absentEntitlementIsNotARefusal() {
-        EntitlementConfigGuard config;
-        Fixture fixture;
-        QVERIFY(fixture.valid());
-        QSignalSpy saved(&fixture.downloader(), &SunoDownloader::fileSaved);
-
-        // (a) absent + media this client would fetch -> a real download happens.
-        SunoClip legacy = fetchableClip("legacy-absent", "Legacy Absent");
-        QVERIFY(!legacy.is_download_unlocked.has_value());
-        auto allowed = fixture.downloader().download(legacy);
-        if (!allowed) {
-            QFAIL(qPrintable(QStringLiteral("a clip with no entitlement field was refused: %1")
-                                 .arg(allowed.error())));
-        }
-        QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);
-        QVERIFY(fixture.succeedTransfer(QStringLiteral("legacy-absent")));
-        QCOMPARE(saved.count(), 1);
-
-        // (b) absent + the captured m4a-opus media -> refused by the FORMAT gate,
-        //     with the format gate's own exact sentence. Proof of ordering.
-        auto reachedFormatGate = fixture.downloader().download(opusOnlyClip("legacy-opus"));
-        QVERIFY(!reachedFormatGate.has_value());
-        QCOMPARE(reachedFormatGate.error(), kRefusalUnfetchableMedia);
-        QVERIFY2(!reachedFormatGate.error().contains(QStringLiteral("does not allow")),
-                 "an absent entitlement field was refused by the entitlement gate");
-        QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);  // still just the one
-    }
-
-    /// An explicit grant proceeds, with the same absence of a network cost.
-    void unlockedClipProceeds() {
-        EntitlementConfigGuard config;
-        Fixture fixture;
-        QVERIFY(fixture.valid());
-        QSignalSpy saved(&fixture.downloader(), &SunoDownloader::fileSaved);
-
+    /// An unlocked clip reports nothing at all.
+    void anUnlockedClipHasNoLockNotice() {
         SunoClip granted = fetchableClip("granted", "Granted");
         granted.is_download_unlocked = true;
-        auto result = fixture.downloader().download(granted);
-        QVERIFY(result.has_value());
-        QCOMPARE(result->clipId, std::string("granted"));
-        QVERIFY(!result->reusedOnDisk);
-        QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);
-        QVERIFY(fixture.succeedTransfer(QStringLiteral("granted")));
-        QCOMPARE(saved.count(), 1);
+        QVERIFY(!SunoDownloader::downloadProductLock(granted).has_value());
+
+        SunoClip legacy = fetchableClip("legacy", "Legacy");
+        QVERIFY(!legacy.is_download_unlocked.has_value());
+        QVERIFY2(!SunoDownloader::downloadProductLock(legacy).has_value(),
+                 "an absent entitlement field reported a lock");
     }
 
-    /// A reason alone is NOT a denial. The two fields are independent, and
-    /// `download_disabled_reason` documents "when the server says why" — so a
-    /// payload carrying a stale reason alongside an absent flag must proceed.
-    /// This guards the tempting simplification "refuse whenever a reason is
-    /// present", which would refuse every legacy clip that happened to be saved
-    /// with a reason field.
-    void aReasonAloneDoesNotRefuse() {
-        EntitlementConfigGuard config;
-        Fixture fixture;
-        QVERIFY(fixture.valid());
-
-        SunoClip staleReason = fetchableClip("stale-reason", "Stale Reason");
-        staleReason.download_disabled_reason = "remix_contest";
-        QVERIFY(!staleReason.is_download_unlocked.has_value());
-
-        auto result = fixture.downloader().download(staleReason);
-        if (!result) {
-            QFAIL(qPrintable(QStringLiteral("a reason without a denial refused the clip: %1")
-                                 .arg(result.error())));
-        }
-        QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);
-    }
-
-    /// Ordering, part 1: a locked clip whose media the format gate would have
-    /// rejected anyway must produce the ENTITLEMENT sentence. Before this gate
-    /// existed, that clip reported a local-filter failure for a server refusal —
-    /// the exact misdiagnosis the change exists to remove, so it is pinned from
-    /// both ends: the entitlement sentence present, the format sentence absent.
-    void entitlementOutranksTheFormatReason() {
+    /// The format gate is unchanged and still refuses a media form this client
+    /// will not fetch — including for a locked clip, where the sentence must be
+    /// the FORMAT one. A lock no longer manufactures a refusal.
+    void aLockedClipWithUnfetchableMediaGetsTheFormatSentence() {
         EntitlementConfigGuard config;
         Fixture fixture;
         QVERIFY(fixture.valid());
@@ -700,17 +617,14 @@ private slots:
         auto result = fixture.downloader().download(
             serverLocked(opusOnlyClip("locked-opus"), "remix_contest"));
         QVERIFY(!result.has_value());
-        QCOMPARE(result.error(), kRefusalWithReason.arg(QStringLiteral("remix_contest")));
-        QVERIFY2(!result.error().contains(QStringLiteral("will not fetch")),
-                 "the format gate spoke first, so a server refusal was reported "
-                 "as a local filter failure");
+        QCOMPARE(result.error(), kRefusalUnfetchableMedia);
+        QVERIFY2(!result.error().contains(QStringLiteral("download product")),
+                 "the lock sentence was used as a refusal");
         QVERIFY(fixture.server().requests.empty());
     }
 
-    /// Ordering, part 2: the same against the unfinished-status branch, which
-    /// also lives inside selectDownloadUrl(). "Not finished yet" is the wrong
-    /// diagnosis for a clip the server will never let this account save.
-    void entitlementOutranksTheUnfinishedStatusReason() {
+    /// The unfinished-status branch is unchanged too.
+    void aLockedUnfinishedClipGetsTheUnfinishedSentence() {
         EntitlementConfigGuard config;
         Fixture fixture;
         QVERIFY(fixture.valid());
@@ -719,21 +633,15 @@ private slots:
         clip.status = "streaming";
         auto result = fixture.downloader().download(clip);
         QVERIFY(!result.has_value());
-        QVERIFY2(!result.error().contains(QStringLiteral("not finished")),
-                 "a server refusal was reported as an unfinished clip");
-        QCOMPARE(result.error(), kRefusalNoReason);
+        QVERIFY2(result.error().contains(QStringLiteral("not finished")),
+                 qPrintable(result.error()));
         QVERIFY(fixture.server().requests.empty());
     }
 
-    /// Ordering, part 3: the gate also precedes the already-on-disk shortcut, so
-    /// a locked clip is refused rather than announced as saved.
-    ///
-    /// Recorded as an ordering consequence, not as an endorsement. The argument
-    /// for the other answer is real (the user may hold a file they were once
-    /// allowed to fetch, and telling them Suno forbids it is then a
-    /// misdiagnosis), so this pins what the code does and leaves the judgement
-    /// visible rather than burying it.
-    void entitlementOutranksTheAlreadyOnDiskShortcut() {
+    /// The already-on-disk shortcut is reachable for a locked clip: the user
+    /// already holds the bytes, so a lock on the download product cannot be a
+    /// reason to withhold the file from them.
+    void aLockedClipAlreadyOnDiskIsReused() {
         EntitlementConfigGuard config;
         Fixture fixture;
         QVERIFY(fixture.valid());
@@ -747,42 +655,37 @@ private slots:
         SunoClip clip = serverLocked(fetchableClip("locked-on-disk", "Locked On Disk"),
                                      "remix_contest");
         auto result = fixture.downloader().download(clip);
-        QVERIFY(!result.has_value());
-        QCOMPARE(result.error(), kRefusalWithReason.arg(QStringLiteral("remix_contest")));
-        QCOMPARE(saved.count(), 0);
+        QVERIFY2(result.has_value(), "an on-disk clip was refused by the download-product lock");
+        QVERIFY(result->reusedOnDisk);
+        QCOMPARE(saved.count(), 1);
         QVERIFY(fixture.server().requests.empty());
     }
 
-    /// A refusal leaves no local trace either. `resolveDestPath` claims a
-    /// filename for the life of the process, so a gate placed after it would
-    /// burn a name on a clip that was never downloaded — and the burn is
-    /// invisible until a *different* clip with the same title arrives and is
-    /// disambiguated for no visible reason. So: refuse, then confirm the next
-    /// clip to ask for that title still gets the plain name.
+    /// A clip refused by the FORMAT gate claims no destination, so a later clip
+    /// with the same title still gets the plain name.
     void aRefusedClipClaimsNoDestination() {
         EntitlementConfigGuard config;
         Fixture fixture;
         QVERIFY(fixture.valid());
         QSignalSpy saved(&fixture.downloader(), &SunoDownloader::fileSaved);
 
-        auto refused = fixture.downloader().download(
-            serverLocked(fetchableClip("burn-attempt", "Shared Title"), "remix_contest"));
+        SunoClip refusedClip = opusOnlyClip("burn-attempt");
+        refusedClip.title = "Shared Title";
+        auto refused = fixture.downloader().download(refusedClip);
         QVERIFY(!refused.has_value());
         QCOMPARE(saved.count(), 0);
 
-        // Same title, this time allowed. It must land on the unadorned name; a
-        // claim by the refused clip would produce "Shared Title-burn-attempt.mp3".
+        // Same title, this time fetchable. It must land on the unadorned name.
         auto allowed = fixture.downloader().download(fetchableClip("allowed", "Shared Title"));
         QVERIFY(allowed.has_value());
         QVERIFY(fixture.succeedTransfer(QStringLiteral("allowed")));
         QCOMPARE(saved.count(), 1);
-        // The file NAME, not a "/"-joined suffix: the path is native, so a
-        // suffix assertion pins the separator of whichever OS wrote it.
         const QString landed = saved.takeFirst().at(1).toString();
         QVERIFY2(QFileInfo(landed).fileName() == QStringLiteral("Shared Title.mp3"),
                  qPrintable(QStringLiteral("the refused clip claimed a destination the allowed "
                                            "clip then had to be disambiguated away from: ") + landed));
     }
+
 
     // ── 3. messages must not overclaim ───────────────────────────────────────
 
@@ -809,12 +712,9 @@ private slots:
             Fixture fixture;
             QVERIFY(fixture.valid());
 
-            // Every distinct path through download()'s pre-transfer gates.
-            sentences << refusalFor(fixture, serverLocked(
-                                            fetchableClip("leak-locked", "Leak Locked"),
-                                            "remix_contest"));
-            sentences << refusalFor(fixture,
-                                    serverLocked(fetchableClip("leak-quiet", "Leak Quiet")));
+            // Every distinct path through download()'s pre-transfer gates. A
+            // locked clip is NOT one of them any more -- it proceeds -- so the
+            // lock notice is swept separately, before this block's refusals.
             sentences << refusalFor(fixture, opusOnlyClip("leak-opus"));
 
             SunoClip unfinished = fetchableClip("leak-streaming", "Leak Streaming");
@@ -823,7 +723,7 @@ private slots:
 
             sentences << refusalFor(fixture, SunoClip{});  // no id
 
-            // Five refusals, zero bytes on disk and zero requests: the whole
+            // Three refusals, zero bytes on disk and zero requests: the whole
             // scope of this block is the pre-transfer decision, so anything at
             // all in the download directory would mean a gate ran too late.
             QVERIFY2(QDir(fixture.dir()).isEmpty(), qPrintable(
@@ -843,7 +743,7 @@ private slots:
             sentences << result.error();
         }
 
-        QCOMPARE(sentences.size(), 6);
+        QCOMPARE(sentences.size(), 4);
         for (const QString& sentence : sentences) {
             QVERIFY2(!sentence.isEmpty(), "a refusal returned no sentence at all");
             for (const QString& leak : {QStringLiteral("mp3"),

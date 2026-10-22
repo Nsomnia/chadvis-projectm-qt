@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QString>
 #include <QThread>
+#include <chrono>
 #include <expected>
 #include <functional>
 #include <memory>
@@ -133,6 +134,14 @@ public:
     /// The URL of a media form this client can fetch, encrypted or not.
     [[nodiscard]] static std::optional<std::string>
     selectDownloadUrl(const SunoClip& clip, vc::SunoDownloadFormat format);
+
+    /// The server's own answer to "may this account SAVE this clip", as one
+    /// sentence, or nullopt when the server raised no lock.
+    ///
+    /// Reported, never enforced. It used to veto the transfer and refused 36 of
+    /// the 40 captured clips before a byte was fetched — see the definition in
+    /// the .cpp for why that reading was wrong and what refuses instead.
+    [[nodiscard]] static std::optional<QString> downloadProductLock(const SunoClip& clip);
     /// The media form to fetch, with the extension it is written under and
     /// whether its body needs decrypting first.
     [[nodiscard]] static std::optional<MediaSelection>
@@ -226,6 +235,28 @@ private:
     /// Clip payloads awaiting their queue completion hook, keyed by clip id.
     std::unordered_map<std::string, PendingDownload> pendingClips_;
 
+    /// A content key the server granted, and when it arrived.
+    ///
+    /// Mirrors the site's own license client, which caches a content key per
+    /// clip for an hour (`CONTENT_KEY_CACHE_TIME = 3600000` in the shipped
+    /// bundle) and marks whether it came from the cache or the network. The
+    /// wrapped license is bound to the token that requested it, but the key
+    /// inside is the CLIP's content key, so a cached one survives a bearer
+    /// refresh and a different signed-in session.
+    ///
+    /// This is also what keeps a batch or a replay from spending a
+    /// `/api/mango/rights` call per play: the route is the site's playback
+    /// license path, rate-limited there to one request per second, and an
+    /// uncached fetch on every play would be the one way this client could
+    /// look like a scraper.
+    struct CachedContentKey {
+        ContentKey key;
+        std::chrono::steady_clock::time_point fetchedAt;
+    };
+    std::unordered_map<std::string, CachedContentKey> contentKeys_;
+    /// One hour, exactly the site's own window.
+    static constexpr std::chrono::seconds kContentKeyTtl{3600};
+
     /// Destination handed to each clip, sticky for this process's lifetime so
     /// the transfer, the tagger, and both sidecar writers always agree on one
     /// path. Paired with destOwner_ to break title ties.
@@ -244,8 +275,12 @@ private:
     void handleItemState(const std::string& clipId, DownloadState state);
     /// Asks for the content key of an encrypted body and finishes the download
     /// when it arrives. Runs on the GUI thread; the decrypt itself is queued to
-    /// the finalize worker.
+    /// the finalize worker. A key granted within kContentKeyTtl is reused
+    /// rather than requested again.
     void fetchContentKey(const std::string& clipId, const PendingDownload& pending, bool play);
+    /// The half of fetchContentKey that runs once there is a usable key: the
+    /// decrypt on the finalize worker, then the tags and the completion.
+    void finishEncryptedDownload(PendingDownload pending, bool play, ContentKey key);
     [[nodiscard]] std::expected<DownloadStarted, QString>
     finishAlreadyOnDisk(const SunoClip& clip, const fs::path& path, DownloadAction action);
     bool addAndPlay(const fs::path& path, const std::string& clipId);

@@ -190,8 +190,23 @@ constexpr std::string_view VIDEO_GENERATE_STATUS = "/video/generate/{}/status/";
 constexpr std::string_view VIDEO_GEN_PENDING_BATCHES = "/video_gen/pending_batches"; // [T1] POST
 
 // ── Studio API: Rights ─────────────────────────────────────
-// T1: clips-relations.md (Burp 2026-08-25).
+// T1: clips-relations.md (Burp 2026-08-25); response shape reproduced and the
+// route exercised live 2026-10-22 (ENDPOINT-INVENTORY §5.11-5.12). This is the
+// PLAYBACK licence: the site's own service worker calls it on every clip start,
+// one request per second at most, and caches the key for an hour. It is not the
+// metered download product (`/api/download/clip/`), which this client never
+// calls. Wired at SunoClient::requestContentKey.
 constexpr std::string_view MANGO_RIGHTS = "/mango/rights"; // [T1] POST
+
+// ── Deliberately NOT wired: Suno's download product ────────
+// `GET /api/download/clip/{clip_id}?format=mp3` answers with a `status` and,
+// when ready, a `download_url`; the site's Download button and its "download
+// credits" / "top up" upsell are built on it. It is the route that is METERED.
+// This client deliberately does not call it: it fetches the same progressive
+// asset the account already streams and decrypts it locally (MANGO_RIGHTS +
+// MangoCrypto), which is the path the site's own player uses. Do not add these
+// constants to make the download surface look more official -- it would spend
+// the very allowance the streaming path exists to avoid.
 
 // ── Studio API: Notifications ───────────────────────────────
 // T1: misc-telemetry.md (Burp 2026-08-25).

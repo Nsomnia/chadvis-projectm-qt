@@ -342,13 +342,32 @@ fact.
   credential". **Do not resolve it without a capture.** Cookie names arrive from a
   user paste, so they are untrusted text: names are quoted, values never are, and a
   name failing a charset check or over 64 chars is counted, not reproduced.
-- **Do not widen the downloader's `content_type == "mp3"` filter on inference.** A
-  captured `m4a-opus`/`progressive` item is therefore unplayable. Widening it
-  needs a capture showing whether Suno serves Opus on `audiopipe.suno.ai` without
-  the web-side Mango decryptor the recon documented. The download layer reports
-  which fail-closed predicate fired, so this is a visible error rather than a dead
-  button, and a test pins the current shape so a future widening fails
-  deliberately.
+- **A media form is used when this client can NAME it and can DECRYPT it — the
+  `content_type == "mp3"` filter is retired, not widened.** The captured
+  `m4a-opus`/`progressive` body is ciphertext, so accepting it without a decrypt
+  step would have written 3.9 MB of noise under an `.mp3` name. The decryptor is
+  now the condition: `POST /api/mango/rights`, unwrap under `SHA-256` of the
+  request's own token, AES-128-CTR over the body, and a container magic checked
+  before the file is put in place (`MangoLicense.hpp`, `MangoCrypto.hpp`). A form
+  this client cannot name is still refused with a reason. Do not add a media form
+  without both halves.
+- **`is_download_unlocked` gilds Suno's DOWNLOAD PRODUCT; it is not a veto on the
+  stream.** It refused 36 of the 40 captured clips and made every play button
+  dead. The meter belongs to `GET /api/download/clip/{id}`, which this client
+  never calls; the asset it fetches is the progressive stream the account already
+  plays, unsigned, from the captured CloudFront host. The flag is read and
+  logged (`SunoDownloader::downloadProductLock`), never enforced, and the server
+  refuses for itself with a 403 or a 401. Pinned from both directions by
+  `test_DownloadEntitlement.cpp`, because the "safe-looking" change is putting
+  the veto back.
+- **The rights route is the PLAYBACK licence, and it is cached for an hour.** The
+  site calls it when a clip starts, behind a 1-request-per-second limiter, and
+  caches the answer per clip for `CONTENT_KEY_CACHE_TIME = 3600000`; it answers a
+  fully anonymous request, so it cannot be spending account credits. `/_sw-mango/
+  passthrough` and `/_sw-mango/manifest.m3u8` look like a cheaper route and are
+  not: they are service-worker routes that perform this same call, reachable only
+  from pages the worker controls. A native client implements the two steps itself
+  and caches the key, or it re-asks the licence server once per play.
 - **Keep "do not assume array position" for the session selector.** The `sid`-claim
   re-derivation is corroborated by one capture with a single session —
   `last_active_session_id` == `sessions[0].id` == the JWT `sid` claim == the
