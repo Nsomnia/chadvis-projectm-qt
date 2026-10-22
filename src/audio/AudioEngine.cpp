@@ -143,7 +143,6 @@ Result<void> AudioEngine::init(std::optional<AudioConfig> config) {
     vizTap_ = std::make_unique<VisualizerAudioTap>(audioQueue_);
     vizTapTimer_.setInterval(40);
     connect(&vizTapTimer_, &QTimer::timeout, this, &AudioEngine::onVizTapTick);
-    vizTapTimer_.start();
 
     loadLastPlaylist();
 
@@ -352,6 +351,14 @@ void AudioEngine::onPlayerStateChanged(QMediaPlayer::PlaybackState state) {
         case QMediaPlayer::PlayingState: state_ = PlaybackState::Playing; break;
         case QMediaPlayer::PausedState: state_ = PlaybackState::Paused; break;
     }
+    // The tap only has work while audio is moving, and only on a backend that
+    // delivers no buffer output. Driving the timer from the transport rather
+    // than from init() keeps a paused or idle app from waking 25 times a second.
+    if (state_ == PlaybackState::Playing && !bufferOutputDelivered_) {
+        if (!vizTapTimer_.isActive()) vizTapTimer_.start();
+    } else {
+        vizTapTimer_.stop();
+    }
     emit stateChanged(state_);
 }
 
@@ -396,7 +403,10 @@ void AudioEngine::onAudioBufferReceived(const QAudioBuffer& buffer) {
         bufferOutputDelivered_ = true;
         // The supported path works on this backend, so the fallback decoder has
         // no job left. Said once, because the alternative -- silently running
-        // both producers into one SPSC queue -- is a data race with audio.
+        // both producers into one SPSC queue -- is a data race with audio. The
+        // timer stops here rather than idling at 25 wakeups a second for the
+        // rest of the process.
+        vizTapTimer_.stop();
         if (vizTap_ && vizTap_->isActive()) {
             vizTap_->clearSource();
             LOG_INFO("AudioEngine: the media backend delivers audio buffers; the visualizer "
@@ -446,11 +456,7 @@ void AudioEngine::swapPlayers() {
 }
 
 void AudioEngine::onVizTapTick() {
-    if (!vizTap_) return;
-    if (bufferOutputDelivered_) {
-        if (vizTap_->isActive()) vizTap_->clearSource();
-        return;
-    }
+    if (!vizTap_ || bufferOutputDelivered_) return;
     if (state_ != PlaybackState::Playing) return;
     vizTap_->pump(player_->position());
 }
