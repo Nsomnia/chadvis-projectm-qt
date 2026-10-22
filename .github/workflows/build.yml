@@ -6,7 +6,7 @@
 #
 # WHY THIS DOES NOT CALL ./build.sh
 #   build.sh has no CI mode, and its --tests action is an ALLOW-LIST of twelve
-#   targets (SAFE_TESTS, build.sh:50-63) that exists to make the local edit loop
+#   targets (SAFE_TESTS, build.sh:57-70) that exists to make the local edit loop
 #   fast. Two of its consequences make it wrong here:
 #     * it builds and runs 12 of the 14 ctest entries. Only the two integration
 #       entries are outside it, so CI built on it would never compile or run

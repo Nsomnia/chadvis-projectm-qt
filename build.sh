@@ -19,6 +19,13 @@
 
 set -euo pipefail
 
+# One log file, rewritten every run, so `build.log` is always the last build.
+# `tee` leaves the terminal output unchanged and keeps the failure text after
+# the terminal has scrolled it away. Gitignored with every other *.log.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_FILE="$ROOT/build.log"
+exec > >(tee "$LOG_FILE") 2>&1
+
 BOLD=$'\033[1m'
 CYAN=$'\033[1;36m'
 GREEN=$'\033[32m'
@@ -92,8 +99,8 @@ ${BOLD}Actions${RESET}
   ${GREEN}-h, --help${RESET}       this text
 
 ${BOLD}Tuning${RESET}
-  ${GREEN}-j, --jobs N${RESET}     compile jobs (default: ${CPU_PERCENT}% of PHYSICAL cores, capped by ${MEM_PERCENT}% of available RAM)
-  ${GREEN}--ctest-jobs N${RESET}  parallel ctest entries (default: 2; the suites are idle ~84% of the time)
+  ${GREEN}-j, --jobs N${RESET}     compile jobs (default: ${CPU_PERCENT}% of LOGICAL cores, floored at the physical count, capped by ${MEM_PERCENT}% of available RAM)
+  ${GREEN}--ctest-jobs N${RESET}  parallel ctest entries (default: same as --jobs; the suites are idle ~84% of the time)
   ${GREEN}--nice N${RESET}         nice level for every child (default ${NICE_LEVEL}, ${YELLOW}0 disables${RESET})
   ${GREEN}--no-ccache${RESET}      do not use ccache even if installed
   ${GREEN}--qt PATH${RESET}        Qt6 prefix (else \$CHADVIS_QT_PATH, then Homebrew prefixes)
@@ -242,15 +249,19 @@ fi
 #   unit_tests, full run                114 MiB, and 14 s of CPU across a 91 s
 #                                       wall clock -- it is timers, not compute
 #
-# Two things follow from that table, and they are the whole design:
+# Three things follow from that table, and they are the whole design:
 #
 #   * A compile job is budgeted at 512 MiB -- the measured worst case plus room
 #     for a heavier TU. It is deliberately NOT scaled per profile: the sanitizer
 #     cost lands at RUN time, not compile time, and that cap lives on the ctest
 #     side. Guessing a per-profile number here would be a fiction.
-#   * The test side is nearly free in CPU (14 s across 91 s), so it CAN be
-#     parallel where compiles cannot. That asymmetry is why CTEST_JOBS is not
-#     simply JOBS.
+#   * The CPU fraction is taken of LOGICAL cores, because a hyperthread still
+#     fills pipeline stalls. At 75% of this box's 4 logical cores that is 3
+#     jobs; the old physical-core denominator said 2 and left a quarter of the
+#     machine idle. The floor stays at the physical count so a small box is
+#     never reduced to a single-job build.
+#   * The test side is nearly free in CPU (14 s across 91 s), so it runs as wide
+#     as the compile budget rather than at a separate, smaller cap.
 #
 # `inxi` is deliberately not used: it reports memory as N/A on macOS (verified,
 # it wants dmidecode) and this is a macOS-first script. sysctl/vm_stat on
@@ -290,6 +301,15 @@ detect_total_ram_mib() {
     esac
     if ! [[ "$bytes" =~ ^[0-9]+$ ]] || [[ "$bytes" -lt 1 ]]; then return 1; fi
     printf '%s' "$((bytes / 1048576))"
+}
+
+detect_logical_cores() {
+    local n=""
+    n="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
+    if ! [[ "$n" =~ ^[0-9]+$ ]] || [[ "$n" -lt 1 ]]; then
+        n="$(detect_physical_cores)"
+    fi
+    printf '%s' "$n"
 }
 
 # Total RAM answers "can this machine ever hold N jobs". It does NOT answer "can
@@ -333,17 +353,20 @@ detect_available_ram_mib() {
 }
 
 compute_resource_budget() {
-    local phys avail total
+    local phys logical avail total
     phys="$(detect_physical_cores)"
+    logical="$(detect_logical_cores)"
+    if [[ "$logical" -lt "$phys" ]]; then logical="$phys"; fi
     total="$(detect_total_ram_mib 2>/dev/null || echo 0)"
     avail="$(detect_available_ram_mib 2>/dev/null || echo 0)"
 
-    # ceil(phys * pct / 100) with integer arithmetic: no float, no awk, and it
+    # ceil(logical * pct / 100) with integer arithmetic: no float, no awk, and it
     # cannot land on 1.5 jobs.
-    BUDGET_JOBS_CPU=$(( (phys * CPU_PERCENT + 99) / 100 ))
-    # ...but never fewer jobs than the box has cores. At 75% of 2 cores the
-    # arithmetic says 1, and a single-job build is not "marginally slower", it
-    # is a different build. The floor is what keeps the promise honest.
+    BUDGET_JOBS_CPU=$(( (logical * CPU_PERCENT + 99) / 100 ))
+    # ...but never fewer jobs than the box has physical cores. At 75% of 2 cores
+    # the arithmetic says 2; on a single-core box it would say 1, and a
+    # single-job build is not "marginally slower", it is a different build. The
+    # floor is what keeps the promise honest.
     if [[ "$BUDGET_JOBS_CPU" -lt "$phys" ]]; then BUDGET_JOBS_CPU="$phys"; fi
 
     BUDGET_USABLE_MIB=$(( avail * MEM_PERCENT / 100 ))
@@ -357,6 +380,7 @@ compute_resource_budget() {
         BUDGET_BINDER="memory"
     fi
     BUDGET_PHYS="$phys"
+    BUDGET_LOGICAL="$logical"
     BUDGET_TOTAL_MIB="$total"
     BUDGET_AVAIL_MIB="$avail"
     if [[ "$BUDGET_AVAIL_MIB" -gt 0 && "$BUDGET_JOBS_MEM" -le 1 ]]; then
@@ -379,12 +403,12 @@ else
     fi
 fi
 
-# ctest parallelism is budgeted separately and deliberately: measured, the test
-# binaries are idle 84% of the time (14 s CPU across a 91 s run), so they get
-# parallelism the compiles cannot, but still a fraction of the machine.
+# ctest parallelism follows the build budget. Measured, the test binaries are
+# idle 84% of the time (14 s CPU across a 91 s run), so there is no reason to
+# run fewer of them than compile jobs.
 CTEST_JOBS="${CTEST_JOBS:-${CHADVIS_CTEST_JOBS:-}}"
 if [[ -z "$CTEST_JOBS" ]]; then
-    CTEST_JOBS=$(( JOBS > 2 ? 2 : JOBS ))
+    CTEST_JOBS="$JOBS"
 fi
 [[ "$CTEST_JOBS" =~ ^[0-9]+$ && "$CTEST_JOBS" -ge 1 ]] || die "--ctest-jobs wants a positive integer, got '$CTEST_JOBS'"
 
@@ -411,7 +435,6 @@ if [[ "$NICE_LEVEL" != "0" ]] && command -v nice >/dev/null 2>&1; then
     NICE_CMD=(nice -n "$NICE_LEVEL")
 fi
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$ROOT/$BUILD_DIR"
 
 # --------------------------------------------------------------------------
@@ -570,8 +593,8 @@ do_build() {
     fi
     printf '%sBUILD%s %s (%s jobs%s)\n' "$CYAN" "$RESET" "$BUILD_DIR" "$JOBS" \
         "$( [[ "$WANT_TESTS_ONLY" -eq 1 ]] && printf ', tests only' )"
-    printf '%sBUDGET%s %s of %s physical cores, %s MiB available of %s total, %s MiB/job, bound: %s%s\n' \
-        "$YELLOW" "$RESET" "$JOBS" "$BUDGET_PHYS" "$BUDGET_AVAIL_MIB" \
+    printf '%sBUDGET%s %s of %s logical cores (%s physical), %s MiB available of %s total, %s MiB/job, bound: %s%s\n' \
+        "$YELLOW" "$RESET" "$JOBS" "$BUDGET_LOGICAL" "$BUDGET_PHYS" "$BUDGET_AVAIL_MIB" \
         "${BUDGET_TOTAL_MIB:-?}" "$PER_JOB_MIB" "$BUDGET_BINDER" \
         "$( [[ "$JOBS_EXPLICIT" -eq 1 ]] && printf ' (--jobs override)' )"
     if [[ "$BUDGET_BINDER" == "memory-starved" ]]; then
@@ -582,10 +605,8 @@ do_build() {
 }
 
 do_ctest() {
-    # -j is bounded separately from the build. Measured: unit_tests burns 14 s
-    # of CPU across a 91 s wall clock, so test binaries are cheap to run
-    # concurrently in a way compilers are not. Serial was the old default only
-    # because nothing had measured that yet.
+    # Same width as the compiles. Measured: unit_tests burns 14 s of CPU across
+    # a 91 s wall clock, so test binaries are cheap to run concurrently.
     local args=(--test-dir "$BUILD_DIR/tests" --output-on-failure -j "$CTEST_JOBS")
     printf '%sCTEST%s %s at -j%s%s\n' "$CYAN" "$RESET" "$BUILD_DIR/tests" "$CTEST_JOBS" \
         "$( [[ -n "$TEST_FILTER" ]] && printf ', filtered to %s' "$TEST_FILTER" )"
@@ -631,13 +652,13 @@ case "$ACTION" in
         # for a build. An agent tuning this should never need a 12-minute
         # compile to find out what the box thinks it can afford.
         printf '%sBUDGET%s on %s\n' "$CYAN" "$RESET" "$OS_NAME"
-        printf '  physical cores        %s   (logical: %s)\n' "$BUDGET_PHYS" \
-            "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo '?')"
+        printf '  physical cores        %s   (logical: %s)\n' "$BUDGET_PHYS" "$BUDGET_LOGICAL"
         printf '  memory                %s MiB available of %s MiB total\n' \
             "$BUDGET_AVAIL_MIB" "${BUDGET_TOTAL_MIB:-?}"
         printf '  fractions             cpu %s%%, memory %s%%, %s MiB per job\n' \
             "$CPU_PERCENT" "$MEM_PERCENT" "$PER_JOB_MIB"
-        printf '  cpu allows            %s jobs%s\n' "$BUDGET_JOBS_CPU" \
+        printf '  cpu allows            %s jobs (%s%% of %s logical cores)%s\n' \
+            "$BUDGET_JOBS_CPU" "$CPU_PERCENT" "$BUDGET_LOGICAL" \
             "$( [[ "$BUDGET_JOBS_CPU" -eq "$BUDGET_PHYS" ]] && printf ' (floored at the physical core count)' )"
         printf '  memory allows         %s jobs (%s MiB budgeted)\n' \
             "$BUDGET_JOBS_MEM" "$BUDGET_USABLE_MIB"
@@ -647,6 +668,7 @@ case "$ACTION" in
             "$( [[ "$NICE_LEVEL" == "0" ]] && echo 'off' || echo "$NICE_LEVEL" )"
         printf '  compiler cache        %s\n' \
             "$( [[ -n "$ccache_bin" ]] && basename "$ccache_bin" || echo 'none' )"
+        printf '  log                   %s\n' "$LOG_FILE"
         ;;
     clean)
         archive_build_dir

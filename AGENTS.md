@@ -36,10 +36,12 @@ another's. Tuning: `-j/--jobs N`, `--ctest-jobs N`, `--nice N` / `--no-nice`, `-
 | link `unit_tests` (36 objs + Qt + projectM) | 160 MiB | 1.3 s | 1 s |
 | `unit_tests`, full run | 114 MiB | **91 s** | **14 s** |
 
-Compiles are CPU-bound; **the tests are not** — the suite is idle ~84% of its life. So `--jobs`
-counts **physical** cores (this box reports 4 logical, 2 physical) and ctest is budgeted
-separately at `-j2`. Everything runs `nice 10` so the foreground wins the scheduler. Run
-`./build.sh --budget` before assuming a build is misbehaving.
+Compiles are CPU-bound; **the tests are not** — the suite is idle ~84% of its life. So
+`--jobs` is **75% of logical cores** (3 on this 4-logical / 2-physical box), floored at the
+physical count and capped by 75% of currently-available RAM; ctest runs at the same width.
+Everything runs `nice 10` so the foreground wins the scheduler. Run `./build.sh --budget`
+before assuming a build is misbehaving. Every run rewrites the gitignored `build.log` at the
+repo root with its full output, so a failure is still readable after the terminal scrolls.
 
 ### Packages: port first, brew second, vcpkg for C/C++
 

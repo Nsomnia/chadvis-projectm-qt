@@ -159,7 +159,8 @@ Thumbs.db
 STATUS/*.claim
 !STATUS/*.log
 
-# Local-only artifact. Must never be committed: `build.log` is a stale 41KB log.
+# Local-only artifact. Must never be committed: `build.log` is rewritten by every
+# `./build.sh` run and holds that run's full output.
 # (The former `user-eyes-only/` ignore rule was removed once its contents were moved
 # into git-managed `docs/archive/` — see the commit that added that directory.)
 build.log
