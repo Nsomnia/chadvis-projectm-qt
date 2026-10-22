@@ -182,6 +182,75 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# Encrypted ("mango") playback -- needs libavutil's AES
+# ---------------------------------------------------------------------------
+#
+# The encrypted media channel is decrypted with AES-GCM (the license) and
+# AES-CTR (the body). Neither AES mode is in Qt, and OpenSSL would be a new
+# native dependency on three platforms plus a vcpkg port and a DLL to ship --
+# so the AES block cipher comes from libavutil, which is already required.
+#
+# The probe is a COMPILE check, not a version check, because libavutil's AES
+# entry points changed shape: `av_aes_init()` took the key from FFmpeg 5.1
+# onwards and did not before, and `av_aes_crypt()` grew an IV and a direction
+# parameter. A version test would have to know which of those the tree
+# supports; compiling the exact call does not.
+#
+# Only the ENCRYPTION direction is used (GCM's keystream is E(K, counter), its
+# tag seed is E(K, J0), and CTR's keystream is E(K, counter)), so the probe
+# asks for exactly that and nothing else.
+# NOTE: the variable is NOT pre-set here. check_cxx_source_compiles() is a
+# no-op when its result variable already exists, so a `set(... OFF)` in front
+# of it silently skips the test and leaves the feature off forever -- which is
+# exactly what happened the first time this was written.
+include(CheckCXXSourceCompiles)
+set(_chadvis_saved_required_includes "${CMAKE_REQUIRED_INCLUDES}")
+set(_chadvis_saved_required_libraries "${CMAKE_REQUIRED_LIBRARIES}")
+set(CMAKE_REQUIRED_INCLUDES ${FFMPEG_INCLUDE_DIRS})
+set(CMAKE_REQUIRED_LIBRARIES ${FFMPEG_LIBRARIES})
+# The extern "C" wrapper is not optional: libavutil's public headers carry no
+# C++ guard of their own, so a C++ translation unit that includes them
+# without one declares mangled symbols and fails to link against the C
+# library. src/recorder/FFmpegUtils.hpp does the same thing.
+# The probe is re-run on every configure rather than cached: a FAILED check is
+# cached as an empty entry, so one bad configure (a toolchain that was moved
+# mid-flight, say) would switch the feature off permanently with no way back
+# short of deleting the cache by hand.
+unset(CHADVIS_AVAES_PROBE CACHE)
+check_cxx_source_compiles("
+extern \"C\" {
+#include <libavutil/aes.h>
+#include <libavutil/mem.h>
+}
+int main() {
+    struct AVAES* a = av_aes_alloc();
+    if (!a) return 1;
+    static const unsigned char k[32] = {0};
+    if (av_aes_init(a, k, 256, 0) < 0) return 1;
+    unsigned char in[16] = {0};
+    unsigned char out[16] = {0};
+    av_aes_crypt(a, out, in, 1, NULL, 0);
+    av_free(a);
+    return 0;
+}" CHADVIS_AVAES_PROBE)
+set(CMAKE_REQUIRED_INCLUDES "${_chadvis_saved_required_includes}")
+set(CMAKE_REQUIRED_LIBRARIES "${_chadvis_saved_required_libraries}")
+unset(_chadvis_saved_required_includes)
+unset(_chadvis_saved_required_libraries)
+if(CHADVIS_AVAES_PROBE)
+    set(CHADVIS_HAVE_AVAES_INIT ON)
+    message(STATUS
+        "Encrypted playback: libavutil AES is usable -- the mango channel is enabled")
+else()
+    set(CHADVIS_HAVE_AVAES_INIT OFF)
+    message(STATUS
+        "Encrypted playback: libavutil's AES API is not the expected shape -- the "
+        "mango channel compiles out and reports itself unavailable at runtime. "
+        "This is not a build error; every other feature is unaffected.")
+endif()
+
+
+# ---------------------------------------------------------------------------
 # Post-processing (burn-in) -- OPTIONAL
 # ---------------------------------------------------------------------------
 #

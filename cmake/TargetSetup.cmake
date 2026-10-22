@@ -121,6 +121,12 @@ if(CHADVIS_HAS_AVFILTER)
     target_compile_definitions(project_lib PUBLIC CHADVIS_HAS_AVFILTER=1)
 endif()
 
+# Same reasoning for the encrypted-playback crypto: PUBLIC so the test lanes
+# compile their assertions against the same answer the library was built with.
+if(CHADVIS_HAVE_AVAES_INIT)
+    target_compile_definitions(project_lib PUBLIC CHADVIS_HAVE_AVAES_INIT=1)
+endif()
+
 # ─────────────────────────────────────────────────────────────
 # QML MODULE - Modern UI components
 # ─────────────────────────────────────────────────────────────

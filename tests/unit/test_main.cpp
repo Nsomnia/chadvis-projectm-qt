@@ -33,6 +33,7 @@ int runTestAuthCoordinator(int argc, char** argv);
 int runTestClipParser(int argc, char** argv);
 int runTestDownloadQueue(int argc, char** argv);
 int runTestCredentialStorePolicy(int argc, char** argv);
+int runTestMangoCrypto(int argc, char** argv);
 int runTestSunoDownloader(int argc, char** argv);
 int runTestDownloadEntitlement(int argc, char** argv);
 int runTestBoundedBody(int argc, char** argv);
@@ -113,6 +114,7 @@ int main(int argc, char* argv[]) {
     status |= RUN_SUITE(TestClipParser);
     status |= RUN_SUITE(TestDownloadQueue);
     status |= RUN_SUITE(TestCredentialStorePolicy);
+    status |= RUN_SUITE(TestMangoCrypto);
     status |= RUN_SUITE(TestSunoDownloader);
     status |= RUN_SUITE(TestDownloadEntitlement);
     status |= RUN_SUITE(TestBoundedBody);

@@ -27,6 +27,7 @@ add_executable(unit_tests
     suno/test_ClipParser.cpp
     suno/test_DownloadQueue.cpp
     suno/test_CredentialStorePolicy.cpp
+    suno/test_MangoCrypto.cpp
     suno/test_SunoDownloader.cpp
     suno/test_DownloadEntitlement.cpp
     suno/test_SunoEndpoints.cpp
