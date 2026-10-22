@@ -88,12 +88,30 @@ void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
     if (audioQueue_) {
         static constexpr u32 BATCH_BUFFER_SIZE = 4096;
         alignas(64) float batchBuffer[BATCH_BUFFER_SIZE * 2];
-        const u32 framesToFeed =
-                framesPerRenderTick(audioQueue_->sampleRate(), targetFps_, BATCH_BUFFER_SIZE);
+        const u32 rate = audioQueue_->sampleRate();
+        const u32 framesToFeed = framesPerRenderTick(rate, targetFps_, BATCH_BUFFER_SIZE);
 
         u32 popped = audioQueue_->popVizBatch(batchBuffer, framesToFeed);
         if (popped > 0) {
+            if (!audioArrivalLogged_) {
+                audioArrivalLogged_ = true;
+                LOG_INFO("VisualizerRenderer: audio is reaching projectM ({} frames at {} Hz, "
+                         "queue depth {}), so presets can react",
+                         popped, rate, audioQueue_->vizDepth());
+            }
             projectM_.engine().addPCMDataInterleaved(batchBuffer, popped, 2);
+        } else if (!audioArrivalLogged_ && ++framesWithoutAudio_ >= 600) {
+            // ~10 s at 60 fps, then every 10 s until audio arrives. Deliberately
+            // bounded: a static canvas has two very different causes -- the
+            // producer never pushed, or the consumer is not this queue -- and
+            // the depth distinguishes them. `dropped` rules out a queue that
+            // filled because nothing drained it. Without this line "the
+            // visualizer does not react to music" is a report nobody can act on.
+            framesWithoutAudio_ = 0;
+            LOG_WARN("VisualizerRenderer: {} frames rendered with no PCM in the visualizer queue "
+                     "(depth {}, dropped {}, rate {} Hz) -- nothing can react until audio reaches "
+                     "this queue",
+                     600, audioQueue_->vizDepth(), audioQueue_->vizDropCount(), rate);
         }
     }
 

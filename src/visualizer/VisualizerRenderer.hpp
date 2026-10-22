@@ -101,6 +101,15 @@ private:
     RenderTarget captureTarget_;
 
     bool recording_{false};
+
+    /// Audio-ingress diagnostics. A static canvas has exactly two shapes -- the
+    /// producer never pushed, or this consumer is not the queue the producer
+    /// wrote to -- and nothing else in the tree can tell them apart. One INFO
+    /// line when the first batch arrives, then at most one WARN per ~10 s while
+    /// the queue stays empty. Bounded on purpose: a per-frame line would be a
+    /// log flood, and silence is what made the original report unactionable.
+    bool audioArrivalLogged_{false};
+    u32 framesWithoutAudio_{0};
     /// T0026: set by abandonGlObjects() when teardown has no usable GL
     /// context. cleanup() then touches no GL state at all -- the destructor
     /// still calls cleanup(), and it must not try to delete what was
