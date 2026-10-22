@@ -207,7 +207,21 @@ include(CheckCXXSourceCompiles)
 set(_chadvis_saved_required_includes "${CMAKE_REQUIRED_INCLUDES}")
 set(_chadvis_saved_required_libraries "${CMAKE_REQUIRED_LIBRARIES}")
 set(CMAKE_REQUIRED_INCLUDES ${FFMPEG_INCLUDE_DIRS})
-set(CMAKE_REQUIRED_LIBRARIES ${FFMPEG_LIBRARIES})
+# The FULL library paths, not the bare names. A try_compile project does not
+# inherit this directory's link_directories(), so "-lavutil" alone resolves
+# only against the linker's DEFAULT search path -- which is where Ubuntu's
+# /usr/lib/x86_64-linux-gnu is and Homebrew's /opt/homebrew/lib and vcpkg's
+# tree are not. That is exactly the shape of the first CI run: the probe
+# passed on Ubuntu and failed on macOS and Windows, and the feature silently
+# compiled out on two of the three platforms.
+set(_chadvis_aes_libraries ${FFMPEG_LINK_LIBRARIES})
+if(NOT _chadvis_aes_libraries)
+    # The manual-search path has names and a directory, not full paths.
+    foreach(_lib IN LISTS FFMPEG_LIBRARIES)
+        list(APPEND _chadvis_aes_libraries "${FFMPEG_LIBRARY_DIRS}/${_lib}")
+    endforeach()
+endif()
+set(CMAKE_REQUIRED_LIBRARIES ${_chadvis_aes_libraries})
 # The extern "C" wrapper is not optional: libavutil's public headers carry no
 # C++ guard of their own, so a C++ translation unit that includes them
 # without one declares mangled symbols and fails to link against the C
@@ -229,7 +243,7 @@ int main() {
     if (av_aes_init(a, k, 256, 0) < 0) return 1;
     unsigned char in[16] = {0};
     unsigned char out[16] = {0};
-    av_aes_crypt(a, out, in, 1, NULL, 0);
+    av_aes_crypt(a, out, in, 1, nullptr, 0);
     av_free(a);
     return 0;
 }" CHADVIS_AVAES_PROBE)
@@ -237,6 +251,8 @@ set(CMAKE_REQUIRED_INCLUDES "${_chadvis_saved_required_includes}")
 set(CMAKE_REQUIRED_LIBRARIES "${_chadvis_saved_required_libraries}")
 unset(_chadvis_saved_required_includes)
 unset(_chadvis_saved_required_libraries)
+unset(_chadvis_aes_libraries)
+unset(_lib)
 if(CHADVIS_AVAES_PROBE)
     set(CHADVIS_HAVE_AVAES_INIT ON)
     message(STATUS
