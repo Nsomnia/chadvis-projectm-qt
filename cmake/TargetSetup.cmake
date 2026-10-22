@@ -342,21 +342,18 @@ if(APPLE)
     # well would be a second copy of a resource that is already inside the binary.
     # -------------------------------------------------------------------------
 
-    # Whether the user NAMED the option on the command line has to be read BEFORE
-    # option() creates the cache entry, because after that the cache value cannot
-    # be distinguished from the default. Getting this wrong is how "force it with
-    # -DCHADVIS_DEPLOY_BUNDLE=ON" becomes a comment that lies: an unconditional
-    # set(CHADVIS_DEPLOY_BUNDLE OFF) shadows the cache and silently ignores the
-    # override, while consulting the cache after option() cannot tell an
-    # explicit ON from the default ON.
-    if(DEFINED CHADVIS_DEPLOY_BUNDLE)
-        set(_chadvis_deploy_named TRUE)
-    else()
-        set(_chadvis_deploy_named FALSE)
-    endif()
+    # Deployment has its own FORCE flag rather than sniffing whether the user
+    # named CHADVIS_DEPLOY_BUNDLE. Sniffing cannot work: option() writes the cache
+    # entry on the FIRST configure, so every re-configure of that directory reads
+    # back "defined" and concludes the user asked for it. That turned the fast
+    # profile's suppression into dead code from the second configure onward, and
+    # ./build.sh --fast paid the full 5-7 minute deploy on every relink.
     option(CHADVIS_DEPLOY_BUNDLE
         "Populate the macOS bundle with its Qt frameworks, plugins and dylib closure (macdeployqt). OFF yields a bare executable that only runs on the build machine"
         ON)
+    option(CHADVIS_FORCE_DEPLOY
+        "Run the bundle deployment even in the fast-iteration profile"
+        OFF)
 
     # Measured cost of the three deploy steps below, on this machine: 5-7 minutes
     # per link of the app target (42 dylibs copied and rewritten, 12 Qt
@@ -372,7 +369,7 @@ if(APPLE)
     # the only machine ./build.sh --fast is ever used on. Nothing that ships goes
     # through this profile; build.sh maps it to Debug + CHADVIS_FAST_ITERATION=ON.
     set(_chadvis_do_deploy ${CHADVIS_DEPLOY_BUNDLE})
-    if(_chadvis_do_deploy AND NOT _chadvis_deploy_named
+    if(_chadvis_do_deploy AND NOT CHADVIS_FORCE_DEPLOY
        AND CHADVIS_FAST_ITERATION AND CMAKE_BUILD_TYPE STREQUAL "Debug")
         set(_chadvis_do_deploy OFF)
         message(STATUS
@@ -380,9 +377,8 @@ if(APPLE)
             "(-O0 -g0, Debug). The .app still builds and still runs on this "
             "machine, but it carries no frameworks and is not shippable -- use a "
             "Release build for that. Force deployment with "
-            "-DCHADVIS_DEPLOY_BUNDLE=ON.")
+            "-DCHADVIS_FORCE_DEPLOY=ON.")
     endif()
-    unset(_chadvis_deploy_named)
 
     # macdeployqt is found by name because Qt 6 does not export it as a CMake
     # target: `grep -rl macdeployqt <qt>/lib/cmake` returns nothing on the Qt
@@ -879,14 +875,37 @@ endif()
 # It must be installed BEFORE the codesign step below: adding a file to a signed
 # bundle invalidates its signature, and dyld refuses broken signatures on Apple
 # Silicon.
-add_custom_command(TARGET chadvis-projectm-qt POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E make_directory
-            "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Resources"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/bundle-qt.conf"
-            "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Resources/qt.conf"
-    COMMENT "Installing qt.conf (plugin path survives a renamed bundle)"
-    VERBATIM)
+#
+# Only when deployment actually happened. `Plugins = ../PlugIns` points at a
+# directory macdeployqt creates, so writing it into a bare fast-iteration bundle
+# tells Qt to stop using the build machine's plugins and look in a directory that
+# is not there -- "Could not load the Qt platform plugin cocoa in ''".
+if(_chadvis_do_deploy)
+    add_custom_command(TARGET chadvis-projectm-qt POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Resources"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/cmake/bundle-qt.conf"
+                "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Resources/qt.conf"
+        COMMENT "Installing qt.conf (plugin path survives a renamed bundle)"
+        VERBATIM)
+else()
+    # A suppressed build relinks against the build machine's absolute Homebrew
+    # paths, so a bundle left over from an earlier deployed build must go: its
+    # frameworks and plugins are found through qt.conf and @rpath, which loads a
+    # SECOND Qt into the process. The symptom is four "implemented in both"
+    # objc warnings and then a qFatal in the cocoa plugin, which reads like a
+    # code bug and is stale packaging.
+    add_custom_command(TARGET chadvis-projectm-qt POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E remove_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Frameworks"
+        COMMAND "${CMAKE_COMMAND}" -E remove_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/PlugIns"
+        COMMAND "${CMAKE_COMMAND}" -E rm -f
+                "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Resources/qt.conf"
+        COMMENT "macOS bundle: deployment suppressed, bundle left bare"
+        VERBATIM)
+endif()
 
 add_custom_command(TARGET chadvis-projectm-qt POST_BUILD
     COMMAND codesign --force --deep --sign "${_chadvis_sign_identity}"

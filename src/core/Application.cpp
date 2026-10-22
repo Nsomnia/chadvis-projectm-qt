@@ -348,12 +348,12 @@ Result<void> Application::init(const AppOptions& opts) {
         Logger::init("chadvis-projectm-qt", true);
     }
 
-    // Override default preset from command line
-    if (opts.useDefaultPreset) {
-        CONFIG.visualizerMut().useDefaultPreset = true;
-    } else {
-        CONFIG.visualizerMut().useDefaultPreset = false;
-    }
+    // Override default preset from command line. Optional, like every other
+    // override below: a plain bool cannot tell "flag absent" from "flag false",
+    // so the old if/else forced `false` on every launch that did not pass
+    // --default-preset, silently erasing a config that said `true` (T0205).
+    applyOverride(opts.useDefaultPreset, CONFIG.visualizerMut().useDefaultPreset,
+                  "visualizer.useDefaultPreset");
 
     // Set debug lyrics from command line
     if (opts.testLyricsFile) {
@@ -602,7 +602,7 @@ int Application::exec() {
     return qapp_->exec();
 }
 
-void Application::quit() {
+void Application::aboutToQuit() {
     LOG_INFO("Shutting down...");
 
     // Stop both recording halves before finalizing the encoder.
@@ -631,7 +631,12 @@ void Application::quit() {
     if (CONFIG.isDirty()) {
         (void)CONFIG.save(CONFIG.configPath());
     }
+}
 
+void Application::quit() {
+    // The teardown is in aboutToQuit, which QCoreApplication emits on every
+    // loop exit. Calling it here as well would run it twice on the signal path
+    // and once on the window-close path -- the asymmetry T0206 was filed for.
     if (qapp_) {
         qapp_->quit();
     }

@@ -1,0 +1,7 @@
+2026-10-22T05:55:00Z  CLAIM    T0205 every launch without --default-preset erased a config that said true
+2026-10-22T05:55:00Z  CHANGE   src/core/Application.hpp: AppOptions::useDefaultPreset is std::optional<bool> (it was the only CLI override that was a bare bool).
+2026-10-22T05:55:00Z  CHANGE   src/core/Application.cpp: the if/else that wrote the value unconditionally is now applyOverride(opts.useDefaultPreset, ...), the same path every other override already used.
+2026-10-22T05:55:00Z  TEST     tests/unit/core/test_CliArgs.cpp absentDefaultPresetOverrideStaysUnset: absent -> nullopt; --default-preset -> set true.
+2026-10-22T05:55:00Z  VERIFY   ./build-fast/tests/unit/unit_tests absentDefaultPresetOverrideStaysUnset -> [suite] TestCliArgs -> 0 (single-function run; the harness forwards argv to every suite, so the other suites report "function not found", which is expected).
+2026-10-22T05:55:00Z  VERIFY   ctest --test-dir build-fast/tests --output-on-failure -j3 -> 100% tests passed, 0 tests failed out of 14.
+2026-10-22T05:55:00Z  COMMIT   TODO.md T0205 -> [x]

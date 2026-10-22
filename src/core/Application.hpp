@@ -47,7 +47,7 @@ struct AppOptions {
 
     // Visualizer
     std::optional<std::string> presetName;
-    bool useDefaultPreset{false};
+    std::optional<bool> useDefaultPreset;
     std::optional<int> visualizerFps;
     std::optional<int> visualizerWidth;
     std::optional<int> visualizerHeight;
@@ -111,10 +111,12 @@ public:
     // Global instance
     static Application* instance() { return instance_; }
 
-signals:
-    void aboutToQuit();
-
 public slots:
+    /// The one shutdown path. Wired to QGuiApplication::aboutToQuit, so it runs
+    /// for a QML window close and Qt.quit() as well as for quit()'s SIGINT
+    /// handler -- previously the persistence below lived in quit(), which only
+    /// those handlers ever called (T0206).
+    void aboutToQuit();
     void quit();
 
 private:

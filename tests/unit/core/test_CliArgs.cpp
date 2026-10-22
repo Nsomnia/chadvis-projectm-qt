@@ -22,6 +22,7 @@ private slots:
     void recordAloneParses();
     void headlessPlusRecordIsRefusedInBothOrders();
     void shortRecordFormIsAlsoRefused();
+    void absentDefaultPresetOverrideStaysUnset();
 };
 
 namespace {
@@ -59,6 +60,20 @@ void TestCliArgs::headlessPlusRecordIsRefusedInBothOrders() {
 void TestCliArgs::shortRecordFormIsAlsoRefused() {
     QVERIFY(!parse({"-r", "--headless"}).isOk());
     QVERIFY(!parse({"--headless", "-r"}).isOk());
+}
+
+/// T0205: "flag absent" must be distinguishable from "flag false". A plain bool
+/// could not express that, so every launch without --default-preset wrote
+/// `false` into the live config, erasing a `true` the user had saved.
+void TestCliArgs::absentDefaultPresetOverrideStaysUnset() {
+    const auto absent = parse({"--headless"});
+    QVERIFY(absent.isOk());
+    QVERIFY(!absent.value().useDefaultPreset.has_value());
+
+    const auto present = parse({"--default-preset"});
+    QVERIFY(present.isOk());
+    QVERIFY(present.value().useDefaultPreset.has_value());
+    QVERIFY(*present.value().useDefaultPreset);
 }
 
 #include "test_CliArgs.moc"
