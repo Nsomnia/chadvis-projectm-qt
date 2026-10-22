@@ -99,14 +99,28 @@ built. A hyphen after the version (`v1.2.0-build.<sha>`) is a pre-release and ne
 ## Do not
 
 * **Never commit credentials.** No raw captures, cookies, tokens, account or clip identifiers,
-  pasted private text, or complete media URLs. User secrets go through `CredentialStore`
-  (macOS/Windows/Linux keychain); the plaintext file backend stays gated.
-* **Never log a bearer, cookie, `Authorization` header, or a full URL with a query string.**
-  Log `url.path()`, not `url.toString()`.
+  pasted private text, or complete media URLs **in anything that leaves this machine** — a
+  commit, a push, `docs/`, `TODO.md`, `STATUS/`, a commit message, a release asset, or an
+  issue. User secrets go through `CredentialStore` (macOS/Windows/Linux keychain); the
+  plaintext file backend stays gated.
+* **Secrets may be printed in the session transcript.** A bearer, cookie, `Authorization`
+  header, content key, or complete media URL can be shown while working: the transcript is
+  local and ephemeral. That permission stops at the repository and at any remote. The app's
+  own runtime log is a durable artefact that gets attached to issues, so it stays free of
+  credentials — log `url.path()`, not `url.toString()`.
 * **Never send a cookie, bearer, or automatic remote image request to a host outside the
   captured allowlist** (`src/suno/CapturedHosts.cpp`). This is an unofficial suno.com client
-  with no supported API: new hosts need a capture first, and a lead is never evidence.
+  with no supported API: a new host needs a capture first — a lead is never a host entry.
   `docs/suno_api/` is the record — if a doc and `src/` disagree, `src/` wins.
+* **A route may be implemented on `[LEAD]` evidence when the code verifies itself at runtime
+  and fails closed when that check fails.** "Implement only what a capture proves" froze the
+  client against its own corpus: every captured media entry was `m4a-opus` on the CDN, the
+  filter accepted only `mp3` on `audiopipe.suno.ai`, and the client therefore refused 100%
+  of what it had captured — a rule that protected nothing and blocked everything. The bar is
+  now **a verified answer, not a captured guess**: an authenticated unwrap, a container
+  sniff, a status the server itself decides. What may never ship is a path whose failure
+  mode is a wrong file; a form with neither a capture nor a runtime check stays refused.
+  `docs/suno_api/capture/README.md` is how a capture is taken when one is still needed.
 * **Never `rm`.** Move it to `.backup_graveyard/` with a date-time suffix (gitignored).
 * Anything unusually destructive gets user approval first.
 

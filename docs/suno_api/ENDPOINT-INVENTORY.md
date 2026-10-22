@@ -183,28 +183,40 @@ B-Side/Orpheus, WAV-conversion, constructed-media, and bundle-only routes remain
 disabled regardless of local UI flags. See
 [`../integration/SUNO.md`](../integration/SUNO.md) for the operational runbook.
 
-**One captured-fact mismatch belongs here rather than in a backlog, because it
-is the current boundary.** Download/playback requires
-`content_type == "mp3"` on the `audiopipe.suno.ai` streaming origin; the
-2026-09-30 recon observed `m4a-opus` on the CloudFront progressive origin in
-**40 of 40** `media_urls[]` entries and no `mp3` at all (section 5.3). The
-selection filter therefore rejects every observed media URL. This is a
-**boundary statement, not a defect claim**: the two `[T1]` observations come
-from different corpora and both are recorded, so the client is fail-closed
-against the form it has not captured. It is recorded here because "the client
-requires mp3" and "mp3 is the normal case" cannot both be true, and the master
-previously implied the latter. Widening the accepted set requires capture
-evidence and is not implied by this note.
+**The media boundary is a decrypt step, not a refusal.** Until 2026-10-22 the
+client selected only `content_type == "mp3"` on the `audiopipe.suno.ai`
+streaming origin, while the captured corpora held `m4a-opus` on the CloudFront
+progressive origin in **40 of 40** entries (section 5.3) and the client's own
+synced library held **2140 of 2140** entries in that same shape. The filter
+therefore rejected everything the repository had observed, and the honest
+description of that was "the client requires mp3" -- which cannot also be "mp3
+is the normal case". Two captures of two accounts disagree about the default
+form (section 1.2, the 2026-09-24 `mp3`/`webm-opus` corpus), so both forms are
+real and neither is the answer on its own.
 
-**The likelier resolution is a route we have never captured, not a wider filter
-on this one.** A download-*preparation* family — a preparation call returning a
-short-lived signed URL, separate from the playback array — is registered as
-`[LEAD]` in [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) section 4.6 and discussed
-in [`THIRD-PARTY-IMPLEMENTATIONS.md`](THIRD-PARTY-IMPLEMENTATIONS.md). If it is
-real, then "the client requires mp3 in `media_urls[]`" is not a filter that is
-too narrow but a selection from the wrong source. **Capturing that family is the
-next step; loosening `selectDownloadUrl()` is not.** Widening the accepted set
-without a capture would keep the fail-closed property only by accident.
+The 2026-10-22 capture closed the question in a direction no wider filter would
+have: the observed progressive body is **encrypted**. The `encoding` field
+marks it, a content-rights call returns the key, and the body decrypts to a
+plain `audio/mp4` file (section 4.9, section 5.3). The client-side work is
+therefore a **license-and-decrypt step**, not a change of predicate.
+
+**What is no longer a rule.** "Widening the accepted set requires capture
+evidence" is withdrawn as a *blocker*: a media form may be implemented when the
+code verifies the answer at runtime and refuses when the verification fails
+(`AGENTS.md`, "Do not"). A wrong file is the failure mode that must not happen;
+a refusal with a reason is a legitimate outcome. The old sentence -- "capturing
+that family is the next step; loosening `selectDownloadUrl()` is not" -- stood
+for three weeks and produced a client that could not play its own library.
+
+**The download-*preparation* family is still `[LEAD]` and still unproven.** A
+preparation call returning a short-lived signed URL, separate from the
+playback array, is registered in [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md)
+section 4.6 and discussed in
+[`THIRD-PARTY-IMPLEMENTATIONS.md`](THIRD-PARTY-IMPLEMENTATIONS.md). The
+2026-10-22 capture does not settle it: it shows that a `media_urls[]` entry
+**is** fetchable and decryptable, which is a different claim from "no other
+media source exists". It may still be the route to a different (lossless,
+paid-tier) form. Nothing in the client may depend on it until it is captured.
 
 ### 1.5 Capture methodology — probe verdicts, and three shapes the server manufactures
 
@@ -684,7 +696,7 @@ may be wired on the strength of a neighbouring row.
 | GET | `/api/clips/remixes` | Bearer | Clip remixes | `[T1]` Burp 2026-08-25 | declared-unused |
 | GET | `/api/clips/remixes/count` | Bearer | Remix count | `[T1]` Burp 2026-08-25 | declared-unused |
 | GET | `/api/clips/get_similar/` | Bearer | Similar clips | `[T1]` Burp 2026-08-25 | declared-unused |
-| POST | `/api/mango/rights` | Bearer | Rights/crypto response surface | `[T1]` Burp 2026-08-25; payload is sensitive and not reproduced here | declared-unused |
+| POST | `/api/mango/rights` | Bearer **or anonymous** (guest token in the response) | Content key + CTR counter for an encrypted media body | `[T1]` Burp 2026-08-25; **shape reproduced and exercised 2026-10-22**, section 5.11 | declared-unused |
 | GET | `/api/video/generate/{clip_id}/status/` | Bearer | Video-render status | `[T1]` Burp 2026-08-25 | declared-unused |
 | POST | `/api/video_gen/pending_batches` | Bearer | Pending video batch identifiers | `[T1]` Burp 2026-08-25 | declared-unused |
 | POST | `/api/uploads/audio/` | Bearer | Initialize an audio upload and return a temporary direct-upload URL/policy | `[T1]` Burp 2026-09-24; JSON request/response | wired |
@@ -1031,14 +1043,18 @@ captures actually establish is narrower:
 
 - `media_urls[]` is **captured** as a shape, and its observed contents are a
   progressive `m4a-opus` variant on the CloudFront host. That is `[T1]`.
-- Nothing captured shows a **`media_urls[]` entry being transferred as a
-  download**, or shows the server *authorizing* a save against one.
 - `mp3` is **zero occurrences in 40 of 40** observed entries in the 2026-09-30
   corpus. A client that selects an `mp3` entry out of `media_urls[]` selects
   against an observed-empty set.
 - The 2026-09-24 corpus separately showed legacy `audio_url` carrying the
-  `/api/forbidden` sentinel. So neither the progressive array nor the legacy
-  field is an established download contract.
+  `/api/forbidden` sentinel.
+- **Superseded 2026-10-22:** an entry *is* transferable, and the transfer is
+  captured. The feed's own URL was fetched, and the body came back
+  `Content-Type: audio/mp4`, `Accept-Ranges: bytes`, **encrypted**; a
+  content-rights call and an AES-128-CTR decrypt turned it into a plain
+  `audio/mp4` file (section 5.11). The array is therefore a usable media
+  source *once the body is decrypted* -- which is the whole of what was
+  missing, and it was never a download-preparation route.
 
 A download-preparation route family is registered as `[LEAD]` in
 [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) section 4.6 and summarized in
@@ -1053,19 +1069,24 @@ URL as a download contract, and do not add a host to
 has never seen returned.**
 
 **Direct consequence for the client, recorded here so it is not rediscovered as
-a bug.** The download/playback layer selects an entry only when
-`content_type == "mp3"` **and** the host is the `audiopipe.suno.ai` streaming
-origin. Against the observed 40-entry corpus that filter rejects **100%** of
-media URLs, so a captured clip can resolve to nothing. Two independent
-conditions must both be true for rejection to be the explanation, which is what
-makes it diagnosable: either widen the accepted `content_type` set or accept the
-CloudFront progressive origin, on capture evidence, and until then say *why*
-selection failed rather than failing silently. Do not widen the set from a
-bundle selector; that is the `[LEAD]` path this section exists to prevent.
+a bug -- and then superseded on 2026-10-22.** The download/playback layer
+selected an entry only when `content_type == "mp3"` **and** the host was the
+`audiopipe.suno.ai` streaming origin. Against the observed corpus that filter
+rejected **100%** of media URLs, so a captured clip resolved to nothing and the
+play buttons did nothing. The fix was never "widen the set from a bundle
+selector"; it was **capture the form and use it**, and the 2026-10-22 capture
+did that (section 5.11). The client's rule is now: an entry whose body can be
+decrypted and whose plaintext is a container the client recognises is usable;
+anything else is refused **with a reason**. The old refusal reason ("no
+playable media") was true and useless -- it named a predicate, not a cause.
 
 The constructed fallbacks `cdn1.suno.ai/{clip_id}.mp3` and
 `d2lwuy8qc234o3.cloudfront.net/1/clip/{clip_id}.m4a` remain `[LEAD]` and are not
-part of the captured media contract.
+part of the captured media contract. **Note the shape, not the status:** the
+2026-10-22 feed entries carry exactly that second path shape -- but they carry
+it because the *server* put it there, which is a different fact from building
+it from the clip id. Constructing it stays forbidden; reading it off the feed
+is the captured contract.
 
 ### 5.4 Captured generation and polling behavior
 
@@ -1347,6 +1368,87 @@ never a surface to build on.
 
 For all of the above: existence was observed, contract was not, entitlement is
 not ours to grant, and the correct client behaviour is to leave the switch off.
+
+### 5.11 Content-rights (mango) response schema and the encrypted media form -- `[T1]` 2026-10-22
+
+`POST /api/mango/rights` was in the catalog since the 2026-08-25 Burp corpus
+(section 4.6) with the note that its payload "is sensitive and not reproduced
+here", and it was never implemented. The 2026-10-22 capture is the first to
+reproduce the shape *and* to use it. It was taken **anonymously**: no
+`Authorization`, no cookie, no `Device-Id`.
+
+**Request** (`https://studio-api-prod.suno.com`, section 2.1):
+
+```json
+{ "content_params": { "content_id": "<clip uuid>", "content_type": "clip" } }
+```
+
+`Content-Type: application/json`. `content_type` was `"clip"` in every
+observation.
+
+**Response** -- `200`, and the object carries exactly three fields:
+
+| Field | Shape | Meaning |
+|---|---|---|
+| `key` | base64, 60 chars (44 bytes) | AES-GCM-wrapped **content key** |
+| `iv` | base64, 60 chars (44 bytes) | AES-GCM-wrapped **CTR counter** |
+| `glt` | string, 197 chars | guest license token -- the anonymous session's key material |
+
+Each wrapped blob is `12-byte GCM nonce || 16-byte ciphertext || 16-byte tag`,
+so the plaintext is 16 bytes: an **AES-128** content key and a 16-byte counter
+block. No expiry field, no key id, no algorithm field -- the shape is fixed.
+
+**The unwrap, as the server's own client performs it.** The wrapping key is
+`SHA-256` of the session token: the bearer when the request is authenticated,
+and otherwise the response's own `glt`. The wrapped blob is then AES-GCM
+decrypted with a 12-byte nonce (the blob's first 12 bytes) and **AAD = the
+`content_id` string**. A wrong token, a wrong clip id, or a wrong blob is a
+GCM **authentication failure** -- there is no wrong-but-decryptable output, so
+this step is a *verification*, not a guess. That is what makes the anonymous
+path safe to implement: the server cannot be asked for a key we cannot prove.
+
+**The media form.** The `media_urls[]` entry that carries `encoding` points at
+the CloudFront progressive host, and that body is **encrypted**:
+`Content-Type: audio/mp4`, `Accept-Ranges: bytes`, and the first bytes are
+high-entropy rather than a container header. Decrypting it with the unwrapped
+key and counter (AES-128-**CTR**, 128-bit big-endian counter, incremented per
+16-byte block) yields a plain MP4 beginning `ftypisom` -- i.e. the encrypted
+body *is* the `audio/mp4` file, and the container is not itself encrypted
+(there is no CENC `encv`/`sinf` box, and the whole file is one CTR stream, so
+a byte-range request is decryptable from any 16-byte-aligned offset).
+
+Observed on 2026-10-22: 2140 of 2140 `media_urls[]` entries in this client's
+own synced library were `content_type: "m4a-opus"`, `delivery: "progressive"`,
+`encoding: "1.0.0"`, on the already-allowlisted CloudFront host, with **no
+query string** -- the URL is not signed and needs no credential.
+
+**The authenticated variant, captured the same day.** A second request
+carrying `Authorization: Bearer <clerk jwt>` returned `200` with **no `glt`**
+-- two fields, not three -- and the key unwrapped with `SHA-256(bearer)`, not
+`SHA-256(glt)`. So the server wraps with the SHA-256 of whatever token the
+request carried, and issues a guest token when the request carried none. That
+is a coherent contract rather than two accidents, and it is the one the
+client implements: send the bearer if there is one, unwrap with the bearer's
+digest first, fall back to the response's `glt`, and refuse when neither
+unwraps.
+
+**What is still not captured.** The *streaming* delivery (`delivery:
+"streaming"`), the `webm-opus` content type, and the `mp3` form from the
+2026-09-24 corpus were not exercised, so the client does not implement them.
+Nothing was observed about a *paid-tier* or lossless variant; the
+download-preparation family (section 1.4) may still be the route to one.
+
+**Corroboration (`[LEAD]`, not evidence).** The site's shipped client bundle
+implements the same two steps under the names `fetchLicenseServerDataAndMedia`
+and `createDecryptTransform`, with the same `SHA-256` -> AES-GCM -> AES-CTR
+chain, the same AAD, the same 12-byte nonce, and a `glt` fallback for
+anonymous playback. Bundle text is not a capture (section 1.1); it is recorded
+here because it explains *why* the observed shape is the shape. The
+authenticated ordering (bearer first, `glt` second) was confirmed by capture
+above rather than taken from the bundle.
+
+Reproduction: [`capture/README.md`](capture/README.md). No key, token, clip
+id, or complete media URL from this capture appears in this repository.
 
 ## 6. Errors, statuses, and rate limits
 

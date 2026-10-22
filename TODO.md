@@ -1263,7 +1263,24 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 - [ ] T0265 **Video: `video_url` parsed, no download or status polling** (`src/suno/`)
       `VIDEO_GENERATE_STATUS` / `VIDEO_GEN_PENDING_BATCHES` constants exist; no video download or status polling.
 - [ ] T0266 **WAV: conversion + `pollWavFile` stubs; `downloadFormat==WAV` refused** (`src/suno/SunoDownloader.cpp`)
-      `m4a-opus` download refused (pinned P1 defect).
+      `m4a-opus` download refused (pinned P1 defect) -- **the refusal is now specified**: the
+      captured progressive body is AES-128-CTR encrypted and needs a content-rights call
+      (T0317); the `m4a-opus` form is no longer "unsupported", it is "not yet decrypted".
+- [ ] T0317 **Encrypted ("mango") media: content-rights call + AES-128-CTR decrypt, and the mp3-only selection retired** (`src/suno/`, `src/suno/SunoDownloader.cpp`) #risk-high
+      `selectDownloadUrl()` accepts only `content_type == "mp3"` on `audiopipe.suno.ai`, and
+      2140 of 2140 captured `media_urls[]` entries are `m4a-opus`/`progressive`/`encoding
+      "1.0.0"` on the allowlisted CloudFront host -- so every playable clip resolves to
+      nothing and the play buttons do nothing. The 2026-10-22 capture (ENDPOINT-INVENTORY
+      section 5.11) pins the contract: `POST /api/mango/rights` with
+      `{content_params:{content_id,content_type:"clip"}}` returns base64 `key`/`iv` (+ `glt`
+      when anonymous), each a 12-byte GCM nonce + 16-byte payload + 16-byte tag, unwrapped
+      with `SHA-256(bearer or glt)` as the AES-GCM key and AAD = the clip id, yielding a
+      16-byte AES-128 key and a 16-byte CTR counter; the media body is one AES-128-CTR
+      stream that decrypts to a plain `audio/mp4`. Implement: the rights call, the unwrap
+      (authenticated, GCM-tag verified), the streaming CTR decrypt, the container sniff
+      (mp4/webm) that decides the file extension, and a selection that prefers an encrypted
+      entry and falls back to the old mp3 path. Fail closed with a reason: the GCM tag and
+      the container magic are the two checks that make "no playable media" honest.
 - [ ] T0267 **Like/unlike, trash/restore, permanent delete: NO verb, NO endpoint** (`src/suno/`) (capture-gated)
       Deliberate — no captured contract; `POST /api/clips/delete/` 404'd. DB *stores* `is_liked`/`is_trashed`, so read side implies verbs that don't exist.
 - [ ] T0268 **Clip rename: NO clip-title rename verb** (`src/suno/`) (capture-gated)
