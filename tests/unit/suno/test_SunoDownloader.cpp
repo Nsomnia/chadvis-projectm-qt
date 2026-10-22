@@ -27,6 +27,7 @@
 #include "audio/Playlist.hpp"
 #include "core/Config.hpp"
 #include "suno/SunoDatabase.hpp"
+#include "suno/MangoCrypto.hpp"
 #include "suno/SunoDownloader.hpp"
 
 #include "FakeNetworkReply.hpp"
@@ -161,6 +162,72 @@ class TestSunoDownloader : public QObject {
     Q_OBJECT
 
 private slots:
+    /// The captured progressive form is encrypted, and the whole point of the
+    /// content-rights call is that the bytes on disk are ciphertext until the
+    /// key arrives. This drives the whole path -- the selection, the key
+    /// request, the streaming decrypt -- and asserts that what lands on disk
+    /// is the plaintext, under the extension the container deserves.
+    void anEncryptedBodyBecomesAudio() {
+        DownloadConfigGuard config;
+        QTemporaryDir downloadDir;
+        QVERIFY(downloadDir.isValid());
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
+
+        QTemporaryDir sessionDir;
+        QVERIFY(sessionDir.isValid());
+        AudioEngine audio(fs::path(sessionDir.path().toStdString()) / "last_session.m3u");
+        QVERIFY(audio.init());
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+
+        SunoClip clip;
+        clip.id = "4aa166cb-6559-40b0-96a7-36eed98edcc9";
+        clip.title = "Encrypted Song";
+        clip.status = "complete";
+        clip.display_name = "ChadVis Test";
+        clip.media_urls = {{"https://d2lwuy8qc234o3.cloudfront.net/1/clip/" + clip.id + ".m4a",
+                            "m4a-opus", "progressive", "1.0.0"}};
+
+        // The key material, and the ciphertext the server would have sent for
+        // it: the same AES-CTR stream the client decrypts.
+        const QByteArray key = QByteArray::fromHex("2001d3ad2262d52aaf9d542552ece3d8");
+        const QByteArray counter = QByteArray::fromHex("42c4e33256c76560f665ab5a7acddcbd");
+        // The plaintext must look like the container the extension promises,
+        // because the client checks that: a decrypted body that is not a
+        // container is refused rather than written under an .m4a name.
+        QByteArray clear("chadvis-fake-clear-audio-payload-for-the-m4a-form");
+        clear.replace(0, 8, QByteArray("\x00\x00\x00\x18" "ftyp", 8));
+        const QByteArray encrypted = vc::suno::ctrCrypt(clear, key, counter);
+
+        FakeServer server;
+        SunoDownloader downloader(database, &audio, server.factory());
+        int keyRequests = 0;
+        downloader.setContentKeyFetcher(
+            [&keyRequests, key, counter](const std::string&,
+                                         std::function<void(std::expected<ContentKey, QString>)> done) {
+                ++keyRequests;
+                done(std::expected<ContentKey, QString>(ContentKey{key, counter}));
+            });
+        QSignalSpy saved(&downloader, &SunoDownloader::fileSaved);
+
+        const auto result = downloader.download(clip);
+        if (!result) {
+            QFAIL(qPrintable(QStringLiteral("download refused: %1").arg(result.error())));
+        }
+        QCOMPARE(static_cast<int>(server.replies.size()), 1);
+        server.replies[0]->succeed(encrypted);
+
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 10000);
+        QCOMPARE(keyRequests, 1);
+
+        const QString path = saved.at(0).at(1).toString();
+        QVERIFY2(path.endsWith(QStringLiteral(".m4a")),
+                 qPrintable(QStringLiteral("the file is named %1, not .m4a").arg(path)));
+        QFile written(path);
+        QVERIFY(written.open(QIODevice::ReadOnly));
+        QCOMPARE(written.readAll(), clear);
+    }
+
     /// T0200: the property under test is "the *production* constructor wires
     /// the finalize completion". That wiring used to exist only in the
     /// ReplyFactory constructor, so the shipped downloader emitted

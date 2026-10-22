@@ -1266,7 +1266,7 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       `m4a-opus` download refused (pinned P1 defect) -- **the refusal is now specified**: the
       captured progressive body is AES-128-CTR encrypted and needs a content-rights call
       (T0317); the `m4a-opus` form is no longer "unsupported", it is "not yet decrypted".
-- [ ] T0317 **Encrypted ("mango") media: content-rights call + AES-128-CTR decrypt, and the mp3-only selection retired** (`src/suno/`, `src/suno/SunoDownloader.cpp`) #risk-high
+- [?] T0317 **Encrypted ("mango") media: content-rights call + AES-128-CTR decrypt, and the mp3-only selection retired** (`src/suno/`, `src/suno/SunoDownloader.cpp`) #risk-high
       `selectDownloadUrl()` accepts only `content_type == "mp3"` on `audiopipe.suno.ai`, and
       2140 of 2140 captured `media_urls[]` entries are `m4a-opus`/`progressive`/`encoding
       "1.0.0"` on the allowlisted CloudFront host -- so every playable clip resolves to
@@ -1287,6 +1287,15 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       assertions). The AES block cipher is libavutil's, so no new native dependency. Left:
       the rights HTTP call, the downloader's selection and decrypt step, and the container
       sniff. `STATUS/T0317.log`.
+      **Now implemented, and the code half is verified:** the rights call
+      (`SunoClient::requestContentKey`), the unwrap (`src/suno/MangoLicense.{hpp,cpp}`), the
+      selection that prefers the encrypted form, the `.m4a` extension that follows the
+      container, the streaming decrypt with a container check, and the MP4 tagging. The whole
+      path is driven by `anEncryptedBodyBecomesAudio` with no network, and the crypto is
+      pinned by the NIST vectors and by WebCrypto. `[?]` and not `[x]` because the LIVE half
+      is unverified: a real rights response, a real 7 MB body, and the player opening the
+      result in the app. That is one press of Play away, and it is the last thing standing
+      between this task and done. `STATUS/T0317.log`.
 - [ ] T0267 **Like/unlike, trash/restore, permanent delete: NO verb, NO endpoint** (`src/suno/`) (capture-gated)
       Deliberate — no captured contract; `POST /api/clips/delete/` 404'd. DB *stores* `is_liked`/`is_trashed`, so read side implies verbs that don't exist.
 - [ ] T0268 **Clip rename: NO clip-title rename verb** (`src/suno/`) (capture-gated)

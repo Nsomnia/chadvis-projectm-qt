@@ -1075,6 +1075,43 @@ void SunoClient::withValidToken(std::function<void()> proceed) {
     ensureFreshBearer();
 }
 
+void SunoClient::requestContentKey(const std::string& clipId,
+                                    std::function<void(std::expected<ContentKey, QString>)> callback) {
+    QJsonObject contentParams;
+    contentParams["content_id"] = QString::fromStdString(clipId);
+    contentParams["content_type"] = QStringLiteral("clip");
+    QJsonObject body;
+    body["content_params"] = contentParams;
+    const QByteArray payload = QJsonDocument(body).toJson(QJsonDocument::Compact);
+
+    // The bearer is the token the request carries, and the server wraps the
+    // key under its digest. It is captured here because by the time the reply
+    // arrives the token may have been refreshed.
+    const QByteArray bearer = token().toUtf8();
+
+    enqueueAuthenticatedRequest(qstr(vc::suno::endpoints::MANGO_RIGHTS), "POST", payload,
+                                [this, clipId, bearer, callback = std::move(callback)](
+                                        QNetworkReply* reply) {
+                                    const auto body = readTrackedBody(reply);
+                                    if (!body) {
+                                        callback(std::unexpected(body.error()));
+                                        return;
+                                    }
+                                    QJsonParseError parseError{};
+                                    const QJsonDocument document =
+                                        QJsonDocument::fromJson(*body, &parseError);
+                                    if (parseError.error != QJsonParseError::NoError ||
+                                        !document.isObject()) {
+                                        callback(std::unexpected(
+                                                QStringLiteral("The playback license response "
+                                                               "is not JSON.")));
+                                        return;
+                                    }
+                                    callback(unwrapContentKey(document.object(), bearer,
+                                                             QString::fromStdString(clipId)));
+                                });
+}
+
 void SunoClient::enqueueAuthenticatedRequest(const QString& endpoint, const std::string& method,
                                              const QByteArray& data,
                                              std::function<void(QNetworkReply*)> callback,

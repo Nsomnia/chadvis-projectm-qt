@@ -91,6 +91,8 @@ set(SUNO_SOURCES
     src/suno/SunoDownloader.cpp
     src/suno/MangoCrypto.hpp
     src/suno/MangoCrypto.cpp
+    src/suno/MangoLicense.hpp
+    src/suno/MangoLicense.cpp
     src/suno/SunoLyricsManager.hpp
     src/suno/SunoLyricsManager.cpp
     src/suno/SunoAuthFailure.hpp

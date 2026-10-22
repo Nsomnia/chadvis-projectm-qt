@@ -1,8 +1,11 @@
 #include "suno/SunoDownloader.hpp"
+
+#include <QFile>
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "suno/CapturedHosts.hpp"
 #include "suno/ClipResolver.hpp"
+#include "suno/MangoCrypto.hpp"
 #include "suno/SunoLyrics.hpp"
 #include "util/FileUtils.hpp"
 
@@ -19,6 +22,7 @@
 #include <utility>
 
 // TagLib Includes
+#include <taglib/mp4file.h>
 #include <taglib/mpegfile.h>
 #include <taglib/id3v2tag.h>
 #include <taglib/fileref.h>
@@ -32,15 +36,38 @@ namespace vc::suno {
 
 namespace {
 
-/// The one extension this downloader writes. A WAV request is rejected
-/// before a destination is ever chosen (see download()), so a format
-/// parameter on the destination helpers would be a parameter with exactly
-/// one legal value.
+/// The extension of the unencrypted form this client fetches. A WAV request
+/// is rejected before a destination is ever chosen (see download()).
 constexpr std::string_view kAudioExtension = ".mp3";
+
+/// The extension a media form is written under, or nullopt when the form is
+/// one this client will not fetch.
+///
+/// The names follow the CONTENT, not the wire type: an `m4a-opus` body is an
+/// MP4 container with Opus in it, and writing it under ".mp3" would be a lie
+/// the player would then have to forgive.
+std::optional<std::string> extensionFor(const std::string& contentType, const bool encrypted) {
+    if (encrypted) {
+        if (contentType == "m4a-opus") {
+            return std::string(".m4a");
+        }
+        if (contentType == "webm-opus") {
+            return std::string(".webm");
+        }
+        // An encrypted form this client cannot name is a form it will not
+        // fetch: the extension would be a guess, and the guess would end up
+        // in a filename.
+        return std::nullopt;
+    }
+    if (contentType == "mp3") {
+        return std::string(".mp3");
+    }
+    return std::nullopt;
+}
 
 } // namespace
 
-SunoDownloader::SunoDownloader(SunoClient*,
+SunoDownloader::SunoDownloader(SunoClient* client,
                                SunoDatabase& db,
                                AudioEngine* audioEngine,
                                QNetworkAccessManager* networkManager,
@@ -50,7 +77,17 @@ SunoDownloader::SunoDownloader(SunoClient*,
       audioEngine_(audioEngine),
       // The queue adopts the controller-provided manager; this is the one
       // QNetworkAccessManager for clip downloads (no ad-hoc managers here).
-      queue_(std::make_unique<DownloadQueue>(networkManager, this)) {
+      queue_(std::make_unique<DownloadQueue>(networkManager, this)),
+      client_(client) {
+    // The content-rights call is how an encrypted body becomes audio. It
+    // lives on the client because the client owns the bearer the rights
+    // server wraps the key with.
+    if (client_) {
+        contentKeyFetcher_ = [client](const std::string& clipId,
+                                      std::function<void(std::expected<ContentKey, QString>)> done) {
+            client->requestContentKey(clipId, std::move(done));
+        };
+    }
     // T0200: the finalize wiring is NOT test-only. It used to live in the
     // ReplyFactory constructor, which meant the shipped downloader emitted
     // finalizeFinished into nothing: no tags, no sidecars, no fileSaved and no
@@ -101,6 +138,14 @@ void SunoDownloader::wireFinalize() {
                                                  clipId.toStdString()));
                 }
                 emit fileSaved(clipId, destPath);
+            },
+            Qt::QueuedConnection);
+    connect(this, &SunoDownloader::finalizeFailed, this,
+            [this](const QString& clipId, const QString& reason) {
+                LOG_ERROR("SunoDownloader: {} could not be finished: {}",
+                          clipId.toStdString(), reason.toStdString());
+                emit downloadStateChanged(clipId,
+                                          static_cast<int>(DownloadState::FailedPermanent), 0);
             },
             Qt::QueuedConnection);
     finalizeThread_.setObjectName(QStringLiteral("SunoDownloader::finalize"));
@@ -167,8 +212,27 @@ bool isUsableCapturedUrl(const std::string& value) {
     //
     // So is the path sentinel: `api/forbidden` is a server route, not a host
     // fact, and belongs to the endpoint rather than to the registry.
-    if (url.host().compare(QStringLiteral("audiopipe.suno.ai"),
-                           Qt::CaseInsensitive) != 0) {
+    //
+    // The audio delivery hosts come from the registry too: the captured
+    // streaming origin and the captured progressive CloudFront distribution.
+    // This used to be a literal for the streaming origin alone, which is why
+    // the encrypted progressive form -- the form every synced clip carries --
+    // was refused before it was ever fetched. The registry owns the list, so
+    // a new captured media host is a table row rather than a literal here.
+    bool mediaHost = false;
+    for (const auto role : {hosts::Role::MediaOrigin, hosts::Role::CloudFront}) {
+        for (const auto& rule : hosts::hostsForRole(role)) {
+            if (url.host().compare(QString::fromUtf8(rule.host.data(), static_cast<qsizetype>(rule.host.size())),
+                                   Qt::CaseInsensitive) == 0) {
+                mediaHost = true;
+                break;
+            }
+        }
+        if (mediaHost) {
+            break;
+        }
+    }
+    if (!mediaHost) {
         return false;
     }
     // A fragment is refused, and stays refused here rather than being folded into
@@ -238,20 +302,46 @@ bool SunoDownloader::isSupportedMediaUrl(const QString& url)
     return isUsableCapturedUrl(url.toStdString());
 }
 
-std::optional<std::string>
-SunoDownloader::selectDownloadUrl(const SunoClip& clip,
-                                  const vc::SunoDownloadFormat format) {
+std::optional<MediaSelection>
+SunoDownloader::selectMedia(const SunoClip& clip, const vc::SunoDownloadFormat format) {
     if (format != vc::SunoDownloadFormat::MP3 || clip.status != "complete") {
         return std::nullopt;
     }
 
+    // The encrypted form first, which is the order the site's own player
+    // uses: the captured progressive entry is the one every synced clip
+    // carries, and the plain mp3 form is the older capture's.
+    std::optional<MediaSelection> plain;
     for (const auto& media : clip.media_urls) {
-        if (media.content_type == "mp3" && isUsableCapturedUrl(media.url)) {
-            return media.url;
+        if (!isUsableCapturedUrl(media.url)) {
+            continue;
+        }
+        // The presence of `encoding` is what marks a media entry as the
+        // encrypted variant -- the site's own client makes the same test.
+        const bool encrypted = !media.encoding.empty();
+        const auto extension = extensionFor(media.content_type, encrypted);
+        if (!extension) {
+            continue;
+        }
+        if (encrypted) {
+            return MediaSelection{media.url, *extension, true};
+        }
+        if (!plain) {
+            plain = MediaSelection{media.url, *extension, false};
         }
     }
 
-    return std::nullopt;
+    return plain;
+}
+
+std::optional<std::string>
+SunoDownloader::selectDownloadUrl(const SunoClip& clip,
+                                  const vc::SunoDownloadFormat format) {
+    const auto media = selectMedia(clip, format);
+    if (!media) {
+        return std::nullopt;
+    }
+    return media->url;
 }
 
 // Deliberately says nothing about which media types exist or might be usable:
@@ -302,19 +392,19 @@ std::expected<DownloadStarted, QString> SunoDownloader::download(const SunoClip&
         return std::unexpected(*refusal);
     }
 
-    const auto selectedUrl = selectDownloadUrl(clip, format);
-    if (!selectedUrl) {
-        LOG_WARN("SunoDownloader: no usable captured MP3 URL for clip {} (status {})",
+    const auto media = selectMedia(clip, format);
+    if (!media) {
+        LOG_WARN("SunoDownloader: no usable captured media URL for clip {} (status {})",
                  clip.id, clip.status);
         return std::unexpected(noUsableMediaMessage(clip));
     }
 
-    const fs::path targetPath = resolveDestPath(clip);
+    const fs::path targetPath = resolveDestPath(clip, media->extension);
     if (fs::exists(targetPath)) {
         return finishAlreadyOnDisk(clip, targetPath, action);
     }
 
-    enqueueAudio(clip, *selectedUrl, action);
+    enqueueAudio(clip, *media, action);
     return DownloadStarted{clip.id, action, false};
 }
 
@@ -359,14 +449,14 @@ SunoDownloader::finishAlreadyOnDisk(const SunoClip& clip,
     return DownloadStarted{clip.id, action, true};
 }
 
-fs::path SunoDownloader::resolveDestPath(const SunoClip& clip) {
+fs::path SunoDownloader::resolveDestPath(const SunoClip& clip, const std::string& extension) {
     if (const auto known = destByClip_.find(clip.id); known != destByClip_.end()) {
         return known->second;
     }
 
     const fs::path dir = getDownloadDir();
     const std::string stem = safeStem(clip.title, clip.id);
-    fs::path candidate = dir / (stem + std::string(kAudioExtension));
+    fs::path candidate = dir / (stem + extension);
 
     // Two clips that share a title must not share a file, or a batch silently
     // overwrites the first with the second. The plain name counts as taken
@@ -415,8 +505,7 @@ fs::path SunoDownloader::resolveDestPath(const SunoClip& clip) {
             // Someone else's file, and it is not ours to overwrite. Fall through
             // to the id-suffixed name below rather than reusing it.
             destOwner_.emplace(claim(candidate), *embedded);
-            candidate = dir / (stem + "-" + vc::file::sanitizeFilename(clip.id) +
-                               std::string(kAudioExtension));
+            candidate = dir / (stem + "-" + vc::file::sanitizeFilename(clip.id) + extension);
         } else if (embedded) {
             // Our own file from a previous session: reuse the plain name, which
             // is the shortcut's entire job.
@@ -426,7 +515,7 @@ fs::path SunoDownloader::resolveDestPath(const SunoClip& clip) {
             // would make the disambiguation block two lines below see the name
             // as taken and rename it -- one inbound clip silently getting a
             // suffixed file and losing the reuse it was entitled to.
-            candidate = dir / (stem + std::string(kAudioExtension));
+            candidate = dir / (stem + extension);
         }
     }
     if (destOwner_.contains(claim(candidate))) {
@@ -435,8 +524,7 @@ fs::path SunoDownloader::resolveDestPath(const SunoClip& clip) {
         // containing "../" would otherwise write outside the download directory.
         // Remote data reaching a path unsanitized is the exact bar at which this
         // matters; a hostile upstream is a real possibility for a scraped id.
-        candidate = dir / (stem + "-" + vc::file::sanitizeFilename(clip.id) +
-                           std::string(kAudioExtension));
+        candidate = dir / (stem + "-" + vc::file::sanitizeFilename(clip.id) + extension);
     }
     destOwner_.emplace(claim(candidate), clip.id);
     destByClip_.emplace(clip.id, candidate);
@@ -451,14 +539,21 @@ fs::path SunoDownloader::defaultDestPathFor(const std::string& clipId) const {
     // never saved, and it must not steal a destination from a download that
     // has not happened yet.
     const auto clip = resolveClip({}, db_, clipId);
-    return getDownloadDir() / (safeStem(clip ? clip->title : std::string{}, clipId) +
-                               std::string(kAudioExtension));
+    // The same extension the transfer would use, so the sidecar a lyrics
+    // fetch writes lands beside the file it belongs to.
+    std::string extension(kAudioExtension);
+    if (clip) {
+        if (const auto media = selectMedia(*clip, CONFIG.suno().downloadFormat)) {
+            extension = media->extension;
+        }
+    }
+    return getDownloadDir() / (safeStem(clip ? clip->title : std::string{}, clipId) + extension);
 }
 
 /// Route one transfer through the shared DownloadQueue; tagging/sidecars run
 /// from the completion hook in handleItemState().
 void SunoDownloader::enqueueAudio(const SunoClip& clip,
-                                  const std::string& url,
+                                  const MediaSelection& media,
                                   const DownloadAction action) {
     if (const auto live = pendingClips_.find(clip.id); live != pendingClips_.end()) {
         // A live job already owns this clip id and DownloadQueue rejects a
@@ -473,9 +568,9 @@ void SunoDownloader::enqueueAudio(const SunoClip& clip,
         return;
     }
 
-    const fs::path targetPath = resolveDestPath(clip);
-    pendingClips_.emplace(clip.id, PendingDownload{clip, targetPath, action});
-    if (!queue_->enqueue(clip.id, url, targetPath)) {
+    const fs::path targetPath = resolveDestPath(clip, media.extension);
+    pendingClips_.emplace(clip.id, PendingDownload{clip, targetPath, action, media.encrypted});
+    if (!queue_->enqueue(clip.id, media.url, targetPath)) {
         pendingClips_.erase(clip.id);  // rejected for a reason only the queue knows
     }
 }
@@ -506,6 +601,16 @@ void SunoDownloader::handleItemState(const std::string& clipId, DownloadState st
             const bool play = pending.action == DownloadAction::SaveAndPlay;
             const QString clipIdQt = QString::fromStdString(clipId);
             const fs::path destPath = pending.destPath;
+
+            // An encrypted body is not audio yet: the bytes on disk are the
+            // server's ciphertext, and only the content key turns them into
+            // a container a player can open. The key comes from the server,
+            // so this cannot be finished here -- it continues when the key
+            // arrives.
+            if (pending.encrypted) {
+                fetchContentKey(clipId, pending, play);
+                break;
+            }
             // The worker closure captures `this`, which is safe HERE ONLY because the
             // destructor body quits and joins finalizeThread_ before any member
             // is destroyed: a job is therefore either fully executed while the
@@ -535,6 +640,130 @@ void SunoDownloader::handleItemState(const std::string& clipId, DownloadState st
         default:
             break;  // Cancelled needs no post-processing
     }
+}
+
+namespace {
+
+/// Decrypts an encrypted media body in place.
+///
+/// The body is one AES-128-CTR stream, so it is decrypted a chunk at a time
+/// and written to a sibling file; the original is replaced only once the
+/// decrypted file is complete. A crash therefore leaves either the encrypted
+/// body or the decrypted one, never half of each.
+bool decryptMediaBody(const fs::path& path, const ContentKey& key) {
+    std::error_code ec;
+    std::unique_ptr<CtrStream> stream;
+    {
+        CtrStream candidate(key.key, key.counter);
+        if (!candidate.valid()) {
+            LOG_ERROR("SunoDownloader: the content key is not usable for {}", path.string());
+            return false;
+        }
+        stream = std::make_unique<CtrStream>(std::move(candidate));
+    }
+
+    QFile source(QString::fromStdString(path.string()));
+    if (!source.open(QIODevice::ReadOnly)) {
+        LOG_ERROR("SunoDownloader: cannot read {} to decrypt it", path.string());
+        return false;
+    }
+
+    const fs::path target = path.string() + ".decrypting";
+    {
+        QFile output(QString::fromStdString(target.string()));
+        if (!output.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            LOG_ERROR("SunoDownloader: cannot write {}", target.string());
+            return false;
+        }
+        constexpr qint64 kChunk = 64 * 1024;
+        QByteArray head;
+        while (true) {
+            const QByteArray chunk = source.read(kChunk);
+            if (chunk.isEmpty()) {
+                break;
+            }
+            const QByteArray clear = stream->process(chunk);
+            if (head.isEmpty()) {
+                head = clear.left(12);
+            }
+            if (!clear.isEmpty() && output.write(clear) != clear.size()) {
+                LOG_ERROR("SunoDownloader: writing {} failed", target.string());
+                output.close();
+                std::filesystem::remove(target, ec);
+                return false;
+            }
+        }
+        // The container check. A wrong key or a corrupted body decrypts to
+        // bytes that are not a container, and writing them under an .m4a name
+        // would leave the user with a file no player can open and no reason
+        // why. The two magics are the ones the media forms use: an ISO base
+        // media file ("ftyp" at offset 4) and an EBML/WebM header.
+        const bool mp4 = head.size() >= 8 && head.mid(4, 4) == QByteArrayLiteral("ftyp");
+        const bool webm = head.size() >= 4 && head.left(4) == QByteArrayLiteral("\x1a\x45\xdf\xa3");
+        if (!mp4 && !webm) {
+            LOG_ERROR("SunoDownloader: the decrypted body of {} is not an audio container",
+                      path.string());
+            output.close();
+            std::filesystem::remove(target, ec);
+            return false;
+        }
+        const QByteArray tail = stream->finish();
+        if (!tail.isEmpty() && output.write(tail) != tail.size()) {
+            LOG_ERROR("SunoDownloader: writing {} failed", target.string());
+            output.close();
+            std::filesystem::remove(target, ec);
+            return false;
+        }
+    }
+
+    // Swap the decrypted file in. The target is this downloader's own file and
+    // the replacement is already complete, so removing it first cannot lose
+    // anything: the worst case is that the body stays encrypted.
+    std::filesystem::remove(path, ec);
+    ec.clear();
+    std::filesystem::rename(target, path, ec);
+    if (ec) {
+        LOG_ERROR("SunoDownloader: cannot replace {} with the decrypted body: {}",
+                  path.string(), ec.message());
+        std::filesystem::remove(target, ec);
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
+void SunoDownloader::fetchContentKey(const std::string& clipId,
+                                    const PendingDownload& pending,
+                                    const bool play) {
+    if (!contentKeyFetcher_) {
+        LOG_ERROR("SunoDownloader: clip {} has an encrypted body and this build has no way to "
+                  "ask for its key",
+                  clipId);
+        emit finalizeFailed(QString::fromStdString(clipId),
+                            QStringLiteral("This build cannot unlock encrypted playback."));
+        return;
+    }
+
+    contentKeyFetcher_(clipId, [this, pending, play](std::expected<ContentKey, QString> key) {
+        if (!key) {
+            LOG_ERROR("SunoDownloader: no content key for clip {}: {}",
+                      pending.clip.id, key.error().toStdString());
+            emit finalizeFailed(QString::fromStdString(pending.clip.id), key.error());
+            return;
+        }
+        runFinalize([this, pending, play, key = *key]() {
+            if (!decryptMediaBody(pending.destPath, key)) {
+                emit finalizeFailed(QString::fromStdString(pending.clip.id),
+                                    QStringLiteral("The downloaded audio could not be decrypted."));
+                return;
+            }
+            tagAudioFile(pending.destPath, pending.clip);
+            saveMetadataSidecar(pending.destPath, pending.clip);
+            emit finalizeFinished(QString::fromStdString(pending.clip.id),
+                                  QString::fromStdString(pending.destPath.string()), play);
+        });
+    });
 }
 
 void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
@@ -586,6 +815,39 @@ void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
         addTxxx("SUNO_PROMPT", clip.metadata.prompt);
         addTxxx("SUNO_STYLE", clip.metadata.tags);
         addTxxx("SUNO_MODEL", clip.model_name);
+
+        f.save();
+    } else if (ext == ".m4a" || ext == ".mp4") {
+        TagLib::MP4::File f(path.c_str());
+        if (!f.isValid()) {
+            LOG_WARN("SunoDownloader: {} is not a readable MP4 file; left untagged",
+                     path.string());
+            return;
+        }
+        TagLib::MP4::Tag* tag = f.tag();
+        if (!tag) {
+            LOG_WARN("SunoDownloader: no MP4 tag available for {}", path.string());
+            return;
+        }
+
+        tag->setTitle(TagLib::String(clip.title, TagLib::String::UTF8));
+        tag->setArtist(TagLib::String(clip.display_name, TagLib::String::UTF8));
+        tag->setAlbum(TagLib::String("Suno AI Generations", TagLib::String::UTF8));
+        tag->setComment(TagLib::String(clip.id, TagLib::String::UTF8));
+
+        // The same custom metadata the MP3 branch writes, as freeform atoms.
+        // "----:mean:name" is the key shape iTunes uses for a freeform atom
+        // ("com.apple.iTunes" is the mean, the name is the field), and it is
+        // what a player reads back.
+        const auto setCustom = [&](const char* name, const std::string& value) {
+            tag->setItem(TagLib::String(std::string("----:com.apple.iTunes:") + name),
+                         TagLib::MP4::Item(TagLib::StringList{
+                             TagLib::String(value, TagLib::String::UTF8)}));
+        };
+        setCustom("SUNO_ID", clip.id);
+        setCustom("SUNO_PROMPT", clip.metadata.prompt);
+        setCustom("SUNO_STYLE", clip.metadata.tags);
+        setCustom("SUNO_MODEL", clip.model_name);
 
         f.save();
     } else if (ext == ".flac") {

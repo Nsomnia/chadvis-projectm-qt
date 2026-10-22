@@ -8,6 +8,7 @@
 //   - stamp canonical studio-api headers onto outgoing requests.
 
 #include "HttpPolicy.hpp"
+#include "MangoLicense.hpp"
 #include "SunoEndpoints.hpp"
 #include "SunoLyrics.hpp"
 #include "SunoModels.hpp"
@@ -175,6 +176,13 @@ public:
     const QString& nextCursor() const { return nextCursor_; }
     bool hasMorePages() const { return hasMore_; }
     void fetchAlignedLyrics(const std::string& clipId);
+    /// POST /api/mango/rights: the content key for an encrypted media body.
+    ///
+    /// The answer is a key wrapped under SHA-256 of the token the request
+    /// carried, so the unwrap happens here, where the bearer is known, and
+    /// the caller receives plain key material or a reason.
+    void requestContentKey(const std::string& clipId,
+                            std::function<void(std::expected<ContentKey, QString>)> callback);
     void initiateWavConversion(const std::string& clipId);
     void pollWavFile(const std::string& clipId, int maxAttempts = 60);
     /// Stop polling wav-conversion status for clipId (user navigated away).

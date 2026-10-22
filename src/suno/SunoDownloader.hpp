@@ -19,6 +19,7 @@
 #include "audio/AudioEngine.hpp"
 #include "core/ConfigData.hpp"
 #include "suno/DownloadQueue.hpp"
+#include "suno/MangoLicense.hpp"
 #include "suno/SunoClient.hpp"
 #include "suno/SunoDatabase.hpp"
 #include "suno/SunoModels.hpp"
@@ -64,6 +65,26 @@ struct DownloadStarted {
 /// fetching N clips to disk fired N `jumpTo()` calls and audibly played the
 /// batch. The completion hook now reads the requested action out of the
 /// pending record instead of assuming playback.
+/// One playable media form of a clip, and what it takes to use it.
+struct MediaSelection {
+    /// The URL to fetch.
+    std::string url;
+    /// The extension the fetched body is written with.
+    std::string extension;
+    /// True when the body is encrypted and needs a content key before it is
+    /// audio. The captured progressive form always is.
+    bool encrypted{false};
+};
+
+/// Fetches the content key for an encrypted body.
+///
+/// Asynchronous on purpose: the key comes from the server, and the download
+/// that needs it is already on disk. The completion runs on the thread that
+/// owns the reply, which is the GUI thread.
+using ContentKeyFetcher =
+    std::function<void(const std::string& clipId,
+                       std::function<void(std::expected<ContentKey, QString>)> done)>;
+
 class SunoDownloader : public QObject {
     Q_OBJECT
 
@@ -99,8 +120,23 @@ public:
     [[nodiscard]] bool cancelDownload(const std::string& clipId);
 
     [[nodiscard]] static bool isSupportedMediaUrl(const QString& url);
+
+    /// Injects how the content key of an encrypted body is obtained.
+    ///
+    /// The production constructor wires the client, which owns the bearer the
+    /// rights server wraps the key with. A test supplies its own, so the
+    /// encrypted path can be driven without a network. Setting it after a
+    /// download has already started has no effect on that download.
+    void setContentKeyFetcher(ContentKeyFetcher fetcher) {
+        contentKeyFetcher_ = std::move(fetcher);
+    }
+    /// The URL of a media form this client can fetch, encrypted or not.
     [[nodiscard]] static std::optional<std::string>
     selectDownloadUrl(const SunoClip& clip, vc::SunoDownloadFormat format);
+    /// The media form to fetch, with the extension it is written under and
+    /// whether its body needs decrypting first.
+    [[nodiscard]] static std::optional<MediaSelection>
+    selectMedia(const SunoClip& clip, vc::SunoDownloadFormat format);
     void saveLyricsSidecar(const std::string& clipId,
                            const std::string& json,
                            const QJsonDocument& doc,
@@ -143,11 +179,22 @@ signals:
     /// aggregate status string.
     void fileSaved(const QString& clipId, const QString& path);
     void playbackReady(const QString& clipId);
+    /// A transfer that finished but could not be turned into a playable file:
+    /// a license that would not authenticate, or a body that would not
+    /// decrypt. Emitted from the finalize worker, so the handler is queued.
+    void finalizeFailed(const QString& clipId, const QString& reason);
 
 private:
     SunoDatabase& db_;
     AudioEngine* audioEngine_;
     std::unique_ptr<DownloadQueue> queue_;
+
+    /// The client that answers the content-rights call. Null in the test
+    /// constructor, which supplies its own key provider instead.
+    SunoClient* client_{nullptr};
+    /// How a content key is obtained. Injected so the encrypted path can be
+    /// driven without a network.
+    ContentKeyFetcher contentKeyFetcher_;
 
     /// T0037: the finalize work (TagLib tagging + two sidecar writes) is
     /// blocking and was running on the GUI thread from handleItemState, so every
@@ -170,6 +217,10 @@ private:
         SunoClip clip;
         fs::path destPath;
         DownloadAction action{DownloadAction::SaveOnly};
+        /// The body on disk is encrypted and needs a content key before it is
+        /// audio. The decrypt runs in the finalize worker, after the key
+        /// arrives.
+        bool encrypted{false};
     };
 
     /// Clip payloads awaiting their queue completion hook, keyed by clip id.
@@ -189,8 +240,12 @@ private:
     /// BOTH constructors -- a production downloader without it emits into
     /// nothing, which is exactly what shipped.
     void wireFinalize();
-    void enqueueAudio(const SunoClip& clip, const std::string& url, DownloadAction action);
+    void enqueueAudio(const SunoClip& clip, const MediaSelection& media, DownloadAction action);
     void handleItemState(const std::string& clipId, DownloadState state);
+    /// Asks for the content key of an encrypted body and finishes the download
+    /// when it arrives. Runs on the GUI thread; the decrypt itself is queued to
+    /// the finalize worker.
+    void fetchContentKey(const std::string& clipId, const PendingDownload& pending, bool play);
     [[nodiscard]] std::expected<DownloadStarted, QString>
     finishAlreadyOnDisk(const SunoClip& clip, const fs::path& path, DownloadAction action);
     bool addAndPlay(const fs::path& path, const std::string& clipId);
@@ -198,7 +253,7 @@ private:
     /// Destination for a clip, claiming one on first use. Free of any
     /// filesystem probe, so it answers the same before and after the bytes
     /// land; see the .cpp for why that matters.
-    [[nodiscard]] fs::path resolveDestPath(const SunoClip& clip);
+    [[nodiscard]] fs::path resolveDestPath(const SunoClip& clip, const std::string& extension);
     /// Where a clip is, or would be, saved. Claims nothing: used by the
     /// sidecar writers, which run for clips this downloader never fetched.
     [[nodiscard]] fs::path defaultDestPathFor(const std::string& clipId) const;
