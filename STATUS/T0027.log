@@ -1,2 +1,6 @@
-2026-10-12T13:55:40Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee89533 pid=89533 ttl=4h expires=2026-10-12T17:55:40Z
-2026-10-12T16:16:26Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee17874
+2026-10-22T17:45:00Z  CLAIM    save and restore GL state around the projectM call
+2026-10-22T17:45:00Z  FIX      src/visualizer/VisualizerRenderer.cpp: GlStateGuard snapshots viewport, scissor box + enable, colour write mask, blend enable/src/dst/equations, depth enable/func/write-mask, cull enable/mode and the read/draw framebuffer bindings; the destructor restores them on every exit from renderFrame, including the capture path. Texture units and the program object are deliberately not included (nothing in this context reads them afterwards).
+2026-10-22T17:48:00Z  VERIFY   ./build.sh --fast --tests; ctest --test-dir build-fast/tests -R integration_gl_tests -V -> renderingRestoresTheCallersGlState PASS; Totals: 10 passed, 0 failed, 0 skipped, 0 blacklisted.
+2026-10-22T17:48:00Z  NOTE     The sentinels were set for every value the guard claims: viewport, scissor box/enable, colour mask, blend factors/equations with GL_BLEND disabled, depth func/write-mask/enable, cull mode/enable. The test fails on any value the guard forgets to restore.
+2026-10-22T17:50:00Z  VERIFY   ctest --test-dir build-fast/tests -j3 -> 14/14 passed.
+2026-10-22T17:50:00Z  COMMIT   TODO.md T0027 -> [x]; CHANGELOG.md Unreleased/Fixed; INVARIANTS.md GL bullet.

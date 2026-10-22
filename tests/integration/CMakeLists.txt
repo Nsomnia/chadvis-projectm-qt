@@ -38,6 +38,7 @@ add_test(NAME integration_gl_tests
         engineDrawsIntoDefaultFramebuffer
         engineIgnoresAnFboBoundAsDrawTarget
         rendererRecordingPathDeliversPixels
+        renderingRestoresTheCallersGlState
         capturedFramesAreFlippedIntoTopDownRows
         recordingAtADifferentResolutionIsScaled
         encodedFileContainsTheVisualizerPicture

@@ -217,7 +217,7 @@ line to describe an item is describing it in the wrong place. Finished work move
       normal path — Ctrl-C tears the surface down before the destructor runs — so the "abandon" branch was
       unreachable for the one case it was written for, and the debug build died with `SIGABRT` after printing a
       clean shutdown. The `LOG_ERROR` is the contract: the failure is reported, never swallowed.
-- [ ] T0027 **GL state is set but never saved or restored around projectM — upstream will not fix it** (`src/visualizer/VisualizerRenderer.cpp:88-106`) #risk-high
+- [x] T0027 **GL state is set but never saved or restored around projectM — upstream will not fix it** (`src/visualizer/VisualizerRenderer.cpp:88-106`) #risk-high
       Sets viewport, scissor, `GL_SCISSOR_TEST`, `glColorMask`; never reads the previous
       values, and `GL_BLEND`/`GL_DEPTH_TEST` are neither set nor restored. Contained today
       only **by accident** of separate-surface ownership. This is a genuine upstream gap, not an
@@ -228,6 +228,17 @@ line to describe an item is describing it in the wrong place. Finished work move
       comment warns that per-FBO draw-buffer state *"leaks into FBO 0 on some drivers"*. The
       host must therefore guard viewport + scissor + colour mask + blend + depth itself. FIX:
       save and restore all of it around the projectM call.
+      **Closed, and the guard covers more than the item listed.** `GlStateGuard` in
+      `VisualizerRenderer.cpp` snapshots viewport, scissor box and enable, colour write mask,
+      blend enable/src/dst factors/equations, depth enable/func/write-mask, cull enable/mode,
+      and the read/draw framebuffer bindings, and restores them in its destructor on every path
+      out of `renderFrame` — including the capture path, which rebinds the read framebuffer and
+      a PBO itself. Texture units and the program object are deliberately excluded: nothing
+      that draws in this context afterwards shares them, and they would add calls to the
+      per-frame path. Verified with a real GL 3.3 core context, not a mock:
+      `renderingRestoresTheCallersGlState` sets sentinels for every one of those values, renders
+      a frame, and reads them back — the GL suite is 10/10 passed, 0 skipped on this machine.
+      VERIFY in `STATUS/T0027.log`.
 - [x] T0028 **CLI overrides bypass the parser's clamps** (`src/core/Application.cpp:318-320`) #risk-high
       `applyOverride` writes raw values **after** `clamp(fps,10,240)`
       (`ConfigParsers.cpp:259`). `--visualizer-fps 0` → `fps=0` → `VisualizerRenderer.cpp:28`

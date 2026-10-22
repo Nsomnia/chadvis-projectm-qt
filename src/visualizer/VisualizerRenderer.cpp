@@ -12,6 +12,100 @@
 
 namespace vc {
 
+namespace {
+
+/// Saves and restores the GL state projectM is allowed to disturb.
+///
+/// Upstream will not do this: PR #981 ("preserve gl state of calling
+/// application") was reviewed and closed unmerged on 2026-03-10, with the
+/// maintainer's own "Can't test it currently so someone else would have to do
+/// it." libprojectM resets only FBO 0 and the viewport, and its GLES comment
+/// warns that per-FBO draw-buffer state "leaks into FBO 0 on some drivers". The
+/// host therefore owns viewport, scissor, colour mask, blend, depth and the
+/// framebuffer bindings around every projectM call (T0027).
+///
+/// Deliberately not included: texture units/bindings and the program object.
+/// projectM binds its own textures and shaders, but nothing the host draws
+/// afterwards shares this context -- the Qt Quick scene graph is a sibling on a
+/// separate surface -- so restoring them buys nothing and adds calls to the
+/// per-frame path. The listed set is the one a following render in *this*
+/// context actually reads.
+class GlStateGuard {
+public:
+    explicit GlStateGuard(QOpenGLFunctions_3_3_Core& gl) : gl_(gl) {
+        gl_.glGetIntegerv(GL_VIEWPORT, viewport_);
+        gl_.glGetIntegerv(GL_SCISSOR_BOX, scissor_);
+        gl_.glGetBooleanv(GL_COLOR_WRITEMASK, colorMask_);
+        gl_.glGetIntegerv(GL_BLEND_SRC_RGB, &blendSrcRgb_);
+        gl_.glGetIntegerv(GL_BLEND_DST_RGB, &blendDstRgb_);
+        gl_.glGetIntegerv(GL_BLEND_SRC_ALPHA, &blendSrcAlpha_);
+        gl_.glGetIntegerv(GL_BLEND_DST_ALPHA, &blendDstAlpha_);
+        gl_.glGetIntegerv(GL_BLEND_EQUATION_RGB, &blendEquationRgb_);
+        gl_.glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &blendEquationAlpha_);
+        gl_.glGetIntegerv(GL_DEPTH_FUNC, &depthFunc_);
+        gl_.glGetBooleanv(GL_DEPTH_WRITEMASK, &depthWriteMask_);
+        gl_.glGetIntegerv(GL_CULL_FACE_MODE, &cullFaceMode_);
+        gl_.glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFramebuffer_);
+        gl_.glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFramebuffer_);
+        scissorEnabled_ = gl_.glIsEnabled(GL_SCISSOR_TEST);
+        blendEnabled_ = gl_.glIsEnabled(GL_BLEND);
+        depthEnabled_ = gl_.glIsEnabled(GL_DEPTH_TEST);
+        cullEnabled_ = gl_.glIsEnabled(GL_CULL_FACE);
+    }
+
+    ~GlStateGuard() {
+        gl_.glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(readFramebuffer_));
+        gl_.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(drawFramebuffer_));
+        gl_.glViewport(viewport_[0], viewport_[1], viewport_[2], viewport_[3]);
+        gl_.glScissor(scissor_[0], scissor_[1], scissor_[2], scissor_[3]);
+        gl_.glColorMask(colorMask_[0], colorMask_[1], colorMask_[2], colorMask_[3]);
+        gl_.glBlendFuncSeparate(static_cast<GLenum>(blendSrcRgb_),
+                                static_cast<GLenum>(blendDstRgb_),
+                                static_cast<GLenum>(blendSrcAlpha_),
+                                static_cast<GLenum>(blendDstAlpha_));
+        gl_.glBlendEquationSeparate(static_cast<GLenum>(blendEquationRgb_),
+                                    static_cast<GLenum>(blendEquationAlpha_));
+        gl_.glDepthFunc(static_cast<GLenum>(depthFunc_));
+        gl_.glDepthMask(depthWriteMask_);
+        gl_.glCullFace(static_cast<GLenum>(cullFaceMode_));
+        restoreCapability(GL_SCISSOR_TEST, scissorEnabled_);
+        restoreCapability(GL_BLEND, blendEnabled_);
+        restoreCapability(GL_DEPTH_TEST, depthEnabled_);
+        restoreCapability(GL_CULL_FACE, cullEnabled_);
+    }
+
+    GlStateGuard(const GlStateGuard&) = delete;
+    GlStateGuard& operator=(const GlStateGuard&) = delete;
+
+private:
+    void restoreCapability(const GLenum capability, const GLboolean enabled) {
+        if (enabled == GL_TRUE) gl_.glEnable(capability);
+        else gl_.glDisable(capability);
+    }
+
+    QOpenGLFunctions_3_3_Core& gl_;
+    GLint viewport_[4]{};
+    GLint scissor_[4]{};
+    GLboolean colorMask_[4]{};
+    GLint blendSrcRgb_{};
+    GLint blendDstRgb_{};
+    GLint blendSrcAlpha_{};
+    GLint blendDstAlpha_{};
+    GLint blendEquationRgb_{};
+    GLint blendEquationAlpha_{};
+    GLint depthFunc_{};
+    GLboolean depthWriteMask_{};
+    GLint cullFaceMode_{};
+    GLint readFramebuffer_{};
+    GLint drawFramebuffer_{};
+    GLboolean scissorEnabled_{};
+    GLboolean blendEnabled_{};
+    GLboolean depthEnabled_{};
+    GLboolean cullEnabled_{};
+};
+
+} // namespace
+
 VisualizerRenderer::VisualizerRenderer(PresetManager& presetManager) : projectM_(presetManager) {}
 
 VisualizerRenderer::~VisualizerRenderer() { cleanup(); }
@@ -78,6 +172,11 @@ void VisualizerRenderer::render(u32 x, u32 y, u32 width, u32 height, bool isExpo
 
 void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
     if (w == 0 || h == 0 || !projectM_.isInitialized()) return;
+
+    // The only hand-off of this context to upstream-owned code, so the callers'
+    // state is saved here and restored on every path out -- including the capture
+    // below, which changes the read framebuffer and PBO binding itself.
+    GlStateGuard glState(*this);
 
     projectM_.syncState();
 

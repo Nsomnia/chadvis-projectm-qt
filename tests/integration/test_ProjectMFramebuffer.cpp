@@ -450,6 +450,97 @@ private slots:
     // double flip flips it back. The first render is captured while the second
     // one is the frame projectM puts in the framebuffer, so the raw readback
     // taken between them is exactly the picture the emitted frame came from.
+    /// projectM does not preserve the caller's GL state, and upstream declined
+    /// to fix it (PR #981 closed unmerged), so the renderer must. Every value
+    /// here is one the renderer or projectM really changes: the renderer sets
+    /// viewport/scissor/colour-mask itself, and projectM enables blend and depth
+    /// and hard-binds framebuffer 0 before its final copy. A guard that only
+    /// restores the obvious three would pass the viewport assertion and fail the
+    /// next frame that relies on blending.
+    void renderingRestoresTheCallersGlState() {
+        GlContextFixture fixture;
+        if (!fixture.isValid()) QSKIP(fixture.invalidReason().constData());
+
+        RendererHarness harness(fixture, kFrameSize);
+        QVERIFY(harness.isInitialized());
+
+        QOpenGLFunctions_3_3_Core* gl = &fixture.gl();
+        gl->glViewport(1, 2, 3, 4);
+        gl->glScissor(5, 6, 7, 8);
+        gl->glEnable(GL_SCISSOR_TEST);
+        gl->glColorMask(GL_TRUE, GL_FALSE, GL_TRUE, GL_FALSE);
+        gl->glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO);
+        gl->glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_SUBTRACT);
+        gl->glDisable(GL_BLEND);
+        gl->glEnable(GL_DEPTH_TEST);
+        gl->glDepthFunc(GL_ALWAYS);
+        gl->glDepthMask(GL_FALSE);
+        gl->glEnable(GL_CULL_FACE);
+        gl->glCullFace(GL_FRONT);
+
+        harness.renderer().render(0, 0, kFrameSize, kFrameSize, true);
+        gl->glFinish();
+
+        GLint viewport[4]{};
+        gl->glGetIntegerv(GL_VIEWPORT, viewport);
+        QCOMPARE(viewport[0], GLint{1});
+        QCOMPARE(viewport[1], GLint{2});
+        QCOMPARE(viewport[2], GLint{3});
+        QCOMPARE(viewport[3], GLint{4});
+
+        GLint scissor[4]{};
+        gl->glGetIntegerv(GL_SCISSOR_BOX, scissor);
+        QCOMPARE(scissor[0], GLint{5});
+        QCOMPARE(scissor[1], GLint{6});
+        QCOMPARE(scissor[2], GLint{7});
+        QCOMPARE(scissor[3], GLint{8});
+        QCOMPARE(static_cast<int>(gl->glIsEnabled(GL_SCISSOR_TEST)),
+                 static_cast<int>(GL_TRUE));
+
+        GLboolean mask[4]{};
+        gl->glGetBooleanv(GL_COLOR_WRITEMASK, mask);
+        QCOMPARE(static_cast<int>(mask[0]), static_cast<int>(GL_TRUE));
+        QCOMPARE(static_cast<int>(mask[1]), static_cast<int>(GL_FALSE));
+        QCOMPARE(static_cast<int>(mask[2]), static_cast<int>(GL_TRUE));
+        QCOMPARE(static_cast<int>(mask[3]), static_cast<int>(GL_FALSE));
+
+        QCOMPARE(static_cast<int>(gl->glIsEnabled(GL_BLEND)), static_cast<int>(GL_FALSE));
+        QCOMPARE(static_cast<int>(gl->glIsEnabled(GL_DEPTH_TEST)), static_cast<int>(GL_TRUE));
+        QCOMPARE(static_cast<int>(gl->glIsEnabled(GL_CULL_FACE)), static_cast<int>(GL_TRUE));
+
+        GLint depthFunc{};
+        gl->glGetIntegerv(GL_DEPTH_FUNC, &depthFunc);
+        QCOMPARE(depthFunc, GLint{GL_ALWAYS});
+        GLboolean depthMask{};
+        gl->glGetBooleanv(GL_DEPTH_WRITEMASK, &depthMask);
+        QCOMPARE(static_cast<int>(depthMask), static_cast<int>(GL_FALSE));
+        GLint cullFace{};
+        gl->glGetIntegerv(GL_CULL_FACE_MODE, &cullFace);
+        QCOMPARE(cullFace, GLint{GL_FRONT});
+
+        // Blend factors and the equation are state even while GL_BLEND is off,
+        // which is precisely the case that survives a "restore the enable bit"
+        // guard and breaks the next blending draw.
+        GLint blendSrcRgb{};
+        GLint blendDstRgb{};
+        GLint blendSrcAlpha{};
+        GLint blendDstAlpha{};
+        GLint blendEquationRgb{};
+        GLint blendEquationAlpha{};
+        gl->glGetIntegerv(GL_BLEND_SRC_RGB, &blendSrcRgb);
+        gl->glGetIntegerv(GL_BLEND_DST_RGB, &blendDstRgb);
+        gl->glGetIntegerv(GL_BLEND_SRC_ALPHA, &blendSrcAlpha);
+        gl->glGetIntegerv(GL_BLEND_DST_ALPHA, &blendDstAlpha);
+        gl->glGetIntegerv(GL_BLEND_EQUATION_RGB, &blendEquationRgb);
+        gl->glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &blendEquationAlpha);
+        QCOMPARE(blendSrcRgb, GLint{GL_SRC_ALPHA});
+        QCOMPARE(blendDstRgb, GLint{GL_ONE});
+        QCOMPARE(blendSrcAlpha, GLint{GL_ONE_MINUS_SRC_ALPHA});
+        QCOMPARE(blendDstAlpha, GLint{GL_ZERO});
+        QCOMPARE(blendEquationRgb, GLint{GL_FUNC_ADD});
+        QCOMPARE(blendEquationAlpha, GLint{GL_FUNC_SUBTRACT});
+    }
+
     void capturedFramesAreFlippedIntoTopDownRows() {
         GlContextFixture fixture;
         if (!fixture.isValid()) QSKIP(fixture.invalidReason().constData());

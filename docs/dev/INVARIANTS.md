@@ -96,6 +96,17 @@ another document already owns — it records only *why* the constraints exist.
    `RenderTarget::destroy()` enforces the same rule per-object via
    `createdWith_`. Do not "fix" the leak.
 
+ - **GL state belongs to the caller, not to the renderer.** `renderFrame()` wraps
+   every projectM call in `GlStateGuard`, which snapshots and restores viewport,
+   scissor, colour mask, blend (enable, factors, equations), depth (enable, func,
+   write mask), cull and the read/draw framebuffer bindings. Upstream will not do
+   it — projectM PR #981 was closed unmerged — and its own GLES note says per-FBO
+   draw-buffer state can "leak into FBO 0 on some drivers". The snapshot is taken
+   at entry to `renderFrame()`, so a caller that binds or enables state before
+   `render()` gets exactly that back afterwards.
+   `renderingRestoresTheCallersGlState` is the regression guard; it runs against a
+   real GL 3.3 core context and is skipped, with a reason, only where none exists.
+
 - **`Signal::emitSignal` perfect-forwarding only pays off at N == 1.**
   `frameCaptured` has exactly one production subscriber, so the hot path steals
   the 6 MB buffer with zero copies. `Slot` is deliberately left alone:

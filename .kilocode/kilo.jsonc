@@ -1,4 +1,7 @@
 {
   "$schema": "https://app.kilo.ai/config.json",
-  "plugins": ["@dietrichgebert/ponytail"]
+  //"$schema": "https://app.kilo.ai/config.json",
+  "plugins": [
+               "@dietrichgebert/ponytail"
+             ]
 }
