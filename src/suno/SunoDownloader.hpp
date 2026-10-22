@@ -185,6 +185,10 @@ private:
     [[nodiscard]] static std::string safeStem(std::string_view title, const std::string& clipId);
 
     void wireQueue();
+    /// T0037/T0200: the finalize thread and its queued completion. Called by
+    /// BOTH constructors -- a production downloader without it emits into
+    /// nothing, which is exactly what shipped.
+    void wireFinalize();
     void enqueueAudio(const SunoClip& clip, const std::string& url, DownloadAction action);
     void handleItemState(const std::string& clipId, DownloadState state);
     [[nodiscard]] std::expected<DownloadStarted, QString>

@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # ChadVis backlog
@@ -196,8 +196,8 @@ line to describe an item is describing it in the wrong place. Finished work move
       `makeCurrent` succeeded, and if it did **not, leak the handle deliberately** — a leak is
       strictly better than deleting GL objects in the wrong context. `RenderTarget::destroy()`
       has the matching hole (zeroes names, leaks them, `RenderTarget.cpp:109-116`).
-      **Closed as prescribed: leak, never delete without the context.** `~VisualizerWindow` now
-      asserts `makeCurrent` succeeded and, when it did not, calls the new
+      **Closed as prescribed: leak, never delete without the context.** `~VisualizerWindow` requires
+      `makeCurrent` to succeed and, when it does not, calls the new
       `VisualizerRenderer::abandonGlObjects()` — which drops every GL-owning handle (projectM
       instance via `pm::Bridge::abandon()` → `Engine::abandon()`, the native playlist via
       `Playlist::abandon()`, the PBOs, the capture target via `RenderTarget::abandon()`) **without
@@ -206,6 +206,10 @@ line to describe an item is describing it in the wrong place. Finished work move
       under it, closing the wrong-namespace hole the item noted (it previously checked only that
       *some* context was current). Headless ctest cannot exercise a real GL teardown — the runtime
       path is read-verified only, per the board's own rule that a green run is not GL evidence.
+      **One correction since it closed:** the assert was wrong and has been removed. `makeCurrent` fails on a
+      normal path — Ctrl-C tears the surface down before the destructor runs — so the "abandon" branch was
+      unreachable for the one case it was written for, and the debug build died with `SIGABRT` after printing a
+      clean shutdown. The `LOG_ERROR` is the contract: the failure is reported, never swallowed.
 - [ ] T0027 **GL state is set but never saved or restored around projectM — upstream will not fix it** (`src/visualizer/VisualizerRenderer.cpp:88-106`) #risk-high
       Sets viewport, scissor, `GL_SCISSOR_TEST`, `glColorMask`; never reads the previous
       values, and `GL_BLEND`/`GL_DEPTH_TEST` are neither set nor restored. Contained today
@@ -384,6 +388,7 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [?] T0199 **"Sign in with Google" opens a browser and then extracts nothing — the user is already logged in, and the app has no way to receive the credential** (`src/suno/auth/`) #blocks-ui #risk-high #cod-high
       The reported symptom. `AuthCoordinator::beginGoogleSignIn()` opens `https://suno.com/create?redirected_from=signin` and stops there, by design: Clerk's flow delivers the OAuth `code` to `auth.suno.com/social/complete/` and **never to 127.0.0.1**, so there is no callback for a desktop client to catch. For a returning user the browser simply opens on an already-signed-in page, nothing is exchanged, and the app waits forever for a paste the UI only mentions in a collapsed field. **The credential exists, in the right place, right now.** The recon answers the whole question end to end: `suno-recon-cat-stealth-modekl/suno-oauth-google.md` captures the live flow — `POST /v1/client/sign_ins` with `strategy=oauth_google` sets `__client` (`HttpOnly`, `Secure`, `SameSite=None`, **Max-Age 31536000 ≈ 1 year**, a refresh JWT whose payload says `"token_type":"refresh"`) plus `__client_uat`; `reports/endpoints.md` confirms `POST auth.suno.com/v1/client/sessions/{sid}/tokens` mints fresh `__session` bearers from it and that the `__session` bearer itself (`aud: suno-api`) is what the API wants. On this machine, Brave's cookie store holds `__client`, `__client_Jnxw-muT`, `__client_uat(_Jnxw-muT)` and `__session(_Jnxw-muT)` for `suno.com`/`auth.suno.com` — verified by read-only query on a copy of the DB. **The fix: harvest the browser's cookie store.** `HttpOnly` blocks `document.cookie` (which is why T0182 died) but not the on-disk SQLite store; the recon's own `bin/freshtok.py` already does this for Brave on macOS (keychain `Brave Safe Storage` → PBKDF2-SHA1, 1003 iters, `saltysalt`, 16-byte key → AES-128-CBC, v10 layout, 13-byte header). Implement the same in C++: copy the DB (WAL-safe), select the Clerk cookie family for `suno.com` hosts only, decrypt, assemble a `Cookie:` header, and hand it to `SunoClient::setCookie()` — which already persists to `CredentialStore` and kicks a bearer fetch, and whose `classifyStoredCredential()` already accepts exactly these three name prefixes. **Explicit user action, never automatic**: the first read of a browser's Safe Storage secret makes macOS ask the user to allow it, which is precisely the consent moment this needs. Never log a value; `suno.com` hosts only.
       **Shipped as `[?]` — code complete, all gates green, and the shipped decrypt proven against the real store, with exactly one leg unverified: a human pressing the button.** Three decrypt defects were found only by driving the real Brave store, none reproducible in the synthetic fixtures: `QFile::copy` silently refuses to overwrite the temp file `QTemporaryFile` already created (so every real-store read returned nothing while the synthetic one passed); `kCCOptionPKKS7Padding` strips-or-silently-does-not as Brave re-encrypts cookies live (so the crypto call now uses `options = 0` with an explicit tail handler); and the 16-byte host-binding prefix on `.suno.com` cookies begins with byte `0xdd`, which a control-character-only "binary" check classifies as printable — the unit fixture now uses exactly that byte. Real-data evidence: the shipped `decryptChromiumValue` on this machine's live `__client` value returns 689 clean bytes, matching openssl ground truth; the full `harvest()` path read the same store. **What remains is MT-001-D2**: each newly-linked binary gets its own one-time macOS consent prompt for "Brave Safe Storage", which on an unattended machine times out and reports no session — correct behaviour, but the shipped app will prompt the same way the first time, and the user must press **Already signed in? Import the session** once and click Allow.
+      **Post-shipment, pressing the button found three more defects, each fatal on its own.** (1) `deriveChromiumKey` passed CommonCrypto a salt **length of 10 for the nine-byte `"saltysalt"`**, so the derived key included the terminator and matched no Chromium build; every real cookie decrypted to noise and the app called its own bug "this build's format support needs updating". The synthetic round-trip could not see it because it encrypted with the same wrong key. Now `sizeof - 1`, with a known-answer test (`fecbbdb2774354b6b8466d2758047cb5`). (2) A browser stores each family **twice** — host-only `__client` and `__client_Jnxw-muT` — and all four JWT copies made the header **4695 bytes against `CredentialStore`'s 2560-byte ceiling**, so the import authenticated and then could not persist: the session worked until quit. `assembleCookieHeader` keeps one cookie per family (the host-only copy) and the live header now measures **2333** bytes. (3) The backend used `kSecUseDataProtectionKeychain`, which needs an `application-identifier` entitlement an ad-hoc bundle cannot have — every write returned `errSecMissingEntitlement` (-34018), so even a small credential was never stored. It uses the login keychain now; reads stay on the worker, a denied read is a failure rather than a plaintext fallback, and `CHADVIS_LIVE_KEYCHAIN=1 … liveKeychainRoundTrip` proves a real store/load/remove. Remaining for `[x]`: one human pass with the rebuilt app (import, quit, relaunch, still signed in) — MT-001-D2.
 - [x] T0184 **`--theme dark/gruvbox/nord` is printed in `--help`, parsed, persisted, and read by nothing** (`src/core/Application.cpp:692`) #cleanup
       **Closed by T0192, and the flag's promise is now real.** `--theme` drives `Theme.applyThemeById()` through `SettingsBridge.sessionTheme`, the help line names the four themes that actually load, and the three it used to advertise — `dark`, `gruvbox`, `nord` — are `chadvis-dark` plus two of them, transliterated into QML rather than restored as `.qss`. The one part of the original diagnosis that stood: `applyOverride()` wrote into live `Config` and the next save persisted it, so wiring the flag up **as written** would have overwritten the user's saved theme on every launch. The original item's alternative — delete the flag, the help line and the config key together — was not taken, because the plan wants `--theme` working; what was deleted instead is the *silent* part.
 - [x] T0185 **The accent family is only half-derived, so a user-picked colour half-applies** (`src/qml/styles/Theme.qml`) #risk-high
@@ -1082,12 +1087,15 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 
 ### P0 — the product is broken, data is corrupted, or a secret is exposed
 
-- [ ] T0200 **Production `SunoDownloader` never emits `fileSaved`** (`src/suno/SunoDownloader.cpp`) #risk-high
+- [x] T0200 **Production `SunoDownloader` never emits `fileSaved`** (`src/suno/SunoDownloader.cpp`) #risk-high
       Prod ctor never connects `finalizeFinished`; transferred files never auto-play. Fix: connect in prod ctor + add a test constructing via prod ctor.
-- [ ] T0201 **Mutations `Rejected` unreachable** (`src/suno/SunoLibraryMutations.cpp`) #risk-high
+      **Closed.** Both constructors call one `wireFinalize()`, so the wiring cannot be test-only again, and `theProductionConstructorDeliversFinalizeCompletion` builds the downloader the way the app does (it has to heap-allocate the `QNetworkAccessManager` because `DownloadQueue` *adopts* it). VERIFY in `STATUS/T0200.log`.
+- [?] T0201 **Mutations `Rejected` unreachable** (`src/suno/SunoLibraryMutations.cpp`) #risk-high
       `transportReason()` never returns empty, so every non-2xx settles as `Failed` (retryable) and server `detail` is never delivered. Fix: check HTTP status first, `Rejected` for 4xx with `rejectionReason(body)`, `Failed` only for transport/no-status.
-- [ ] T0202 **`SunoDownloader::embeddedSunoId` unchecked `fieldList()[1]`** (`src/suno/SunoDownloader.cpp`) #risk-high
+      **Code written, `[?]` on purpose: nothing exercises it.** `handleReply` is private, the class takes no reply factory, and `tests/unit/suno/` still has no `FakeNetworkAccessManager` (T0099) — so the fix is a branch reorder proven by reading and by the suite still linking, not by a failing-then-passing assertion. The first `[x]` needs that fake; the gap itself is T0100. Detail in `STATUS/T0201.log`.
+- [?] T0202 **`SunoDownloader::embeddedSunoId` unchecked `fieldList()[1]`** (`src/suno/SunoDownloader.cpp`) #risk-high
       TXXX frame with description but no value → out-of-bounds read. Fix: guard `size() >= 2` (test helper already guards).
+      **Guarded, and a malformed frame now `continue`s rather than returning, so a later well-formed `SUNO_ID` is still found.** `[?]` for the same reason as T0201: the function is private-static and only reachable through the reuse path, which needs a fixture mp3 with a value-less `TXXX` frame. `STATUS/T0202.log`.
 
 ### P1 — correctness / robustness
 

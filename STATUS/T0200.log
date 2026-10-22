@@ -1,0 +1,8 @@
+2026-10-22T05:42:18Z  CLAIM    T0200 production SunoDownloader never emits fileSaved
+2026-10-22T05:42:18Z  CHANGE   src/suno/SunoDownloader.{hpp,cpp}: wireFinalize() is called by BOTH constructors; the connect + finalize thread no longer live only in the ReplyFactory (test) ctor.
+2026-10-22T05:42:18Z  TEST     tests/unit/suno/test_SunoDownloader.cpp: theProductionConstructorDeliversFinalizeCompletion builds the downloader the way the app does (client=nullptr, db, audio=nullptr, heap QNetworkAccessManager -- DownloadQueue ADOPTS the manager, a stack one would be double-freed) and asserts fileSaved arrives from a finalizeFinished emission.
+2026-10-22T05:42:18Z  VERIFY   ./build.sh --fast --tests --qt "$PWD/.qt-stitch" -> unit_tests links.
+2026-10-22T05:42:18Z  VERIFY   ctest --test-dir build-fast/tests --output-on-failure -j3 -> 100% tests passed, 0 tests failed out of 14 (unit_tests 70.49 s).
+2026-10-22T05:42:18Z  VERIFY   CHADVIS_LIVE_KEYCHAIN=1 build-fast/tests/unit/unit_tests liveKeychainRoundTrip -> [suite] TestCredentialStorePolicy -> 0 (real login-keychain store/load/remove round trip).
+2026-10-22T05:42:18Z  COMMIT   TODO.md T0200 -> [x]
+2026-10-22T05:44:10Z  VERIFY   build-fast/tests/unit/unit_tests theProductionConstructorDeliversFinalizeCompletion -> [suite] TestSunoDownloader -> 0 (single-function run; other suites report "function not found" because the harness forwards argv to every suite, which is expected).

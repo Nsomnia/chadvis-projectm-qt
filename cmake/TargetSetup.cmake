@@ -868,6 +868,26 @@ else()
     set(_chadvis_sign_note "'${_chadvis_sign_identity}' (hardened runtime, timestamped)")
 endif()
 
+# Qt finds a bundle's plugins by asking CoreFoundation for the main bundle, and
+# CoreFoundation only recognises a directory as a bundle when the path component
+# ends in `.app`. Rename the copied bundle -- `ChadVis-copy`, `.app-latest`, a
+# staging directory -- and the app dies at startup with "Could not find the Qt
+# platform plugin cocoa in \"\"", which names neither the cause nor the fix.
+# `qt.conf` states the plugin path instead of inferring it, so a renamed bundle
+# still runs. Relative paths in qt.conf are resolved against Contents/MacOS.
+#
+# It must be installed BEFORE the codesign step below: adding a file to a signed
+# bundle invalidates its signature, and dyld refuses broken signatures on Apple
+# Silicon.
+add_custom_command(TARGET chadvis-projectm-qt POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+            "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Resources"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/bundle-qt.conf"
+            "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Resources/qt.conf"
+    COMMENT "Installing qt.conf (plugin path survives a renamed bundle)"
+    VERBATIM)
+
 add_custom_command(TARGET chadvis-projectm-qt POST_BUILD
     COMMAND codesign --force --deep --sign "${_chadvis_sign_identity}"
             ${_chadvis_sign_extra}

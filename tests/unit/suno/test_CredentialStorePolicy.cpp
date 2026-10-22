@@ -14,12 +14,18 @@
 // reasons, the UTF-8 encode and its two refusal modes, the Win32 target name
 // and blob length, and the Win32 error classification. Every assertion is an
 // exact value or an exact inequality, not "non-zero" or "roughly right".
+//
+// ONE EXCEPTION, and it earned its place: `liveKeychainRoundTrip` is opt-in
+// (CHADVIS_LIVE_KEYCHAIN=1), macOS-only, and calls the real store. The policy
+// half could not see that every keychain write failed with -34018, because a
+// selection test asks which backend was chosen and never whether it works.
 
 #include "core/Logger.hpp"
 #include "suno/auth/CredentialStore.hpp"
 
 #include <QtTest>
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QString>
@@ -625,6 +631,51 @@ private slots:
                                            "(owner read/write); file=%1 posix=0%2")
                                     .arg(committed.fileName())
                                     .arg(posixMode, 6, 8, QLatin1Char('0'))));
+#endif
+    }
+
+    /// Opt-in, and the only test in this file that touches a real OS secret
+    /// store. Everything else here is deliberately platform-free, but that
+    /// left one question unaskable: **does the shipped keychain backend
+    /// actually store anything?** It did not. `kSecUseDataProtectionKeychain`
+    /// requires an application-identifier entitlement an ad-hoc signed bundle
+    /// cannot have, so every write returned errSecMissingEntitlement (-34018),
+    /// the app logged "keychain store failed" and the session was gone on the
+    /// next launch. Policy tests cannot see that; a round trip can.
+    ///
+    ///   CHADVIS_LIVE_KEYCHAIN=1 ./build-fast/tests/unit/unit_tests liveKeychainRoundTrip
+    ///
+    /// macOS only: the Windows and Linux backends need their own OS to answer.
+    void liveKeychainRoundTrip()
+    {
+#ifdef Q_OS_MACOS
+        if (qEnvironmentVariableIsEmpty("CHADVIS_LIVE_KEYCHAIN")) {
+            QSKIP("set CHADVIS_LIVE_KEYCHAIN=1 to write and remove a throwaway login-keychain item");
+        }
+        CredentialStore store;
+        QVERIFY2(store.isSecureBackend(), "the default backend is not the keychain");
+        const QString key = QStringLiteral("test/live-round-trip");
+        const QString secret =
+            QStringLiteral("live-%1").arg(QDateTime::currentMSecsSinceEpoch());
+        const auto stored = store.store(key, secret);
+        if (stored.isErr()) {
+            // Not QVERIFY2: its message argument is evaluated on the success
+            // path too, and error() on a successful Result is undefined.
+            QFAIL(qPrintable(QString::fromStdString(stored.error().full())));
+        }
+        const auto loaded = store.load(key);
+        if (loaded.isErr()) {
+            QFAIL(qPrintable(QString::fromStdString(loaded.error().full())));
+        }
+        QCOMPARE(*loaded, secret);
+        const auto removed = store.remove(key);
+        if (removed.isErr()) {
+            QFAIL(qPrintable(QString::fromStdString(removed.error().full())));
+        }
+        // Removal is honoured, so the throwaway item does not accumulate.
+        QVERIFY(store.load(key).isErr());
+#else
+        QSKIP("the keychain round trip is a macOS check; run it on each platform's own OS");
 #endif
     }
 };

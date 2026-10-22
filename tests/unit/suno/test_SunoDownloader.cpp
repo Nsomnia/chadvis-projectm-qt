@@ -19,6 +19,7 @@
 #include <QtTest>
 #include <QFile>
 #include <QFileInfo>
+#include <QNetworkAccessManager>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
@@ -160,6 +161,36 @@ class TestSunoDownloader : public QObject {
     Q_OBJECT
 
 private slots:
+    /// T0200: the property under test is "the *production* constructor wires
+    /// the finalize completion". That wiring used to exist only in the
+    /// ReplyFactory constructor, so the shipped downloader emitted
+    /// finalizeFinished into nothing: no tags, no sidecars, no fileSaved and no
+    /// auto-play. Every test built the other constructor, which is why 44
+    /// passing suites could not see it.
+    ///
+    /// Driving the signal directly is the point rather than a shortcut: the
+    /// question is whether a connection exists, and it must hold for play=false
+    /// so it never touches the audio engine.
+    void theProductionConstructorDeliversFinalizeCompletion() {
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+        // Heap-allocated on purpose: DownloadQueue's production constructor
+        // ADOPTS the manager (`nam_->setParent(this)`), so a stack manager would
+        // be deleted by the queue and take the test down with it.
+        auto* network = new QNetworkAccessManager();
+        SunoDownloader downloader(nullptr, database, nullptr, network);
+        QSignalSpy saved(&downloader, &SunoDownloader::fileSaved);
+        QSignalSpy finalized(&downloader, &SunoDownloader::finalizeFinished);
+
+        emit downloader.finalizeFinished(QStringLiteral("clip-1"),
+                                         QStringLiteral("/tmp/finalized.mp3"), false);
+
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 2000);
+        QCOMPARE(finalized.count(), 1);
+        QCOMPARE(saved.at(0).at(0).toString(), QStringLiteral("clip-1"));
+        QCOMPARE(saved.at(0).at(1).toString(), QStringLiteral("/tmp/finalized.mp3"));
+    }
+
     // ── the save/play seam ───────────────────────────────────────────────────
 
     /// The headline: a batch of downloads saves three files and does not
@@ -213,10 +244,13 @@ private slots:
             server.replies[server.requestIndexForPath(id + QStringLiteral(".mp3"))]->succeed(
                     payloadFor(id));
         }
-        QTest::qWait(20);  // drain deleteLater
+        // Wait for the completions, not for a fixed 20 ms: the path includes
+        // TagLib tagging and two file renames, and a slower machine (the
+        // Windows runner) blew straight past the old budget and reported a
+        // lost download that had simply not finished yet.
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 3, 10000);
 
         // Every file landed, each to its own path inside the download directory.
-        QCOMPARE(saved.count(), 3);
         std::set<QString> savedIds;
         std::set<QString> savedPaths;
         for (int i = 0; i < saved.count(); ++i) {
@@ -259,10 +293,9 @@ private slots:
         downloader.downloadAndPlay(completeClip("play-me", "Play Me"));
         QCOMPARE(static_cast<int>(server.replies.size()), 1);
         server.replies[0]->succeed(payloadFor(QStringLiteral("play-me")));
-        QTest::qWait(20);
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 10000);
 
-        QCOMPARE(saved.count(), 1);
-        QCOMPARE(ready.count(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(ready.count(), 1, 10000);
         QCOMPARE(ready.takeFirst().at(0).toString(), QStringLiteral("play-me"));
 
         auto& playlist = audio.playlist();
@@ -427,9 +460,8 @@ private slots:
         QVERIFY(downloader.download(completeClip("twin-b", "Neon Arch")).has_value());
         server.replies[0]->succeed(payloadFor(QStringLiteral("twin-a")));
         server.replies[1]->succeed(payloadFor(QStringLiteral("twin-b")));
-        QTest::qWait(20);
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 2, 10000);
 
-        QCOMPARE(saved.count(), 2);
         // The first claim keeps the plain name; only the collision is suffixed.
         QCOMPARE(QFileInfo(saved.at(0).at(1).toString()).canonicalFilePath(),
                  QFileInfo(downloadDir.filePath(QStringLiteral("Neon Arch.mp3"))).canonicalFilePath());
@@ -486,11 +518,10 @@ private slots:
         QCOMPARE(server.replies.size(), std::size_t{1});  // no second transfer
 
         server.replies[0]->succeed(payloadFor(QStringLiteral("escalate")));
-        QTest::qWait(20);
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 10000);
 
         // Pre-fix this request was erased by the duplicate, so the transfer
         // finished with no announcement at all.
-        QCOMPARE(saved.count(), 1);
         QCOMPARE(ready.count(), 0);
     }
 

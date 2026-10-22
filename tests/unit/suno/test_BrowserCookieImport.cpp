@@ -234,26 +234,58 @@ private slots:
                     decryptChromiumValue({}, key).isEmpty());
     }
 
-    /// The stored header must be reproducible: `__client*` before
-    /// `__session*`, unsuffixed before suffixed, regardless of the order the
-    /// store handed them over. Without a fixed order, a save and a reload
-    /// disagree about whether the credential changed.
-    void headerOrderIsDeterministic()
+    /// One cookie per family, in a fixed order, regardless of the order the
+    /// store handed the rows over. A browser writes both the host-only name and
+    /// a domain-wide copy with an instance suffix (`__client` and
+    /// `__client_Jnxw-muT`) holding the same value; emitting both is redundant
+    /// and it broke persistence outright, because four JWT copies made the
+    /// header 4695 bytes against CredentialStore's 2560-byte ceiling -- the
+    /// import worked for one run and then vanished on restart.
+    void headerKeepsOneCookiePerFamily()
     {
         using vc::suno::auth::BrowserCookieImport;
         const QList<QPair<QString, QString>> shuffled{
-            {QStringLiteral("__session_Jnxw-muT"), QStringLiteral("S2")},
+            {QStringLiteral("__session_Jnxw-muT"), QStringLiteral("S1")},
             {QStringLiteral("__session"), QStringLiteral("S1")},
-            {QStringLiteral("__client_uat_Jnxw-muT"), QStringLiteral("U2")},
-            {QStringLiteral("__client_Jnxw-muT"), QStringLiteral("C2")},
+            {QStringLiteral("__client_uat_Jnxw-muT"), QStringLiteral("U1")},
+            {QStringLiteral("__client_Jnxw-muT"), QStringLiteral("C1")},
             {QStringLiteral("__client"), QStringLiteral("C1")},
             {QStringLiteral("__client_uat"), QStringLiteral("U1")},
         };
-        const QString expected =
-            QStringLiteral("__client=C1; __client_Jnxw-muT=C2; "
-                           "__client_uat=U1; __client_uat_Jnxw-muT=U2; "
-                           "__session=S1; __session_Jnxw-muT=S2");
-        QCOMPARE(BrowserCookieImport::assembleCookieHeader(shuffled), expected);
+        // Durable credential first; the unsuffixed (host-only) copy wins.
+        QCOMPARE(BrowserCookieImport::assembleCookieHeader(shuffled),
+                 QStringLiteral("__client=C1; __client_uat=U1; __session=S1"));
+
+        // The suffixed copy is still a credential when it is all there is.
+        const QList<QPair<QString, QString>> onlySuffixed{
+            {QStringLiteral("__client_Jnxw-muT"), QStringLiteral("C1")},
+        };
+        QCOMPARE(BrowserCookieImport::assembleCookieHeader(onlySuffixed),
+                 QStringLiteral("__client_Jnxw-muT=C1"));
+    }
+
+    /// The measured shape of a real Brave store, at real JWT lengths: the
+    /// assembled header must fit the 2560-byte ceiling every supported OS
+    /// secret store imposes, or the imported session cannot be persisted.
+    void aRealisticallyDuplicatedStoreAssemblesUnderTheStoreCap()
+    {
+        using vc::suno::auth::BrowserCookieImport;
+        const QString refresh = QStringLiteral("r").repeated(689);
+        const QString bearer = QStringLiteral("b").repeated(1598);
+        const QList<QPair<QString, QString>> pairs{
+            {QStringLiteral("__client"), refresh},
+            {QStringLiteral("__client_Jnxw-muT"), refresh},
+            {QStringLiteral("__client_uat"), QStringLiteral("1787705821")},
+            {QStringLiteral("__client_uat_Jnxw-muT"), QStringLiteral("1787705821")},
+            {QStringLiteral("__session"), bearer},
+            {QStringLiteral("__session_Jnxw-muT"), bearer},
+        };
+        const QString header = BrowserCookieImport::assembleCookieHeader(pairs);
+        QVERIFY2(header.size() < 2560,
+                 qPrintable(QStringLiteral("header is %1 bytes").arg(header.size())));
+        QCOMPARE(BrowserCookieImport::assembleCookieHeader(pairs),
+                 QStringLiteral("__client=%1; __client_uat=1787705821; __session=%2")
+                     .arg(refresh, bearer));
     }
 
     void headerSkipsEmptyNamesAndValues()
@@ -484,6 +516,54 @@ private slots:
 
     /// The candidate list must not name a browser that is not installed —
     /// the UI would offer an import that can only fail.
+    /// Opt-in reproduction of the one half a synthetic store cannot answer:
+    /// does the shipped decrypt work against THIS machine's live browser
+    /// store? Run it as
+    ///
+    ///   CHADVIS_LIVE_BROWSER_IMPORT=1 ./tests/unit/test_BrowserCookieImport liveHarvestAgainstThisMachine
+    ///
+    /// It is skipped by default because `harvest()` shells out to `security`,
+    /// which can raise a Keychain consent dialog. Nothing secret is printed --
+    /// only lengths, the browser name, and the refusal sentence, which is what
+    /// the user sees.
+    /// The known answer from Chromium's own derivation, computed outside this
+    /// tree:
+    ///
+    ///   python3 -c "import hashlib; print(hashlib.pbkdf2_hmac('sha1', \
+    ///     b'chadvis-known-answer', b'saltysalt', 1003, 16).hex())"
+    ///
+    /// It exists because the round-trip test below CANNOT catch a wrong key: it
+    /// encrypts with the same key it decrypts with, so any derivation passes.
+    /// This is how "saltysalt" was handed to CommonCrypto with a hard-coded
+    /// length of 10 -- including the NUL -- and every real Brave cookie
+    /// decrypted to noise while the suite stayed green.
+    void deriveChromiumKeyMatchesChromiumsKnownAnswer()
+    {
+        REQUIRE_MACOS_SAFE_STORAGE();
+        using vc::suno::auth::BrowserCookieImport;
+        const QByteArray key =
+            BrowserCookieImport::deriveChromiumKey(QByteArrayLiteral("chadvis-known-answer"));
+        QCOMPARE(key.toHex(), QByteArrayLiteral("fecbbdb2774354b6b8466d2758047cb5"));
+    }
+
+    void liveHarvestAgainstThisMachine()
+    {
+        REQUIRE_MACOS_SAFE_STORAGE();
+        if (qEnvironmentVariableIsEmpty("CHADVIS_LIVE_BROWSER_IMPORT")) {
+            QSKIP("set CHADVIS_LIVE_BROWSER_IMPORT=1 to read this machine's browser store");
+        }
+        using vc::suno::auth::BrowserCookieImport;
+        std::fprintf(stderr, "live-harvest: starting (a Keychain prompt may appear)\n");
+        const auto harvest = BrowserCookieImport::harvest();
+        std::fprintf(stderr, "live-harvest: browsers=%d name=%s header=%d\n",
+                     static_cast<int>(harvest.browsersSearched.size()),
+                     harvest.browserName.toUtf8().constData(),
+                     static_cast<int>(harvest.cookieHeader.size()));
+        std::fprintf(stderr, "live-harvest: reason=%s\n", harvest.reason.toUtf8().constData());
+        QVERIFY2(!harvest.cookieHeader.isEmpty() || !harvest.reason.isEmpty(),
+                 "harvest() returned neither a header nor a reason");
+    }
+
     void candidatesAreAllInstalled()
     {
         REQUIRE_MACOS_SAFE_STORAGE();

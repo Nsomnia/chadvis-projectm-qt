@@ -51,6 +51,11 @@ SunoDownloader::SunoDownloader(SunoClient*,
       // The queue adopts the controller-provided manager; this is the one
       // QNetworkAccessManager for clip downloads (no ad-hoc managers here).
       queue_(std::make_unique<DownloadQueue>(networkManager, this)) {
+    // T0200: the finalize wiring is NOT test-only. It used to live in the
+    // ReplyFactory constructor, which meant the shipped downloader emitted
+    // finalizeFinished into nothing: no tags, no sidecars, no fileSaved and no
+    // auto-play for any downloaded clip.
+    wireFinalize();
     wireQueue();
 }
 
@@ -61,20 +66,7 @@ SunoDownloader::SunoDownloader(SunoDatabase& db,
       db_(db),
       audioEngine_(audioEngine),
       queue_(std::make_unique<DownloadQueue>(std::move(replyFactory), this)) {
-    // T0037: the finalize worker. Queued connection, so the handler below runs on
-    // the GUI thread where addAndPlay and the QML-facing signals belong, and Qt
-    // drops the delivery if `this` is gone by then.
-    connect(this, &SunoDownloader::finalizeFinished, this,
-            [this](const QString& clipId, const QString& destPath, bool play) {
-                if (play) {
-                    static_cast<void>(addAndPlay(fs::path(destPath.toStdString()),
-                                                 clipId.toStdString()));
-                }
-                emit fileSaved(clipId, destPath);
-            },
-            Qt::QueuedConnection);
-    finalizeThread_.setObjectName(QStringLiteral("SunoDownloader::finalize"));
-    finalizeThread_.start();
+    wireFinalize();
     wireQueue();
 }
 
@@ -96,6 +88,23 @@ SunoDownloader::~SunoDownloader() {
     // this is not a new class of loss, only a new place it can happen.
     finalizeThread_.quit();
     finalizeThread_.wait();
+}
+
+void SunoDownloader::wireFinalize() {
+    // T0037: the finalize worker. Queued connection, so the handler below runs on
+    // the GUI thread where addAndPlay and the QML-facing signals belong, and Qt
+    // drops the delivery if `this` is gone by then.
+    connect(this, &SunoDownloader::finalizeFinished, this,
+            [this](const QString& clipId, const QString& destPath, bool play) {
+                if (play) {
+                    static_cast<void>(addAndPlay(fs::path(destPath.toStdString()),
+                                                 clipId.toStdString()));
+                }
+                emit fileSaved(clipId, destPath);
+            },
+            Qt::QueuedConnection);
+    finalizeThread_.setObjectName(QStringLiteral("SunoDownloader::finalize"));
+    finalizeThread_.start();
 }
 
 void SunoDownloader::runFinalize(std::function<void()> job) {
@@ -642,7 +651,16 @@ std::optional<std::string> SunoDownloader::embeddedSunoId(const fs::path& path) 
                     // field 0 -- so toString() renders "SUNO_ID <value>" and could
                     // never equal a clip id, while [1] is exactly what the tagger
                     // put there. Reading what was written, not a rendering of it.
-                    return std::string(txxx->fieldList()[1].to8Bit());
+                    //
+                    // The size check is T0202: a frame with a description and no
+                    // value is legal ID3, and indexing [1] on it read past the end
+                    // of the list. Keep looking rather than returning -- a later
+                    // TXXX may be the well-formed one.
+                    const TagLib::StringList fields = txxx->fieldList();
+                    if (fields.size() < 2) {
+                        continue;
+                    }
+                    return std::string(fields[1].to8Bit());
                 }
             }
             return std::nullopt;

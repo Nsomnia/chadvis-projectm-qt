@@ -491,11 +491,23 @@ void SunoLibraryMutations::handleReply(QNetworkReply* reply, const MutationVerb 
         settle(verb, subjectId, MutationOutcome::Accepted, status, {});
         return;
     }
-    if (!transport.isEmpty()) {
+    // Status first, and this order is the whole fix (T0201). `errorString()` is
+    // never empty, so testing it first meant every non-2xx settled as a
+    // retryable Failed: `Rejected` was unreachable and the server's own sentence
+    // -- "Cannot make trashed clips public." -- never reached the user. A
+    // transport error is the absence of an HTTP answer, not a non-empty string.
+    if (status == 0) {
         settle(verb, subjectId, MutationOutcome::Failed, status, transport);
         return;
     }
-    settle(verb, subjectId, MutationOutcome::Rejected, status,
+    if (status >= 400 && status < 500) {
+        settle(verb, subjectId, MutationOutcome::Rejected, status,
+               rejectionReason(body, status));
+        return;
+    }
+    // 5xx and anything else the server did answer: transient on our side,
+    // retryable, but still carry the server's sentence when there is one.
+    settle(verb, subjectId, MutationOutcome::Failed, status,
            rejectionReason(body, status));
 }
 

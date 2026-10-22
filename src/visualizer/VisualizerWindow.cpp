@@ -39,7 +39,11 @@ VisualizerWindow::~VisualizerWindow() {
     // is abandoned -- leaked -- instead, and cleanup()'s destructor pass is a
     // no-op by the abandoned_ flag.
     const bool current = context_ && context_->makeCurrent(this);
-    Q_ASSERT(context_ == nullptr || current);
+    // Deliberately NOT an assert. makeCurrent fails on a normal path too --
+    // Ctrl-C in a terminal tears the surface down before the destructor runs --
+    // and asserting there turned "leak the handles" into a SIGABRT for anyone
+    // quitting the debug build from the shell. The LOG_ERROR below is the
+    // contract: the failure is reported, never swallowed.
     if (current) {
         renderer_->cleanup();
         context_->doneCurrent();

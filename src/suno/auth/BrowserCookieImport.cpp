@@ -244,10 +244,18 @@ QByteArray BrowserCookieImport::deriveChromiumKey(const QByteArray& keychainSecr
     // PBKDF2-HMAC-SHA1, "saltysalt", 1003 iterations. These are Chromium's
     // constants on macOS and are the reason the recon's freshtok.py works on
     // this machine; changing any of them yields a key that decrypts to noise.
+    // sizeof - 1, never a hand-counted length. "saltysalt" is NINE bytes, and
+    // a literal 10 handed CommonCrypto "saltysalt\0" -- including the
+    // terminator. That derived a different key than every Chromium build in
+    // existence, so every real cookie decrypted to noise and the import said
+    // "this build's format support needs updating". The synthetic round-trip
+    // test could not see it: it encrypted with the same wrong key it decrypted
+    // with. The known-answer test in test_BrowserCookieImport.cpp is the guard.
+    static constexpr char kMacSalt[] = "saltysalt";
     const int status = CCKeyDerivationPBKDF(
         kCCPBKDF2,
         keychainSecret.constData(), static_cast<size_t>(keychainSecret.size()),
-        reinterpret_cast<const unsigned char*>("saltysalt"), 10,
+        reinterpret_cast<const unsigned char*>(kMacSalt), sizeof(kMacSalt) - 1,
         kCCPRFHmacAlgSHA1, kPbkdf2Iterations,
         reinterpret_cast<unsigned char*>(key.data()), kAesKeyBytes);
     if (status != kCCSuccess) {
@@ -356,29 +364,59 @@ QByteArray BrowserCookieImport::decryptChromiumValue(const QByteArray& encrypted
 QString BrowserCookieImport::assembleCookieHeader(
     const QList<QPair<QString, QString>>& pairs)
 {
-    QList<QPair<QString, QString>> ordered = pairs;
+    // A browser stores the pair twice: host-only (`__client`) and
+    // domain-wide with an instance suffix (`__client_Jnxw-muT`), same value,
+    // and the same for `__session` and `__client_uat`. Sending both is
+    // redundant, and it was fatal to persistence: four duplicated JWT copies
+    // made the header 4695 bytes, over the 2560-byte ceiling CredentialStore
+    // enforces for Windows Credential Manager parity, so the imported session
+    // worked until the app quit and then vanished with a warning nobody reads.
+    //
+    // One cookie per family. The unsuffixed name is the shortest, and the sort
+    // below puts it first, so the host-only copy -- the more specific one --
+    // is what survives.
+    const auto family = [](const QString& name) {
+        if (name.startsWith(QLatin1String("__client_uat"))) {
+            return 1;
+        }
+        if (name.startsWith(QLatin1String("__client"))) {
+            return 0;
+        }
+        if (name.startsWith(QLatin1String("__session"))) {
+            return 2;
+        }
+        return 3;
+    };
+
+    QList<QPair<QString, QString>> ordered;
+    for (const auto& pair : pairs) {
+        if (!pair.first.isEmpty() && !pair.second.isEmpty()) {
+            ordered.push_back(pair);
+        }
+    }
     std::sort(ordered.begin(), ordered.end(),
-              [](const QPair<QString, QString>& a, const QPair<QString, QString>& b) {
-                  // __client* before __session*; within a family, the unsuffixed
-                  // name first, then shorter names before longer, which puts
-                  // `__client` ahead of `__client_Jnxw-muT` and
-                  // `__client_uat` ahead of `__client_uat_Jnxw-muT`. Fixed
-                  // order so the stored header is reproducible.
-                  if (a.first != b.first) {
-                      if (a.first.startsWith(QLatin1String("__client")) ==
-                          b.first.startsWith(QLatin1String("__client"))) {
-                          return a.first < b.first;
-                      }
-                      return a.first.startsWith(QLatin1String("__client"));
+              [&family](const QPair<QString, QString>& a, const QPair<QString, QString>& b) {
+                  // `__client` before `__client_uat` before `__session`, so the
+                  // durable credential leads; within a family the shortest name
+                  // (the unsuffixed one) wins, then alphabetical for determinism.
+                  if (family(a.first) != family(b.first)) {
+                      return family(a.first) < family(b.first);
                   }
-                  return false;
+                  if (a.first.size() != b.first.size()) {
+                      return a.first.size() < b.first.size();
+                  }
+                  return a.first < b.first;
               });
 
     QStringList parts;
+    int emittedFamily = -1;
     for (const auto& [name, value] : ordered) {
-        if (name.isEmpty() || value.isEmpty()) {
+        // Only the three Clerk families are deduplicated; anything else passes
+        // through untouched so this stays a general assembler.
+        if (family(name) < 3 && family(name) == emittedFamily) {
             continue;
         }
+        emittedFamily = family(name);
         parts.push_back(name + QLatin1Char('=') + value);
     }
     return parts.join(QStringLiteral("; "));
