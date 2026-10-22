@@ -314,6 +314,8 @@ void VideoRecorderFFmpeg::cleanup() {
     videoFrame_.reset();
     audioFrame_.reset();
     swsCtx_.reset();
+    swsSrcWidth_ = 0;
+    swsSrcHeight_ = 0;
     swrCtx_.reset();
     // The resampler's input side and anything it had resampled but not yet
     // formed into a frame belong to the recording that just ended. Leaving them
@@ -422,9 +424,17 @@ bool VideoRecorderFFmpeg::encodeVideo(const GrabbedFrame& frame,
 
   AVPixelFormat targetFmt = swPixelFormat_;
 
-  if (!swsCtx_) {
-    swsCtx_.reset(sws_getContext(frame.width,
-      frame.height,
+  // A source resize (a window dragged to another display) must rebuild the
+  // scaler: sws_scale would otherwise stride by the old width while srcLinesize
+  // reports the new one, which shears every row and raises no error at all.
+  // Both dimensions are cleared before the attempt so a failure cannot leave a
+  // key that claims a context exists.
+  if (!swsCtx_ || swsSrcWidth_ != frame.width ||
+      swsSrcHeight_ != frame.height) {
+    swsSrcWidth_ = 0;
+    swsSrcHeight_ = 0;
+    swsCtx_.reset(sws_getContext(static_cast<int>(frame.width),
+      static_cast<int>(frame.height),
       AV_PIX_FMT_RGBA,
       videoCodecCtx_->width,
       videoCodecCtx_->height,
@@ -433,6 +443,18 @@ bool VideoRecorderFFmpeg::encodeVideo(const GrabbedFrame& frame,
       nullptr,
       nullptr,
       nullptr));
+    if (!swsCtx_) {
+      // sws_scale with a null context is a null dereference, and every other
+      // allocation in this file is checked for exactly this reason. Dropping the
+      // frame is the honest failure: a resized capture that cannot be scaled
+      // would otherwise be written with the previous geometry.
+      LOG_ERROR("Failed to create the video scaler ({}x{} -> {}x{}); frame dropped",
+                frame.width, frame.height, videoCodecCtx_->width,
+                videoCodecCtx_->height);
+      return false;
+    }
+    swsSrcWidth_ = frame.width;
+    swsSrcHeight_ = frame.height;
   }
 
   sws_scale(swsCtx_.get(),
@@ -854,8 +876,10 @@ Result<void> VideoRecorderFFmpeg::initVideoStream(
       ffmpegError(ret));
   }
 
-  avcodec_parameters_from_context(videoStream_->codecpar,
-    videoCodecCtx_.get());
+  if (avcodec_parameters_from_context(videoStream_->codecpar,
+                                      videoCodecCtx_.get()) < 0) {
+    return Result<void>::err("Failed to copy the video codec parameters to the stream");
+  }
   videoStream_->time_base = videoCodecCtx_->time_base;
 
   videoFrame_.reset(av_frame_alloc());
@@ -880,12 +904,24 @@ Result<void> VideoRecorderFFmpeg::initVideoStream(
 
   if (hwFramesCtx_) {
     hwFrame_.reset(av_frame_alloc());
+    if (!hwFrame_)
+      return Result<void>::err("Failed to allocate the HW frame");
     hwFrame_->format = videoCodecCtx_->pix_fmt;
     hwFrame_->width = videoCodecCtx_->width;
     hwFrame_->height = videoCodecCtx_->height;
     ret = av_hwframe_get_buffer(hwFramesCtx_.get(), hwFrame_.get(), 0);
     if (ret < 0) {
-      LOG_WARN("Failed to allocate HW frame: {}", ffmpegError(ret));
+      // Fails the recording rather than logging and carrying on. The codec is
+      // already open on the hardware pixel format, so there is no software
+      // fallback left to take: encoding the software frame would be rejected,
+      // and the old warning path left both pointers non-null, which is exactly
+      // the condition encodeVideo tests to decide it may call
+      // av_hwframe_transfer_data -- on a frame whose buffers were never
+      // allocated.
+      hwFrame_.reset();
+      hwFramesCtx_.reset();
+      return Result<void>::err("Failed to allocate HW frame: " +
+                               ffmpegError(ret));
     }
   }
 
@@ -972,8 +1008,11 @@ Result<void> VideoRecorderFFmpeg::initAudioStream(
     if (!audioStream_)
         return Result<void>::err("Failed to create audio stream");
 
-    avcodec_parameters_from_context(audioStream_->codecpar,
-                                    audioCodecCtx_.get());
+    if (avcodec_parameters_from_context(audioStream_->codecpar,
+                                        audioCodecCtx_.get()) < 0) {
+        return Result<void>::err(
+            "Failed to copy the audio codec parameters to the stream");
+    }
     audioStream_->time_base = audioCodecCtx_->time_base;
 
     audioFrame_.reset(av_frame_alloc());
@@ -1457,8 +1496,15 @@ void VideoRecorderFFmpeg::initSubtitleStream(std::string_view assDocument) {
     LOG_WARN("Karaoke track: the muxer refused a third stream");
     return;
   }
-  avcodec_parameters_from_context(track->stream->codecpar,
-                                 track->codecCtx.get());
+  if (avcodec_parameters_from_context(track->stream->codecpar,
+                                      track->codecCtx.get()) < 0) {
+    // Same policy as every other failure in this function: no subtitle outcome
+    // may fail a recording. An unpopulated codecpar would fail
+    // avformat_write_header, which fails *everything*, so the stream goes with
+    // the track.
+    LOG_WARN("Karaoke track: could not describe the subtitle stream");
+    return;
+  }
   track->stream->time_base = kSubtitleTimeBase;
   // Karaoke is the point of the track, so it has to be on without the user
   // hunting for it in a track menu. Without this it would be *off*: Matroska
@@ -1565,8 +1611,18 @@ Result<void> VideoRecorderFFmpeg::initHWFrames(const EncoderSettings& settings) 
     return Result<void>::err("Failed to init HW frames: " + ffmpegError(ret));
   }
 
+  // The codec needs its own reference; without one it would hold a pointer into
+  // a context this object frees. A null here is an allocation failure, and the
+  // recording would open on a hardware format with no frames context -- a
+  // failure at avcodec_open2 with a message that names the wrong thing.
+  AVBufferRef* codecRef = av_buffer_ref(framesRef);
+  if (!codecRef) {
+    av_buffer_unref(&framesRef);
+    return Result<void>::err(
+        "Failed to reference the HW frames context for the codec");
+  }
   hwFramesCtx_.reset(framesRef);
-  videoCodecCtx_->hw_frames_ctx = av_buffer_ref(framesRef);
+  videoCodecCtx_->hw_frames_ctx = codecRef;
 
   return Result<void>::ok();
 }

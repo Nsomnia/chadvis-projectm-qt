@@ -1,0 +1,9 @@
+2026-10-22T10:30:00Z  CLAIM    T0161 a failed av_hwframe_get_buffer left hwFramesCtx_ and hwFrame_ non-null, which is exactly the condition encodeVideo tests before calling av_hwframe_transfer_data -- on a frame whose buffers were never allocated
+2026-10-22T10:30:00Z  CHANGE   src/recorder/VideoRecorderFFmpeg.cpp initVideoStream: the failure now resets both pointers and returns err. Failing the recording is the only correct outcome: the codec is already open on the hardware pixel format, so a software frame has no path left, and the old warning path selected the transfer branch on unallocated buffers.
+2026-10-22T10:30:00Z  CHANGE   The same function now checks av_frame_alloc for hwFrame_ (it was dereferenced immediately).
+2026-10-22T10:30:00Z  CHANGE   initHWFrames: av_buffer_ref is checked. A null ref used to be assigned to videoCodecCtx_->hw_frames_ctx and only surfaced later as avcodec_open2 complaining about a missing hardware frames reference, which names the wrong failure.
+2026-10-22T10:30:00Z  CHANGE   All three avcodec_parameters_from_context calls are checked. Video and audio return err; the karaoke/subtitle one (a void function by design, because no subtitle outcome may fail a recording) logs and drops the track. An unpopulated codecpar fails avformat_write_header, which fails the entire recording.
+2026-10-22T10:30:00Z  VERIFY   ./build.sh -> DONE, no new warnings.
+2026-10-22T10:30:00Z  VERIFY   unit_tests (no filter) -> exit 0, 38 suites -> 0; ctest --test-dir build-fast/tests -j3 -> 100% tests passed, 0 failed out of 14.
+2026-10-22T10:30:00Z  NOT-VERIFIED  The hardware branch itself. There is no hardware video encoder on this box (settings.video.isHardwareAccelerated() is false here), so the changed code compiles and is reviewed but has not executed; it is a fail-closed tightening of an existing opportunistic path, not a behaviour change on the software path.
+2026-10-22T10:30:00Z  COMMIT   TODO.md T0161 -> [x]

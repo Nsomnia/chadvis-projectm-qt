@@ -1835,6 +1835,67 @@ private slots:
         }
     }
 
+    void aSourceResizeRebuildsTheScaler() {
+        // The scaler used to be built once from the first frame's dimensions and
+        // reused for the rest of the recording. A window dragged to another
+        // display changes the grabbed frame's size, and the stale context then
+        // strides by the old width while srcLinesize reports the new one: rows
+        // shear, no call fails, nothing is logged. The observation is the bottom
+        // band -- a 96x48 source with white/black/white horizontal thirds
+        // reaches a 32x32 encoder, so a context still keyed on 32x32 reads only
+        // the top two thirds and the output's bottom stays black.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        VideoRecorderFFmpeg encoder;
+        QVERIFY(encoder.init(testSettings(
+            QString::fromStdString(
+                (fs::path(dir.path().toStdString()) / "resize.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+        const fs::path out = fs::path(encoder.getOutputPath());
+
+        u64 bytesWritten = 0;
+        QVERIFY(encoder.encodeVideo(solidFrame(128), bytesWritten));
+
+        GrabbedFrame wide;
+        wide.width = 96;
+        wide.height = 48;
+        wide.timestamp = kOriginUs + kIntervalUs;
+        wide.data.resize(static_cast<usize>(wide.width) * wide.height * 4);
+        for (u32 y = 0; y < wide.height; ++y) {
+            const u8 value = (y < 16 || y >= 32) ? 235 : 16;
+            for (u32 x = 0; x < wide.width; ++x) {
+                const usize at = (static_cast<usize>(y) * wide.width + x) * 4;
+                wide.data[at] = value;
+                wide.data[at + 1] = value;
+                wide.data[at + 2] = value;
+                wide.data[at + 3] = 255;
+            }
+        }
+        QVERIFY(encoder.encodeVideo(wide, bytesWritten));
+        encoder.flush(bytesWritten);
+        encoder.cleanup();
+
+        LumaFrame second;
+        QVERIFY(readLumaFrame(out, 1, second));
+        QCOMPARE(second.width, 32);
+        QCOMPARE(second.height, 32);
+        const int row = second.height - 4;
+        int bright = 0;
+        for (int x = 0; x < second.width; ++x) {
+            if (second.samples[static_cast<usize>(row * second.width + x)] > 128)
+                ++bright;
+        }
+        QVERIFY2(bright == second.width,
+                 qPrintable(QStringLiteral(
+                     "the bottom band of the resized source never reached the "
+                     "encoder: %1 of %2 luma samples in output row %3 are dark, "
+                     "which is what a scaler still keyed on the first frame's "
+                     "32x32 source produces from a 96x48 one")
+                                .arg(bright)
+                                .arg(second.width)
+                                .arg(row)));
+    }
+
     void oneSecondOfDeviceRateAudioBecomesOneSecondOfEncodedAudio() {
         // A 44.1 kHz device into a 48 kHz encoder. The resampler used to be
         // configured with in_rate == out_rate (both settings.audio.sampleRate),

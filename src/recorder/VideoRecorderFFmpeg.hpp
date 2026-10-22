@@ -417,6 +417,12 @@ private:
   AVPixelFormat swPixelFormat_{AV_PIX_FMT_YUV420P};
 
   SwsContextPtr swsCtx_;
+  /// The source size swsCtx_ was built for. A window dragged to another display
+  /// changes the grabbed frame's dimensions mid-recording, and a scaler keyed on
+  /// the first frame then strides by the old width while srcLinesize reports the
+  /// new one -- sheared rows, not a visible error.
+  u32 swsSrcWidth_{0};
+  u32 swsSrcHeight_{0};
   SwrContextPtr swrCtx_;
 
   /// The input side swrCtx_ was built for. Zero until the first

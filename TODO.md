@@ -682,14 +682,22 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `slots_.push_back` (:512); if that reallocates, `slot` and `index` are stale before
       `slots_.erase` at :854. Survives today only because the queue's own `pumping_` guard
       suppresses re-entry on this exact path. Fix: erase the slot before reporting failure.
-- [ ] T0160 **`sws_getContext` return is unchecked, then dereferenced; and the context is keyed on the first frame only** (`src/recorder/VideoRecorderFFmpeg.cpp:413-426`) #risk-high
+- [x] T0160 **`sws_getContext` return is unchecked, then dereferenced; and the context is keyed on the first frame only** (`src/recorder/VideoRecorderFFmpeg.cpp:413-426`) #risk-high
       The result is `reset()` into `swsCtx_` with **no null test**, and `sws_scale(swsCtx_.get(), …)`
       runs on the next line. Every other allocation in this file is checked, and the comment at
       :771-783 explains exactly why this one must be too. Separately, the context is created
       once (`if (!swsCtx_)`) from the *first* frame's dimensions, so a mid-recording resize feeds
       `sws_scale` a source linesize of 0 for the new width while the scaler strides by the old
       one. Fix: null-check, and key the context on `(frame.width, frame.height)`.
-- [ ] T0161 **`av_hwframe_get_buffer` failure leaves a half-built `hwFrame_`** (`src/recorder/VideoRecorderFFmpeg.cpp:790-793`) #risk-high
+      **Closed.** A failed `sws_getContext` now drops that frame and logs — `sws_scale` on a null
+      context is a null dereference — and the context is keyed on the source size
+      (`swsSrcWidth_`/`swsSrcHeight_`), rebuilt when a capture arrives at a different one; both
+      keys are cleared before the attempt and by `cleanup`. `aSourceResizeRebuildsTheScaler`
+      pins the second half with pixels, not a branch: a 96x48 source whose horizontal thirds are
+      white/black/white, encoded to 32x32, must leave the output's bottom row white — a context
+      still keyed on the first 32x32 frame never reads past the source's top two thirds.
+      VERIFY in `STATUS/T0160.log`.
+- [x] T0161 **`av_hwframe_get_buffer` failure leaves a half-built `hwFrame_`** (`src/recorder/VideoRecorderFFmpeg.cpp:790-793`) #risk-high
       On failure only a `LOG_WARN` is emitted, but `hwFramesCtx_` stays non-null, so
       `encodeVideo:438` takes the `hwFramesCtx_ && hwFrame_` branch and calls
       `av_hwframe_transfer_data` on a frame whose buffers are null. Fix: reset the context on
@@ -697,7 +705,16 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       is ignored at three sites (`:761, :879, :1311`), leaving an `AVStream` with an unpopulated
       `codecpar` — exactly the failure the surrounding comments call fatal to
       `avformat_write_header`.
-- [ ] T0162 **`encodeAudio` is O(n²) and strided by the wrong channel count** (`src/recorder/VideoRecorderFFmpeg.cpp:581-588`) #performance #risk-medium
+      **Closed.** A failed `av_hwframe_get_buffer` resets `hwFrame_` and `hwFramesCtx_` and fails
+      the recording: the codec is already open on the hardware pixel format, so there is no
+      software fallback left to take, and leaving both non-null is what selected the transfer
+      branch. `av_buffer_ref` is checked (a null would have opened the codec with no frames
+      context, reporting a misleading `avcodec_open2` failure), and all three
+      `avcodec_parameters_from_context` calls are checked: video and audio fail the recording,
+      the subtitle one drops the track — an unpopulated `codecpar` fails every recording at
+      `avformat_write_header`, and no subtitle outcome may do that. NOT-VERIFIED: the
+      hardware path itself, which this machine cannot exercise; see `STATUS/T0161.log`.
+- [x] T0162 **`encodeAudio` is O(n²) and strided by the wrong channel count** (`src/recorder/VideoRecorderFFmpeg.cpp:581-588`) #performance #risk-medium
       Each iteration builds a `std::vector<f32>` from the front of `buffer` then
       `buffer.erase(buffer.begin(), …)`, shifting the whole tail — ~47 allocations and 47
       full-tail memmoves per second of audio at 48 kHz stereo. Use a cursor, as
@@ -706,6 +723,12 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       while `swr_convert` reads `frameSize` samples from the layout — for a 1-channel encoder
       (`EncoderSettings.hpp:108` allows any `u32`) the slice is twice the input and mis-strided.
       Derive the stride from `audioCodecCtx_->ch_layout.nb_channels`.
+      **Closed by the T0153 rewrite.** There is no per-frame input slice left: `encodeAudio`
+      converts the batch once, then cuts whole frames out of a per-plane FIFO whose stride is
+      the encoder's `ch_layout.nb_channels` and sample format. The caller's `channels` describes
+      only the *input* buffer, which is correct — `AudioQueue` stores everything as stereo after
+      conversion — and it reaches `configureResampler` as the input side. The residual erase is
+      one frame per frame (≤ a few KB), not a full-tail shift per iteration.
 - [ ] T0163 **Stereo→mono downmix leaves libswresample's default matrix** (`src/recorder/AudioFileDecoder.cpp:211`) #risk-medium
       `swr_set_matrix` is applied only for `inChannels == 1 && spec.channels == 2`; the mirror
       case (stereo source, `job.audioChannels == 1`, which `RenderJob.cpp:444` explicitly
