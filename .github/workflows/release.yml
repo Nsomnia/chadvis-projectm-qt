@@ -75,15 +75,48 @@
 
 name: release
 
+# HOW A BUILD IS SHIPPED BY AN AGENT (workflow_dispatch)
+#   `./scripts/release.sh` is the one command. It refuses to run unless the
+#   pushed HEAD is green on both gates, then dispatches this workflow with an
+#   explicit `tag` and the verified `ref`; the tag is created here, pointing at
+#   the commit that was actually built and tested. Nothing is tagged locally,
+#   which is why the dispatch path cannot publish a different commit than the
+#   one the gate passed.
+#
+#   The tag carries the whole policy:
+#     v1.2.0                 -> a release, marked latest
+#     v1.2.0-build.<sha>     -> a pre-release, never latest
+#   A hyphen after the version is the only signal, so `--prerelease` is
+#   derived from it rather than from an input somebody can forget.
+#
+#   Dispatch is not a CI backdoor: the same build, the same 11 headless
+#   entries, the same packaging. It exists because `GITHUB_TOKEN` cannot
+#   trigger a tag-push workflow, so a workflow that tagged and hoped for a
+#   second run would silently publish nothing.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v1.2.0-build.abc1234 (v<version>[-<prerelease>])'
+        required: true
+        type: string
+      ref:
+        description: 'Commit SHA to tag (leave empty for the dispatched ref tip)'
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 env:
   BUILD_TYPE: Release
+  # `github.event.inputs` is empty on push, so this is the tag either way.
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  # What the release is built from and where a new tag points. A dispatch can
+  # name a SHA; a tag push is that tag's commit.
+  TARGET_REF: ${{ github.event.inputs.ref || github.sha }}
 
 jobs:
   package:
@@ -118,23 +151,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          ref: ${{ env.TARGET_REF }}
           persist-credentials: false
 
-      # A tag that disagrees with version.txt publishes a mislabelled artifact.
-      # version.txt is the single source of truth (the root CMakeLists
-      # validates it into PROJECT_VERSION), so the check is version.txt against
-      # the tag rather than two copies of the version.
-      - name: Verify the tag matches version.txt
+      # The tag carries a base version plus an optional `-<prerelease>`. Only
+      # the base is compared: `v1.2.0` and `v1.2.0-build.abc1234` are both
+      # built from version.txt 1.2.0, and testing the whole tag against it
+      # would refuse every pre-release.
+      - name: Resolve the tag and check it against version.txt
         run: |
           set -euo pipefail
-          want="${GITHUB_REF_NAME#v}"
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "::error::'$TAG' is not a version tag. Expected v1.2.3 or v1.2.3-something."
+              exit 1
+              ;;
+          esac
+          base="${TAG#v}"
+          base="${base%%-*}"
           have="$(tr -d '[:space:]' < version.txt)"
-          if [ "$want" != "$have" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME says ${want} but version.txt says ${have}."
+          if [ "$base" != "$have" ]; then
+            echo "::error::Tag $TAG says version ${base} but version.txt says ${have}."
             echo "::error::Fix the version or the tag. Publishing a mislabelled artifact is worse than not publishing."
             exit 1
           fi
-          echo "Tag and version.txt agree: $have"
+          echo "Tag $TAG is version.txt $have"
+          echo "TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       # See build.yml for the full package -> cmake/Dependencies.cmake probe map.
       # ccache IS kept here (unlike tsan.yml): no sanitizer here, and it is
@@ -296,7 +339,7 @@ jobs:
             exit 0
           fi
           echo "::error title=macOS bundle missing::CMake's DragNDrop generator packages a MACOSX_BUNDLE, and the chadvis-projectm-qt target in cmake/TargetSetup.cmake does not set MACOSX_BUNDLE."
-          echo "::error::Without it this job would publish a .dmg of loose dylibs that cannot be launched. The macOS leg is marked required:false, so the Linux .tar.gz still releases and these notes will say no macOS artifact is attached."
+          echo "::error::Without it this job would publish a .dmg of loose dylibs that cannot be launched. The macOS leg is required, so this stops the release instead of shipping a Linux-only one with no explanation."
           echo "::error::Fix: set_target_properties(chadvis-projectm-qt PROPERTIES MACOSX_BUNDLE TRUE) in cmake/TargetSetup.cmake, then re-run this workflow. No change here is needed."
           exit 1
 
@@ -360,12 +403,28 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # The Windows artifact is built by the Windows gate itself, not by a second
+  # copy of its 300 lines: `windows.yml` is a reusable workflow, and calling it
+  # here puts its windeployqt zip in this run's artifact store where the
+  # publish job can collect it with the same `chadvis-*` pattern.
+  #
+  # Its failure does NOT block the other platforms: a Windows runner hiccup
+  # should not withhold a working Linux and macOS build. `scripts/release.sh`
+  # is what makes it load-bearing -- it fails unless all three archives are
+  # attached, and a re-dispatch is idempotent.
+  windows:
+    name: windows package
+    uses: ./.github/workflows/windows.yml
+    permissions:
+      contents: read
+
   publish:
     name: publish release
-    needs: [package]
-    # Runs even when a non-required leg (macOS) failed, so a missing macOS
-    # bundle does not also cost the Linux artifact. `!cancelled()` still means
-    # a cancelled or timed-out workflow publishes nothing.
+    needs: [package, windows]
+    # Runs even when the Windows leg failed, so a runner hiccup there does not
+    # cost the Linux and macOS artifacts; the step below enforces what a given
+    # tag is allowed to ship without. `!cancelled()` still means a cancelled or
+    # timed-out workflow publishes nothing.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     permissions:
@@ -376,7 +435,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          ref: ${{ env.TARGET_REF }}
           persist-credentials: false
+
+      # GITHUB_ENV does not cross jobs, so the SHA the release points at is
+      # resolved here from the tree that was checked out rather than trusted
+      # from the dispatch input.
+      - name: Resolve the target commit
+        run: echo "TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Download packaged artifacts
         uses: actions/download-artifact@v8
@@ -389,6 +455,10 @@ jobs:
       # artifact here rather than trusting the needs graph is deliberate: with
       # a matrix, `needs.package.result` is an aggregate and cannot say which
       # leg failed.
+      #
+      # Windows is enforced only on a real release: a per-commit pre-release
+      # may ship without it, and `scripts/release.sh` is what refuses to call
+      # the job done until all three are attached.
       - name: Refuse to publish without the Linux artifact
         run: |
           set -euo pipefail
@@ -398,6 +468,15 @@ jobs:
             exit 1
           fi
           echo "Linux artifact present."
+          if ! compgen -G "dist/*windows*.zip" > /dev/null; then
+            case "$TAG" in
+              v[0-9]*.[0-9]*.[0-9]*-*)
+                echo "::warning title=no Windows artifact::This is a pre-release, so it publishes without one. Re-dispatch when the Windows lane is green." ;;
+              *)
+                echo "::error title=refusing to publish::A release must carry the Windows zip. Re-dispatch once the Windows lane is green; the upload is idempotent."
+                exit 1 ;;
+            esac
+          fi
 
       # Deliberately before the notes step: this is the "what am I about to ship"
       # view in the log, and it must show whatever actually arrived rather
@@ -421,8 +500,18 @@ jobs:
           echo "Release assets: ${assets[*]}"
           printf '%s\n' "${assets[@]}" > "$RUNNER_TEMP/assets.txt"
 
+          # The Unreleased section is the human answer to "what is in this
+          # build", and it lives in one owning file. Truncated because a
+          # changelog entry is an essay and a release page is a summary; the
+          # link at the bottom goes to the rest.
+          changelog="$(awk '
+            /^## \[Unreleased\]/ { f=1; next }
+            /^## \[/ { f=0 }
+            f && n < 100 { print; n++ }
+          ' CHANGELOG.md)"
+
           {
-            echo "ChadVis ${version} — ${GITHUB_REF_NAME}"
+            echo "ChadVis ${version} — ${TAG}"
             echo
             echo "---"
             echo
@@ -449,18 +538,31 @@ jobs:
             done
             echo
 
-            if compgen -G "dist/*.app" > /dev/null || compgen -G "dist/*.dmg" > /dev/null; then
+            if compgen -G "dist/*.dmg" > /dev/null; then
               echo "The macOS build is \`ChadVis.app\`; open the \`.dmg\` and drag it to"
               echo "/Applications. It is unsigned, so expect the Gatekeeper prompt above."
             else
               echo "### No macOS artifact in this release"
               echo
-              echo "The macOS packaging leg did not complete. This is expected while the"
-              echo "\`chadvis-projectm-qt\` target in \`cmake/TargetSetup.cmake\` does not carry"
-              echo "\`MACOSX_BUNDLE TRUE\`: CMake's DragNDrop generator packages a bundle, so"
-              echo "without that property the output would be a directory of loose dylibs"
-              echo "that cannot be launched. Rather than ship that, the leg stops and says"
-              echo "so. Linux users are unaffected."
+              echo "The macOS packaging leg did not complete. Its job log names the"
+              echo "failing step; a release built without it is a Linux-only release"
+              echo "and says so here rather than leaving the .dmg's absence to be"
+              echo "discovered from the asset list."
+            fi
+            echo
+
+            if compgen -G "dist/*windows*.zip" > /dev/null; then
+              echo "### Windows"
+              echo
+              echo "Unzip \`chadvis-windows-x64.zip\` anywhere and run"
+              echo "\`chadvis-projectm-qt.exe\`. Qt and the vcpkg runtime DLLs are inside,"
+              echo "so nothing has to be installed first."
+            else
+              echo "### No Windows artifact in this release"
+              echo
+              echo "The Windows lane did not produce its zip. That leg is reported but"
+              echo "does not block the other platforms; re-dispatch the release once it"
+              echo "is green and the upload is idempotent."
             fi
 
             echo
@@ -473,7 +575,17 @@ jobs:
             echo "drawable, and \`integration_tests\` also constructs a real \`AudioEngine\`,"
             echo "so they are run and reported but not allowed to block a release."
             echo
-            echo "Built from commit \`${GITHUB_SHA}\`."
+            echo "Built from commit \`${TARGET_SHA}\`."
+            echo
+            if [ -n "$changelog" ]; then
+              echo "---"
+              echo
+              echo "## What changed since the last release"
+              echo
+              echo "$changelog"
+              echo
+              echo "_The full history is [\`CHANGELOG.md\`](https://github.com/${GITHUB_REPOSITORY}/blob/${TARGET_SHA}/CHANGELOG.md)._"
+            fi
           } > release-notes.md
 
           cat release-notes.md
@@ -481,11 +593,20 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           mapfile -t assets < "$RUNNER_TEMP/assets.txt"
           [ "${#assets[@]}" -ge 1 ] || { echo "::error::no release assets"; exit 1; }
+
+          # A hyphen after the version is the entire pre-release policy.
+          # Without it GitHub marks the release "Latest", and a per-commit
+          # build must never do that.
+          pre_args=()
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*-*) pre_args=(--prerelease) ;;
+            *) pre_args=(--latest) ;;
+          esac
+
           # --clobber makes a re-run idempotent instead of failing on "release
           # already exists", which is the difference between a workflow someone
           # can re-run after a flaky runner and one that needs a new tag every
@@ -493,12 +614,23 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG already exists — uploading over it."
             gh release upload "$TAG" "${assets[@]}" --clobber
-            gh release edit "$TAG" --title "$TAG" --notes-file release-notes.md
+            gh release edit "$TAG" --title "$TAG" \
+              --notes-file release-notes.md "${pre_args[@]}"
           else
-            gh release create "$TAG" "${assets[@]}" \
-              --title "$TAG" \
-              --notes-file release-notes.md \
-              --target "$GITHUB_SHA" \
-              --verify-tag
+            # A tag push has a tag to verify; a dispatch does not, so it names
+            # the commit explicitly and lets gh create the tag there.
+            if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+              gh release create "$TAG" "${assets[@]}" \
+                --title "$TAG" \
+                --notes-file release-notes.md \
+                --verify-tag \
+                "${pre_args[@]}"
+            else
+              gh release create "$TAG" "${assets[@]}" \
+                --title "$TAG" \
+                --notes-file release-notes.md \
+                --target "$TARGET_SHA" \
+                "${pre_args[@]}"
+            fi
           fi
           echo "Published: $(gh release view "$TAG" --json url --jq .url)"

@@ -78,6 +78,24 @@ when reading a badge:
   `./scripts/check-workflows.py` after touching `.github/workflows/`; it catches duplicate
   keys, tab indentation, and a missing `jobs:`.
 
+## Shipping executables
+
+`./scripts/release.sh` is the only correct way, and it is one command:
+
+```bash
+./scripts/release.sh            # pre-release of the pushed HEAD; waits and verifies
+./scripts/release.sh --dry-run  # every check, no dispatch
+./scripts/release.sh --tag v1.2.0   # real release, marked "Latest"
+```
+
+It refuses a dirty tree, a HEAD that is not `origin/main`, an empty `[Unreleased]`
+section, a HEAD whose `build` or `windows` gate is not green, and a second release run.
+Then it dispatches `release.yml` pinned to that commit, which builds Release on Linux,
+macOS and Windows, runs the 11 headless entries, and creates the tag at the commit it
+built. A hyphen after the version (`v1.2.0-build.<sha>`) is a pre-release and never
+"Latest". Dependabot does not build anything — it only bumps action versions.
+[`docs/dev/RELEASING.md`](docs/dev/RELEASING.md) owns the full rule.
+
 ## Do not
 
 * **Never commit credentials.** No raw captures, cookies, tokens, account or clip identifiers,
