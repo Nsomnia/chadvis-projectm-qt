@@ -674,14 +674,22 @@ bool decryptMediaBody(const fs::path& path, const ContentKey& key) {
         stream = std::make_unique<CtrStream>(std::move(candidate));
     }
 
-    QFile source(QString::fromStdString(path.string()));
-    if (!source.open(QIODevice::ReadOnly)) {
-        LOG_ERROR("SunoDownloader: cannot read {} to decrypt it", path.string());
-        return false;
-    }
-
     const fs::path target = path.string() + ".decrypting";
+    // The whole read/write pass is its own scope, and the upload of the
+    // decrypted file happens only after BOTH handles are closed. That is not
+    // tidiness: Windows refuses to remove or rename a file that still has an
+    // open handle, so the previous version -- which swapped the file in while
+    // `source` was still open -- failed every encrypted download with
+    // "Access is denied" on that platform while passing on POSIX. The
+    // encrypted-body test is the regression guard; it is the reason the
+    // Windows lane was red.
     {
+        QFile source(QString::fromStdString(path.string()));
+        if (!source.open(QIODevice::ReadOnly)) {
+            LOG_ERROR("SunoDownloader: cannot read {} to decrypt it", path.string());
+            return false;
+        }
+
         QFile output(QString::fromStdString(target.string()));
         if (!output.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             LOG_ERROR("SunoDownloader: cannot write {}", target.string());

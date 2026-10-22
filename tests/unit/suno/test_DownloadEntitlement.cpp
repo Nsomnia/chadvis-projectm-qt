@@ -544,7 +544,7 @@ private slots:
         QCOMPARE(result->clipId, std::string("locked-remix"));
         QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);
         QVERIFY(fixture.succeedTransfer(QStringLiteral("locked-remix")));
-        QCOMPARE(saved.count(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 5000);
 
         // The notice exists, and it is the reason-carrying one.
         QCOMPARE(SunoDownloader::downloadProductLock(clip),
@@ -564,7 +564,7 @@ private slots:
         QVERIFY2(result.has_value(), "a reasonless download-product lock refused the clip");
         QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);
         QVERIFY(fixture.succeedTransfer(QStringLiteral("locked-quiet")));
-        QCOMPARE(saved.count(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 5000);
 
         QCOMPARE(SunoDownloader::downloadProductLock(clip),
                  std::optional<QString>(kLockNoReason));
@@ -638,6 +638,55 @@ private slots:
         QVERIFY(fixture.server().requests.empty());
     }
 
+    /// THE regression guard for the ABSENT field, which must keep behaving as
+    /// it always did: the clip proceeds to a real transfer.
+    ///
+    /// The second half is the ordering half: an absent clip whose media the
+    /// format gate rejects still gets the FORMAT sentence, which can only come
+    /// from a later gate. Asserting "not refused by the lock" alone would pass
+    /// even if some other gate had refused it.
+    void absentEntitlementIsNotARefusal() {
+        EntitlementConfigGuard config;
+        Fixture fixture;
+        QVERIFY(fixture.valid());
+        QSignalSpy saved(&fixture.downloader(), &SunoDownloader::fileSaved);
+
+        SunoClip legacy = fetchableClip("legacy-absent", "Legacy Absent");
+        QVERIFY(!legacy.is_download_unlocked.has_value());
+        auto allowed = fixture.downloader().download(legacy);
+        if (!allowed) {
+            QFAIL(qPrintable(QStringLiteral("a clip with no entitlement field was refused: %1")
+                                 .arg(allowed.error())));
+        }
+        QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);
+        QVERIFY(fixture.succeedTransfer(QStringLiteral("legacy-absent")));
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 5000);
+        QVERIFY(!SunoDownloader::downloadProductLock(legacy).has_value());
+
+        auto reachedFormatGate = fixture.downloader().download(opusOnlyClip("legacy-opus"));
+        QVERIFY(!reachedFormatGate.has_value());
+        QCOMPARE(reachedFormatGate.error(), kRefusalUnfetchableMedia);
+        QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);  // still just the one
+    }
+
+    /// An explicit grant behaves exactly like an absent field: a transfer.
+    void unlockedClipProceeds() {
+        EntitlementConfigGuard config;
+        Fixture fixture;
+        QVERIFY(fixture.valid());
+        QSignalSpy saved(&fixture.downloader(), &SunoDownloader::fileSaved);
+
+        SunoClip granted = fetchableClip("granted", "Granted");
+        granted.is_download_unlocked = true;
+        auto result = fixture.downloader().download(granted);
+        QVERIFY(result.has_value());
+        QCOMPARE(result->clipId, std::string("granted"));
+        QVERIFY(!result->reusedOnDisk);
+        QCOMPARE(static_cast<int>(fixture.server().requests.size()), 1);
+        QVERIFY(fixture.succeedTransfer(QStringLiteral("granted")));
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 5000);
+    }
+
     /// The already-on-disk shortcut is reachable for a locked clip: the user
     /// already holds the bytes, so a lock on the download product cannot be a
     /// reason to withhold the file from them.
@@ -679,7 +728,7 @@ private slots:
         auto allowed = fixture.downloader().download(fetchableClip("allowed", "Shared Title"));
         QVERIFY(allowed.has_value());
         QVERIFY(fixture.succeedTransfer(QStringLiteral("allowed")));
-        QCOMPARE(saved.count(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 5000);
         const QString landed = saved.takeFirst().at(1).toString();
         QVERIFY2(QFileInfo(landed).fileName() == QStringLiteral("Shared Title.mp3"),
                  qPrintable(QStringLiteral("the refused clip claimed a destination the allowed "
