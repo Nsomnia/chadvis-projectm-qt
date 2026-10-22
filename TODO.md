@@ -1281,6 +1281,12 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       (mp4/webm) that decides the file extension, and a selection that prefers an encrypted
       entry and falls back to the old mp3 path. Fail closed with a reason: the GCM tag and
       the container magic are the two checks that make "no playable media" honest.
+      **Progress:** the crypto is done and verified -- `src/suno/MangoCrypto.{hpp,cpp}` holds
+      the AES-GCM unwrap and the AES-128-CTR stream, pinned by the published NIST SP 800-38D
+      vectors and by WebCrypto-generated ones (`tests/unit/suno/test_MangoCrypto.cpp`, 18
+      assertions). The AES block cipher is libavutil's, so no new native dependency. Left:
+      the rights HTTP call, the downloader's selection and decrypt step, and the container
+      sniff. `STATUS/T0317.log`.
 - [ ] T0267 **Like/unlike, trash/restore, permanent delete: NO verb, NO endpoint** (`src/suno/`) (capture-gated)
       Deliberate — no captured contract; `POST /api/clips/delete/` 404'd. DB *stores* `is_liked`/`is_trashed`, so read side implies verbs that don't exist.
 - [ ] T0268 **Clip rename: NO clip-title rename verb** (`src/suno/`) (capture-gated)
