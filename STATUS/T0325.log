@@ -1,0 +1,8 @@
+2026-10-22T17:35:00Z  CLAIM    remove the duplicate QML loading watchdog that clears a healthy sync
+2026-10-22T17:35:00Z  EVIDENCE user log 10:46-10:48: `LibraryView: watchdog clearing stuck loading after 15s` at ~10:47:26, ~10:47:42, ~10:48:10, while SunoLibraryManager delivered a page every ~2.8 s. The library has 2,147 clips (~108 pages), so a multi-minute sync is normal.
+2026-10-22T17:35:00Z  ROOT     LibraryView.qml declared a one-shot 15 s QML Timer on SunoBridge.loading. It is not restarted by progress, so it fires on the first page boundary of a healthy sync and clears the spinner; the next page sets loading again and restarts it. SunoBridge already has a 15 s watchdog that IS restarted by every page request and every delivered page (SunoBridge.cpp:216-222, 951).
+2026-10-22T17:35:00Z  FIX      src/qml/views/LibraryView.qml: delete the QML Timer. clearLoading() remains for the bridge's own watchdog and the failure paths.
+2026-10-22T17:36:00Z  VERIFY   scripts/lint-qml.sh -> "qmllint: no blocking problems".
+2026-10-22T17:36:00Z  VERIFY   ./build.sh --fast --tests; ctest --test-dir build-fast/tests -j3 -> integration_tests (TestQmlStartup) Passed and 14/14 overall.
+2026-10-22T17:36:00Z  NOT-VERIFIED The 108-page sync itself: MT-001-D4.5's five-minute run. The duplicate warning is gone by construction.
+2026-10-22T17:36:00Z  COMMIT   TODO.md T0325 -> [x]; CHANGELOG.md Unreleased/Fixed.

@@ -614,17 +614,11 @@ Item {
             SunoBridge.refreshLibrary(1)
     }
 
-    // 15 s fallback: if Bridge misses a failure edge, clear stuck spinner.
-    Timer {
-        id: libraryWatchdog
-        interval: 15000
-        running: SunoBridge.loading
-        repeat: false
-        onTriggered: {
-            if (SunoBridge.loading) {
-                console.warn("LibraryView: watchdog clearing stuck loading after 15s")
-                SunoBridge.clearLoading()
-            }
-        }
-    }
+    // There is deliberately no loading watchdog here. SunoBridge owns one, and
+    // it is restarted by every page request and every delivered page, so it only
+    // fires on a real stall. The QML copy this replaces was a plain 15 s
+    // one-shot: a library with a few thousand clips legitimately pages for
+    // minutes, so it fired every 15 s and cleared a healthy sync's spinner --
+    // "LibraryView: watchdog clearing stuck loading after 15s" repeated in the
+    // log, over a sync that was working.
 }
