@@ -712,6 +712,73 @@ private slots:
         QVERIFY2(!reloaded.itemAt(1)->isRemote, why("a local file came back marked remote"));
     }
 
+    /// Regression for the guard that rejected the app's own session playlist.
+    /// The playlist lives in the config directory while its tracks live in the
+    /// music directory, so canonicalising each absolute entry and requiring it
+    /// to sit under the playlist's directory refused every track on every
+    /// launch: "Path traversal blocked, skipping: ~/Music/....m4a". An absolute
+    /// entry names one exact file and cannot climb anywhere, so the containment
+    /// rule must not apply to it.
+    void absoluteTracksOutsideThePlaylistDirectoryLoad() {
+        QTemporaryDir playlistDir;
+        QTemporaryDir musicDir;
+        QVERIFY(playlistDir.isValid());
+        QVERIFY(musicDir.isValid());
+
+        const fs::path track = fs::path(musicDir.path().toStdString()) / "song.mp3";
+        {
+            QFile f(QString::fromStdString(track.string()));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("not audio");
+        }
+
+        const fs::path m3u = fs::path(playlistDir.path().toStdString()) / "last_session.m3u";
+        {
+            QFile f(QString::fromStdString(m3u.string()));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(track.string().c_str());
+            f.write("\n");
+        }
+
+        Playlist playlist;
+        const auto loaded = playlist.loadM3U(m3u);
+        QVERIFY2(loaded.isOk(), loaded.isErr() ? loaded.error().message.c_str() : "load failed");
+        QCOMPARE(playlist.size(), usize{1});
+        QVERIFY2(playlist.itemAt(0).has_value(), why("the absolute track was dropped"));
+    }
+
+    /// The mirror image, so the fix above cannot be "delete the guard": a
+    /// RELATIVE entry that climbs out of the playlist's directory is still
+    /// refused. This is the shape the guard exists for -- a downloaded or
+    /// shared .m3u naming `../../elsewhere`.
+    void relativeEntriesCannotClimbOutOfThePlaylistDirectory() {
+        QTemporaryDir parent;
+        QVERIFY(parent.isValid());
+        const fs::path root = parent.path().toStdString();
+
+        const fs::path outside = root / "outside.mp3";
+        {
+            QFile f(QString::fromStdString(outside.string()));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("not audio");
+        }
+        std::error_code ec;
+        fs::create_directories(root / "sub", ec);
+        QVERIFY2(!ec, "could not create the playlist directory");
+
+        const fs::path m3u = root / "sub" / "last_session.m3u";
+        {
+            QFile f(QString::fromStdString(m3u.string()));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("../outside.mp3\n");
+        }
+
+        Playlist playlist;
+        const auto loaded = playlist.loadM3U(m3u);
+        QVERIFY(loaded.isOk());
+        QCOMPARE(playlist.size(), usize{0});
+    }
+
     // ------------------------------------------------------------------
     // AudioQueue drop accounting
     //

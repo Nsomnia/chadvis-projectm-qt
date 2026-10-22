@@ -1,4 +1,5 @@
 #include "AudioEngine.hpp"
+#include "VisualizerAudioTap.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
@@ -131,6 +132,18 @@ Result<void> AudioEngine::init(std::optional<AudioConfig> config) {
     // Playlist signals
     playlist_.currentChanged.connect([this](std::optional<usize> index) { onPlaylistCurrentChanged(index); });
     playlist_.changed.connect([this] { sessionSaveTimer_.start(); });
+
+    // The visualizer tap is a fallback, not a second audio path. It exists
+    // because QAudioBufferOutput is only implemented by Qt's FFmpeg media
+    // backend, and a multimedia build with only the native backend (this
+    // machine's Homebrew Qt ships libdarwinmediaplugin and no FFmpeg plugin)
+    // plays audio while emitting zero buffers. The tick checks the observation,
+    // not the platform: the first delivered buffer — if one ever comes — turns
+    // the tap off for the rest of the session.
+    vizTap_ = std::make_unique<VisualizerAudioTap>(audioQueue_);
+    vizTapTimer_.setInterval(40);
+    connect(&vizTapTimer_, &QTimer::timeout, this, &AudioEngine::onVizTapTick);
+    vizTapTimer_.start();
 
     loadLastPlaylist();
 
@@ -377,7 +390,20 @@ void AudioEngine::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 }
 
 void AudioEngine::onAudioBufferReceived(const QAudioBuffer& buffer) {
-    if (sender() == bufferOutput_.get()) processAudioBuffer(buffer);
+    if (sender() != bufferOutput_.get()) return;
+
+    if (!bufferOutputDelivered_) {
+        bufferOutputDelivered_ = true;
+        // The supported path works on this backend, so the fallback decoder has
+        // no job left. Said once, because the alternative -- silently running
+        // both producers into one SPSC queue -- is a data race with audio.
+        if (vizTap_ && vizTap_->isActive()) {
+            vizTap_->clearSource();
+            LOG_INFO("AudioEngine: the media backend delivers audio buffers; the visualizer "
+                     "tap is off");
+        }
+    }
+    processAudioBuffer(buffer);
 }
 
 void AudioEngine::onPlaylistCurrentChanged(std::optional<usize> index) {
@@ -419,11 +445,27 @@ void AudioEngine::swapPlayers() {
     setupConnections(player_.get(), bufferOutput_.get());
 }
 
+void AudioEngine::onVizTapTick() {
+    if (!vizTap_) return;
+    if (bufferOutputDelivered_) {
+        if (vizTap_->isActive()) vizTap_->clearSource();
+        return;
+    }
+    if (state_ != PlaybackState::Playing) return;
+    vizTap_->pump(player_->position());
+}
+
 void AudioEngine::loadCurrentTrack() {
     const auto item = playlist_.currentItem();
     if (!item) return;
     QUrl source = item->isRemote ? QUrl(QString::fromStdString(item->url)) : QUrl::fromLocalFile(QString::fromStdString(item->path.string()));
     if (player_->source() != source) player_->setSource(source);
+    if (vizTap_) {
+        // Only a local file can be decoded here. A remote entry reaches the
+        // queue through DownloadQueue, which hands playback a local path.
+        if (item->isRemote) vizTap_->clearSource();
+        else vizTap_->setSource(item->path);
+    }
     prepareNextTrack();
 }
 

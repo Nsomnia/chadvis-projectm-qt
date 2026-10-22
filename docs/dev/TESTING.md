@@ -55,7 +55,7 @@ CTest treats "no tests found" as a success exit code, so the wrong directory is 
 
 | Source | Coverage |
 | --- | --- |
-| `tests/unit/test_main.cpp` | Aggregate runner; declares and calls all 38 `runTest*` entry points. |
+| `tests/unit/test_main.cpp` | Aggregate runner; declares and calls all 41 `runTest*` entry points. |
 | `tests/unit/core/test_Logger.cpp` | Logger lifecycle coverage. |
 | `tests/unit/core/test_ConfigParsers.cpp` | TOML parsing and serialization coverage. |
 | `tests/unit/core/test_ConfigLoader.cpp` | Every serialized field surviving a round trip; the `[recording.video]`/`[recording.audio]` sub-tables written as sub-tables rather than collapsed onto one key; **no credential reaching either the serialized document or the saved file, across three successive saves**, while the legacy values stay readable for migration; `overlay.enabled` round-tripping in both states; unknown keys dropped; and corrupt, malformed or missing input diagnosed rather than thrown on. Also pins that the shipped `config/default.toml` declares every key the serializer emits. |
@@ -95,9 +95,9 @@ CTest treats "no tests found" as a success exit code, so the wrong directory is 
 | `test_SunoWorkspace.cpp` | `tests/unit/suno/test_SunoWorkspace.cpp` | Workspace refusal kinds and the honest-state suite. |
 | `test_PresetBridge.cpp` | `tests/unit/visualizer/test_PresetBridge.cpp` | A filtered row selects and favourites *itself*, never slot 0 (the `T0002`/`T0003` regression guard). |
 
-The aggregate runner invokes **38** suites (`tests/unit/test_main.cpp`): logger, config parsers, config loader, file utils, version, signal, CLI args, recorder, audio file decoder, render queue, playlist, preset scanner, preset bridge, Suno endpoints, Suno auth failure, auth module, stored-credential classification, credential restore worker, library manager, lyrics fetch queue, Suno database, auth coordinator, loopback listener, OAuth login service, clip parser, download queue, credential store policy, Suno downloader, download entitlement, bounded body, Suno workspace, lyrics pipeline, lyrics export, lyric timing, PCM format, loudness analysis, path safety, and Suno bridge.
+The aggregate runner invokes **41** suites (`tests/unit/test_main.cpp`): logger, config parsers, config loader, file utils, version, signal, CLI args, recorder, audio file decoder, render queue, playlist, visualizer audio tap, preset scanner, preset bridge, preset manager, Suno endpoints, Suno auth failure, auth module, stored-credential classification, credential restore worker, library manager, lyrics fetch queue, Suno database, auth coordinator, loopback listener, OAuth login service, clip parser, download queue, credential store policy, Suno downloader, download entitlement, bounded body, Suno workspace, lyrics pipeline, lyrics export, lyric timing, PCM format, loudness analysis, path safety, and Suno bridge.
 
-**Every one of the 38 sources above is invoked.** There are no compiled-but-unrun translation units in the aggregate target, and there are no static-initialization test hooks. Verified by set difference on this session: the 38 aggregate sources plus the 11 standalone sources account for **50 of the 51** `.cpp` files under `tests/unit/`. The one exception, `visualizer/test_PresetManager.cpp`, is declared nowhere and never builds (T0306). That was not always true, and the failure mode is the one this repository keeps re-learning:
+**Every one of the 41 suites above is invoked, and every unit source is declared.** There are no compiled-but-unrun translation units in the aggregate target, and there are no static-initialization test hooks. Verified by set difference: the 42 aggregate sources (41 suites plus `test_main.cpp`) plus the 11 standalone sources are exactly the **53** `.cpp` files under `tests/unit/`. That exactness is new — `visualizer/test_PresetManager.cpp` was declared nowhere and never built until T0306 wired it, together with the visualizer audio tap suite added for T0322. That was not always true, and the failure mode is the one this repository keeps re-learning:
 
 - `test_PresetScanner.cpp` was in `CMakeLists.txt` for a long time with no `runTest*` entry point in the runner, so its assertions never executed. `runTestPresetScanner` is now declared at `tests/unit/test_main.cpp:14` and called at `:49`.
 - `test_SunoEndpoints.cpp` ran from a static initializer and `std::abort()`ed on failure, which masked the failure behind a process kill instead of the aggregate exit code. `runTestSunoEndpoints` is now declared at `tests/unit/test_main.cpp:15` and called at `:50` like every other suite.
@@ -108,7 +108,7 @@ Two directories under `tests/` are **empty and named by no CMakeLists**: `tests/
 
 ### Standalone unit executables
 
-Eight suites build as their own targets and register with CTest individually, because each carries its own `main()` or needs a different application object than the aggregate's `QCoreApplication`:
+Eleven standalone targets build as their own executables and register with CTest individually, because each carries its own `main()` or needs a different application object than the aggregate's `QCoreApplication`:
 
 | Target | Source | Focus |
 | --- | --- | --- |
@@ -157,7 +157,7 @@ Fourteen entries: twelve in `tests/unit/CMakeLists.txt`, two in `tests/integrati
 
 | Suite | Kind | Environment |
 | --- | --- | --- |
-| `unit_tests` | Aggregate, 38 invoked suites from 39 sources | console |
+| `unit_tests` | Aggregate, 41 invoked suites from 42 sources | console |
 | `test_HttpPolicy` | Standalone unit (own `main()`) | console |
 | `test_CapturedHosts` | Standalone unit, host registry | console |
 | `test_FeatureFlags` | Standalone unit | console |
@@ -187,7 +187,7 @@ place either of them belongs.
 ```bash
 ./build.sh
 ctest --test-dir build/tests -R unit_tests --output-on-failure
-./build/tests/unit/unit_tests                                   # aggregate, all 38 suites
+./build/tests/unit/unit_tests                                   # aggregate, all 41 suites
 ./build/tests/unit/test_HttpPolicy                              # single standalone target
 ./build/tests/unit/test_RenderExecutor                           # needs QT_QPA_PLATFORM=offscreen
 QT_QPA_PLATFORM=offscreen ./build/tests/integration/integration_tests

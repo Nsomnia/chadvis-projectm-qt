@@ -54,6 +54,13 @@ another document already owns — it records only *why* the constraints exist.
   the backend does its decode work on its own threads but delivers every signal
   to the object's thread. Do not reason about it as a worker, and do not treat its
   internal threading as licence to touch `AudioEngine` state from elsewhere.
+- **`AudioQueue` has exactly one producer, and it is the engine's thread.**
+  `pushAll` is SPSC (`ReaderWriterQueue`), not MPMC. Both producers — the
+  `QAudioBufferOutput` slot and `VisualizerAudioTap::pump` — run on the GUI thread,
+  and the engine never runs the tap while the buffer output is delivering: the
+  first delivered buffer clears the tap's source for the remaining session. Do not
+  start the tap alongside a working buffer output and do not push from a worker;
+  either breaks the queue's single-producer guarantee.
 - **`LyricsSync` is single-writer by design: `QTimer` owns the position.** A seed
   must *snap* (drain pre-sets `smoothedTime_` so the lerp degenerates) or `seek`
   stops being exact and a mid-playback `loadLyrics` ramps from 0 instead of

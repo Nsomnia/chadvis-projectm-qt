@@ -1,0 +1,6 @@
+2026-10-22T17:23:02Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee19315 pid=19315 ttl=4h expires=2026-10-22T21:23:02Z
+2026-10-22T17:23:03Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee19336
+2026-10-22T17:22:00Z  CHANGE   TransportBar is docked in the shell (src/qml/main.qml), spanning navRail.right to the window edge, above the status bar; fullscreen reclaims its strip; compact below 1000 px. Transport cluster + seek disable when currentTrack.title is empty; volume and open-file stay usable. ListenView's private TransportBar is deleted.
+2026-10-22T17:22:00Z  VERIFY   scripts/lint-qml.sh -> "qmllint: no blocking problems" (1105 baselined findings, unchanged).
+2026-10-22T17:22:00Z  VERIFY   ctest -> integration_tests (TestQmlStartup) Passed 10.83 s; test_ThemeQml Passed.
+2026-10-22T17:22:00Z  NOT-VERIFIED Placement/feel across each view, and the queue affordance: MT-001-D4.3.

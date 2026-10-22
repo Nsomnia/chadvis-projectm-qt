@@ -20,6 +20,13 @@ Rectangle {
 
     property bool compact: false
 
+    /// Disables every transport control when the queue has nothing selected.
+    /// Volume and "open file" stay live: they are useful before a track exists.
+    /// Bound through the title because that is what every consumer of
+    /// AudioBridge.currentTrack already reads, and an empty queue reports one.
+    readonly property bool hasTrack: AudioBridge.currentTrack
+                                     && AudioBridge.currentTrack.title !== ""
+
     // QML's url value type has no toLocalFile(); replicate QUrl::toLocalFile
     // (strip scheme, percent-decode, drop slash before Windows drive letter).
     function toLocalFilePath(url) {
@@ -48,6 +55,7 @@ Rectangle {
         // ── Transport cluster ──────────────────────
         RowLayout {
             spacing: Theme.spacingSmall
+            enabled: root.hasTrack
 
             AppButton {
                 icon: "qrc:/qt/qml/ChadVis/resources/icons/prev.svg"
@@ -99,6 +107,7 @@ Rectangle {
                 id: seekSlider
                 Layout.fillWidth: true
                 Layout.minimumWidth: 90
+                enabled: root.hasTrack
                 from: 0
                 to: AudioBridge.duration || 1
                 value: AudioBridge.position

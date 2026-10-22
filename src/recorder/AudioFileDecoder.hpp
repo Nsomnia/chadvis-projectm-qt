@@ -349,6 +349,23 @@ public:
     /// on a decoder that was never opened.
     void close() noexcept;
 
+    /// Move the decode cursor to `seconds` (nearest keyframe at or before it).
+    ///
+    /// `framesDecoded()`/`positionSeconds()` are then reported from the request,
+    /// so a reader that asks "where is the output in the file" gets the intended
+    /// position rather than the keyframe's. The difference is bounded by the
+    /// codec's packet/granule size (tens of milliseconds for AAC, one frame for
+    /// PCM) and is irrelevant to the visualizer tap this exists for. A render
+    /// that needs sample-exact seeking must not use this: it would need the
+    /// decoded timestamps, which this class deliberately does not track.
+    ///
+    /// Not supported before `open()`, mirroring `nextChunk()`. A negative or
+    /// non-finite target is rejected without touching the stream. A seek the
+    /// demuxer refuses leaves `outcome() == Failed`, because the demuxer's
+    /// position is then unspecified and continuing would silently decode from the
+    /// wrong place.
+    [[nodiscard]] std::expected<void, DecodeError> seekTo(f64 seconds);
+
     [[nodiscard]] bool isOpen() const noexcept;
 
     /// Decode the next chunk into `out`.

@@ -329,6 +329,39 @@ private slots:
         QCOMPARE(decoded.declaredDurationSeconds, 0.5);
     }
 
+    /// A seek is how the visualizer tap follows the player's scrubbing. It must
+    /// reposition the demuxer *and* reset the resampler, or the filter delay from
+    /// the old position would be prepended to the new one.
+    void seekingRepositionsTheCursorAndTheResampler() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const fs::path path = fs::path(dir.path().toStdString()) / "seek.wav";
+        QVERIFY(writeBytes(path, buildWav(8000, 2, 8000, Source::Constant, 16384)));
+
+        AudioFileDecoder decoder({.sampleRate = 8000, .channels = 2});
+        QVERIFY2(decoder.open(path), qPrintable(decoder.lastError().describe().c_str()));
+
+        const auto sought = decoder.seekTo(0.5);
+        QVERIFY2(sought, qPrintable(decoder.lastError().describe().c_str()));
+        QCOMPARE(decoder.positionSeconds(), 0.5);
+        QCOMPARE(decoder.outcome(), DecodeOutcome::Streaming);
+
+        PcmChunk chunk;
+        const auto next = decoder.nextChunk(chunk);
+        QVERIFY2(next.has_value(), qPrintable(decoder.lastError().describe().c_str()));
+        QCOMPARE(*next, ChunkStatus::Ready);
+        for (usize i = 0; i < chunk.samples.size(); ++i)
+            compareExact(chunk.samples[i], expectedFloat(16384), "post-seek sample", int(i));
+
+        // An invalid target is a caller error, not a decode failure: it must not
+        // poison the stream the caller is still sitting on.
+        const auto rejected = decoder.seekTo(-1.0);
+        QVERIFY(!rejected);
+        QCOMPARE(rejected.error().kind, DecodeErrorKind::InvalidOutputSpec);
+        QCOMPARE(decoder.outcome(), DecodeOutcome::Streaming);
+    }
+
     void everyAssertedSignedValueSurvivesExactly() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

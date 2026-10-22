@@ -19,6 +19,8 @@
 #include <QtTest>
 #include <QFile>
 #include <QFileInfo>
+#include <QAudioDevice>
+#include <QMediaDevices>
 #include <QNetworkAccessManager>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -109,7 +111,7 @@ QByteArray payloadFor(const QString& id) {
 /// The MPEG prefix is needed for a reason that is not obvious: TagLib's
 /// MPEG::File::isValid() gates every write in tagAudioFile and every read in
 /// embeddedSunoId, so a zero-byte or fake-bytes file is invisible to both and
-/// the whole test would pass trivially. 4 header bytes + 417 pad = one whole
+/// the whole test would pass trivially. 4 header bytes + 413 pad = one whole
 /// 44.1 kHz MPEG frame; the file need not actually decode.
 /// Reads back the SUNO_ID a file currently carries, without writing anything.
 std::optional<std::string> stillTagged(const fs::path& path) {
@@ -139,9 +141,19 @@ std::optional<std::string> seedTaggedMp3(const fs::path& path, const std::string
             return std::nullopt;
         }
         const QByteArray frameHeader("\xff\xfb\x90\x64", 4);  // 128 kbps, 44.1 kHz
-        out.write(frameHeader);
-        const QByteArray padding(417, 'A');
-        out.write(padding);
+        // A 128 kbps MPEG-1 Layer III frame at 44.1 kHz is 417 bytes INCLUDING
+        // the 4-byte header. Getting this wrong by four bytes is invisible to
+        // TagLib (it reads the header) and fatal to the decoder: FFmpeg finds
+        // the next sync word four bytes early and refuses the stream.
+        const QByteArray padding(413, 'A');
+        // A few seconds, not one frame: the whole-frame repeater makes this a
+        // playable stream long enough for a test to observe the transport and
+        // the visualizer tap before EndOfMedia. TagLib accepts it as an MPEG
+        // either way, and every other test only reads the tag back.
+        for (int i = 0; i < 240; ++i) {
+            out.write(frameHeader);
+            out.write(padding);
+        }
         out.close();
     }
     TagLib::MPEG::File f(path.c_str());
@@ -572,6 +584,90 @@ private slots:
 
     /// Two clips that share a title must not share a file: the second is
     /// disambiguated by its unique clip id instead of overwriting the first.
+    /// The Library play button, end to end: a clip already on disk must start
+    /// the transport, not merely select its row. jumpTo() selects only, and on a
+    /// stopped transport onPlaylistCurrentChanged() deliberately does not
+    /// resume -- so before addAndPlay() called play(), the file was loaded, the
+    /// queue pointed at it, and no audio started. This is also the only test
+    /// that observes the visualizer tap's timer: playback that reaches the
+    /// engine must put PCM in the queue projectM drains.
+    void playingAnOnDiskClipStartsTheTransport() {
+        if (QMediaDevices::defaultAudioOutput().isNull())
+            QSKIP("no audio output device; playback cannot be observed");
+
+        DownloadConfigGuard config;
+        QTemporaryDir downloadDir;
+        QVERIFY(downloadDir.isValid());
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
+
+        SunoClip clip = completeClip("on-disk-play", "On Disk Play");
+        const fs::path stale = fs::path(downloadDir.path().toStdString()) / "On Disk Play.mp3";
+        QVERIFY2(seedTaggedMp3(stale, clip.id).has_value(),
+                 "the seeded fixture could not be parsed as an MPEG by TagLib");
+
+        QTemporaryDir sessionDir;
+        QVERIFY(sessionDir.isValid());
+        AudioEngine audio(fs::path(sessionDir.path().toStdString()) / "last_session.m3u");
+        QVERIFY(audio.init());
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+
+        FakeServer server;
+        SunoDownloader downloader(database, &audio, server.factory());
+        QSignalSpy ready(&downloader, &SunoDownloader::playbackReady);
+
+        downloader.downloadAndPlay(clip);
+        QCOMPARE(server.replies.size(), std::size_t{0});  // the reuse path, no transfer
+        QTRY_COMPARE_WITH_TIMEOUT(ready.count(), 1, 5000);
+        QCOMPARE(audio.playlist().size(), usize{1});
+        QTRY_COMPARE_WITH_TIMEOUT(audio.state(), PlaybackState::Playing, 5000);
+
+        // The tap decodes ahead of the player on a 40 ms tick; one second is
+        // several ticks. A zero here means the visualizer has no audio path at
+        // all, which is the reported "does not react to music".
+        QTRY_VERIFY_WITH_TIMEOUT(audio.audioQueue().vizDepth() > 0, 5000);
+    }
+
+    /// The other half of T0319: `downloadFormat` is a SAVE preference, and the
+    /// downloader used to apply it to SaveAndPlay too, so choosing WAV turned
+    /// the card's play gesture into a silent refusal even for a file already on
+    /// disk. downloadAndPlay() discards that error, so nothing was logged and
+    /// nothing was shown -- exactly the reported "no download, no request, no
+    /// error".
+    void aWavSavePreferenceDoesNotSilencePlayback() {
+        DownloadConfigGuard config;  // forces MP3; the preference under test is set below
+        QTemporaryDir downloadDir;
+        QVERIFY(downloadDir.isValid());
+        CONFIG.sunoMut().downloadPath = downloadDir.path().toStdString();
+        CONFIG.sunoMut().downloadFormat = SunoDownloadFormat::WAV;
+
+        SunoClip clip = completeClip("wav-pref-play", "Wav Pref Play");
+        const fs::path stale = fs::path(downloadDir.path().toStdString()) / "Wav Pref Play.mp3";
+        QVERIFY2(seedTaggedMp3(stale, clip.id).has_value(),
+                 "the seeded fixture could not be parsed as an MPEG by TagLib");
+
+        QTemporaryDir sessionDir;
+        QVERIFY(sessionDir.isValid());
+        AudioEngine audio(fs::path(sessionDir.path().toStdString()) / "last_session.m3u");
+        QVERIFY(audio.init());
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+
+        FakeServer server;
+        SunoDownloader downloader(database, &audio, server.factory());
+        QSignalSpy ready(&downloader, &SunoDownloader::playbackReady);
+
+        downloader.downloadAndPlay(clip);
+        QCOMPARE(server.replies.size(), std::size_t{0});
+        QTRY_COMPARE_WITH_TIMEOUT(ready.count(), 1, 5000);
+        QCOMPARE(audio.playlist().size(), usize{1});
+
+        // The save path keeps the refusal: a WAV download is still not built.
+        const auto saved = downloader.download(completeClip("wav-pref-save", "Wav Pref Save"));
+        QVERIFY(!saved.has_value());
+        QVERIFY(saved.error().contains(QStringLiteral("WAV download is unavailable")));
+    }
+
     void sameTitleClipsGetDistinctFiles() {
         DownloadConfigGuard config;
         QTemporaryDir downloadDir;

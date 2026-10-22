@@ -21,6 +21,8 @@ class QMediaDevices;
 
 namespace vc {
 
+class VisualizerAudioTap;
+
 enum class PlaybackState { Stopped, Playing, Paused };
 
 class AudioEngine : public QObject {
@@ -129,6 +131,10 @@ private slots:
     void onMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void onOutputDeviceChanged();
     void onAudioOutputsChanged();
+    /// Drives the visualizer tap while the player is playing. The tick is the
+    /// fallback only: the tap is cleared as soon as the media backend proves it
+    /// delivers QAudioBufferOutput buffers, which is the supported path.
+    void onVizTapTick();
 
 private:
     /// Quiescent period after the last playlist mutation before the session M3U
@@ -186,6 +192,16 @@ private:
     Playlist playlist_;
     fs::path sessionPath_;
     AudioQueue audioQueue_;
+
+    /// Declared after audioQueue_ so it is destroyed before it: the tap holds a
+    /// reference to the queue, and a decoder outliving its sink would push into
+    /// freed memory during teardown.
+    std::unique_ptr<VisualizerAudioTap> vizTap_;
+    QTimer vizTapTimer_;
+
+    /// Set by the first buffer the media backend actually delivers. That is the
+    /// observation that decides whether the tap is needed at all.
+    bool bufferOutputDelivered_{false};
 
     /// Debounces saveLastPlaylist(); restarted by every playlist change.
     QTimer sessionSaveTimer_;

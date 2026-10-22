@@ -1,0 +1,11 @@
+2026-10-22T17:17:00Z  CLAIM    fix the traversal guard that refuses the app's own session playlist
+2026-10-22T17:17:00Z  EVIDENCE user log 10:46:54: "Playlist: Path traversal blocked, skipping: /Users/derekvanee/Music/EVERYDAY WE HUSTLIN.m4a" for every entry in last_session.m3u.
+2026-10-22T17:17:00Z  ROOT     loadM3U() canonicalised every line and required the result under the playlist's own directory. The M3U lives in the config directory and its entries are absolute paths under ~/Music, so every legitimate entry was refused; the empty queue was then flushed over the file at quit.
+2026-10-22T17:17:00Z  FIX      src/audio/Playlist.cpp: the containment check applies only to entries written relative. Absolute entries are used as named; relative ../ entries are still refused.
+2026-10-22T17:19:00Z  VERIFY   ./build.sh --fast --tests -> linked unit_tests.
+2026-10-22T17:19:30Z  VERIFY   unit_tests -> [suite] TestPlaylist -> 0. absoluteTracksOutsideThePlaylistDirectoryLoad loads a track from a different directory; relativeEntriesCannotClimbOutOfThePlaylistDirectory still yields size 0.
+2026-10-22T17:22:00Z  VERIFY   ctest --test-dir build-fast/tests --output-on-failure -j3 -> 14/14 passed, 0 failed.
+2026-10-22T17:22:00Z  RUNTIME  launched build-fast/chadvis-projectm-qt.app for 10 s against the (already emptied) last_session.m3u: no "Path traversal blocked" lines, clean shutdown.
+2026-10-22T17:22:00Z  COMMIT   TODO.md T0324 -> [x]; CHANGELOG.md Unreleased/Fixed.
+2026-10-22T17:23:03Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee19370 pid=19370 ttl=4h expires=2026-10-22T21:23:03Z
+2026-10-22T17:23:03Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee19390

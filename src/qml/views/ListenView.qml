@@ -141,10 +141,5 @@ Item {
                 }
             }
         }
-
-        TransportBar {
-            Layout.fillWidth: true
-            compact: root.compact
-        }
     }
 }

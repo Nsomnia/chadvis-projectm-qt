@@ -656,7 +656,15 @@ Result<void> Playlist::loadM3U(const fs::path& path) {
         // a filename that is not there.
         PlaylistItem item;
         fs::path filePath(line);
-        if (!filePath.is_absolute()) {
+        // The traversal check is about how the ENTRY WAS WRITTEN, not where it
+        // finally resolves. It used to canonicalise every line and then require
+        // the result to sit under the playlist's own directory -- which rejects
+        // the app's own `last_session.m3u` (written to the config directory,
+        // pointing at ~/Music) on every launch. A guard that refuses the normal
+        // case protects nothing and hides the real regression behind a warning.
+        // An absolute entry cannot climb: it names one exact file.
+        const bool relativeEntry = !filePath.is_absolute();
+        if (relativeEntry) {
             filePath = path.parent_path() / filePath;
         }
 
@@ -664,10 +672,12 @@ Result<void> Playlist::loadM3U(const fs::path& path) {
         fs::path resolved;
         try {
             resolved = fs::weakly_canonical(filePath);
-            fs::path rel = fs::relative(resolved, baseDir);
-            if (rel.string().starts_with("..")) {
-                LOG_WARN("Playlist: Path traversal blocked, skipping: {}", filePath.string());
-                continue;
+            if (relativeEntry) {
+                const fs::path rel = fs::relative(resolved, baseDir);
+                if (rel.string().starts_with("..")) {
+                    LOG_WARN("Playlist: Path traversal blocked, skipping: {}", filePath.string());
+                    continue;
+                }
             }
         } catch (const fs::filesystem_error& e) {
             LOG_WARN("Playlist: Failed to resolve path, skipping: {} ({})", filePath.string(), e.what());

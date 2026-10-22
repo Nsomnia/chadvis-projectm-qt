@@ -52,7 +52,9 @@ There is no `VisualizerItem` or other projectM `QQuickItem` in the current sourc
 
 ## Audio, Recording, and Network Ownership
 
-`AudioEngine` owns playback, the playlist, analyzer state, and `AudioQueue`. `QAudioBufferOutput` supplies PCM buffers; `AudioEngine::processAudioBuffer()` converts them and pushes them to the visualizer, recorder, and analyzer queues. A `vc::JThread` runs `analyzerWorker()` and consumes the analyzer queue. On toolchains with `std::jthread`, `vc::JThread` is an alias; otherwise it is the repository's stoppable, joinable fallback.
+`AudioEngine` owns playback, the playlist, and `AudioQueue`. The primary PCM tap is `QAudioBufferOutput`; `AudioEngine::processAudioBuffer()` converts its buffers and pushes them to the visualizer and recorder queues.
+
+**The tap is conditional, because `QAudioBufferOutput` is FFmpeg-backend-only.** Qt's reference page says so outright, and it was measured here: a 1.2 s tone produced **zero** `audioBufferReceived` emissions while playing normally, with `Available backends QList("darwin")` and a Qt multimedia build that ships `libdarwinmediaplugin` and no `libffmpegmediaplugin`. Setting `QT_MEDIA_BACKEND=ffmpeg` does not help — Qt logs the request and falls back to the only backend it has. `VisualizerAudioTap` is the fallback: when no buffer has arrived, it decodes the selected **local** file with the repository's own FFmpeg decoder and pushes the same PCM into the same queue. `QMediaPlayer` remains the only audio output and the master clock; the tap is not a second playback path. The first delivered buffer clears it for the rest of the session, so a backend that does support `QAudioBufferOutput` pays nothing. That is also what keeps the queue single-producer — see `INVARIANTS.md`.
 
 `VideoRecorder` owns a `VideoRecorderThread` worker. That worker consumes queued video frames, drains the recorder audio queue when available, and performs FFmpeg encoding away from the QML/render loop. `VisualizerRenderer` owns the GL-side capture resources, while the recorder owns encoding state and output.
 

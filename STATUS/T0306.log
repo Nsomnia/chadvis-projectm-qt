@@ -1,0 +1,7 @@
+2026-10-22T17:00:00Z  CLAIM    declare and run the written-but-unbuilt PresetManager suite
+2026-10-22T17:05:00Z  VERIFY   ./build.sh --fast --tests -> linked tests/unit/unit_tests with visualizer/test_PresetManager.cpp.o (target 30/31).
+2026-10-22T17:05:30Z  VERIFY   ./build-fast/tests/unit/unit_tests -> [suite] TestPresetManager -> 0; Totals not printed by the aggregate (each suite logs its own), status 0.
+2026-10-22T17:22:00Z  VERIFY   ctest --test-dir build-fast/tests --output-on-failure -j3 -> 14/14 passed, 0 failed (unit_tests 68.96 s).
+2026-10-22T17:22:00Z  VERIFY   find tests/unit -name '*.cpp' | wc -l -> 53; 42 aggregate sources (41 suites + test_main.cpp) + 11 standalone = 53. No undeclared source remains.
+2026-10-22T17:22:00Z  COMMIT   TODO.md T0306 -> [x]; docs/dev/TESTING.md counts corrected to 41 suites / 42 sources / 53 files.
+2026-10-22T17:23:02Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee19308

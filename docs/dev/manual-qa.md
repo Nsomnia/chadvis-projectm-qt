@@ -120,6 +120,21 @@ proves nothing here.
 | D3.5 | Read the log for the run. No cookie, no bearer, and no complete media URL appears. | | | Neither the downloader nor the queue logs a URL at all, and the rights response is never logged. A host or path appearing here would be a new leak. |
 | D3.6 | Play a clip whose media this client will not fetch, or let the server refuse one (403/401). The Library shows the refusal sentence; the card does not sit on "Saving" forever. | | | Fail-closed paths: `noUsableMediaMessage`, `clipSaveRefused`, `finalizeFailed`. |
 
+### MT-001-D4 — Library playback, the global transport, and the visualizer tap
+
+Added with T0319/T0321/T0322. The PCM path and the play gesture both have
+headless tests, but "the canvas moves" and "the bar is where I expect it" are
+screen facts.
+
+| ID | Step | Pass | Fail | Notes |
+| --- | --- | --- | --- | --- |
+| D4.1 | Open Library and press the ▶ overlay on a clip whose file is already on disk. Audio starts. | | | Pre-fix the row was selected and loaded but never played: `jumpTo()` selects only. |
+| D4.2 | Set `[suno] download_format = "wav"` (Settings → Suno), press Play on a clip. It plays. | | | A WAV preference refuses a *save*, never a play. `downloadAndPlay` used to discard that refusal silently. |
+| D4.3 | Start a track from Listen, then navigate to Library, Explore, Notifications and Video. The transport bar stays visible and pause/next/prev/seek/volume all act on the playing track. | | | The bar is shell chrome now; the Listen copy was removed, not duplicated. |
+| D4.4 | With a track playing, open Video. The projectM canvas reacts to the music. The log contains `VisualizerAudioTap: the media backend delivers no audio buffers` and `VisualizerRenderer: audio is reaching projectM`, and no `600 frames rendered with no PCM` warning. | | | `QAudioBufferOutput` is FFmpeg-backend-only; this Qt ships only the darwin plugin. A zero-buffer measurement is on the board (T0322). |
+| D4.5 | Add two tracks to the queue, quit, relaunch. The queue is restored and the log has no `Path traversal blocked`. | | | Regression guard for the guard: absolute entries outside the playlist's own directory are legitimate. |
+| D4.6 | Start recording while a track plays, stop after a few seconds, and play the file. The recorded audio is present and matches what was heard. | | | The tap pushes to both queues, so the recorder does not need the player's buffer output either. |
+
 ### MT-001-E — Settings persistence
 
 | ID | Step | Pass | Fail | Notes |

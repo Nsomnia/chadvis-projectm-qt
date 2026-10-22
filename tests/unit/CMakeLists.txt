@@ -13,9 +13,11 @@ add_executable(unit_tests
     recorder/test_RenderQueue.cpp
     audio/test_Playlist.cpp
     audio/test_PcmFormat.cpp
+    audio/test_VisualizerAudioTap.cpp
     audio/test_LoudnessAnalysis.cpp
     visualizer/test_PresetScanner.cpp
     visualizer/test_PresetBridge.cpp
+    visualizer/test_PresetManager.cpp
     suno/test_AuthModule.cpp
     suno/test_StoredCredentialClassification.cpp
     suno/test_BrowserCookieImport.cpp

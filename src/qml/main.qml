@@ -433,7 +433,11 @@ ApplicationWindow {
         Item {
             id: viewHost
             anchors.top: parent.top
-            anchors.bottom: parent.bottom
+            // The transport is shell chrome, not a Listen-view detail: from the
+            // Library, Explore or Video the user must be able to pause or skip
+            // what they just started. Reserving its strip here keeps it from
+            // covering the bottom row of any view.
+            anchors.bottom: globalTransport.visible ? globalTransport.top : parent.bottom
             anchors.right: parent.right
             // The rail's width is reserved only while it is on screen;
             // fullscreen reclaims the strip for the visualizer.
@@ -519,6 +523,25 @@ ApplicationWindow {
                     }
                 }
             }
+        }
+
+        // One transport for the whole shell (T0321). Every view can start a
+        // track -- Library's play overlay, Explore, a saved download -- and the
+        // old bar lived only inside Listen, so the controls disappeared the
+        // moment the user navigated away from the track they had just started.
+        // It reads the playlist's current item through AudioBridge, so a local
+        // file and a downloaded Suno clip are the same queue entry here.
+        TransportBar {
+            id: globalTransport
+            anchors.left: mainWindow.fullscreenActive ? parent.left : navRail.right
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: Theme.spacingMedium
+            anchors.rightMargin: Theme.spacingMedium
+            anchors.bottomMargin: Theme.spacingSmall
+            visible: !mainWindow.fullscreenActive
+            compact: mainWindow.width < 1000
+            z: 15
         }
     }
 

@@ -1,0 +1,9 @@
+2026-10-22T17:00:00Z  CLAIM    find why the Library play overlay loads a track and starts no audio
+2026-10-22T17:00:00Z  EVIDENCE user log 10:47:31: SunoBridge: play requested -> SunoDownloader: clip ... is locked ... fetching the streamed media -> (no transfer, no error). The file was already on disk, so download() took finishAlreadyOnDisk() -> addAndPlay().
+2026-10-22T17:00:00Z  ROOT     addAndPlay() called Playlist::jumpTo(), which only selects. AudioEngine::onPlaylistCurrentChanged() resumes only a transport that was already Playing, so a stopped transport loaded the file and never played it.
+2026-10-22T17:10:00Z  FIX      src/suno/SunoDownloader.cpp addAndPlay() calls audioEngine_->play() after jumpTo(). download() applies the save format only to SaveOnly; SaveAndPlay always selects the progressive form, so a WAV preference cannot refuse a play.
+2026-10-22T17:18:00Z  VERIFY   ./build.sh --fast --tests -> linked unit_tests.
+2026-10-22T17:18:30Z  VERIFY   unit_tests -> [suite] TestSunoDownloader -> 0. playingAnOnDiskClipStartsTheTransport: state == PlaybackState::Playing and audioQueue().vizDepth() > 0. aWavSavePreferenceDoesNotSilencePlayback: playbackReady == 1 with downloadFormat == WAV, while download() still refuses a WAV save with "WAV download is unavailable".
+2026-10-22T17:22:00Z  VERIFY   ctest --test-dir build-fast/tests --output-on-failure -j3 -> 14/14 passed, 0 failed.
+2026-10-22T17:22:00Z  NOT-VERIFIED the click itself (ClipCard hit test) and audible output on the user's speakers: MT-001-D4.1/D4.2. The unit test drives SunoDownloader -> AudioEngine with a real QMediaPlayer and a real output device.
+2026-10-22T17:22:00Z  COMMIT   TODO.md T0319 -> [x]; CHANGELOG.md Unreleased/Fixed.

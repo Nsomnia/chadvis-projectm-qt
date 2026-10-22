@@ -18,6 +18,7 @@ extern "C" {
 #include "recorder/ResamplerEngine.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace vc {
 
@@ -113,6 +114,10 @@ struct AudioFileDecoder::Impl {
     AVChannelLayout outLayout{};
 
     int streamIndex{-1};
+    /// The audio stream's time base, captured at open: seek targets are expressed
+    /// in it, and re-reading `format->streams[...]` after a failed seek is exactly
+    /// the kind of dereference that turns a reportable error into a crash.
+    AVRational streamTimeBase{0, 1};
     int inChannels{0};
     int inSampleRate{0};
     std::string codecName;
@@ -467,6 +472,7 @@ std::expected<void, DecodeError> AudioFileDecoder::open(const fs::path& path) {
                            "no audio stream in " + impl_->sourcePath);
     }
     AVStream* stream = impl_->format->streams[impl_->streamIndex];
+    impl_->streamTimeBase = stream->time_base;
 
     const AVCodec* decoder = avcodec_find_decoder(stream->codecpar->codec_id);
     if (!decoder) {
@@ -545,6 +551,7 @@ void AudioFileDecoder::close() noexcept {
     av_channel_layout_uninit(&impl_->outLayout);
 
     impl_->streamIndex = -1;
+    impl_->streamTimeBase = AVRational{0, 1};
     impl_->inChannels = 0;
     impl_->inSampleRate = 0;
     impl_->codecName.clear();
@@ -621,6 +628,53 @@ std::expected<ChunkStatus, DecodeError> AudioFileDecoder::nextChunk(PcmChunk& ou
         impl_->pendingHead = 0;
     }
     return ChunkStatus::Ready;
+}
+
+std::expected<void, DecodeError> AudioFileDecoder::seekTo(const f64 seconds) {
+    if (!isOpen()) {
+        return asUnexpected(
+                impl_->fail(DecodeErrorKind::NotOpen, "seekTo before a successful open()").error());
+    }
+    if (!std::isfinite(seconds) || seconds < 0.0) {
+        // A caller mistake, not a decode failure: rejecting it must not poison a
+        // decoder that is still sitting at a perfectly good position.
+        return std::unexpected(DecodeError{DecodeErrorKind::InvalidOutputSpec,
+                                           "seek target must be finite and non-negative", 0});
+    }
+
+    // Backward, so the demuxer lands on a keyframe at or before the request and
+    // the decoder only ever has to skip forward. Seeking to the nearest keyframe
+    // in *either* direction can land after the request, which would silently drop
+    // the audio the caller asked to start from.
+    const int64_t target = av_rescale_q(static_cast<int64_t>(seconds * AV_TIME_BASE),
+                                        AV_TIME_BASE_Q, impl_->streamTimeBase);
+    const int seeked = av_seek_frame(impl_->format.get(), impl_->streamIndex, target,
+                                     AVSEEK_FLAG_BACKWARD);
+    if (seeked < 0) {
+        return asUnexpected(
+                impl_->fail(DecodeErrorKind::DecodeFailed, "av_seek_frame failed", seeked).error());
+    }
+
+    // Codec and resampler both hold state from the old position: the decoder its
+    // reorder/padding queue, the resampler its filter delay. Feeding the new
+    // position through either would mix the two.
+    avcodec_flush_buffers(impl_->codec.get());
+    swr_close(impl_->resampler.get());
+    if (const int reinitialised = swr_init(impl_->resampler.get()); reinitialised < 0) {
+        return asUnexpected(impl_->fail(DecodeErrorKind::ResamplerFailed,
+                                        "swr_init after seek failed", reinitialised)
+                                    .error());
+    }
+
+    impl_->pending.clear();
+    impl_->pendingHead = 0;
+    impl_->drained = false;
+    impl_->sawEof = false;
+    impl_->demuxerStopCode = 0;
+    impl_->framesDecoded = static_cast<u64>(seconds * static_cast<f64>(impl_->spec.sampleRate));
+    impl_->outcome = DecodeOutcome::Streaming;
+    impl_->lastError = DecodeError{};
+    return {};
 }
 
 std::expected<QueuePush, DecodeError> AudioFileDecoder::pushChunkTo(AudioQueue& queue) {

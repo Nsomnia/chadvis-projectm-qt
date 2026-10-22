@@ -24,7 +24,7 @@ Create contains the runtime model-catalog generation form, the captured `.m4a` u
 
 ### Listen
 
-Listen is the playback surface. It contains the current-track summary, queue, lyrics panel, and transport bar. Use the transport bar or queue controls to play, pause, stop, seek, change tracks, adjust volume, or open local audio files. Files can also be added to the queue from the queue toolbar.
+Listen is the playback surface: current-track summary, queue, and lyrics panel. **The transport bar is global** — it docks below every view, so a track started from the Library, Explore or Notifications can be paused, skipped, seeked, muted or stopped without navigating back to Listen. It shows the playing title and artist with elapsed and total time, its transport controls are disabled while the queue is empty, and volume plus **open audio file…** stay available with nothing playing.
 
 The projectM canvas is not part of Listen; it lives in Video.
 

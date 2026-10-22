@@ -380,7 +380,16 @@ std::expected<DownloadStarted, QString> SunoDownloader::download(const SunoClip&
             QStringLiteral("This clip has no identifier, so it cannot be saved."));
     }
 
-    const auto format = CONFIG.suno().downloadFormat;
+    // A play request is not a format request. `downloadFormat` is a SAVE
+    // preference, and applying it here made `SaveAndPlay` -- the card's play
+    // gesture, including the already-on-disk shortcut -- refuse with a WAV
+    // setting, silently, because downloadAndPlay() discards the error. Playback
+    // always fetches the progressive stream the account can already play, which
+    // is the only form this client can decrypt and is what the controller already
+    // selects. SaveOnly keeps the preference and keeps this refusal.
+    const auto saveFormat = CONFIG.suno().downloadFormat;
+    const auto format = action == DownloadAction::SaveAndPlay ? vc::SunoDownloadFormat::MP3
+                                                             : saveFormat;
     if (format != vc::SunoDownloadFormat::MP3) {
         LOG_WARN("SunoDownloader: WAV download rejected for clip {}: conversion route is LEAD-only",
                  clip.id);
@@ -1033,6 +1042,14 @@ bool SunoDownloader::addAndPlay(const fs::path& path, const std::string& clipId)
         !current || current->path != path) {
         return false;
     }
+
+    // jumpTo() selects, it does not start: onPlaylistCurrentChanged() only
+    // resumes a transport that was already Playing (a skip while paused must
+    // stay paused). A play request from a stopped Library is exactly the case
+    // that rule leaves silent -- the file is loaded, the queue points at it,
+    // and no audio starts. addAndPlay() therefore has to ask for playback,
+    // which is what its name has always promised.
+    audioEngine_->play();
 
     emit playbackReady(QString::fromStdString(clipId));
     return true;

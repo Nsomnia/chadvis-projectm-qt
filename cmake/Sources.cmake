@@ -32,6 +32,8 @@ set(AUDIO_SOURCES
     src/audio/AudioEngine.cpp
     src/audio/AudioQueue.hpp
     src/audio/AudioChunk.hpp
+    src/audio/VisualizerAudioTap.hpp
+    src/audio/VisualizerAudioTap.cpp
     src/audio/Playlist.hpp
     src/audio/Playlist.cpp
     src/audio/analysis/MediaMetadata.hpp
