@@ -122,8 +122,14 @@ public:
    * up to a hundred times a second for a drop-only batch: it told the user the
    * recording had broken, and then, at stop(), told them the file was fine.
    */
+  /// @param inSampleRate  The rate this batch was captured at, as the audio
+  ///        device reported it through AudioQueue. Zero means "the encoder's
+  ///        own rate", which is what non-device callers and tests pass. It
+  ///        cannot be known when initAudioStream runs -- the encoder is opened
+  ///        before the first sample exists -- so it has to arrive here.
   AudioEncodeOutcome encodeAudio(std::vector<f32>& buffer, u32 channels,
-                                 u64& bytesWritten);
+                                 u64& bytesWritten,
+                                 u32 inSampleRate = 0);
   void flush(u64& bytesWritten);
 
   /**
@@ -212,17 +218,25 @@ public:
                                audioFramesEncoded_ > 0};
   }
 
+  /// Test seam: how many samples have been handed to the audio encoder so far.
+  /// It is the one observable that says whether a device rate was converted
+  /// rather than mislabelled -- one second of 44.1 kHz input must arrive as
+  /// ~48 000 samples for a 48 kHz encoder, not 44 032. Read on the encoding
+  /// thread, which is where its callers run.
+  u64 encodedAudioSamplesForTesting() const { return audioFrameCount_; }
+
   /**
-   * @brief Test seam: make the next `frames` resample attempts fail.
+   * @brief Test seam: make the next `frames` audio frames be dropped.
    *
-   * Injected as the *return value* of the call to swr_convert, not as a
-   * separate code path, so the production handling of a resampler failure --
-   * the counter, the log throttle, the stop() message -- is the code under test
-   * and not a rehearsal of it. For the same reason as the muxer seam, this
-   * cannot be provoked for real: swr_convert fails on a resampler that was
-   * configured with an impossible conversion, and round 5 made the alternative
-   * (fixing the configuration) a hard error at init, so there is no reachable
-   * state in which a healthy recording hits this.
+   * The drop is charged where the frame is formed, which is the same place and
+   * the same production handling a real resampler failure reaches -- the
+   * counter, the log throttle, the stop() message. It is *not* injected as
+   * swr_convert's return value any more: one convert covers a whole batch and
+   * therefore several frames at a rate ratio, so a failing convert has to be
+   * counted as a batch and the drop report is in frames. Mirrors
+   * consumeInjectedWriteFailure. Like that one, this cannot be provoked for
+   * real: swr_convert fails only on an impossible conversion, and configuring
+   * one is now a hard error at init.
    */
   void simulateResampleFailureForTesting(u32 frames) {
     injectedResampleFailures_.store(frames, std::memory_order_release);
@@ -283,10 +297,30 @@ private:
   FrameEncodeOutcome encodeOneFrame(AVCodecContext* codecCtx, AVStream* stream,
                                     AVFrame* frame, u64& bytesWritten);
 
-  /// One resample into audioFrame_.data, or a simulated failure. Everything
-  /// downstream of the return value is the production path in both cases.
-  int resampleIntoAudioFrame(AVFrame* frame, const u8* const* srcData,
-                             int frameSize);
+  /// One resample of a whole batch into `frame`, or a simulated failure.
+  /// Everything downstream of the return value is the production path in both
+  /// cases.
+  int resampleIntoAudioFrame(AVFrame* frame, const f32* srcData, int inFrames);
+  /// A scratch frame in the encoder's own sample format with room for `samples`
+  /// output samples, reallocated only when a batch needs more room than the last.
+  Result<void> ensureResampleScratch(int samples);
+  /// Append `samples` output samples from `frame` to pendingAudio_, in the
+  /// frame's own (encoder) format.
+  void appendPending(const AVFrame* frame, int samples);
+  /// Rebuild swrCtx_ for an input side of `inRate` at `inChannels`. Called once
+  /// at init with the encoder's own rate (so a broken resampler fails the
+  /// recording immediately) and again by encodeAudio the first time a batch
+  /// arrives from a device running at something else.
+  Result<void> configureResampler(u32 inRate, int inChannels);
+  /// Charge one frame against the test seam's countdown. True means "drop this
+  /// frame", i.e. do not hand it to the encoder. Atomic because it can be armed
+  /// from the test's thread while the encoding thread is inside a batch.
+  bool consumeInjectedResampleFailure() {
+    if (injectedResampleFailures_.load(std::memory_order_acquire) == 0)
+      return false;
+    injectedResampleFailures_.fetch_sub(1, std::memory_order_acq_rel);
+    return true;
+  }
   /// Charge one write against the test seam's countdown. True means "refuse this
   /// one", i.e. the caller substitutes a muxer error for the real call. See
   /// simulateWriteFailureForTesting; atomic because it can be armed from the
@@ -384,6 +418,20 @@ private:
 
   SwsContextPtr swsCtx_;
   SwrContextPtr swrCtx_;
+
+  /// The input side swrCtx_ was built for. Zero until the first
+  /// configureResampler call, which is what makes "has it been built for this
+  /// rate yet?" answerable without a second flag.
+  u32 swrInRate_{0};
+  u32 swrInChannels_{0};
+  /// The resampler's output scratch, in the encoder's own sample format, sized
+  /// per call from swr_get_out_samples.
+  AVFramePtr swrOut_;
+  /// Resampled audio that has not formed a whole encoder frame yet, one buffer
+  /// per plane (one buffer, holding interleaved samples, for a packed format).
+  /// A convert cannot land on an exact multiple of frameSize at a rate ratio,
+  /// so the remainder waits here for the next batch.
+  std::vector<std::vector<u8>> pendingAudio_;
 
   AVFramePtr videoFrame_;
   AVFramePtr hwFrame_;         // Hardware frame for encoding

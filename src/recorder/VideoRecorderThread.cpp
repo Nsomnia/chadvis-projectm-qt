@@ -159,8 +159,13 @@ void VideoRecorderThread::threadLoop(StopToken stopToken) {
             // words that say the file is fine -- at stop(). Reporting it here as
             // well told the user the recording had broken up to ~100 times a
             // second, via RecordingBridge, and then contradicted it at the end.
+            // The queue's rate, not the configured encoder rate: a 44.1 kHz sink
+            // recorded as 48 kHz plays ~8.8 % fast, and only the producer knows
+            // which one it is. Zero would mean "the encoder's rate" and is what
+            // the non-device callers pass.
             const auto outcome =
-                ffmpeg_.encodeAudio(audioBuffer, 2, bytesWritten);
+                ffmpeg_.encodeAudio(audioBuffer, 2, bytesWritten,
+                                    queue->sampleRate());
             if (outcome == VideoRecorderFFmpeg::AudioEncodeOutcome::Failed) {
                 hadError = true;
                 LOG_WARN("Failed to encode audio samples");

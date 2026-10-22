@@ -315,6 +315,14 @@ void VideoRecorderFFmpeg::cleanup() {
     audioFrame_.reset();
     swsCtx_.reset();
     swrCtx_.reset();
+    // The resampler's input side and anything it had resampled but not yet
+    // formed into a frame belong to the recording that just ended. Leaving them
+    // would splice the tail of one take onto the head of the next at a rate the
+    // new encoder never agreed to.
+    swrInRate_ = 0;
+    swrInChannels_ = 0;
+    pendingAudio_.clear();
+    swrOut_.reset();
     videoCodecCtx_.reset();
     audioCodecCtx_.reset();
 
@@ -548,18 +556,15 @@ i64 VideoRecorderFFmpeg::presentationTimestampFor(i64 captureTimestampUs) {
 }
 
 VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
-    std::vector<f32>& buffer, const u32 channels, u64& bytesWritten) {
+    std::vector<f32>& buffer, const u32 channels, u64& bytesWritten,
+    const u32 inSampleRate) {
     std::lock_guard lock(mutex_);
-    // swrCtx_ is in the list because initAudioStream can now legitimately return
-    // without one -- it returns ok() with no audio stream at all when the codec
-    // is missing or needs a variable frame size -- and the old code called
-    // swr_convert on swrCtx_.get() with only audioCodecCtx_ and audioFrame_
-    // checked.
-    //
     // Every one of these is NoProgress, not Failed: nothing about the encoder is
     // broken, there was simply nothing for it to do. See AudioEncodeOutcome for
-    // why that distinction is worth a return value.
-    if (!audioCodecCtx_ || !audioFrame_ || !swrCtx_ || buffer.empty())
+    // why that distinction is worth a return value. audioFrame_ is in the list
+    // because initAudioStream legitimately returns ok() with no audio stream at
+    // all when the codec is missing or needs a variable frame size.
+    if (!audioCodecCtx_ || !audioFrame_ || buffer.empty() || channels == 0)
         return AudioEncodeOutcome::NoProgress;
 
     // Same short-circuit encodeVideo has, for the same reason: once the muxer
@@ -570,8 +575,40 @@ VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
     if (writeFailed_)
         return AudioEncodeOutcome::NoProgress;
 
-    int frameSize = audioCodecCtx_->frame_size;
-    if (frameSize <= 0)
+    const int frameSize = audioCodecCtx_->frame_size;
+    const int outRate = audioCodecCtx_->sample_rate;
+    const int outChannels = audioCodecCtx_->ch_layout.nb_channels;
+    const auto format = static_cast<AVSampleFormat>(audioCodecCtx_->sample_fmt);
+    const int bytesPerSample = av_get_bytes_per_sample(format);
+    // bytesPerSample is the load-bearing one: a format tag of NONE reports 0
+    // bytes, which would make an encoder frame zero bytes long and the drain
+    // loop below spin forever. A codec that opened has a real format, so this
+    // is a guard and not a branch.
+    if (frameSize <= 0 || outRate <= 0 || outChannels <= 0 || bytesPerSample <= 0)
+        return AudioEncodeOutcome::NoProgress;
+
+    // initAudioStream built the resampler for the encoder's own rate because the
+    // device's rate does not exist yet at that point. The first batch that says
+    // otherwise rebuilds it here. swrInRate_ is assigned before the attempt so a
+    // resampler that cannot be built is tried once, not once per audio callback
+    // for the rest of the recording.
+    const u32 inRate = inSampleRate > 0 ? inSampleRate
+                                        : static_cast<u32>(outRate);
+    if (swrInRate_ != inRate || swrInChannels_ != channels) {
+        swrInRate_ = inRate;
+        swrInChannels_ = channels;
+        // Never keep a context built for a different time base: if the rebuild
+        // fails, this track records nothing rather than resampling from the wrong
+        // rate.
+        swrCtx_.reset();
+        if (auto configured =
+                configureResampler(inRate, static_cast<int>(channels));
+            !configured) {
+            LOG_WARN("Audio resampler unavailable ({}); recording without audio",
+                     configured.error().message);
+        }
+    }
+    if (!swrCtx_)
         return AudioEncodeOutcome::NoProgress;
 
     bool encodedAny = false;
@@ -582,26 +619,81 @@ VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
     // encoder failed", which is how a full volume used to be reported twice.
     bool encoderRefused = false;
 
-    while (buffer.size() >= static_cast<usize>(frameSize * channels)) {
-        std::vector<f32> samples(buffer.begin(),
-                                 buffer.begin() + frameSize * channels);
-        buffer.erase(buffer.begin(), buffer.begin() + frameSize * channels);
+    // Resample the whole batch first, then cut whole encoder frames out of the
+    // result. Input and output counts differ by the rate ratio, so a convert
+    // cannot be asked for exactly one frame and also consume exactly
+    // frameSize * channels of input -- the old loop did both and threw away
+    // whatever the resampler had not taken: ~8 % of every second on a 44.1 kHz
+    // sink, heard as periodic dropouts. swr_get_out_samples is the documented
+    // upper bound for the next convert, so the scratch is sized from it and the
+    // remainder is carried in pendingAudio_.
+    const int inFrames = static_cast<int>(buffer.size() / channels);
+    const int capacity =
+        inFrames > 0 ? swr_get_out_samples(swrCtx_.get(), inFrames) : 0;
+    if (capacity <= 0) {
+        buffer.clear();
+        return AudioEncodeOutcome::NoProgress;
+    }
+    if (auto ready = ensureResampleScratch(capacity); !ready) {
+        buffer.clear();
+        LOG_WARN("Audio resample buffer unavailable ({}); recording without audio",
+                 ready.error().message);
+        return AudioEncodeOutcome::NoProgress;
+    }
 
-        const u8* srcData[1] = {reinterpret_cast<const u8*>(samples.data())};
+    // One place for the accounting: a refused batch and a dropped frame are the
+    // same user-visible event, and the count is what stop() reports.
+    const auto noteDroppedFrame = [this](const std::string& reason) {
+        const u64 dropped =
+            audioFramesDropped_.fetch_add(1, std::memory_order_acq_rel) + 1;
+        if (shouldLogOccurrence(dropped)) {
+            LOG_WARN("Audio resample error ({} dropped so far): {}", dropped,
+                     reason);
+        }
+    };
 
-        int ret = resampleIntoAudioFrame(audioFrame_.get(), srcData, frameSize);
-        if (ret < 0) {
-            // The frame is left out. That is not corruption -- the container, the
-            // index and the audio stream all stay valid, and the result decodes
-            // with a gap -- which is precisely why it used to be invisible. So it
-            // is counted, and the count is what stop() reports.
-            const u64 dropped = audioFramesDropped_.fetch_add(
-                                    1, std::memory_order_acq_rel) +
-                                1;
-            if (shouldLogOccurrence(dropped)) {
-                LOG_WARN("Audio resample error ({} dropped so far): {}",
-                         dropped, ffmpegError(ret));
-            }
+    const int produced =
+        resampleIntoAudioFrame(swrOut_.get(), buffer.data(), inFrames);
+    buffer.clear();
+    if (produced < 0) {
+        // The batch is left out. That is not corruption -- the container, the
+        // index and the audio stream all stay valid, and the result decodes with
+        // a gap -- which is precisely why it used to be invisible.
+        noteDroppedFrame(ffmpegError(produced));
+        return AudioEncodeOutcome::NoProgress;
+    }
+    appendPending(swrOut_.get(), produced);
+
+    const bool planar = av_sample_fmt_is_planar(format);
+    const int planes = planar ? outChannels : 1;
+    // What one encoder frame occupies in a single FIFO plane. A packed plane
+    // carries every channel interleaved; a planar one carries one channel.
+    const usize frameBytes = static_cast<usize>(frameSize) * bytesPerSample *
+                             (planar ? 1 : outChannels);
+
+    while (!pendingAudio_.empty() && pendingAudio_[0].size() >= frameBytes) {
+        std::vector<u8*> srcPlanes(static_cast<usize>(planes));
+        for (int i = 0; i < planes; ++i) {
+            srcPlanes[static_cast<usize>(i)] =
+                pendingAudio_[static_cast<usize>(i)].data();
+        }
+        // The test seam is charged per frame here, not per convert: one convert
+        // covers several frames at a rate ratio, and the drop report counts
+        // frames.
+        const bool dropped = consumeInjectedResampleFailure();
+        if (!dropped) {
+            // Both sides share the format, so this writes packed and planar
+            // alike.
+            (void)av_samples_copy(audioFrame_->data, srcPlanes.data(), 0, 0,
+                                  frameSize, outChannels, format);
+        }
+        for (int i = 0; i < planes; ++i) {
+            auto& plane = pendingAudio_[static_cast<usize>(i)];
+            plane.erase(plane.begin(),
+                        plane.begin() + static_cast<std::ptrdiff_t>(frameBytes));
+        }
+        if (dropped) {
+            noteDroppedFrame(ffmpegError(AVERROR(EINVAL)));
             continue;
         }
 
@@ -905,47 +997,53 @@ Result<void> VideoRecorderFFmpeg::initAudioStream(
                                   ffmpegError(buffered));
     }
 
+    // The resampler's input side is the queue's rate, and initAudioStream cannot
+    // know it: the encoder is opened before the first sample exists. Configuring
+    // both sides from `settings.audio.sampleRate` -- as this did -- declares
+    // in_rate == out_rate, so a 44.1 kHz sink is labelled 48 kHz and plays ~8.8 %
+    // fast, with no rate conversion at all. This call passes the encoder's own
+    // rate so a resampler that cannot be built fails the recording here rather
+    // than mid-take; encodeAudio rebuilds it the first time a real batch arrives
+    // at a different rate.
+    if (auto configured = configureResampler(settings.audio.sampleRate,
+                                             settings.audio.channels);
+        !configured) {
+        return configured;
+    }
+
+    return Result<void>::ok();
+}
+
+Result<void> VideoRecorderFFmpeg::configureResampler(const u32 inRate,
+                                                    const int inChannels) {
+    AVChannelLayout inLayout;
+    av_channel_layout_default(&inLayout, inChannels);
+
     SwrContext* s = nullptr;
     const int allocated = swr_alloc_set_opts2(&s,
                         &audioCodecCtx_->ch_layout,
                         audioCodecCtx_->sample_fmt,
                         audioCodecCtx_->sample_rate,
-                        &layout,
+                        &inLayout,
                         AV_SAMPLE_FMT_FLT,
-                        settings.audio.sampleRate,
+                        static_cast<int>(inRate),
                         0,
                         nullptr);
-    // Checked. Both of these were discarded while swrCtx_.get() was
-    // dereferenced by the very next call, so a resampler that could not be
-    // configured -- an unsupported sample-format conversion, or an out-of-memory
-    // -- became a null dereference inside swr_convert rather than an error.
-    //
-    // What *can* fire is narrower than that sentence implies, and one half of it
-    // is now wrong on purpose. The layouts are the defaults for the configured
-    // channel count, and the only sample-format conversion is float to whatever
-    // the opened encoder advertises -- but the two rates are NOT the same value
-    // by design and not by measurement: `settings.audio.sampleRate` is passed as
-    // BOTH in_rate and out_rate (the 6th and 3rd arguments above), so this
-    // context declares the queue's rate to be the encoder's rate and never
-    // actually rate-converts. That is a real bug and it is not fixed here,
-    // because the honest in_rate is whatever the queue carried and
-    // `encodeAudio` is not told it -- it needs a new parameter threaded from
-    // VideoRecorderThread. Recorded rather than silently corrected, because
-    // quietly changing the in_rate would have made every recording resample
-    // from a wrong assumption without anyone deciding to.
+    // Checked. Both of these were discarded while swrCtx_.get() was dereferenced
+    // by the very next call, so a resampler that could not be configured -- an
+    // unsupported sample-format conversion, or an out-of-memory -- became a null
+    // dereference inside swr_convert rather than an error.
     if (allocated < 0 || !s) {
         return Result<void>::err("Failed to allocate the audio resampler: " +
                                   ffmpegError(allocated));
     }
 
     // Engine selection, before swr_init: FFmpeg requires a context to be
-    // "allocated, not yet initialized" for its options to be settable. On this
-    // resampler soxr buys nothing *today* for the reason in the comment above --
-    // with in_rate == out_rate there is no rate conversion to improve -- and it
-    // is applied anyway because it is one line and so that the higher-quality
-    // engine is already in use the moment that pin is fixed. A refusal leaves
-    // libswresample's own resampler in place (measured) and has already been
-    // logged with its reason.
+    // "allocated, not yet initialized" for its options to be settable. soxr is
+    // worth having now that in_rate and out_rate really differ -- a 44.1 kHz
+    // sink through libswresample's default engine is exactly the case its
+    // quality advantage is measured on. A refusal leaves libswresample's own
+    // resampler in place and has already been logged with its reason.
     applyEngine(s, "VideoRecorderFFmpeg");
 
     const int inited = swr_init(s);
@@ -955,7 +1053,11 @@ Result<void> VideoRecorderFFmpeg::initAudioStream(
                                   ffmpegError(inited));
     }
     swrCtx_.reset(s);
-
+    swrInRate_ = inRate;
+    swrInChannels_ = static_cast<u32>(inChannels);
+    // A new context means a new time base: whatever was resampled under the old
+    // one is not a whole frame of the new one and must not be spliced onto it.
+    pendingAudio_.clear();
     return Result<void>::ok();
 }
 
@@ -997,23 +1099,59 @@ VideoRecorderFFmpeg::FrameEncodeOutcome VideoRecorderFFmpeg::encodeOneFrame(
 }
 
 int VideoRecorderFFmpeg::resampleIntoAudioFrame(AVFrame* frame,
-                                                 const u8* const* srcData,
-                                                 const int frameSize) {
-  // The seam injects the *error code*, not a branch, so everything the caller
-  // does with a failure is the production path. Zero in production, and
-  // fetch_sub on zero would wrap a u32 to 4 billion, hence the guard.
-  if (injectedResampleFailures_.load(std::memory_order_acquire) > 0) {
-    injectedResampleFailures_.fetch_sub(1, std::memory_order_acq_rel);
-    return AVERROR(EINVAL);
-  }
+                                                const f32* srcData,
+                                                const int inFrames) {
   // swr_convert takes `const uint8_t**`: a mutable array of const-data
-  // pointers. srcData's entries are const pointers, so passing it directly
-  // drops intermediate constness -- a hard error, not just a warning. Copy
-  // the plane pointer into a local mutable array instead of casting away
-  // constness. The resampler input is always packed (AV_SAMPLE_FMT_FLT), so
-  // there is exactly one plane, and the only caller passes a 1-element array.
-  const uint8_t* inPlane = srcData[0];
-  return swr_convert(swrCtx_.get(), frame->data, frameSize, &inPlane, frameSize);
+  // pointers. srcData is const, so passing it directly drops intermediate
+  // constness -- a hard error, not just a warning. Copy the plane pointer into
+  // a local mutable array instead of casting away constness. The resampler
+  // input is always packed (AV_SAMPLE_FMT_FLT), so there is exactly one plane.
+  //
+  // frame->data, not frame->data[0]: a planar codec (AAC is FLTP) has one
+  // pointer per plane there, and swr expects the whole array.
+  const uint8_t* inPlane = reinterpret_cast<const uint8_t*>(srcData);
+  return swr_convert(swrCtx_.get(), frame->data, frame->nb_samples, &inPlane,
+                     inFrames);
+}
+
+Result<void> VideoRecorderFFmpeg::ensureResampleScratch(const int samples) {
+  if (swrOut_ && swrOut_->nb_samples >= samples)
+    return Result<void>::ok();
+
+  AVFrame* frame = av_frame_alloc();
+  if (!frame)
+    return Result<void>::err("Failed to allocate the resample output frame");
+  frame->format = audioCodecCtx_->sample_fmt;
+  frame->sample_rate = audioCodecCtx_->sample_rate;
+  frame->nb_samples = samples;
+  av_channel_layout_copy(&frame->ch_layout, &audioCodecCtx_->ch_layout);
+
+  const int buffered = av_frame_get_buffer(frame, 0);
+  if (buffered < 0) {
+    av_frame_free(&frame);
+    return Result<void>::err("Failed to allocate the resample output buffer: " +
+                             ffmpegError(buffered));
+  }
+  swrOut_.reset(frame);
+  return Result<void>::ok();
+}
+
+void VideoRecorderFFmpeg::appendPending(const AVFrame* frame,
+                                        const int samples) {
+  const auto format = static_cast<AVSampleFormat>(frame->format);
+  const bool planar = av_sample_fmt_is_planar(format);
+  const int channelCount = frame->ch_layout.nb_channels;
+  const int planes = planar ? channelCount : 1;
+  const usize bytes = static_cast<usize>(samples) *
+                      av_get_bytes_per_sample(format) *
+                      static_cast<usize>(planar ? 1 : channelCount);
+  if (pendingAudio_.size() < static_cast<usize>(planes))
+    pendingAudio_.resize(static_cast<usize>(planes));
+  for (int i = 0; i < planes; ++i) {
+    const u8* begin = frame->extended_data[i];
+    auto& plane = pendingAudio_[static_cast<usize>(i)];
+    plane.insert(plane.end(), begin, begin + bytes);
+  }
 }
 
 bool VideoRecorderFFmpeg::consumeInjectedWriteFailure() {

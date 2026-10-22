@@ -1835,6 +1835,48 @@ private slots:
         }
     }
 
+    void oneSecondOfDeviceRateAudioBecomesOneSecondOfEncodedAudio() {
+        // A 44.1 kHz device into a 48 kHz encoder. The resampler used to be
+        // configured with in_rate == out_rate (both settings.audio.sampleRate),
+        // so nothing was converted, and every recording from a 44.1 kHz sink was
+        // *labelled* 48 kHz: it played ~8.8 % fast and slightly sharp. Passing
+        // the queue's rate alone would not have been enough either -- the old
+        // loop consumed a fixed frameSize * channels of input per encoder frame
+        // and discarded whatever the resampler had not taken, which is ~8 % of
+        // every batch.
+        //
+        // 44100 input frames is one second. Converted, that is ~48 000 output
+        // samples; unconverted it was 43 frames, 44 032. The count is asserted
+        // as a band, not a value: the exact landing point is swr's delay
+        // arithmetic, which is not this project's to pin.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        VideoRecorderFFmpeg encoder;
+        QVERIFY(encoder.init(testSettings(
+            QString::fromStdString(
+                (fs::path(dir.path().toStdString()) / "44k.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+
+        std::vector<f32> oneSecond(44100 * 2, 0.05f);
+        u64 bytes = 0;
+        QVERIFY(encoder.encodeAudio(oneSecond, 2, bytes, 44100) !=
+                VideoRecorderFFmpeg::AudioEncodeOutcome::Failed);
+        QVERIFY2(oneSecond.empty(),
+                 "encodeAudio must consume the batch it was given; what it cannot "
+                 "resample yet belongs to the encoder, not the caller");
+        QCOMPARE(encoder.audioResampleReport().droppedFrames, u64{0});
+
+        const u64 samples = encoder.encodedAudioSamplesForTesting();
+        QVERIFY2(samples > 46000 && samples <= 48000,
+                 qPrintable(QString("one second at 44.1 kHz produced %1 encoder "
+                                    "samples at 48 kHz; expected about 48 000, and "
+                                    "an unconverted truncated batch produced 44 032")
+                                .arg(samples)));
+        QVERIFY(encoder.audioResampleReport().anyFrameWritten);
+        QVERIFY(bytes > 0);
+        encoder.cleanup();
+    }
+
     // ── Which "nothing happened" ─────────────────────────────────────────────
     //
     // encodeAudio returned one bool for two opposite situations, and three things

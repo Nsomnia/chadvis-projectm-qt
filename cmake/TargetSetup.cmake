@@ -895,12 +895,17 @@ else()
     # frameworks and plugins are found through qt.conf and @rpath, which loads a
     # SECOND Qt into the process. The symptom is four "implemented in both"
     # objc warnings and then a qFatal in the cocoa plugin, which reads like a
-    # code bug and is stale packaging.
+    # code bug and is stale packaging. Resources/qml goes with them: macdeployqt
+    # fills it with the Qt module tree plus symlinks into PlugIns, so leaving it
+    # behind leaves ~2 000 dead files and 60 dangling links that make `cp -r` of
+    # the bundle fail for reasons unrelated to the build.
     add_custom_command(TARGET chadvis-projectm-qt POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E remove_directory
                 "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Frameworks"
         COMMAND "${CMAKE_COMMAND}" -E remove_directory
                 "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/PlugIns"
+        COMMAND "${CMAKE_COMMAND}" -E remove_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Resources/qml"
         COMMAND "${CMAKE_COMMAND}" -E rm -f
                 "$<TARGET_BUNDLE_CONTENT_DIR:chadvis-projectm-qt>/Resources/qt.conf"
         COMMENT "macOS bundle: deployment suppressed, bundle left bare"

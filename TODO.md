@@ -630,7 +630,7 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       (a) `hwFramesCtx_`/`hwDeviceCtx_` survive `cleanup()` and are never freed, so a re-`init()`
       after a partial HW failure keeps the old device; (b) return `AVERROR_EXIT` from
       `read_packet` to unwind an in-flight read *before* joining the worker thread.
-- [ ] T0153 **The resampler never rate-converts: `in_rate` is set to the encoder's rate** (`src/recorder/VideoRecorderFFmpeg.cpp:911`) #risk-high #data-loss
+- [x] T0153 **The resampler never rate-converts: `in_rate` is set to the encoder's rate** (`src/recorder/VideoRecorderFFmpeg.cpp:911`) #risk-high #data-loss
       `swr_alloc_set_opts2` is called with `settings.audio.sampleRate` as *both* `in_rate` and
       `out_rate`, while the queue carries the **observed sink rate**
       (`src/audio/AudioEngine.cpp:522`). The file is self-documented as "a real bug and it is
@@ -638,6 +638,16 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       speed. Fix: thread the queue's real rate through `VideoRecorderThread` → `encodeAudio`
       into `in_rate`. **This is the same class as T0015** (projectM fed 48 kHz against a
       44.1 kHz config) and both must be fixed from one source of truth.
+      **Closed, and the rate alone was only half of it.** `AudioQueue::sampleRate()` reaches
+      `encodeAudio`, which rebuilds the resampler when a batch disagrees with the rate it was
+      built for; `configureResampler` is now the one place a context is built. The other half
+      is why a correct `in_rate` would still have lost audio: the old loop consumed a fixed
+      `frameSize * channels` of input per encoder frame, so whatever swr had not taken was
+      discarded -- ~8 % of every batch on a 44.1 kHz sink, period. It now converts the batch
+      into a scratch frame in the encoder's own format and cuts whole frames out of the
+      remainder it carries. `oneSecondOfDeviceRateAudioBecomesOneSecondOfEncodedAudio` pins
+      the arithmetic: one second of 44.1 kHz input becomes ~48 000 encoder samples at 48 kHz,
+      where the old path produced 44 032. VERIFY in `STATUS/T0153.log`.
 - [ ] T0154 **The audio callback thread mutates GUI-affine state without atomics** (`src/audio/AudioEngine.cpp:476-479,507-511,533,537-539`) #risk-high
       `processAudioBuffer` runs on the Qt audio thread (the `QAudioBufferOutput` connection at
       :213 is auto/direct) and writes plain `int observedSinkRate_` (`AudioEngine.hpp:213`),

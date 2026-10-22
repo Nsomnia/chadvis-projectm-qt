@@ -69,12 +69,15 @@
  * Not equally everywhere, and saying so is the point. `AudioFileDecoder`
  * genuinely rate-converts: an 8 kHz or 44.1 kHz source becomes the 48 kHz the
  * queue and the encoder want, and that is the conversion whose passband this
- * choice improves. The recorder's own `swr` context currently declares
- * `in_rate == out_rate == settings.audio.sampleRate`
- * (`VideoRecorderFFmpeg.cpp:904-912` passes the same value twice), so it does
- * format conversion and no rate conversion at all -- soxr buys it nothing
- * today. It is applied there anyway, for one line, so the moment that pin is
- * corrected the higher-quality engine is already the one in use.
+ * choice improves. The recorder's own `swr` context converts too, since T0153:
+ * `configureResampler` is built for the rate the queue reports
+ * (`VideoRecorderThread` passes `AudioQueue::sampleRate()` into `encodeAudio`),
+ * which is the sink's observed rate and not `settings.audio.sampleRate` unless
+ * the two happen to agree. Before that fix both sides were given
+ * `settings.audio.sampleRate`, so a 44.1 kHz sink was labelled 48 kHz and no
+ * rate conversion happened at all. On a build whose libswresample lacks soxr,
+ * both paths still run on libswresample's own engine; the log line at startup
+ * says which one is in use and why.
  */
 
 #include "util/Types.hpp"
