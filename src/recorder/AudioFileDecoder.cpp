@@ -199,7 +199,8 @@ std::expected<void, DecodeError> AudioFileDecoder::Impl::buildResampler() {
         return fail(DecodeErrorKind::ResamplerFailed, "swr_alloc_set_opts2 failed", allocated);
     }
 
-    // Mono -> stereo at unity, and this must happen BEFORE swr_init.
+    // Mono -> stereo at unity, stereo -> mono by averaging, and both must happen
+    // BEFORE swr_init.
     //
     // Two measured reasons. First, libswresample's default mono->stereo matrix
     // multiplies by 1/sqrt(2) -- a mono DC of 0.5f arrives as exactly
@@ -216,6 +217,20 @@ std::expected<void, DecodeError> AudioFileDecoder::Impl::buildResampler() {
     if (inChannels == 1 && spec.channels == 2) {
         const double unity[2] = {1.0, 1.0};
         const int matrixed = swr_set_matrix(raw, unity, 1);
+        if (matrixed < 0) {
+            swr_free(&raw);
+            return fail(DecodeErrorKind::ResamplerFailed, "swr_set_matrix failed", matrixed);
+        }
+    } else if (inChannels == 2 && spec.channels == 1) {
+        // The mirror case, and its default is wrong in the other direction: the
+        // same 1/sqrt(2) per channel makes a correlated stereo DC of 0.5f arrive
+        // as 0.70710677f, i.e. 3 dB *louder* than the source. RenderJob permits
+        // this (job.audioChannels 1..2), so it is reachable, not hypothetical.
+        // (0.5, 0.5) is the inverse of the duplication above -- a stereo file
+        // whose channels agree survives at its own amplitude, and L=0.5/R=0.25
+        // lands on exactly 0.375. Measured, both bit-exact.
+        const double average[2] = {0.5, 0.5};
+        const int matrixed = swr_set_matrix(raw, average, 1);
         if (matrixed < 0) {
             swr_free(&raw);
             return fail(DecodeErrorKind::ResamplerFailed, "swr_set_matrix failed", matrixed);

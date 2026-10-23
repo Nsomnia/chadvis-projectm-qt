@@ -429,7 +429,19 @@ private slots:
         }
         QCOMPARE(ClerkAuthClientTestAccess::classifyHttpFailure(500),
                  AuthFailureKind::ProtocolMismatch);
+        // A rate limit and an origin outage get a sentence that names the wait,
+        // not "unexpected HTTP status" -- which read as a client bug (T0216).
+        QCOMPARE(ClerkAuthClientTestAccess::httpFailureReason(429),
+                 QStringLiteral("Clerk is rate limiting sign-in requests (HTTP 429); try again "
+                                "shortly"));
+        QCOMPARE(ClerkAuthClientTestAccess::httpFailureReason(430),
+                 QStringLiteral("Clerk is rate limiting sign-in requests (HTTP 430); try again "
+                                "shortly"));
         QCOMPARE(ClerkAuthClientTestAccess::httpFailureReason(500),
+                 QStringLiteral("Clerk is temporarily unavailable (HTTP 500); try again shortly"));
+        QCOMPARE(ClerkAuthClientTestAccess::httpFailureReason(503),
+                 QStringLiteral("Clerk is temporarily unavailable (HTTP 503); try again shortly"));
+        QCOMPARE(ClerkAuthClientTestAccess::httpFailureReason(400),
                  QStringLiteral("Clerk request failed with an unexpected HTTP status"));
     }
 

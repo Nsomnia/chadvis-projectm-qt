@@ -66,6 +66,13 @@
  *     therefore given an explicit unity matrix for mono->stereo; measured, that
  *     restores bit-exact `0.5f` with `L == R` for every frame.
  *
+ *  2a. **The same default is wrong in the other direction for a mono sink.**
+ *     Measured: a correlated stereo DC of `0.5f` arrives as `0.70710677f` -- 3 dB
+ *     *louder* than the source -- because each channel is scaled by 1/sqrt(2).
+ *     `RenderJob` permits `audioChannels == 1`, so this is reachable; an explicit
+ *     `(0.5, 0.5)` average restores the source amplitude exactly (0.5f for
+ *     L == R, 0.375f for 0.5/0.25).
+ *
  *  3. **A fully drained resample of a whole file yields exactly
  *     `av_rescale(inFrames, outRate, inRate)` output frames.** Measured on 4000
  *     input frames: 8k->48k gives 24000, 8k->44.1k gives 22050, 16k->48k gives

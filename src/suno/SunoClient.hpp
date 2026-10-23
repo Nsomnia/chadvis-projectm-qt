@@ -4,11 +4,14 @@
 // ALL auth knowledge lives in suno/auth/ (ClerkAuthClient, CredentialStore,
 // JwtUtils, AuthHeaders). This class only orchestrates:
 //   - restore/migrate credentials on startup (keychain, never TOML),
-//   - keep a bearer fresh (proactive timer + uniform single 401 retry),
-//   - stamp canonical studio-api headers onto outgoing requests.
+//   - keep a bearer fresh (proactive timer + uniform single 401/403 retry),
+//   - stamp canonical studio-api headers onto outgoing requests,
+//   - back off and retry once on a 429/430/5xx instead of reading the error
+//     body as the answer.
 
 #include "HttpPolicy.hpp"
 #include "MangoLicense.hpp"
+#include "SunoAuthFailure.hpp"
 #include "SunoEndpoints.hpp"
 #include "SunoLyrics.hpp"
 #include "SunoModels.hpp"
@@ -29,6 +32,7 @@
 #include <QTimer>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <expected>
 #include <functional>
@@ -40,6 +44,38 @@
 class QUrl;
 
 namespace vc::suno {
+
+/// True for a status a backoff can answer: 429/430 are the two spellings the
+/// service uses for "too fast", and 5xx is the origin failing rather than the
+/// request being wrong. Deliberately excludes 408 and every other 4xx -- a 400
+/// is this client's bug, and re-sending it only doubles the server's work.
+[[nodiscard]] constexpr bool isTransientHttpFailure(int httpStatus) {
+    return httpStatus == 429 || httpStatus == 430 || (httpStatus >= 500 && httpStatus <= 599);
+}
+
+/// The whole retry decision for an auth status, in one place so a test can
+/// hold the boundary without a live bearer refresh (which needs a Clerk reply
+/// no test can fake). A 403 is the same condition as a 401 (T0215): both clear
+/// on a fresh bearer, and the 401-only version signed a user out on a 403.
+[[nodiscard]] constexpr bool mayRetryAuthFailure(int httpStatus, bool retryOnUnauthorized,
+                                                 bool alreadyRetried, bool hasCredentials) {
+    return isAuthFailure(httpStatus) && retryOnUnauthorized && !alreadyRetried && hasCredentials;
+}
+
+/// The same decision for a 429/430/5xx. `retryOnUnauthorized` is the caller's
+/// single "this request may be re-sent" flag: mutations pass false, which is
+/// what keeps a non-idempotent POST from being doubled by a 5xx.
+[[nodiscard]] constexpr bool mayRetryTransientFailure(int httpStatus, bool retryOnUnauthorized,
+                                                      bool alreadyRetried) {
+    return isTransientHttpFailure(httpStatus) && retryOnUnauthorized && !alreadyRetried;
+}
+
+/// Delay before re-sending a 429/430/5xx: the origin's `Retry-After`
+/// (delta-seconds or an HTTP-date) clamped to [kMinRetryAfterMs,
+/// kMaxRetryAfterMs], otherwise a fixed floor. `nowEpochSecs` is injected so
+/// the date form is testable without freezing a clock.
+[[nodiscard]] std::int64_t transientRetryDelayMs(const QByteArray& retryAfterHeader,
+                                                 std::int64_t nowEpochSecs);
 
 namespace auth {
 class CredentialStore;
@@ -192,8 +228,11 @@ public:
                   const std::string& model = "chirp-v3.5");
 
     /// Run an authenticated request through the rate-limiting queue.
-    /// Waits for a bearer when only a cookie is available; a 401 response is
-    /// retried exactly once behind the scenes. The callback owns the reply.
+    /// Waits for a bearer when only a cookie is available. A 401/403 response
+    /// refreshes the bearer and retries exactly once; a 429/430/5xx backs off
+    /// for the origin's `Retry-After` (clamped) and retries exactly once. Both
+    /// are gated on `retryOnUnauthorized`, which is the one place a caller says
+    /// whether this request may be re-sent at all. The callback owns the reply.
     void enqueueAuthenticatedRequest(const QString& endpoint, const std::string& method,
                                      const QByteArray& data,
                                      std::function<void(QNetworkReply*)> callback,
@@ -292,9 +331,10 @@ private:
         std::string method;
         QByteArray data;
         std::function<void(QNetworkReply*)> callback;
-        bool retriedAuth = false; ///< Already given its single 401 retry.
+        bool retriedAuth = false; ///< Already given its single 401/403 retry.
         bool retryOnUnauthorized = true;
         quint64 epoch = 0;
+        bool retriedTransient = false; ///< Already given its single 429/430/5xx backoff.
     };
 
     struct AuthWaiter {
@@ -345,6 +385,7 @@ private:
                         quint64 epoch = 0, bool retryOnUnauthorized = true);
     void processQueue();
     void handleReplyFinished(QNetworkReply* reply, PendingRequest&& pending);
+    void scheduleTransientRetry(PendingRequest pending, std::int64_t delayMs);
     void withValidToken(std::function<void()> proceed);
     void handleJsonReply(QNetworkReply* reply, std::function<void(const QJsonDocument&)> handler);
     void handleNetworkError(QNetworkReply* reply);
@@ -358,6 +399,10 @@ private:
     ReplyFactory replyFactory_;
     std::deque<PendingRequest> requestQueue_;
     QTimer* queueTimer_;
+    /// One-shot backoff for a 429/430/5xx re-send. Separate from queueTimer_,
+    /// which is the 1 request/second pacing clock rather than a deadline.
+    QTimer* transientRetryTimer_;
+    std::deque<PendingRequest> transientQueue_;
     quint64 requestEpoch_ = 1;
     std::vector<QPointer<QNetworkReply>> activeReplies_;
 

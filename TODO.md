@@ -416,6 +416,9 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 
 - [ ] T0318 **The saved stream carries no lyrics, and there are no user-settable tags for it to carry** (`src/suno/SunoDownloader.cpp:832-900`, `src/suno/SunoDownloader.cpp:1085`) #feature #risk-medium
       The file that now plays back is tagged with title/artist/album/comment and the four `SUNO_*` freeform atoms, and **nothing else**. Two separate facts, both measured on this machine's 2,147-clip library on 2026-10-22: `lyrics` is empty for **2,147 of 2,147** clips (the feed field is blank; **775** clips carry `aligned_lyrics_json`), and the MP4 branch of `tagAudioFile` writes **no lyrics atom at all** — `©lyr` is never set, unlike the MP3 branch's `USLT`. So the `.txt` sidecar's `Lyrics:` line is empty too, while the Library shows lyrics for the playing track because it reads the aligned data from the DB. Fix: (a) write `©lyr` (and a SYLT/`©lyr` equivalent where the container allows) from `clip.metadata.lyrics` when present, falling back to the DB's aligned-lyrics text for the same clip id; (b) fill the sidecar from the same source; (c) **there is no tag override to apply** — no Settings field sets artist/album/title, and `artist` is the Suno handle (`clip.display_name`) while `album` is the constant "Suno AI Generations", so the report's "custom tags the user can set" describes a feature that does not exist yet. Decide the override schema in `[suno]` (`artist_template`, `album`, `write_lyrics`) and thread it here; do not invent per-file prompts in the dialog first.
+- [ ] T0326 **`AudioEngine::processAudioBuffer` reads `scratchBuffer_` while `applyAudioConfig()` may resize it** (`src/audio/AudioEngine.cpp`, `src/audio/AudioEngine.hpp`) #risk-high
+      Found while closing T0154 and deliberately left out of it: the callback takes `scratchBuffer_.data()`/`.size()` on the audio thread, while the GUI thread calls `applyAudioConfig()` → `scratchBuffer_.resize()`. A resize can free the storage the callback is writing through, which is a use-after-free, not a stale read. Fix needs a decision the atomics pass did not make: double-buffer with an atomic pointer swap, or refuse conversion while reconfiguring. Not reproducible on this machine because the darwin media backend delivers no buffers (T0322), so it needs a device-free test through `submitAudioBuffer` plus a reconfiguring thread.
+
 - [ ] T0051 `QTP0004` is deliberately disabled while 58 QML files live away from the `qt_add_qml_module` call (`cmake/TargetSetup.cmake:129-134`) #risk-medium
       Qt calls this layout "a frequent source of mistakes" and 6.8 can generate per-directory
       `qmldir`s (`NO_GENERATE_EXTRA_QMLDIRS`). Either enable it and fix the relative imports,
@@ -668,7 +671,7 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       remainder it carries. `oneSecondOfDeviceRateAudioBecomesOneSecondOfEncodedAudio` pins
       the arithmetic: one second of 44.1 kHz input becomes ~48 000 encoder samples at 48 kHz,
       where the old path produced 44 032. VERIFY in `STATUS/T0153.log`.
-- [ ] T0154 **The audio callback thread mutates GUI-affine state without atomics** (`src/audio/AudioEngine.cpp:476-479,507-511,533,537-539`) #risk-high
+- [x] T0154 **The audio callback thread mutates GUI-affine state without atomics** (`src/audio/AudioEngine.cpp:476-479,507-511,533,537-539`) #risk-high
       `processAudioBuffer` runs on the Qt audio thread (the `QAudioBufferOutput` connection at
       :213 is auto/direct) and writes plain `int observedSinkRate_` (`AudioEngine.hpp:213`),
       plain `bool conversionFaulted_` (:220), plain counters (:216-217) and **`QString`
@@ -677,7 +680,8 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       **`QString` assignment is a non-atomic multi-word mutation, so a torn read is UB, not a
       stale value.** Fix: atomics for the scalars, and marshal the status string through a
       queued invocation.
-- [ ] T0155 **`LOG_ERROR` and `emit errorSignal` from the real-time audio callback** (`src/audio/AudioEngine.cpp:537-539`) #risk-high
+- [x] T0155 **`LOG_ERROR` and `emit errorSignal` from the real-time audio callback** (`src/audio/AudioEngine.cpp:537-539`) #risk-high
+      **Closed, and the half that named `SettingsBridge` was wrong.** Its connect is `AutoConnection`, so a cross-thread emit was already queued onto the bridge's thread — nothing there ever wrote QML from the audio thread. The real RT violations were `LOG_ERROR` (lock + format), `FormatError::describe()` (allocation) and the `emit` itself: all three now run in a queued functor on the engine's thread, with only a POD payload captured. The one live T0154 remnant was `refreshOutputStatus()` called **directly** from the callback after an atomic store, which is the QString torn read the item describes; `postStatusRefresh()` existed with zero callers and now has the one caller. Pinned by `sinkRateReachesTheStatusWithoutBuildingItOnTheCallbackThread` and `aFaultIsRecordedOnTheCallbackThreadAndReportedOnceOffIt`, which connect with `Qt::DirectConnection` so they observe the *emitting* thread — an AutoConnection would pass even with the bug.
       `reportConversionFailure` formats, writes the log, and emits from the RT thread;
       `SettingsBridge`'s slot (`SettingsBridge.cpp:310-312`) then mutates a QML singleton
       property — **a GUI-thread write from an audio thread.** Fix: post the report.
@@ -749,13 +753,13 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       only the *input* buffer, which is correct — `AudioQueue` stores everything as stereo after
       conversion — and it reaches `configureResampler` as the input side. The residual erase is
       one frame per frame (≤ a few KB), not a full-tail shift per iteration.
-- [ ] T0163 **Stereo→mono downmix leaves libswresample's default matrix** (`src/recorder/AudioFileDecoder.cpp:211`) #risk-medium
+- [x] T0163 **Stereo→mono downmix leaves libswresample's default matrix** (`src/recorder/AudioFileDecoder.cpp:211`) #risk-medium
       `swr_set_matrix` is applied only for `inChannels == 1 && spec.channels == 2`; the mirror
       case (stereo source, `job.audioChannels == 1`, which `RenderJob.cpp:444` explicitly
       permits) gets the library's default coefficients — a different gain than the
       `AudioQueue::pushInternal` mono path this decoder is compared against. Set an explicit
       matrix for 2→1 too.
-- [ ] T0103 `FFmpeg 9.0`: add the `swr_convert` flush loop (`src/recorder/ResamplerEngine.hpp`) #risk-high #data-loss
+- [x] T0103 `FFmpeg 9.0`: add the `swr_convert` flush loop (`src/recorder/ResamplerEngine.hpp`) #risk-high #data-loss
       `doc/examples/resample_audio.c` omits it. Loop
       `swr_convert(ctx, out, cap, nullptr, 0)` until it returns 0, or **the tail samples are
       silently lost** and the output length will not match. Size with `swr_get_out_samples`
@@ -1185,9 +1189,9 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       Corrupt `config.toml` marked dirty then overwritten on quit (signal path), contradicting "not overwritten / only on next settings save" comment. Decide one behavior, make comment match.
 - [ ] T0214 **Overlay `position` partial-table asymmetry** (`src/core/ConfigParsers.cpp`)
       Missing `x`/`y` → `0.0`, missing table → `0.5,0.5`. Fix `parseVec2` default to `{0.5,0.5}` in overlay path.
-- [ ] T0215 **401-only retry asymmetry** (`src/suno/SunoClient.cpp`)
+- [x] T0215 **401-only retry asymmetry** (`src/suno/SunoClient.cpp`)
       `handleReplyFinished` retries only 401; 403 (also `isAuthFailure`) goes straight to `handleNetworkError` → `NeedsReauth` with no refresh attempt.
-- [ ] T0216 **No 429/430/5xx handling in `SunoClient`/`ClerkAuthClient`** (`src/suno/SunoClient.cpp`)
+- [x] T0216 **No 429/430/5xx handling in `SunoClient`/`ClerkAuthClient`** (`src/suno/SunoClient.cpp`)
       429 with JSON error body flows into `handleJsonReply` → parsed as if success. Add backoff, `Retry-After` read, user-facing quota sentence.
 - [ ] T0217 **Mutations races** (`src/suno/SunoLibraryMutations.cpp`) #risk-medium
       Unbounded concurrency, no per-subject serialisation, last-write-wins by COMPLETION order; no dedup/coalescing; gate/switch TOCTOU; `setEnabled(false)` mid-flight does not cancel; destroyed-mid-flight `QPointer` guard drops reply silently with no settlement + `inFlight_` leak; `handleReply` double-entry unguarded.

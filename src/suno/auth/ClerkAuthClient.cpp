@@ -538,9 +538,23 @@ AuthFailureKind ClerkAuthClient::classifyHttpFailure(int status) noexcept {
 }
 
 QString ClerkAuthClient::httpFailureReason(int status) {
-    return classifyHttpFailure(status) == AuthFailureKind::RejectedCredential
-                   ? rejectedCredentialReason()
-                   : QStringLiteral("Clerk request failed with an unexpected HTTP status");
+    if (classifyHttpFailure(status) == AuthFailureKind::RejectedCredential) {
+        return rejectedCredentialReason();
+    }
+    // A rate limit or an origin outage is not a credential verdict, and saying
+    // "unexpected HTTP status" made a wait look like a bug. The classification
+    // stays ProtocolMismatch: a distinct transient kind would have to be added
+    // to every AuthFailureKind vocabulary map in the tree, which is a wider
+    // change than the sentence.
+    if (status == 429 || status == 430) {
+        return QStringLiteral("Clerk is rate limiting sign-in requests (HTTP %1); try again shortly")
+                .arg(status);
+    }
+    if (status >= 500 && status <= 599) {
+        return QStringLiteral("Clerk is temporarily unavailable (HTTP %1); try again shortly")
+                .arg(status);
+    }
+    return QStringLiteral("Clerk request failed with an unexpected HTTP status");
 }
 
 void ClerkAuthClient::emitFailure(AuthFailureKind kind, const QString& reason) {

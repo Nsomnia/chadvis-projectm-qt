@@ -14,6 +14,7 @@ add_executable(unit_tests
     audio/test_Playlist.cpp
     audio/test_PcmFormat.cpp
     audio/test_VisualizerAudioTap.cpp
+    audio/test_AudioEngine.cpp
     audio/test_LoudnessAnalysis.cpp
     visualizer/test_PresetScanner.cpp
     visualizer/test_PresetBridge.cpp
@@ -34,6 +35,7 @@ add_executable(unit_tests
     suno/test_DownloadEntitlement.cpp
     suno/test_SunoEndpoints.cpp
     suno/test_SunoAuthFailure.cpp
+    suno/test_SunoClient.cpp
     suno/test_BoundedBody.cpp
     suno/test_SunoWorkspace.cpp
     lyrics/test_LyricsPipeline.cpp

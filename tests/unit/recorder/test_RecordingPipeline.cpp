@@ -1938,6 +1938,43 @@ private slots:
         encoder.cleanup();
     }
 
+    void theResamplerTailReachesTheEncoderWhenTheRecordingEnds() {
+        // T0103. swr_convert only emits what the rate ratio has filled, so the
+        // filter's own delay is still inside the resampler when the last batch
+        // returns. Nothing used to drain it, so every rate-converted recording
+        // ended short by that delay -- silently, because the file is otherwise
+        // valid.
+        //
+        // The proof is arithmetic rather than a band: 1039 input frames at 8 kHz
+        // into a 48 kHz encoder is exactly av_rescale(1039, 48000, 8000) = 6234
+        // resampled samples, which is six 1024-sample AAC frames and a 90-sample
+        // remainder a fixed-frame-size codec cannot take. Measured on this
+        // FFmpeg: the single convert over that batch produces 6138 of the 6234 --
+        // 96 samples still held, i.e. five whole frames -- so without the drain
+        // the count below is 5120 and the tail is 128 ms of missing audio;
+        // with it, 6144.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        VideoRecorderFFmpeg encoder;
+        QVERIFY(encoder.init(testSettings(
+            QString::fromStdString(
+                (fs::path(dir.path().toStdString()) / "tail.mkv").string()),
+            VideoCodec::FFV1, AudioCodec::AAC, Container::MKV)));
+
+        constexpr u32 kInputFrames = 1039;
+        std::vector<f32> batch(kInputFrames * 2, 0.05f);
+        u64 bytes = 0;
+        QVERIFY(encoder.encodeAudio(batch, 2, bytes, 8000) !=
+                VideoRecorderFFmpeg::AudioEncodeOutcome::Failed);
+        QCOMPARE(encoder.audioResampleReport().droppedFrames, u64{0});
+
+        encoder.flush(bytes);
+        QCOMPARE(encoder.encodedAudioSamplesForTesting(), u64{6 * 1024});
+        QVERIFY(encoder.audioResampleReport().anyFrameWritten);
+        QVERIFY2(bytes > 0, "the drained tail produced no packet");
+        encoder.cleanup();
+    }
+
     // ── Which "nothing happened" ─────────────────────────────────────────────
     //
     // encodeAudio returned one bool for two opposite situations, and three things

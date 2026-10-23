@@ -1,0 +1,3 @@
+T0154 — verified
+VERIFY 2026-10-23 ./build.sh --fast --tests → exit 0
+VERIFY 2026-10-23 ctest --test-dir build-fast/tests --output-on-failure -j8 → 14/14 passed, 0 failed (unit_tests 87.02 s, integration_gl_tests 11.00 s)

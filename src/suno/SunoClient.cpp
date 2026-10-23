@@ -1,6 +1,7 @@
 #include "SunoClient.hpp"
 
 #include "ClipParser.hpp"
+#include "DownloadQueue.hpp"
 #include "SunoAuthFailure.hpp"
 #include "auth/AuthHeaders.hpp"
 #include "auth/CredentialStore.hpp"
@@ -9,6 +10,7 @@
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
 
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -35,6 +37,22 @@ namespace {
 /// Cap on the proactive-refresh delay: even for long-lived tokens, re-touch at
 /// most every 55 minutes (per Aug-2026 capture guidance).
 constexpr qint64 kMaxRefreshDelaySecs = 55 * 60;
+
+/// Backoff when a 429/430/5xx carries no usable `Retry-After`. Above
+/// kMinRetryAfterMs on purpose: silence about when to come back is not the
+/// origin asking for one second, and this request already spent its one retry.
+constexpr std::int64_t kTransientRetryFloorMs = 2000;
+
+/// What the user is told when a 429/430/5xx cannot or will not be retried.
+/// Never carries the URL, a header or a body: the status is the whole input.
+QString transientFailureSentence(const int status) {
+    if (status == 429 || status == 430) {
+        return QStringLiteral("Suno is rate limiting requests (HTTP %1); try again shortly.")
+                .arg(status);
+    }
+    return QStringLiteral("Suno is temporarily unavailable (HTTP %1); try again shortly.")
+            .arg(status);
+}
 
 /// Reported when a caller asks for the body of a reply this client never issued --
 /// or of one whose diagnosis has already been consumed. Named rather than
@@ -195,6 +213,18 @@ std::string_view networkErrorName(QNetworkReply::NetworkError error) {
 }
 } // namespace
 
+std::int64_t transientRetryDelayMs(const QByteArray& retryAfterHeader,
+                                   const std::int64_t nowEpochSecs) {
+    const auto seconds = parseRetryAfter(retryAfterHeader, nowEpochSecs);
+    if (!seconds) {
+        return kTransientRetryFloorMs;
+    }
+    // Clamped in SECONDS, before the multiply: `Retry-After: 9223372036854775`
+    // is a parseable int64 and multiplying it by 1000 is signed overflow.
+    constexpr std::int64_t kMaxRetryAfterSecs = kMaxRetryAfterMs / 1000;
+    return std::max(std::min(*seconds, kMaxRetryAfterSecs) * 1000, kMinRetryAfterMs);
+}
+
 CredentialStoreWorker::CredentialStoreWorker(QObject* guiReceiver, Backend backend)
     : guiReceiver_(guiReceiver), backend_(std::move(backend)),
       workerThread_(std::make_unique<QThread>()) {
@@ -347,10 +377,28 @@ SunoClient::SunoClient(QString deviceId, QObject* parent,
                        ReplyFactory replyFactory)
     : QObject(parent), manager_(new QNetworkAccessManager(this)),
       replyFactory_(std::move(replyFactory)), queueTimer_(new QTimer(this)),
-      clerk_(new auth::ClerkAuthClient(this)), deviceId_(std::move(deviceId)),
-      refreshTimer_(new QTimer(this)) {
+      transientRetryTimer_(new QTimer(this)), clerk_(new auth::ClerkAuthClient(this)),
+      deviceId_(std::move(deviceId)), refreshTimer_(new QTimer(this)) {
     queueTimer_->setInterval(1000);
     connect(queueTimer_, &QTimer::timeout, this, &SunoClient::processQueue);
+
+    // One shot per backoff window, then everything it was holding re-enters the
+    // paced queue. Epoch-filtered here as well as in processQueue, so a sign-out
+    // that lands during the wait drops the retry instead of re-sending it.
+    transientRetryTimer_->setSingleShot(true);
+    connect(transientRetryTimer_, &QTimer::timeout, this, [this]() {
+        std::deque<PendingRequest> due;
+        due.swap(transientQueue_);
+        // Reverse insertion keeps request order at the head of the queue.
+        for (auto it = due.rbegin(); it != due.rend(); ++it) {
+            if (it->epoch == requestEpoch_) {
+                requestQueue_.push_front(std::move(*it));
+            }
+        }
+        if (!requestQueue_.empty() && !queueTimer_->isActive()) {
+            queueTimer_->start();
+        }
+    });
 
     refreshTimer_->setSingleShot(true);
     connect(refreshTimer_, &QTimer::timeout, this, [this]() { ensureFreshBearer(/*force=*/true); });
@@ -376,6 +424,7 @@ SunoClient::SunoClient(QString deviceId, QObject* parent,
 SunoClient::~SunoClient() {
     requestQueue_.clear();
     retryQueue_.clear();
+    transientQueue_.clear();
     authWaiters_.clear();
     abortTrackedReplies();
     credentialStoreWorker_.reset();
@@ -748,6 +797,8 @@ void SunoClient::invalidateRequestEpoch(const QString& reason) {
     queueTimer_->stop();
     requestQueue_.clear();
     retryQueue_.clear();
+    transientRetryTimer_->stop();
+    transientQueue_.clear();
     authWaiters_.clear();
     refreshAfterRestore_ = false;
     abortTrackedReplies();
@@ -1271,9 +1322,13 @@ void SunoClient::handleReplyFinished(QNetworkReply* reply, PendingRequest&& pend
     }
 
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    if (status == 401) {
-        if (pending.retryOnUnauthorized && !pending.retriedAuth && hasCredentials()) {
-            LOG_WARN("SunoClient: 401 on {} - refreshing bearer, retrying once",
+    if (isAuthFailure(status)) {
+        // 401 and 403 are one condition here (T0215). A 403 is what a WAF or a
+        // rotated session answers, and both clear on a fresh bearer; the
+        // 401-only test tore a live session down on the 403.
+        if (mayRetryAuthFailure(status, pending.retryOnUnauthorized, pending.retriedAuth,
+                                hasCredentials())) {
+            LOG_WARN("SunoClient: {} on {} - refreshing bearer, retrying once", status,
                      pending.request.url().path().toStdString());
             reply->deleteLater();
             bearer_ = auth::BearerToken{};
@@ -1287,11 +1342,51 @@ void SunoClient::handleReplyFinished(QNetworkReply* reply, PendingRequest&& pend
         return;
     }
 
+    if (isTransientHttpFailure(status)) {
+        // Classified BEFORE any callback runs, which is the whole point: a 429
+        // carries a JSON error body, and the route handlers had no reason to
+        // look at the status, so it was read as the answer.
+        if (mayRetryTransientFailure(status, pending.retryOnUnauthorized,
+                                     pending.retriedTransient)) {
+            const std::int64_t delay = transientRetryDelayMs(reply->rawHeader("Retry-After"),
+                                                             QDateTime::currentSecsSinceEpoch());
+            LOG_WARN("SunoClient: {} on {} - retrying in {} ms", status,
+                     pending.request.url().path().toStdString(), delay);
+            reply->deleteLater();
+            pending.retriedTransient = true;
+            scheduleTransientRetry(std::move(pending), delay);
+            return;
+        }
+        const QString sentence = transientFailureSentence(status);
+        LOG_ERROR("SunoClient: {} on {}", sentence.toStdString(),
+                  pending.request.url().path().toStdString());
+        errorOccurred.emitSignal(sentence.toStdString());
+        // Delivered anyway so the route settles its own state -- the lyrics
+        // manager frees its concurrency slot from this callback, and the content
+        // key waiter completes its future. handleJsonReply refuses the body.
+        if (pending.callback) {
+            pending.callback(reply);
+        }
+        reply->deleteLater();
+        return;
+    }
+
     if (!pending.callback) {
         reply->deleteLater();
         return;
     }
     pending.callback(reply);
+}
+
+void SunoClient::scheduleTransientRetry(PendingRequest pending, const std::int64_t delayMs) {
+    transientQueue_.push_back(std::move(pending));
+    // shortcut: every pending retry shares the soonest deadline. Requests are
+    // serialized at one per second against one origin, so two live hints are
+    // rare; per-item deadlines are only worth it if a second rate-limit domain
+    // ever joins this client.
+    if (!transientRetryTimer_->isActive() || delayMs < transientRetryTimer_->remainingTime()) {
+        transientRetryTimer_->start(static_cast<int>(delayMs));
+    }
 }
 
 std::expected<QByteArray, QString> SunoClient::readTrackedBody(QNetworkReply* reply) {
@@ -1373,6 +1468,17 @@ void SunoClient::handleJsonReply(QNetworkReply* reply,
     if (!body) {
         LOG_ERROR("SunoClient: {}", body.error().toStdString());
         errorOccurred.emitSignal(body.error().toStdString());
+        reply->deleteLater();
+        return;
+    }
+    // A 429/430/5xx never becomes an object here, even one with a perfectly
+    // valid JSON body, and it is checked BEFORE the transport error because Qt
+    // maps those statuses onto one: taking that branch first reported "Network
+    // error ... on /path" for a body the caller had already classified.
+    // handleReplyFinished emitted the quota/unavailable sentence, so this
+    // refusal is deliberately silent.
+    if (isTransientHttpFailure(
+                reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt())) {
         reply->deleteLater();
         return;
     }

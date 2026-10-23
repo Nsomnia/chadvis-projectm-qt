@@ -182,15 +182,15 @@ Result<void> AudioEngine::applyAudioConfig(const AudioConfig& config) {
     deviceDescription_ = sink.description();
     deviceMinRate_ = sink.minimumSampleRate();
     deviceMaxRate_ = sink.maximumSampleRate();
-    observedSinkRate_ = 0;
+    observedSinkRate_.store(0, std::memory_order_relaxed);
     audioConfig_ = config;
     // Counters are per-configuration, not per-process. A new device or window is
     // the user answering a previous complaint, so the next fault must be able to
     // be "the first" again -- both so the log re-states it and so a consumer that
     // cleared the message has it handed back.
-    oversizedBufferCount_ = 0;
-    formatErrorCount_ = 0;
-    conversionFaulted_ = false;
+    oversizedBufferCount_.store(0, std::memory_order_relaxed);
+    formatErrorCount_.store(0, std::memory_order_relaxed);
+    conversionFaulted_.store(false, std::memory_order_relaxed);
 
     audioOutput_->setDevice(sink);
     nextAudioOutput_->setDevice(sink);
@@ -259,7 +259,7 @@ void AudioEngine::onOutputDeviceChanged() {
         deviceMinRate_ = device.minimumSampleRate();
         deviceMaxRate_ = device.maximumSampleRate();
     }
-    observedSinkRate_ = 0;
+    observedSinkRate_.store(0, std::memory_order_relaxed);
     refreshOutputStatus();
 }
 
@@ -288,8 +288,29 @@ void AudioEngine::reapplyAfterDeviceListChange() {
                      deviceDescription_.toStdString());
         }
     }
-    observedSinkRate_ = 0;
+    observedSinkRate_.store(0, std::memory_order_relaxed);
     refreshOutputStatus();
+}
+
+void AudioEngine::postStatusRefresh() {
+    // The observed rate is published as an atomic; the sentence describing it is
+    // not. Building it on the audio callback thread would assign a QString there
+    // while the GUI thread reads it, which is a torn multi-word read rather than
+    // a stale value (T0154).
+    QMetaObject::invokeMethod(this, [this] { refreshOutputStatus(); },
+                              Qt::QueuedConnection);
+}
+
+void AudioEngine::postErrorSignal(std::string message) {
+    // The queued functor is the only thing that allocates here, and the event is
+    // posted to this object's thread -- so a fault found on the sink callback
+    // thread reaches SettingsBridge on the GUI thread without a QML singleton
+    // being written from an audio thread (T0155).
+    QMetaObject::invokeMethod(this,
+                              [this, message = std::move(message)] {
+                                  emit errorSignal(message);
+                              },
+                              Qt::QueuedConnection);
 }
 
 void AudioEngine::refreshOutputStatus() {
@@ -302,8 +323,9 @@ void AudioEngine::refreshOutputStatus() {
     if (deviceMaxRate_ > 0) {
         status += QStringLiteral(" (device %1-%2 Hz)").arg(deviceMinRate_).arg(deviceMaxRate_);
     }
-    status += observedSinkRate_ > 0
-                  ? QStringLiteral(" · sink: %1 Hz").arg(observedSinkRate_)
+    status += observedSinkRate_.load(std::memory_order_relaxed) > 0
+                  ? QStringLiteral(" · sink: %1 Hz").arg(
+                        observedSinkRate_.load(std::memory_order_relaxed))
                   : QStringLiteral(" · sink: not yet observed");
 
     if (status == outputStatus_) {
@@ -531,9 +553,12 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     // audio.sampleRate from a setting with no observable effect into a setting
     // whose outcome the user can be shown.
     const auto sinkRate = static_cast<int>(format.sampleRate());
-    if (sinkRate != observedSinkRate_) {
-        observedSinkRate_ = sinkRate;
-        refreshOutputStatus();
+    if (observedSinkRate_.exchange(sinkRate, std::memory_order_relaxed) != sinkRate) {
+        // This runs on the sink's callback thread, so the status sentence is
+        // rebuilt there only via a queued invocation (T0154). The exchange also
+        // means a repeated rate posts nothing, so the queued half fires once per
+        // actual change.
+        postStatusRefresh();
     }
 
     // Read the buffer as raw bytes and let vc::pcm decide the width. The old code
@@ -561,11 +586,11 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
         return;
     }
 
-    if (conversionFaulted_) {
+    if (conversionFaulted_.exchange(false, std::memory_order_relaxed)) {
         // One empty string is the documented recovery signal; without it a fault
-        // would be the last thing the user ever sees about their output.
-        conversionFaulted_ = false;
-        emit errorSignal(std::string());
+        // would be the last thing the user ever sees about their output. Posted,
+        // never emitted here: this is the sink callback thread (T0155).
+        postErrorSignal({});
     }
 
     // The queue view is measured from the byte count the conversion actually
@@ -588,13 +613,21 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
 
 void AudioEngine::reportConversionFailure(const pcm::FormatError& error, u64 count,
                                           const char* kind) {
-    conversionFaulted_ = true;
+    conversionFaulted_.store(true, std::memory_order_relaxed);
     if (count != 1 && count % kConversionErrorReportInterval != 0) {
         return;
     }
-    LOG_ERROR("AudioEngine: {} audio callback dropped ({}/{}) -- {}", kind, count,
-              interleavedWindow(), error.describe());
-    emit errorSignal(error.describe());
+    // This is the sink's real-time callback thread: FormatError::describe() and
+    // LOG_ERROR are an allocation and a lock, so both belong to the queued half.
+    // The payload is POD plus a string literal, so capturing it is a copy.
+    QMetaObject::invokeMethod(this,
+                              [this, error, count, kind] {
+                                  const std::string detail = error.describe();
+                                  LOG_ERROR("AudioEngine: {} audio callback dropped ({}/{}) -- {}",
+                                            kind, count, interleavedWindow(), detail);
+                                  emit errorSignal(detail);
+                              },
+                              Qt::QueuedConnection);
 }
 
 } // namespace vc

@@ -633,14 +633,6 @@ VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
     if (!swrCtx_)
         return AudioEncodeOutcome::NoProgress;
 
-    bool encodedAny = false;
-    // The encoder refusing a frame, as opposed to a packet not reaching the
-    // file. encodeOneFrame reports both as FrameEncodeOutcome::Lost, so the muxer
-    // case is excluded by its own sticky flag: that fault has a one-shot report
-    // (reportWriteFailure) and must not also arrive here as a generic "the
-    // encoder failed", which is how a full volume used to be reported twice.
-    bool encoderRefused = false;
-
     // Resample the whole batch first, then cut whole encoder frames out of the
     // result. Input and output counts differ by the rate ratio, so a convert
     // cannot be asked for exactly one frame and also consume exactly
@@ -665,14 +657,6 @@ VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
 
     // One place for the accounting: a refused batch and a dropped frame are the
     // same user-visible event, and the count is what stop() reports.
-    const auto noteDroppedFrame = [this](const std::string& reason) {
-        const u64 dropped =
-            audioFramesDropped_.fetch_add(1, std::memory_order_acq_rel) + 1;
-        if (shouldLogOccurrence(dropped)) {
-            LOG_WARN("Audio resample error ({} dropped so far): {}", dropped,
-                     reason);
-        }
-    };
 
     const int produced =
         resampleIntoAudioFrame(swrOut_.get(), buffer.data(), inFrames);
@@ -681,10 +665,38 @@ VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
         // The batch is left out. That is not corruption -- the container, the
         // index and the audio stream all stay valid, and the result decodes with
         // a gap -- which is precisely why it used to be invisible.
-        noteDroppedFrame(ffmpegError(produced));
+        noteDroppedAudioFrame(ffmpegError(produced));
         return AudioEncodeOutcome::NoProgress;
     }
     appendPending(swrOut_.get(), produced);
+
+    return encodePendingAudioFrames(bytesWritten);
+}
+
+void VideoRecorderFFmpeg::noteDroppedAudioFrame(const std::string& reason) {
+    const u64 dropped =
+        audioFramesDropped_.fetch_add(1, std::memory_order_acq_rel) + 1;
+    if (shouldLogOccurrence(dropped)) {
+        LOG_WARN("Audio resample error ({} dropped so far): {}", dropped,
+                 reason);
+    }
+}
+
+VideoRecorderFFmpeg::AudioEncodeOutcome
+VideoRecorderFFmpeg::encodePendingAudioFrames(u64& bytesWritten) {
+    // Both callers have already established these; see encodeAudio's guard.
+    const int frameSize = audioCodecCtx_->frame_size;
+    const int outChannels = audioCodecCtx_->ch_layout.nb_channels;
+    const auto format = static_cast<AVSampleFormat>(audioCodecCtx_->sample_fmt);
+    const int bytesPerSample = av_get_bytes_per_sample(format);
+
+    bool encodedAny = false;
+    // The encoder refusing a frame, as opposed to a packet not reaching the
+    // file. encodeOneFrame reports both as FrameEncodeOutcome::Lost, so the muxer
+    // case is excluded by its own sticky flag: that fault has a one-shot report
+    // (reportWriteFailure) and must not also arrive here as a generic "the
+    // encoder failed", which is how a full volume used to be reported twice.
+    bool encoderRefused = false;
 
     const bool planar = av_sample_fmt_is_planar(format);
     const int planes = planar ? outChannels : 1;
@@ -693,6 +705,10 @@ VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
     const usize frameBytes = static_cast<usize>(frameSize) * bytesPerSample *
                              (planar ? 1 : outChannels);
 
+    // Whole frames only: a fixed-frame-size codec cannot be handed a short one,
+    // and padding the remainder with silence would fabricate audio rather than
+    // lose it. So the tail of the recording is bounded by one frame (< 21 ms at
+    // 48 kHz for AAC), not by the resampler's filter delay.
     while (!pendingAudio_.empty() && pendingAudio_[0].size() >= frameBytes) {
         std::vector<u8*> srcPlanes(static_cast<usize>(planes));
         for (int i = 0; i < planes; ++i) {
@@ -715,7 +731,7 @@ VideoRecorderFFmpeg::AudioEncodeOutcome VideoRecorderFFmpeg::encodeAudio(
                         plane.begin() + static_cast<std::ptrdiff_t>(frameBytes));
         }
         if (dropped) {
-            noteDroppedFrame(ffmpegError(AVERROR(EINVAL)));
+            noteDroppedAudioFrame(ffmpegError(AVERROR(EINVAL)));
             continue;
         }
 
@@ -785,6 +801,41 @@ void VideoRecorderFFmpeg::flush(u64& bytesWritten) {
             writePacket(packet_.get(), videoStream_, videoCodecCtx_->time_base,
                         bytesWritten);
         }
+    }
+
+    // Drain the resampler before draining the *audio* encoder. swr_convert only
+    // emits what a rate ratio has filled, so at end-of-stream the filter's own
+    // delay is still inside swrCtx_ -- and without this loop it never becomes
+    // output. Measured over a whole file: the drained total is exactly
+    // av_rescale(inFrames, outRate, inRate), where an undrained conversion falls
+    // short by the filter delay (an 8 kHz source loses 96 samples; the last
+    // syllable of a three-minute render). What remains afterwards is the
+    // sub-frame remainder in pendingAudio_, which a fixed-frame-size codec cannot
+    // accept: bounded by one encoder frame, not by the resampler.
+    if (audioCodecCtx_ && audioFrame_ && swrCtx_) {
+        while (true) {
+            // Re-read every round: swr_get_out_samples is an upper bound for the
+            // *next* convert and any intervening call invalidates it.
+            const int capacity = swr_get_out_samples(swrCtx_.get(), 0);
+            if (capacity <= 0)
+                break;
+            if (auto ready = ensureResampleScratch(capacity); !ready) {
+                LOG_WARN("Audio resample tail unavailable ({}); the last samples "
+                         "are lost", ready.error().message);
+                break;
+            }
+            const int produced =
+                resampleIntoAudioFrame(swrOut_.get(), nullptr, 0);
+            if (produced < 0) {
+                noteDroppedAudioFrame(ffmpegError(produced));
+                break;
+            }
+            if (produced == 0)
+                break; // fully drained
+            appendPending(swrOut_.get(), produced);
+        }
+        // Whatever the tail completed into whole frames still has to be encoded.
+        (void)encodePendingAudioFrames(bytesWritten);
     }
 
     if (audioCodecCtx_) {
@@ -1148,9 +1199,13 @@ int VideoRecorderFFmpeg::resampleIntoAudioFrame(AVFrame* frame,
   //
   // frame->data, not frame->data[0]: a planar codec (AAC is FLTP) has one
   // pointer per plane there, and swr expects the whole array.
+  //
+  // A null srcData is the flush: swr_convert(ctx, out, cap, nullptr, 0) emits
+  // what the filter is still holding and nothing else. That is the only call that
+  // makes a rate conversion's tail reach the file -- see flush().
   const uint8_t* inPlane = reinterpret_cast<const uint8_t*>(srcData);
-  return swr_convert(swrCtx_.get(), frame->data, frame->nb_samples, &inPlane,
-                     inFrames);
+  return swr_convert(swrCtx_.get(), frame->data, frame->nb_samples,
+                     srcData ? &inPlane : nullptr, srcData ? inFrames : 0);
 }
 
 Result<void> VideoRecorderFFmpeg::ensureResampleScratch(const int samples) {

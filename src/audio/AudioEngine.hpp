@@ -71,12 +71,17 @@ public:
     [[nodiscard]] usize interleavedWindow() const { return scratchBuffer_.size(); }
 
     /// Callbacks dropped for exceeding interleavedWindow(). Was an
-    /// unmonitored silent `return` before.
-    [[nodiscard]] u64 oversizedBufferCount() const { return oversizedBufferCount_; }
+    /// unmonitored silent `return` before. Written by the audio callback
+    /// thread, so it is read atomically.
+    [[nodiscard]] u64 oversizedBufferCount() const {
+        return oversizedBufferCount_.load(std::memory_order_relaxed);
+    }
 
     /// Callbacks dropped for an undecodable sample format. Used to be a silent
-    /// pass-through of the previous buffer's samples.
-    [[nodiscard]] u64 formatErrorCount() const { return formatErrorCount_; }
+    /// pass-through of the previous buffer's samples. Same threading as above.
+    [[nodiscard]] u64 formatErrorCount() const {
+        return formatErrorCount_.load(std::memory_order_relaxed);
+    }
 
     /// One-line description of what the output is actually running: device,
     /// conversion window, requested rate against the device's range, and the
@@ -84,6 +89,16 @@ public:
     /// only honest answer to "what sample rate am I actually hearing", because
     /// the platform, not this config, decides it.
     [[nodiscard]] QString audioOutputStatus() const { return outputStatus_; }
+
+    /// One sink buffer through the conversion and reporting path.
+    ///
+    /// Public so a headless test can exercise the callback-thread contract
+    /// without an audio device: on a multimedia build with only the native
+    /// backend nothing ever delivers QAudioBufferOutput (T0322), so the path
+    /// that this class's whole threading rule protects would otherwise be
+    /// unreachable from a test. Production calls it only from
+    /// onAudioBufferReceived().
+    void submitAudioBuffer(const QAudioBuffer& buffer) { processAudioBuffer(buffer); }
 
     void play();
     void pause();
@@ -163,10 +178,25 @@ private:
 
     /// Rebuilds outputStatus_ from the observed state and emits
     /// audioOutputStatusChanged() if the text moved.
+    ///
+    /// GUI thread only: outputStatus_ is a QString, whose assignment is a
+    /// multi-word mutation, so building it while the audio callback thread is
+    /// running is a torn read. The callback posts postStatusRefresh() instead.
     void refreshOutputStatus();
 
-    /// Logs and, subject to kConversionErrorReportInterval, emits a PCM
-    /// conversion failure. @p count is the running total of that failure kind.
+    /// Queues refreshOutputStatus() on this object's thread.
+    void postStatusRefresh();
+
+    /// Queues errorSignal(@p message) on this object's thread. The empty string
+    /// is the documented "recovered" value, so this is the only route a
+    /// callback-thread fault or recovery takes to a consumer.
+    void postErrorSignal(std::string message);
+
+    /// Records a conversion failure and, subject to kConversionErrorReportInterval,
+    /// posts the report. Called on the audio callback thread, so it writes only
+    /// atomics: the log line and the signal are the queued half, which is why
+    /// nothing here formats, logs or emits.
+    /// @p count is the running total of that failure kind.
     void reportConversionFailure(const pcm::FormatError& error, u64 count, const char* kind);
 
     /// Writes the session M3U now. Only called by the debounce timer and by the
@@ -225,15 +255,18 @@ private:
     int deviceMaxRate_{0};
     /// Rate the sink has actually delivered, learned from the first buffer.
     /// Zero until one has arrived, which is what makes it an observation rather
-    /// than a restatement of the requested value.
-    int observedSinkRate_{0};
+    /// than a restatement of the requested value. Written by the audio callback
+    /// thread.
+    std::atomic<int> observedSinkRate_{0};
 
+    /// The rendered status line. GUI thread only -- see refreshOutputStatus().
     QString outputStatus_;
-    u64 oversizedBufferCount_{0};
-    u64 formatErrorCount_{0};
+    std::atomic<u64> oversizedBufferCount_{0};
+    std::atomic<u64> formatErrorCount_{0};
     /// Set on a conversion failure, cleared by the next success that converts
     /// one. Gates the single empty-string recovery emission on errorSignal.
-    bool conversionFaulted_{false};
+    /// Written on the audio callback thread.
+    std::atomic<bool> conversionFaulted_{false};
 };
 
 } // namespace vc

@@ -127,9 +127,13 @@ public:
   ///        own rate", which is what non-device callers and tests pass. It
   ///        cannot be known when initAudioStream runs -- the encoder is opened
   ///        before the first sample exists -- so it has to arrive here.
-  AudioEncodeOutcome encodeAudio(std::vector<f32>& buffer, u32 channels,
-                                 u64& bytesWritten,
-                                 u32 inSampleRate = 0);
+    AudioEncodeOutcome encodeAudio(std::vector<f32>& buffer, u32 channels,
+                                   u64& bytesWritten,
+                                   u32 inSampleRate = 0);
+  /// Drain the resampler's tail into whole encoder frames, then flush both
+  /// encoders. Called once at stop(), after the worker thread has been joined.
+  /// Without the resampler drain the filter delay never becomes output and every
+  /// rate-converted recording ends short by it.
   void flush(u64& bytesWritten);
 
   /**
@@ -297,9 +301,8 @@ private:
   FrameEncodeOutcome encodeOneFrame(AVCodecContext* codecCtx, AVStream* stream,
                                     AVFrame* frame, u64& bytesWritten);
 
-  /// One resample of a whole batch into `frame`, or a simulated failure.
-  /// Everything downstream of the return value is the production path in both
-  /// cases.
+  /// One resample of a whole batch into `frame`. A null `srcData` with zero
+  /// `inFrames` is the flush: that is how the filter delay becomes output.
   int resampleIntoAudioFrame(AVFrame* frame, const f32* srcData, int inFrames);
   /// A scratch frame in the encoder's own sample format with room for `samples`
   /// output samples, reallocated only when a batch needs more room than the last.
@@ -307,6 +310,15 @@ private:
   /// Append `samples` output samples from `frame` to pendingAudio_, in the
   /// frame's own (encoder) format.
   void appendPending(const AVFrame* frame, int samples);
+  /// Cut every whole encoder frame out of pendingAudio_ and send it.
+  ///
+  /// One implementation for the streaming path (encodeAudio) and the drained tail
+  /// (flush): plane layout, the per-frame test seam and the PTS counter are the
+  /// same work, and a second copy is how the two would drift.
+  AudioEncodeOutcome encodePendingAudioFrames(u64& bytesWritten);
+  /// Charge one refused frame against the report and the throttled log. One
+  /// place, because a refused batch and a dropped frame look identical to a user.
+  void noteDroppedAudioFrame(const std::string& reason);
   /// Rebuild swrCtx_ for an input side of `inRate` at `inChannels`. Called once
   /// at init with the encoder's own rate (so a broken resampler fails the
   /// recording immediately) and again by encodeAudio the first time a batch

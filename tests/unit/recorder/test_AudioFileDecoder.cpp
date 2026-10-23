@@ -466,6 +466,57 @@ private slots:
             compareExact(decoded.samples[i], 0.5f, "mono->mono", int(i));
     }
 
+    void aStereoSourceKeepsItsAmplitudeThroughAMonoSink() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const fs::path path = fs::path(dir.path().toStdString()) / "stereo_dc.wav";
+        QVERIFY(writeBytes(path, buildWav(8000, 2, 512, Source::Constant, 16384)));
+
+        // T0163. RenderJob permits a one-channel sink (audioChannels 1..2), and
+        // libswresample's default stereo->mono matrix multiplies each channel by
+        // 1/sqrt(2): measured, a correlated stereo DC of 0.5f arrives as
+        // 0.70710677f -- 3 dB *louder* than the source, and the opposite error to
+        // the mono->stereo default above. The explicit (0.5, 0.5) average is the
+        // inverse of the mono duplication, so the source amplitude survives and a
+        // mono render is not 3 dB hot against the same file played through
+        // AudioQueue.
+        const DecodedAudio decoded =
+            decodeWholeFile(path, AudioFileDecoder::OutputSpec{.sampleRate = 8000,
+                                                                 .channels = 1});
+        QVERIFY2(!decoded.sawError, qPrintable(decoded.error.describe().c_str()));
+        QCOMPARE(decoded.totalFrames, u64{512});
+        QCOMPARE(decoded.samples.size(), usize{512});
+        for (usize i = 0; i < decoded.samples.size(); ++i)
+            compareExact(decoded.samples[i], 0.5f, "stereo->mono", int(i));
+    }
+
+    void aStereoDownmixAveragesRatherThanPickingAChannel() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const fs::path path = fs::path(dir.path().toStdString()) / "stereo_pattern.wav";
+        QVERIFY(writeBytes(path, buildWav(8000, 2, 4000, Source::Pattern, 0)));
+
+        // The DC case above cannot distinguish averaging from taking one channel
+        // -- both leave a correlated signal at 0.5 -- so the two channels are
+        // given different values here. (a + b) / 2 is exact in f32 for any two
+        // s16 values: multiplying each by 2^-15 and summing needs at most 17
+        // significand bits, so the assertion stays bit-exact rather than fuzzy.
+        const DecodedAudio decoded =
+            decodeWholeFile(path, AudioFileDecoder::OutputSpec{.sampleRate = 8000,
+                                                                 .channels = 1});
+        QVERIFY2(!decoded.sawError, qPrintable(decoded.error.describe().c_str()));
+        QCOMPARE(decoded.totalFrames, u64{4000});
+        for (u64 frame = 0; frame < 4000; ++frame) {
+            const f32 expected =
+                static_cast<f32>(patternSample(frame, 0) + patternSample(frame, 1)) *
+                (1.0f / 65536.0f);
+            compareExact(decoded.samples[frame], expected, "stereo->mono average",
+                         int(frame));
+        }
+    }
+
     // ── Rate conversion ──────────────────────────────────────────────────────
 
     void aRateConversionProducesExactlyTheRescaledFrameCount() {

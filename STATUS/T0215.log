@@ -1,0 +1,5 @@
+T0215 — verified
+VERIFY 2026-10-23 ./build.sh --fast --tests → exit 0
+VERIFY 2026-10-23 ctest --test-dir build-fast/tests --output-on-failure -j8 → 14/14 passed, 0 failed (unit_tests 87.02 s, integration_gl_tests 11.00 s)
+NOTE 401 and 403 now share mayRetryAuthFailure (auth ∧ retryOnUnauthorized ∧ ¬retriedAuth ∧ hasCredentials); mutations still pass retryOnUnauthorized=false
+NOT-TESTED end-to-end 403→refresh→retry: ClerkAuthClient owns its QNAM and resetClerkClient() rebuilds it, so there is no reply seam to fake
