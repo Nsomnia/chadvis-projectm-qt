@@ -354,6 +354,7 @@ jobs:
       - name: Run the headless gate (11 entries)
         run: |
           ctest --test-dir "$BUILD_DIR/tests" --output-on-failure \
+            --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)" \
             -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
 
       # ---------------------------------------------------------------------
@@ -378,6 +379,11 @@ jobs:
         continue-on-error: true
         run: |
           set -u
+          # Deliberately serial: two of these three entries need a GL drawable and
+          # carry 120 s / 180 s TIMEOUTs, and Linux runs them on llvmpipe on a
+          # 2-core runner. Running them two at a time would trade a reported-only
+          # lane's signal for a few seconds; this is not the serial ctest T0095
+          # was filed about (that was the gating run above).
           RE='^(integration_tests|integration_gl_tests|test_OffscreenRenderSpike)$'
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             xvfb-run -a -s "-screen 0 1280x1024x24" \

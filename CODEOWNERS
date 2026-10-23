@@ -1,0 +1,3 @@
+# Default owner for everything. GitHub reads this file from the repo root, from
+# .github/, or from docs/ — one location only, root wins.
+* @Nsomnia

@@ -182,7 +182,9 @@ jobs:
           RE='^(unit_tests|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient|test_CapturedHosts|test_FeatureFlags|test_ThemeQml|test_HttpPolicy|test_RenderExecutor)$'
 
           set +e
-          ctest --test-dir "$BUILD_DIR/tests" --output-on-failure -R "$RE" 2>&1 | tee tsan-run.log
+          ctest --test-dir "$BUILD_DIR/tests" --output-on-failure \
+            --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)" \
+            -R "$RE" 2>&1 | tee tsan-run.log
           rc="${PIPESTATUS[0]}"
           set -e
 

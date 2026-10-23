@@ -1,0 +1,32 @@
+# Editor defaults. These describe what the tree already does — .clang-format is
+# the authority for C++ formatting, this file only stops an editor from
+# introducing churn (CRLF, tabs in YAML, a missing final newline).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# .clang-format: IndentWidth 4, UseTab Never.
+[*.{c,cc,cpp,cxx,c++,h,hh,hpp,hxx,h++}]
+indent_size = 4
+
+# CMake here is 4-space (cmake/Dependencies.cmake et al.), not the 2-space
+# convention other projects use. Match the tree, do not reformat it.
+[{CMakeLists.txt,*.cmake}]
+indent_size = 4
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+# Trailing double-space is a hard line break in Markdown; trimming it changes
+# rendered output.
+[*.md]
+trim_trailing_whitespace = false

@@ -225,6 +225,7 @@ jobs:
       - name: Run the headless gate (11 entries)
         run: |
           ctest --test-dir $env:BUILD_DIR/tests --output-on-failure -C $env:CMAKE_BUILD_TYPE `
+            --parallel $env:NUMBER_OF_PROCESSORS `
             -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
 
       - name: Report the credential backend this build selected

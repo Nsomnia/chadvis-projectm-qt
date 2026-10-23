@@ -608,7 +608,7 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       The suppression needs **both** `CHADVIS_FAST_ITERATION` and a Debug build type;
       build.yml sets only the latter, so `_chadvis_do_deploy` stays ON at a measured
       **5–7 minutes per link** (:358-362).
-- [ ] T0095 Every CI `ctest` invocation is serial (`.github/workflows/build.yml:297,229`) #performance
+- [x] T0095 Every CI `ctest` invocation is serial (`.github/workflows/build.yml:297,229`) #performance
       Add `--parallel $(nproc)`. `release.yml:121-123` admits it has no dependency caching
       while still installing ccache.
 - [ ] T0097 `unit_tests` is one binary with one `QCoreApplication` running 31 suites sequentially (`tests/unit/test_main.cpp:38,41-72`) #risk-medium
@@ -1416,7 +1416,7 @@ terse per T0252; long evidence belongs in `docs/backlog/TXXXX.md`.
 - [ ] T0301 **No static-analysis, SBOM, or dependency-vulnerability lane** (`.github/workflows/`) #security
       No CodeQL, no CycloneDX/SPDX SBOM, no `vcpkg.json` (T0091), and Dependabot watches only `github-actions` (`.github/dependabot.yml:14-17`). The CPM-pinned and system dependencies have **no CVE signal at all**. Add CodeQL for C++ and an SBOM step; keep CPM pins on a manual review list until a manifest exists.
 
-- [ ] T0302 **No SECURITY.md, CODEOWNERS, issue/PR templates, or `.editorconfig`** (repo root, `.github/`) #cleanup
+- [x] T0302 **No SECURITY.md, CODEOWNERS, issue/PR templates, or `.editorconfig`** (repo root, `.github/`) #cleanup
       `docs/dev/CONTRIBUTING.md` exists, but the GitHub-recognised surfaces do not: a security report has no private channel and a first-time contributor gets a blank issue box. Add `SECURITY.md` (private disclosure), `CODEOWNERS`, `.github/ISSUE_TEMPLATE/{bug,feature}.yml`, `.github/PULL_REQUEST_TEMPLATE.md`, and an `.editorconfig` matching `.clang-format`.
 
 - [x] T0303 **The test counts in both docs were stale and mutually inconsistent** (`docs/README.md:24`, `docs/dev/TESTING.md:3,46,100,155`) #doc

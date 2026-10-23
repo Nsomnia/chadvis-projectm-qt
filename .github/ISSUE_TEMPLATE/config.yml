@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/Nsomnia/chadvis-projectm-qt/security/advisories/new
+    about:
+      Private disclosure only. Never report a token, cookie, or complete media URL in a public issue.

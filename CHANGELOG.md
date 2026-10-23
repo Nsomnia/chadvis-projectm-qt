@@ -6,6 +6,10 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Changed
+
+- **The repository now has the surfaces GitHub actually reads, and CI stops running its gates one test at a time.** `SECURITY.md` (Advisories-only private channel, secret taxonomy, 7/30-day expectations), `CODEOWNERS`, issue forms for bugs and features, a PR template that carries this repo's verification bar, and an `.editorconfig` that matches `.clang-format` — none of which existed, so a security report had no private channel and a first-time contributor got a blank box. The bug form had two plain YAML scalars containing `: ` and a leading backtick, which GitHub rejects outright; they are folded scalars now, and the forms are parsed in verification rather than assumed. Every gating and sanitizer `ctest` run gained runner-sized `--parallel` (`nproc` / `sysctl -n hw.ncpu` / `$env:NUMBER_OF_PROCESSORS`), while the three runtime-environment GL/audio entries stay serial on purpose: they are `continue-on-error`, their signal is already fragile, and trading evidence for seconds there is a bad trade. (T0302, T0095)
+
 ### Added
 
 - **The transport is global, because playback is the point of the program.** It lived only inside Listen, so starting a track from the Library, Explore or a notification and then navigating anywhere left the user with no visible pause, skip or seek — the keyboard shortcuts worked, but nothing said so. `TransportBar` is now docked in the shell below every view, bound to `AudioBridge`, and shows the current title/artist with elapsed and total time, play/pause, previous/next, stop, seek and volume. It reads the playlist's current item rather than a Suno-specific bridge, so a local file and a downloaded clip are the same kind of queue entry, and its transport controls disable while the queue is empty (volume and *open audio file…* stay live). The Listen view's private copy is deleted rather than kept as a second implementation. Verified by `TestQmlStartup` (the window and the new bar instantiate) and the QML lint gate; its placement and feel are MT-001-D4. (T0321)

@@ -1,0 +1,94 @@
+name: Feature request
+description: Propose behaviour the app does not have yet.
+title: "[feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The ranked backlog is
+        [TODO.md](https://github.com/Nsomnia/chadvis-projectm-qt/blob/main/TODO.md) — it already lists
+        most of this app's known gaps with the file:line that owns each one. Check it, and the
+        [docs hub](https://github.com/Nsomnia/chadvis-projectm-qt/blob/main/docs/README.md), before
+        filing: if a `T####` item covers your request, say which one instead of opening a second thread
+        for it.
+
+        Two things to know about scope. The Suno-facing half of this client is
+        **capture-gated and fail-closed** — a route that was never captured stays refused, so "make the
+        like button work" is a capture task, not a UI task. And the renderer/recorder half is the part
+        that keeps working if the upstream surface disappears, so local-first requests are the easiest
+        to accept.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched the existing issues and the backlog for this request.
+          required: true
+        - label:
+            This is not a security report (use
+            [SECURITY.md](https://github.com/Nsomnia/chadvis-projectm-qt/blob/main/SECURITY.md)) and is
+            not an upstream bug in Suno, projectM, FFmpeg, Qt, or TagLib.
+          required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      description: Which part of the app would change.
+      options:
+        - "Library / Discover / Notifications (Suno client)"
+        - "Playlist and playback (audio)"
+        - "Visualizer (projectM presets, overlays)"
+        - "Karaoke / lyrics"
+        - "Recording / encode / burn-in"
+        - "Settings, themes, keyboard"
+        - "Build, packaging, CI"
+        - "Something else (explain below)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is hard or impossible today
+      description:
+        Describe the situation, not the widget. What are you trying to get done, and where does the app
+        stop you?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+      description: The smallest version that solves the problem above.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and trade-offs
+      description:
+        What you tried instead, and what you would be willing to lose. Note if the request needs a new
+        dependency, a new network route, or a new setting — each one costs more than it looks.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: |
+        Mockups, a comparable feature elsewhere, related `T####` items, or the file:line you think owns
+        it. Do not paste a token, cookie, account/clip identifier, or complete media URL.
+      render: text
+
+  - type: checkboxes
+    id: secret-free
+    attributes:
+      label: Secret check
+      options:
+        - label:
+            This request contains no token, cookie, bearer, `Authorization` header, content key, account
+            or clip identifier, or complete media URL. I understand a public issue is permanent.
+          required: true

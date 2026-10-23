@@ -1,0 +1,5 @@
+T0302 — SECURITY.md, CODEOWNERS, issue/PR templates, .editorconfig
+VERIFY 2026-10-23 files exist: SECURITY.md 87L, CODEOWNERS 3L, .editorconfig 32L, PR template 46L, bug.yml 151L, feature.yml 94L, config.yml 6L
+VERIFY 2026-10-23 yaml.safe_load parses all three issue templates (bug.yml had two plain scalars with `: ` and a leading backtick; now `>-`)
+VERIFY 2026-10-23 python3 scripts/check-workflows.py → exit 0 (templates are not in its scan set; loaded separately)
+NOT-ADDED no email address (Advisories only), no per-directory owners (tree has one)

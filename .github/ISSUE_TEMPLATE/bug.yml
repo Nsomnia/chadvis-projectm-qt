@@ -1,0 +1,151 @@
+name: Bug report
+description: Something is broken, wrong, or reports a result it did not produce.
+title: "[bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A useful report here is **specific and reproducible**: a fresh build, the exact command, and the
+        log lines that show the failure. Read
+        [docs/dev/TESTING.md](https://github.com/Nsomnia/chadvis-projectm-qt/blob/main/docs/dev/TESTING.md)
+        before filing — the profile/build-directory traps explain most "it does not work" reports.
+
+        **A green test run is not evidence for GL, burn-in, or audio.** Those entries skip on a headless
+        machine and ctest counts a skip as success, so "tests pass but the visualizer is black" is a real
+        bug, not a contradiction.
+
+        For a **security** problem, use
+        [SECURITY.md](https://github.com/Nsomnia/chadvis-projectm-qt/blob/main/SECURITY.md) instead of
+        this form. Never paste a token, cookie, or complete media URL anywhere in this issue.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label:
+            I searched the existing issues and this is not a duplicate.
+          required: true
+        - label:
+            This is not a security report and contains no credential, cookie, token, account/clip
+            identifier, or complete media URL.
+          required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      description: The runner or machine the build was made on, not the one you would like it to work on.
+      options:
+        - Arch Linux
+        - Ubuntu 24.04
+        - other Linux (name it under Environment)
+        - macOS 15 (Apple clang)
+        - Windows 11
+        - other (name it under Environment)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Build profile
+      description:
+        Each profile gets its own build directory (`build-fast/`, `build-release/`, …); mixing flags
+        between them is its own class of bug.
+      options:
+        - "--fast (build-fast/)"
+        - "--debug (build/)"
+        - "--release (build-release/)"
+        - "--tsan (build-tsan/)"
+        - "--asan (build-asan/)"
+        - "--ubsan (build-ubsan/)"
+        - "not sure / did not use build.sh"
+    validations:
+      required: true
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Version and Qt
+      description: >-
+        Paste the output of `build/chadvis-projectm-qt --version` (for a packaged build, the
+        installed executable). It prints the app version and the Qt version it was built against.
+      render: text
+      placeholder: |
+        Version: 1.2.0
+        Built with Qt: 6.8.3
+    validations:
+      required: true
+
+  - type: textarea
+    id: help-output
+    attributes:
+      label: "--help output"
+      description: >-
+        `build/chadvis-projectm-qt --help`, or `./build.sh --help` if the problem is the build
+        itself. Remove anything account-linked before pasting — no token, cookie, account/clip id,
+        or complete media URL.
+      render: text
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest sequence that shows the failure. "Open the app and click around" is not one.
+      placeholder: |
+        1. ./build.sh --fast --tests
+        2. ctest --test-dir build-fast/tests --output-on-failure
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Exact message, exact output, or "nothing happened" — say which.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: |
+        The relevant lines from the run, not the whole file. The log is written beside the build directory
+        (`build.log` in the repo root for a `./build.sh` run) and rotated at 5 MB × 3 by the app.
+
+        Scrub credentials first: a full URL with a query string, an `Authorization`/`Cookie` header value,
+        or a complete media URL does not belong in this box.
+      render: text
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment notes
+      description: >-
+        Anything the dropdowns cannot say — distro and version, Qt install source (distro / MacPorts /
+        Homebrew / Qt online installer / vcpkg), FFmpeg version and whether libass/libavfilter are
+        present, GPU and driver, audio backend.
+      render: text
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: secret-free
+    attributes:
+      label: Secret check
+      options:
+        - label:
+            This report contains no token, cookie, bearer, `Authorization` header, content key, account or
+            clip identifier, or complete media URL — including inside the pasted `--help`, log, or
+            environment output. I understand a public issue is permanent.
+          required: true

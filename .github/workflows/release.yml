@@ -304,12 +304,15 @@ jobs:
       - name: Run the headless gate (11 entries)
         run: |
           ctest --test-dir build-release/tests --output-on-failure \
+            --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)" \
             -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
 
       - name: Run the runtime-environment entries (reported, non-gating)
         continue-on-error: true
         run: |
           set -u
+          # Serial on purpose, for the reason given in build.yml's runtime step:
+          # two GL/drawable entries with 120 s / 180 s TIMEOUTs, on llvmpipe.
           RE='^(integration_tests|integration_gl_tests|test_OffscreenRenderSpike)$'
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             xvfb-run -a -s "-screen 0 1280x1024x24" \
