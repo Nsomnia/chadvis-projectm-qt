@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-10-22
+updated: 2026-10-23
 ---
 
 # ChadVis backlog
@@ -458,10 +458,21 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       One global `ratings.toml` keyspace means two preset banks containing the same preset
       name share a rating — **structurally blocks multiple banks.** `ratings_` is a bare
       `std::map` with no lock. Fix: inject it, key on path, and add a mutex. (after: T0014)
-- [ ] T0059 `RatingManager::save()` and `PresetPersistence::saveState` are non-atomic (`src/visualizer/RatingManager.cpp:51-54`, `src/visualizer/PresetPersistence.cpp:42-52`) #data-loss
+- [x] T0059 `RatingManager::save()` and `PresetPersistence::saveState` are non-atomic (`src/visualizer/RatingManager.cpp:44-55`, `src/visualizer/PresetPersistence.cpp:40-58`) #data-loss
       Plain truncate-and-write, unlike `ConfigLoader::save`'s temp+rename. `saveState` runs
       on **every favourite toggle** (`PresetManager.cpp:556`), so it is a hot path, not a
       once-per-session one.
+      **Closed in both writers, through the helper that already existed.** Both now serialize
+      to a string and hand it to `vc::file::writeText()`, which is the tree's temp+rename
+      writer (`FileUtils.cpp:172-195`) — no new atomic-write code, and no second implementation
+      of the rename dance. `RatingManager` uses a `std::ostringstream << toml::table`, so the
+      bytes are identical to before. Pinned by `tests/unit/visualizer/test_PresetPersistence.cpp`
+      (`saveThenLoadRoundTrips` replaces a stale file rather than appending,
+      `aSaveLeavesNoTempFileBehind` asserts the `.tmp` is gone and the target is a regular file).
+      VERIFY in `STATUS/T0059.log`. **Bounded, and worth knowing:** `writeText` is
+      temp+rename with no `fsync`, so the rename is atomic against a crash but not against
+      power loss — the same bound the config file documents, and these two files are
+      regenerable state rather than credentials.
 - [ ] T0060 Dead members and methods with grep proof (`src/`) #cleanup
       `Config::addOverlayElement`/`removeOverlayElement`/`findOverlayElement` (zero callers),
       `VisualizerRenderer::setTargetFps`, `VisualizerWindow::feedAudio` (deprecated empty
@@ -554,9 +565,16 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [ ] T0078 Pseudo-reactive bindings that never update (`src/qml/components/KaraokeMaster.qml:195`, `components/VisualizerOverlay.qml:33`) #risk-high
       `Math.sin(Date.now()/500 + index)` inside a binding — `Date.now()` is not a bindable
       property, so the "animation" is computed once and frozen.
-- [ ] T0079 The `"M"` shortcut has no text-entry guard, unlike `"F"` (`src/qml/main.qml:598-602`) #risk-high
+- [x] T0079 The `"M"` shortcut has no text-entry guard, unlike `"F"` (`src/qml/main.qml:688-692`) #risk-high
       Typing "m" in the Library search box collapses the nav rail on every keystroke. The
-      guard already exists at `main.qml:144-165`; this shortcut just forgot it.
+      guard already exists at `main.qml:181-190`; this shortcut just forgot it.
+      **Closed by reusing that guard rather than adding a second one:** `enabled` is now
+      `!settingsWindow.visible && !mainWindow.textEntryFocused`. No `railKeyConflictsWithTyping`
+      predicate was added because `"M"` is a hardcoded literal, so it always conflicts — unlike
+      `F`, whose conflict depends on the user's configured key. `scripts/lint-qml.sh` reports no
+      blocking problems and `integration_tests` (which instantiates `main.qml`) passes;
+      the keystroke itself in a live window is MT-001-A, per the board's rule that a green
+      offscreen run is not runtime evidence.
 - [ ] T0080 Two writes to a bound `value` on `AppSlider` fight each other (`src/qml/panels/settings/KaraokeSettings.qml:52`, `panels/RecordingPanel.qml:180,264`) #risk-high
       Qt explicitly recommends interaction signals (`onMoved`) over `onValueChanged`, which
       "can lead to event cascades where the value is constantly changed because it is
@@ -822,10 +840,16 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       The serializer is **structurally** incapable of emitting them (`ConfigParsers.cpp:186-203`)
       — preserve that guarantee. Separately, a dozen log sites interpolate `clipId`, which is
       the account-linked half of the scrub plan.
-- [ ] T0110 Fix the documented wrong executable path (`README.md:41`, `docs/user/INSTALL.md:111`, `docs/dev/manual-qa.md:37`) #risk-medium
+- [x] T0110 Fix the documented wrong executable path (`README.md:41`, `docs/user/INSTALL.md:111`, `docs/dev/manual-qa.md:37`) #risk-medium
       The target is a real `MACOSX_BUNDLE` (`cmake/TargetSetup.cmake:263`), so the binary is
       `build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt`. `build.sh:371-376`
       was already corrected; the docs were not.
+      **Closed in all four places, which was one more than the item listed.** `README.md` now
+      names both paths, `INSTALL.md` gives the bundle path for macOS with the Linux/Windows path
+      beside it and points at the real print site (`build.sh:697-704`, not `:176`), and
+      `docs/dev/manual-qa.md` gets the same sentence in Prerequisites plus the two commands it
+      spells out literally (A1, G17). `grep -rn "build/chadvis-projectm-qt"` now returns no bare
+      macOS path.
 - [ ] T0111 `release.yml` believes macOS bundle packaging is broken and `.desktop`/dependabot comments are stale (`.github/workflows/release.yml:19-42`, `.github/dependabot.yml:7,16`) #cleanup
       The workflow asserts `MACOSX_BUNDLE` is unset (it is set) and its macOS leg is
       `required: false`. `dependabot.yml` says "the single workflow" when there are five, and

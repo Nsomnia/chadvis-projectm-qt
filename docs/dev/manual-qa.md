@@ -21,7 +21,7 @@ The offscreen platform has no presentation path, so a green `integration_tests` 
 
 ## Prerequisites
 
-- Build the application with `./build.sh`.
+- Build the application with `./build.sh`. The binary is `build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt` on macOS (`build/chadvis-projectm-qt` elsewhere).
 - Run on a desktop with a working OpenGL implementation.
 - Use a disposable configuration when checking persistence.
 - Do not place a real Suno credential in screenshots, logs, or the test report.
@@ -34,7 +34,7 @@ Record `PASS` or `FAIL` per item. A `FAIL` needs a note describing the observed 
 
 | ID | Step | Pass | Fail | Notes |
 | --- | --- | --- | --- | --- |
-| A1 | Start `./build/chadvis-projectm-qt`; the main window opens without a crash or hang. | | | |
+| A1 | Start `./build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt` (`./build/chadvis-projectm-qt` on Linux/Windows); the main window opens without a crash or hang. | | | |
 | A2 | With default settings, the main window opens with **Library** selected. | | | |
 | A3 | The persistent rail shows all **seven** destinations: Library, Notifications, Explore, Create, Listen, Video, Settings. | | | |
 | A4 | The Library search field, refresh control, and either the clip grid or the unauthenticated empty state render without a QML error. | | | |
@@ -179,7 +179,7 @@ from a person looking at the window.
 | G14 | Read `config.toml`: `theme` is `custom`, and `accent_color` / `visualizer_background` hold the picked values as `#RRGGBBAA`. | | | |
 | G15 | Relaunch. The window opens on the custom theme — this is the exact regression that produced the uniform transparent-blue window on 12 Oct. | | | |
 | G16 | `Settings > Appearance > Reset to Default`, then **Apply**. The window returns to Material and `config.toml` says `theme = 'material'`. | | | |
-| G17 | Launch once with `./build/chadvis-projectm-qt --theme nord`. The window opens on Nord. Quit and relaunch **without** the flag: the window opens on the previously saved theme, not Nord. | | | |
+| G17 | Launch once with `./build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt --theme nord` (`./build/chadvis-projectm-qt` on Linux/Windows). The window opens on Nord. Quit and relaunch **without** the flag: the window opens on the previously saved theme, not Nord. | | | |
 | G18 | Set an unknown id by hand (`theme = 'dracula'`) in `config.toml` and launch. The app starts on a valid theme, logs what it fell back to, and **leaves `dracula` in the file**. | | | |
 | G19 | Read every secondary text label, the disabled labels, and the status bar against their backgrounds. Nothing should be unreadable grey-on-grey. `textDisabled` shipped at 1.95–2.77:1 on the old theme and the four palettes here are new colour guesses — T0191 tracks the measurement this depends on. | | | |
 | G20 | Resize the window from ~400 px to full width. Nav rail collapses and expands, and every threshold crossing re-reads the theme rather than reverting to the built-in defaults. | | | |

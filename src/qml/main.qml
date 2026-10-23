@@ -687,7 +687,9 @@ ApplicationWindow {
 
     Shortcut {
         sequence: "M"
-        enabled: !settingsWindow.visible
+        // "M" is a bare letter, so it is only safe when no text control has
+        // focus -- the same guard F uses via textEntryFocused (T0079).
+        enabled: !settingsWindow.visible && !mainWindow.textEntryFocused
         onActivated: mainWindow.setRailExpanded(!mainWindow.railUserExpanded)
     }
 }

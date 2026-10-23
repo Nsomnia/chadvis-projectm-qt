@@ -7,7 +7,7 @@
  *
  * @section Dependencies
  * - PresetData
- * - std::fstream
+ * - util/FileUtils (the atomic writer that owns saveState's temp+rename)
  */
 
 #pragma once

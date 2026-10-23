@@ -38,7 +38,7 @@ cd chadvis-projectm-qt
 ./build.sh
 ```
 
-`./build.sh` performs an incremental build and preserves the existing CMake configuration. Use `./build.sh --rebuild` only when a clean rebuild is required; `./build.sh --help` shows the compact option list. The executable lands at `build/chadvis-projectm-qt`; the test suites are registered in `build/tests`, so run `ctest --test-dir build/tests --output-on-failure` — pointing ctest at `build/` discovers zero tests and still exits zero.
+`./build.sh` performs an incremental build and preserves the existing CMake configuration. Use `./build.sh --rebuild` only when a clean rebuild is required; `./build.sh --help` shows the compact option list. The executable lands at `build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt` on macOS (`build/chadvis-projectm-qt` elsewhere, because the macOS target is a real `MACOSX_BUNDLE`); the test suites are registered in `build/tests`, so run `ctest --test-dir build/tests --output-on-failure` — pointing ctest at `build/` discovers zero tests and still exits zero.
 
 ## 📖 Documentation
 

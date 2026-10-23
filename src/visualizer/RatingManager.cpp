@@ -1,6 +1,6 @@
 #include "RatingManager.hpp"
 #include <toml++/toml.h>
-#include <fstream>
+#include <sstream>
 #include "core/Logger.hpp"
 #include "util/FileUtils.hpp"
 
@@ -48,11 +48,12 @@ Result<void> RatingManager::save() {
         tbl.insert(name, stars);
     }
 
-    std::ofstream ofs(path);
-    if (!ofs)
-        return Result<void>::err("Failed to open ratings file for writing");
-    ofs << tbl;
-    return Result<void>::ok();
+    // Serialize first, then let the shared writer own the temp+rename: a
+    // truncated write here loses every rating, and save() runs on every
+    // favourite toggle rather than once per session (T0059).
+    std::ostringstream out;
+    out << tbl;
+    return file::writeText(path, out.str());
 }
 
 } // namespace vc

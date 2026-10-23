@@ -1,4 +1,5 @@
 #include "PresetPersistence.hpp"
+#include "util/FileUtils.hpp"
 #include <fstream>
 
 namespace vc {
@@ -39,18 +40,21 @@ Result<void> PresetPersistence::saveState(
         const fs::path& path,
         const std::set<std::string>& favoriteNames,
         const std::set<std::string>& blacklistedNames) {
-    std::ofstream file(path);
-    if (!file)
-        return Result<void>::err("Failed to open file for writing");
+    // Build the whole file, then let the shared writer own the temp+rename.
+    // saveState runs on every favourite toggle, so a crash mid-write used to
+    // truncate the user's favourites and blacklist (T0059).
+    std::string content = "[favorites]\n";
+    for (const auto& name : favoriteNames) {
+        content += name;
+        content += '\n';
+    }
+    content += "\n[blacklist]\n";
+    for (const auto& name : blacklistedNames) {
+        content += name;
+        content += '\n';
+    }
 
-    file << "[favorites]\n";
-    for (const auto& name : favoriteNames)
-        file << name << "\n";
-    file << "\n[blacklist]\n";
-    for (const auto& name : blacklistedNames)
-        file << name << "\n";
-
-    return Result<void>::ok();
+    return file::writeText(path, content);
 }
 
 } // namespace vc

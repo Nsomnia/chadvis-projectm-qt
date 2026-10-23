@@ -108,10 +108,11 @@ Either way, expect the first configure to be slower. Remember the [tier 3 packag
 
 ## 🚀 Post-Installation
 
-The binary lands at **`build/chadvis-projectm-qt`** — the top of the build directory, not under a `src/` subdirectory. The wrapper prints the exact path when it finishes (`build.sh:176`).
+The binary lands at **`build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt`** on macOS, because the target is a real `MACOSX_BUNDLE`. On Linux and Windows it is `build/chadvis-projectm-qt` — the top of the build directory, not under a `src/` subdirectory. The wrapper prints the exact path when it finishes (`build.sh:697-704`).
 
 ```bash
-./build/chadvis-projectm-qt
+./build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt   # macOS
+./build/chadvis-projectm-qt                                          # Linux / Windows
 ```
 
 There are no install rules you need for a local run, but they exist if you want them: `cmake --install build` installs the binary to `bin/`, the config template to `share/chadvis-projectm-qt/config/`, and on Linux a `.desktop` file and icon (`cmake/Install.cmake`). The installed config template is what a first launch on Linux probes to seed `config.toml`; see the [configuration reference](CONFIG.md#-file-location) for where that file actually lands on your platform.
