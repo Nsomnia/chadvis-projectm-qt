@@ -1,6 +1,6 @@
 T0095 — parallelise gating CI ctest runs
-VERIFY 2026-10-23 `python3 scripts/check-workflows.py` → exit 0 (all six workflows "ok")
-VERIFY 2026-10-23 `/usr/local/bin/python3 -c "yaml.safe_load"` over 6 workflows + 3 issue templates → ALL PARSE CLEAN
+2026-10-23 VERIFY 2026-10-23 `python3 scripts/check-workflows.py` → exit 0 (all six workflows "ok")
+2026-10-23 VERIFY 2026-10-23 `/usr/local/bin/python3 -c "yaml.safe_load"` over 6 workflows + 3 issue templates → ALL PARSE CLEAN
 SCOPE build.yml gate, release.yml gate, windows.yml gate (`$env:NUMBER_OF_PROCESSORS`, pwsh), tsan.yml, asan.yml + ubsan
 NOT-PARALLEL the three runtime-environment GL/audio entries stay serial on purpose (fragile, continue-on-error)
 NOT-RUN no CI dispatch: a workflow that parses is not proof GitHub accepts it; first push is the check

@@ -61,6 +61,24 @@ another document already owns — it records only *why* the constraints exist.
   first delivered buffer clears the tap's source for the remaining session. Do not
   start the tap alongside a working buffer output and do not push from a worker;
   either breaks the queue's single-producer guarantee.
+- **A cross-thread notification carries no payload.** Every byte that crosses a
+  thread boundary moves through a lock or an atomic the *project* owns; the
+  queued call that announces it is parameterless
+  (`QMetaObject::invokeMethod(receiver, &Type::onReady, Qt::QueuedConnection)`),
+  and the receiver takes the payload under its own mutex before doing any UI
+  work. The reason is not style. `invokeMethod` with a lambda makes Qt copy the
+  functor on the posting thread and read it on the receiving thread, and that
+  copy is instrumented code in our translation unit while the happens-before
+  edge lives in libQt6Core's event queue, which is not built with TSan. The
+  result is a report at `qobjectdefs_impl.h:548` that is indistinguishable from
+  a genuine race inside a capture — TSan can only say "as if synchronized via
+  sleep". A parameterless call has no functor to report on, so the lane stays
+  meaningful and `cmake/tsan.supp` stays empty, which
+  [AGENTS.md](../../AGENTS.md) requires. Same-thread `Qt::DirectConnection`
+  calls are unaffected and should not be rewritten. Evidence and population:
+  [TESTING.md](TESTING.md#the-sanitizer-lanes); work:
+  [`TODO.md`](../../TODO.md) T0327–T0331.
+
 - **`LyricsSync` is single-writer by design: `QTimer` owns the position.** A seed
   must *snap* (drain pre-sets `smoothedTime_` so the lerp degenerates) or `seek`
   stops being exact and a mid-playback `loadLyrics` ramps from 0 instead of

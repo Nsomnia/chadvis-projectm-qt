@@ -1,4 +1,4 @@
 T0163 — verified
-VERIFY 2026-10-23 ./build.sh --fast --tests → exit 0
-VERIFY 2026-10-23 ctest --test-dir build-fast/tests --output-on-failure -j8 → 14/14 passed, 0 failed (unit_tests 87.02 s, integration_gl_tests 11.00 s)
+2026-10-23 VERIFY 2026-10-23 ./build.sh --fast --tests → exit 0
+2026-10-23 VERIFY 2026-10-23 ctest --test-dir build-fast/tests --output-on-failure -j8 → 14/14 passed, 0 failed (unit_tests 87.02 s, integration_gl_tests 11.00 s)
 NOTE explicit (0.5, 0.5) matrix for stereo→mono; libswresample's default divides by √2, so a correlated stereo source arrived 3 dB hot at a mono sink (0.5303 vs 0.5 for DC 0.5)

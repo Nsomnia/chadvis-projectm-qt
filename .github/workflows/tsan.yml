@@ -198,6 +198,9 @@ jobs:
           # which direction it moved. The count is the proxy, not a classifier:
           # a real new race can replace a benign one and leave the total flat,
           # which is why the full log stays in the summary below.
+          # The rule that removes this class by construction is in
+          # docs/dev/INVARIANTS.md (Threads and ownership); the population
+          # mismatch between this list and SAFE_TESTS is TODO.md T0330.
           BASELINE=39
           delta=$((reports - BASELINE))
           if [ "$delta" -gt 0 ]; then
