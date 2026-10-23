@@ -43,6 +43,10 @@ Everything runs `nice 10` so the foreground wins the scheduler. Run `./build.sh 
 before assuming a build is misbehaving. Every run rewrites the gitignored `build.log` at the
 repo root with its full output, so a failure is still readable after the terminal scrolls.
 
+Qt MCPs are available for API lookup. Package management is MacPorts first, then Homebrew, and
+vcpkg for C/C++ libraries neither provides; the full policy, including why Conan is deliberately
+not used, is [`docs/dev/DEPENDENCIES.md`](docs/dev/DEPENDENCIES.md).
+
 ### Packages: port first, brew second, vcpkg for C/C++
 
 This macOS is too old for Homebrew to support fully — use **MacPorts** (`port`, `/opt/local`)

@@ -47,6 +47,9 @@ CTest treats "no tests found" as a success exit code, so the wrong directory is 
 
 `build.sh` performs an incremental build by default and preserves the existing CMake configuration. Use `./build.sh --rebuild` (or `--clean`) for a clean rebuild; `-d`/`--debug` and `-r`/`--release` explicitly select a configuration. The script does not accept a `run` argument.
 
+Who supplies each dependency, and why the build does not use Conan, is
+[DEPENDENCIES.md](DEPENDENCIES.md). The build commands below assume that arrangement.
+
 ## Automated Test Inventory
 
 ### `unit_tests` (aggregate)

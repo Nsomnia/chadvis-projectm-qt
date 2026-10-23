@@ -603,6 +603,10 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `readerwriterqueue` has no system-first probe (unlike spdlog/fmt/toml++ at :50-85),
       `CPM_SOURCE_CACHE` defaults OFF (`CPM.cmake:157`) so projectM is re-cloned per fresh
       build dir, and every pin is a mutable tag rather than a SHA.
+      **Conan was considered and rejected** — pinning the CPM tags to commit SHAs plus a
+      `vcpkg.json` closes the same two gaps in hours instead of a three-platform packaging
+      migration; the reasoning and the trigger to reopen it are
+      [DEPENDENCIES.md](docs/dev/DEPENDENCIES.md#why-not-conan).
 - [ ] T0091 The Windows lane passes `CMAKE_BUILD_TYPE` to a multi-config generator (`.github/workflows/windows.yml:123-126`) #risk-medium
       No `-G` is given, so VS2022 is selected where the variable is inert — the root
       `CMakeLists.txt:58` explicitly guards this — and is papered over with `-C` at :139,:166.

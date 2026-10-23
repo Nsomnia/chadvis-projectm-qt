@@ -26,6 +26,7 @@ fact, that is a bug — fix it here rather than adding a third copy.
 | [Manual QA](dev/manual-qa.md) | The MT-001 GUI checklist. Real-GUI versus offscreen coverage, per item. |
 | [Releasing](dev/RELEASING.md) | `./scripts/release.sh`: the gate rules a release must pass, the tag scheme, and the one-command agent path. |
 | [Contributing](dev/CONTRIBUTING.md) | C++23 conventions, error handling, and PR process. |
+| [Dependencies](dev/DEPENDENCIES.md) | Which of four suppliers owns what, and why Conan is deliberately not one of them. |
 | [Agent skills](dev/SKILLS.md) | Which skill covers what, the vendored Qt set and its upstream, the harness directory layout, and where the gaps are. |
 
 ## Suno API research
