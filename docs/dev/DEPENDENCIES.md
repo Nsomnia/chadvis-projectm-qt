@@ -11,7 +11,7 @@ brew, vcpkg for C/C++) are one line in [`AGENTS.md`](../../AGENTS.md).
 | **macOS Qt kit** (MacPorts `/opt/local`, previously Homebrew) | Qt 6.12, OpenGL | This macOS is older than Homebrew supports well. Qt is a shared, version-matched tree — building it per-project would cost hours and would not match the plugins the app ships against. |
 | **vcpkg** (Windows CI only) | TagLib, FFmpeg, GLEW, projectM's own deps | The Windows lane has no system package manager for these, and the triplet must match Qt's `/MD` runtime — see T0298 in [`TODO.md`](../../TODO.md). |
 | **pkg-config** (macOS, Linux) | TagLib, FFmpeg (`libavcodec`, `libavformat`, `libavutil`, `libswscale`, `libswresample`) | Both ship `.pc` files on every distro worth targeting, and the probe in `cmake/Dependencies.cmake` already carries the keg-only/`/opt/local` fallback. |
-| **CPM.cmake** | `projectM`, and `fmt`/`spdlog`/`toml++` **only when no system copy is found** | Small, header-only or four-file libraries where a system copy is a preference, not a requirement. `glm` and `Qt` are `find_package`-required and are never fetched. |
+| **CPM.cmake** | `projectM`, and `fmt`/`spdlog`/`toml++` **only when no system copy is found** | Small, header-only or four-file libraries where a system copy is a preference, not a requirement. `glm` and `Qt` are `find_package`-required and are never fetched. Every CPM dependency is pinned to the **commit its tag names**, not to the tag, so a re-cut tag cannot change a fresh build dir. |
 
 `CMakeLists.txt` enforces C++23 at configure time; see [CONTRIBUTING.md](CONTRIBUTING.md).
 

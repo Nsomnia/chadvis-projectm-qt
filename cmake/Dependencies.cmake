@@ -56,7 +56,8 @@ else()
     CPMAddPackage(
         NAME fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG 11.0.2
+        # 11.0.2, pinned to the commit the tag names rather than to a mutable tag.
+        GIT_TAG 0c9fce2ffefecfdce794e1859584e25877b7b592
         OPTIONS "FMT_INSTALL OFF"
     )
 endif()
@@ -69,7 +70,8 @@ else()
     CPMAddPackage(
         NAME spdlog
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
-        VERSION 1.14.1
+        # v1.14.1, pinned to the commit the tag names.
+        GIT_TAG 27cb4c76708608465c413f6d0e6b8d99a4d84302
         OPTIONS "SPDLOG_BUILD_SHARED OFF" "SPDLOG_FMT_EXTERNAL ON"
     )
 endif()
@@ -82,7 +84,8 @@ else()
     CPMAddPackage(
         NAME tomlplusplus
         GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
-        VERSION 3.4.0
+        # v3.4.0, pinned to the commit the tag names.
+        GIT_TAG 30172438cee64926dc41fdd9c11fb3ba5b2ba9de
     )
 endif()
 
@@ -107,7 +110,9 @@ endif()
 CPMAddPackage(
   NAME readerwriterqueue
   GIT_REPOSITORY https://github.com/cameron314/readerwriterqueue.git
-  GIT_TAG v1.0.6
+  # v1.0.6, pinned to the commit the tag names. CPM_SHALLOW stays off: a short
+  # hash cannot be fetched from a shallow clone.
+  GIT_TAG 8e7627d18c2108aca178888d88514179899a044f
 )
 if(readerwriterqueue_ADDED)
   message(STATUS "Using CPM readerwriterqueue (header-only)")

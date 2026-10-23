@@ -600,9 +600,12 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       No `STATUS`/`TIMEOUT`, so a failure leaves a zero-byte file and an unreadable-error
       message; writing into `CMAKE_SOURCE_DIR` mutates a read-only CI checkout.
 - [ ] T0090 Nine of fifteen dependencies are unpinned, and two bypass the system-first fallback (`cmake/Dependencies.cmake`) #risk-medium
-      `readerwriterqueue` has no system-first probe (unlike spdlog/fmt/toml++ at :50-85),
+      `readerwriterqueue` has no system-first probe (unlike spdlog/fmt/toml++ at :50-85), and
       `CPM_SOURCE_CACHE` defaults OFF (`CPM.cmake:157`) so projectM is re-cloned per fresh
-      build dir, and every pin is a mutable tag rather than a SHA.
+      build dir. **The third finding is closed (2026-10-23):** all five Git dependencies —
+      fmt, spdlog, toml++, readerwriterqueue and projectM — are pinned to the commit their
+      tag names, not to a mutable tag, so a force-pushed or re-cut tag no longer
+      changes what a fresh build dir resolves.
       **Conan was considered and rejected** — pinning the CPM tags to commit SHAs plus a
       `vcpkg.json` closes the same two gaps in hours instead of a three-platform packaging
       migration; the reasoning and the trigger to reopen it are

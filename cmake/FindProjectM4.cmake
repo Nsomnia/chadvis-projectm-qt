@@ -59,7 +59,9 @@ if(NOT PROJECTM_FOUND)
     CPMAddPackage(
         NAME projectm
         GIT_REPOSITORY https://github.com/projectM-visualizer/projectm.git
-        GIT_TAG v4.1.6
+        # v4.1.6, pinned to the commit the tag names. The upgrade to 4.1.8 is
+        # T0164 in TODO.md, not a version to float.
+        GIT_TAG 3158ee615eaafd93a8912b5f6dd84a9c47b2e00a
         OPTIONS
             "BUILD_SHARED_LIBS OFF"
             "ENABLE_PLAYLIST ON"

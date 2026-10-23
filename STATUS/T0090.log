@@ -1,0 +1,5 @@
+T0090 — partial (still [ ])
+NOTE 2026-10-23 pinned fmt 11.0.2, spdlog v1.14.1, toml++ v3.4.0, readerwriterqueue v1.0.6 and projectM v4.1.6 to the commits their tags name (git ls-remote --tags, tag commit hashes recorded in cmake/Dependencies.cmake and cmake/FindProjectM4.cmake)
+NOTE 2026-10-23 no configure or build run: Qt is being moved from Homebrew to MacPorts, so a build dir would reconfigure against a half-migrated kit. A tag->commit swap is the same object graph, which is why this half could be done without a build; it is still unverified on this machine.
+OPEN readerwriterqueue has no system-first probe; CPM_SOURCE_CACHE defaults OFF, so projectM is re-cloned per fresh build dir
+REJECTED vcpkg manifest mode for now: a builtin-baseline older than the runner's vcpkg clone can fail at install time on the one lane that ships Windows binaries, and macOS/Linux keep system Qt + pkg-config. Reasoning in docs/dev/DEPENDENCIES.md
