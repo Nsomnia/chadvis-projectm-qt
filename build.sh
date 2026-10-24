@@ -216,11 +216,30 @@ case "$PROFILE" in
     *)       die "unknown profile '$PROFILE'" ;;
 esac
 if [[ -z "$QT_OVERRIDE" ]]; then
-    # The Homebrew `qt` umbrella is intentionally not installed: it pulls
-    # qtwebengine -> node -> rust -> llvm, none of which build on macOS 14.
-    # The per-component formulae are, and scripts/qt-stitch.sh merges them.
-    for candidate in "$PWD/.qt-stitch" /opt/homebrew/opt/qt /usr/local/opt/qt /usr/lib/qt6; do
-        if [[ -d "$candidate" ]]; then
+    # Resolution order, and why:
+    #  1. whatever the shell exports in CMAKE_PREFIX_PATH -- that is the user's
+    #     own statement of where Qt is, and it is how the qt.io install under
+    #     $HOME/Qt is wired in this repo's setup;
+    #  2. the qt.io/aqt layout itself, newest version first;
+    #  3. the package-manager prefixes (MacPorts first, then Homebrew, then a
+    #     distro one);
+    #  4. .qt-stitch LAST, deliberately. It was the workaround for a brew
+    #     umbrella that no longer exists (T0196), and while it sat first it
+    #     shadowed a real install -- which is how build-fast ended up pointing
+    #     at a stitched tree whose QtGui headers had gone missing.
+    #
+    # A candidate must carry Qt6Config.cmake, not merely exist: a directory
+    # that is there but has no Qt is the failure this probe is for, and `-d`
+    # cannot tell the two apart.
+    IFS=':' read -r -a env_prefixes <<< "${CMAKE_PREFIX_PATH:-}"
+    candidates=(${env_prefixes[@]+"${env_prefixes[@]}"})
+    while IFS= read -r candidate; do
+        candidates+=("$candidate")
+    done < <(ls -d "$HOME"/Qt/*/macos 2>/dev/null | sort -Vr)
+    candidates+=(/opt/local/libexec/qt6 /opt/homebrew/opt/qt /usr/local/opt/qt
+                 /usr/lib/qt6 "$PWD/.qt-stitch")
+    for candidate in "${candidates[@]}"; do
+        if [[ -n "$candidate" && -f "$candidate/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
             QT_OVERRIDE="$candidate"
             break
         fi
@@ -552,6 +571,50 @@ cmake_is_stale() {
         "$(command -v cmake 2>/dev/null || echo '<not found>')" >&2
     return 0
 }
+# A build directory remembers its Qt as well as its toolchain, and nothing
+# re-validates that memory either. The cache carries the prefix in
+# CMAKE_PREFIX_PATH and resolves Qt6_DIR under it, so when that prefix stops
+# existing or loses its headers every later configure fails with "Could not
+# find a package configuration file provided by Qt6" -- which reads like Qt
+# not being installed and is not. Two checks, because there are two cases:
+#
+#   * qt_prefix_changed() -- a DIFFERENT installation. Not a moved prefix: the
+#     objects were built against other headers and the cache carries the other
+#     Qt's feature values. Park the directory and start clean.
+#   * qt_is_stale() -- the SAME prefix, broken or removed. Reconfigure in
+#     place; every object is still valid.
+#
+# A different Qt INSTALLATION is not a moved one. Brew's Qt and a qt.io SDK at
+# the same version number ship different feature sets, so the cache carries
+# feature values the new Qt contradicts on the next configure -- Qt's own
+# warning for that says "consider removing the CMakeCache.txt file", eight
+# times over -- and the objects were compiled against the other Qt's headers.
+# Measured 2026-10-23 switching a build directory from the stitched brew tree to
+# the qt.io SDK. Start clean and park the old directory: the changed include
+# path forces that rebuild anyway, and this leaves no directory whose Qt
+# identity is ambiguous.
+qt_prefix_changed() {
+    [[ -f "$BUILD_DIR/CMakeCache.txt" ]] || return 1
+    [[ -n "$QT_OVERRIDE" ]] || return 1
+    local recorded
+    recorded="$(sed -n 's/^CMAKE_PREFIX_PATH:[A-Z]*=//p' "$BUILD_DIR/CMakeCache.txt" | head -1)"
+    [[ -n "$recorded" && "$recorded" != "$QT_OVERRIDE" ]]
+}
+
+qt_is_stale() {
+    [[ -f "$BUILD_DIR/CMakeCache.txt" ]] || return 1
+    local recorded
+    recorded="$(sed -n 's/^CMAKE_PREFIX_PATH:[A-Z]*=//p' "$BUILD_DIR/CMakeCache.txt" | head -1)"
+    # A prefix that merely moved is handled by qt_prefix_changed(), which starts
+    # a fresh directory rather than reconfiguring this one.
+    [[ -z "$recorded" ]] && return 1
+    [[ -f "$recorded/lib/cmake/Qt6/Qt6Config.cmake" ]] && return 1
+    printf 'build.sh: the Qt this build was configured against (%s) is gone or has no Qt6Config.cmake;\n' \
+        "$recorded" >&2
+    printf 'build.sh: resolving %s instead. Reconfiguring %s.\n' \
+        "${QT_OVERRIDE:-<no Qt found>}" "$BUILD_DIR" >&2
+    return 0
+}
 sdk_is_stale() {
     local recorded resolved
     # The cache TYPE is UNINITIALIZED, not INTERNAL: the variable is not declared
@@ -576,9 +639,16 @@ sdk_is_stale() {
 
 do_build() {
     # Reconfigure when the machine changed under this build directory, for any
-    # of the reasons the two staleness checks know about. Reconfigure, never
-    # nuke: it costs seconds and keeps every object that is still valid.
-    if [[ -f "$BUILD_DIR/CMakeCache.txt" ]] && { sdk_is_stale || cmake_is_stale; }; then
+    # of the reasons the staleness checks know about. Reconfigure, never nuke:
+    # it costs seconds and keeps every object that is still valid. The one
+    # exception is a different Qt installation, where the objects belong to the
+    # other Qt (see qt_prefix_changed).
+    if [[ -f "$BUILD_DIR/CMakeCache.txt" ]] && qt_prefix_changed; then
+        printf 'build.sh: %s belongs to a different Qt installation; parking it and configuring fresh.\n' \
+            "$BUILD_DIR" >&2
+        archive_build_dir
+        configure_build
+    elif [[ -f "$BUILD_DIR/CMakeCache.txt" ]] && { qt_is_stale || sdk_is_stale || cmake_is_stale; }; then
         configure_build
     else
         ensure_configured

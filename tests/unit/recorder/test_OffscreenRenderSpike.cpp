@@ -89,9 +89,16 @@ private slots:
         QVERIFY2(!report_.reason.empty(),
                  "a verdict without a reason is not machine-actionable and not "
                  "diagnosable");
-        QVERIFY2(std::string(vc::toString(verdict)) != "Unsupported" ||
-                         std::string(vc::toString(verdict)) == "Unsupported",
-                 "toString must name every verdict");
+        // T0098: this used to be `x != "Unsupported" || x == "Unsupported"`, which
+        // is true for every possible x and could never fail. The claim it was
+        // standing in for is real -- toString must NAME every verdict, not fall
+        // through to one of them -- so it is asserted per value.
+        QCOMPARE(std::string(vc::toString(vc::RenderThreadVerdict::Supported)),
+                 std::string("Supported"));
+        QCOMPARE(std::string(vc::toString(vc::RenderThreadVerdict::NeedsMainThread)),
+                 std::string("NeedsMainThread"));
+        QCOMPARE(std::string(vc::toString(vc::RenderThreadVerdict::Unsupported)),
+                 std::string("Unsupported"));
     }
 
     // "The workers may render" is a permission, and a permission that is not backed
@@ -220,10 +227,18 @@ private slots:
         QCOMPARE(vc::offscreenVerdictMaxConcurrency(vc::RenderThreadVerdict::Unsupported), 0);
 
         if (!skipReason_.isEmpty()) QSKIP(qPrintable(skipReason_));
-        // The number the verdict publishes is the number the executor must not exceed,
-        // so it has to agree with the verdict the report actually carries.
-        QCOMPARE(vc::offscreenVerdictMaxConcurrency(report_.verdict),
-                 vc::offscreenVerdictMaxConcurrency(report_.verdict));
+        // T0098: this used to compare the mapping against itself. The claim worth
+        // pinning is that the two paths a reader actually sees -- the function an
+        // executor calls and the line the probe description prints -- agree on the
+        // ceiling for the verdict this report carries. The description builds that
+        // line from the same function, so this fails the moment either side starts
+        // deriving its number independently.
+        const std::string described = vc::describeOffscreenProbe(report_);
+        const std::string ceiling =
+                std::to_string(vc::offscreenVerdictMaxConcurrency(report_.verdict));
+        QVERIFY2(described.find("verdict permits maxConcurrent=" + ceiling) !=
+                         std::string::npos,
+                 "the description's published ceiling disagrees with the verdict's own mapping");
         if (report_.verdict == vc::RenderThreadVerdict::NeedsMainThread) {
             QCOMPARE(vc::offscreenVerdictMaxConcurrency(report_.verdict), 1);
             QVERIFY2(report_.reason.find("setMaxConcurrent(1)") != std::string::npos,
@@ -274,9 +289,28 @@ private slots:
                  static_cast<vc::usize>(report_.teardownCycles) + 1);
         QCOMPARE(report_.teardownRssBytes.front(), report_.rssBeforeBytes);
         QCOMPARE(report_.teardownRssBytes.back(), report_.rssAfterBytes);
-        QVERIFY2(report_.rssAfterBytes >= report_.rssBeforeBytes,
-                 "RSS fell across the cycle loop; the probe is not reporting the "
-                 "process it is measuring");
+        QVERIFY2(report_.rssAfterBytes > 0 && report_.rssBeforeBytes > 0,
+                 "a zero reading means the sample failed, not that the process used no "
+                 "memory");
+        // RSS is not monotonic: the allocator and the GL driver return pages, and on
+        // 2026-10-23 this suite failed here with 59.8 MB -> 54.2 MB on a run whose
+        // every reading was plausible. "after >= before" was asserting something a
+        // process's RSS does not promise. What the series CAN prove is that each
+        // reading succeeded and that all of them describe ONE process: a failed read
+        // is 0, and a reading of some other process is off by orders of magnitude
+        // rather than by a quarter.
+        vc::usize lowest = report_.teardownRssBytes.front();
+        vc::usize highest = report_.teardownRssBytes.front();
+        for (const vc::usize reading : report_.teardownRssBytes) {
+            QVERIFY2(reading > 0,
+                     "a zero RSS reading means that sample failed, and a series with a "
+                     "hole in it cannot support a slope claim");
+            lowest = std::min(lowest, reading);
+            highest = std::max(highest, reading);
+        }
+        QVERIFY2(highest <= lowest * 2,
+                 "the series spans more than 2x across eight teardown cycles, which one "
+                 "process's RSS does not do -- the readings are not this process");
         QVERIFY2(report_.peakRssBytes >= report_.rssAfterBytes,
                  "the peak reading is lower than the final reading, so at least one "
                  "reading is stale");

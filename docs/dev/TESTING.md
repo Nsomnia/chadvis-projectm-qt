@@ -11,28 +11,11 @@ This file documents the **automated** tests and how to run them. The interactive
 ctest --test-dir build/tests --output-on-failure
 ```
 
-### Gotcha: a build directory remembers its Qt, and a half-upgraded Homebrew lies about it
+### Gotcha: a build directory remembers its Qt
 
-`CMAKE_PREFIX_PATH` is cached. Changing `CHADVIS_QT_PATH` or passing `--qt` to an **existing** build directory does not take effect — the cache still holds the old prefix, and the failure names files from the *old* Qt, not the one you just pointed at. AGENTS.md warns about this in general; the concrete symptom on this machine was:
+`CMAKE_PREFIX_PATH` is cached. Passing `--qt` or changing `CHADVIS_QT_PATH` against an **existing** build directory used to have no effect: the cache still held the old prefix and the failure named files from the *old* Qt, not the one you just pointed at. `build.sh` now tells the two cases apart. A cached prefix that has lost its `lib/cmake/Qt6/Qt6Config.cmake` is **reconfigured in place** — every object is still valid. A different Qt *installation* (a prefix change) is not a moved prefix: brew's Qt and a qt.io SDK at the same version ship different feature sets, so the objects were built against other headers and the cache carries feature values the new Qt contradicts — Qt's own warning says to remove `CMakeCache.txt`. That directory is **parked in `.backup_graveyard/` and configured fresh**, which is what a changed include path forces anyway. The lesson is worth keeping even though the trap is handled: **the cache is the authority on which Qt a build directory uses, not the flag you typed.**
 
-```
-The imported target "Qt6::harmonydeployqt" references the file
-"/usr/local/opt/qt/bin/harmonydeployqt" but this file does not exist
-```
-
-which reads like a broken project and is a broken package manager. `brew upgrade` had left the `qt` umbrella at 6.11.1 while qtbase, qtdeclarative, qtmultimedia and qttools all moved to 6.12.0, so the umbrella's cmake files described a `bin/` that no longer had those tools in it.
-
-Two distinct failures live here and they are worth telling apart:
-
-* **Components split across prefixes.** `Qt6Config.cmake` only looks for its components *beside itself*, so `CMAKE_PREFIX_PATH="/usr/local/opt/qtbase;/usr/local/opt/qtdeclarative"` does not find `Qt6Multimedia` — it is not next to qtbase's config. Homebrew ships the umbrella broken, so `scripts/qt-stitch.sh` builds `.qt-stitch/`: one prefix of symlinks uniting the 6.12.0 formulae. Nothing is copied and Homebrew is not touched; delete the directory to undo it.
-
-```bash
-scripts/qt-stitch.sh
-mv build-fast .backup_graveyard/        # the cache still names the old Qt
-./build.sh --fast --tests --qt "$PWD/.qt-stitch"
-```
-
-The stitch is a workaround, not a fix. `brew upgrade qt` completing removes the need for it. `scripts/qt-stitch.sh` reports which components it found, and writes nothing into `/usr/local` — an early draft did, creating `*.d` directories inside qtbase, which is why the merge order in that script is load-bearing and commented as such.
+Where Qt comes from now: **Qt 6.12.0 from qt.io, installed under `$HOME/Qt/<version>/macos`** (aqt), with `~/.zshrc` exporting `CMAKE_PREFIX_PATH` to it. The Homebrew umbrella is gone from this machine, and with it the reason `scripts/qt-stitch.sh` existed (T0196): the umbrella used to be half-upgraded (`qt` at 6.11.1 while qtbase/qtdeclarative/qtmultimedia/qttools were 6.12.0), so its cmake files described a `bin/` whose tools had moved, and a prefix of symlinks was the workaround. Neither the stitch nor the `--qt` guidance it needed is in the tree any more. `build.sh` still probes `.qt-stitch` **last** — a leftover directory must never shadow a real install — and resolves, in order: `CMAKE_PREFIX_PATH` from the environment, the newest `$HOME/Qt/*/macos`, MacPorts, Homebrew, a distro prefix.
 
 ### Gotcha: `--test-dir build` is a false green
 
@@ -54,11 +37,11 @@ Who supplies each dependency, and why the build does not use Conan, is
 
 ### `unit_tests` (aggregate)
 
-`tests/unit/CMakeLists.txt:1-33` builds a single `unit_tests` executable from **39** sources:
+`tests/unit/CMakeLists.txt` builds a single `unit_tests` executable from **45** sources:
 
 | Source | Coverage |
 | --- | --- |
-| `tests/unit/test_main.cpp` | Aggregate runner; declares and calls all 41 `runTest*` entry points. |
+| `tests/unit/test_main.cpp` | Aggregate runner; declares and calls all 44 `runTest*` entry points. |
 | `tests/unit/core/test_Logger.cpp` | Logger lifecycle coverage. |
 | `tests/unit/core/test_ConfigParsers.cpp` | TOML parsing and serialization coverage. |
 | `tests/unit/core/test_ConfigLoader.cpp` | Every serialized field surviving a round trip; the `[recording.video]`/`[recording.audio]` sub-tables written as sub-tables rather than collapsed onto one key; **no credential reaching either the serialized document or the saved file, across three successive saves**, while the legacy values stay readable for migration; `overlay.enabled` round-tripping in both states; unknown keys dropped; and corrupt, malformed or missing input diagnosed rather than thrown on. Also pins that the shipped `config/default.toml` declares every key the serializer emits. |
@@ -98,12 +81,12 @@ Who supplies each dependency, and why the build does not use Conan, is
 | `test_SunoWorkspace.cpp` | `tests/unit/suno/test_SunoWorkspace.cpp` | Workspace refusal kinds and the honest-state suite. |
 | `test_PresetBridge.cpp` | `tests/unit/visualizer/test_PresetBridge.cpp` | A filtered row selects and favourites *itself*, never slot 0 (the `T0002`/`T0003` regression guard). |
 
-The aggregate runner invokes **41** suites (`tests/unit/test_main.cpp`): logger, config parsers, config loader, file utils, version, signal, CLI args, recorder, audio file decoder, render queue, playlist, visualizer audio tap, preset scanner, preset bridge, preset manager, Suno endpoints, Suno auth failure, auth module, stored-credential classification, credential restore worker, library manager, lyrics fetch queue, Suno database, auth coordinator, loopback listener, OAuth login service, clip parser, download queue, credential store policy, Suno downloader, download entitlement, bounded body, Suno workspace, lyrics pipeline, lyrics export, lyric timing, PCM format, loudness analysis, path safety, and Suno bridge.
+The aggregate runner invokes **44** suites, one per source in the tables below. `tests/unit/test_main.cpp` is the list and the only place that decides which run; this page deliberately does not repeat it, because an enumeration that lives in two files drifts in one of them (an earlier revision of this page named two suites that no longer exist).
 
-**Every one of the 41 suites above is invoked, and every unit source is declared.** There are no compiled-but-unrun translation units in the aggregate target, and there are no static-initialization test hooks. Verified by set difference: the 42 aggregate sources (41 suites plus `test_main.cpp`) plus the 11 standalone sources are exactly the **53** `.cpp` files under `tests/unit/`. That exactness is new — `visualizer/test_PresetManager.cpp` was declared nowhere and never built until T0306 wired it, together with the visualizer audio tap suite added for T0322. That was not always true, and the failure mode is the one this repository keeps re-learning:
+**Every one of the 44 suites above is invoked, and every unit source is declared.** There are no compiled-but-unrun translation units in the aggregate target, and there are no static-initialization test hooks. Verified by set difference: the 45 aggregate sources (44 suites plus `test_main.cpp`) plus the 11 standalone sources are exactly the **56** `.cpp` files under `tests/unit/`. That exactness is new — `visualizer/test_PresetManager.cpp` was declared nowhere and never built until T0306 wired it, together with the visualizer audio tap suite added for T0322. That was not always true, and the failure mode is the one this repository keeps re-learning:
 
-- `test_PresetScanner.cpp` was in `CMakeLists.txt` for a long time with no `runTest*` entry point in the runner, so its assertions never executed. `runTestPresetScanner` is now declared at `tests/unit/test_main.cpp:14` and called at `:49`.
-- `test_SunoEndpoints.cpp` ran from a static initializer and `std::abort()`ed on failure, which masked the failure behind a process kill instead of the aggregate exit code. `runTestSunoEndpoints` is now declared at `tests/unit/test_main.cpp:15` and called at `:50` like every other suite.
+- `test_PresetScanner.cpp` was in `CMakeLists.txt` for a long time with no `runTest*` entry point in the runner, so its assertions never executed. `runTestPresetScanner` is now declared at `tests/unit/test_main.cpp:23` and called in `main()`.
+- `test_SunoEndpoints.cpp` ran from a static initializer and `std::abort()`ed on failure, which masked the failure behind a process kill instead of the aggregate exit code. `runTestSunoEndpoints` is now declared at `tests/unit/test_main.cpp:27` and called in `main()` like every other suite.
 
 Treat both as closed, and do not reintroduce either shape. A new aggregate source needs **two** edits: the `add_executable` source list *and* a `runTest*` declaration plus a `status |=` call in [test_main.cpp](../../tests/unit/test_main.cpp).
 
@@ -160,7 +143,7 @@ Fourteen entries: twelve in `tests/unit/CMakeLists.txt`, two in `tests/integrati
 
 | Suite | Kind | Environment |
 | --- | --- | --- |
-| `unit_tests` | Aggregate, 41 invoked suites from 42 sources | console |
+| `unit_tests` | Aggregate, 44 invoked suites from 45 sources | console |
 | `test_HttpPolicy` | Standalone unit (own `main()`) | console |
 | `test_CapturedHosts` | Standalone unit, host registry | console |
 | `test_FeatureFlags` | Standalone unit | console |
@@ -190,7 +173,7 @@ place either of them belongs.
 ```bash
 ./build.sh
 ctest --test-dir build/tests -R unit_tests --output-on-failure
-./build/tests/unit/unit_tests                                   # aggregate, all 41 suites
+./build/tests/unit/unit_tests                                   # aggregate, all 44 suites
 ./build/tests/unit/test_HttpPolicy                              # single standalone target
 ./build/tests/unit/test_RenderExecutor                           # needs QT_QPA_PLATFORM=offscreen
 QT_QPA_PLATFORM=offscreen ./build/tests/integration/integration_tests

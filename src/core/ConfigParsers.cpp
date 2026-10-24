@@ -72,9 +72,21 @@ fs::path expandPath(std::string_view path) {
     return fs::path(p);
 }
 
+/// The inverse of expandPath, for everything the serializer writes: a path
+/// under $HOME is stored as `~/...` so a config file stays portable across
+/// machines and users. Anything outside $HOME stays absolute -- there is no
+/// portable spelling for it, and inventing one would be a lie (T0070).
+std::string portablePath(const fs::path& path) {
+    if (path.empty()) return {};
+    const fs::path home(QDir::homePath().toStdString());
+    const std::string rel = path.lexically_relative(home).generic_string();
+    if (rel.empty() || rel == ".." || rel.starts_with("../")) return path.string();
+    if (rel == ".") return "~";
+    return "~/" + rel;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Per-section field tables.
-//
 // Contract for expansion sites:
 //   - `t`   : pointer to this section's toml::table (parse only)
 //   - `obj` : the config object being read/written
@@ -214,7 +226,7 @@ fs::path expandPath(std::string_view path) {
 #define VC_SER_U32(key, member) out.insert(key, (i64)obj.member);
 #define VC_SER_I32(key, member) out.insert(key, (i64)obj.member);
 #define VC_SER_F32(key, member) out.insert(key, (double)obj.member);
-#define VC_SER_PATH(key, member) out.insert(key, obj.member.string());
+#define VC_SER_PATH(key, member) out.insert(key, portablePath(obj.member));
 #define VC_SER_COLOR(key, member) out.insert(key, obj.member.toHex());
 
 } // namespace
@@ -430,8 +442,14 @@ toml::table ConfigParsers::serialize(const AudioConfig& audio, const VisualizerC
         CHADVIS_VISUALIZER_FIELDS(VC_SER_FIELD)
         toml::array pathsArr;
         for (const auto& p : visualizer.texturePaths)
-            pathsArr.push_back(p.string());
-        out.insert("preset_path", visualizer.presetPath.string());
+            pathsArr.push_back(portablePath(p));
+        // An auto-detected directory is written back as '' so the next machine
+        // (or the next launch, after an uninstall) re-detects instead of
+        // inheriting this machine's absolute path (T0070).
+        out.insert("preset_path",
+                   visualizer.presetPath == file::presetsDir()
+                           ? std::string()
+                           : portablePath(visualizer.presetPath));
         out.insert("texture_paths", pathsArr);
         root.insert("visualizer", std::move(out));
     }
@@ -464,7 +482,7 @@ toml::table ConfigParsers::serialize(const AudioConfig& audio, const VisualizerC
             toml::table out;
             auto& obj = recording;
             CHADVIS_RECORDING_FIELDS(VC_SER_FIELD)
-            out.insert("output_directory", recording.outputDirectory.string());
+            out.insert("output_directory", portablePath(recording.outputDirectory));
             for (const auto& entry : out)
                 recordingOut.insert(entry.first, entry.second);
         }
@@ -505,7 +523,7 @@ toml::table ConfigParsers::serialize(const AudioConfig& audio, const VisualizerC
         toml::table out;
         auto& obj = suno;
         CHADVIS_SUNO_FIELDS(VC_SER_FIELD)
-        out.insert("download_path", suno.downloadPath.string());
+        out.insert("download_path", portablePath(suno.downloadPath));
         out.insert("download_format",
                    suno.downloadFormat == SunoDownloadFormat::WAV ? "wav" : "mp3");
         root.insert("suno", std::move(out));

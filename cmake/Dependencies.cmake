@@ -27,6 +27,28 @@ endif()
 # pkg-config is optional: everything below degrades to manual search.
 find_package(PkgConfig QUIET)
 
+# Qt ships its own FFmpeg for its multimedia backend, under <qt>/lib. With the
+# qt.io SDK installed the Qt prefix IS on CMAKE_PREFIX_PATH, so the manual
+# find_library() below resolves libavcodec there and pairs this tree's
+# /usr/local headers with Qt's libraries -- a version skew the linker accepts
+# and the runtime does not. Measured 2026-10-23 in a fresh build directory:
+# FFMPEG_AVCODEC_INCLUDE_DIR=/usr/local/include with
+# FFMPEG_AVCODEC_LIBRARY=~/Qt/6.12.0/macos/lib/libavcodec.dylib.
+#
+# A prefix that carries Qt's own CMake config is a Qt installation, not an
+# FFmpeg provider. Collected here, applied only around the libav* manual search
+# below -- excluding it globally would also hide the prefix from the test tree's
+# own find_package(Qt6 ...). CMAKE_IGNORE_PREFIX_PATH is CMake 3.23+; on older
+# CMake the ambiguity stays possible and this says nothing rather than guessing.
+set(_chadvis_qt_prefixes "")
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.23)
+    foreach(_prefix IN LISTS CMAKE_PREFIX_PATH)
+        if(EXISTS "${_prefix}/lib/cmake/Qt6/Qt6Config.cmake")
+            list(APPEND _chadvis_qt_prefixes "${_prefix}")
+        endif()
+    endforeach()
+endif()
+
 # OpenGL - used directly by the visualizer renderers. The bare "OpenGL"
 # link name only worked by accident on Linux; OpenGL::GL is portable.
 find_package(OpenGL REQUIRED)
@@ -165,6 +187,12 @@ if(FFMPEG_FOUND)
     endif()
 else()
     message(STATUS "FFmpeg: trying per-component manual search")
+    # Scope the Qt-prefix exclusion to this search and nothing else: a later
+    # find_package(Qt6 ...) in the test tree must still resolve through the
+    # prefix it shares. See the block above the TagLib probe for the measurement
+    # that made this necessary.
+    set(_chadvis_ignore_before "${CMAKE_IGNORE_PREFIX_PATH}")
+    list(APPEND CMAKE_IGNORE_PREFIX_PATH ${_chadvis_qt_prefixes})
     foreach(_comp IN LISTS CHADVIS_FFMPEG_COMPONENTS)
         string(TOUPPER "${_comp}" _comp_uc)
         find_path(FFMPEG_${_comp_uc}_INCLUDE_DIR
@@ -180,6 +208,8 @@ else()
         list(APPEND FFMPEG_INCLUDE_DIRS ${FFMPEG_${_comp_uc}_INCLUDE_DIR})
         list(APPEND FFMPEG_LIBRARIES ${FFMPEG_${_comp_uc}_LIBRARY})
     endforeach()
+    set(CMAKE_IGNORE_PREFIX_PATH "${_chadvis_ignore_before}")
+    unset(_chadvis_ignore_before)
     unset(_comp)
     unset(_comp_uc)
     list(REMOVE_DUPLICATES FFMPEG_INCLUDE_DIRS)

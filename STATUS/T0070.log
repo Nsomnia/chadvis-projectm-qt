@@ -1,0 +1,10 @@
+2026-10-23T23:59:46Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee81332 pid=81332 ttl=4h expires=2026-10-24T03:59:46Z
+2026-10-23T18:10:00Z  CHANGE   src/core/ConfigParsers.cpp: new portablePath() beside expandPath() -- a path under $HOME serializes as ~/..., anything else stays absolute. VC_SER_PATH now uses it, and the four hand-written sites (preset_path, texture_paths, recording.output_directory, [suno] download_path) call it directly.
+2026-10-23T18:10:00Z  CHANGE   preset_path is written back as '' when it equals file::presetsDir(), so the resolved auto-detect answer no longer becomes a pinned absolute path on the first save. A user-chosen path is kept and written portable.
+2026-10-23T18:10:00Z  CHANGE   docs/user/CONFIG.md: the preset_path note now says a save keeps the emptiness, and a new subsection ("Paths are written relative to your home") names the five path-typed keys and the lossless round trip.
+2026-10-23T18:10:00Z  TEST     tests/unit/core/test_ConfigParsers.cpp: serializeWritesPathsUnderHomeRelativeToHome (home-relative output_directory/download_path/texture_paths, /tmp and /opt left absolute) and serializeLeavesAnAutoDetectedPresetPathEmpty ('' when detected, "~/my-presets" when chosen, and parseVisualizer expands it back to the original absolute path).
+2026-10-23T19:32:00Z  VERIFY   ./build.sh --fast --tests -> exit 0 on Qt 6.12.0 (~/Qt/6.12.0/macos), 247 targets.
+2026-10-23T19:32:00Z  VERIFY   ctest --test-dir build-fast/tests -V -R '^unit_tests$' -> "[suite] TestConfigParsers -> 0" (the suite carrying both new cases), and 43 of 44 suites at 0; the one non-zero was TestVersion's app-launch case before the bundle had an rpath, fixed separately under T0196.
+2026-10-23T19:32:00Z  VERIFY   ctest --test-dir build-fast/tests --output-on-failure -j3 -> 100% tests passed, 0 failed out of 14 (116.75 s).
+2026-10-23T19:32:00Z  NOT-VERIFIED  A user's real config.toml round trip on Windows (CRLF and a non-ASCII home). The unit cases cover the path formatting, not the file system under another OS.
+2026-10-24T01:14:54Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee97575

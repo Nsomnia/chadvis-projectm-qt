@@ -526,7 +526,20 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       All are sent from `SunoLibraryMutations.cpp`. The inventory is **wrong about the code
       and right about the behaviour** (T0011); both halves need recording. Also 8
       constants exist in `SunoEndpoints.hpp` with no inventory row at all.
-- [ ] T0070 `preset_path` and path-typed `[suno]` keys are rewritten absolute on save (`src/core/ConfigParsers.cpp:456,223,533`) #data-loss
+- [x] T0070 `preset_path` and path-typed `[suno]` keys are rewritten absolute on save (`src/core/ConfigParsers.cpp:456,223,533`) #data-loss
+      **Closed in the serializer, with no second atomic-write or path-format layer.** A new
+      `portablePath()` beside `expandPath()` writes any path under `$HOME` as `~/...` (which
+      `expandPath` reverses on the next load) and leaves anything else absolute, because there
+      is no portable spelling for `/usr/share/...` and inventing one would be a lie. It is
+      applied to `VC_SER_PATH` and to the four hand-written sites: `preset_path`,
+      `texture_paths`, `recording.output_directory`, `[suno] download_path`.
+      **`preset_path` gets one rule of its own:** if the live value equals `file::presetsDir()`
+      — i.e. it came from auto-detect, not from the user — the key is written back as `''`, so
+      the shipped "detect" meaning survives a save instead of being replaced by this machine's
+      probe answer. Pinned by `serializeWritesPathsUnderHomeRelativeToHome` and
+      `serializeLeavesAnAutoDetectedPresetPathEmpty` (the second also parses the table back and
+      compares the expanded path). `docs/user/CONFIG.md` says both halves. VERIFY in
+      `STATUS/T0070.log`.
       The shipped `preset_path = ''` becomes e.g. `/usr/share/projectM/presets` on first
       save, converting a portable template into a machine-pinned file **and defeating the
       auto-detect fallback documented at `docs/user/CONFIG.md:126`. Fix: serialize `~/`-relative.
@@ -653,10 +666,22 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [ ] T0097 `unit_tests` is one binary with one `QCoreApplication` running 31 suites sequentially (`tests/unit/test_main.cpp:38,41-72`) #risk-medium
       A crash or hang in suite 30 loses suites 1–29's results, and config-singleton mutators
       are unisolated.
-- [ ] T0098 Tautological assertions in the offscreen suite (`tests/unit/recorder/test_OffscreenRenderSpike.cpp:92-94,225-226`) #cleanup
+- [x] T0098 Tautological assertions in the offscreen suite (`tests/unit/recorder/test_OffscreenRenderSpike.cpp:92-94,225-226`) #cleanup
       `QCOMPARE(f(report_.verdict), f(report_.verdict))` compares an expression to itself and
       can never fail; the surrounding comment claims it verifies agreement with the verdict.
       Also brittle: :338-363 asserts **seven literal substrings** of a human-readable report.
+      **Closed, and the third defect was the opposite of the first two.** The `toString`
+      tautology is now three `QCOMPARE`s, one per verdict, which is what "toString must name
+      every verdict" actually claims; the self-comparison is now a cross-check against the
+      `verdict permits maxConcurrent=<n>` line `describeOffscreenProbe` prints, so the function
+      an executor calls and the line a reader sees must agree. The literal substrings are
+      **kept deliberately** — they assert content the report must contain, and the item calls
+      them brittle, not false. What the first run under Qt 6.12 found is the mirror image:
+      `teardownLoopActuallyRanAndIsReportedAsASeries` required `rssAfterBytes >= rssBeforeBytes`,
+      and RSS is not monotonic — it failed with 59.8 MB → 54.2 MB on a series where every
+      reading was plausible (the allocator and the GL driver returned pages). That assertion
+      now checks what a series can prove: no zero readings, and a max/min span under 2x, which
+      neither a failed sample nor another process's figures satisfy. VERIFY in `STATUS/T0098.log`.
 - [ ] T0099 Four duplicate reply fakes, and no fake `QNetworkAccessManager` at all (`tests/unit/suno/`) #risk-high
       `FakeNetworkReply.hpp` is adequate but its `factory()` takes one `QNetworkRequest`
       while `SunoClient::ReplyFactory` takes three, so it is unusable for SunoClient suites.
@@ -882,8 +907,11 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [x] T0186 **The colour round-trip that T0047 shipped has no test, so the same class of bug returns silently** (`tests/unit/`) #risk-high
       There is no theme test file, and no test anywhere in `tests/` references `parseRgbaHex`, `toRgbaHex` or `applyAccent` — the three functions that *were* the entire fix. `866b36e`'s own message names the guards it should have had: channel-equality assertions on accent **and background including alpha** (alpha is the field whose loss passed every colour-only check), plus a round trip over both the 6-digit and 8-digit forms. Minimum set: `#000000FF` stays opaque black, `#00FF88FF` stays opaque green and is not read as `#AARRGGBB`, `toRgbaHex(parseRgbaHex(x)) === x`, and a 6-digit input returns 8-digit opaque rather than transparent. This is the regression guard that lets T0183 and T0187 change the palette safely.
 
-- [ ] T0196 `.qt-stitch/` is a workaround for a broken Homebrew Qt, and it will outlive the reason for it (`scripts/qt-stitch.sh`, `.qt-stitch/`, `docs/dev/TESTING.md`) #build
+- [x] T0196 `.qt-stitch/` is a workaround for a broken Homebrew Qt, and it will outlive the reason for it (`scripts/qt-stitch.sh`, `.qt-stitch/`, `docs/dev/TESTING.md`) #build
       A `brew upgrade` left the `qt` umbrella at **6.11.1** while qtbase/qtdeclarative/qtmultimedia/qttools moved to **6.12.0**, so `/usr/local/opt/qt/lib/cmake/Qt6/Qt6Config.cmake` is missing and the build dies on `The imported target "Qt6::harmonydeployqt" references a file that does not exist`. `scripts/qt-stitch.sh` merges the four component prefixes into one tree, and the whole test suite is green against it. **It is gitignored and not part of the product** — but nothing stops it silently becoming the *only* Qt on this machine, or going stale the moment `brew upgrade qt` succeeds and the tree starts missing whatever the new umbrella reorganised. **When the umbrella is repaired, delete `scripts/qt-stitch.sh` and the `--qt` guidance in TESTING.md in one commit, and confirm the build still configures without `--qt`.** Until then, every `VERIFY` line in `STATUS/` carries `--qt "$PWD/.qt-stitch"`, and that flag in a hundred log lines is the reminder.
+      **Closed by replacing the umbrella, not repairing it.** Qt now comes from qt.io (aqt) at `$HOME/Qt/6.12.0/macos`, with `~/.zshrc` exporting `CMAKE_PREFIX_PATH` to it; the Homebrew Qt is gone from this machine. `scripts/qt-stitch.sh` is moved to `.backup_graveyard/` and deleted from the tree, the stitch instructions are gone from `TESTING.md`, and `build.sh` resolves Qt as: environment `CMAKE_PREFIX_PATH` → newest `$HOME/Qt/*/macos` → MacPorts → Homebrew → distro → **`.qt-stitch` last**, so a leftover directory can never shadow a real install again (it did: `build-fast` was pointed at a stitched tree whose `QtGui` headers had gone missing, and every compile failed on `QtGui/qtguiglobal.h`). A candidate must carry `lib/cmake/Qt6/Qt6Config.cmake`, not merely exist — `-d` cannot tell a prefix from a stale prefix.
+      **The half that made the workaround outlive its reason is now a check.** `build.sh` gained `qt_prefix_changed()` and `qt_is_stale()` beside the existing `sdk_is_stale()`/`cmake_is_stale()`. A cached prefix that has merely lost its `Qt6Config.cmake` is reconfigured in place; a *different installation* (an explicit `--qt`, or a resolved prefix the cache disagrees with) parks the directory in `.backup_graveyard/` and configures fresh, because a different Qt is not a moved one — the objects were built against other headers and the cache carries feature values the new Qt contradicts, which Qt's own configure warns about eight times and answers with "consider removing the CMakeCache.txt file". Without this, every later configure failed with "Could not find a package configuration file provided by Qt6" on a machine where Qt is installed.
+      **Two migration failures were invisible with Homebrew's Qt and are now closed with it.** qt.io's frameworks carry `@rpath/...` install names where Homebrew's carried absolute ones, and this tree links with `CMAKE_BUILD_WITH_INSTALL_RPATH ON` — so every test binary had **no `LC_RPATH` at all** and died with `Library not loaded: @rpath/QtTest.framework/... Reason: no LC_RPATH's found`, while the fast-profile `.app` pointed its only rpath at a `Contents/Frameworks` that deployment suppression never creates. `tests/CMakeLists.txt` and the fast-profile bundle now carry `${QT6_INSTALL_PREFIX}/lib`; a shipped bundle keeps `@executable_path/../Frameworks` and no developer path. Separately, a **fresh** configure paired this tree's `/usr/local/include` FFmpeg headers with **Qt's bundled** `~/Qt/6.12.0/macos/lib/libavcodec.dylib`, because the Qt prefix is on `CMAKE_PREFIX_PATH`; a stale cache hid it, since it already held the right answer. `cmake/Dependencies.cmake` now excludes any prefix that carries Qt's own CMake config from the `libav*` search — scoped to that search, so the test tree's `find_package(Qt6 ...)` still resolves. VERIFY in `STATUS/T0196.log`.
 
 - [ ] T0197 Nothing re-applies the theme when `ui().theme` changes from somewhere other than the Appearance panel (`src/qml/main.qml`) #risk-med
       `main.qml`'s `applyTheme()` runs **once**, in `Component.onCompleted`. Every path a user can reach today is covered — Settings previews live and Apply commits, and the commit value equals what is already on screen — so nothing is broken. The gap opens the moment a second writer appears: a profile switch, a config reload, or T0193's `ThemeCatalog` adopting a theme on disk. Then `config.toml` and the window disagree, silently, which is the exact failure T0047 was filed for. **The fix is small but not free, which is why it is here rather than done:** a `Connections { target: SettingsBridge; onThemeNameChanged: … }` must *not* apply unconditionally, because T0192 makes `--theme` a session override that is supposed to outrank the stored value — an unconditional re-apply would stomp the override the instant the user commits anything in Settings. The rule to encode is "re-apply on `themeNameChanged` **unless** a session override is active", and that rule needs eyes on it (MT-001-G) rather than a green ctest.

@@ -163,6 +163,22 @@ next launch.
 5. `/usr/share/projectm-presets`
 6. `<dataDir>/presets` — and this is also the final fallback if none of the above exist
 
+**A save keeps that emptiness.** The serializer compares the live `preset_path` against
+`file::presetsDir()`: if they agree, the key is written back as `''`, so a config file is not
+pinned to this machine's probe order or this user's home directory. Only a path you chose
+yourself is written, and it is written portable — see [Paths are written
+relative to your home](#paths-are-written-relative-to-your-home). (`T0070`)
+
+#### Paths are written relative to your home
+
+Every path-typed key — `visualizer.preset_path`, `visualizer.texture_paths`,
+`recording.output_directory`, `[suno] download_path`, `[suno] debug_lyrics_file` — is stored
+as `~/...` when it lives under your home directory, and left absolute when it does not. The
+parser expands `~` back on the next load (`src/core/ConfigParsers.cpp`, `expandPath` /
+`portablePath`), so the round trip is lossless and the file survives being copied to another
+machine or another user. A path outside `$HOME` (`/usr/share/...`, `/Volumes/...`) has no
+portable spelling and is written as the absolute path it is.
+
 ### `[recording]`
 
 | Key | Type | Default | Meaning |

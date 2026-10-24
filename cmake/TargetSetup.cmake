@@ -298,6 +298,19 @@ if(APPLE)
         INSTALL_RPATH "@executable_path/../Frameworks"
     )
 
+    # Deployment is suppressed in the fast-iteration profile, so this bundle has
+    # no Contents/Frameworks -- and the shipped rpath above then points at a
+    # directory that does not exist. That used to be survivable because
+    # Homebrew's Qt frameworks carry absolute install names, so dyld never needed
+    # an rpath at all; qt.io's carry @rpath/..., and the build-tree app dies on
+    # "Library not loaded: @rpath/QtQuick.framework/... no LC_RPATH's found".
+    # Point it at the Qt that built it, for this profile only: a shipped bundle
+    # must not carry the developer's Qt path.
+    if(CHADVIS_FAST_ITERATION AND QT6_INSTALL_PREFIX)
+        set_property(TARGET chadvis-projectm-qt APPEND PROPERTY
+            INSTALL_RPATH "${QT6_INSTALL_PREFIX}/lib")
+    endif()
+
     # -------------------------------------------------------------------------
     # Bundle deployment: framework + dylib closure, then macdeployqt, then sign.
     #

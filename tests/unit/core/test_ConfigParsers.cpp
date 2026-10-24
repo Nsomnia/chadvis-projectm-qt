@@ -1,6 +1,8 @@
 #include <QtTest>
+#include <QDir>
 #include <toml++/toml.h>
 #include "core/ConfigParsers.hpp"
+#include "util/FileUtils.hpp"
 
 using namespace vc;
 
@@ -117,6 +119,77 @@ private slots:
         auto audioTbl = tbl["audio"].as_table();
         QVERIFY(audioTbl != nullptr);
         QCOMPARE((*audioTbl)["device"].as_string()->get(), std::string("test_device"));
+    }
+
+    // T0070: the shipped template is portable, and a first save used to pin it
+    // to one machine. Every path under $HOME is written `~/...`, which
+    // expandPath reverses on the next parse.
+    void serializeWritesPathsUnderHomeRelativeToHome() {
+        const fs::path home(QDir::homePath().toStdString());
+        AudioConfig audio;
+        VisualizerConfig visualizer;
+        RecordingConfig recording;
+        UIConfig ui;
+        KeyboardConfig keyboard;
+        SunoConfig suno;
+        KaraokeConfig karaoke;
+        OverlayConfig overlays;
+
+        recording.outputDirectory = home / "Music" / "renders";
+        suno.downloadPath = home / "Music" / "suno";
+        suno.debugLyricsFile = fs::path("/tmp/lyrics.srt");
+        visualizer.texturePaths = {home / "textures", fs::path("/opt/textures")};
+
+        const auto tbl = ConfigParsers::serialize(audio, visualizer, recording, ui, keyboard, suno,
+                                                  karaoke, overlays, false);
+
+        const auto* rec = tbl["recording"].as_table();
+        QVERIFY(rec != nullptr);
+        QCOMPARE((*rec)["output_directory"].as_string()->get(), std::string("~/Music/renders"));
+
+        const auto* sunoTbl = tbl["suno"].as_table();
+        QVERIFY(sunoTbl != nullptr);
+        QCOMPARE((*sunoTbl)["download_path"].as_string()->get(), std::string("~/Music/suno"));
+        // A path outside $HOME has no portable spelling and must not be mangled.
+        QCOMPARE((*sunoTbl)["debug_lyrics_file"].as_string()->get(),
+                 std::string("/tmp/lyrics.srt"));
+
+        const auto* arr = (*tbl["visualizer"].as_table())["texture_paths"].as_array();
+        QVERIFY(arr != nullptr);
+        QCOMPARE(arr->size(), std::size_t(2));
+        QCOMPARE((*arr)[0].value<std::string>(), std::string("~/textures"));
+        QCOMPARE((*arr)[1].value<std::string>(), std::string("/opt/textures"));
+    }
+
+    // The auto-detected presets directory is a per-machine answer, so writing
+    // it back would convert '' ("detect") into a pinned absolute path.
+    void serializeLeavesAnAutoDetectedPresetPathEmpty() {
+        AudioConfig audio;
+        VisualizerConfig visualizer;
+        RecordingConfig recording;
+        UIConfig ui;
+        KeyboardConfig keyboard;
+        SunoConfig suno;
+        KaraokeConfig karaoke;
+        OverlayConfig overlays;
+        const fs::path home(QDir::homePath().toStdString());
+
+        visualizer.presetPath = file::presetsDir();
+        auto tbl = ConfigParsers::serialize(audio, visualizer, recording, ui, keyboard, suno,
+                                            karaoke, overlays, false);
+        QCOMPARE((*tbl["visualizer"].as_table())["preset_path"].value<std::string>(),
+                 std::string());
+
+        // A user-chosen path is kept, and comes back expanded.
+        visualizer.presetPath = home / "my-presets";
+        tbl = ConfigParsers::serialize(audio, visualizer, recording, ui, keyboard, suno, karaoke,
+                                       overlays, false);
+        QCOMPARE((*tbl["visualizer"].as_table())["preset_path"].value<std::string>(),
+                 std::string("~/my-presets"));
+
+        VisualizerConfig reparsed;
+        ConfigParsers::parseVisualizer(tbl, reparsed);
+        QCOMPARE(reparsed.presetPath.string(), (home / "my-presets").string());
     }
 };
 
