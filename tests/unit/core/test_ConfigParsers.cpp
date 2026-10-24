@@ -189,7 +189,11 @@ private slots:
 
         VisualizerConfig reparsed;
         ConfigParsers::parseVisualizer(tbl, reparsed);
-        QCOMPARE(reparsed.presetPath.string(), (home / "my-presets").string());
+        // Path equality, not string equality: expandPath rebuilds the path from
+        // `~/` with forward slashes, so on Windows its .string() is
+        // "C:/Users/x/my-presets" while (home / "my-presets").string() mixes in
+        // a backslash. The filesystem path is the same path either way.
+        QVERIFY(reparsed.presetPath == home / "my-presets");
     }
 };
 

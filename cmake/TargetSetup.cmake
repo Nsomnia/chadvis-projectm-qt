@@ -456,6 +456,14 @@ foreach(_required IN ITEMS STAGE EXECUTABLE FRAMEWORKS_DIR)
     endif()
 endforeach()
 
+# otool output split on newlines leaves a trailing empty element, and the
+# default list() policy warns about (and silently ignores) it once per Mach-O
+# -- hundreds of dev warnings in a CI log. NEW keeps the element and the
+# explicit REMOVE_ITEM below makes the index arithmetic deterministic.
+if(POLICY CMP0007)
+    cmake_policy(SET CMP0007 NEW)
+endif()
+
 # ---------------------------------------------------------------------------
 # Classification
 # ---------------------------------------------------------------------------
@@ -498,6 +506,30 @@ function(_deps_of macho out)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR "otool -L failed on ${macho}: ${_err}")
     endif()
+
+    # otool -L prints the file's OWN install name as the first dependency line,
+    # so a framework whose LC_ID is still the vendor's absolute path reports
+    # that path as a dependency of itself. That is metadata, not a load, and
+    # treating it as a hole made the macOS gate fail on macdeployqt's own
+    # output (measured on macos-15, 2026-10-24: twenty Qt frameworks each
+    # "depending" on /opt/homebrew/opt/<formula>/lib/<itself>). otool -D is the
+    # tool that distinguishes the two.
+    set(_self_id "")
+    execute_process(
+        COMMAND otool -D "${macho}"
+        OUTPUT_VARIABLE _id_raw
+        RESULT_VARIABLE _id_rc
+        ERROR_QUIET)
+    if(_id_rc EQUAL 0)
+        string(REPLACE "\n" ";" _id_lines "${_id_raw}")
+        list(REMOVE_ITEM _id_lines "")
+        list(LENGTH _id_lines _id_count)
+        if(_id_count GREATER 1)
+            list(GET _id_lines 1 _self_id)
+            string(STRIP "${_self_id}" _self_id)
+        endif()
+    endif()
+
     set(_list "")
     string(REPLACE "\n" ";" _lines "${_raw}")
     foreach(_line IN LISTS _lines)
@@ -505,7 +537,7 @@ function(_deps_of macho out)
         if(_line MATCHES "^[ \t]")
             string(REGEX REPLACE "^[ \t]+" "" _dep "${_line}")
             string(REGEX REPLACE " *\\(compatibility version.*$" "" _dep "${_dep}")
-            if(_dep)
+            if(_dep AND (_self_id STREQUAL "" OR NOT _dep STREQUAL _self_id))
                 list(APPEND _list "${_dep}")
             endif()
         endif()
@@ -564,8 +596,18 @@ function(_bundle_machos out)
     file(GLOB _flat "${FRAMEWORKS_DIR}/*.dylib")
     file(GLOB _versioned "${FRAMEWORKS_DIR}/*.framework/Versions/*/*")
     set(_list "${EXECUTABLE}")
+    set(_seen "")
     foreach(_candidate IN LISTS _flat _versioned)
-        if(NOT IS_DIRECTORY "${_candidate}")
+        if(IS_DIRECTORY "${_candidate}")
+            continue()
+        endif()
+        # Versions/Current is a DIRECTORY symlink to Versions/A, so
+        # Versions/Current/QtCore is the same file as Versions/A/QtCore and
+        # globbing both would report every finding twice.
+        get_filename_component(_real "${_candidate}" REALPATH)
+        list(FIND _seen "${_real}" _slot)
+        if(_slot EQUAL -1)
+            list(APPEND _seen "${_real}")
             list(APPEND _list "${_candidate}")
         endif()
     endforeach()
@@ -674,8 +716,12 @@ endif()
 
 if(STAGE STREQUAL "fill")
     # Where a missing library may legitimately live on the build machine. The
-    # referencing Mach-O's own rpaths come first and cover the common case; this
-    # list covers a library whose rpath was stripped before it reached us.
+    # referencing Mach-O's own rpaths come first and cover the common case; the
+    # fixed list covers a dependency whose rpath was stripped before it reached
+    # us; the two globs cover a keg-only Homebrew formula, which keeps its
+    # libraries in .../opt/<formula>/lib rather than in any prefix on the path
+    # (measured on macos-15, 2026-10-24: QtCore needs libicuuc.78.dylib, which
+    # lives only in /opt/homebrew/opt/icu4c/lib).
     set(_preferred "/usr/local/lib" "/opt/local/lib" "/opt/homebrew/lib")
     foreach(_pass RANGE 0 8)
         set(_changed FALSE)
@@ -684,15 +730,37 @@ if(STAGE STREQUAL "fill")
             _deps_of("${_macho}" _deps)
             _rpaths_of("${_macho}" _rpaths)
             foreach(_dep IN LISTS _deps)
-                if(NOT _dep MATCHES "^@rpath/(.*)$")
+                # Three shapes reach a hole, and all three are the same problem:
+                # the reference does not resolve inside the bundle. @rpath is
+                # macdeployqt's usual output, @loader_path is how a copied
+                # library addresses its own siblings (libicuuc from libicui18n),
+                # and an absolute path is what a vendor leaves in an install
+                # name it never rewrote.
+                if(_dep MATCHES "^@rpath/(.*)$")
+                    set(_rel "${CMAKE_MATCH_1}")
+                    set(_absolute FALSE)
+                elseif(_dep MATCHES "^@(loader|executable)_path/(.*)$")
+                    set(_rel "${CMAKE_MATCH_2}")
+                    set(_absolute FALSE)
+                elseif(_dep MATCHES "^/")
+                    set(_rel "")
+                    set(_absolute TRUE)
+                else()
                     continue()
                 endif()
-                set(_rel "${CMAKE_MATCH_1}")
                 _resolves_in_bundle("${_dep}" _ok)
                 if(_ok)
                     continue()
                 endif()
-                if(_rel MATCHES "\\.framework/")
+                if(_absolute)
+                    _is_system_dep("${_dep}" _sys)
+                    if(_sys)
+                        continue()
+                    endif()
+                endif()
+
+                get_filename_component(_base "${_dep}" NAME)
+                if(_rel MATCHES "\\.framework/" OR _base MATCHES "\\.framework$")
                     message(FATAL_ERROR
                         "${_macho} references ${_dep}, a framework the bundle does "
                         "not carry and this stage will not fake by copying one "
@@ -700,31 +768,55 @@ if(STAGE STREQUAL "fill")
                 endif()
 
                 set(_found "")
-                foreach(_dir IN LISTS _rpaths _preferred)
-                    if(EXISTS "${_dir}/${_rel}")
-                        get_filename_component(_found "${_dir}/${_rel}" REALPATH)
-                        break()
+                # An absolute reference still names its own source.
+                if(_absolute AND EXISTS "${_dep}")
+                    get_filename_component(_found "${_dep}" REALPATH)
+                endif()
+                # A sibling of the referrer, which is where @loader_path points.
+                if(NOT _found)
+                    get_filename_component(_here "${_macho}" DIRECTORY)
+                    if(EXISTS "${_here}/${_base}")
+                        get_filename_component(_found "${_here}/${_base}" REALPATH)
                     endif()
-                endforeach()
+                endif()
+                # The referrer's own rpaths, then the prefixes above.
+                if(NOT _found)
+                    foreach(_dir IN LISTS _rpaths _preferred)
+                        if(EXISTS "${_dir}/${_base}")
+                            get_filename_component(_found "${_dir}/${_base}" REALPATH)
+                            break()
+                        endif()
+                    endforeach()
+                endif()
+                if(NOT _found)
+                    file(GLOB _keg "/opt/homebrew/opt/*/lib/${_base}"
+                         "/usr/local/opt/*/lib/${_base}"
+                         "/opt/local/lib/${_base}")
+                    if(_keg)
+                        list(GET _keg 0 _found)
+                        get_filename_component(_found "${_found}" REALPATH)
+                    endif()
+                endif()
                 if(NOT _found)
                     message(FATAL_ERROR
                         "Cannot resolve '${_dep}' referenced by ${_macho}: it is not "
-                        "in the bundle and not in any of ${_rpaths};${_preferred}. "
-                        "The bundle would launch on this machine and fail on every "
+                        "in the bundle, not beside its referrer, not in any of "
+                        "${_rpaths};${_preferred}, and not in a Homebrew keg. The "
+                        "bundle would launch on this machine and fail on every "
                         "other one.")
                 endif()
 
-                # Name the copy by the reference itself. Using the source's
-                # realpath basename would rewrite the dependency to a different
-                # soname (libbrotlicommon.1.dylib -> libbrotlicommon.1.2.0.dylib)
-                # and make a second run -- or a bundle macdeployqt already
-                # filled -- look like a name collision between two libraries.
-                # A reference with a path component is the exception; there the
-                # basename is the only sane destination and the reference is
-                # rewritten below.
+                # Name the copy by the reference itself. Naming it after the
+                # source's realpath basename would rewrite the dependency to a
+                # different soname (libbrotlicommon.1.dylib ->
+                # libbrotlicommon.1.2.0.dylib) and make a second run -- or a
+                # bundle macdeployqt already filled -- look like a name collision
+                # between two libraries. A reference with a path component is the
+                # exception; there the basename is the only sane destination and
+                # the reference is rewritten below.
                 set(_soname "${_rel}")
-                if(_soname MATCHES "/")
-                    get_filename_component(_soname "${_found}" NAME)
+                if(_soname STREQUAL "" OR _soname MATCHES "/")
+                    set(_soname "${_base}")
                 endif()
                 if(EXISTS "${FRAMEWORKS_DIR}/${_soname}")
                     # Already there from an earlier pass or from macdeployqt. The
@@ -751,7 +843,9 @@ if(STAGE STREQUAL "fill")
                     endif()
                     message(STATUS "  filled ${_soname} (from ${_found}) for ${_macho}")
                 endif()
-                if(NOT _rel STREQUAL _soname)
+                # Every filled reference ends up bundle-relative, whatever shape
+                # it arrived in; that is the property the verify stage checks.
+                if(NOT _dep STREQUAL "@rpath/${_soname}")
                     set(_changed TRUE)
                     execute_process(
                         COMMAND install_name_tool -change "${_dep}" "@rpath/${_soname}"
