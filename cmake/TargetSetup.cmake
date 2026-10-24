@@ -533,29 +533,76 @@ function(_resolves_in_bundle dep out)
     endif()
 endfunction()
 
+# LC_RPATH entries of one Mach-O, with @loader_path/@executable_path expanded so
+# the caller can test them with EXISTS.
+function(_rpaths_of macho out)
+    get_filename_component(_macho_dir "${macho}" DIRECTORY)
+    get_filename_component(_exe_dir "${EXECUTABLE}" DIRECTORY)
+    execute_process(COMMAND otool -l "${macho}" OUTPUT_VARIABLE _raw RESULT_VARIABLE _rc)
+    set(_list "")
+    if(_rc EQUAL 0)
+        string(REPLACE "\n" ";" _lines "${_raw}")
+        set(_in FALSE)
+        foreach(_line IN LISTS _lines)
+            if(_line MATCHES "cmd LC_RPATH")
+                set(_in TRUE)
+            elseif(_in AND _line MATCHES "path (.*) \\(offset")
+                set(_p "${CMAKE_MATCH_1}")
+                string(REPLACE "@loader_path" "${_macho_dir}" _p "${_p}")
+                string(REPLACE "@executable_path" "${_exe_dir}" _p "${_p}")
+                list(APPEND _list "${_p}")
+                set(_in FALSE)
+            endif()
+        endforeach()
+    endif()
+    set(${out} "${_list}" PARENT_SCOPE)
+endfunction()
+
+# Every Mach-O this project placed in the bundle: the executable, the flat
+# dylibs, and each framework's versioned binary (never the `Current` symlink).
+function(_bundle_machos out)
+    file(GLOB _flat "${FRAMEWORKS_DIR}/*.dylib")
+    file(GLOB _versioned "${FRAMEWORKS_DIR}/*.framework/Versions/*/*")
+    set(_list "${EXECUTABLE}")
+    foreach(_candidate IN LISTS _flat _versioned)
+        if(NOT IS_DIRECTORY "${_candidate}")
+            list(APPEND _list "${_candidate}")
+        endif()
+    endforeach()
+    set(${out} "${_list}" PARENT_SCOPE)
+endfunction()
+
 # ---------------------------------------------------------------------------
 # STAGE=verify
 # ---------------------------------------------------------------------------
 
 if(STAGE STREQUAL "verify")
-    _deps_of("${EXECUTABLE}" _all)
+    # Every Mach-O the bundle carries, not just the executable. The narrower
+    # version passed a bundle whose libbrotlidec could not find libbrotlicommon
+    # (2026-10-23): the executable's own load commands were clean and the app
+    # died on launch, because the missing reference lived one level down. A gate
+    # that only inspects the top of the graph is not a gate.
+    _bundle_machos(_verify_machos)
     set(_bad "")
-    foreach(_dep IN LISTS _all)
-        _is_system_dep("${_dep}" _sys)
-        if(NOT _sys)
-            # An absolute non-system path means the bundle is only runnable on
-            # the machine that built it. This is the failure the whole exercise
-            # exists to prevent, so it stops the build instead of shipping.
-            list(APPEND _bad "${_dep} (absolute)")
-            continue()
-        endif()
-        if(NOT _dep MATCHES "^@")
-            continue()  # a system path, already cleared above
-        endif()
-        _resolves_in_bundle("${_dep}" _ok)
-        if(NOT _ok)
-            list(APPEND _bad "${_dep} (no such file in the bundle)")
-        endif()
+    foreach(_macho IN LISTS _verify_machos)
+        _deps_of("${_macho}" _all)
+        foreach(_dep IN LISTS _all)
+            _is_system_dep("${_dep}" _sys)
+            if(NOT _sys)
+                # An absolute non-system path means the bundle is only runnable on
+                # the machine that built it. This is the failure the whole exercise
+                # exists to prevent, so it stops the build instead of shipping.
+                list(APPEND _bad "${_macho} -> ${_dep} (absolute)")
+                continue()
+            endif()
+            if(NOT _dep MATCHES "^@")
+                continue()  # a system path, already cleared above
+            endif()
+            _resolves_in_bundle("${_dep}" _ok)
+            if(NOT _ok)
+                list(APPEND _bad "${_macho} -> ${_dep} (no such file in the bundle)")
+            endif()
+        endforeach()
     endforeach()
 
     # An RPATH is what makes @rpath mean anything. Its absence is silent at
@@ -597,6 +644,133 @@ if(STAGE STREQUAL "verify")
         "Bundle verified: no absolute non-system load paths, "
         "LC_RPATH @executable_path/../Frameworks present")
     return()
+endif()
+
+# ---------------------------------------------------------------------------
+# STAGE=fill
+#
+# Whatever macdeployqt could not resolve, this stage resolves. Measured
+# 2026-10-23 on the first Release build against the qt.io SDK: macdeployqt
+# copied Contents/Frameworks/libbrotlidec.1.dylib and reported
+#
+#   ERROR: Cannot resolve rpath "@rpath/libbrotlicommon.1.dylib"
+#
+# and the bundle it had just declared deployed died on launch with
+#
+#   Library not loaded: @rpath/libbrotlicommon.1.dylib
+#
+# while the build exited 0. A dependency of a library macdeployqt placed is
+# still a dependency of the bundle, and nothing looked at it: STAGE=deploy runs
+# BEFORE macdeployqt (so it never sees what macdeployqt introduces), and
+# STAGE=verify only inspected the executable's own load commands.
+#
+# The rule: an @rpath reference that does not resolve inside the bundle is
+# resolved against the referencing Mach-O's own LC_RPATH entries, then a short
+# list of local prefixes, copied into Contents/Frameworks, given a bundle id,
+# and the bundle is re-scanned until nothing changes. Framework references are
+# NOT filled here -- a framework is a directory bundle and macdeployqt owns
+# those; an unresolvable one is a hard error rather than a half-copied file.
+# ---------------------------------------------------------------------------
+
+if(STAGE STREQUAL "fill")
+    # Where a missing library may legitimately live on the build machine. The
+    # referencing Mach-O's own rpaths come first and cover the common case; this
+    # list covers a library whose rpath was stripped before it reached us.
+    set(_preferred "/usr/local/lib" "/opt/local/lib" "/opt/homebrew/lib")
+    foreach(_pass RANGE 0 8)
+        set(_changed FALSE)
+        _bundle_machos(_fill_machos)
+        foreach(_macho IN LISTS _fill_machos)
+            _deps_of("${_macho}" _deps)
+            _rpaths_of("${_macho}" _rpaths)
+            foreach(_dep IN LISTS _deps)
+                if(NOT _dep MATCHES "^@rpath/(.*)$")
+                    continue()
+                endif()
+                set(_rel "${CMAKE_MATCH_1}")
+                _resolves_in_bundle("${_dep}" _ok)
+                if(_ok)
+                    continue()
+                endif()
+                if(_rel MATCHES "\\.framework/")
+                    message(FATAL_ERROR
+                        "${_macho} references ${_dep}, a framework the bundle does "
+                        "not carry and this stage will not fake by copying one "
+                        "binary out of it. macdeployqt owns frameworks.")
+                endif()
+
+                set(_found "")
+                foreach(_dir IN LISTS _rpaths _preferred)
+                    if(EXISTS "${_dir}/${_rel}")
+                        get_filename_component(_found "${_dir}/${_rel}" REALPATH)
+                        break()
+                    endif()
+                endforeach()
+                if(NOT _found)
+                    message(FATAL_ERROR
+                        "Cannot resolve '${_dep}' referenced by ${_macho}: it is not "
+                        "in the bundle and not in any of ${_rpaths};${_preferred}. "
+                        "The bundle would launch on this machine and fail on every "
+                        "other one.")
+                endif()
+
+                # Name the copy by the reference itself. Using the source's
+                # realpath basename would rewrite the dependency to a different
+                # soname (libbrotlicommon.1.dylib -> libbrotlicommon.1.2.0.dylib)
+                # and make a second run -- or a bundle macdeployqt already
+                # filled -- look like a name collision between two libraries.
+                # A reference with a path component is the exception; there the
+                # basename is the only sane destination and the reference is
+                # rewritten below.
+                set(_soname "${_rel}")
+                if(_soname MATCHES "/")
+                    get_filename_component(_soname "${_found}" NAME)
+                endif()
+                if(EXISTS "${FRAMEWORKS_DIR}/${_soname}")
+                    # Already there from an earlier pass or from macdeployqt. The
+                    # reference resolves through it, which is the only property
+                    # this stage promises; a differing file under the same name
+                    # would be dyld's ambiguity to resolve, not ours to guess at.
+                    message(STATUS "  ${_soname} already present for ${_macho}")
+                else()
+                    # Only a real copy counts as progress, or the pass loop never
+                    # terminates on a bundle that already has the file.
+                    set(_changed TRUE)
+                    configure_file("${_found}" "${FRAMEWORKS_DIR}/${_soname}" COPYONLY)
+                    file(CHMOD "${FRAMEWORKS_DIR}/${_soname}"
+                         PERMISSIONS
+                             OWNER_READ OWNER_WRITE OWNER_EXECUTE
+                             GROUP_READ GROUP_EXECUTE
+                             WORLD_READ WORLD_EXECUTE)
+                    execute_process(
+                        COMMAND install_name_tool -id "@rpath/${_soname}"
+                                "${FRAMEWORKS_DIR}/${_soname}"
+                        RESULT_VARIABLE _rc ERROR_VARIABLE _err)
+                    if(NOT _rc EQUAL 0)
+                        message(FATAL_ERROR "install_name_tool -id failed on ${_soname}: ${_err}")
+                    endif()
+                    message(STATUS "  filled ${_soname} (from ${_found}) for ${_macho}")
+                endif()
+                if(NOT _rel STREQUAL _soname)
+                    set(_changed TRUE)
+                    execute_process(
+                        COMMAND install_name_tool -change "${_dep}" "@rpath/${_soname}"
+                                "${_macho}"
+                        RESULT_VARIABLE _rc ERROR_VARIABLE _err)
+                    if(NOT _rc EQUAL 0)
+                        message(FATAL_ERROR
+                            "install_name_tool -change failed on ${_macho}: ${_err}")
+                    endif()
+                endif()
+            endforeach()
+        endforeach()
+        if(NOT _changed)
+            return()
+        endif()
+    endforeach()
+    message(FATAL_ERROR
+        "Filling the bundle did not converge in 9 passes; the dependency graph is "
+        "cycling or growing on every pass.")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -816,6 +990,21 @@ message(STATUS "Deployed ${_copied_count} non-Qt dylib(s) into Contents/Framewor
                 # `QtQuick.Window` (2), `Qt.labs.platform` (1).
                 -qmldir=${CMAKE_SOURCE_DIR}/src/qml
         COMMENT "Deploying Qt frameworks, plugins and QML modules (${CHADVIS_MACDEPLOYQT})"
+        VERBATIM)
+
+    # Resolve what macdeployqt could not. It runs between deployment and the
+    # verify gate, because its whole input is what macdeployqt placed: measured
+    # 2026-10-23, macdeployqt copied libbrotlidec and reported "Cannot resolve
+    # rpath @rpath/libbrotlicommon.1.dylib", the bundle exited the build
+    # successfully, and it died on launch with exactly that dyld error. A
+    # dependency of a deployed library is a dependency of the bundle.
+    add_custom_command(TARGET chadvis-projectm-qt POST_BUILD
+        COMMAND "${CMAKE_COMMAND}"
+                -DSTAGE=fill
+                -DEXECUTABLE=$<TARGET_BUNDLE_DIR:chadvis-projectm-qt>/Contents/MacOS/$<TARGET_FILE_BASE_NAME:chadvis-projectm-qt>
+                -DFRAMEWORKS_DIR=$<TARGET_BUNDLE_DIR:chadvis-projectm-qt>/Contents/Frameworks
+                -P "${CHADVIS_DEPLOY_DYLIB_SCRIPT}"
+        COMMENT "Filling unresolved @rpath references left by macdeployqt"
         VERBATIM)
 
     # The check that turns "I think this is relocatable" into a fact. It runs

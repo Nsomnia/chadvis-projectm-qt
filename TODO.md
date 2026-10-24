@@ -422,6 +422,28 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `grep -rn "QMetaObject::invokeMethod" src/` finds 19 call sites, several carrying lambdas with captured state (`RecordingBridge.cpp` four, `AudioEngine.cpp` three, `SunoClient.cpp` three, `SunoDownloader`, `PresetManager`, `SunoBridge`, `SunoController`). Audit each as same-thread or cross-thread, apply the no-payload rule where it is cross-thread, and write the rule down once in [INVARIANTS.md](docs/dev/INVARIANTS.md#threads-and-ownership). Then add `scripts/check-thread-handoffs.py` — a grep-level gate in the same spirit as [check-workflows.py](scripts/check-workflows.py) — that lists every queued invocation carrying a capture for review, so the next one is a decision rather than an accident. Do not convert same-thread `DirectConnection` calls; the point is the boundary, not the API.
 - [ ] T0330 **The TSan lane counts eight entries while `build.sh --safe` runs eleven, so "39" and "206" are different populations** (`build.sh`, `.github/workflows/tsan.yml`) #risk-medium
       The CI lane runs the 8 entries that carry `TSAN_OPTIONS` in `tests/unit/CMakeLists.txt`; `SAFE_TESTS` is 11. Every local `--safe` therefore reports more, and nothing says so — the same two-allow-lists class as T0040 and T0297. Make one list the source of truth, record the per-entry baseline in a checked-in file rather than the prose `BASELINE=39`, and fail on an **increase per entry** so a new race in a suite that already reports cannot hide in a flat total. Until then, a local count is not comparable to CI's and must not be quoted as a regression.
+- [x] T0332 **The Release macOS bundle built successfully and could not launch: a library macdeployqt copied was missing its own dependency** (`cmake/TargetSetup.cmake`) #risk-high
+      The first Release build against the qt.io SDK exited 0, printed "Bundle verified: no absolute
+      non-system load paths", and then died on launch with
+      `Library not loaded: @rpath/libbrotlicommon.1.dylib` referenced from
+      `Contents/Frameworks/libbrotlidec.1.dylib`. macdeployqt had copied brotlidec (a dependency of
+      one of its Qt binaries) and reported `ERROR: Cannot resolve rpath
+      "@rpath/libbrotlicommon.1.dylib"` — an error it does not treat as fatal. Nothing in this
+      tree looked at it: `STAGE=deploy` runs *before* macdeployqt and therefore never sees what
+      macdeployqt introduces, and `STAGE=verify` inspected only the **executable's** load commands,
+      one level above where the hole was.
+      **Closed with a fill stage and a wider gate.** `STAGE=fill` runs after macdeployqt, walks
+      every Mach-O the bundle carries (the executable, the flat dylibs, each framework's versioned
+      binary), and for every `@rpath` reference that does not resolve inside the bundle resolves it
+      against the referencing binary's own `LC_RPATH` entries and then a short local-prefix list,
+      copies it in with a `@rpath/<soname>` id, rewrites the reference when the soname differs, and
+      re-scans until a pass changes nothing. It refuses to fake a framework (a directory bundle is
+      macdeployqt's job) and refuses to converge silently. `STAGE=verify` now walks the whole
+      bundle, so this class fails the build instead of the user's first launch. Verified on the
+      real artifact: verify failed naming exactly `libbrotlidec.1.dylib ->
+      @rpath/libbrotlicommon.1.dylib`, fill resolved it from `/usr/local/Cellar/brotli/1.2.0_1`,
+      verify then passed, and the rebuilt app printed its banner. VERIFY in `STATUS/T0332.log`.
+
 - [ ] T0331 **A sanitizer findings run is reported as a failed ctest entry, so red under `--safe` is ambiguous** (`build.sh`) #cleanup
       `unit_tests` printed `all suites returned, status 0` and still counted as failed, because TSan exits non-zero when it reports. A reader cannot tell "the product is broken" from "the known-benign class fired". Classify exit 66 (TSan) and 67 (ASan/UBSan) in `build.sh --safe`, print the report count next to the verdict, and keep a genuine assertion failure red. This is the `--safe` counterpart of the three-outcome classification already written in [TESTING.md](docs/dev/TESTING.md#the-sanitizer-lanes).
 
