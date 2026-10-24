@@ -661,6 +661,7 @@ token flow and durable processing contract are unimplemented (section 1.4).
 | GET | `/api/clips/get_songs_by_ids` | Bearer | Bulk clip/song hydration by repeated `ids` query values | `[T1]` Burp 2026-08-25 | declared-unused |
 | GET | `/api/playlist/me` | Bearer | Current user's playlists | `[T1]` Burp 2026-08-25 | declared-unused |
 | POST | `/api/unified/explore` | Bearer | Cursor-based explore feed | `[T1]` Burp 2026-09-24 | wired |
+| POST | `/unified/library` (host `suno.com`, base `/a/api`) | Bearer | The library as a set of *feeds*: playlists, albums, and playlist cards | `[T1]` browser 2026-10-24 | not-in-code |
 | POST | `/api/gen/{gen_id}/set_visibility/` | Bearer | Set a clip's public/private visibility; body `is_public: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/clips/{clip_id}/toggle_remixes/` | Bearer | Toggle remix permission; body `can_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/clips/{clip_id}/toggle_show_remixes` | Bearer | Toggle remix-list visibility; body `show_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
@@ -672,6 +673,55 @@ token flow and durable processing contract are unimplemented (section 1.4).
 | POST | `/api/playlist/v2/{id}/tracks/remove` | Bearer | Remove 1–100 clips by id | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/playlist/v2/{id}/tracks/reorder-by-index` | Bearer | Reorder by index; body `positions` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/playlist/v2/{id}/cover-image` | Bearer | Set playlist cover; body `id`, `type` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
+
+#### 2026-10-24 — the unified library endpoint on the site host (`[T1]`)
+
+A signed-in browser session on suno.com issued:
+
+```
+POST https://suno.com/a/api/unified/library
+{"cursor": null, "customization": {"include_synthetic": true}}      200  application/json
+```
+
+The envelope is a **page of feeds**, not a page of clips:
+
+```
+{ feeds: [ { feed_id, feed_title, feed_direct_link, feed_image_url?,
+             items: [ { content_id, logging_context, content_type,
+                        content_item: <playlist_schema|album_schema|song_schema>,
+                        added_at? } ],
+             presentation: { item_layout, show_clip_detail,
+                             should_initially_collapse, row_count },
+             next_cursor?, item_count, feed_metadata? } ] }
+```
+
+Three feed kinds were observed in one response: `library_playlists` (also carries
+the synthetic `liked` row, `feed_id: liked_songs`, `is_pinned_in_library: true`),
+`library_albums`, and one `generic_playlist:<id>` per playlist the page chose to
+render — those are the feeds whose `content_type` is `clip`, and their
+`content_item` is the same `song_schema` this client already parses out of
+`/api/feed/v3` (`id`, `title`, `status`, `model_name`, `metadata.prompt/tags/
+type/duration`, `media_urls[].url/content_type/delivery/encoding`, `image_url`,
+`is_liked`, `display_name`, `handle`, `created_at`, `caption`, `albums[]`,
+`action_config.actions[]`).
+
+**Pagination is a numeric string offset, and the page size is 10.** The captured
+`library_playlists` feed carried 10 items, `item_count: 57`, and
+`next_cursor: "10"`. So the expectation that this route returns "more than ten
+tracks a call" is **not** supported by the capture — what is faster here is the
+*shape*, not the page size: one call describes playlists/albums/cards without
+hydrating their clips, and `playlist_clips` is **empty** in the library listing
+(a playlist's clips must still be fetched from a playlist feed).
+
+**Host facts.** `suno.com` with base `/a/api` is now captured for two surfaces
+(this one and §4.8's notification v3), so it is an allowlist candidate. The same
+capture shows `audio_url` as `https://studio-api.prod.suno.com/api/forbidden` —
+a placeholder pointed at a host this client has never called, and the *playable*
+form is still `media_urls[]`. **Do not wire `studio-api.prod` or the
+`m-stratovibe.prod` telemetry host** that appears in the same session: neither is
+an audio or API route this client needs.
+
+No id, token, cookie or CDN URL from that capture is recorded here.
 
 No reviewed capture establishes server-side search as a `searchText` field on
 `POST /api/feed/v3`. Search claims derived from old prose or client parameters
