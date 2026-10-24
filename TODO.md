@@ -532,11 +532,24 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       empty. `SunoLibraryManager.hpp:76` ("it is not sent to the feed") contradicts the two
       `fetchLibraryPage(…, searchText_)` calls. Real filtering is client-side in
       `SunoBridge::updateFilteredClips`.
-- [ ] T0067 `SunoNotificationService` has no polling timer, no dedup, and discards a successful list when the badge fails (`src/suno/SunoNotificationService.cpp:248,313-315,349-352,486`) #risk-high
+- [x] T0067 `SunoNotificationService` has no polling timer, no dedup, and discards a successful list when the badge fails (`src/suno/SunoNotificationService.cpp`) #risk-high
       Zero `QTimer` hits, so `unreadCountChanged` never fires on its own. `enqueueRefresh`
       requires **both** requests; a badge failure routes through `failRefresh`, which
       throws away `pendingResponse_` — a fully successful notification list is dropped
       because a decorative counter 404'd.
+      **Closed all three halves.** The constructor takes a `pollIntervalMs` (default 60 s, 0
+      disables) and starts one `QTimer`; its slot is silent while signed out or busy, because
+      a timer reporting "Not authenticated" every minute is the timer talking, not the user.
+      The pairing is gone: each reply is applied the moment it arrives, so the list lands
+      whether or not the badge answers, and `failRefresh` no longer bumps the generation —
+      that bump was what invalidated the sibling reply still in flight. `refreshPending_` now
+      only decides when the spinner stops. Dedup compares the **raw list body** to the last
+      applied one, so a poll that returns the same page does not rebuild the list under the
+      user's scroll position. Pinned by `aBadgeFailureDoesNotDiscardTheList`,
+      `anUnchangedListIsAppliedOnce` and `pollingRefreshesWithoutAView` (which also asserts a
+      signed-out service issues no request). VERIFY in `STATUS/T0067.log`.
+      **Not done, and deliberately:** no `[suno]` config key for the interval. Nothing asked
+      for one and 60 s is a value, not a policy; adding the key is easy once a user wants it.
 - [ ] T0068 ~15 dead model structs in `SunoModels.hpp`, including a **second parallel schema for notifications** (`src/suno/SunoModels.hpp:207-337`) #cleanup
       No producer or consumer. `SunoNotification` (:240) duplicates
       `SunoNotificationService::Notification` (:28 of its header), which is the type the

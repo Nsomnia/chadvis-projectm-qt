@@ -1,5 +1,7 @@
 #include "SunoNotificationService.hpp"
 
+#include <QTimer>
+
 #include "SunoClient.hpp"
 
 #include <QJsonArray>
@@ -172,8 +174,23 @@ std::optional<SunoNotificationService::Notification> parseNotification(const QJs
 
 } // namespace
 
-SunoNotificationService::SunoNotificationService(SunoClient* client, QObject* parent)
+SunoNotificationService::SunoNotificationService(SunoClient* client, QObject* parent,
+                                                 int pollIntervalMs)
     : QObject(parent), client_(client) {
+    if (pollIntervalMs > 0) {
+        pollTimer_ = new QTimer(this);
+        pollTimer_->setInterval(pollIntervalMs);
+        // Silent when signed out or already busy: refresh() would otherwise
+        // report "Not authenticated" every interval, which is a timer talking,
+        // not a user action, and the sign-out path already reports once.
+        connect(pollTimer_, &QTimer::timeout, this, [this]() {
+            if (!client_ || !client_->isAuthenticated() || loading_ || markLoading_) {
+                return;
+            }
+            refresh();
+        });
+        pollTimer_->start();
+    }
     if (client_) {
         connect(client_, &SunoClient::authStateChanged, this, [this]() {
             if (client_ && client_->isAuthenticated()) {
@@ -237,8 +254,6 @@ void SunoNotificationService::refresh() {
     setError({});
     ++refreshGeneration_;
     refreshPending_ = 2;
-    pendingResponse_ = {};
-    pendingBadge_.reset();
     refreshLoading_ = true;
     setLoading(true);
     enqueueRefresh();
@@ -318,37 +333,41 @@ void SunoNotificationService::handleRefreshReply(QNetworkReply* reply, ReplyKind
         return;
     }
 
+// Each half is applied the moment it arrives. The old shape paired them and
+    // required BOTH to succeed, so a 404 on the decorative badge counter threw
+    // away a perfectly good notification list (T0067) -- and the badge is the
+    // fragile one: it is a counter, not a document.
     if (kind == ReplyKind::List) {
         auto parsed = parseResponse(document.object());
         if (!parsed) {
             failRefresh(parsed.error());
             return;
         }
-        pendingResponse_ = std::move(*parsed);
+        if (*body != lastListBody_) {
+            lastListBody_ = *body;
+            notifications_ = std::move(parsed->notifications);
+            emit notificationsChanged();
+        }
     } else {
         auto parsed = parseBadgeCount(document.object());
         if (!parsed) {
             failRefresh(parsed.error());
             return;
         }
-        pendingBadge_ = *parsed;
+        const int nextUnreadCount = static_cast<int>(*parsed);
+        if (unreadCount_ != nextUnreadCount) {
+            unreadCount_ = nextUnreadCount;
+            emit unreadCountChanged();
+        }
     }
 
-    --refreshPending_;
-    if (refreshPending_ != 0 || !pendingBadge_) {
-        return;
+    if (refreshPending_ > 0) {
+        --refreshPending_;
     }
-
-    notifications_ = std::move(pendingResponse_.notifications);
-    const int nextUnreadCount = *pendingBadge_;
-    if (unreadCount_ != nextUnreadCount) {
-        unreadCount_ = nextUnreadCount;
-        emit unreadCountChanged();
+    if (refreshPending_ == 0) {
+        refreshLoading_ = false;
+        setLoading(markLoading_);
     }
-    emit notificationsChanged();
-    refreshLoading_ = false;
-    refreshPending_ = 0;
-    setLoading(markLoading_);
 }
 
 void SunoNotificationService::markAllRead() {
@@ -460,12 +479,18 @@ void SunoNotificationService::setError(const QString& message) {
 }
 
 void SunoNotificationService::failRefresh(const QString& message) {
-    ++refreshGeneration_;
-    refreshPending_ = 0;
-    refreshLoading_ = false;
-    pendingResponse_ = {};
-    pendingBadge_.reset();
-    setLoading(markLoading_);
+    // One half failing must not cancel the other. This used to bump the
+    // generation, which invalidated the sibling reply still in flight, and then
+    // clear both pending slots -- so a badge 404 discarded the list that had
+    // already arrived, and a list failure did the same to a good count (T0067).
+    // Loading ends when the outstanding replies are done, not when one errors.
+    if (refreshPending_ > 0) {
+        --refreshPending_;
+    }
+    if (refreshPending_ == 0) {
+        refreshLoading_ = false;
+        setLoading(markLoading_);
+    }
     setError(message);
 }
 

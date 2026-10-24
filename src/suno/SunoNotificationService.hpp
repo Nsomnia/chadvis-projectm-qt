@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QDateTime>
 #include <QJsonObject>
 #include <QList>
@@ -9,6 +10,7 @@
 #include <optional>
 
 class QNetworkReply;
+class QTimer;
 
 namespace vc::suno {
 
@@ -46,7 +48,11 @@ public:
         QString notifiedAt;
     };
 
-    explicit SunoNotificationService(SunoClient* client, QObject* parent = nullptr);
+    /// `pollIntervalMs` re-reads the surface on a timer so the unread badge
+    /// moves without the Notifications view being opened. 0 disables polling;
+    /// the default exists because nothing else in the app asks for this data.
+    explicit SunoNotificationService(SunoClient* client, QObject* parent = nullptr,
+                                     int pollIntervalMs = 60000);
 
     static std::expected<Response, QString> parseResponse(const QJsonObject& root);
     static std::expected<qint64, QString> parseBadgeCount(const QJsonObject& root);
@@ -90,8 +96,11 @@ private:
     quint64 refreshGeneration_{0};
     quint64 markGeneration_{0};
     int refreshPending_{0};
-    Response pendingResponse_;
-    std::optional<qint64> pendingBadge_;
+    /// The last list body that was applied, so a poll that returns the same page
+    /// does not re-emit notificationsChanged and rebuild the list under the
+    /// user's scroll position.
+    QByteArray lastListBody_;
+    QTimer* pollTimer_{nullptr};
     bool refreshLoading_{false};
     bool markLoading_{false};
     bool loading_{false};
