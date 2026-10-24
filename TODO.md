@@ -55,6 +55,74 @@ line to describe an item is describing it in the wrong place. Finished work move
 
 ## P0 — the product is broken, data is corrupted, or a secret is exposed
 
+- [ ] T0333 **The Discover feed renders empty while the account is signed in and working** (`src/suno/SunoClient.cpp`, `src/suno/SunoLibraryManager.cpp`, `src/qml/views/DiscoverView.qml`) #blocks-ui #risk-high
+      User report 2026-10-23, with a full startup log attached. The session is healthy —
+      `auth state -> ActiveValid`, `SunoAccountManager: session loaded (5 model(s), 60 server
+      flag(s), user 'Danny Steel')` — and **Library pages arrive continuously** (`Fetched 20
+      clips` every ~3 s for minutes). The feed itself shows nothing. Two candidate causes, and
+      the log cannot separate them:
+      **(a) the route moved.** The client asks
+      `https://studio-api-prod.suno.com/api/feed/v3` (`SunoEndpoints.hpp:42,77`). The service
+      now serves at least part of the API from **`https://suno.com/a/api/...`**, and that is a
+      *different host*, not a different path — a `CapturedHosts.cpp` change, not an `API_BASE`
+      edit, because the allowlist is fail-closed and a capture is what earns a host entry
+      (AGENTS.md). The evidence is now in
+      [ENDPOINT-INVENTORY §4.8](docs/suno_api/ENDPOINT-INVENTORY.md): a 2026-10-24 signed-in
+      browser capture of `suno.com/a/api/notification/v3` answered 200 with a v3 envelope,
+      which proves the base moved for that surface. **It does not prove the feed moved**, and
+      the feed request itself has not been captured — so this half stays `[LEAD]` until one
+      capture or one runtime probe says otherwise. A route that answers 200 with an envelope
+      this client does not expect is otherwise indistinguishable from an empty feed at every
+      layer that logs, because the parse failure surfaces as an error string the view does not
+      show.
+      **(b) the envelope is not what `ClipParser` expects.** `feed envelope has no clips array`
+      is a message this code can already emit (`tests/unit/suno/` asserts it), and the feed
+      request carries filters (`is_liked`, `search_text`) that this UI cannot set.
+      **What decides it:** one authenticated capture of the Discover request/response, or a
+      runtime probe that logs the status, the top-level keys of the parsed object, and the
+      first array's length — never the body, never a bearer. Do not change the route on the
+      strength of a lead: AGENTS.md requires a capture or a runtime check that fails closed.
+
+- [ ] T0335 **The notification client is wired to v2 on a host the browser no longer uses, and the v3 shape is different** (`src/suno/SunoNotificationService.cpp`, `src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`) #risk-high #blocks-ui
+      The 2026-10-24 capture ([§4.8](docs/suno_api/ENDPOINT-INVENTORY.md)) shows the site
+      calling `GET https://suno.com/a/api/notification/v3?include_hooks=true` and getting a
+      200 with `{notified_at, notifications[], next_before_datetime_utc}` per-entry
+      `avatars[]` / `text[]` / `thumbnail_url` / `trailing_button`. This client calls
+      `/api/notification/v2` on `studio-api-prod.suno.com` and has for two captures. Three
+      things have to move together and none of them alone:
+      **(a) the host** — `suno.com` with base `/a/api` is a `CapturedHosts.cpp` row, and it is
+      earned by that capture; `studio-api-prod` stays for the routes that still use it until a
+      capture says otherwise, because a host entry is per-host and not a wholesale move.
+      **(b) the parser** — `parseResponse` reads `user_profiles`, `content_title`,
+      `content_message` and `caption`, none of which v3 sends; it would build notifications
+      with an empty author and caption and no error. v3's text is `text[].text` concatenated,
+      and the picture is `avatars[0].image_url`.
+      **(c) the badge** — `/notification/v2/badge-count` has no v3 sibling in the capture; the
+      unread count may have to be derived from `is_read` in the list, which is what the v3
+      entries carry.
+      **Before any of it:** one request from this client that logs status, the top-level keys
+      of the parsed object and the first array's length (never the body) says whether v2 still
+      answers. A 2xx from v2 means this is an addition, not a migration, and (b) still applies
+      the day the route flips. Note that T0067's poll now fires this route every 60 s, so a
+      dead v2 becomes a visible error every minute rather than an empty list.
+
+- [ ] T0334 **The library auto-pager has no finish line: ~90 pages at ~3 s, forever** (`src/suno/SunoLibraryManager.cpp`) #risk-high #perf
+      From the same 2026-10-23 run: `SunoLibraryManager: Fetched 20 clips` at ~3 s intervals
+      from 20:48:17 to 20:52:39 with no stop, no error and no visible progress — roughly 1 800
+      clips over four minutes against a live API. T0167 added the completeness report
+      (`{complete, pagesFetched, expectedTotal}`) and nothing consumes it: the manager keeps
+      paging on "a page came back", which never becomes false while the service answers. Two
+      things are missing and they are separable: a stop condition the manager can prove (a
+      short page, or `pagesFetched >= expectedTotal`), and a consumer that stops *asking* —
+      `SunoBridge`'s accumulated-list signal is what drives the loop today. This is also the
+      reason a feed defect (T0333) is hard to see: the log is saturated by this loop.
+      **A page-size note, not a finding:** the client asks for 20 per page. The live browser
+      traffic seen on 2026-10-24 pages notifications with a UTC cursor, and a v3-style feed
+      may accept a larger page than 20 — but nothing captured says so, so a bigger page is
+      `[LEAD]`-grade until the same capture that settles T0333's route also records its
+      request body. Fixing the finish line is worth more than a bigger page: the loop above
+      is ~1 800 clips against an API that has no reason to serve them twice.
+
 - [x] T0010 **An unrecognised playlist `updateType` silently adds tracks** (`src/qml_bridge/SunoBridge.cpp:1611`) #data-loss
       ```cpp
       if (!type) { (void)m->updatePlaylistClips(playlistId, PlaylistUpdateType::Add, {}); return; }
@@ -422,28 +490,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `grep -rn "QMetaObject::invokeMethod" src/` finds 19 call sites, several carrying lambdas with captured state (`RecordingBridge.cpp` four, `AudioEngine.cpp` three, `SunoClient.cpp` three, `SunoDownloader`, `PresetManager`, `SunoBridge`, `SunoController`). Audit each as same-thread or cross-thread, apply the no-payload rule where it is cross-thread, and write the rule down once in [INVARIANTS.md](docs/dev/INVARIANTS.md#threads-and-ownership). Then add `scripts/check-thread-handoffs.py` — a grep-level gate in the same spirit as [check-workflows.py](scripts/check-workflows.py) — that lists every queued invocation carrying a capture for review, so the next one is a decision rather than an accident. Do not convert same-thread `DirectConnection` calls; the point is the boundary, not the API.
 - [ ] T0330 **The TSan lane counts eight entries while `build.sh --safe` runs eleven, so "39" and "206" are different populations** (`build.sh`, `.github/workflows/tsan.yml`) #risk-medium
       The CI lane runs the 8 entries that carry `TSAN_OPTIONS` in `tests/unit/CMakeLists.txt`; `SAFE_TESTS` is 11. Every local `--safe` therefore reports more, and nothing says so — the same two-allow-lists class as T0040 and T0297. Make one list the source of truth, record the per-entry baseline in a checked-in file rather than the prose `BASELINE=39`, and fail on an **increase per entry** so a new race in a suite that already reports cannot hide in a flat total. Until then, a local count is not comparable to CI's and must not be quoted as a regression.
-- [x] T0332 **The Release macOS bundle built successfully and could not launch: a library macdeployqt copied was missing its own dependency** (`cmake/TargetSetup.cmake`) #risk-high
-      The first Release build against the qt.io SDK exited 0, printed "Bundle verified: no absolute
-      non-system load paths", and then died on launch with
-      `Library not loaded: @rpath/libbrotlicommon.1.dylib` referenced from
-      `Contents/Frameworks/libbrotlidec.1.dylib`. macdeployqt had copied brotlidec (a dependency of
-      one of its Qt binaries) and reported `ERROR: Cannot resolve rpath
-      "@rpath/libbrotlicommon.1.dylib"` — an error it does not treat as fatal. Nothing in this
-      tree looked at it: `STAGE=deploy` runs *before* macdeployqt and therefore never sees what
-      macdeployqt introduces, and `STAGE=verify` inspected only the **executable's** load commands,
-      one level above where the hole was.
-      **Closed with a fill stage and a wider gate.** `STAGE=fill` runs after macdeployqt, walks
-      every Mach-O the bundle carries (the executable, the flat dylibs, each framework's versioned
-      binary), and for every `@rpath` reference that does not resolve inside the bundle resolves it
-      against the referencing binary's own `LC_RPATH` entries and then a short local-prefix list,
-      copies it in with a `@rpath/<soname>` id, rewrites the reference when the soname differs, and
-      re-scans until a pass changes nothing. It refuses to fake a framework (a directory bundle is
-      macdeployqt's job) and refuses to converge silently. `STAGE=verify` now walks the whole
-      bundle, so this class fails the build instead of the user's first launch. Verified on the
-      real artifact: verify failed naming exactly `libbrotlidec.1.dylib ->
-      @rpath/libbrotlicommon.1.dylib`, fill resolved it from `/usr/local/Cellar/brotli/1.2.0_1`,
-      verify then passed, and the rebuilt app printed its banner. VERIFY in `STATUS/T0332.log`.
-
 - [ ] T0331 **A sanitizer findings run is reported as a failed ctest entry, so red under `--safe` is ambiguous** (`build.sh`) #cleanup
       `unit_tests` printed `all suites returned, status 0` and still counted as failed, because TSan exits non-zero when it reports. A reader cannot tell "the product is broken" from "the known-benign class fired". Classify exit 66 (TSan) and 67 (ASan/UBSan) in `build.sh --safe`, print the report count next to the verdict, and keep a genuine assertion failure red. This is the `--safe` counterpart of the three-outcome classification already written in [TESTING.md](docs/dev/TESTING.md#the-sanitizer-lanes).
 
@@ -480,21 +526,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       One global `ratings.toml` keyspace means two preset banks containing the same preset
       name share a rating — **structurally blocks multiple banks.** `ratings_` is a bare
       `std::map` with no lock. Fix: inject it, key on path, and add a mutex. (after: T0014)
-- [x] T0059 `RatingManager::save()` and `PresetPersistence::saveState` are non-atomic (`src/visualizer/RatingManager.cpp:44-55`, `src/visualizer/PresetPersistence.cpp:40-58`) #data-loss
-      Plain truncate-and-write, unlike `ConfigLoader::save`'s temp+rename. `saveState` runs
-      on **every favourite toggle** (`PresetManager.cpp:556`), so it is a hot path, not a
-      once-per-session one.
-      **Closed in both writers, through the helper that already existed.** Both now serialize
-      to a string and hand it to `vc::file::writeText()`, which is the tree's temp+rename
-      writer (`FileUtils.cpp:172-195`) — no new atomic-write code, and no second implementation
-      of the rename dance. `RatingManager` uses a `std::ostringstream << toml::table`, so the
-      bytes are identical to before. Pinned by `tests/unit/visualizer/test_PresetPersistence.cpp`
-      (`saveThenLoadRoundTrips` replaces a stale file rather than appending,
-      `aSaveLeavesNoTempFileBehind` asserts the `.tmp` is gone and the target is a regular file).
-      VERIFY in `STATUS/T0059.log`. **Bounded, and worth knowing:** `writeText` is
-      temp+rename with no `fsync`, so the rename is atomic against a crash but not against
-      power loss — the same bound the config file documents, and these two files are
-      regenerable state rather than credentials.
 - [ ] T0060 Dead members and methods with grep proof (`src/`) #cleanup
       `Config::addOverlayElement`/`removeOverlayElement`/`findOverlayElement` (zero callers),
       `VisualizerRenderer::setTargetFps`, `VisualizerWindow::feedAudio` (deprecated empty
@@ -532,24 +563,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       empty. `SunoLibraryManager.hpp:76` ("it is not sent to the feed") contradicts the two
       `fetchLibraryPage(…, searchText_)` calls. Real filtering is client-side in
       `SunoBridge::updateFilteredClips`.
-- [x] T0067 `SunoNotificationService` has no polling timer, no dedup, and discards a successful list when the badge fails (`src/suno/SunoNotificationService.cpp`) #risk-high
-      Zero `QTimer` hits, so `unreadCountChanged` never fires on its own. `enqueueRefresh`
-      requires **both** requests; a badge failure routes through `failRefresh`, which
-      throws away `pendingResponse_` — a fully successful notification list is dropped
-      because a decorative counter 404'd.
-      **Closed all three halves.** The constructor takes a `pollIntervalMs` (default 60 s, 0
-      disables) and starts one `QTimer`; its slot is silent while signed out or busy, because
-      a timer reporting "Not authenticated" every minute is the timer talking, not the user.
-      The pairing is gone: each reply is applied the moment it arrives, so the list lands
-      whether or not the badge answers, and `failRefresh` no longer bumps the generation —
-      that bump was what invalidated the sibling reply still in flight. `refreshPending_` now
-      only decides when the spinner stops. Dedup compares the **raw list body** to the last
-      applied one, so a poll that returns the same page does not rebuild the list under the
-      user's scroll position. Pinned by `aBadgeFailureDoesNotDiscardTheList`,
-      `anUnchangedListIsAppliedOnce` and `pollingRefreshesWithoutAView` (which also asserts a
-      signed-out service issues no request). VERIFY in `STATUS/T0067.log`.
-      **Not done, and deliberately:** no `[suno]` config key for the interval. Nothing asked
-      for one and 60 s is a value, not a policy; adding the key is easy once a user wants it.
 - [ ] T0068 ~15 dead model structs in `SunoModels.hpp`, including a **second parallel schema for notifications** (`src/suno/SunoModels.hpp:207-337`) #cleanup
       No producer or consumer. `SunoNotification` (:240) duplicates
       `SunoNotificationService::Notification` (:28 of its header), which is the type the
@@ -561,23 +574,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       All are sent from `SunoLibraryMutations.cpp`. The inventory is **wrong about the code
       and right about the behaviour** (T0011); both halves need recording. Also 8
       constants exist in `SunoEndpoints.hpp` with no inventory row at all.
-- [x] T0070 `preset_path` and path-typed `[suno]` keys are rewritten absolute on save (`src/core/ConfigParsers.cpp:456,223,533`) #data-loss
-      **Closed in the serializer, with no second atomic-write or path-format layer.** A new
-      `portablePath()` beside `expandPath()` writes any path under `$HOME` as `~/...` (which
-      `expandPath` reverses on the next load) and leaves anything else absolute, because there
-      is no portable spelling for `/usr/share/...` and inventing one would be a lie. It is
-      applied to `VC_SER_PATH` and to the four hand-written sites: `preset_path`,
-      `texture_paths`, `recording.output_directory`, `[suno] download_path`.
-      **`preset_path` gets one rule of its own:** if the live value equals `file::presetsDir()`
-      — i.e. it came from auto-detect, not from the user — the key is written back as `''`, so
-      the shipped "detect" meaning survives a save instead of being replaced by this machine's
-      probe answer. Pinned by `serializeWritesPathsUnderHomeRelativeToHome` and
-      `serializeLeavesAnAutoDetectedPresetPathEmpty` (the second also parses the table back and
-      compares the expanded path). `docs/user/CONFIG.md` says both halves. VERIFY in
-      `STATUS/T0070.log`.
-      The shipped `preset_path = ''` becomes e.g. `/usr/share/projectM/presets` on first
-      save, converting a portable template into a machine-pinned file **and defeating the
-      auto-detect fallback documented at `docs/user/CONFIG.md:126`. Fix: serialize `~/`-relative.
 - [ ] T0071 ~120 dead QML-facing bridge properties/invokables, including word-level karaoke timing that is implemented in C++ but never surfaced (`src/qml_bridge/LyricsBridge.hpp:32,34,101,111,91`) #cleanup
       `currentWordIndex`, `wordProgress`, `getUpcomingLines`, `getContextLines`,
       `assDocument` have **zero QML readers** — the karaoke feature exists below the UI.
@@ -613,16 +609,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [ ] T0078 Pseudo-reactive bindings that never update (`src/qml/components/KaraokeMaster.qml:195`, `components/VisualizerOverlay.qml:33`) #risk-high
       `Math.sin(Date.now()/500 + index)` inside a binding — `Date.now()` is not a bindable
       property, so the "animation" is computed once and frozen.
-- [x] T0079 The `"M"` shortcut has no text-entry guard, unlike `"F"` (`src/qml/main.qml:688-692`) #risk-high
-      Typing "m" in the Library search box collapses the nav rail on every keystroke. The
-      guard already exists at `main.qml:181-190`; this shortcut just forgot it.
-      **Closed by reusing that guard rather than adding a second one:** `enabled` is now
-      `!settingsWindow.visible && !mainWindow.textEntryFocused`. No `railKeyConflictsWithTyping`
-      predicate was added because `"M"` is a hardcoded literal, so it always conflicts — unlike
-      `F`, whose conflict depends on the user's configured key. `scripts/lint-qml.sh` reports no
-      blocking problems and `integration_tests` (which instantiates `main.qml`) passes;
-      the keystroke itself in a live window is MT-001-A, per the board's rule that a green
-      offscreen run is not runtime evidence.
 - [ ] T0080 Two writes to a bound `value` on `AppSlider` fight each other (`src/qml/panels/settings/KaraokeSettings.qml:52`, `panels/RecordingPanel.qml:180,264`) #risk-high
       Qt explicitly recommends interaction signals (`onMoved`) over `onValueChanged`, which
       "can lead to event cascades where the value is constantly changed because it is
@@ -701,22 +687,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [ ] T0097 `unit_tests` is one binary with one `QCoreApplication` running 31 suites sequentially (`tests/unit/test_main.cpp:38,41-72`) #risk-medium
       A crash or hang in suite 30 loses suites 1–29's results, and config-singleton mutators
       are unisolated.
-- [x] T0098 Tautological assertions in the offscreen suite (`tests/unit/recorder/test_OffscreenRenderSpike.cpp:92-94,225-226`) #cleanup
-      `QCOMPARE(f(report_.verdict), f(report_.verdict))` compares an expression to itself and
-      can never fail; the surrounding comment claims it verifies agreement with the verdict.
-      Also brittle: :338-363 asserts **seven literal substrings** of a human-readable report.
-      **Closed, and the third defect was the opposite of the first two.** The `toString`
-      tautology is now three `QCOMPARE`s, one per verdict, which is what "toString must name
-      every verdict" actually claims; the self-comparison is now a cross-check against the
-      `verdict permits maxConcurrent=<n>` line `describeOffscreenProbe` prints, so the function
-      an executor calls and the line a reader sees must agree. The literal substrings are
-      **kept deliberately** — they assert content the report must contain, and the item calls
-      them brittle, not false. What the first run under Qt 6.12 found is the mirror image:
-      `teardownLoopActuallyRanAndIsReportedAsASeries` required `rssAfterBytes >= rssBeforeBytes`,
-      and RSS is not monotonic — it failed with 59.8 MB → 54.2 MB on a series where every
-      reading was plausible (the allocator and the GL driver returned pages). That assertion
-      now checks what a series can prove: no zero readings, and a max/min span under 2x, which
-      neither a failed sample nor another process's figures satisfy. VERIFY in `STATUS/T0098.log`.
 - [ ] T0099 Four duplicate reply fakes, and no fake `QNetworkAccessManager` at all (`tests/unit/suno/`) #risk-high
       `FakeNetworkReply.hpp` is adequate but its `factory()` takes one `QNetworkRequest`
       while `SunoClient::ReplyFactory` takes three, so it is unusable for SunoClient suites.
@@ -900,16 +870,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       The serializer is **structurally** incapable of emitting them (`ConfigParsers.cpp:186-203`)
       — preserve that guarantee. Separately, a dozen log sites interpolate `clipId`, which is
       the account-linked half of the scrub plan.
-- [x] T0110 Fix the documented wrong executable path (`README.md:41`, `docs/user/INSTALL.md:111`, `docs/dev/manual-qa.md:37`) #risk-medium
-      The target is a real `MACOSX_BUNDLE` (`cmake/TargetSetup.cmake:263`), so the binary is
-      `build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt`. `build.sh:371-376`
-      was already corrected; the docs were not.
-      **Closed in all four places, which was one more than the item listed.** `README.md` now
-      names both paths, `INSTALL.md` gives the bundle path for macOS with the Linux/Windows path
-      beside it and points at the real print site (`build.sh:697-704`, not `:176`), and
-      `docs/dev/manual-qa.md` gets the same sentence in Prerequisites plus the two commands it
-      spells out literally (A1, G17). `grep -rn "build/chadvis-projectm-qt"` now returns no bare
-      macOS path.
 - [ ] T0111 `release.yml` believes macOS bundle packaging is broken and `.desktop`/dependabot comments are stale (`.github/workflows/release.yml:19-42`, `.github/dependabot.yml:7,16`) #cleanup
       The workflow asserts `MACOSX_BUNDLE` is unset (it is set) and its macOS leg is
       `required: false`. `dependabot.yml` says "the single workflow" when there are five, and
@@ -941,12 +901,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 
 - [x] T0186 **The colour round-trip that T0047 shipped has no test, so the same class of bug returns silently** (`tests/unit/`) #risk-high
       There is no theme test file, and no test anywhere in `tests/` references `parseRgbaHex`, `toRgbaHex` or `applyAccent` — the three functions that *were* the entire fix. `866b36e`'s own message names the guards it should have had: channel-equality assertions on accent **and background including alpha** (alpha is the field whose loss passed every colour-only check), plus a round trip over both the 6-digit and 8-digit forms. Minimum set: `#000000FF` stays opaque black, `#00FF88FF` stays opaque green and is not read as `#AARRGGBB`, `toRgbaHex(parseRgbaHex(x)) === x`, and a 6-digit input returns 8-digit opaque rather than transparent. This is the regression guard that lets T0183 and T0187 change the palette safely.
-
-- [x] T0196 `.qt-stitch/` is a workaround for a broken Homebrew Qt, and it will outlive the reason for it (`scripts/qt-stitch.sh`, `.qt-stitch/`, `docs/dev/TESTING.md`) #build
-      A `brew upgrade` left the `qt` umbrella at **6.11.1** while qtbase/qtdeclarative/qtmultimedia/qttools moved to **6.12.0**, so `/usr/local/opt/qt/lib/cmake/Qt6/Qt6Config.cmake` is missing and the build dies on `The imported target "Qt6::harmonydeployqt" references a file that does not exist`. `scripts/qt-stitch.sh` merges the four component prefixes into one tree, and the whole test suite is green against it. **It is gitignored and not part of the product** — but nothing stops it silently becoming the *only* Qt on this machine, or going stale the moment `brew upgrade qt` succeeds and the tree starts missing whatever the new umbrella reorganised. **When the umbrella is repaired, delete `scripts/qt-stitch.sh` and the `--qt` guidance in TESTING.md in one commit, and confirm the build still configures without `--qt`.** Until then, every `VERIFY` line in `STATUS/` carries `--qt "$PWD/.qt-stitch"`, and that flag in a hundred log lines is the reminder.
-      **Closed by replacing the umbrella, not repairing it.** Qt now comes from qt.io (aqt) at `$HOME/Qt/6.12.0/macos`, with `~/.zshrc` exporting `CMAKE_PREFIX_PATH` to it; the Homebrew Qt is gone from this machine. `scripts/qt-stitch.sh` is moved to `.backup_graveyard/` and deleted from the tree, the stitch instructions are gone from `TESTING.md`, and `build.sh` resolves Qt as: environment `CMAKE_PREFIX_PATH` → newest `$HOME/Qt/*/macos` → MacPorts → Homebrew → distro → **`.qt-stitch` last**, so a leftover directory can never shadow a real install again (it did: `build-fast` was pointed at a stitched tree whose `QtGui` headers had gone missing, and every compile failed on `QtGui/qtguiglobal.h`). A candidate must carry `lib/cmake/Qt6/Qt6Config.cmake`, not merely exist — `-d` cannot tell a prefix from a stale prefix.
-      **The half that made the workaround outlive its reason is now a check.** `build.sh` gained `qt_prefix_changed()` and `qt_is_stale()` beside the existing `sdk_is_stale()`/`cmake_is_stale()`. A cached prefix that has merely lost its `Qt6Config.cmake` is reconfigured in place; a *different installation* (an explicit `--qt`, or a resolved prefix the cache disagrees with) parks the directory in `.backup_graveyard/` and configures fresh, because a different Qt is not a moved one — the objects were built against other headers and the cache carries feature values the new Qt contradicts, which Qt's own configure warns about eight times and answers with "consider removing the CMakeCache.txt file". Without this, every later configure failed with "Could not find a package configuration file provided by Qt6" on a machine where Qt is installed.
-      **Two migration failures were invisible with Homebrew's Qt and are now closed with it.** qt.io's frameworks carry `@rpath/...` install names where Homebrew's carried absolute ones, and this tree links with `CMAKE_BUILD_WITH_INSTALL_RPATH ON` — so every test binary had **no `LC_RPATH` at all** and died with `Library not loaded: @rpath/QtTest.framework/... Reason: no LC_RPATH's found`, while the fast-profile `.app` pointed its only rpath at a `Contents/Frameworks` that deployment suppression never creates. `tests/CMakeLists.txt` and the fast-profile bundle now carry `${QT6_INSTALL_PREFIX}/lib`; a shipped bundle keeps `@executable_path/../Frameworks` and no developer path. Separately, a **fresh** configure paired this tree's `/usr/local/include` FFmpeg headers with **Qt's bundled** `~/Qt/6.12.0/macos/lib/libavcodec.dylib`, because the Qt prefix is on `CMAKE_PREFIX_PATH`; a stale cache hid it, since it already held the right answer. `cmake/Dependencies.cmake` now excludes any prefix that carries Qt's own CMake config from the `libav*` search — scoped to that search, so the test tree's `find_package(Qt6 ...)` still resolves. VERIFY in `STATUS/T0196.log`.
 
 - [ ] T0197 Nothing re-applies the theme when `ui().theme` changes from somewhere other than the Appearance panel (`src/qml/main.qml`) #risk-med
       `main.qml`'s `applyTheme()` runs **once**, in `Component.onCompleted`. Every path a user can reach today is covered — Settings previews live and Apply commits, and the commit value equals what is already on screen — so nothing is broken. The gap opens the moment a second writer appears: a profile switch, a config reload, or T0193's `ThemeCatalog` adopting a theme on disk. Then `config.toml` and the window disagree, silently, which is the exact failure T0047 was filed for. **The fix is small but not free, which is why it is here rather than done:** a `Connections { target: SettingsBridge; onThemeNameChanged: … }` must *not* apply unconditionally, because T0192 makes `--theme` a session override that is supposed to outrank the stored value — an unconditional re-apply would stomp the override the instant the user commits anything in Settings. The rule to encode is "re-apply on `themeNameChanged` **unless** a session override is active", and that rule needs eyes on it (MT-001-G) rather than a green ctest.

@@ -759,6 +759,50 @@ surface as working.** A dead route should degrade to a visible error state, so
 the failure is diagnosable rather than an empty list that reads as "no
 notifications". One authenticated probe settles it.
 
+#### 2026-10-24 — the notification surface answered as v3 on the site host (`[T1]`)
+
+A signed-in browser session on suno.com issued:
+
+```
+GET https://suno.com/a/api/notification/v3?include_hooks=true     200  application/json
+Authorization: Bearer …      cookie: __session…      browser-token: …
+```
+
+Two host-level facts, and they are the ones that matter:
+
+1. **The API base on that host is `/a/api`, not `/api`.** The path is
+   `suno.com/a/api/notification/v3`. Everything in section 2's path constants is
+   written relative to a base that must not itself end in `/api`; if this host
+   becomes the client's base, `API_BASE` is `https://suno.com/a/api` and the
+   constants keep their spelling.
+2. **The route is v3, and the shape is not v2's.** Response envelope:
+   `{ notified_at, notifications[], next_before_datetime_utc }` — pagination is a
+   **UTC timestamp cursor**, not an offset. Each entry carries
+   `id, notification_type, template, updated_at, is_read`, an `avatars[]` array of
+   `{image_url, action{type,url}}`, a `text[]` array of `{text, bold, action?}`
+   segments, `thumbnail_url`, `action`/`thumbnail_action` of the same
+   `{type,url}` shape, and — on follow notifications — a
+   `trailing_button{state,label,completed_label,action{type,handle}}`.
+
+**What v2 has and v3 does not:** `user_profiles`, `content_title`,
+`content_message`, `caption`, `priority`, `total_users`. The client's parser
+(`SunoNotificationService::parseResponse`) reads exactly those fields for the
+author name and the caption, so pointing it at v3 unchanged would produce
+notifications with an empty author and an empty caption — a silent
+degradation, not a crash. The replacement sources are `text[]` (the segments
+concatenate to the same sentence the v2 caption carried) and
+`avatars[0].image_url` for the picture.
+
+**What this capture does not settle, and must not be read as settling:** the
+feed/library routes on `/a/api`. The same base is where a moved feed would live,
+but no feed request appears in this capture, so `[LEAD]` is the correct grade for
+that and section 6.2's "absence is not removal" applies to the v2 rows above.
+
+**Not recorded, deliberately:** the bearer, the `__session` cookie, the
+`browser-token`, the account id, the notification ids, and every `cdn*.suno.ai`
+URL in the body. The response was read for field names, the wrapper shape and
+the pagination key only.
+
 ### 4.9 Feature gates, app chrome, and captured analysis surfaces
 
 | Method | Path | Auth | Purpose | Evidence | Implemented |
