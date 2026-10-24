@@ -662,6 +662,9 @@ token flow and durable processing contract are unimplemented (section 1.4).
 | GET | `/api/playlist/me` | Bearer | Current user's playlists | `[T1]` Burp 2026-08-25 | declared-unused |
 | POST | `/api/unified/explore` | Bearer | Cursor-based explore feed | `[T1]` Burp 2026-09-24 | wired |
 | POST | `/unified/library` (host `suno.com`, base `/a/api`) | Bearer | The library as a set of *feeds*: playlists, albums, and playlist cards | `[T1]` browser 2026-10-24 | not-in-code |
+| POST | `/feed/v3` (host `suno.com`, base `/a/api`) | Bearer | The same cursor-based library feed, on the new base | `[T1]` browser 2026-10-24 | **our path, old host** |
+| POST | `/unified/feed` (host `suno.com`, base `/a/api`) | Bearer | Generic container feed: `{feed_id, cursor, page_size, request_metadata?, target_user_id?, customization?}`. Transport for `liked_songs`, `generic_playlist:<id>` and `recently_played` | `[T1]` browser 2026-10-21 (`recently_played`) | declared-unused |
+| GET | `/playlist/{playlist_id}/?page=N` (host `suno.com`, base `/a/api`) | Bearer | One playlist with its clips: `{playlist, playlist_clips[].clip}`. **Numbered page, not a cursor** | `[LEAD]` bundle-declared, uncaptured | not-in-code |
 | POST | `/api/gen/{gen_id}/set_visibility/` | Bearer | Set a clip's public/private visibility; body `is_public: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/clips/{clip_id}/toggle_remixes/` | Bearer | Toggle remix permission; body `can_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/clips/{clip_id}/toggle_show_remixes` | Bearer | Toggle remix-list visibility; body `show_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
@@ -705,13 +708,20 @@ type/duration`, `media_urls[].url/content_type/delivery/encoding`, `image_url`,
 `is_liked`, `display_name`, `handle`, `created_at`, `caption`, `albums[]`,
 `action_config.actions[]`).
 
-**Pagination is a numeric string offset, and the page size is 10.** The captured
-`library_playlists` feed carried 10 items, `item_count: 57`, and
-`next_cursor: "10"`. So the expectation that this route returns "more than ten
-tracks a call" is **not** supported by the capture — what is faster here is the
-*shape*, not the page size: one call describes playlists/albums/cards without
-hydrating their clips, and `playlist_clips` is **empty** in the library listing
-(a playlist's clips must still be fetched from a playlist feed).
+**Pagination is a numeric string offset, and 10 is the server's default.** Two
+sessions (2026-10-21 and 2026-10-24) sent `{cursor: null, customization:
+{include_synthetic: true}}` with **no `page_size`** and got the same first page:
+`library_playlists` with `items` length **11**, `item_count: 57`,
+`next_cursor: "10"`. The array is 11 because it carries one synthetic row
+(`liked_songs`, `is_pinned_in_library: true`) that does not advance the cursor;
+offset arithmetic must use `next_cursor`, never `items.length`.
+**"More than ten tracks a call" is therefore not supported by the captures** —
+what is faster here is the *shape*, not the page size: one call describes
+playlists/albums/cards without hydrating their clips, and `playlist_clips` is
+**empty** in the library listing (a playlist's clips still need their own feed).
+The bundle's own default `page_size` for the feed hooks is 12, and `page_size` is
+accepted by `/unified/feed`; whether `unified/library` honours it is `[VERIFY]`
+because no capture sent one.
 
 **Host facts.** `suno.com` with base `/a/api` is now captured for two surfaces
 (this one and §4.8's notification v3), so it is an allowlist candidate. The same
@@ -720,6 +730,11 @@ a placeholder pointed at a host this client has never called, and the *playable*
 form is still `media_urls[]`. **Do not wire `studio-api.prod` or the
 `m-stratovibe.prod` telemetry host** that appears in the same session: neither is
 an audio or API route this client needs.
+
+**Two cursor styles coexist, per route.** `unified/library`'s `next_cursor` is a
+numeric string offset (`"10"`); `feed/v3`'s is a 36-character opaque token with a
+sibling `has_more` boolean. Code that shares one pagination helper across the two
+will misparse one of them.
 
 No id, token, cookie or CDN URL from that capture is recorded here.
 
@@ -844,9 +859,23 @@ concatenate to the same sentence the v2 caption carried) and
 `avatars[0].image_url` for the picture.
 
 **What this capture does not settle, and must not be read as settling:** the
-feed/library routes on `/a/api`. The same base is where a moved feed would live,
-but no feed request appears in this capture, so `[LEAD]` is the correct grade for
-that and section 6.2's "absence is not removal" applies to the v2 rows above.
+mutation routes. `POST /notification/v2/read` and `/clear-badge` are in the
+client bundle but were never seen on the wire in this session.
+
+**The feed half stopped being a lead the same day.** A later session
+(2026-10-24T03:08Z) shows `POST https://suno.com/a/api/feed/v3` answering 200 with
+20 clips, `has_more: true` and an opaque `next_cursor`, and
+`POST https://suno.com/a/api/unified/library` answering 200 (§4.5). So the base
+moved **wholesale**, and section 6.2 still says the old rows are not removed:
+`studio-api-prod.suno.com/api/feed/v3` answered 200 as recently as 2026-10-21 and
+was simply no longer called.
+
+**The list moved, the counter did not.** In that session the list route is
+`/a/api/notification/v3` (25 calls) while the badge is still
+`/a/api/notification/v2/badge-count` (25 calls, values rising). `read` and
+`clear-badge` remain v2-only in the bundle. And `content_id` is present on 24 of
+25 v3 entries — the field that links a notification to its clip — which the
+shape list above should carry.
 
 **Not recorded, deliberately:** the bearer, the `__session` cookie, the
 `browser-token`, the account id, the notification ids, and every `cdn*.suno.ai`

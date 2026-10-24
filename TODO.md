@@ -61,20 +61,23 @@ line to describe an item is describing it in the wrong place. Finished work move
       flag(s), user 'Danny Steel')` — and **Library pages arrive continuously** (`Fetched 20
       clips` every ~3 s for minutes). The feed itself shows nothing. Two candidate causes, and
       the log cannot separate them:
-      **(a) the route moved.** The client asks
-      `https://studio-api-prod.suno.com/api/feed/v3` (`SunoEndpoints.hpp:42,77`). The service
-      now serves at least part of the API from **`https://suno.com/a/api/...`**, and that is a
-      *different host*, not a different path — a `CapturedHosts.cpp` change, not an `API_BASE`
-      edit, because the allowlist is fail-closed and a capture is what earns a host entry
-      (AGENTS.md). The evidence is now in
-      [ENDPOINT-INVENTORY §4.8](docs/suno_api/ENDPOINT-INVENTORY.md): a 2026-10-24 signed-in
-      browser capture of `suno.com/a/api/notification/v3` answered 200 with a v3 envelope,
-      which proves the base moved for that surface. **It does not prove the feed moved**, and
-      the feed request itself has not been captured — so this half stays `[LEAD]` until one
-      capture or one runtime probe says otherwise. A route that answers 200 with an envelope
-      this client does not expect is otherwise indistinguishable from an empty feed at every
-      layer that logs, because the parse failure surfaces as an error string the view does not
-      show.
+      **(a) the route moved — and this is now REFUTED as the cause of the empty view.** The
+      whole base moved: `https://suno.com/a/api` serves `feed/v3`, `unified/library`,
+      `unified/feed` and `notification/v3` (2026-10-24 HAR, recorded in
+      [§4.5](docs/suno_api/ENDPOINT-INVENTORY.md) and §4.8). But the old host was still
+      answering the same day: the browser called `studio-api-prod.suno.com/api/feed/v3` on
+      2026-10-21 and got 200, and **this client's own log shows `Fetched 20 clips` ninety
+      times**, which is a successful parse of a 20-clip page. So the feed API is not empty and
+      it is not refusing us. **The break is between `SunoLibraryManager` and whatever the view
+      binds to.** The next step is a code question, not a capture: does the accumulated list
+      reach `SunoBridge`, and does the view's model ever get it? A parse failure or a failed
+      DB write would look exactly like this and neither logs at INFO.
+      **If the user meant the Discover/Explore view:** the log contains **no explore request
+      at all** — not a failure, an absence — so that view either never opens its fetch or its
+      fetch is gated on state the session never reached. Equally a code question, and the
+      route to check against the bundle's map is `explore -> /unified/homepage/explore` and
+      `combined-explore -> /unified/explore` (ours is the combined one), neither captured on
+      the wire yet.
       **(b) the envelope is not what `ClipParser` expects.** `feed envelope has no clips array`
       is a message this code can already emit (`tests/unit/suno/` asserts it), and the feed
       request carries filters (`is_liked`, `search_text`) that this UI cannot set.
@@ -82,6 +85,27 @@ line to describe an item is describing it in the wrong place. Finished work move
       runtime probe that logs the status, the top-level keys of the parsed object, and the
       first array's length — never the body, never a bearer. Do not change the route on the
       strength of a lead: AGENTS.md requires a capture or a runtime check that fails closed.
+
+- [ ] T0336 **Adopt the moved API base: `https://suno.com/a/api` — one constant, one host entry, two cursor styles** (`src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`, `src/suno/SunoClient.cpp`) #risk-high #cod-high
+      The 2026-10-24 HAR shows the browser using `suno.com/a/api` for **every** route this
+      client owns: `feed/v3` (200, 20 clips, `has_more`, opaque `next_cursor`),
+      `unified/library` (200, the feeds envelope), `unified/feed`, `notification/v3` and
+      `notification/v2/badge-count` — while `studio-api-prod.suno.com` receives nothing but a
+      404 on the `/api/forbidden` media placeholder. That host still answered 200 on
+      2026-10-21, so nothing is removed; the move is an adoption, not a rescue.
+      **Scope, in the order that makes each step checkable:** (1) `CapturedHosts` gains
+      `suno.com` for `Role::StudioApi` — earned by two captures, and the allowlist is
+      fail-closed, so a wrong base fails loudly rather than silently talking to nobody;
+      (2) `API_BASE` becomes `https://suno.com/a/api` and the path constants keep their
+      spelling (`/feed/v3`, `/notification/v3`, …) because the new base already carries `/a/api`;
+      (3) `studio-api-prod` stays as a fallback only if a route is proven to answer there and
+      not here — no route has been proven that way, and `unified/library` and
+      `notification/v3` exist only on the new base.
+      **Do not share one pagination helper:** `feed/v3` returns `has_more` + an opaque 36-char
+      cursor, `unified/library` returns a numeric string offset (`"10"`) and no `has_more`.
+      **Not captured, so not wired:** `unified/homepage`, `unified/homepage/explore`,
+      `unified/homepage/explore/mobile`, `unified/search/omnisearch`, `/api/search/` and
+      `GET /playlist/{id}/?page=N` are bundle-declared only; they stay `[LEAD]`.
 
 - [ ] T0335 **The notification client is wired to v2 on a host the browser no longer uses, and the v3 shape is different** (`src/suno/SunoNotificationService.cpp`, `src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`) #risk-high #blocks-ui
       The 2026-10-24 capture ([§4.8](docs/suno_api/ENDPOINT-INVENTORY.md)) shows the site
@@ -97,9 +121,11 @@ line to describe an item is describing it in the wrong place. Finished work move
       `content_message` and `caption`, none of which v3 sends; it would build notifications
       with an empty author and caption and no error. v3's text is `text[].text` concatenated,
       and the picture is `avatars[0].image_url`.
-      **(c) the badge** — `/notification/v2/badge-count` has no v3 sibling in the capture; the
-      unread count may have to be derived from `is_read` in the list, which is what the v3
-      entries carry.
+      **(c) the badge stays on v2** — and that is now measured rather than guessed: one
+      session made 25 calls to `/a/api/notification/v2/badge-count` alongside 25 to
+      `/a/api/notification/v3`. There is no v3 badge route, so the split is "list v3, counter
+      and mutations v2", and `read`/`clear-badge` are still v2-only in the bundle. Do not
+      derive the counter from `is_read` in the list; the server still publishes it.
       **Before any of it:** one request from this client that logs status, the top-level keys
       of the parsed object and the first array's length (never the body) says whether v2 still
       answers. A 2xx from v2 means this is an addition, not a migration, and (b) still applies
@@ -1150,6 +1176,11 @@ proceed"; read it as "proceed, and leave the switch off".
       existence from contract is what lets the inventory say honestly "we know this route is
       real and we know nothing about its shape." Sits directly under AGENTS.md §1.
 - [ ] T0176 **Credential material lives outside the repository in three places** (`~`, not the repo) #security
+      **2026-10-24 update: a fourth.** The active-investigation directory's
+      `app-endpoints.md` embeds a plaintext Clerk handshake JWT and a playlist id inline, and
+      the HARs beside it carry full session cookies. That directory is outside the worktree, so
+      no `.gitignore` covers it, and it is exactly the kind of file someone pastes into `docs/`
+      "for reference". Read it, cite the route names, never copy the file.
       A live `__session` cookie file, a ZAP log containing `Authorization: Bearer`, and a
       directory of HAR exports. The repo's secret rules govern what is *committed*; they do not
       reach files outside the worktree, so this needs a standing operating rule rather than a
