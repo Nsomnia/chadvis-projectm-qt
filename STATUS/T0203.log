@@ -1,0 +1,8 @@
+2026-10-25T22:00:00Z  CLAIM    T0203 wire the five dead CLI paths
+2026-10-25T22:00:00Z  CHANGE   src/core/Application.cpp: --preset feeds visualizer.forcePreset (via applyOverride); positional inputFiles go to AudioEngine's playlist; --suno-id calls SunoController::playClipById and warns when the clip is not in the library; --record starts RecordingBridge in GUI mode; --output without --record warns.
+2026-10-25T22:00:00Z  CHANGE   Carried as d5c4289 -> 27834d4; the --preset line needed visualizerMut() on main (main's Config exposes const accessors), fixed in the follow-up adaptation commit.
+2026-10-25T22:00:00Z  TEST     build-fast/chadvis-projectm-qt --preset 'My Preset' --dump-config -> log "CLI override: visualizer.forcePreset = My Preset" and "force_preset = 'My Preset'".
+2026-10-25T22:00:00Z  VERIFY   ./build.sh --fast --tests --safe -> 100% tests passed, 0 tests failed out of 12 (unit_tests 81.19 s).
+2026-10-25T22:00:00Z  VERIFY   build-fast/tests/unit/unit_tests -o -,txt -> exit 0, TestCliArgs 14 passed, TestConfigLoader 21 passed.
+2026-10-25T22:00:00Z  NOTE     --record/-suno-id/positional files are GUI-path wiring; headless cannot exercise them (--headless + --record is refused at parse time by design), so those three are verified by code and by the suite still passing, not by a runtime observation.
+2026-10-25T22:00:00Z  COMMIT   TODO.md T0203 deleted (moved to CHANGELOG.md)

@@ -847,20 +847,9 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 
 ### P1 — correctness / robustness
 
-- [ ] T0203 **Wire or delete five dead CLI paths** (`src/core/CliArgs.inc`, `src/core/Application.cpp`)
-      `--preset`, `--output`, `--suno-id`, `--record` (GUI), positional input files. Help advertises them; none has a consumer.
 - [ ] T0204 **Wire or delete dead config keys** (`src/core/Config*.cpp`, `config/default.toml`)
       Five `[recording]` keys (`enabled`, `auto_record`, `record_entire_song`, `restart_track_on_record`, `stop_at_track_end`) + `[suno] embed_metadata` + `[overlay] enabled` — zero consumers each.
-- [ ] T0207 **Generate help/completion/topic text from `CliArgs.inc`** (`src/core/CliArgs.inc`, `src/core/HelpSystem.cpp`)
-      Use `CliArg`; fix `printHelp` docs URL `yourusername` → `Nsomnia`; fix completion staleness (completion lacks `--visualizer-fps` etc.).
-- [ ] T0208 **Unknown-config-key warnings + `--dump-config` / `--print-config`** (`src/core/ConfigLoader.cpp`, `src/core/CliArgs.inc`)
-      Typo'd config key silently yields default and vanishes on save. Add parse-time `LOG_WARN` per section + a flag printing effective config and exiting.
-- [ ] T0209 **Missing clamps/validations** (`src/core/ConfigParsers.cpp`)
-      `[audio]` (both keys), `[karaoke]` `font_size`/`y_position`/`bold`/colors, `[overlay]` `opacity`/`font_size`/`animation_speed`/`anchor`, `[keyboard]`, `[visualizer] preset_duration`, `[recording]` strings (`container`, `codec`, `preset`, `pixel_format` — no allow-list). Minimum: clamp `karaoke.y_position` 0–1, `karaoke.font_size` sane range, `overlay.opacity` 0–1, validate `anchor`/`container`/`pixel_format` against known sets with warning on unknown.
-- [ ] T0210 **Fix `default.toml` drift** (`config/default.toml`)
-      `theme='dark'` vs struct `'material'`; float precision artifacts (`0.69999998807907104` etc. — write `0.7`, `0.02`, `0.95`, `0.9`, `0.05`); template ≠ generated config (template promises 2 overlay elements, `preset_path=''`, `~/Videos/ChadVis`; generated has zero overlays, resolved-absolute `preset_path`, `<dataDir>/recordings`); three defaults for `recording.output_directory`. Collapse to one.
-- [ ] T0211 **CLI parsing defects** (`src/core/CliArgs.cpp`)
-      Empty-`argv` UB (`arg[0]` on empty `string_view`); `stoi`/`stof` prefix parsing (`--visualizer-fps 12x` → 12 — validate whole token via `std::from_chars` + full-consumption); `stoi -1` → `u32` 4294967295 before clamp; unknown-option suggestion misses short names + `--help`/`--version`/`--help-topics`/`--generate-completion`; `findClosestMatch` Hamming + length diff, threshold ≤3 (transpositions cost 2); `--help <bad-topic>` exits 0; `--generate-completion <bad-shell>` exits 0.
+      **Deferred on purpose 2026-10-25.** Deleting these on the first pass would turn T0208's new unknown-key warning into noise: an existing user config written by this app carries the keys, and every launch would then report seven unknown keys. The keys stay parsed and round-tripped until a deprecation/migration path can remove them from `config.toml` first.
 - [ ] T0212 **`FileUtils::writeText` weaker than `ConfigLoader::save`** (`src/core/FileUtils.cpp`)
       No fsync, no 0600, no Windows replace handling. Upgrade or document "not durable".
 - [ ] T0213 **Bad-config `markDirty()` contradiction** (`src/core/ConfigLoader.cpp`)
@@ -1025,8 +1014,8 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       Today any string accepted, duplicates silently collide.
 - [ ] T0295 **New sections: `[performance]`, `[network]`, `[privacy]`, `[profiles]`, `[lyrics]`, `[presets]`** (`config/`, `src/core/`)
       `[performance]` (thread pool, GPU selection, memory caps), `[network]` (proxy, timeout, retry, user-agent override policy), `[privacy]` (telemetry/analytics switches), `[profiles]` (named config profiles — Settings has Profiles page but no config section), `[lyrics]` (provider preference, cache TTL, auto-fetch), `[presets]` (ratings/favorites/blacklist persistence — today split across `preset_state.txt` + ratings files, not config).
-- [ ] T0296 **New CLI flags: `--list-devices`, `--list-presets`, `--dry-run`, `--log-level`, `--print-config`/`--dump-config`, `--reset-config`, `--config-dir`, `--recording-fps`, `--recording-width/height`, `--volume`, `--seek`, `--theme-list`** (`src/core/CliArgs.inc`)
-      `--dump-config` + unknown-key warnings (T0208) together close most "my config did nothing" reports.
+- [ ] T0296 **New CLI flags: `--list-devices`, `--list-presets`, `--dry-run`, `--log-level`, `--reset-config`, `--config-dir`, `--recording-fps`, `--recording-width/height`, `--volume`, `--seek`, `--theme-list`** (`src/core/CliArgs.inc`)
+      `--dump-config` + unknown-key warnings landed with T0208; the rest close most "my config did nothing" reports.
 
 ### Candidates for removal (verify before deleting)
 
@@ -1035,7 +1024,6 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 - `[ui] show_playlist`, `show_presets`, `show_debug_panel` — no QML reader found; wire or delete.
 - `Config::addOverlayElement` / `removeOverlayElement` / `findOverlayElement` — zero callers; overlay state lives in `overlays.json` via `OverlayBridge`.
 - `main.cpp` `g_app` — written twice, never read.
-- `CliArg` / `CliArgType` — never instantiated; use to generate help/completion (see T0207) or delete.
 - `Logger::setLevel` — zero callers.
 - `Result<T>` monadic surface + `TRY`/`TRY_VOID` — unused and non-compiling (see T0061).
 - `VideoSettings::extraOptions`, `twoPass`; `EncoderSettings::title/artist/comment`; `RenderJob::twoPass` — never consumed/written; wire or delete.
@@ -1177,11 +1165,11 @@ findings were checked and closed clean before writing anything:
 
 The audit's Must group was closed in full (`T0200`–`T0216`, now in [`CHANGELOG.md`](CHANGELOG.md)).
 What still guides work: Should group: **T0011+T0100 · T0058+T0059 · T0224+T0223+T0219 ·
-T0067+T0221 · T0081+T0082+T0239 · T0072+T0086 · T0208+T0204+T0210 · T0298+T0311** (T0299, T0095
+T0067+T0221 · T0081+T0082+T0239 · T0072+T0086 · T0204 · T0298+T0311** (T0299, T0095
 and T0039/T0111 ride the same release lane). Nice group: **T0063+T0064+T0238** (four tolerant-JSON
 helper sets that disagree on `"True"`, three auth-vocabulary copies, two hand-synced palette
 blocks, two current-preset sources) and the dead-code ledger **T0065+T0060+T0068+T0071+T0061+T0226+T0227+T0112+T0306**.
-Smaller hits already tracked individually: T0088, T0230, T0244, T0207, T0079, T0110.
+Smaller hits already tracked individually: T0088, T0230, T0244, T0079, T0110.
 
 Lean upper bound, measured with `wc -l` over the delete candidates named on the board (several
 are wire-or-delete decisions, not verdicts — see T0226/T0227/T0011): LyricTiming 2,042 +

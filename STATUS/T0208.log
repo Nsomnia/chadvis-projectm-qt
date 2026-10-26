@@ -1,0 +1,6 @@
+2026-10-25T22:00:00Z  CLAIM    T0208 unknown-config-key warnings + --dump-config
+2026-10-25T22:00:00Z  CHANGE   src/core/{Application.cpp,Application.hpp,CliArgs.inc,ConfigParsers.cpp}, tests/unit/core/{test_CliArgs.cpp,test_ConfigLoader.cpp}: every section warns once per unknown key; --dump-config prints the effective TOML (after all CLI overrides) and exits.
+2026-10-25T22:00:00Z  CHANGE   Carried as 049a87e -> f64ff7c. Two defects in the carried code found and fixed while adapting: VC_KEY_NAME used #key on an already-quoted literal, so every valid key warned as unknown; and parseOverlay's known-list omitted `enabled` (T0204, which deletes that key, stays deferred). Added TestConfigLoader::validKeysAreNeverWarnedAsUnknown, which captures the log through a spdlog callback sink.
+2026-10-25T22:00:00Z  VERIFY   build-fast/chadvis-projectm-qt --config <tmp with audio.bogus_key> --dump-config -> "Unknown config key 'audio.bogus_key' -- ignoring it", then the effective config, exit 0.
+2026-10-25T22:00:00Z  VERIFY   build-fast/tests/unit/unit_tests -o -,txt -> TestConfigLoader 21 passed, 0 failed; no "Unknown config key" line for a valid key in a full save/load cycle.
+2026-10-25T22:00:00Z  COMMIT   TODO.md T0208 deleted (moved to CHANGELOG.md)

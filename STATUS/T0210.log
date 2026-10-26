@@ -1,0 +1,6 @@
+2026-10-25T22:00:00Z  CLAIM    T0210 fix default.toml drift
+2026-10-25T22:00:00Z  CHANGE   config/default.toml, docs/user/CONFIG.md, src/core/ConfigParsers.cpp: theme is 'material'; the float-precision overlay sample elements are gone (the serializer emits zero); output_directory has one default, <dataDir>/recordings, with '' in the template meaning that default.
+2026-10-25T22:00:00Z  CHANGE   Carried as 56e544b -> cff802f, but muse's version was wrong for main in one respect: main's shippedTemplateDeclaresEveryKey test requires the template to declare every key serialize() emits, so omitting output_directory/overlay.elements broke it. Resolution: template declares `elements = []` and `output_directory = ''`, and parseRecording treats an empty value as the data-dir default. The seven T0204 dead keys stay in the template (T0204 deferred), so muse's T0204 comment lines were dropped.
+2026-10-25T22:00:00Z  TEST     tests/unit/core/test_ConfigLoader.cpp: new outputDirectoryFallsBackToTheDataDirectory covers both absent and empty values.
+2026-10-25T22:00:00Z  VERIFY   build-fast/tests/unit/unit_tests -o -,txt -> TestConfigLoader 21 passed, 0 failed (incl. shippedTemplateDeclaresEveryKey and the new fallback test).
+2026-10-25T22:00:00Z  COMMIT   TODO.md T0210 deleted (moved to CHANGELOG.md)

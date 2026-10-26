@@ -1,0 +1,6 @@
+2026-10-25T22:00:00Z  CLAIM    T0207 generate help/completion/topic text from CliArgs.inc
+2026-10-25T22:00:00Z  CHANGE   src/core/{CliArg.hpp,CliArgs.inc,CliUtils.cpp,CliUtils.hpp}, src/core/Application.cpp: Cli::cliArgTable() is the single source for --help sections, --help <topic> pages and bash/zsh/fish completion; --help-topics lists the topics; the hand-written lists (which lacked --visualizer-fps, --audio-rate, --recording-preset, --suno-*, --karaoke-*, --theme) are gone.
+2026-10-25T22:00:00Z  CHANGE   Carried as 0bec427 -> fa8ca74; tests/unit/core/test_CliArgs.cpp conflict resolved by keeping main's absentDefaultPresetOverrideStaysUnset() and muse's three table-shape tests.
+2026-10-25T22:00:00Z  VERIFY   build-fast/chadvis-projectm-qt --help -> generated sections; --help audio -> audio topic page; --help nope-topic -> "Unknown help topic", exit 1; --generate-completion bash|zsh|fish -> scripts exit 0; --help-topics -> 9 topics.
+2026-10-25T22:00:00Z  VERIFY   build-fast/tests/unit/unit_tests -o -,txt -> TestCliArgs 14 passed, 0 failed (includes cliArgTableCoversAllFlags/hasNoDuplicateLongNames/sectionsAreNonEmpty).
+2026-10-25T22:00:00Z  COMMIT   TODO.md T0207 deleted (moved to CHANGELOG.md)

@@ -1,0 +1,6 @@
+2026-10-25T22:00:00Z  CLAIM    T0211 CLI parsing defects
+2026-10-25T22:00:00Z  CHANGE   src/core/{Application.cpp,CliUtils.cpp}, tests/unit/core/test_CliArgs.cpp: empty-argv guard; strict std::from_chars / strtof with whole-token consumption; negative-to-u32 wrap fixed before clamping; Damerau-Levenshtein suggestions that see short names and the meta flags; --help <bad-topic> and --generate-completion <bad-shell> exit 1.
+2026-10-25T22:00:00Z  CHANGE   Carried as 010bc5d -> a6eb704 (clean auto-merge into main's Application.cpp and the merged test file).
+2026-10-25T22:00:00Z  VERIFY   build-fast/chadvis-projectm-qt --visualizer-fps abc -> "Invalid integer for --visualizer-fps", exit 1; --karaoke-y-position 1.5x -> "Invalid float for --karaoke-y-position", exit 1; --visulizer-fps 60 -> "Unknown flag: --visulizer-fps" + "Did you mean:", exit 1; --help nope-topic -> exit 1.
+2026-10-25T22:00:00Z  VERIFY   build-fast/tests/unit/unit_tests -o -,txt -> TestCliArgs 14 passed, 0 failed.
+2026-10-25T22:00:00Z  COMMIT   TODO.md T0211 deleted (moved to CHANGELOG.md)

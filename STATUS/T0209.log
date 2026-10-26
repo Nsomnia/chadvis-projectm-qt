@@ -1,0 +1,6 @@
+2026-10-25T22:00:00Z  CLAIM    T0209 missing clamps/validations
+2026-10-25T22:00:00Z  CHANGE   src/core/{Application.cpp,ConfigParsers.cpp,ConfigParsers.hpp}, tests/unit/core/test_ConfigLoader.cpp: clampAudio (buffer 64-8192, rate 8000-192000), clampKaraoke (font 8-256, y 0-1), overlay opacity/font/animation-speed clamps + anchor fallback, preset_duration 1-3600, validateRecording (codec/preset/container/pixel_format) and validateKeyboard (empty shortcut) warnings; Application re-applies the clamps after CLI overrides and warns when one fires.
+2026-10-25T22:00:00Z  CHANGE   Carried as 4fe4942 -> 0ba06c7; Application.cpp conflict resolved with main's *Mut() accessors plus muse's clamp calls (main moved ~59 lines and added const accessors).
+2026-10-25T22:00:00Z  VERIFY   build-fast/chadvis-projectm-qt --audio-buffer 1 --dump-config -> "CLI override audio.bufferSize = 1 is out of range, clamped to 64", then buffer_size = 64.
+2026-10-25T22:00:00Z  VERIFY   build-fast/tests/unit/unit_tests -o -,txt -> TestConfigLoader 21 passed (incl. t0209ClampsEnforced, which pins every bound and the anchor fallback).
+2026-10-25T22:00:00Z  COMMIT   TODO.md T0209 deleted (moved to CHANGELOG.md)
