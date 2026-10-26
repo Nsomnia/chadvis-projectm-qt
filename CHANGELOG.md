@@ -63,6 +63,18 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 - **The visualizer now has an audio path on a Qt that cannot tap `QMediaPlayer`.** Qt's own reference page for `QAudioBufferOutput` closes with "only supported with the FFmpeg backend", and this machine's Qt 6.12 multimedia ships `libdarwinmediaplugin` and **no** FFmpeg media plugin: `QT_MEDIA_BACKEND=ffmpeg` logs `Available backends QList("darwin")`, falls back, and a 1.2 s tone produces exactly **zero** `audioBufferReceived` emissions while playing normally. That is why the canvas rendered and never moved. `VisualizerAudioTap` is the fallback: when no buffer has arrived, the engine decodes the selected local file with the repository's own FFmpeg decoder and pushes the PCM into the same `AudioQueue` projectM and the recorder already drain. `QMediaPlayer` stays the only audio output and the master clock; the first delivered buffer clears the tap for the rest of the session, so a backend that does support the buffer output pays nothing. Measured by `playingAnOnDiskClipStartsTheTransport`, which asserts both the transport state and a non-zero visualizer queue, and pinned as MT-001-D4.4 for the GL half. (T0322)
 
+### Removed
+
+- **Four dead scripts, and the documentation that told people to run one of them.** `setup-arch.sh`,
+  `run_debug.sh` and `install_projectm_v4_local.sh` all pointed at the pre-bundle binary path, and
+  the last one was the worst kind of dead: it `sed -i`s a line that no longer exists (a silent
+  no-op), `rm -rf`s the build directory, pins projectM v4.1.1 against the build's v4.1.8, and
+  rewrites `preset_path` to an in-tree relative path that would ship. `check_deps.sh` was still
+  recommended by `INSTALL.md`, and it reports a false negative for every Qt component because Qt6
+  ships no `.pc` files — an install guide that sends people to a checker which says their correct
+  install is broken. `cmake/Dependencies.cmake` is the single authority now, and the guide says so.
+  The scripts are parked in the ignored graveyard, not deleted from history. (T0112)
+
 ### Fixed
 
 - **Notifications no longer print `@undefined`, and the "reactive" animations actually move.** Two

@@ -508,13 +508,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       The workflow asserts `MACOSX_BUNDLE` is unset (it is set) and its macOS leg is
       `required: false`. `dependabot.yml` says "the single workflow" when there are five, and
       still lists `pffft` among pinned deps although it was removed 2026-10-04.
-- [ ] T0112 Delete three dead scripts and two empty dirs (`scripts/`) #cleanup
-      `install_projectm_v4_local.sh` is both dead **and destructive** — it `sed -i`s a line
-      that no longer exists (silent no-op), `rm -rf build` (:130), pins v4.1.1 against
-      FindProjectM4's v4.1.6, and rewrites `config/default.toml`'s `preset_path` to an in-tree
-      relative path that would ship. `check_deps.sh` reports false negatives for every Qt
-      component (Qt6 ships no `.pc` files). `run_debug.sh` and `setup-arch.sh` point at the
-      pre-bundle binary path. `skills/` and `tests/manual/` are empty.
 - [ ] T0113 `.gitignore` gaps beyond the ones already fixed (`.gitignore`) #risk-medium
       Stale build-artifact comments reference "22 of the 26 untracked files"; the root
       `build.log` (41 KB) is now ignored but the file is still present in the working tree.
@@ -1059,7 +1052,6 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 - `VideoSettings::extraOptions`, `twoPass`; `EncoderSettings::title/artist/comment`; `RenderJob::twoPass` — never consumed/written; wire or delete.
 - `Container::AVI` — compatibility trap; consider removing or pinning to H264+MP3/PCM.
 - `EncoderPreset::Placebo` — keep in schema (frozen vocab), remove from UI preset list.
-- `scripts/check_deps.sh`, `install_projectm_v4_local.sh`, `run_debug.sh`, `setup-arch.sh` (see T0112).
 - `SESSION_CATALOG` alias, `PROMPTS` LEAD constant, `ORCHESTRATOR_*` LEAD constants, `CDN_CLIP_*` LEAD paths, `CLERK_API_VERSION` phantom comment, stub-behind code (`onGenerateReply` unreachable, `cancelledPolls_`, wav-poll machinery) — delete or gate.
 - Callerless/duplicate QML + Suno members per T0071/T0060 (incl. `VisualizerWindow::feedAudio` stub, `Engine::addPCMData` duplicate, `RenderTarget::bind()/unbind()`, `LyricsSync::Config::lookaheadTime`, `SunoOrchestrator::onMessageFinished/onHistoryFinished`, `SunoClient::onGenerateReply/onWavConversionInitiated`, `cancelledPolls_`, `DownloadQueue::Item.metadata`, `SunoDownloader::tagAudioFile` FLAC branch, `ClipParser::selectImageUrl` fallback param, `parseClipArray` `expected` path, `SunoLibraryManager::clipUpdated` signal, `SunoDatabase::saveClip` single, `SunoLibraryManager::syncDatabase` rename-or-implement, `LyricsAligner::estimateTimings/parseLrc`, `SunoLyricsManager` "Lyrics processing:" branch, `SunoWorkspace` saved `workspace_id`/`version`, `SunoAudioUploadService` dead guards, `SunoController` debug-lyrics scaffolding).
 
@@ -1196,7 +1188,7 @@ What still guides work: Should group: **T0011+T0100 · T0058+T0059 · T0224+T022
 T0067+T0221 · T0081+T0082+T0239 · T0072+T0086 · T0204 · T0298+T0311** (T0299, T0095
 and T0039/T0111 ride the same release lane). Nice group: **T0063+T0064+T0238** (four tolerant-JSON
 helper sets that disagree on `"True"`, three auth-vocabulary copies, two hand-synced palette
-blocks, two current-preset sources) and the dead-code ledger **T0065+T0060+T0068+T0071+T0061+T0226+T0227+T0112+T0306**.
+blocks, two current-preset sources) and the dead-code ledger **T0065+T0060+T0068+T0071+T0061+T0226+T0227+T0306**.
 Smaller hits already tracked individually: T0088, T0230, T0244, T0079, T0110.
 
 Lean upper bound, measured with `wc -l` over the delete candidates named on the board (several

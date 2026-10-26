@@ -1,0 +1,5 @@
+2026-10-26T09:21:04Z  CLAIM    agent=solo/lead/derekvanee42337 pid=42337 ttl=4h expires=2026-10-26T13:21:04Z
+2026-10-26T03:22:00Z  CHANGE   Moved scripts/check_deps.sh, install_projectm_v4_local.sh, run_debug.sh and setup-arch.sh to the ignored .backup_graveyard/scripts-20261026-0322/ (AGENTS.md: never rm source), and removed the empty tests/manual/ directory. `skills/` no longer existed.
+2026-10-26T03:22:00Z  CHANGE   docs/user/INSTALL.md recommended ./scripts/check_deps.sh as the thing to run "before blaming the compiler", for a checker that reports a false negative for every Qt component (Qt6 ships no .pc files). Those three sentences now name cmake/Dependencies.cmake as the authority instead, and the OpenGL/Test component notes stop citing script line numbers that no longer exist.
+2026-10-26T03:24:00Z  VERIFY   grep -rn 'setup-arch\|run_debug\|check_deps\|install_projectm_v4_local' over *.md/*.sh/*.yml/*.txt -> zero hits outside CHANGELOG_LEGACY (historical) and the graveyard. .gitignore:33 keeps the parked copies out of the commit.
+2026-10-26T03:24:00Z  VERIFY   ./scripts/task.sh audit -> "audit OK — 210 tasks, TODO.md 142KB".
