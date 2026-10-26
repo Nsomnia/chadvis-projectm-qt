@@ -60,10 +60,6 @@ public:
     void setAudioQueue(AudioQueue* queue) { audioQueue_ = queue; }
     AudioQueue* audioQueue() const { return audioQueue_; }
 
-    // The rate the caller actually drives render() at. Feeds the per-frame
-    // audio batch size and the recording frame-rate guardrail.
-    void setTargetFps(u32 fps) { targetFps_ = fps; }
-
     /// PCM frames to pop per render tick: one tick's worth of audio at the
     /// rate the queue actually carries — the observed sink rate, 44.1 kHz
     /// included — clamped to the pop buffer. The clamp is load-bearing: the
@@ -122,6 +118,9 @@ private:
     bool pboAvailable_{false};
 
     AudioQueue* audioQueue_{nullptr};
+    // The rate the caller actually drives render() at. Feeds the per-frame
+    // audio batch size and the recording frame-rate guardrail. Configured from
+    // vizConfig; there is deliberately no setter after init.
     u32 targetFps_{60};
 
     bool initialized_{false};

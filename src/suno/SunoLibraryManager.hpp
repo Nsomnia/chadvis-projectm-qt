@@ -47,8 +47,6 @@ public:
     /// Fetch the next feed page using the client's next_cursor (no-op when
     /// the current page reports exhaustion or a fetch is in flight).
     void requestNextPage();
-    /// Set the local filter used by the bridge; it is not sent to the feed.
-    void setSearchText(const QString& text);
     void syncDatabase(bool forceAuth);
 
     // Accessors

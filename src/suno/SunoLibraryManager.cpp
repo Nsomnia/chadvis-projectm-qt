@@ -144,10 +144,6 @@ void SunoLibraryManager::requestNextPage() {
     client_->fetchLibraryPage(client_->nextCursor(), kLibraryPageSize, searchText_);
 }
 
-void SunoLibraryManager::setSearchText(const QString& text) {
-    if (searchText_ == text) return;
-    searchText_ = text;
-}
 
 void SunoLibraryManager::syncDatabase(bool forceAuth) {
     if (forceAuth) {

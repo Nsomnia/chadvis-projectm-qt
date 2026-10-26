@@ -75,7 +75,6 @@ public:
     void stopRecording();
     void setRenderRate(int fps);
     [[nodiscard]] f32 actualFps() const { return actualFps_; }
-    void feedAudio(const f32* data, u32 frames, u32 channels, u32 sampleRate);
 
 protected:
     void exposeEvent(QExposeEvent* event) override;

@@ -98,6 +98,14 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Removed
 
+- **75 lines of grep-proven dead members.** `Config`'s three overlay-element helpers,
+  `VisualizerRenderer::setTargetFps`, the no-op `VisualizerWindow::feedAudio`, `main.cpp`'s
+  write-only `g_app`, `SunoClient::cancelPoll` and its never-read `cancelledPolls_`,
+  `SunoLibraryManager::setSearchText`, and `DownloadQueue::Item`'s write-only `cancelRequested`
+  and `metadata` (with `enqueue`'s matching parameter). Two items in the backlog entry had gone
+  stale in the other direction: `searchClips`/`getAllClips`/`setTierPolicy` are called by tests
+  and stay.
+
 - **An orphan AI architecture analysis.** `docs/GEMINI_FLASH_ANALYSYS.md` was linked by no
   document and listed by no hub row, and its subject is already owned by
   `docs/dev/ARCHITECTURE.md`. It was parked rather than renamed: a misspelled filename that a hub

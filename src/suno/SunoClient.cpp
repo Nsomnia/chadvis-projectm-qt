@@ -1655,10 +1655,6 @@ void SunoClient::onWavConversionInitiated(const std::string&, QNetworkReply* rep
     reply->deleteLater();
 }
 
-void SunoClient::cancelPoll(const std::string& clipId) {
-    cancelledPolls_.insert(QString::fromStdString(clipId));
-}
-
 void SunoClient::pollWavFile(const std::string&, int) {
     errorOccurred.emitSignal("WAV conversion is unavailable from capture-backed contracts");
 }

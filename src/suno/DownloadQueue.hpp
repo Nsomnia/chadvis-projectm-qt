@@ -13,7 +13,6 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
-#include <QVariantMap>
 
 #include <cstdint>
 #include <deque>
@@ -232,8 +231,7 @@ public:
     [[nodiscard]] qint64 maxBytesPerItem() const { return maxBytesPerItem_; }
 
     /// FIFO enqueue. Duplicate ids among live items are rejected gracefully.
-    bool enqueue(std::string clipId, std::string url, std::filesystem::path destPath,
-                 QVariantMap metadata = {});
+    bool enqueue(std::string clipId, std::string url, std::filesystem::path destPath);
 
     /// Aborts the in-flight reply and dequeues queued items for this id.
     /// Graceful no-op when the id is unknown or already terminal.
@@ -269,7 +267,6 @@ private:
         std::string clipId;
         std::string url;
         std::filesystem::path destPath;
-        QVariantMap metadata;
         DownloadState state{DownloadState::Queued};
         int attempts{0}; // completed attempts (failures consumed)
         int progressPercent{-1};
@@ -280,7 +277,6 @@ private:
         /// short-body guard must NOT fail.
         qint64 expectedTotal{0};
         bool finishing{false}; // swallow further callbacks for this reply
-        bool cancelRequested{false};
         /// True only between a successful exclusive open and the next rename.
         /// Every `.part` removal is gated on this, so the queue can only ever
         /// delete scratch space it created -- a path someone else holds a lock

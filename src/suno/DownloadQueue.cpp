@@ -327,8 +327,8 @@ std::filesystem::path DownloadQueue::partPathFor(const std::filesystem::path& de
     return dest.string() + kPartSuffix;
 }
 
-bool DownloadQueue::enqueue(std::string clipId, std::string url, std::filesystem::path destPath,
-                            QVariantMap metadata) {
+bool DownloadQueue::enqueue(std::string clipId, std::string url,
+                            std::filesystem::path destPath) {
     if (clipId.empty() || url.empty() || destPath.empty()) {
         LOG_WARN("DownloadQueue: rejected job with empty id/url/dest");
         return false;
@@ -342,7 +342,6 @@ bool DownloadQueue::enqueue(std::string clipId, std::string url, std::filesystem
     item->clipId = std::move(clipId);
     item->url = std::move(url);
     item->destPath = std::move(destPath);
-    item->metadata = std::move(metadata);
 
     std::error_code ec;
     if (item->destPath.has_parent_path()) {
@@ -374,7 +373,6 @@ bool DownloadQueue::cancel(const std::string& clipId) {
 
     if (const auto it = std::find_if(active_.begin(), active_.end(), matches);
         it != active_.end()) {
-        (*it)->cancelRequested = true;
         // finished() fires from abort(); classification handles the rest.
         if (auto* reply = (*it)->reply.data()) reply->abort();
         return true;
@@ -410,7 +408,6 @@ void DownloadQueue::pump() {
 
 void DownloadQueue::startItem(const std::shared_ptr<Item>& item) {
     item->finishing = false;
-    item->cancelRequested = false;
     item->bytesReceived = 0;
     item->expectedTotal = 0;
     item->ownsPart = false;

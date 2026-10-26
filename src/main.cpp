@@ -16,18 +16,11 @@
 #include <iostream>
 #include <csignal>
 
-namespace {
-
-vc::Application* g_app = nullptr;
-
-} // namespace
-
 int main(int argc, char* argv[]) {
     try {
         // Create application
         vc::Application app(argc, argv);
-        g_app = &app;
-        
+
         // Parse command line arguments
         auto optsResult = app.parseArgs();
         if (!optsResult) {
@@ -47,8 +40,6 @@ int main(int argc, char* argv[]) {
         
         // Run the event loop
         int result = app.exec();
-        
-        g_app = nullptr;
         return result;
         
     } catch (const std::exception& e) {

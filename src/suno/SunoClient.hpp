@@ -27,7 +27,6 @@
 #include <QNetworkReply>
 #include <QObject>
 #include <QPointer>
-#include <QSet>
 #include <QString>
 #include <QTimer>
 #include <atomic>
@@ -221,8 +220,6 @@ public:
                             std::function<void(std::expected<ContentKey, QString>)> callback);
     void initiateWavConversion(const std::string& clipId);
     void pollWavFile(const std::string& clipId, int maxAttempts = 60);
-    /// Stop polling wav-conversion status for clipId (user navigated away).
-    void cancelPoll(const std::string& clipId);
 
     void generate(const std::string& prompt, const std::string& tags, bool makeInstrumental = false,
                   const std::string& model = "chirp-v3.5");
@@ -481,9 +478,6 @@ private:
     // Uniform 401 handling
     std::deque<PendingRequest> retryQueue_;
     std::vector<AuthWaiter> authWaiters_;
-
-    // Cancellable wav polling
-    QSet<QString> cancelledPolls_;
 
     // Feed pagination truth (from the last /feed/v3 envelope)
     QString nextCursor_;

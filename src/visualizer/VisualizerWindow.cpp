@@ -192,12 +192,6 @@ void VisualizerWindow::setRenderRate(int fps) {
         renderTimer_.stop();
 }
 
-void VisualizerWindow::feedAudio(const f32*, u32, u32, u32) {
-    // DEPRECATED: Audio now flows through lock-free AudioQueue.
-    // AudioEngine pushes to queue, VisualizerRenderer pops during render.
-    // This method exists for backward compatibility but does nothing.
-}
-
 void VisualizerWindow::keyPressEvent(QKeyEvent* event) {
     const auto& keys = CONFIG.keyboard();
     QString key = event->text().toUpper();

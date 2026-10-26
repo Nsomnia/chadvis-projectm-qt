@@ -127,10 +127,6 @@ public:
         return overlay_;
     }
 
-    void addOverlayElement(OverlayElementConfig elem);
-    void removeOverlayElement(const std::string& id);
-    OverlayElementConfig* findOverlayElement(const std::string& id);
-
     bool isDirty() const { return dirty_.load(std::memory_order_relaxed); }
     // const so save() (a const member, called on the singleton) can clear the
     // flag on a successful write; the flag is `mutable` for the same reason.

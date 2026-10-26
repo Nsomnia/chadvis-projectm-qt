@@ -268,14 +268,13 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       One global `ratings.toml` keyspace means two preset banks containing the same preset
       name share a rating — **structurally blocks multiple banks.** `ratings_` is a bare
       `std::map` with no lock. Fix: inject it, key on path, and add a mutex.
-- [ ] T0060 Dead members and methods with grep proof (`src/`) #cleanup
-      `Config::addOverlayElement`/`removeOverlayElement`/`findOverlayElement` (zero callers),
-      `VisualizerRenderer::setTargetFps`, `VisualizerWindow::feedAudio` (deprecated empty
-      body), `BridgeRegistration::getThemeBridge`, `main.cpp`'s `g_app` (written twice, read
-      never), `SunoClient::cancelledPolls_` (inserted at :1422, never read),
-      `DownloadQueue::Item::cancelRequested` (set :363, reset :399, never read) and
-      `Item::metadata` (written :331, never read), `SunoLibraryManager::setSearchText`,
-      `SunoDatabase::searchClips`/`getAllClips`, `GateResolver::setTierPolicy`.
+- [x] T0060 Dead members and methods with grep proof (`src/`) #cleanup
+      Removed the dead set: Config's three overlay-element methods, `VisualizerRenderer::setTargetFps`,
+      `VisualizerWindow::feedAudio`, `main.cpp`'s `g_app`, `SunoClient::cancelPoll` + `cancelledPolls_`,
+      `SunoLibraryManager::setSearchText`, and `DownloadQueue::Item::{cancelRequested,metadata}` plus
+      `enqueue`'s metadata parameter. Two claims were stale and kept: `SunoDatabase::searchClips`/
+      `getAllClips` and `GateResolver::setTierPolicy` are exercised by tests, and
+      `BridgeRegistration::getThemeBridge` no longer exists. 75 lines gone; ctest 14/14.
 - [ ] T0061 `Result<T>`'s monadic surface is unused **and non-compiling** (`src/util/Result.hpp:106-159,211-224`) #cleanup
       `map`/`andThen`/`orElse`/`operator->`/`operator*` have zero users; `TRY`/`TRY_VOID`
       have zero users **and** expand `::value_type`, which a member `Result<T>` does not
