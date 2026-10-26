@@ -88,6 +88,33 @@ The bearer-acquisition sequence itself (`GET /v1/client` → active session →
 bearer, plus the `touch`/`tokens` variants) is specified in the canonical
 master, section 3.1 and 5.1, and is not restated here.
 
+## Signing in to an automated/private browser (test-harness note)
+
+Recorded 2026-10-26, because it costs an hour to rediscover and it is not the
+product's sign-in path — it is how a *test browser* gets a session so a human can
+watch the network log.
+
+* **Google refuses the login from a private tab driven by automation.** The flow
+  reaches Google's authorization endpoint and stops; Google will not complete a
+  sign-in for a controlled/private profile. This is a Google policy, not a Suno or
+  browser bug, and no amount of retrying or user-agent work fixes it.
+* **Facebook completes.** The chain observed: `facebook.com/login.php` (OAuth
+  dialog bootstrap, `app_id` + `next` + `cancel_url` keys) → `facebook.com/v24.0/
+  dialog/oauth` (`client_id`, `redirect_uri` = `auth.suno.com/social/complete/
+  facebook/`, `state`, `scope=email`) → `facebook.com/two_step_verification/
+  authentication/` (**2FA is demanded once per new device/profile**, key
+  `encrypted_context`) → back to `suno.com/me?referrer=%2Fsign-in&pre_signup_*&
+  redirected_from=signin`.
+* **`state`, `encrypted_context`, `logger_id` and the whole `encrypted_context`
+  blob are credentials-grade material.** They are single-use, and none of them is
+  reproduced here.
+
+What this buys: a signed-in browser profile is what makes the *mutation* captures
+in §4.5.1 possible — driving a real control and reading the request/response pair
+instead of guessing the shape. It settles nothing about the desktop sign-in path
+(the native-callback gate stands as written above), and it is not endorsed as a
+user-facing flow.
+
 ## Clerk cookie families relevant to the observed flow
 
 Only these Clerk-related name families are relevant to the captured flow:

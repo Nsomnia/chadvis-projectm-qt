@@ -669,6 +669,7 @@ token flow and durable processing contract are unimplemented (section 1.4).
 | POST | `/api/clips/{clip_id}/toggle_remixes/` | Bearer | Toggle remix permission; body `can_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/clips/{clip_id}/toggle_show_remixes` | Bearer | Toggle remix-list visibility; body `show_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/gen/{gen_id}/update_feedback_state/` | Bearer | Record a feedback state; body `feedback_reason: string` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
+| POST | `/api/gen/{gen_id}/update_reaction_type/` | Bearer | Like / unlike (and dislike) a clip. Request `{reaction: "LIKE"|null, recommendation_metadata: {}}`; response `{play_count, skip_count, flagged, clip, updated_at}` (+ `reaction_type: "L"` on a like only) | `[T1]` live UI capture 2026-10-26 | not-in-code |
 | POST | `/api/share/link` | Bearer | Mint a share link; body `content_id`, `content_type` (both strings) | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/playlist/set_metadata` | Bearer | Rename/describe a playlist; body `name`, `description`, `playlist_id` (all strings) | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/playlist/update_clips/` | Bearer | Add/remove/reorder playlist clips; body `playlist_id`, `metadata`, `update_type` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
@@ -759,6 +760,37 @@ returns.
 200 with an empty `playlist_clips` and a 699-byte body, so "finished" is
 `current_page * page_size >= num_total_results` or an empty array, never a flag.
 
+#### 2026-10-26 — like / unlike, captured from the real UI (`[T1]`)
+
+Driven in a signed-in browser: one click on a Library card's Like control, one click
+to undo it. Both calls:
+
+```
+POST https://suno.com/a/api/gen/{clip_id}/update_reaction_type/     200
+```
+
+| | request body | response body |
+| --- | --- | --- |
+| Like | `{"reaction":"LIKE","recommendation_metadata":{}}` | `{play_count, skip_count, flagged, reaction_type, clip, updated_at}` |
+| Unlike | `{"reaction":null,"recommendation_metadata":{}}` | `{play_count, skip_count, flagged, clip, updated_at}` |
+
+**Three asymmetries that would each bite an implementation written from the obvious
+guess:**
+
+1. **The request spells the state, the response abbreviates it.** The request takes
+   `"LIKE"` (and JSON `null` to clear); the response reports `reaction_type: "L"`.
+2. **`reaction_type` is absent from the unlike response**, not empty-string. A parser
+   that requires it turns every unlike into a failure.
+3. **`clip` is an id string, not the clip object.** 159 bytes for the whole response —
+   a caller that expects the updated song has to re-read it, and the id is the only
+   thing telling it which one changed.
+
+`recommendation_metadata` is an object and was empty on both calls; treat it as an
+opaque passthrough rather than inventing keys. Dislike (presumably `"DISLIKE"` and a
+response letter of `"D"`) is **not** captured — the single data point above says the
+letter is the initial, which is a guess until someone repeats the exercise with the
+dislike control.
+
 **Two cursor styles coexist, per route.** `unified/library`'s `next_cursor` is a
 numeric string offset (`"10"`); `feed/v3`'s is a 36-character opaque token with a
 sibling `has_more` boolean. Code that shares one pagination helper across the two
@@ -775,8 +807,9 @@ capture proves the remote search contract.
 The rows above carry **request** contracts recovered by schema probe
 (section 5.9). Their **response** shapes are not captured, and four
 commonly-assumed sibling routes were never probed at all — `playlist/create/`,
-`playlist/trash/`, `gen/{id}/set_metadata/`, and `gen/{id}/update_reaction_type/`
-are **client-bundle route strings only**, `[LEAD]` on both axes, and
+`playlist/trash/` and `gen/{id}/set_metadata/` are **client-bundle route
+strings only**, `[LEAD]` on both axes, `gen/{id}/update_reaction_type/` is now
+captured (§4.5.1), and
 `POST /api/clips/delete/` answered `404` when exercised as a POST. None of these
 may be wired on the strength of a neighbouring row.
 
@@ -1789,4 +1822,4 @@ no owner.
 | `/api/edit/stems/{clip_id}` trailing slash | `suno-cli` @ `6d28c67a` spells it **without** a trailing slash; our lead rows carry a trailing slash. No capture from this repository selects either spelling. | Neither spelling may be rewritten into the other. This is a spelling conflict, not a retitling — path template *parameter names* (`{id}` vs `{clip_id}`) are **not** on the wire and are not drift, so they are deliberately not recorded here. | **Unresolved `[VERIFY]` at use time** |
 | Progressive media host and content type | The 2026-09-24 clip objects returned `mp3`/`webm-opus` over `streaming` on `audiopipe.suno.ai`, while the 2026-09-30 feed bodies returned `m4a-opus` over `progressive` on the CloudFront origin in 40 of 40 entries with no `mp3` and no `audiopipe` occurrence. Two captures of two accounts disagree about the default. | **Both observations stand as `[T1]`**; they are different corpora, not a correction of one another. The recon's 40-entry observation is the only evidence for which form is *observed as the default*, and the client's `mp3`-plus-`audiopipe` filter therefore rejects 100% of it (section 5.3). `audiopipe.suno.ai` does appear inside the recon's client bundles as a hostname regex and a constructed URL template, which is `[LEAD]` and does not affect its `[T1]` row in section 2.1. | **Unresolved which is served to a given account; both captured** |
 | Notification routes vs current client bundle | `/api/notification/v2`, `/v2/badge-count`, and `/v2/read` are `[T1]` from the 2026-08-25/2026-09-24 request-response exports and all three are `wired`, yet two passes over ~96 client-bundle chunks found **zero** `/api/notification*` strings. | The captures are real, so the rows stay `[T1]` and nothing is demoted: section 6.2's rule that absence from the bundle is evidence of client-side disuse rather than server removal applies symmetrically. What the negative changes is handling, not status — degrade a failing notification surface to a visible error state rather than deleting the service on a static negative, and do not present it as working. One authenticated probe settles it. | **Unresolved — captured routes, uncorroborated by the current client** |
-| Library mutation request contracts | This master and the backlog both treated library and playlist mutations as needing a fresh human capture. | **Request** contracts are `[T1]` — recovered from server validation errors, 64 write endpoints probed, and the library/playlist subset is canonical in section 5.9. **Response** shapes were not captured, and `playlist/create/`, `playlist/trash/`, `gen/{id}/set_metadata/`, `gen/{id}/update_reaction_type/`, and `gen/trash` were never probed and remain `[LEAD]`; `POST /api/clips/delete/` answered 404. Recovered bodies are **flat** (section 1.5). | **Resolved for requests; responses and unprobed siblings remain uncaptured** |
+| Library mutation request contracts | This master and the backlog both treated library and playlist mutations as needing a fresh human capture. | **Request** contracts are `[T1]` — recovered from server validation errors, 64 write endpoints probed, and the library/playlist subset is canonical in section 5.9. **Response** shapes were not captured, and `playlist/create/`, `playlist/trash/`, `gen/{id}/set_metadata/` and `gen/trash` were never probed and remain `[LEAD]` (`gen/{id}/update_reaction_type/` was captured on 2026-10-26, §4.5.1); `POST /api/clips/delete/` answered 404. Recovered bodies are **flat** (section 1.5). | **Resolved for requests; responses and unprobed siblings remain uncaptured** |

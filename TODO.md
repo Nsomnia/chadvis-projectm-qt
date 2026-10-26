@@ -757,6 +757,10 @@ proceed"; read it as "proceed, and leave the switch off".
       Request schemas were recovered; the **success** shape of every mutation verb was not, which is why the
       surface stays disabled (T0011). A 2xx must be treated as "accepted, shape unverified" — see T0018 for the
       case where the code gets this wrong.
+      **One verb is now fully captured (2026-10-26): `update_reaction_type`** — request and response, both
+      directions, including two traps a guess would get wrong (`reaction_type` absent on unlike, `clip` is an
+      id string). Eleven other verbs still owe their response shape; the same exercise (drive the control in a
+      signed-in browser, read the network log) takes a few minutes per verb.
 - [ ] T0144 **Fresh notification captures** (`src/suno/SunoNotificationService.cpp`) #blocks-capture
       Decides whether the three wired notification routes are real or a 404 generator — the one open risk in the
       notification surface.
@@ -984,8 +988,16 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       `m4a-opus` download refused (pinned P1 defect) -- **the refusal is now specified**: the
       captured progressive body is AES-128-CTR encrypted and needs a content-rights call
       (T0317); the `m4a-opus` form is no longer "unsupported", it is "not yet decrypted".
-- [ ] T0267 **Like/unlike, trash/restore, permanent delete: NO verb, NO endpoint** (`src/suno/`) (capture-gated)
+- [ ] T0267 **Trash/restore and permanent delete: NO verb, NO endpoint** (`src/suno/`) (capture-gated)
       Deliberate — no captured contract; `POST /api/clips/delete/` 404'd. DB *stores* `is_liked`/`is_trashed`, so read side implies verbs that don't exist.
+      **Like/unlike left this item on 2026-10-26: captured from the real UI, both directions.**
+      `POST /a/api/gen/{id}/update_reaction_type/` takes `{"reaction":"LIKE","recommendation_metadata":{}}`
+      and `{"reaction":null,...}` to clear; the 200 is
+      `{play_count, skip_count, flagged, reaction_type, clip, updated_at}` with **`reaction_type: "L"`
+      only on a like** and **`clip` as an id string, not the clip**. Contract and the three
+      asymmetries: [ENDPOINT-INVENTORY §4.5](docs/suno_api/ENDPOINT-INVENTORY.md). Dislike is still
+      uncaptured (the letter is presumably `"D"` — a guess). Implementing the verb is now a code
+      task; the UI affordance is T0320's half (a).
 - [ ] T0268 **Clip rename: NO clip-title rename verb** (`src/suno/`) (capture-gated)
       Only *playlist* rename via `setPlaylistMetadata`.
 - [ ] T0269 **Batch ops: ONLY playlist add/remove accept batch (1–100 `clip_ids`)** (`src/suno/`)
