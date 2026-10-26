@@ -27,11 +27,6 @@
 #include <sys/file.h>
 #endif
 
-#if LIBAVCODEC_VERSION_MAJOR >= 60
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-
 namespace vc {
 
 namespace {
@@ -1737,7 +1732,3 @@ Result<void> VideoRecorderFFmpeg::initHWFrames(const EncoderSettings& settings) 
 }
 
 } // namespace vc
-
-#if LIBAVCODEC_VERSION_MAJOR >= 60
-#pragma GCC diagnostic pop
-#endif

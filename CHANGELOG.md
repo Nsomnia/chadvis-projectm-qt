@@ -8,6 +8,12 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Changed
 
+- **The file-wide `-Wdeprecated-declarations` suppression is gone from the recorder.** It wrapped
+  every line of `VideoRecorderFFmpeg.cpp` for the FFmpeg 6+ branch, which meant the next real
+  deprecation on an upgrade would arrive silently — the same class of trap the suppression was
+  originally added for. Compiling without it on libavutil 61.1.102 produced no warnings, and the
+  14 fast-profile ctest entries stay green, so it was hiding nothing today.
+
 - **Every long job now has a timeout, and the agent and release workflows are serialised.**
   `build.yml`, `asan.yml` and `tsan.yml` would otherwise run to GitHub's six-hour default after a
   stuck step; all four now stop at 120 minutes, matching `windows.yml`. `opencode.yml` gains

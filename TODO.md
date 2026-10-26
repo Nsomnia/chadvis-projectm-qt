@@ -422,16 +422,13 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `SunoDatabase`, `SunoBridge`, `SunoController`, `ClipResolver`, `PresetPersistence`,
       `RatingManager`, `CliUtils`/`CliArg`, and **every QML bridge**. **The entire UI has
       zero tests** — `integration_tests::mainQmlLoadsAndRenders` would pass with a blank window.
-- [ ] T0101 `FFmpeg 9.0`: the `AVFrame::channels` → `ch_layout` migration is **already done** — verify and close (`src/recorder/`) #cleanup
-      **REFUTES the obvious task.** The old fields are gone at FFmpeg 7.0 (lavu 59), but this
-      tree already uses `ch_layout` throughout (`VideoRecorderFFmpeg.cpp:823,888,906,909`;
-      `AudioFileDecoder.cpp:182,186`) and `av_hwdevice_ctx_create` is **not** deprecated in
-      9.0.2 (`hwcontext.h:294` carries no `attribute_deprecated`, and the doc comment
-      *recommends* alloc+init for callers needing control). The only `channels`-shaped hit is
-      Qt metadata (`src/audio/analysis/MediaMetadata.cpp:86`). Action: confirm by compiling,
-      then close this item so nobody "migrates" working code. Note
-      `VideoRecorderFFmpeg.cpp:29-32` blanket-suppresses `-Wdeprecated-declarations`, which
-      will hide a real deprecation on upgrade — narrow it.
+- [x] T0101 `FFmpeg 9.0`: the `AVFrame::channels` → `ch_layout` migration is **already done** — verify and close (`src/recorder/`) #cleanup
+      Confirmed against libavutil 61.1.102 (FFmpeg 8.x): the tree uses `ch_layout` throughout,
+      the remaining `.channels` are project structs (`spec.channels`, `settings.audio.channels`),
+      and `av_hwdevice_ctx_create` carries no deprecation attribute. The blanket
+      `-Wdeprecated-declarations` suppression in `VideoRecorderFFmpeg.cpp` is removed: a clean
+      compile followed, so it was hiding nothing and would have hidden the next real one.
+      `--fast --tests` exit 0, ctest 14/14.
 - [ ] T0102 `FFmpeg`: the `AVFormatContextDeleter` crash is **already fixed**; two residuals remain (`src/recorder/FFmpegUtils.hpp`) #risk-medium
       **REFUTES the obvious task.** The single deleter that dereferenced `c->oformat` (null on
       a demuxer) is gone; it is now split into `AVFormatContextInDeleter` (`:65-70`,
