@@ -1,0 +1,4 @@
+2026-10-26T20:38:50Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee16038 pid=16038 ttl=4h expires=2026-10-27T00:38:50Z
+2026-10-26T20:50:00Z  CHANGE   windows.yml: added -G Ninja, removed --config/-C workarounds, diagnostic scans build.ninja. vcpkg.json still absent (task stays [?]).
+2026-10-26T20:50:00Z  VERIFY   ./scripts/check-workflows.py -> all workflow files ok (duplicate-key aware).
+2026-10-26T20:50:00Z  VERIFY   cmake -S . -B build-fast -> configuring/generating done with the new component list.

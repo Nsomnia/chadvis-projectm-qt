@@ -46,9 +46,14 @@ env:
   # objects against it meant /MT, and /MT is a CRT mismatch against Qt's own
   # /MD binaries, which neither vendor supports. The dynamic triplet matches
   # Qt's runtime and costs only the DLLs the package step copies into the zip.
-  CMAKE_BUILD_TYPE: Release
+  #
+  # The generator is Ninja (named at the Configure step), so this is a real
+  # single-config build type. The lane used to omit -G, letting CMake pick
+  # Visual Studio 2022, where CMAKE_BUILD_TYPE is inert and the same value had
+  # to be repeated as `--config` and `-C` at every build/test call (T0091).
   # MSVC 19.3x+ is Compiler.cmake's floor (>= 19.29). windows-latest ships
-  # VS 2022.
+  # VS 2022, and msvc-dev-cmd puts its compiler on PATH for Ninja.
+  CMAKE_BUILD_TYPE: Release
   #
   # NOT `VCPKG_ROOT`: ilammy/msvc-dev-cmd@v1 overwrites that variable with
   # Visual Studio's bundled vcpkg, so a later `"$env:VCPKG_ROOT\vcpkg.exe"`
@@ -182,12 +187,13 @@ jobs:
       - name: Configure
         run: |
           cmake -S . -B $env:BUILD_DIR `
+            -G Ninja `
             -DCMAKE_BUILD_TYPE=$env:CMAKE_BUILD_TYPE `
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR;$env:CHADVIS_VCPKG_ROOT\installed\x64-windows" `
             -DCMAKE_TOOLCHAIN_FILE="$env:CHADVIS_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
-        run: cmake --build $env:BUILD_DIR --config $env:CMAKE_BUILD_TYPE --parallel
+        run: cmake --build $env:BUILD_DIR --parallel
 
       - name: Assert ctest discovered the expected entries
         shell: pwsh
@@ -197,7 +203,7 @@ jobs:
             Write-Error "::error title=zero tests discovered::${dir} has no CTestTestfile.cmake; ctest would report 0 tests and exit 0."
             exit 1
           }
-          $list = ctest --test-dir $dir -N -C $env:CMAKE_BUILD_TYPE | Out-String
+          $list = ctest --test-dir $dir -N | Out-String
           Write-Host $list
           if ($list -notmatch 'Total Tests:\s*(\d+)') {
             Write-Error "::error::Could not read a test count from ctest -N."
@@ -224,7 +230,7 @@ jobs:
       # AudioEngine with no output device. Nothing here would be signal.
       - name: Run the headless gate (11 entries)
         run: |
-          ctest --test-dir $env:BUILD_DIR/tests --output-on-failure -C $env:CMAKE_BUILD_TYPE `
+          ctest --test-dir $env:BUILD_DIR/tests --output-on-failure `
             --parallel $env:NUMBER_OF_PROCESSORS `
             -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
 
@@ -241,7 +247,7 @@ jobs:
           # green, so it failed on its first execution with "A parameter cannot
           # be found that matches parameter name 'Recurse'".
           $defs = Get-ChildItem -Path "$env:BUILD_DIR" -Recurse `
-            -Include '*.vcxproj','flags.make','*.rsp' -ErrorAction SilentlyContinue |
+            -Include 'build.ninja','*.vcxproj','flags.make','*.rsp' -ErrorAction SilentlyContinue |
             Select-String -Pattern 'CHADVIS_HAS_(WIN32_CREDENTIALS|KEYCHAIN|SECRET_SERVICE)' |
             Select-Object -ExpandProperty Line -Unique
           if (-not $defs) {

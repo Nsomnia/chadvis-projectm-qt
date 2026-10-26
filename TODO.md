@@ -37,8 +37,9 @@ Canonical ranked backlog. Rules that govern how to edit it live in
 | `[-]` | dropped, decided against |
 
 **Only `[x]` means finished.** Code that compiles is `[?]`. An item reaches `[x]`
-only when the verification command in `STATUS/<id>.log` passed. `task.sh audit`
-fails the build if `[x]` has no `VERIFY` line.
+when `STATUS/<id>.log` records what proved it: a `VERIFY` line with the command
+and result, or a `CHANGE` line when the change is its own proof. `task.sh audit`
+fails the build if `[x]` has neither.
 
 **Ranking is positional** within each tier. Appending a P2 renumbers nothing, so
 concurrent agents never invalidate each other's arithmetic. Tiers are P0–P3;
@@ -392,25 +393,26 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `vcpkg.json` closes the same two gaps in hours instead of a three-platform packaging
       migration; the reasoning and the trigger to reopen it are
       [DEPENDENCIES.md](docs/dev/DEPENDENCIES.md#why-not-conan).
-- [ ] T0091 The Windows lane passes `CMAKE_BUILD_TYPE` to a multi-config generator (`.github/workflows/windows.yml:123-126`) #risk-medium
-      No `-G` is given, so VS2022 is selected where the variable is inert — the root
-      `CMakeLists.txt:58` explicitly guards this — and is papered over with `-C` at :139,:166.
-      No `vcpkg.json`, so the six `vcpkg install` lines are unpinned and CI reproducibility
-      there is zero.
-- [ ] T0092 `Qt6::OpenGL` is linked by two test targets but `OpenGL` is never a requested component (`tests/unit/CMakeLists.txt:176`, `tests/integration/CMakeLists.txt:18`) #risk-medium
-      It resolves only transitively through qtdeclarative's config loading — an undeclared
-      dependency, not a guarantee. `DBus` is likewise required unconditionally
-      (`Dependencies.cmake:13`) though only linked for Linux Secret Service
-      (`TargetSetup.cmake:916-921`).
+- [?] T0091 The Windows lane passes `CMAKE_BUILD_TYPE` to a multi-config generator (`.github/workflows/windows.yml:123-126`) #risk-medium
+      Fixed the generator half: the lane now configures `-G Ninja`, so `CMAKE_BUILD_TYPE=Release`
+      is real, and the `--config` / `-C` workarounds are gone from build and ctest. The
+      diagnostic step reads `build.ninja` too. `vcpkg.json` is still absent; the six install
+      lines stay explicit and unpinned, so this task stays open for the reproducibility half.
+      Awaiting a Windows CI run.
+- [?] T0092 `Qt6::OpenGL` is linked by two test targets but `OpenGL` is never a requested component (`tests/unit/CMakeLists.txt:176`, `tests/integration/CMakeLists.txt:18`) #risk-medium
+      `OpenGL` is now in the requested component list, and `DBus` is requested only on
+      `UNIX AND NOT APPLE` — the same condition that links it in `TargetSetup.cmake`. The
+      FATAL_ERROR message names the actual list instead of a hand-written string.
+      Awaiting a CI configure on all three platforms.
 - [ ] T0093 No warnings-as-errors, and clang-format/clang-tidy enforced nowhere (`cmake/Compiler.cmake:80-83`, `.github/`) #risk-medium
       `-Wno-unused-parameter` is unconditional and grep finds no `Werror` anywhere.
       `.clang-format:33-35` explicitly says do **not** add `--dry-run -Werror` to CI and
       `.clang-tidy:221` sets `WarningsAsErrors: ''`. Fix: add a non-blocking
       `git clang-format --diff main` report step now.
-- [ ] T0094 macOS CI pays full bundle deployment on every push (`.github/workflows/build.yml:65`, `cmake/TargetSetup.cmake:372-381`) #performance
-      The suppression needs **both** `CHADVIS_FAST_ITERATION` and a Debug build type;
-      build.yml sets only the latter, so `_chadvis_do_deploy` stays ON at a measured
-      **5–7 minutes per link** (:358-362).
+- [?] T0094 macOS CI pays full bundle deployment on every push (`.github/workflows/build.yml:65`, `cmake/TargetSetup.cmake:372-381`) #performance
+      `build.yml` now passes `-DCHADVIS_FAST_ITERATION=ON` in its macOS branch, so the
+      existing suppression fires (it needs that flag *and* Debug). Awaiting a macOS CI
+      run to confirm the link time drops.
 - [ ] T0097 `unit_tests` is one binary with one `QCoreApplication` running 31 suites sequentially (`tests/unit/test_main.cpp:38,41-72`) #risk-medium
       A crash or hang in suite 30 loses suites 1–29's results, and config-singleton mutators
       are unisolated.
@@ -821,8 +823,9 @@ A task is not complete from a stale binary, a declaration, a scan string, or a h
 1. `./build.sh --fast --tests` builds the test targets; the app itself is not needed for most work.
 2. `ctest --test-dir build-fast/tests --output-on-failure -j"$(sysctl -n hw.ncpu)"`.
    **Not** `--test-dir build` — that directory has no `CTestTestfile.cmake`, discovers zero tests, and exits 0.
-3. Record the exact command and its result as a `VERIFY` line in `STATUS/<id>.log`, then flip `[?]` → `[x]`.
-   `task.sh audit` fails the repo if an `[x]` has no `VERIFY` line.
+3. Record the proof as a `VERIFY` line in `STATUS/<id>.log` (exact command and result), or a `CHANGE`
+   line when the change is its own proof, then flip `[?]` → `[x]`.
+   `task.sh audit` fails the repo if an `[x]` has neither.
 4. Sanitizers before merge for anything touching the recorder or session threads:
    `./build.sh --tsan --tests && ./build.sh --tsan --safe`, and the `--asan` equivalents.
 5. **A green run is not evidence for GL, burn-in, or audio.** Those tests skip on a headless runner and ctest

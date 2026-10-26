@@ -261,6 +261,14 @@ jobs:
             # from the compiler's search list, stripping the project's only
             # route to spdlog/fmt/toml++/glm/taglib. See build.sh:224-228.
             args+=(-DCMAKE_PREFIX_PATH="$(brew --prefix qt)")
+            # This job builds Debug because it is a gate, not a release. The
+            # macOS bundle deploy (macdeployqt + name rewriting + codesign) is
+            # measured at 5-7 minutes per app relink and proves nothing the
+            # tests read: they link project_lib and never load the .app. The
+            # suppression needs BOTH this flag and Debug, which is exactly the
+            # configuration here, so ask for it explicitly (T0094). Release
+            # packaging runs through release.yml, which never sets this.
+            args+=(-DCHADVIS_FAST_ITERATION=ON)
           else
             args+=(-DCMAKE_PREFIX_PATH="$QT_ROOT_DIR")
           fi

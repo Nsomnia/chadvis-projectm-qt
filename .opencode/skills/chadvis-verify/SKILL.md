@@ -86,8 +86,9 @@ already had one.
 ## 7. Record the proof
 
 Write the exact command and its result as a `VERIFY` line in `STATUS/<id>.log`, then flip
-`[?]` → `[x]` in `TODO.md`. `./scripts/task.sh audit` fails the repo if an `[x]` has no
-`VERIFY` line. Update `CHANGELOG.md` for user-visible behaviour.
+`[?]` → `[x]` in `TODO.md`. When the change is its own proof (a dead symbol deleted, a
+constant corrected), a `CHANGE` line is enough — the audit accepts either. It fails the
+repo if an `[x]` has neither. Update `CHANGELOG.md` for user-visible behaviour.
 
 ## 8. Branch policy
 

@@ -14,26 +14,36 @@
 
 include(DependencyBootstrap)
 
-find_package(Qt6 QUIET COMPONENTS
-    Core Gui Multimedia Network Quick Qml QuickControls2 Sql DBus)
+# Every component named here is linked by some target in this tree, so it is
+# requested here rather than left to arrive transitively:
+#   OpenGL  tests/unit + tests/integration link Qt6::OpenGL directly.
+#   DBus    project_lib links it on Linux only (TargetSetup.cmake), and the Qt
+#           DBus module is not part of the Windows or macOS SDKs -- requesting
+#           it unconditionally made find_package(Qt6) depend on a module this
+#           project never uses off Linux.
+set(CHADVIS_QT_COMPONENTS
+    Core Gui Multimedia Network Quick Qml QuickControls2 Sql OpenGL)
+if(UNIX AND NOT APPLE)
+    list(APPEND CHADVIS_QT_COMPONENTS DBus)
+endif()
+
+find_package(Qt6 QUIET COMPONENTS ${CHADVIS_QT_COMPONENTS})
 if(NOT Qt6_FOUND)
     # One attempt at a host package install before failing with a message a
     # human can act on (find_package(REQUIRED) alone would fail too, tersely).
     chadvis_try_install_dependency(QT6)
     if(CHADVIS_INSTALL_OK)
-        find_package(Qt6 QUIET COMPONENTS
-            Core Gui Multimedia Network Quick Qml QuickControls2 Sql DBus)
+        find_package(Qt6 QUIET COMPONENTS ${CHADVIS_QT_COMPONENTS})
     endif()
 endif()
 if(NOT Qt6_FOUND)
     message(FATAL_ERROR
-        "Qt6 (6.8+) with components Core Gui Multimedia Network Quick Qml "
-        "QuickControls2 Sql DBus was not found. Install it with the Qt online "
-        "installer, 'pip install aqtinstall', 'brew install qt' (macOS), or "
-        "your distro's Qt6 packages, then re-run CMake. "
-        "-DCHADVIS_AUTO_INSTALL_DEPS=ON attempts the install automatically on "
-        "Homebrew/MacPorts/Arch/Fedora (Debian/Ubuntu's Qt is older than the "
-        "6.8 floor, so it is deliberately not attempted there).")
+        "Qt6 (6.8+) with components ${CHADVIS_QT_COMPONENTS} was not found. "
+        "Install it with the Qt online installer, 'pip install aqtinstall', "
+        "'brew install qt' (macOS), or your distro's Qt6 packages, then re-run "
+        "CMake. -DCHADVIS_AUTO_INSTALL_DEPS=ON attempts the install "
+        "automatically on Homebrew/MacPorts/Arch/Fedora (Debian/Ubuntu's Qt is "
+        "older than the 6.8 floor, so it is deliberately not attempted there).")
 endif()
 
 # Qt 6.8 floor. 6.7 was the old floor and it bought exactly one API --

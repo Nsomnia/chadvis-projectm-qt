@@ -65,6 +65,22 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   too dark. `STATUS/<id>.log` keeps each item's evidence, `git log -p TODO.md` is the ID archive,
   and the fixes are the commits that named them.
 
+- **CI stopped lying to CMake and to macOS about its build configuration.** The Windows lane
+  never named a generator, so CMake chose Visual Studio 2022 — where `CMAKE_BUILD_TYPE` is inert —
+  and the same value was repeated as `--config`/`-C` at every build and test call. It now
+  configures `-G Ninja`, a real single-config build at `Release`, and the workarounds are gone.
+  The macOS gate now passes `-DCHADVIS_FAST_ITERATION=ON` alongside its existing Debug type, which
+  is the pair the suppression tests: every push was paying a measured 5–7 minutes of
+  `macdeployqt` + codesign per app relink for a bundle no test loads. `OpenGL` is now a declared
+  Qt component (two test targets link it directly) and `DBus` is requested only on Linux, the one
+  platform that links it. (T0091, T0092, T0094)
+
+- **`Result<T>`'s dead functional surface is gone.** `map`/`andThen`/`orElse`/`operator->`/
+  `operator*`/`valueOr` and the `TRY`/`TRY_VOID` macros had zero users, and the macros never
+  compiled: they expanded a `value_type` member that `Result` does not define.
+  `Result<void>::error()` on the success path dereferenced an empty `optional`; it now returns a
+  shared empty `Error`. Five `operator*` call sites moved to `.value()`. (T0061)
+
 ### Added
 
 - **A guards gate, so the workflow checker runs instead of being remembered.** `guards.yml` runs
@@ -131,6 +147,12 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   The scripts are parked in the ignored graveyard, not deleted from history. (T0112)
 
 ### Fixed
+
+- **A bare `cmake` configure now really produces `RelWithDebInfo`.** The default was spelled
+  `ReleaseWithDebInfo`, which is not a CMake configuration: the cache held a name CMake has no
+  flags for, so the "optimized build with symbols" default compiled with neither `-O2` nor
+  `-DNDEBUG`. Corrected to `RelWithDebInfo`, which is what the block's own comment already
+  described. Explicit `-DCMAKE_BUILD_TYPE` (every `build.sh` profile) is unaffected.
 
 - **There was no visible Record button while a track was playing.** Recording existed only three
   clicks deep — Video tab → right dock → Record tab — so a user listening to a track had no way to

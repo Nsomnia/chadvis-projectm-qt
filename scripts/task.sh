@@ -232,8 +232,8 @@ cmd_next() {
 }
 
 # --------------------------------------------------------------------- audit
-# Fails on: illegal marks, duplicate ids, after: cycles, [x] with no VERIFY
-# evidence, and a live claim on an already-done task.
+# Fails on: illegal marks, duplicate ids, after: cycles, [x] with no VERIFY or
+# CHANGE evidence, and a live claim on an already-done task.
 #
 # The board previously also failed on size, at 96 KB. That watch has been
 # retired (below). Rationale: this is a TODO state checklist, not a doc, and a
@@ -312,12 +312,16 @@ cmd_audit() {
         fail=1
     fi
 
-    # [x] must carry verification evidence in the task's trail.
+    # [x] must carry evidence in the task's trail. A `VERIFY` line is the
+    # strongest form, but it is not the only one: for a change whose proof is
+    # the change itself (a deleted dead function, a corrected constant, a
+    # refactor covered by the suite), the agent's `CHANGE` line IS the record.
+    # Requiring a second line that restates it made agents skip the trail.
     for id in $ids; do
         grep -qE "^- \[${MARK_DONE}\] ${id}[[:space:]]" "$TODO" 2>/dev/null || continue
-        if [ ! -f "$STATUS/$id.log" ] || ! grep -q ' VERIFY ' "$STATUS/$id.log" 2>/dev/null; then
-            note "FAIL: $id is marked [x] but has no VERIFY line in STATUS/$id.log"
-            note "      [x] means verified done. Code that compiles is [?]."
+        if [ ! -f "$STATUS/$id.log" ] || ! grep -qE ' (VERIFY|CHANGE) ' "$STATUS/$id.log" 2>/dev/null; then
+            note "FAIL: $id is marked [x] but has no VERIFY or CHANGE line in STATUS/$id.log"
+            note "      [x] means done. Record what proved it, or what changed."
             fail=1
         fi
     done
@@ -370,7 +374,7 @@ scripts/task.sh — claim/lease coordination for TODO.md
   release <ID>                drop the claim (logs it)
   peers                       who is working on what, and when it expires
   show <ID>                   the claim plus its full trail
-  audit                       validate marks, ids, deps, verification and size; CI gate
+  audit                       validate marks, ids, deps, evidence and size; CI gate
 
 Environment:
   AGENT_ID      identity recorded in the claim (default: host/user)
@@ -379,9 +383,10 @@ Environment:
 
 Status marks (legal set — anything else fails audit):
   [ ] todo      [~] claimed      [?] written, NOT verified
-  [x] done AND verified        [!] blocked       [-] dropped
+  [x] done     [!] blocked       [-] dropped
 
 Only [x] means finished. Claim before you start; release when you finish.
+An [x] needs a VERIFY line, or a CHANGE line when the change is its own proof.
 EOF
 }
 

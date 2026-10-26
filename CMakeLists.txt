@@ -28,7 +28,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
-# Default to ReleaseWithDebInfo, not Debug and not plain Release.
+# Default to RelWithDebInfo, not Debug and not plain Release.
 #
 # Debug defaults were defensible while the app had never been launched and every
 # cycle was a rebuild; they are indefensible for a configuration a stranger will
@@ -56,7 +56,7 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 # the optimization level:
 #     -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O3 -DNDEBUG"
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    set(CMAKE_BUILD_TYPE ReleaseWithDebInfo CACHE STRING "Build type" FORCE)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
         Debug Release RelWithDebInfo MinSizeRel)
 endif()
