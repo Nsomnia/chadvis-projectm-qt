@@ -1,0 +1,4 @@
+2026-10-26T21:40:00Z  CHANGE   SunoModels.hpp: deleted 15 unreferenced structs (3.8 KB) from SunoBonusOffer to the end; kept the ones used as members (SunoPlanInfo, SunoModelLimits, SunoMetadata).
+2026-10-26T21:40:00Z  VERIFY   grep -rn over the 15 names in src/ and tests/ -> zero hits.
+2026-10-26T21:40:00Z  VERIFY   cmake --build build-fast --target unit_tests -j3 -> 291/291 linked.
+2026-10-26T21:40:00Z  VERIFY   ctest -R '^unit_tests$' -> 1/1 passed (84.92 s).

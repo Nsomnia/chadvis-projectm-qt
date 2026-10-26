@@ -316,10 +316,14 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       empty. `SunoLibraryManager.hpp:76` ("it is not sent to the feed") contradicts the two
       `fetchLibraryPage(…, searchText_)` calls. Real filtering is client-side in
       `SunoBridge::updateFilteredClips`.
-- [ ] T0068 ~15 dead model structs in `SunoModels.hpp`, including a **second parallel schema for notifications** (`src/suno/SunoModels.hpp:207-337`) #cleanup
-      No producer or consumer. `SunoNotification` (:240) duplicates
-      `SunoNotificationService::Notification` (:28 of its header), which is the type the
-      live parser actually uses.
+- [x] T0068 ~15 dead model structs in `SunoModels.hpp`, including a **second parallel schema for notifications** (`src/suno/SunoModels.hpp:207-337`) #cleanup
+      Deleted the whole unused tail: `SunoBonusOffer`, `SunoEligibleDiscounts`, `SunoNudge`,
+      `SunoNotificationAuthor`, `SunoNotification`, `SunoContest`, `SunoPlaybarState`,
+      `SunoOrpheusFlags`, `SunoPersonalizationSettings`, `SunoCustomModelPending`,
+      `SunoShareStats`, `SunoRealtimeDiscover`, `SunoUserConfig`, `SunoTosAcceptance`,
+      `SunoUserSessionId` — 15 structs, 3.8 KB, zero references under `src/` or `tests/`.
+      Kept `SunoPlanInfo`, `SunoModelLimits` and `SunoMetadata`: they look unused by name
+      but are members of live `SunoBillingInfo` / `SunoModelInfo` / `SunoClip`.
 - [ ] T0069 Eleven endpoints are wired in code but recorded `not-in-code` in the inventory (`docs/suno_api/ENDPOINT-INVENTORY.md:610-620,1206-1216`) #data-loss
       `GEN_SET_VISIBILITY`, `GEN_UPDATE_FEEDBACK_STATE`, `CLIP_TOGGLE_REMIXES`,
       `CLIP_TOGGLE_SHOW_REMIXES`, `SHARE_LINK`, `PLAYLIST_SET_METADATA`,
