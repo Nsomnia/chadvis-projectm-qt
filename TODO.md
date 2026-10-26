@@ -411,26 +411,28 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `vcpkg.json` closes the same two gaps in hours instead of a three-platform packaging
       migration; the reasoning and the trigger to reopen it are
       [DEPENDENCIES.md](docs/dev/DEPENDENCIES.md#why-not-conan).
-- [?] T0091 The Windows lane passes `CMAKE_BUILD_TYPE` to a multi-config generator (`.github/workflows/windows.yml:123-126`) #risk-medium
-      Fixed the generator half: the lane now configures `-G Ninja`, so `CMAKE_BUILD_TYPE=Release`
-      is real, and the `--config` / `-C` workarounds are gone from build and ctest. The
-      diagnostic step reads `build.ninja` too. `vcpkg.json` is still absent; the six install
-      lines stay explicit and unpinned, so this task stays open for the reproducibility half.
-      Awaiting a Windows CI run.
-- [?] T0092 `Qt6::OpenGL` is linked by two test targets but `OpenGL` is never a requested component (`tests/unit/CMakeLists.txt:176`, `tests/integration/CMakeLists.txt:18`) #risk-medium
+- [x] T0091 The Windows lane passes `CMAKE_BUILD_TYPE` to a multi-config generator (`.github/workflows/windows.yml:123-126`) #risk-medium
+      Fixed: the lane configures `-G Ninja`, so `CMAKE_BUILD_TYPE=Release` is real, and the
+      `--config` / `-C` workarounds are gone from build and ctest. The first attempt exposed
+      a second defect: PowerShell left the literal `$env:CMAKE_BUILD_TYPE` in the cache, and
+      Ninja read the resulting `CXX_SCAN__project_lib_$env:CMAKE_BUILD_TYPE` rule name as a
+      syntax error. Configure now uses runner-substituted `${{ env.* }}` values and disables
+      MSVC module scanning (the tree has no module sources). Verified by a green windows run.
+      The vcpkg-manifest half moved to T0338.
+- [x] T0092 `Qt6::OpenGL` is linked by two test targets but `OpenGL` is never a requested component (`tests/unit/CMakeLists.txt:176`, `tests/integration/CMakeLists.txt:18`) #risk-medium
       `OpenGL` is now in the requested component list, and `DBus` is requested only on
       `UNIX AND NOT APPLE` — the same condition that links it in `TargetSetup.cmake`. The
-      FATAL_ERROR message names the actual list instead of a hand-written string.
-      Awaiting a CI configure on all three platforms.
+      FATAL_ERROR message names the actual list. Verified by configure+build on macOS,
+      Windows and Linux in run 40399387609/40399387625.
 - [ ] T0093 No warnings-as-errors, and clang-format/clang-tidy enforced nowhere (`cmake/Compiler.cmake:80-83`, `.github/`) #risk-medium
       `-Wno-unused-parameter` is unconditional and grep finds no `Werror` anywhere.
       `.clang-format:33-35` explicitly says do **not** add `--dry-run -Werror` to CI and
       `.clang-tidy:221` sets `WarningsAsErrors: ''`. Fix: add a non-blocking
       `git clang-format --diff main` report step now.
-- [?] T0094 macOS CI pays full bundle deployment on every push (`.github/workflows/build.yml:65`, `cmake/TargetSetup.cmake:372-381`) #performance
+- [x] T0094 macOS CI pays full bundle deployment on every push (`.github/workflows/build.yml:65`, `cmake/TargetSetup.cmake:372-381`) #performance
       `build.yml` now passes `-DCHADVIS_FAST_ITERATION=ON` in its macOS branch, so the
-      existing suppression fires (it needs that flag *and* Debug). Awaiting a macOS CI
-      run to confirm the link time drops.
+      existing suppression fires (it needs that flag *and* Debug). Measured on a green run:
+      the macOS job fell from 14m53s (run 40345705235) to 9m42s (run 40399387609).
 - [ ] T0097 `unit_tests` is one binary with one `QCoreApplication` running 31 suites sequentially (`tests/unit/test_main.cpp:38,41-72`) #risk-medium
       A crash or hang in suite 30 loses suites 1–29's results, and config-singleton mutators
       are unisolated.
@@ -662,6 +664,13 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `borderLight #404040`. `textDisabled` was lightened to `#6A6A6A` so the raised
       plane keeps 3.15:1 (it was 2.82:1 on the old palette). The contrast script
       reports every gated pair clear; `test_ThemeQml` passes.
+
+- [ ] T0338 **The Windows lane's vcpkg ports are unpinned, so CI reproducibility is zero** (`.github/workflows/windows.yml:130-160`) #risk-medium
+      Split out of T0091. There is no `vcpkg.json`, so six `vcpkg install` calls name ports
+      without versions or a builtin baseline; a silent port upgrade changes the Windows
+      binary without any repository diff. Fix: add a manifest with a `builtin-baseline`
+      commit and let `vcpkg install` run in manifest mode, then delete the explicit list.
+      Verify on a cold-cache Windows run before trusting the cache.
 
 ## Refuted claims — do not re-investigate these
 

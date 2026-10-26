@@ -1,2 +1,4 @@
 2026-10-26T20:38:50Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee15994 pid=15994 ttl=4h expires=2026-10-27T00:38:50Z
 2026-10-26T20:50:00Z  CHANGE   see T0091 for the shared CMake/workflow verification run.
+2026-10-26T22:00:00Z  VERIFY   macOS job 14m53s before (run 40345705235) vs 9m42s after (run 40399387609), with the deploy suppression firing.
+2026-10-26T21:14:19Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee29344
