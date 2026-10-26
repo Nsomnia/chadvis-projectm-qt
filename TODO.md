@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-10-23
+updated: 2026-10-25
 ---
 
 # ChadVis backlog
@@ -149,40 +149,13 @@ line to describe an item is describing it in the wrong place. Finished work move
       request body. Fixing the finish line is worth more than a bigger page: the loop above
       is ~1 800 clips against an API that has no reason to serve them twice.
 
-- [x] T0010 **An unrecognised playlist `updateType` silently adds tracks** (`src/qml_bridge/SunoBridge.cpp:1611`) #data-loss
-      ```cpp
-      if (!type) { (void)m->updatePlaylistClips(playlistId, PlaylistUpdateType::Add, {}); return; }
-      ```
-      sitting directly under a comment claiming "An unrecognised updateType is refused by
-      the service" and a header claim of "Anything else is **refused** rather than
-      guessed" (`SunoBridge.hpp:202-203`). A typo or future QML value issues
-      `POST /playlist/update_clips/` with `update_type:"add"`. Fix: return early and emit
-      a refusal through `playlistMutationSettled`.
-- [x] T0183 **The appearance panel ships no colour editor — T0047's fix deleted the control instead of repairing it** (`src/qml/panels/settings/AppearanceSettings.qml`) #blocks-ui #risk-high #cod-high
-      The panel renders two 20×20 `Rectangle` swatches and two read-only `Text` hex labels in a `GridLayout`. **There is no `MouseArea`, no editable field and no picker anywhere in `src/qml/settings/` or `src/qml/panels/settings/`** — the sole `MouseArea` in either tree is `SettingsPageRail.qml:117`, the nav rail. So "clicking a colour does nothing" is the literal behaviour, not a failed interaction: there is nothing to click. `866b36e` (2026-10-14 08:15) removed the two `AppTextField`s because `AppTextField.text` was bound to `Theme.accent`, a `color` in a `string` field, which qmllint calls `incompatible-type`. That repaired the *reading* half of T0047 and **deleted the writing half**; its own message says "Those fields are gone: swatches read the colour, the hex is displayed as text". `apply()` (:32-43) now only re-commits the colours already in the singleton, so it is a no-op. Two claims on screen are false: "Changes are saved automatically when you apply them." (:93) and "Choose the accent and background palette" (`AppearancePage.qml:32`). Restore the write path with a real control — a hue/saturation field plus the hex field bound `text: Theme.toRgbaHex(Theme.accent)` with `onEditingFinished: Theme.applyAccent(text)`, which satisfies qmllint because the binding is string→string and the conversion happens in the handler rather than in a `color`→`string` coercion.
-- [x] T0190 **Built-in palettes live in a QML data file, not JSON in the resource system — a deliberate divergence from the plan** (`src/qml/styles/ThemeDefinitions.qml`, `cmake/Sources.cmake`) #risk-med
-      `docs/dev/THEME-ENGINE-PLAN.md` §8.1 **prefers** `resources/themes/*.json` so built-ins and user files share one parser and one validator, and names the fallback "a QML data file for built-ins … with the catalog owning validation in both cases". This is that fallback, taken because the C++ `ThemeCatalog` does not exist yet and QML cannot enumerate a directory or read a file synchronously — so the preferred storage is unreachable today. The four built-ins are in `ThemeDefinitions.qml` as a `pragma Singleton` holding one data object. When the catalog lands, that file is what moves to JSON; the schema is already 1:1 with `Theme.*` so nothing else changes. A reviewer who disagrees should take T0193 first — that is the only thing that unblocks the preferred storage.
 - [x] T0191 **The four built-in palettes are unverified colour guesses — nothing has been rendered or measured** (`src/qml/styles/ThemeDefinitions.qml`) #risk-high #ui
       §5.1–5.4 are explicitly labelled *proposed* in the plan, and §16.5 requires the final hex values to be confirmed "with a screenshot + contrast numbers" before they ship. Concretely unmeasured: whether `textDisabled` clears 4.5:1 on `background` for each theme (T0083 already measured the shipped `#606060` at **1.95–2.77:1** on dark bases, and I set `material` to `#7A7A7A` and `nord` to `#7B88A1` from the ramp shape rather than from a contrast check); whether `textOnAccent` is legible on each accent; whether `border` at the plan's value is distinguishable from `surface` on the themes where both are overridden. Until this is done no theme ships — including the default.
       **The contrast half is now measured** by `scripts/check-theme-contrast.py`, which re-implements Theme.qml's ramp and re-implements WCAG relative luminance correctly (the first version used Theme's BT.601 `luma()` and understated every ratio — it reported gruvbox's own text at 4.4:1 when it is over 8:1). It exited non-zero on **16 gated pairs** before the palettes were fixed. Three real palette defects it found: gruvbox's `surfaceRaised` was mapped to `bg2`, where gruvbox's own `fg2` is 3.17:1, so text-bearing raised controls would have shipped at a third of AA; gruvbox and nord both put a link-coloured accent on a surface one step too light; and nord's aurora red is 2.46:1 on nord0. Fixes were measured rather than eyeballed — gruvbox `surfaceRaised` moved to `#454039`, `accent` to the real `fg4 #83A598`, `textSecondary` to `#DCB378`, `textLink` to `#98B4AA`, `error` to `#FB5B48`; nord `surfaceRaised` to `nord0`, `error` to `#C97980`. All four palettes now clear every gated pair (4.5:1 text, 3:1 interactive colour). **Not gated, and deliberately so:** `textDisabled` (WCAG 1.4.3 exempts inactive components), `borderLight` (a decorative separator — the functional outline is `borderFocus`, which is the accent and *is* gated), and `recording` (a Theme.qml fixed default at ~2.5:1 that no per-theme edit could fix; T0119 owns it). **Still open:** the screenshot half of §16.5 — whether any of this *looks* right is MT-001-G, and no ratio answers "is `surface` far enough from `background` to read as a separate plane".
-- [x] T0192 **`--theme` must become a session override; today it writes straight into the live config** (`src/core/Application.cpp:407`, `src/core/CliArgs.inc:56`) #risk-high
-      `applyOverride(opts.theme, CONFIG.ui().theme, "ui.theme")` writes the CLI value into `CONFIG`, and the next `SettingsBridge.save()` persists it. The plan §10.1 calls this "a trap the PR must close, not preserve". It is currently harmless only because `--theme` does nothing (§T0184); the moment the engine makes `--theme` real, every launch with `--theme nord` silently overwrites the user's saved theme. §10.1 requires the CLI value to change what is displayed and what `Theme.currentThemeId` reports, **without** touching `SettingsBridge.themeName` unless the user opens Settings and saves.
 - [~] T0193 **User-defined themes need a C++ `ThemeCatalog`: QML cannot list a directory** (`src/qml_bridge/ThemeCatalog.hpp`/`.cpp`, `src/qml_bridge/BridgeRegistration.cpp`) #cod-high
       Phase 3 of the plan. Discovery of `<configDir>/themes/*.json`, the §11 validation table (schema version, `id` pattern and uniqueness, 64 KiB cap, reserved `custom`, bad-hex rejects the whole file, contrast warns but never auto-adjusts), and `availableThemes` for the Settings combo. Named `ThemeCatalog`, **never** `Theme` — a C++ type named `Theme` shadows the QML singleton, which is exactly how `ThemeBridge` became unreachable and was deleted as dead code (T0055). `Theme.qml` must keep never parsing files itself; it asks the catalog for a resolved definition.
-- [x] T0194 **The theme engine's documentation contract is unwritten** (`docs/dev/ARCHITECTURE.md`, `docs/dev/INVARIANTS.md`, `docs/user/CONFIG.md`, `docs/user/USAGE.md`, `docs/README.md`) #doc
-      Plan §14 lists five files. `ARCHITECTURE.md`'s "one owner of the theme" section must say catalog + definitions, still one token owner; `INVARIANTS.md` needs the §3 invariants not already there (seed from `main.qml` never from the singleton; hex byte order; `serialize()` rebuilds the file so an unlisted field is dropped on save; no C++ type named `Theme`) — link, do not duplicate the plan. `CONFIG.md` needs `[ui] theme` documented as a theme id with the built-in list, the `custom` rule and the user-theme directory; it must also keep recording that `visualizer_background` stores the **UI** background under a historical key name. `USAGE.md` needs Settings → Appearance: theme selector. `README.md` needs the plan in the Development table.
-- [x] T0195 **No manual-QA coverage for themes** (`docs/dev/manual-qa.md`) #qa
-      Plan §12.2 lists ten per-theme checks (launch opaque, selector repaints the shell *and* the Settings window, save/quit/relaunch persists, reset returns to default, `--theme` session-only, `--theme bogus` warns and still opens, hand-edited `theme = 'bogus'` warns without rewriting the file, malformed user theme is ignored, valid user theme appears, contrast spot-check). Add rows to the existing checklist (MT-001); do not invent a second one. A green headless run is not evidence for any of this.
-
 ## P1 — correctness, robustness, and debt that will bite
 
-- [x] T0319 **The Library card's play overlay was reported doing nothing while the playlist played the same file** (`src/qml/components/ClipCard.qml`, `src/ui/controllers/SunoController.cpp`, `src/suno/SunoDownloader.cpp`) #blocks-ui #risk-high
-      User report 2026-10-22: a clip fetched from the remote library decrypted, saved to `~/Music/EVERYDAY WE HUSTLIN.m4a`, and played (the log shows `DownloadQueue: completed`, `Tagging file`, `LyricsSync: Loaded 1 lines`), and the playlist played it perfectly — but pressing the card's ▶ overlay afterwards produced no download, no request and no error. **Root cause NOT established.** Two silent refusals were removed on the way: `SunoController::playClipById` gated playback on `CONFIG.suno().downloadFormat`, so a WAV download preference turned every play button into a no-op with no message, and every false return there (and in `SunoBridge::playClip`) was silent. Playback now always selects the m4a stream regardless of the save format, and both layers log (`SunoBridge: play requested for clip …`, then a WARN naming the branch). **Next run's log decides**: no `play requested` line means the QML click never arrived (hit-testing or a recycled delegate); a `play refused for …` line names the cause; `is locked … fetching` means the download path ran. Reproduce before changing any QML.
-      **Root cause found in the 10:47 run and closed.** The log has `SunoBridge: play requested`, then the downloader's `is locked … fetching the streamed media`, then nothing — no transfer and no error. The file was already on disk, so `download()` took `finishAlreadyOnDisk()` → `addAndPlay()`, and `addAndPlay()` called `Playlist::jumpTo()` and treated the **selection** as playback. `jumpTo()` only selects: `AudioEngine::onPlaylistCurrentChanged()` resumes only a transport that was already playing, by design (a skip while paused must stay paused), and the transport was stopped. The file was loaded into the player, the queue pointed at it, and no audio started — no download, no request, no error, exactly the report. `addAndPlay()` now calls `audioEngine_->play()`. The remaining silent refusal on that path is also closed: `download()` applied `downloadFormat` to `SaveAndPlay`, so a WAV preference refused the play gesture through an `expected` that `downloadAndPlay()` discards; playback now always takes the progressive form, while a WAV save is still refused with its sentence. Pinned by `playingAnOnDiskClipStartsTheTransport` (real engine, real player, asserts `Playing` and a non-zero visualizer queue) and `aWavSavePreferenceDoesNotSilencePlayback`. VERIFY in `STATUS/T0319.log`.
-- [x] T0324 **The session playlist was rejected on every launch and then overwritten empty** (`src/audio/Playlist.cpp`) #data-loss
-      The 10:46 run's startup log carried `Playlist: Path traversal blocked, skipping:` for every track in `last_session.m3u`. `loadM3U()` canonicalised every line and required the result to live under the playlist's own directory — but the app writes the M3U to the config directory and its entries are absolute paths under `~/Music`, so the guard refused the normal case. The queue then loaded empty, and the quit-time flush wrote that empty queue over the file: one launch permanently destroyed the previous session's playlist. The containment rule now applies only to an entry written **relative** (an absolute line names one exact file and cannot climb); a relative `../` is still refused. `absoluteTracksOutsideThePlaylistDirectoryLoad` and `relativeEntriesCannotClimbOutOfThePlaylistDirectory` pin both directions. VERIFY in `STATUS/T0324.log`.
-- [x] T0325 **The Library's 15 s output watchdog cleared a healthy long sync** (`src/qml/views/LibraryView.qml`) #risk-med
-      The 10:46 run logged `LibraryView: watchdog clearing stuck loading after 15s` three times over a sync that was delivering a page every ~2.8 s (2,147 clips is ~108 pages). The QML `Timer` was a plain one-shot restarted only by `SunoBridge.loading` flipping: it fired 15 s after the *first* page regardless of progress, cleared the spinner, and the next page set it again, so the warning repeated for the whole sync. `SunoBridge` already owns the same 15 s watchdog and restarts it on every page request and every delivered page — a real stall detector, not a duration limit. The QML copy is deleted rather than given a longer timeout: two watchdogs on one state cannot both be right. VERIFY in `STATUS/T0325.log`.
 - [ ] T0011 **The whole 11-route library/playlist mutation surface is runtime-unreachable and unobservable** (`src/suno/SunoLibraryMutations.hpp:493`, `src/suno/SunoLibraryMutations.cpp:394-397`) #risk-high
       `bool enabled_{false}` and `dispatch()` always refuses. `setEnabled` is declared
       (:281) and defined (:141) with **zero production callers**. Separately, **no QML
@@ -191,246 +164,6 @@ line to describe an item is describing it in the wrong place. Finished work move
       `mutationsUnavailableReason` / `mutationsBusy`. ~727 LOC plus 11 `Q_INVOKABLE`s can
       neither run nor be seen. Decide: wire it behind an explicit user setting **and** add
       the QML handlers, or delete it and mark the constants `declared-unused`.
-- [x] T0012 **`--headless` makes recording unreachable, not merely silent** (`src/core/Application.cpp:383`) #blocks-ui
-      `VisualizerWindow`, the `frameCaptured` → `VideoRecorder::submitVideoFrame` connect
-      (:419-425) and `RecordingBridge::setVisualizer` (:429) all live inside
-      `if (!opts.headless)`. No window ⇒ no frame. `--record`
-      (`CliArgs.inc:36` → `opts.startRecording`) is then **never read anywhere**. Fix:
-      reject `--headless` + `--record` at parse time, or hoist the visualizer out.
-- [x] T0013 **Two `PresetManager` instances: UI favourites never reach projectM** (`src/core/Application.cpp:388,406`, `src/visualizer/projectm/Bridge.cpp:53,98`) #data-loss
-      `Application` owns one and scans the tree on a worker; `pm::Bridge` owns a **second
-      by value** and synchronously re-scans the same directory. `PresetBridge` is wired to
-      the Application-owned one (`BridgeRegistration.cpp:75`) while
-      `VisualizerWindow::loadPresetFromManager` drives the Bridge-owned one
-      (`VisualizerWindow.cpp:120-123`). Fix: inject one manager into `pm::Bridge`.
-- [x] T0014 **Ratings are lost every session — `RatingManager::save()` is never called** (`src/visualizer/RatingManager.cpp:44-56`) #data-loss
-      `load()` is called once (`Application.cpp:378`); `save()` has zero callers.
-      `PresetBridge::setRating` (`PresetBridge.cpp:201`) mutates only the in-memory map.
-      Fix: call it from `Application::quit()`.
-- [x] T0015 **projectM is fed 48 kHz PCM while the config says 44.1 kHz** (`src/visualizer/VisualizerRenderer.hpp:98`, `.cpp:71`) #risk-high
-      `audioSampleRate_` is hardcoded 48000 with no setter; it sizes the batch fed to
-      projectM. The shipped `[audio] sample_rate = 44100` (`config/default.toml:4`) is
-      ignored, **misaligning beat detection by ~9 %**. Fix: read the live rate off the
-      audio queue.
-- [x] T0016 **Unbounded lyrics-fetch queue fed by an O(n²) loop over a full sync** (`src/ui/controllers/SunoController.cpp:133-144`) #risk-high
-      `libraryUpdated` carries the **whole accumulated list after every page**
-      (`SunoLibraryManager.cpp:163`) while auto-paging the entire library at 1.1 s/page
-      (:171), so page *k* issues *k*×20 `getAlignedLyrics` queries; `lyricsQueue_` has no
-      capacity bound (`SunoLyricsManager.cpp:24`). Fix: iterate the page, dedup by id, cap.
-- [x] T0017 **The lyrics concurrency counter is corrupted by unrelated errors, and leaks permanently when signed out** (`src/suno/SunoLyricsManager.cpp:16-18,83-84`) #risk-high
-      The global `errorOccurred` broadcast decrements the lyrics counter, so any unrelated
-      error frees a slot and `processQueue()` (:34) overshoots its cap of 3. Conversely
-      `SunoClient::fetchAlignedLyrics` returns **silently** when unauthenticated
-      (`SunoClient.cpp:1401`) emitting nothing, so the counter never decrements and **the
-      queue wedges permanently at 3 after three such drops.** Fix: give lyrics its own
-      reply signal and decrement exactly once per issued request.
-- [x] T0018 **`markAllRead` reports a legitimate `204 No Content` to the user as a failure** (`src/suno/SunoNotificationService.cpp:432-437`) #risk-high
-      The code requires a JSON object on a 2xx. `SunoEndpoints.hpp:100-105` states no
-      success body was ever captured for the mutation set and a 2xx must be treated as
-      "accepted, shape unverified". A 204 takes the error path, so **all notifications
-      stay unread although the server marked them.** `SunoLibraryMutations::handleReply`
-      (:488-493) gets this right. Fix: accept any 2xx without parsing.
-- [x] T0019 **`SunoDatabase` has no indexes, no WAL, no `busy_timeout`, and discards transaction results** (`src/suno/SunoDatabase.cpp:83-120,295,303`) #risk-high
-      No `CREATE INDEX` anywhere; `getAllClips` (:311, `ORDER BY created_at DESC`) and
-      `searchClips` (:409-415, five `LIKE`) are full scans on a table with no retention
-      policy. No `journal_mode=WAL` / `synchronous` / `busy_timeout`, so a crash-held
-      write lock blocks every later `open()` for the default 5 s. `db_.transaction()` and
-      `db_.commit()` results are **discarded**, so `saveClips` reports ok even when
-      nothing was persisted. `addDatabase("suno_db")` (:84) has no `contains()` guard and
-      the destructor never calls `removeDatabase`.
-- [x] T0020 **Raw `this` captured in `SunoAccountManager` request callbacks** (`src/suno/SunoAccountManager.cpp:185,197`) #risk-high
-      The manager is a `unique_ptr` member of `SunoController` (:66); destroy it before
-      the reply lands and the lambda runs on freed memory. Three sibling services already
-      use the correct `QPointer` guard for this exact hazard (`SunoExploreService.cpp:226`,
-      `SunoNotificationService.cpp:259`, `SunoAudioUploadService.cpp:230`).
-- [x] T0021 **`vc::Signal<>` subscriptions capture raw `this` and are never disconnected** (`src/suno/SunoLibraryManager.cpp:13-15,22-30`) #risk-high
-      `vc::Signal` (`src/util/Signal.hpp:112`) stores a plain `std::function` with no
-      lifetime tracking and no `disconnect`; the connection id is discarded and the
-      destructor is `= default` (.cpp:60). A `SunoClient` outliving the manager calls a
-      freed `this`. Same in `SunoLyricsManager.cpp:12-18`. Fix: retain the `SlotId` and
-      disconnect in the destructor.
-- [x] T0022 **`Config`'s mutex protects almost nothing, and any read marks it dirty** (`src/core/Config.hpp:73-104,110-121`) #risk-high
-      `mutex_` is taken only by load/save/loadDefault/addOverlayElement/removeOverlayElement;
-      every section accessor bypasses it and returns a **non-const** reference, so
-      `CONFIG.suno().x = y` races `Config::save`. All eight accessors call `markDirty()`
-      unconditionally, so pure readers dirty the config (`EncoderSettings.cpp:272`,
-      `VisualizerRenderer.cpp:27,222`, `SunoDownloader.cpp:79,226`, `SunoClient.cpp:383`).
-      The header comment at :5 ("Thread-Safe: Mutex-protected access") **overstates the
-      code.** (after: T0023)
-      **Closed, and the diagnosis understated the defect.** Because `Config::instance()` hands out a
-      non-const reference, the const/mutable overload pair was worse than "any read marks it dirty":
-      *every* plain read - `CONFIG.visualizer().fps`, `const auto& v = CONFIG.visualizer()`, all 26
-      X-macro QML getters - selected the **mutable** overload (overload resolution looks at the
-      object expression, not the binding), so the const overloads were nearly dead code and
-      `isDirty()` at quit was almost always true, silently defeating T0023. The write accessors now
-      carry distinct names (`audioMut()` ... `overlayMut()`), so reads are const by construction and
-      a write through the old spelling is a **compile error**; the compiler then enumerated 30+ real
-      write sites (CLI overrides, the SettingMacros X-table - which now takes read and write paths -
-      `resetToDefaults`, credential migration, first-run device-id minting, six test suites).
-      Mutating paths also assert main-thread affinity in debug builds (`Config::assertAffinity()`);
-      the survey confirmed all Config access is GUI-thread today, so the "races save()" hazard is
-      latent, and the assert converts it from a silent race into a loud failure the day a worker
-      writes. Contract tests in `tests/unit/core/test_Config.cpp`; the invariant is recorded in
-      `docs/dev/INVARIANTS.md` (Threads and ownership).
-- [x] T0023 **`Config::save()` never clears the dirty flag** (`src/core/Config.cpp:23-26`) #risk-high
-      `ConfigLoader::save` succeeds (:299) but nothing calls `markClean()`, so with T0022
-      the file is rewritten on every quit regardless of change.
-- [x] T0024 **`setFavorite`/`setBlacklisted` mutate the published generation in place** (`src/visualizer/PresetManager.cpp:474-494`) #risk-high
-      `publishGeneration` documents "Swap, never clear-and-refill: a Snapshot pinned by any
-      reader keeps the old storage alive **and unmodified**" (:209-211). The toggle writes
-      `liveList()[index].favorite` (:477), violating the invariant documented 265 lines
-      earlier in the same file. Fix: copy-on-write the generation.
-- [x] T0025 **`Logger::get()` races on a non-atomic static** (`src/core/Logger.cpp:7,59-64`) #risk-high
-      `logger_` is a `static std::shared_ptr`. Two threads logging before
-      `Application::init` reaches `Logger::init` (`Application.cpp:275`) race on the
-      pointer assignment and on `spdlog::register_logger`. Fix: Meyers singleton +
-      `std::call_once`.
-- [x] T0026 **projectM can be destroyed with no current GL context — and it WILL issue GL calls** (`src/visualizer/projectm/Engine.cpp:56-61`, `src/visualizer/VisualizerWindow.cpp:30-35`) #risk-high
-      `~VisualizerWindow` only cleans up if `makeCurrent` **succeeds** (:31); if it fails,
-      `~VisualizerRenderer` (`:17-19`) cleans up anyway with no context, then
-      `projectm_destroy()` runs contextless. Verified upstream: `projectm_destroy` →
-      `~ProjectM()` → `Texture::~Texture()` unconditionally calls **`glDeleteTextures`** on
-      every owned texture (`Texture.cpp:63` @ master), and `~ProjectM()` is an **empty body**
-      that clears no state. There is no context check and no upstream documentation of the
-      requirement. Worse on macOS: with the Qt Quick context current instead, a no-context
-      `glDeleteTextures` can delete names in the **wrong namespace**. FIX: assert
-      `makeCurrent` succeeded, and if it did **not, leak the handle deliberately** — a leak is
-      strictly better than deleting GL objects in the wrong context. `RenderTarget::destroy()`
-      has the matching hole (zeroes names, leaks them, `RenderTarget.cpp:109-116`).
-      **Closed as prescribed: leak, never delete without the context.** `~VisualizerWindow` requires
-      `makeCurrent` to succeed and, when it does not, calls the new
-      `VisualizerRenderer::abandonGlObjects()` — which drops every GL-owning handle (projectM
-      instance via `pm::Bridge::abandon()` → `Engine::abandon()`, the native playlist via
-      `Playlist::abandon()`, the PBOs, the capture target via `RenderTarget::abandon()`) **without
-      issuing a single GL call**, and sets a flag that makes the destructor's later `cleanup()` a
-      no-op. `RenderTarget::destroy()` additionally records its creating context and deletes only
-      under it, closing the wrong-namespace hole the item noted (it previously checked only that
-      *some* context was current). Headless ctest cannot exercise a real GL teardown — the runtime
-      path is read-verified only, per the board's own rule that a green run is not GL evidence.
-      **One correction since it closed:** the assert was wrong and has been removed. `makeCurrent` fails on a
-      normal path — Ctrl-C tears the surface down before the destructor runs — so the "abandon" branch was
-      unreachable for the one case it was written for, and the debug build died with `SIGABRT` after printing a
-      clean shutdown. The `LOG_ERROR` is the contract: the failure is reported, never swallowed.
-- [x] T0027 **GL state is set but never saved or restored around projectM — upstream will not fix it** (`src/visualizer/VisualizerRenderer.cpp:88-106`) #risk-high
-      Sets viewport, scissor, `GL_SCISSOR_TEST`, `glColorMask`; never reads the previous
-      values, and `GL_BLEND`/`GL_DEPTH_TEST` are neither set nor restored. Contained today
-      only **by accident** of separate-surface ownership. This is a genuine upstream gap, not an
-      integration error: upstream PR #981 ("preserve gl state of calling application") was
-      written and reviewed, then **closed unmerged** on 2026-03-10 — maintainer `kblaschke`,
-      verbatim: *"Can't test it currently so someone else would have to do it."* `GLStateGuard.hpp`
-      is absent from master. libprojectM resets only FBO 0 and viewport, and its own GLES
-      comment warns that per-FBO draw-buffer state *"leaks into FBO 0 on some drivers"*. The
-      host must therefore guard viewport + scissor + colour mask + blend + depth itself. FIX:
-      save and restore all of it around the projectM call.
-      **Closed, and the guard covers more than the item listed.** `GlStateGuard` in
-      `VisualizerRenderer.cpp` snapshots viewport, scissor box and enable, colour write mask,
-      blend enable/src/dst factors/equations, depth enable/func/write-mask, cull enable/mode,
-      and the read/draw framebuffer bindings, and restores them in its destructor on every path
-      out of `renderFrame` — including the capture path, which rebinds the read framebuffer and
-      a PBO itself. Texture units and the program object are deliberately excluded: nothing
-      that draws in this context afterwards shares them, and they would add calls to the
-      per-frame path. Verified with a real GL 3.3 core context, not a mock:
-      `renderingRestoresTheCallersGlState` sets sentinels for every one of those values, renders
-      a frame, and reads them back — the GL suite is 10/10 passed, 0 skipped on this machine.
-      VERIFY in `STATUS/T0027.log`.
-- [x] T0028 **CLI overrides bypass the parser's clamps** (`src/core/Application.cpp:318-320`) #risk-high
-      `applyOverride` writes raw values **after** `clamp(fps,10,240)`
-      (`ConfigParsers.cpp:259`). `--visualizer-fps 0` → `fps=0` → `VisualizerRenderer.cpp:28`
-      skips its guard and keeps `targetFps_{60}` (`VisualizerRenderer.hpp:99`), so the flag
-      silently does nothing.
-- [x] T0029 **`FileBackend::store` leaves a 0644 window on the refresh secret** (`src/suno/auth/CredentialStore.cpp:284-290`) #security
-      `file.commit()` renames the temp file into place; `setPermissions(0600)` runs
-      **after**. Under `umask 022` the secret is world-readable in between. Gated to
-      `Backend::File` / `CHADVIS_NO_KEYCHAIN` only (:634), both of which `LOG_WARN` — so P1,
-      not P0. Fix: open the temp file with the permissions (QSaveFile inherits them).
-- [x] T0030 **Full request URLs reach the log** (`src/suno/SunoClient.cpp:1169-1170,1296-1297`, `src/suno/CapturedHosts.cpp:308`) #security
-      `url().toString()` is logged; `reply->errorString()` is logged and Qt populates it
-      with the full URL on transfer errors; `describeRefusal` embeds `url.toString()` in
-      every refusal sentence. `refusalSentence` echoing a **query string** is a latent leak
-      — the loopback callback carries `state`. Fix: log `url.path()`.
-- [x] T0031 **`tokenChanged` carries a live bearer and has zero subscribers** (`src/suno/SunoClient.hpp:239`) #security
-      Emits `token.jwt.toStdString()` (:883) and nothing ever connects. One careless future
-      `connect` from QML or a log away from a leak. Fix: delete, or send a redacted form.
-- [x] T0032 **Failed worker-thread join leaves a use-after-free window** (`src/suno/SunoClient.cpp:189-194`) #risk-high
-      On `wait()` failure the destructor only logs, sets `worker_=nullptr`, and the object
-      dies — while queued lambdas at :215/:219 capture **raw `this`**. The comment at
-      :186-188 claims destruction joins the thread, which a failed join does not deliver.
-- [x] T0033 **Duplicate host allowlists survive outside the registry** (`src/suno/SunoDownloader.cpp:121`, `src/suno/ClipParser.cpp:72-73`, `src/suno/SunoAudioUploadService.cpp:163`) #risk-high #security
-      `CapturedHosts.hpp:11-14` documents replacing three per-file predicates as the reason
-      the registry exists; three remain hand-rolled, so `hostsForRole` has **no production
-      caller** and editing a registry row changes nothing. All three are anonymous fetches
-      today, so no bearer leaks — but the fail-closed guarantee is triplicated.
-- [x] T0034 **Recursive preset scan has no depth or breadth cap** (`src/util/FileUtils.cpp:242-247`) #risk-high
-      `recursive_directory_iterator` with no `max_depth`. Symlink loops are safe and
-      permission errors handled, but a user-supplied tree is walked unboundedly.
-- [x] T0035 **No upload size limit, no cancel, no retry, wrong content type** (`src/suno/SunoAudioUploadService.cpp:206-212,329-330,341-343`) #risk-high
-      Validates `size() <= 0` but sets no maximum and offers no `cancel()` — the only aborts
-      are private and destructor-driven, so a 2 GB upload cannot be stopped. Exactly one
-      storage POST, no retry, no `Retry-After`, and on failure the S3 ticket is dropped
-      (:390) leaving orphaned parts. Content type is hardcoded `application/octet-stream`
-      although only `m4a` is accepted, so it should be `audio/mp4` — and the validated
-      `ticket_->fields["Content-Type"]` (:150-154) is ignored.
-- [x] T0036 **`SunoController` fans every client error into `libraryFetchFailed`** (`src/ui/controllers/SunoController.cpp:160-168`) #risk-high
-      A failing Explore page, a 429 on the badge endpoint, or a blocked upload **clears the
-      library spinner and sets the library error** (`SunoBridge.cpp:315-318`;
-      `SunoLibraryManager.cpp:22-30`). The comment in `SunoWorkspace.hpp:83-90` names this
-      exact anti-pattern and leaves it in the one place it survives.
-- [x] T0037 **Blocking TagLib and file I/O on the GUI thread in the download completion path** (`src/suno/SunoDownloader.cpp:419,543,576`) #risk-high
-      `tagAudioFile` opens and rewrites the file in place; two `ofstream`s and two
-      `fs::exists` run synchronously inside `DownloadQueue::finished` on the GUI thread. A
-      40-clip batch tags and writes 80 sidecars in one event-loop turn.
-- [x] T0179 **`build.sh` spends 75% of the box, not all of it** (`build.sh`) #risk-high #perf
-      `--jobs` counted 4 logical cores and ignored RAM; now 2 physical (floored at the physical
-      count), capped by available RAM, `nice 10`s every child. ctest budgeted separately (`-j2`):
-      `unit_tests` burns 14 s CPU across 91 s. `--budget` prints the arithmetic. `--nice` shipped
-      broken (defaults assigned after the parser). Also probes `sccache`, and repairs a dir whose
-      cmake was uninstalled -- read `build.ninja`, not the cache. Details in CHANGELOG.
-- [x] T0038 **`scripts/build-fast.sh` hijacks the Release build directory with a `-O0` Debug config** (`scripts/build-fast.sh:1`) #risk-high
-      Directly contradicts `build.sh:7-10` ("every profile gets its OWN directory"). No
-      shebang, no `set -e`, hardcodes `sccache` while `Compiler.cmake:170` probes both, and
-      reuses `CMAKE_CXX_FLAGS` so it sticks in the cache. Fix: delete it, or make it a
-      two-line wrapper over `./build.sh --fast`.
-- [x] T0039 **`release.yml` misstates macOS signing and believes `MACOSX_BUNDLE` is unset** (`.github/workflows/release.yml:19-42,190-192,300-306`) #risk-high
-      It passes the CMake signing variables and the notes claim the `.app` is unsigned,
-      but `cmake/TargetSetup.cmake:868` always ad-hoc-signs (`_chadvis_sign_identity`
-      defaults to `"-"` at :855-856). It also asserts `MACOSX_BUNDLE` is **not** set — it
-      **is** (`TargetSetup.cmake:263`) — so the macOS release leg is `required: false`
-      (:93,:96) and can never block a release.
-- [x] T0040 **`SAFE_TESTS` silently omits three registered ctest entries** (`build.sh:50-59`) #risk-high
-      `test_CapturedHosts`, `test_FeatureFlags` and `test_OffscreenRenderSpike` are
-      registered but absent, so `--tests` does not build them and `--safe` does not run
-      them — including the suites `tests/unit/CMakeLists.txt:98-105` calls "the only tests
-      covering the tree's fail-closed host policy". The comment at `build.sh:37-40`
-      documents this failure having happened before. Make `build.yml:271-291` the single
-      source of truth. (after: T0041)
-- [x] T0041 **Three ctest entries are instrumented but carry no `TSAN_OPTIONS`** (`tests/unit/CMakeLists.txt:339-350`) #risk-high
-      `test_HttpPolicy`, `test_RenderExecutor` and `test_OffscreenRenderSpike` are missing
-      from the block `tsan.yml:53-57` records as a known gap. `test_RenderExecutor` is
-      documented headless-safe (:203) and belongs there.
-- [x] T0042 **The TSan lane cannot distinguish a new race from the old ones** (`.github/workflows/tsan.yml:191-193,163,207`) #risk-high
-      Non-gating, and "expected to report 39 races" since it was written. Add a report-count
-      threshold so regressions bite while known noise stays tolerated. **Do not** fill
-      `cmake/tsan.supp` — a suppression that hides a real race is worse than a red lane.
-- [x] T0043 **A failed worker-thread join in `SunoClient` is compounded by no ASan/UBSan lane** (`.github/workflows/`) #risk-high
-      `CHADVIS_SANITIZER` accepts `address`/`undefined` (`Compiler.cmake:139-140`) and
-      `build.sh:167-168` exposes `--asan`/`--ubsan`, but only TSan has a workflow — and the
-      PCM/decoder/encoder code is exactly what the unexercised lanes would catch.
-- [x] T0044 **A stale Clerk failure reply can tear down a healthy session** (`src/suno/SunoClient.cpp:950-953`) #risk-high
-      `onClerkAuthFailedInternal` clears the bearer and bumps the request epoch **without**
-      the epoch guard its sibling has at :926. A failure from an exchange invalidated by a
-      credential change signs out a live session. No test covers the failure path.
-- [x] T0045 **`LyricsBridge::setSearchQuery` is not `Q_INVOKABLE`, so lyrics search never fires** (`src/qml_bridge/LyricsBridge.hpp:61`, `src/qml/panels/LyricsPanel.qml:54`) #blocks-ui
-      A plain `public:` member, outside the `public slots:` block starting at :63. QML can
-      only invoke slots/`Q_INVOKABLE`s, so this fails at runtime and the panel's search
-      field never sends its query.
-- [x] T0046 **`SettingsWindow.onClosing` is shadowed on the instance — accent edits are lost** (`src/qml/main.qml:484-490`) #data-loss
-      Declaring `onClosing` on the instance **replaces** the component-level handler, so
-      `appearancePage.apply(); SettingsBridge.save()` (`SettingsWindow.qml:67-70`) never
-      runs. Fix: merge into a `Connections { target: settingsWindow }`.
-- [x] T0047 **Theme accent and background are not persisted although the UI says they are** (`src/qml/panels/settings/AppearanceSettings.qml:23-26`) #data-loss
-      `Theme.applyAccent/applyBackground` write only the in-memory singleton
-      (`Theme.qml:296-316`); `SettingsBridge.hpp` declares no such property. The claims at
-      `SettingsView.qml:39` ("auto-saved as you tweak") and `SettingsPanel.qml:8` are false.
 - [ ] T0049 **Qt 6.12 can convert missing `required property` into a load-time error — not used** (`src/qml/`, `src/core/Application.cpp`) #risk-high
       "When instantiating a component with missing required properties, the engine now
       reports an error instead of silently constructing an incomplete object." Marking
@@ -459,17 +192,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       accepted `QTcpSocket`s alive with no idle timer.
       **The lane is deliberately gated, so this is not a live exploit — but it is a
       precondition for flipping that gate (T0145), not something to do after.**
-- [x] T0167 **A short library sync is indistinguishable from a complete one** (`src/suno/SunoLibraryManager.cpp`, `src/suno/DownloadQueue.cpp`) #risk-high
-      Neither layer reports *completeness*, so a truncated sync is presented as a finished
-      library. Prescribed shape: `{complete: false, projects, errors, stats: {pagesFetched,
-      expectedTotal, elapsedMs}}`, and a short page must not be treated as proof of completion
-      when the reported total disagrees.
-- [x] T0168 **Transfer failure is matched by clip *title*, not id** (`src/qml/views/LibraryView.qml`) #risk-high #data-loss
-      `downloadStatus` is the only terminal channel, and the view parses `"Download failed for "`
-      then matches the remainder against `clip.title` **by exact equality** — so a rename or a
-      duplicate title attributes the failure to the wrong clip. `downloadStatus` is also never
-      cleared, so an hour-old failure still reads as current. Fix: a
-      `downloadStateChanged(clipId, state, reason)` signal.
 - [ ] T0170 **Overlays and karaoke cannot appear in recorded video at all** (`src/visualizer/VisualizerWindow.cpp`, `src/recorder/`) #risk-high #blocks-feature
       The recorder captures inside the *native* `VisualizerWindow` GL context; the QML scene
       graph is a sibling on top in the `QQuickWindow`. **The entire overlay system is invisible
@@ -482,14 +204,8 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       recording is one frame short. Separately `AV_PIX_FMT_YUV420P` is hardcoded while
       `EncoderSettings::pixelFormat` exists and `validate()` never checks that the chosen
       format is supported. Both are one-liners and both fail silently.
-- [x] T0172 **The audio pre-buffer computes the wrong next track when shuffle is on** (`src/audio/AudioEngine.cpp:201`) #risk-high
-      It derives the linear `index+1` while `shuffleOrder_` is the real traversal order, so
-      pre-buffering after a shuffle plays the wrong track. Independent of the re-entrancy
-      defect the encoder lane found on the same path. Small and low-risk.
 - [ ] T0173 projectM's broken-preset retry: the premise needs GL evidence before anything is changed (`src/visualizer/projectm/Bridge.cpp:48`) #risk-medium
       Originally filed as: registering `projectm_set_preset_switch_requested_event_callback` overrides projectM's own single-slot handler, killing its 5-retry recovery. **Inspection says the premise is wrong.** projectM has TWO callback slots here (`ProjectMCWrapper.cpp:98-112`): `preset_switch_requested` and `preset_switch_failed`. `Bridge::init` overwrites only the **requested** one. The retry lives in the **failed** handler — `PlaylistCWrapper::OnPresetSwitchFailed` (`PlaylistCWrapper.cpp:57-100`) — which the app never touches, and it is still installed, so a failed preset load should still retry up to `m_presetSwitchRetryCount` and advance via `PlayPresetIndex`. The claim cannot be settled by reading: it needs a real window, a corrupt `.milk` next to a valid one, and a forced switch, because the whole path is GL-dependent and every headless lane skips it. **Do not "fix" this on the current evidence** — re-installing both callbacks or forwarding failures into the app's pending mechanism would change working native wiring on the strength of a claim that inspection contradicts. If it is taken up: verify with the broken-preset experiment first (a temp dir with one truncated `.milk` and one valid preset, force play, count retries through the app's `switched` signal), and only then decide. Distinct from T0057, which is about the never-emitted `presetLoading` flag.
-- [x] T0178 **ASan: container-overflow read attributed inside `checkPlausibility` on the reflow fixture** (`src/lyrics/LyricTiming.cpp:777`, `tests/unit/lyrics/test_LyricTiming.cpp:222`) #risk-high
-      Found by the first ASan lane run on this tree — exactly the T0043 gap. `./build.sh --asan --tests` then `./build-asan/tests/unit/unit_tests` aborts (exit 134) in TestLyricTiming::theReflowModelIsExactOnAWorkedExample: ASan container-overflow, SUMMARY names LyricTiming.cpp:777; every suite before TestLyricTiming passes under instrumentation, including the whole DownloadQueue suite. `words()` is an exact span over the member vector, so the lead is checkPlausibility's own `durations` vector: non-finite and negative-time words `continue` without a push_back, and any later rule indexing `durations` by word index reads past size within capacity. Alternative: the libc++ container-annotation interop gap. Source analysis decides which; do not silence it with detect_container_overflow=0.
 - [ ] T0180 **ASan lane: `TestQmlStartup::settingsWindowOpensOnNavigate` throws at teardown with the engine still mid-creation** (`tests/integration/test_main.cpp:70-126`, `tests/integration/CMakeLists.txt:33`) #risk-high
       Found by the ASan lane's first full integration run -- this lane is NOT in `SAFE_TESTS`, so `--safe` never reaches it and the fast profile cannot see it. Under `--asan`, the test fails with "Caught unhandled exception" (qtestcase.cpp:2002), preceded by `QQmlComponent: Component destroyed while completion pending` and `There are still "77" items in the process of being created at engine destruction`, then `libc++abi: terminating due to uncaught exception of type std::system_error: mutex lock failed: Invalid argument` after the totals line.
       Verified NOT caused by the T0047 theme work: the same failure reproduces with `Theme.qml` checked out at 435f91f (pre-change) and rebuilt, so it is pre-existing, instrumented-timing-only, and invisible to `--safe`. Fast profile passes the same test 4/0. The 77 pending items point at teardown ordering -- the engine is destroyed while async component creation is still pending -- and the mutex error is a separate teardown crash. Do not "fix" by making the test wait; establish what is still being created at destruction first.
@@ -501,11 +217,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       The reported symptom. `AuthCoordinator::beginGoogleSignIn()` opens `https://suno.com/create?redirected_from=signin` and stops there, by design: Clerk's flow delivers the OAuth `code` to `auth.suno.com/social/complete/` and **never to 127.0.0.1**, so there is no callback for a desktop client to catch. For a returning user the browser simply opens on an already-signed-in page, nothing is exchanged, and the app waits forever for a paste the UI only mentions in a collapsed field. **The credential exists, in the right place, right now.** The recon answers the whole question end to end: `suno-recon-cat-stealth-modekl/suno-oauth-google.md` captures the live flow — `POST /v1/client/sign_ins` with `strategy=oauth_google` sets `__client` (`HttpOnly`, `Secure`, `SameSite=None`, **Max-Age 31536000 ≈ 1 year**, a refresh JWT whose payload says `"token_type":"refresh"`) plus `__client_uat`; `reports/endpoints.md` confirms `POST auth.suno.com/v1/client/sessions/{sid}/tokens` mints fresh `__session` bearers from it and that the `__session` bearer itself (`aud: suno-api`) is what the API wants. On this machine, Brave's cookie store holds `__client`, `__client_Jnxw-muT`, `__client_uat(_Jnxw-muT)` and `__session(_Jnxw-muT)` for `suno.com`/`auth.suno.com` — verified by read-only query on a copy of the DB. **The fix: harvest the browser's cookie store.** `HttpOnly` blocks `document.cookie` (which is why T0182 died) but not the on-disk SQLite store; the recon's own `bin/freshtok.py` already does this for Brave on macOS (keychain `Brave Safe Storage` → PBKDF2-SHA1, 1003 iters, `saltysalt`, 16-byte key → AES-128-CBC, v10 layout, 13-byte header). Implement the same in C++: copy the DB (WAL-safe), select the Clerk cookie family for `suno.com` hosts only, decrypt, assemble a `Cookie:` header, and hand it to `SunoClient::setCookie()` — which already persists to `CredentialStore` and kicks a bearer fetch, and whose `classifyStoredCredential()` already accepts exactly these three name prefixes. **Explicit user action, never automatic**: the first read of a browser's Safe Storage secret makes macOS ask the user to allow it, which is precisely the consent moment this needs. Never log a value; `suno.com` hosts only.
       **Shipped as `[?]` — code complete, all gates green, and the shipped decrypt proven against the real store, with exactly one leg unverified: a human pressing the button.** Three decrypt defects were found only by driving the real Brave store, none reproducible in the synthetic fixtures: `QFile::copy` silently refuses to overwrite the temp file `QTemporaryFile` already created (so every real-store read returned nothing while the synthetic one passed); `kCCOptionPKKS7Padding` strips-or-silently-does-not as Brave re-encrypts cookies live (so the crypto call now uses `options = 0` with an explicit tail handler); and the 16-byte host-binding prefix on `.suno.com` cookies begins with byte `0xdd`, which a control-character-only "binary" check classifies as printable — the unit fixture now uses exactly that byte. Real-data evidence: the shipped `decryptChromiumValue` on this machine's live `__client` value returns 689 clean bytes, matching openssl ground truth; the full `harvest()` path read the same store. **What remains is MT-001-D2**: each newly-linked binary gets its own one-time macOS consent prompt for "Brave Safe Storage", which on an unattended machine times out and reports no session — correct behaviour, but the shipped app will prompt the same way the first time, and the user must press **Already signed in? Import the session** once and click Allow.
       **Post-shipment, pressing the button found three more defects, each fatal on its own.** (1) `deriveChromiumKey` passed CommonCrypto a salt **length of 10 for the nine-byte `"saltysalt"`**, so the derived key included the terminator and matched no Chromium build; every real cookie decrypted to noise and the app called its own bug "this build's format support needs updating". The synthetic round-trip could not see it because it encrypted with the same wrong key. Now `sizeof - 1`, with a known-answer test (`fecbbdb2774354b6b8466d2758047cb5`). (2) A browser stores each family **twice** — host-only `__client` and `__client_Jnxw-muT` — and all four JWT copies made the header **4695 bytes against `CredentialStore`'s 2560-byte ceiling**, so the import authenticated and then could not persist: the session worked until quit. `assembleCookieHeader` keeps one cookie per family (the host-only copy) and the live header now measures **2333** bytes. (3) The backend used `kSecUseDataProtectionKeychain`, which needs an `application-identifier` entitlement an ad-hoc bundle cannot have — every write returned `errSecMissingEntitlement` (-34018), so even a small credential was never stored. It uses the login keychain now; reads stay on the worker, a denied read is a failure rather than a plaintext fallback, and `CHADVIS_LIVE_KEYCHAIN=1 … liveKeychainRoundTrip` proves a real store/load/remove. Remaining for `[x]`: one human pass with the rebuilt app (import, quit, relaunch, still signed in) — MT-001-D2.
-- [x] T0184 **`--theme dark/gruvbox/nord` is printed in `--help`, parsed, persisted, and read by nothing** (`src/core/Application.cpp:692`) #cleanup
-      **Closed by T0192, and the flag's promise is now real.** `--theme` drives `Theme.applyThemeById()` through `SettingsBridge.sessionTheme`, the help line names the four themes that actually load, and the three it used to advertise — `dark`, `gruvbox`, `nord` — are `chadvis-dark` plus two of them, transliterated into QML rather than restored as `.qss`. The one part of the original diagnosis that stood: `applyOverride()` wrote into live `Config` and the next save persisted it, so wiring the flag up **as written** would have overwritten the user's saved theme on every launch. The original item's alternative — delete the flag, the help line and the config key together — was not taken, because the plan wants `--theme` working; what was deleted instead is the *silent* part.
-- [x] T0185 **The accent family is only half-derived, so a user-picked colour half-applies** (`src/qml/styles/Theme.qml`) #risk-high
-      `applyAccent` (:358-376) recomputes the five `accent*` tokens, but `glassBorder` (:52), `glassHighlight` (:53) and `glowAccent` (:249) hardcode `Qt.rgba(0, 0.733, 0.831, …)` — **the shipped cyan, frozen.** Change the accent and every glass border, highlight and glow stays cyan. `applyBackground` (:383-392) derives five of the surface family; `border` (:88), `borderLight` (:89) and `textDisabled` (:64) stay `readonly` at their dark values, so a light background yields ~1.0:1 text — the same defect T0118 already records. Derive every accent-dependent token from `accent`, and make the surface/border/text family derive from `background` with a lightness-aware branch. **This is what makes T0183's fix look broken on first use**, and it should land with it.
-
 ## P2 — robustness, cleanup, and debt
 
 - [ ] T0327 **The credential-store handoff is a captured lambda across threads, and that is the whole TSan class** (`src/suno/SunoClient.cpp:267-335`) #risk-high
@@ -551,7 +262,7 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [ ] T0058 `RatingManager` is a process-wide, mutex-less singleton keyed on preset **name** (`src/visualizer/RatingManager.cpp:9-25`) #blocks-feature
       One global `ratings.toml` keyspace means two preset banks containing the same preset
       name share a rating — **structurally blocks multiple banks.** `ratings_` is a bare
-      `std::map` with no lock. Fix: inject it, key on path, and add a mutex. (after: T0014)
+      `std::map` with no lock. Fix: inject it, key on path, and add a mutex.
 - [ ] T0060 Dead members and methods with grep proof (`src/`) #cleanup
       `Config::addOverlayElement`/`removeOverlayElement`/`findOverlayElement` (zero callers),
       `VisualizerRenderer::setTargetFps`, `VisualizerWindow::feedAudio` (deprecated empty
@@ -616,13 +327,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       OverlayPanel.qml MouseArea T0004's file list already contains, and the
       "different panel" claim contradicted its own citation. Fixed and
       verified under T0004.
-- [x] T0074 `Escape` closes the whole Settings window while the "Reset all settings?" dialog is up (`src/qml/SettingsWindow.qml:156-160`) #risk-high
-      Window-scope `Esc` outranks the modal dialog, so a user backing out of a destructive
-      confirmation instead dismisses the window — losing unsaved edits per T0046. Directly
-      contradicts `main.qml:560-561`.
-- [x] T0075 Destructive actions with no confirmation (`src/qml/panels/PlaylistPanel.qml:268,262`, `src/qml/panels/SettingsPanel.qml:83`) #risk-high
-      "Clear All" destroys the whole playlist in one right-click. The live path
-      (`SettingsWindow.qml:141-146`) does have a dialog — copy it.
 - [ ] T0076 Views with no loading, empty, or error state (`src/qml/views/VideoView.qml:18-53`, `panels/PresetsPanel.qml:45-54`, `panels/PlaylistPanel.qml:87`, `components/TransportBar.qml`) #blocks-ui
       `VideoView` shows a black rectangle captioned "Ready". **Model correctly on
       `LibraryView.qml:397-448`, `DiscoverView.qml:207-261`, `NotificationsView.qml:191-243`
@@ -707,9 +411,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       The suppression needs **both** `CHADVIS_FAST_ITERATION` and a Debug build type;
       build.yml sets only the latter, so `_chadvis_do_deploy` stays ON at a measured
       **5–7 minutes per link** (:358-362).
-- [x] T0095 Every CI `ctest` invocation is serial (`.github/workflows/build.yml:297,229`) #performance
-      Add `--parallel $(nproc)`. `release.yml:121-123` admits it has no dependency caching
-      while still installing ccache.
 - [ ] T0097 `unit_tests` is one binary with one `QCoreApplication` running 31 suites sequentially (`tests/unit/test_main.cpp:38,41-72`) #risk-medium
       A crash or hang in suite 30 loses suites 1–29's results, and config-singleton mutators
       are unisolated.
@@ -745,38 +446,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       (a) `hwFramesCtx_`/`hwDeviceCtx_` survive `cleanup()` and are never freed, so a re-`init()`
       after a partial HW failure keeps the old device; (b) return `AVERROR_EXIT` from
       `read_packet` to unwind an in-flight read *before* joining the worker thread.
-- [x] T0153 **The resampler never rate-converts: `in_rate` is set to the encoder's rate** (`src/recorder/VideoRecorderFFmpeg.cpp:911`) #risk-high #data-loss
-      `swr_alloc_set_opts2` is called with `settings.audio.sampleRate` as *both* `in_rate` and
-      `out_rate`, while the queue carries the **observed sink rate**
-      (`src/audio/AudioEngine.cpp:522`). The file is self-documented as "a real bug and it is
-      not fixed here" at `:925-931`. A 44.1 kHz sink encoded as 48 kHz plays at the wrong
-      speed. Fix: thread the queue's real rate through `VideoRecorderThread` → `encodeAudio`
-      into `in_rate`. **This is the same class as T0015** (projectM fed 48 kHz against a
-      44.1 kHz config) and both must be fixed from one source of truth.
-      **Closed, and the rate alone was only half of it.** `AudioQueue::sampleRate()` reaches
-      `encodeAudio`, which rebuilds the resampler when a batch disagrees with the rate it was
-      built for; `configureResampler` is now the one place a context is built. The other half
-      is why a correct `in_rate` would still have lost audio: the old loop consumed a fixed
-      `frameSize * channels` of input per encoder frame, so whatever swr had not taken was
-      discarded -- ~8 % of every batch on a 44.1 kHz sink, period. It now converts the batch
-      into a scratch frame in the encoder's own format and cuts whole frames out of the
-      remainder it carries. `oneSecondOfDeviceRateAudioBecomesOneSecondOfEncodedAudio` pins
-      the arithmetic: one second of 44.1 kHz input becomes ~48 000 encoder samples at 48 kHz,
-      where the old path produced 44 032. VERIFY in `STATUS/T0153.log`.
-- [x] T0154 **The audio callback thread mutates GUI-affine state without atomics** (`src/audio/AudioEngine.cpp:476-479,507-511,533,537-539`) #risk-high
-      `processAudioBuffer` runs on the Qt audio thread (the `QAudioBufferOutput` connection at
-      :213 is auto/direct) and writes plain `int observedSinkRate_` (`AudioEngine.hpp:213`),
-      plain `bool conversionFaulted_` (:220), plain counters (:216-217) and **`QString`
-      `outputStatus_` (:215)** via `refreshOutputStatus()` — all read on the GUI thread by
-      `SettingsBridge::attachAudioEngine` → `audioOutputStatus()` (`SettingsBridge.cpp:315,322`).
-      **`QString` assignment is a non-atomic multi-word mutation, so a torn read is UB, not a
-      stale value.** Fix: atomics for the scalars, and marshal the status string through a
-      queued invocation.
-- [x] T0155 **`LOG_ERROR` and `emit errorSignal` from the real-time audio callback** (`src/audio/AudioEngine.cpp:537-539`) #risk-high
-      **Closed, and the half that named `SettingsBridge` was wrong.** Its connect is `AutoConnection`, so a cross-thread emit was already queued onto the bridge's thread — nothing there ever wrote QML from the audio thread. The real RT violations were `LOG_ERROR` (lock + format), `FormatError::describe()` (allocation) and the `emit` itself: all three now run in a queued functor on the engine's thread, with only a POD payload captured. The one live T0154 remnant was `refreshOutputStatus()` called **directly** from the callback after an atomic store, which is the QString torn read the item describes; `postStatusRefresh()` existed with zero callers and now has the one caller. Pinned by `sinkRateReachesTheStatusWithoutBuildingItOnTheCallbackThread` and `aFaultIsRecordedOnTheCallbackThreadAndReportedOnceOffIt`, which connect with `Qt::DirectConnection` so they observe the *emitting* thread — an AutoConnection would pass even with the bug.
-      `reportConversionFailure` formats, writes the log, and emits from the RT thread;
-      `SettingsBridge`'s slot (`SettingsBridge.cpp:310-312`) then mutates a QML singleton
-      property — **a GUI-thread write from an audio thread.** Fix: post the report.
 - [ ] T0156 **Encoder teardown (`flush` + `av_write_trailer`) blocks the GUI thread** (`src/recorder/VideoRecorderCore.cpp:168`, `src/qml_bridge/RecordingBridge.cpp:323`, `src/recorder/RenderExecutor.cpp:802-807`) #risk-high
       `RecordingBridge::stopRecording` is a QML-invoked slot, so `stop` → `flush()` +
       `cleanup()` (which writes the trailer at `VideoRecorderFFmpeg.cpp:353`) blocks on the
@@ -798,64 +467,6 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `slots_.push_back` (:512); if that reallocates, `slot` and `index` are stale before
       `slots_.erase` at :854. Survives today only because the queue's own `pumping_` guard
       suppresses re-entry on this exact path. Fix: erase the slot before reporting failure.
-- [x] T0160 **`sws_getContext` return is unchecked, then dereferenced; and the context is keyed on the first frame only** (`src/recorder/VideoRecorderFFmpeg.cpp:413-426`) #risk-high
-      The result is `reset()` into `swsCtx_` with **no null test**, and `sws_scale(swsCtx_.get(), …)`
-      runs on the next line. Every other allocation in this file is checked, and the comment at
-      :771-783 explains exactly why this one must be too. Separately, the context is created
-      once (`if (!swsCtx_)`) from the *first* frame's dimensions, so a mid-recording resize feeds
-      `sws_scale` a source linesize of 0 for the new width while the scaler strides by the old
-      one. Fix: null-check, and key the context on `(frame.width, frame.height)`.
-      **Closed.** A failed `sws_getContext` now drops that frame and logs — `sws_scale` on a null
-      context is a null dereference — and the context is keyed on the source size
-      (`swsSrcWidth_`/`swsSrcHeight_`), rebuilt when a capture arrives at a different one; both
-      keys are cleared before the attempt and by `cleanup`. `aSourceResizeRebuildsTheScaler`
-      pins the second half with pixels, not a branch: a 96x48 source whose horizontal thirds are
-      white/black/white, encoded to 32x32, must leave the output's bottom row white — a context
-      still keyed on the first 32x32 frame never reads past the source's top two thirds.
-      VERIFY in `STATUS/T0160.log`.
-- [x] T0161 **`av_hwframe_get_buffer` failure leaves a half-built `hwFrame_`** (`src/recorder/VideoRecorderFFmpeg.cpp:790-793`) #risk-high
-      On failure only a `LOG_WARN` is emitted, but `hwFramesCtx_` stays non-null, so
-      `encodeVideo:438` takes the `hwFramesCtx_ && hwFrame_` branch and calls
-      `av_hwframe_transfer_data` on a frame whose buffers are null. Fix: reset the context on
-      failure. Also `av_buffer_ref` at :1420 is unchecked, and `avcodec_parameters_from_context`
-      is ignored at three sites (`:761, :879, :1311`), leaving an `AVStream` with an unpopulated
-      `codecpar` — exactly the failure the surrounding comments call fatal to
-      `avformat_write_header`.
-      **Closed.** A failed `av_hwframe_get_buffer` resets `hwFrame_` and `hwFramesCtx_` and fails
-      the recording: the codec is already open on the hardware pixel format, so there is no
-      software fallback left to take, and leaving both non-null is what selected the transfer
-      branch. `av_buffer_ref` is checked (a null would have opened the codec with no frames
-      context, reporting a misleading `avcodec_open2` failure), and all three
-      `avcodec_parameters_from_context` calls are checked: video and audio fail the recording,
-      the subtitle one drops the track — an unpopulated `codecpar` fails every recording at
-      `avformat_write_header`, and no subtitle outcome may do that. NOT-VERIFIED: the
-      hardware path itself, which this machine cannot exercise; see `STATUS/T0161.log`.
-- [x] T0162 **`encodeAudio` is O(n²) and strided by the wrong channel count** (`src/recorder/VideoRecorderFFmpeg.cpp:581-588`) #performance #risk-medium
-      Each iteration builds a `std::vector<f32>` from the front of `buffer` then
-      `buffer.erase(buffer.begin(), …)`, shifting the whole tail — ~47 allocations and 47
-      full-tail memmoves per second of audio at 48 kHz stereo. Use a cursor, as
-      `AudioFileDecoder::Impl::pendingHead` (`AudioFileDecoder.cpp:125`) already does. The same
-      loop strides by the caller's `channels` (hardcoded `2` at `VideoRecorderThread.cpp:163`)
-      while `swr_convert` reads `frameSize` samples from the layout — for a 1-channel encoder
-      (`EncoderSettings.hpp:108` allows any `u32`) the slice is twice the input and mis-strided.
-      Derive the stride from `audioCodecCtx_->ch_layout.nb_channels`.
-      **Closed by the T0153 rewrite.** There is no per-frame input slice left: `encodeAudio`
-      converts the batch once, then cuts whole frames out of a per-plane FIFO whose stride is
-      the encoder's `ch_layout.nb_channels` and sample format. The caller's `channels` describes
-      only the *input* buffer, which is correct — `AudioQueue` stores everything as stereo after
-      conversion — and it reaches `configureResampler` as the input side. The residual erase is
-      one frame per frame (≤ a few KB), not a full-tail shift per iteration.
-- [x] T0163 **Stereo→mono downmix leaves libswresample's default matrix** (`src/recorder/AudioFileDecoder.cpp:211`) #risk-medium
-      `swr_set_matrix` is applied only for `inChannels == 1 && spec.channels == 2`; the mirror
-      case (stereo source, `job.audioChannels == 1`, which `RenderJob.cpp:444` explicitly
-      permits) gets the library's default coefficients — a different gain than the
-      `AudioQueue::pushInternal` mono path this decoder is compared against. Set an explicit
-      matrix for 2→1 too.
-- [x] T0103 `FFmpeg 9.0`: add the `swr_convert` flush loop (`src/recorder/ResamplerEngine.hpp`) #risk-high #data-loss
-      `doc/examples/resample_audio.c` omits it. Loop
-      `swr_convert(ctx, out, cap, nullptr, 0)` until it returns 0, or **the tail samples are
-      silently lost** and the output length will not match. Size with `swr_get_out_samples`
-      (an upper bound, invalidated by any intervening call), not `swr_get_delay`.
 - [ ] T0104 `FFmpeg`: `swr_alloc_set_opts` → `swr_alloc_set_opts2`; `av_init_packet` → `av_packet_alloc`/`av_packet_unref` (`src/recorder/`) #risk-high
       `swr_alloc_set_opts` is **removed** (swr 4.5.100). `av_init_packet` still exists in
       9.0.2 but is deprecated and **gone in FFmpeg 10** (gate `FF_API_INIT_PACKET` is
@@ -925,14 +536,8 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       template for the same machine (bounded concurrency, backoff, atomic `.part` rename,
       cancel, idle signal).
 
-- [x] T0186 **The colour round-trip that T0047 shipped has no test, so the same class of bug returns silently** (`tests/unit/`) #risk-high
-      There is no theme test file, and no test anywhere in `tests/` references `parseRgbaHex`, `toRgbaHex` or `applyAccent` — the three functions that *were* the entire fix. `866b36e`'s own message names the guards it should have had: channel-equality assertions on accent **and background including alpha** (alpha is the field whose loss passed every colour-only check), plus a round trip over both the 6-digit and 8-digit forms. Minimum set: `#000000FF` stays opaque black, `#00FF88FF` stays opaque green and is not read as `#AARRGGBB`, `toRgbaHex(parseRgbaHex(x)) === x`, and a 6-digit input returns 8-digit opaque rather than transparent. This is the regression guard that lets T0183 and T0187 change the palette safely.
-
 - [ ] T0197 Nothing re-applies the theme when `ui().theme` changes from somewhere other than the Appearance panel (`src/qml/main.qml`) #risk-med
       `main.qml`'s `applyTheme()` runs **once**, in `Component.onCompleted`. Every path a user can reach today is covered — Settings previews live and Apply commits, and the commit value equals what is already on screen — so nothing is broken. The gap opens the moment a second writer appears: a profile switch, a config reload, or T0193's `ThemeCatalog` adopting a theme on disk. Then `config.toml` and the window disagree, silently, which is the exact failure T0047 was filed for. **The fix is small but not free, which is why it is here rather than done:** a `Connections { target: SettingsBridge; onThemeNameChanged: … }` must *not* apply unconditionally, because T0192 makes `--theme` a session override that is supposed to outrank the stored value — an unconditional re-apply would stomp the override the instant the user commits anything in Settings. The rule to encode is "re-apply on `themeNameChanged` **unless** a session override is active", and that rule needs eyes on it (MT-001-G) rather than a green ctest.
-
-- [x] T0198 **The QML lint gate baselined the one tag that would have caught an app that cannot start** (`scripts/lint-qml.sh`) #build
-      Found by *launching the app*, which is the only reason it was found. `AppColorPicker.qml` used `LinearGradient` without `import QtQuick.Shapes`, so the file failed to instantiate: "Type AppColorPicker unavailable" → `AppearanceSettings` → `AppearancePage` → `SettingsWindow` → **the main window never appeared**. The lint gate said "no blocking problems" and the whole ctest suite was green, because `missing-property` was one of the 76 findings counted as `other`. `missing-property` is now blocking, and it costs nothing: **all four `missing-property` findings tree-wide were that one bug.** Two more fatal-in-practice mistakes rode along behind it and are now fixed — `onOpened` was declared on the root `Item` rather than on the `Popup` (QML treats that as assigning to a non-existent property, which fails the file), and `Qt.hsva()` was called with a single colour when it has no such overload (a *warning*, after which `workingHsv` is `undefined` and **every colour the picker offers is black**). Neither is a lint category anyone would guess at; all three are found by `ctest -R TestQmlStartup` or by running the binary.
 
 ## P3 — polish and speculative
 
@@ -1039,17 +644,10 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [ ] T0140 Remove the stale dead-code comment in `ConfigLoader` and other drifted comments (`src/core/ConfigLoader.cpp:120-123`) #cleanup
       The comment claims a fixed null deref that is already correct. Harmless but misleading.
 
-- [x] T0187 A real theme engine: named palettes, a registry, runtime switching (`src/qml/styles/Theme.qml`) #feature #cod-high
-      **Phases 0–2 of `docs/dev/THEME-ENGINE-PLAN.md` are shipped.** `Theme.qml` is the registry and the only apply path (`applyThemeById()`); `ThemeDefinitions.qml` holds the built-ins; the `ThemeManager` line is gone. **The `.qss` artifacts stay deleted, and the diagnosis for why still holds** — `ab7018b^:resources/styles/*.qss` are Qt **Widgets** stylesheets whose 27 `QWidget`-family selectors cannot exist in a `QGuiApplication` + QtQuick app (that is why T0052 deleted them), and the nine `resources/*-theme.qss` from `c03e75a` were skeletons (five are git's 0-byte blob, four share one identical 77-byte catppuccin URL comment). **Two deviations from the plan, both deliberate.** Definitions are a QML data file rather than JSON in `resources/` (T0190): QML cannot enumerate a directory or read a file synchronously, and Phase 3 has no reader yet. And the palettes were **transcribed from measured contrast, not from the account's own repos** — `Nsomnia/suno-media-station-glm5.2/assets/themes/` carries Catppuccin and Monokai generated from the official `catppuccin` crate, which is the provenance discipline worth keeping; that transcription is still open and is the natural next step. **Phase 3 — user-defined theme files via a C++ `ThemeCatalog` — is NOT here; that is T0193.** `vc::ThemeLoader` (`git show 9b35a7c:src/core/ThemeLoader.cpp`, 114 LOC, alive only on `recover/development`) did `CONFIG.ui().theme` → `:/styles/<name>.qss` → `setStyleSheet` with a `reload()`; a working `QComboBox` picker for `{dark, gruvbox, nord}` lived at `git show cd1cd59^:.backup_graveyard/ui.20260321_232055/SettingsDialog.cpp` until the Widgets→QML refactor (`2090ef2`). **Port the shape — name → palette → token map → hot reload — into the QML singleton as a registry. Do not restore the artifacts:** `ab7018b^:resources/styles/{gruvbox(147),nord(174),dark(360)}.qss` are genuine Qt **Widgets** stylesheets whose 27 `QWidget`-family selectors cannot exist in a `QGuiApplication` + QtQuick app (that is why T0052 deleted them), and the nine `resources/*-theme.qss` from `c03e75a` were skeletons — **five are git's 0-byte blob and four share one identical 77-byte catppuccin URL comment** (`git show 2d35091^:resources/gruvbox-theme.qss`). Real palettes already exist in this account and should be transcribed, not re-invented: `Nsomnia/suno-media-station-glm5.2/assets/themes/` carries Catppuccin Latte/Frappé/Macchiato/Mocha and Monokai, generated from the official `catppuccin` crate via `crates/foundation/design-tokens-theme-definitions/` — which is the provenance discipline the mockup's hand-copied 26 hex values lack. Delete the dangling `ThemeManager` claim as part of this.
 - [~] T0188 The interaction language the design docs specify: hover-grow, 44×44 targets, responsive breakpoints (`src/qml/components/AppButton.qml`) #feature
       **The hover-grow half is written, and only that half.** `AppButton` now has three states — 1.0 idle, 1.02 hover, 0.96 press — at `durationFast` (150 ms) with OutCubic going up and InCubic coming down, replacing `pressed ? 0.97 : 1.0` at `durationInstant`. The press factor was *reduced* from 0.97 to 0.96 and the hover factor is small on purpose: three adjacent buttons at 1.05 would shimmer, and the docs' own "if animation doesn't help understanding, remove it" argues against it. The easing asymmetry is what makes it read as an object rather than a value readout. Both states are gated on `root.enabled`, which was a real bug in the first cut: `AppButton` deliberately leaves its `MouseArea` enabled when disabled so the cursor can say "not now", so `pressed` and `containsMouse` are both live on a dead button and it would have shrunk on click. **Still open:** tap targets are `buttonHeight 36` and nowhere near the 44 the design philosophy asks for, `AppIconButton` was not audited for the same press-only defect, no hover state exists on `AppComboBox`/`AppTextField`/`AppSwitch`/`AppSlider`, and there is still no mobile breakpoint or bottom nav bar. Those are a redesign, not a patch.
       `AppButton.qml:80` implements `scale: pressed ? 0.97 : 1.0` — **press-only, no hover-grow** — while the user's mockup (`~/Documents/qt-qml-responsive-desktop-mobile-esque-ui-mockup`, `Nsomnia/qt-qml-responsive-desktop-mobile-esque-ui-mockup`) specifies hover `1.02` / press `0.96` on `PrimaryButton` and `1.05` / `0.94` on `IconButton`, both 120 ms `OutCubic`, plus a 150 ms `ColorAnimation` on `Card.border.color`. The repo has hover-grow on `AppSlider` (:106) and `ClipCard` (:85) but **not on the primary button**, so the most-used control is the least alive. `Nsomnia/Resonance`'s `docs/inital-input-material/ui-ux/DESIGN_PHILOSOPHY.md` gives the governing rule — "mobile app sensibility on desktop", tap targets ≥44×44, and "if animation doesn't help understanding, remove it" — while `THEMING.md` gives the timing scale (fast 100–150, normal 200–300, slow 400–600 ms) that the current 50/150/250/400/600 ladder only half matches: `durationInstant` is 50 ms, below the fast floor. The mockup also breaks at 768 px with a `MobileNavBar`; the repo auto-collapses `NavRail` at `navRailAutoCollapseBelow` 1000 and has no bottom bar at all. Scale here is not decoration — it is the affordance T0119 is chasing.
       **The user's verdict was explicitly scoped: "theme wise".** Hover-grow is the only part of this item it can be called confirmed by, and the user did not comment on it. The remainder below stands: it is a redesign of the input controls and the window shell, not a patch to `AppButton`, and it should be sized as its own piece of work rather than continuing to live on this line.
-- [x] T0189 Live preview, reset, and a contrast guard, so a colour picker cannot end in an unreadable UI (`src/qml/panels/settings/AppearanceSettings.qml`) #feature
-      T0183 restores the ability to pick a colour; this makes the result safe to use. Three gaps: **(a)** edits should apply live against `Theme` and persist on commit, not through one "Save & Apply" the user can lose; **(b)** there is no reset-to-default, so one bad pick is unrecoverable except by hand-editing `config.toml`; **(c)** nothing validates the result. `applyBackground` leaves `border`/`borderLight`/`textDisabled` frozen dark (T0185), and T0083 measured the palette at `textDisabled` 1.95–2.77:1, `recording` 3.07:1, `textSecondary` 3.46:1, `error` 3.60:1 — so a user who picks a light background gets unreadable text with no feedback. Add a live WCAG readout (4.5:1 text, 3:1 UI) beside each swatch and warn below the bar. Lands with T0118, which needs a light path the dead `.qss` files cannot provide.
-      **(a), (b) and (c) are all now written.** The theme selector previews across the whole window and only *Apply* commits, so a preview can be walked back; *Reset to Default* previews too, for the same reason. Colour edits commit immediately, because the picker popup has its own Cancel and an unfinished drag is undone by closing it — a second apply step on top of that would be two ways to abandon an edit. The guard is a live readout of body text, secondary text, and the accent-as-focus-ring against `surfaceRaised`, recomputed as bindings so it cannot drift, green at 4.5:1 / 3:1 and amber below. It needed `Theme.relativeLuminance()` / `contrastRatio()` / `formatContrast()`, which are **deliberately not** the `luma()` the derivation uses: WCAG is defined on linearised channels, and T0191's checker made exactly that conflation and reported a passing palette as failing. Still open: a ratio cannot tell you a palette is *ugly*, and the reset button says "Default" without saying which theme that is. The "warn below the bar" half is a colour change, not a dismissal — still to decide whether it blocks Apply.
-      **The user has now looked at it and says the themes look right** ("everything looks great theme wise"). That closes the screenshot half of T0191 and the visual half of this item. What the verdict does *not* cover: a colour actually dragged, the picker's Cancel, the hex field, or Reset to Default — the user exercised the theme path, and those are the untested remainder.
-
 ## Refuted claims — do not re-investigate these
 
 Recorded so they are not re-audited. Each was checked against the source, not assumed.
@@ -1240,9 +838,6 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 
 ### P0 — the product is broken, data is corrupted, or a secret is exposed
 
-- [x] T0200 **Production `SunoDownloader` never emits `fileSaved`** (`src/suno/SunoDownloader.cpp`) #risk-high
-      Prod ctor never connects `finalizeFinished`; transferred files never auto-play. Fix: connect in prod ctor + add a test constructing via prod ctor.
-      **Closed.** Both constructors call one `wireFinalize()`, so the wiring cannot be test-only again, and `theProductionConstructorDeliversFinalizeCompletion` builds the downloader the way the app does (it has to heap-allocate the `QNetworkAccessManager` because `DownloadQueue` *adopts* it). VERIFY in `STATUS/T0200.log`.
 - [?] T0201 **Mutations `Rejected` unreachable** (`src/suno/SunoLibraryMutations.cpp`) #risk-high
       `transportReason()` never returns empty, so every non-2xx settles as `Failed` (retryable) and server `detail` is never delivered. Fix: check HTTP status first, `Rejected` for 4xx with `rejectionReason(body)`, `Failed` only for transport/no-status.
       **Code written, `[?]` on purpose: nothing exercises it.** `handleReply` is private, the class takes no reply factory, and `tests/unit/suno/` still has no `FakeNetworkAccessManager` (T0099) — so the fix is a branch reorder proven by reading and by the suite still linking, not by a failing-then-passing assertion. The first `[x]` needs that fake; the gap itself is T0100. Detail in `STATUS/T0201.log`.
@@ -1256,13 +851,6 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       `--preset`, `--output`, `--suno-id`, `--record` (GUI), positional input files. Help advertises them; none has a consumer.
 - [ ] T0204 **Wire or delete dead config keys** (`src/core/Config*.cpp`, `config/default.toml`)
       Five `[recording]` keys (`enabled`, `auto_record`, `record_entire_song`, `restart_track_on_record`, `stop_at_track_end`) + `[suno] embed_metadata` + `[overlay] enabled` — zero consumers each.
-- [x] T0205 **`useDefaultPreset` clobber** (`src/core/Application.cpp`)
-      Plain `bool` in `AppOptions` cannot distinguish "flag absent" from "flag false", so every launch without `--default-preset` forces `CONFIG.visualizer().useDefaultPreset = false`, erasing config `true`. Fix: `std::optional<bool>`, apply only when present.
-      **Closed, and it was the only override of its kind.** Every other CLI override was already `std::optional` and applied through `applyOverride`; this one alone was a bare `bool` copied through an if/else, so the else branch fired on every launch that never mentioned the flag. It is now `std::optional<bool>` and goes through the same `applyOverride`, and `absentDefaultPresetOverrideStaysUnset` asserts both halves — absent stays `nullopt`, `--default-preset` yields a set `true`. `STATUS/T0205.log`.
-- [x] T0206 **Normal exit skips `Application::quit()`** (`src/core/Application.cpp`)
-      Window close / `Qt.quit()` bypass `last_session.m3u` save + `CONFIG.save-if-dirty`. Fix: move persistence to `aboutToQuit` handler.
-      **Closed by changing what `aboutToQuit` IS.** It was a declared *signal* chained from `QGuiApplication::aboutToQuit` — a hook that emitted a signal nobody connected to, which is why the ratings save could live in a lambda beside it and the m3u save could not. It is a **slot** now (`Application.hpp:115`), wired to the same Qt signal, and it owns the whole teardown: the recorder stop, both recording halves, the session playlist, `audioEngine_->stop()` and `CONFIG.save` when dirty. `quit()` only calls `qapp_->quit()`, so the SIGINT path and the window-close path run the same code exactly once. `STATUS/T0206.log`.
-      Verified 2026-10-20: the hook exists and is half-fed — `aboutToQuit` is a signal chained from `QGuiApplication::aboutToQuit` (`:577`, declared `signals:` `Application.hpp:115`), and the ratings save already lives in its lambda (`:584-590`, the T0014 fix) while the m3u save (`:619`) and `CONFIG.save` (`:631`) remain in `quit()`, which its own comment (`:579-583`) says only the signal handlers call. Same skip applies to `quit()`'s recorder stop (`:610`): the only window-close QML handler runs `SettingsBridge.save()` (`main.qml:219`), the `RecordingBridge.stopRecording` call at `main.qml:641` is the R-key toggle, so a mid-flight recording is finalized only by destructor teardown.
 - [ ] T0207 **Generate help/completion/topic text from `CliArgs.inc`** (`src/core/CliArgs.inc`, `src/core/HelpSystem.cpp`)
       Use `CliArg`; fix `printHelp` docs URL `yourusername` → `Nsomnia`; fix completion staleness (completion lacks `--visualizer-fps` etc.).
 - [ ] T0208 **Unknown-config-key warnings + `--dump-config` / `--print-config`** (`src/core/ConfigLoader.cpp`, `src/core/CliArgs.inc`)
@@ -1279,10 +867,6 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       Corrupt `config.toml` marked dirty then overwritten on quit (signal path), contradicting "not overwritten / only on next settings save" comment. Decide one behavior, make comment match.
 - [ ] T0214 **Overlay `position` partial-table asymmetry** (`src/core/ConfigParsers.cpp`)
       Missing `x`/`y` → `0.0`, missing table → `0.5,0.5`. Fix `parseVec2` default to `{0.5,0.5}` in overlay path.
-- [x] T0215 **401-only retry asymmetry** (`src/suno/SunoClient.cpp`)
-      `handleReplyFinished` retries only 401; 403 (also `isAuthFailure`) goes straight to `handleNetworkError` → `NeedsReauth` with no refresh attempt.
-- [x] T0216 **No 429/430/5xx handling in `SunoClient`/`ClerkAuthClient`** (`src/suno/SunoClient.cpp`)
-      429 with JSON error body flows into `handleJsonReply` → parsed as if success. Add backoff, `Retry-After` read, user-facing quota sentence.
 - [ ] T0217 **Mutations races** (`src/suno/SunoLibraryMutations.cpp`) #risk-medium
       Unbounded concurrency, no per-subject serialisation, last-write-wins by COMPLETION order; no dedup/coalescing; gate/switch TOCTOU; `setEnabled(false)` mid-flight does not cancel; destroyed-mid-flight `QPointer` guard drops reply silently with no settlement + `inFlight_` leak; `handleReply` double-entry unguarded.
 - [ ] T0218 **`SunoLibraryManager` races** (`src/suno/SunoLibraryManager.cpp`)
@@ -1432,7 +1016,7 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 - [ ] T0289 **`[recording]`: filename-template placeholders, `split_by_track`, `audio_only`, `bitrate_mode`, `hardware_encoder`, `max_file_size`, `max_duration`, `burn_in_subtitles` toggle, `thumbnail`, `chapters`, `output_name_collision`, `record_fps`, `[recording.video] bitrate_kbps` + `maxrate`/`bufsize`, `[recording.video] hw_accel` + `hw_device`, `[recording] title_template` / `artist` + `av_dict_set` metadata, `[recording] audio_enabled / video_enabled`** (`config/`, `src/core/`, `src/recorder/`)
       Filename template today only `{date}`/`{time}`; add `{artist}`, `{title}`, `{album}`, `{preset}`, `{codec}`, `{resolution}`. `hardware_encoder`: `auto`/`nvenc`/`vaapi`/`software` — today raw codec string with no validation.
 - [ ] T0290 **`[suno]`: `download_concurrency`, `preferred_quality` / `lossless`, `auto_download_filter`, `lyrics_format`, `download_filename_template`, `generation_model_default`, `generation_style_default`, `auto_like`, `history_retention_days`, `api_timeout` / `api_retries`, `cache_dir`, `offline_mode`, `download_lyrics_format`, `refresh_margin_secs` (300), `refresh_max_delay_secs` (3300), `staleness_cap_secs` (opt-in 1800), `force_refresh_on_start`, `request_timeout_secs`, `upload_timeout_secs`, `max_requests_per_sec` (1.0), `max_concurrent_requests` (1), `retry_401` (true), `retry_on_429` + `retry_after_max_secs`, `response_cap_mb`** (`config/`, `src/core/`, `src/suno/`)
-      `lyrics_format`: `srt`/`lrc`/`ass` — writer exists per format, no selector. `retry_on_429` needs T0216 first (after: T0216).
+      `lyrics_format`: `srt`/`lrc`/`ass` — writer exists per format, no selector. `retry_on_429` is unblocked: the client classifies 429/5xx itself now.
 - [ ] T0291 **`[karaoke]`: `timing_offset_ms`, `outline_width`/`glow`/`blur`, `highlight_mode`, `lines_visible`, `font_fallback` list, `shadow_offset`, `animation` as validated enum, `karaoke_in_recording`, `offset_ms`, `ass_font`, `ass_font_size`, `word_sweep_enabled`** (`config/`, `src/core/`, `src/lyrics/`)
       `animation` today: string renderer ignores in favor of numeric index — string↔index mapping is actual bug. `karaoke_in_recording`: burn-in toggle; today overlays/karaoke never appear in recordings (T0170). `word_sweep_enabled` wires ASS `\kf` vs line highlight.
 - [ ] T0292 **`[overlay]`: `global_opacity`, `default_font`, `safe_area`, `toggle_shortcut`, per-element `rotation`/`scale`/`blend_mode`** (`config/`, `src/core/`)
@@ -1468,37 +1052,6 @@ Source: full sweep of `src/`, `docs/`, `.github/workflows/`, `cmake/`, `scripts/
 claim below was re-checked against the tree or the run log, not carried from prose. Kept
 terse per T0252; long evidence belongs in `docs/backlog/TXXXX.md`.
 
-### P1 — gates that do not gate
-
-- [x] T0297 **`test_ThemeQml` is built and registered but runs in no gate at all** (`build.sh:50-63`, `.github/workflows/build.yml:290-318`, `windows.yml:150-168`, `release.yml:239-252`, `tsan.yml:168`) #risk-high
-      `tests/unit/CMakeLists.txt:255,272` adds the executable and the test. `SAFE_TESTS` omitted it; the `build.yml` discovery list and its 10-entry `-R` regex omitted it; `windows.yml`, `release.yml` and `tsan.yml` omitted it too. The theme round-trip guard T0186 exists to provide had therefore **never executed** in CI or under `--safe`. This is the T0040 class recurring: a registered entry silently outside the allow-list. **Closed:** added to `SAFE_TESTS`, all four discovery lists and `-R` regexes, and the `CHADVIS_SANITIZER` `set_tests_properties` block. The board's own drift check is now an exact set match — 12 registered non-integration entries, 12 in `SAFE_TESTS`, `diff` empty — and `test_ThemeQml` runs 46 passed / 0 failed / 0 skipped. `VERIFY` in `STATUS/T0297.log`.
-
-- [x] T0298 **The Windows lane has never built anything, and still has no installable artifact** (`cmake/Install.cmake:51-53`, `.github/workflows/windows.yml:73`) #risk-high #blocks-release
-      **Four root causes found and fixed in this change.** (1) A tracked directory named `ci-cd-and-automation ` (trailing space) made `git checkout` fail on Windows with `error: invalid path`; every run died at checkout, nine build steps were `skipped`, and `continue-on-error: true` reported the *workflow* as green (run `39387718520`: job `failure` in 18 s). (2) `ilammy/msvc-dev-cmd@v1` overwrites `VCPKG_ROOT` with Visual Studio's bundled vcpkg, so the install and configure steps pointed at two different trees; the job now uses a private `CHADVIS_VCPKG_ROOT`. (3) The vcpkg report step was a YAML **double-quoted** scalar, where `\v` is the vertical-tab escape — it reached PowerShell as `vcpkgcpkg.exe` and failed the job at that step (run `39389710671`, checkout and MSVC setup now green). (4) `install-qt-action` does not install Qt Multimedia by default, and `cmake/Dependencies.cmake:13` requires `Qt6::Multimedia`; configure died at "Failed to find required Qt component Multimedia" (run `39390322979`). Every Qt step now passes `modules: 'qtmultimedia'`, and that run reached **Configure** — the first time any Windows run has got past dependency setup. (5) Configure then died at `Could NOT find GLEW (missing: GLEW_INCLUDE_DIRS GLEW_LIBRARIES)` raised from `build-ci/_deps/projectm-src/CMakeLists.txt:190`: projectM v4 is built from source by CPM when no system copy is found, and it needs GLEW, which the explicit vcpkg list did not name. `glew:x64-windows-static` is added, and the vcpkg install is split so `continue-on-error` covers only ffmpeg — the old shape let a missing `glew` report green at that step and fail twenty seconds later in configure, which reads like a code problem. **Both are closed:** the lane is green end-to-end and `continue-on-error` is gone (job and ffmpeg step), so a Windows failure now blocks. The installable artifact is a `windeployqt` bundle rather than an NSIS installer — CPack's Windows ZIP would carry the `.exe` and its config but none of the Qt DLLs, i.e. an archive that only runs where this exact Qt already exists, so the step deploys the Qt libraries and copies the vcpkg DLLs beside them. GitLab-side **`Install.cmake:52` still configures NSIS and still produces nothing**; that is T0299's packaging decision, not this item's.
-      **A seventh, and the first one that was a product bug rather than a lane bug (run
-      `39499466204`).** Every recorder file came back 0 bytes with `Failed to write header:
-      Permission denied`: the output-file claim in `VideoRecorderFFmpeg` locked the whole file
-      with `LockFileEx`, Windows locks are **mandatory**, and the muxer writes through a second
-      handle -- so the claim blocked its own recording. POSIX `flock` is advisory, which is why
-      macOS and Linux never saw it. The claim is now `_O_EXCL` alone, which is the part that
-      matters. Two more of the same family: `DownloadQueue::nativeHandleOf` narrowed
-      `_get_osfhandle`'s `intptr_t` into an `int`, handing a garbage handle to `LockFileEx`
-      (every existing part file then reads as a live writer), and `CREATE_NEW` *resolves* a
-      dangling reparse point instead of refusing it, so a hostile symlink at the part path made
-      the download write through the link -- the part path is now unlinked first on both
-      platforms. Three test assertions were separator-specific (`/`-joined suffixes and full
-      paths compared against native ones) and now compare canonical paths or file names. With
-      `ffmpeg[x264]` (see the sixth) the Windows build finally produced real files.
-      **One failure was the test's own**, and it had never tested what it claimed:
-      `aDanglingSymlinkAtThePartPathIsNotMistakenForACrashedRun` put the hostile link at
-      `dangling.mp3.part` while the queue's scratch name for `dang.mp3` is `dang.mp3.part`, so
-      the trailing `!QFile::exists(part)` asserted the removal of a path nothing had opened. It
-      read as a pass on macOS because `QFile::exists()` follows a dangling link and answers
-      false, and as a failure on Windows because Qt answers true. Renaming the link fixes the
-      coverage. The lane itself is at `[?]`: it builds, discovers 15 entries, and 14/15 entries
-      pass — the remaining one was this assertion.
-      **A sixth, found once configure and the ports finally went green (run `39458868479`).** Every one of the twelve targets then failed at link with LNK2038 on `tag.lib`/`av*.lib`: `_ITERATOR_DEBUG_LEVEL` 0 vs 2, `MT_StaticRelease` vs `MDd_DynamicDebug`. The static triplet is built against the static CRT, and matching it would mean building our objects `/MT` — a CRT mismatch against Qt's own `/MD` binaries, which neither vendor supports. The lane now uses the dynamic **`x64-windows`** triplet with a **Release** config — the same runtime as Qt. The ports' DLLs are copied into the zip beside windeployqt's Qt set, and `--compiler-runtime` stays on because the closure is `/MD`. Speed was not a reason and must not be recorded as one: the published vcpkg binary feed missed every port (the runner's vcpkg is newer than the feed), so ffmpeg built from source for **32 minutes** on this triplet too. A persisted `VCPKG_BINARY_SOURCES` cache, saved under `always()` because `actions/cache` throws the whole thing away when a later step fails, is what makes the second run cheaper.
-
 ### P2 — production scaffolding and doc drift
 
 - [ ] T0299 **Linux ships only TGZ/ZIP — no `.deb`, `.rpm`, AppImage, or Flatpak** (`cmake/Install.cmake:43`) #feature
@@ -1510,27 +1063,11 @@ terse per T0252; long evidence belongs in `docs/backlog/TXXXX.md`.
 - [ ] T0301 **No static-analysis, SBOM, or dependency-vulnerability lane** (`.github/workflows/`) #security
       No CodeQL, no CycloneDX/SPDX SBOM, no `vcpkg.json` (T0091), and Dependabot watches only `github-actions` (`.github/dependabot.yml:14-17`). The CPM-pinned and system dependencies have **no CVE signal at all**. Add CodeQL for C++ and an SBOM step; keep CPM pins on a manual review list until a manifest exists.
 
-- [x] T0302 **No SECURITY.md, CODEOWNERS, issue/PR templates, or `.editorconfig`** (repo root, `.github/`) #cleanup
-      `docs/dev/CONTRIBUTING.md` exists, but the GitHub-recognised surfaces do not: a security report has no private channel and a first-time contributor gets a blank issue box. Add `SECURITY.md` (private disclosure), `CODEOWNERS`, `.github/ISSUE_TEMPLATE/{bug,feature}.yml`, `.github/PULL_REQUEST_TEMPLATE.md`, and an `.editorconfig` matching `.clang-format`.
-
-- [x] T0303 **The test counts in both docs were stale and mutually inconsistent** (`docs/README.md:24`, `docs/dev/TESTING.md:3,46,100,155`) #doc
-      Actual today: **14** CTest entries — `unit_tests`, **11** standalone unit executables (including `test_ThemeQml`), and 2 entries over `integration_tests`. `docs/README.md:24` said "19 `unit_tests` sources, the 6 standalone executables"; `TESTING.md:3` said "eleven … eight standalone"; `:46` said "out of 11"; `:100` said 31 sources; `:155` said "Eleven entries: nine in tests/unit". All corrected to 38 aggregate sources, 11 standalone, 14 entries. `VERIFY` recorded in `STATUS/T0303.log`.
-
 - [ ] T0304 **`docs/GEMINI_FLASH_ANALYSYS.md` is an orphan with a misspelled filename** (`docs/`) #doc #cleanup
       No document links it and the hub (`docs/README.md`) does not list it. Either fold its content into a linked doc and delete the file, or rename it (`ANALYSIS`) and add a hub row. An orphan doc is the "two files claim one fact" failure the hub's own rule forbids.
 
 - [ ] T0305 **Four overlapping C++ skills, two of them with unclear provenance** (`.opencode/skills/`) #cleanup
       `c-cpp-profi`, `modern-cpp`, `cpp-coding-standards` and `cpp-pro` all cover modern C++ standards/idioms. `c-cpp-profi` has no upstream license; `cpp-pro` has no license file either. Consolidate to one standards skill and one security/idioms skill, record the license for each, and delete the rest. Skill sprawl costs context on every task that loads them.
-
-- [x] T0306 **`tests/unit/visualizer/test_PresetManager.cpp` is committed but declared nowhere** (`tests/unit/visualizer/test_PresetManager.cpp`) #cleanup #risk-med
-      211 lines with a `test_PresetManager.moc` include, added in `f721ae0`. It is absent from `tests/unit/CMakeLists.txt` and from `test_main.cpp`, so it neither builds nor runs — the exact "compiled-but-unrun" class `TESTING.md` warns about, in its worse form: not even compiled. Either declare it (and add the `runTest*` call) or delete it. `PresetManager` is a T0235 subject, so the tests may be worth keeping; wire them.
-      **Wired.** One source-list line and one `runTestPresetManager` declaration/call; the suite runs five cases and passes (favourite/blacklist copy-on-write, pinned snapshots, out-of-range no-ops, rescan persistence). The guard the T0024 fix was supposed to have existed since the fix landed and had never executed in any gate. `unit_tests` is now exactly the 53 `.cpp` files under `tests/unit/`: 42 aggregate sources (41 suites + the runner) plus 11 standalone. VERIFY in `STATUS/T0306.log`.
-
-- [x] T0308 **Three workflows were unloadable for three commits and every local check said green** (`build.yml:140-153`, `tsan.yml:138-146`, `asan.yml:95-103,240-248`) #risk-high
-      GitHub rejects a mapping with a repeated key and refuses the file; `yaml.safe_load` keeps the last one and reports nothing. The Multimedia fix appended a second `modules:` beside `target:` to Qt steps that already ended with `modules: 'qtmultimedia'`, so `build.yml`, `tsan.yml` and `asan.yml` each carried two. The symptom is a run with **zero jobs** and the summary "This run likely failed because of a workflow file issue" (runs `39396098805`, `39396099933`, `39396097559`) — it reads like an infrastructure hiccup and is not one, and `gh run rerun` refuses such a run outright. **Closed:** the duplicates are gone (the annotated one beside `target:` survives), and `scripts/check-workflows.py` — dependency-free, an indentation-aware scanner rather than a YAML library, because a YAML library is what hid this — flags repeated keys, tab indentation and a missing `jobs:`, skipping block scalars so shell bodies cannot false-positive. Verified by re-introducing the duplicate in a copy, where it names the same line GitHub did (`153`, first at `146`), and by `gh workflow run build.yml`, which now returns a run with all three jobs instead of `HTTP 422 failed to parse workflow`. `AGENTS.md` carries the rule and the symptom.
-
-- [x] T0310 **The Linux gate could never pass: `TestCredentialStorePolicy` demanded a Secret Service the runner does not have** (`tests/unit/suno/test_CredentialStorePolicy.cpp:517-529`) #risk-high
-      `theDefaultStoreOnThisHostIsSecureAndTheFileStoreIsNot()` asserted `CredentialStore().isSecureBackend()` with the comment "the macOS build has a real keychain" — but the same entry runs on Ubuntu, where the secure backend is a Secret Service reached over D-Bus and a headless runner has neither a session bus nor gnome-keyring/KWallet. Default therefore correctly resolves to the file store and the assert failed (`unit_tests`, 43 passed / 1 failed, both Ubuntu jobs at `0edce99`). The guard is `#if defined(Q_OS_LINUX)` + `QSKIP` **only when the probe comes back insecure**, so the assertion stays hard on macOS and Windows — an insecure Default there *is* the defect this test exists to catch — and stays hard on a Linux desktop that does have a keyring. Verified: local `unit_tests` 44 passed / 0 failed / 0 skipped, exit 0. **Closed.**
 
 - [ ] T0309 **The browser-cookie import is macOS-only in code but platform-blind in the UI** (`src/suno/auth/BrowserCookieImport.cpp:223-260`, `tests/unit/suno/test_BrowserCookieImport.cpp`) #risk-med
       `deriveChromiumKey` and `decryptChromiumValue` are `#ifdef Q_OS_MACOS` and return `{}` everywhere else **by design**, and `candidateBrowserNames()` probes a hardcoded `~/Library/Application Support/`, so on Linux and Windows the Import affordance can only ever produce "No Suno cookies were found in …" — a message that blames the user's browser for a platform the code does not implement. Found the hard way: seven tests in `test_BrowserCookieImport.cpp` asserted against empty ciphertext and **failed the Linux gate** (run `39395268941`, `unit_tests` 53.99 s, six `FAIL!`). Those seven now `QSKIP` off macOS via `REQUIRE_MACOS_SAFE_STORAGE()` — the honest fix for the *test*, and deliberately not a fix for the product. Either implement the non-macOS paths (DPAPI on Windows, libsecret on Linux) or gate the affordance by platform with an explicit "not available on this OS" message; a third option, hiding the button off macOS, is the one that costs nothing and stops the misleading report.
@@ -1632,28 +1169,19 @@ items rather than 20 duplicate lines, per one-fact-one-document hygiene. Two sus
 findings were checked and closed clean before writing anything:
 
 - **The add_test census.** An unanchored grep counts 13 hits in `tests/unit/CMakeLists.txt`; the
-  anchored count is 12 registered `add_test` lines (through `test_ClerkAuthClient` at :365) +
-  2 in `tests/integration/CMakeLists.txt` = **14**, exactly the number T0303 closed with — no
-  T0040/T0297-class recurrence. The 13th hit is a mid-line token, not a registration.
-- **`test_PresetManager.cpp`** is still absent from every registration surface (never compiled,
-  never run) — T0306 stands as filed.
+  anchored count was 12 registered `add_test` lines + 2 in `tests/integration/CMakeLists.txt` =
+  **14**, exactly the number T0303 closed with — no T0040/T0297-class recurrence. The 13th hit is
+  a mid-line token, not a registration.
+- **`test_PresetManager.cpp`** was absent from every registration surface (never compiled, never
+  run) when this was written; T0306 registered it since.
 
-The audit's Must group, in its "fix first" order: **T0201 → T0200 → T0202 → T0153 → T0154+T0155 →
-T0215+T0216 → T0160+T0161 → T0156+T0157 → T0205 → T0206** (T0206 additionally extended in place above with
-the window-close recorder wrinkle). Should group: **T0011+T0100 · T0058+T0059 · T0224+T0223+T0219 ·
+The audit's Must group was closed in full (`T0200`–`T0216`, now in [`CHANGELOG.md`](CHANGELOG.md)).
+What still guides work: Should group: **T0011+T0100 · T0058+T0059 · T0224+T0223+T0219 ·
 T0067+T0221 · T0081+T0082+T0239 · T0072+T0086 · T0208+T0204+T0210 · T0298+T0311** (T0299, T0095
 and T0039/T0111 ride the same release lane). Nice group: **T0063+T0064+T0238** (four tolerant-JSON
 helper sets that disagree on `"True"`, three auth-vocabulary copies, two hand-synced palette
 blocks, two current-preset sources) and the dead-code ledger **T0065+T0060+T0068+T0071+T0061+T0226+T0227+T0112+T0306**.
-Smaller hits already tracked individually: T0088, T0230, T0244, T0207 (`printHelp` `yourusername`
-verified live at `Application.cpp:729`), T0079, T0110.
-
-In-session re-verification beyond the board's own record: prod `SunoDownloader` ctor (`:43-55`)
-wires none of `finalizeFinished` while only the test ctor (`:57-79`) does; `transportReason`
-(`SunoLibraryMutations.cpp:86-90`) provably never returns empty, so `Rejected` at `:498-499` is
-unreached; `fieldList()[1]` (`SunoDownloader.cpp:645`) is unguarded; zero `429`/`Retry-After`
-tokens in `SunoClient.cpp`; zero `reuseItems` in `src/qml`; zero `CFBundleIconFile` in `cmake/`;
-the T0205 branch (`Application.cpp:352-355`) is the unconditional else-branch clobber.
+Smaller hits already tracked individually: T0088, T0230, T0244, T0207, T0079, T0110.
 
 Lean upper bound, measured with `wc -l` over the delete candidates named on the board (several
 are wire-or-delete decisions, not verdicts — see T0226/T0227/T0011): LyricTiming 2,042 +
