@@ -2,3 +2,4 @@
 2026-10-26T20:50:00Z  CHANGE   windows.yml: added -G Ninja, removed --config/-C workarounds, diagnostic scans build.ninja. vcpkg.json still absent (task stays [?]).
 2026-10-26T20:50:00Z  VERIFY   ./scripts/check-workflows.py -> all workflow files ok (duplicate-key aware).
 2026-10-26T20:50:00Z  VERIFY   cmake -S . -B build-fast -> configuring/generating done with the new component list.
+2026-10-26T21:20:00Z  CHANGE   Windows run 40397980212: Ninja read a config literally named $env:CMAKE_BUILD_TYPE in rules.ninja. Configure now uses runner-substituted ${{ env.* }} values and disables MSVC module scanning (no module sources in the tree).

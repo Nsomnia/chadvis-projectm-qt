@@ -186,14 +186,24 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -S . -B $env:BUILD_DIR `
+          # ${{ env.* }} rather than $env:*: the expression is substituted by
+          # the runner before PowerShell parses the line, so a cache value can
+          # never end up as the literal text `$env:CMAKE_BUILD_TYPE` (which is
+          # exactly what reached rules.ninja once Ninja was selected).
+          #
+          # C++ module scanning is OFF because this tree has no module sources.
+          # MSVC is a scanning compiler, so Ninja otherwise writes CXX_SCAN
+          # rules for every target -- pure generator noise and one more thing
+          # that can differ from the other two platforms.
+          cmake -S . -B "${{ env.BUILD_DIR }}" `
             -G Ninja `
-            -DCMAKE_BUILD_TYPE=$env:CMAKE_BUILD_TYPE `
+            -DCMAKE_BUILD_TYPE="${{ env.CMAKE_BUILD_TYPE }}" `
+            -DCMAKE_CXX_SCAN_FOR_MODULES=OFF `
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR;$env:CHADVIS_VCPKG_ROOT\installed\x64-windows" `
             -DCMAKE_TOOLCHAIN_FILE="$env:CHADVIS_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
-        run: cmake --build $env:BUILD_DIR --parallel
+        run: cmake --build "${{ env.BUILD_DIR }}" --parallel
 
       - name: Assert ctest discovered the expected entries
         shell: pwsh
