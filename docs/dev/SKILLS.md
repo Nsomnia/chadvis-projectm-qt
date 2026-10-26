@@ -60,7 +60,9 @@ feature:
 | `cpp-pro` | Prose persona; no unique reference material. |
 
 `cpp-pro` is the weakest of the four and duplicates the other three's ground. It is
-left in place rather than deleted unilaterally.
+left in place rather than deleted unilaterally. `cpp-pro` and `c-cpp-profi` carry no
+license file upstream: treat both as unlicensed third-party content, not to be
+redistributed beyond this repository.
 
 ## Custom: this repository
 

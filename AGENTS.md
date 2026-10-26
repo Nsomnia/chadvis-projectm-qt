@@ -1,10 +1,8 @@
 # AGENTS.md
 
-Operating rules for this repository. The ranked backlog is [`TODO.md`](TODO.md); the docs hub
-is [`docs/README.md`](docs/README.md).
-
-## Suno Recon
-You can find some more recent suno.com recon files in ~/Documents/suno-recon-active-investigation/ and if needed you may run anything agentically to find the json schema or ask the user to record it with the appropriate browser extension or if needed via zap proxy or burp suite free.
+Operating rules for this repository. This file is loaded into **every** session, so it carries
+rules and pointers, never the detail — the doc named on each line owns that detail. Backlog:
+[`TODO.md`](TODO.md). Docs hub: [`docs/README.md`](docs/README.md).
 
 ## Build & test
 
@@ -16,188 +14,88 @@ You can find some more recent suno.com recon files in ~/Documents/suno-recon-act
 ./build.sh --asan --tests && ./build.sh --asan --safe
 ```
 
-Profiles `--fast` `--debug` `--release` `--tsan` `--asan` `--ubsan`, each with **its own build
-directory** (`build/`, `build-fast/`, `build-tsan/`, …) — never point one profile's flags at
-another's. Tuning: `-j/--jobs N`, `--ctest-jobs N`, `--nice N` / `--no-nice`, `--no-ccache`,
-`--qt PATH`. Overrides: `CHADVIS_CPU_PERCENT`, `CHADVIS_MEM_PERCENT`, `CHADVIS_PER_JOB_MIB`,
-`CHADVIS_CTEST_JOBS`, `CHADVIS_NICE`, `CHADVIS_CCACHE_BIN`.
-
-* `ctest --test-dir build` finds zero tests and still exits 0. Always name the profile
-  directory, and read the test count rather than the exit code.
-* The binary is a `MACOSX_BUNDLE`: `build/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt`
-  on macOS, `build/chadvis-projectm-qt` elsewhere.
-* **A green run is not evidence for GL, burn-in, or audio.** Those skip headless and ctest
-  counts a skip as success. Only a real runtime observation counts there.
-
-### The box is shared — do not saturate it
-
-`build.sh` spends **75% of the machine**, and the fraction is measured, not assumed:
-
-| step | peak RSS | wall | CPU |
-| --- | --- | --- | --- |
-| compile, largest TU, `-O0` / `-O3` / TSan | 306 / 301 / 338 MiB | 30 / 18 / 25 s | ~17 s |
-| link `unit_tests` (36 objs + Qt + projectM) | 160 MiB | 1.3 s | 1 s |
-| `unit_tests`, full run | 114 MiB | **91 s** | **14 s** |
-
-Compiles are CPU-bound; **the tests are not** — the suite is idle ~84% of its life. So
-`--jobs` is **75% of logical cores** (3 on this 4-logical / 2-physical box), floored at the
-physical count and capped by 75% of currently-available RAM; ctest runs at the same width.
-Everything runs `nice 10` so the foreground wins the scheduler. Run `./build.sh --budget`
-before assuming a build is misbehaving. Every run rewrites the gitignored `build.log` at the
-repo root with its full output, so a failure is still readable after the terminal scrolls.
-
-Qt MCPs are available for API lookup. Package management is MacPorts first, then Homebrew, and
-vcpkg for C/C++ libraries neither provides; the full policy, including why Conan is deliberately
-not used, is [`docs/dev/DEPENDENCIES.md`](docs/dev/DEPENDENCIES.md).
-
-### Packages: port first, brew second, vcpkg for C/C++
-
-This macOS is too old for Homebrew to support fully — use **MacPorts** (`port`, `/opt/local`)
-for anything missing, and `vcpkg` (on `PATH`) for C/C++ deps neither provides. `brew` still has
-older packages, so check it second, not first. `sudo port install` needs sudo: **ask first.**
-
-Verify with `command -v` before trusting a tool — `ccache`, `sccache` and `cmake` have moved
-between the two prefixes on this machine. **A build directory remembers the absolute paths of the
-tools that configured it**, so migrating a package manager silently breaks every `build*` dir
-with a misleading `FAILED: [code=127] … No such file or directory` that reads like a broken
-install and is not one. `build.sh` detects this and reconfigures.
+* Profiles `--fast` `--debug` `--release` `--tsan` `--asan` `--ubsan` each keep their own build
+  directory (`build-fast/`, `build-tsan/`, …). Never point one profile's flags at another's.
+  Tuning flags and environment overrides: `./build.sh --help`.
+* `ctest --test-dir build` finds zero tests and still exits 0. Name the profile directory and
+  read the test count, not the exit code.
+* The binary is a `MACOSX_BUNDLE`: `build*/chadvis-projectm-qt.app/Contents/MacOS/chadvis-projectm-qt`
+  on macOS, `build*/chadvis-projectm-qt` elsewhere.
+* **A green run is not evidence for GL, burn-in, or audio.** Those entries skip headless and
+  ctest counts a skip as success; only a real runtime observation counts there.
+* `build.sh` spends 75% of the box on purpose (`--jobs` = 75% of logical cores, `nice 10`). Run
+  `./build.sh --budget` before calling a build misbehaving; every run rewrites `build.log`.
 
 ## CI reality
 
-The workflows are honest about what they can and cannot prove, and the difference matters
-when reading a badge:
+* Gates: `build.yml` (Ubuntu gcc + clang, macOS) and `windows.yml` (Release, the same headless
+  entries, a `windeployqt` artifact). The sanitizer lanes report and count; they do not gate, and
+  a lane that produced no log is broken, not clean. A failing gate gets fixed or reverted, never
+  re-armed with `continue-on-error`.
+* `integration_tests`, `integration_gl_tests`, `test_OffscreenRenderSpike` skip headless — see
+  the green-is-not-evidence rule above.
+* **A workflow file that parses is not one GitHub accepts.** A repeated YAML key is rejected
+  outright while `yaml.safe_load` reports nothing; the symptom is a run with zero jobs, not a
+  test failure. Run `./scripts/check-workflows.py` after touching `.github/workflows/`.
 
-* `build.yml` is the gate: Ubuntu × {gcc, clang} + macOS, 11 headless entries out of 14 registered.
-* `windows.yml` is a **gate** as of 2026-10-20: it builds Release, runs the same 11
-  headless entries, and uploads a `windeployqt` bundle with the vcpkg DLLs beside it.
-  It was `continue-on-error` until it went green, and a non-blocking job rots unnoticed;
-  if it starts failing, fix or revert it rather than re-arming `continue-on-error`.
-* `asan.yml`, `ubsan.yml`, `tsan.yml` report and count; they do not gate. A lane that
-  produced no log is a broken lane, not a clean one.
-* The three runtime-environment entries (`integration_tests`, `integration_gl_tests`,
-  `test_OffscreenRenderSpike`) skip headless and ctest counts a skip as success. A green
-  run is not evidence for GL, burn-in, or audio.
-* **A workflow file that parses is not a workflow file GitHub accepts.** GitHub rejects a
-  mapping with a repeated key outright; `yaml.safe_load` keeps the last one and reports
-  nothing, so every local check stays green while the workflow goes dark. The symptom is a
-  run with **zero jobs** and the summary "This run likely failed because of a workflow file
-  issue" — not a compile or test failure, and `gh run rerun` refuses it. Run
-  `./scripts/check-workflows.py` after touching `.github/workflows/`; it catches duplicate
-  keys, tab indentation, and a missing `jobs:`.
+## Shipping
 
-## Shipping executables
-
-`./scripts/release.sh` is the only correct way, and it is one command:
-
-```bash
-./scripts/release.sh            # pre-release of the pushed HEAD; waits and verifies
-./scripts/release.sh --dry-run  # every check, no dispatch
-./scripts/release.sh --tag v1.2.0   # real release, marked "Latest"
-```
-
-It refuses a dirty tree, a HEAD that is not `origin/main`, an empty `[Unreleased]`
-section, a HEAD whose `build` or `windows` gate is not green, and a second release run.
-Then it dispatches `release.yml` pinned to that commit, which builds Release on Linux,
-macOS and Windows, runs the 11 headless entries, and creates the tag at the commit it
-built. A hyphen after the version (`v1.2.0-build.<sha>`) is a pre-release and never
-"Latest". Dependabot does not build anything — it only bumps action versions.
-[`docs/dev/RELEASING.md`](docs/dev/RELEASING.md) owns the full rule.
+`./scripts/release.sh` (`--dry-run`, `--tag vX.Y.Z`) is the only correct way — it refuses a dirty
+tree, a HEAD that is not `origin/main`, an empty `[Unreleased]` section, a red gate, or a second
+run, then dispatches `release.yml` pinned to that commit. Full rule:
+[`docs/dev/RELEASING.md`](docs/dev/RELEASING.md).
 
 ## Do not
 
 * **Never commit credentials.** No raw captures, cookies, tokens, account or clip identifiers,
-  pasted private text, or complete media URLs **in anything that leaves this machine** — a
-  commit, a push, `docs/`, `TODO.md`, `STATUS/`, a commit message, a release asset, or an
-  issue. User secrets go through `CredentialStore` (macOS/Windows/Linux keychain); the
-  plaintext file backend stays gated.
-* **Secrets may be printed in the session transcript.** A bearer, cookie, `Authorization`
-  header, content key, or complete media URL can be shown while working: the transcript is
-  local and ephemeral. That permission stops at the repository and at any remote. The app's
-  own runtime log is a durable artefact that gets attached to issues, so it stays free of
-  credentials — log `url.path()`, not `url.toString()`.
-* **Never send a cookie, bearer, or automatic remote image request to a host outside the
-  captured allowlist** (`src/suno/CapturedHosts.cpp`). This is an unofficial suno.com client
-  with no supported API: a new host needs a capture first — a lead is never a host entry.
-  `docs/suno_api/` is the record — if a doc and `src/` disagree, `src/` wins.
-* **A route may be implemented on `[LEAD]` evidence when the code verifies itself at runtime
-  and fails closed when that check fails.** "Implement only what a capture proves" froze the
-  client against its own corpus: every captured media entry was `m4a-opus` on the CDN, the
-  filter accepted only `mp3` on `audiopipe.suno.ai`, and the client therefore refused 100%
-  of what it had captured — a rule that protected nothing and blocked everything. The bar is
-  now **a verified answer, not a captured guess**: an authenticated unwrap, a container
-  sniff, a status the server itself decides. What may never ship is a path whose failure
-  mode is a wrong file; a form with neither a capture nor a runtime check stays refused.
-  `docs/suno_api/capture/README.md` is how a capture is taken when one is still needed.
+  private text, or complete media URLs in anything that leaves this machine — commit, push,
+  `docs/`, `TODO.md`, `STATUS/`, commit message, release asset, issue. User secrets go through
+  `CredentialStore`; the plaintext file backend stays gated.
+* **A secret may be printed in the session transcript** — it is local and ephemeral. That
+  permission stops at the repository and at any remote. The app's runtime log is durable and gets
+  attached to issues, so it stays free of credentials: log `url.path()`, not `url.toString()`.
+* **Never send a cookie, bearer, or automatic remote image request off the captured allowlist**
+  (`src/suno/CapturedHosts.cpp`). This is an unofficial suno.com client: a new host needs a
+  capture first, and a lead is never a host entry. `docs/suno_api/` is the record — if a doc and
+  `src/` disagree, `src/` wins.
+* **A route may ship on `[LEAD]` evidence only if it verifies itself at runtime and fails
+  closed.** The bar is a verified answer — an authenticated unwrap, a container sniff, a status
+  the server itself decides — not a captured guess. A form with neither a capture nor a runtime
+  check stays refused, and what may never ship is a path whose failure mode is a wrong file.
+  Capture procedure: [`docs/suno_api/capture/README.md`](docs/suno_api/capture/README.md).
 * **Never `rm`.** Move it to `.backup_graveyard/` with a date-time suffix (gitignored).
 * Anything unusually destructive gets user approval first.
 
 ## Working style
 
-* Ship verified work. Done means the tests ran, not that it compiles. Prefer decisive commits
-  over gold-plating, and keep going while tasks remain or improvements are evident.
-* Commit often with a real message — git history is the memory for the next session. Update the
-  docs describing a change in the same commit. One fact, one owning document.
-* `TODO.md` explains its own grammar. `./scripts/task.sh` offers claim/heartbeat/release leases
-  and an audit; use them when work is genuinely shared, and skip them when it isn't.
+* Done means the tests ran, not that it compiles. Prefer decisive commits over gold-plating.
+* Commit often with a real message — git history is the memory for the next session — and update
+  the owning doc in the same commit. One fact, one owning document.
 * C++23, enforced at configure time. `std::expected` (`.and_then()` / `.or_else()`) or
   `vc::Result<T>` for expected failures; `catch` only for genuinely exceptional paths.
-* Add tests where they let logic be verified — threads, raw memory, FFmpeg return codes — and
-  run the sanitizers before merging recorder or session work.
+* Test what only a test can verify — threads, raw memory, FFmpeg return codes — and run the
+  sanitizers before merging recorder or session work.
+* `TODO.md` explains its own grammar. `./scripts/task.sh` offers claim/heartbeat/release leases
+  and an audit; use them when work is genuinely shared, skip them when it is not.
 * Keep the "Chad / Arch, BTW" register in prose. Never a substitute for fact.
+
+## Environment
+
+* Qt API questions: use the Qt Documentation MCP before trusting training recall. OpenCode
+  auto-detects `clangd`, which gives live C/C++ diagnostics mid-task.
+* Packages: MacPorts (`port`, `/opt/local`) first, Homebrew second, vcpkg for C/C++ neither
+  provides; `sudo port install` needs sudo — ask first. Check `command -v` before trusting a
+  tool: a build directory remembers the absolute paths it configured with, so a moved
+  `ccache`/`cmake` yields a misleading `[code=127]` that `build.sh` repairs by reconfiguring.
+  Policy: [`docs/dev/DEPENDENCIES.md`](docs/dev/DEPENDENCIES.md).
+* Suno recon: recent captures live in `~/Documents/suno-recon-active-investigation/`. When a
+  schema is still unknown, ask before reaching for a proxy capture.
 
 ## Agent skills
 
-`.opencode/skills/` holds agent skills, auto-discovered by OpenCode. Thirteen are the
-official Qt set from [TheQtCompanyRnD/agent-skills](https://github.com/TheQtCompanyRnD/agent-skills)
-(refresh from upstream rather than hand-editing vendored copies):
-
-* Review — `qt-cpp-review`, `qt-qml-review`: deterministic lint plus deep-analysis passes
-  for Qt C++ and QML. Run before merging, alongside the sanitizer profiles.
-* Authoring — `qt-qml`, `qt-canvas2d`, `qt-ui-design`, `qt-cmake-project`: correct the
-  systematic LLM biases around bindings, scoping, qmake-isms, and legacy `qt5_*` macros.
-* Docs & tests — `qt-cpp-docs`, `qt-qml-docs`, `qt-qml-test`, `qt-qml-test-run`: generate
-  reference docs and Qt Quick Test cases; `-run` builds and executes them through CMake.
-* Profiling — `qt-qml-profiler`: `qmlprofiler` trace analysis for 2D QML hotspots.
-* Figma — `qt-figma-token-extraction`, `qt-figma-component-generation`: design tokens to
-  QML singletons, Figma components to Qt Quick Controls 2. Need Figma API access.
-
-The rest (`code-reviewer`, `test-engineer`, `debugging-and-error-recovery`, …) are
-project-authored workflow skills. When both apply, prefer the Qt skill over the generic one.
-
-**Layout rule: every skill is a directory with a `SKILL.md` at
-`.opencode/skills/<name>/SKILL.md`, and `<name>` must equal the frontmatter `name`.** A loose
-`.md` at the skills root is not discovered, and a directory name with a trailing space is
-not just cosmetic — it makes `git checkout` fail on Windows with `invalid path`, which kills
-the entire Windows job at checkout while `continue-on-error` reports the run as green. Both
-mistakes have happened here.
-
-* Repo verification — `chadvis-verify`: the build-profile rule, the ctest zero-tests trap,
-  the `SAFE_TESTS` drift check, the sanitizer lanes, and "green is not GL evidence". Run it
-  before claiming any task complete.
-* C++ standards — `cpp-coding-standards` (C++ Core Guidelines): the rule set behind the
-  C++23 requirement, complementary to `modern-cpp`'s security emphasis.
-* C++ specialist — `cpp-pro`: a general modern-C++ systems prompt; no license file, treat as
-  unlicensed third-party content, do not redistribute beyond this repo.
-* CI/CD — `ci-cd-and-automation`: pipeline setup and quality-gate guidance.
-
-* C++ systems engineering — `c-cpp-profi` ([MuhDur/c-cpp-profi](https://github.com/MuhDur/c-cpp-profi)):
-  evidence-grade workflow with a gate ladder (inventory → compile → static → sanitizers →
-  tests → fuzz → perf → portability), scripts plus a report checker. Script paths were
-  rewritten from `skill/c-cpp-profi/` to `.opencode/skills/c-cpp-profi/` when vendoring.
-  No license file upstream — treat as unlicensed third-party content, do not redistribute
-  beyond this repo.
-* Modern C++ idioms — `modern-cpp` ([trailofbits/skills](https://github.com/trailofbits/skills),
-  CC-BY-SA-4.0): C++20/23/26 idioms with a security emphasis — hardening flags, sanitizer
-  setup, safe idioms by vulnerability class. The skill form of the C++23 rule above.
-* Debugging discipline — `systematic-debugging` ([obra/superpowers](https://github.com/obra/superpowers),
-  MIT): the root-cause-before-fix iron law. (The repo's own `debugging-and-error-recovery`
-  is currently a stub.)
-* Finishing discipline — `verification-before-completion` (superpowers, MIT): no completion
-  claim without fresh verification evidence — the skill form of "Ship verified work".
-* Design — `brainstorming` (superpowers, MIT): question-driven design refinement before
-  building anything non-trivial.
-
-`.opencode/opencode.jsonc` also registers the hosted **Qt Documentation MCP**
-(`https://qt-docs-mcp.qt.io/mcp`, no auth) for live Qt 6.8 LTS / 6.11 API lookup — prefer
-it over training-data recall for Qt API questions. OpenCode auto-detects `clangd` for
-C/C++ LSP diagnostics when it is installed, which gives live compiler feedback mid-task.
+Every skill is a directory with `SKILL.md` at `.opencode/skills/<name>/SKILL.md`, and `<name>`
+must equal the frontmatter `name`. A loose `.md` at the skills root is not discovered, and a
+trailing space in the directory name makes `git checkout` fail on Windows — which kills the
+Windows job while `continue-on-error` still reports green. Both have happened here. Prefer a Qt
+skill over a generic one when both apply. Inventory, provenance and per-harness paths:
+[`docs/dev/SKILLS.md`](docs/dev/SKILLS.md).
