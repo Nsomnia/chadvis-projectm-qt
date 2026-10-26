@@ -295,10 +295,17 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `scalarString` is byte-identical in two files. `optBool` accepts `"True"`/`"False"`
       but `booleanValue` accepts only `"true"`/`"1"` — **the two disagree on the captured
       filter strings.** Fix: one `JsonCoerce` helper in `ClipParser.hpp`.
-- [ ] T0064 Duplicated enum→string and auth-failure maps, with three owners of one vocabulary (`src/qml_bridge/SunoBridge.cpp:73-88,90-106,333-374`) #cleanup
-      Two `AuthFailureKind` switches in the same file plus a third in `AuthCoordinator`
-      (:404-405 admits it); and the bridge re-implements `toString(DownloadState)`
-      (`DownloadQueue.hpp:45-55`) so adding a state leaves the `switch` non-exhaustive.
+- [x] T0064 Duplicated enum→string and auth-failure maps, with three owners of one vocabulary (`src/qml_bridge/SunoBridge.cpp:73-88,90-106,333-374`) #cleanup
+      `SunoBridge` owned both `AuthFailureKind` switches — the QML id and the user sentence.
+      Both moved to the enum's own module as `auth::authFailureKindId` /
+      `auth::authFailureMessage` (`ClerkAuthClient.hpp/.cpp`), so a new kind fails to
+      compile there instead of silently falling through in the bridge. The bridge now
+      converts at its two call sites. Two premises were stale and are recorded as such:
+      the "third switch in AuthCoordinator" no longer exists (grep finds no
+      `AuthFailureKind` there), and the bridge's `DownloadState` switch is not a copy of
+      `toString(DownloadState)` — it emits per-state user text, has no `default`, and is
+      therefore already `-Wswitch`-exhaustive. New vocabulary test in
+      `test_ClerkAuthClient`; test_ClerkAuthClient + unit_tests pass.
 - [ ] T0065 `SunoOrchestrator` is a permanently-failing stub with unreachable members (`src/suno/SunoOrchestrator.cpp:14-44`) #cleanup
       Both methods only `emit errorOccurred`; `onMessageFinished`/`onHistoryFinished` are
       private and never called; `client_` is written and never read. It **is** instantiated

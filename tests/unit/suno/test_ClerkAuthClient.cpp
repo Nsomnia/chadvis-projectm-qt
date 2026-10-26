@@ -5,6 +5,9 @@
 
 #include <QSignalSpy>
 
+#include <array>
+#include <utility>
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -168,6 +171,28 @@ class TestClerkAuthClient : public QObject
     Q_OBJECT
 
 private slots:
+    /// The bridge no longer owns this vocabulary; these are the strings it
+    /// passes to QML, so a rename or an empty message is a user-visible bug.
+    void authFailureVocabularyIsComplete()
+    {
+        const std::array<std::pair<AuthFailureKind, const char*>, 5> kinds{{
+                {AuthFailureKind::None, "none"},
+                {AuthFailureKind::NoActiveSession, "noSession"},
+                {AuthFailureKind::RejectedCredential, "rejected"},
+                {AuthFailureKind::ProtocolMismatch, "protocol"},
+                {AuthFailureKind::MalformedResponse, "malformed"},
+        }};
+        for (const auto& [kind, id] : kinds) {
+            QCOMPARE(QString::fromLatin1(authFailureKindId(kind)), QString::fromLatin1(id));
+            const QString message = QString::fromLatin1(authFailureMessage(kind));
+            if (kind == AuthFailureKind::None) {
+                QVERIFY(message.isEmpty());
+            } else {
+                QVERIFY(!message.isEmpty());
+            }
+        }
+    }
+
     void getStyleEnvelopeParses()
     {
         const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;

@@ -284,6 +284,42 @@ QString noClerkCookieReason(const QStringList& seenNames, qsizetype withheldCoun
 
 } // namespace
 
+const char* authFailureKindId(AuthFailureKind kind) noexcept {
+    switch (kind) {
+        case AuthFailureKind::None:
+            return "none";
+        case AuthFailureKind::NoActiveSession:
+            return "noSession";
+        case AuthFailureKind::RejectedCredential:
+            return "rejected";
+        case AuthFailureKind::ProtocolMismatch:
+            return "protocol";
+        case AuthFailureKind::MalformedResponse:
+            return "malformed";
+    }
+    return "none";
+}
+
+const char* authFailureMessage(AuthFailureKind kind) noexcept {
+    switch (kind) {
+        case AuthFailureKind::NoActiveSession:
+            return "No active Suno session was found. Paste a valid bearer token or "
+                   "the complete Clerk cookie header in Account settings.";
+        case AuthFailureKind::RejectedCredential:
+            return "Suno rejected the stored credential. Paste a fresh bearer token or "
+                   "complete Clerk cookie header in Account settings.";
+        case AuthFailureKind::ProtocolMismatch:
+            return "Suno sign-in hit an unexpected authentication response. Try again; "
+                   "if it persists, refresh the captured sign-in flow.";
+        case AuthFailureKind::MalformedResponse:
+            return "Suno sign-in returned an unreadable authentication response. Try "
+                   "again; if it persists, refresh the captured sign-in flow.";
+        case AuthFailureKind::None:
+            break;
+    }
+    return "";
+}
+
 StoredCredentialClassification classifyStoredCredential(const QString& value) {
     const QString normalized = normalizeCookieHeader(value);
     if (normalized.isEmpty()) {

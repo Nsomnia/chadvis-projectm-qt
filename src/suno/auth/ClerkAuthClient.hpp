@@ -28,6 +28,15 @@ enum class AuthFailureKind {
     MalformedResponse,
 };
 
+/// Stable, QML-facing identifier for an AuthFailureKind. This lives beside the
+/// enum so a new kind fails to build here rather than silently defaulting in
+/// the bridge (T0064).
+[[nodiscard]] const char* authFailureKindId(AuthFailureKind kind) noexcept;
+
+/// User-facing sentence for an AuthFailureKind, or the empty string for
+/// AuthFailureKind::None. Same ownership rule as authFailureKindId.
+[[nodiscard]] const char* authFailureMessage(AuthFailureKind kind) noexcept;
+
 /// Type of value found in the single persisted `suno/default` slot. This is
 /// an internal auth-module classification and is never exposed to QML.
 enum class StoredCredentialShape {

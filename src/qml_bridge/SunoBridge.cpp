@@ -70,44 +70,6 @@ constexpr vc::suno::FeatureGate kGatesImplementedByThisBuild[]{
         vc::suno::FeatureGate::Billing,       vc::suno::FeatureGate::AccountProfile,
         vc::suno::FeatureGate::MediaDelivery};
 
-QString authFailureKindString(vc::suno::auth::AuthFailureKind kind) {
-    using Kind = vc::suno::auth::AuthFailureKind;
-    switch (kind) {
-        case Kind::None:
-            return QStringLiteral("none");
-        case Kind::NoActiveSession:
-            return QStringLiteral("noSession");
-        case Kind::RejectedCredential:
-            return QStringLiteral("rejected");
-        case Kind::ProtocolMismatch:
-            return QStringLiteral("protocol");
-        case Kind::MalformedResponse:
-            return QStringLiteral("malformed");
-    }
-    return QStringLiteral("none");
-}
-
-QString synthesizedAuthFailureError(vc::suno::auth::AuthFailureKind kind) {
-    using Kind = vc::suno::auth::AuthFailureKind;
-    switch (kind) {
-        case Kind::NoActiveSession:
-            return QStringLiteral("No active Suno session was found. Paste a valid bearer token or "
-                                  "the complete Clerk cookie header in Account settings.");
-        case Kind::RejectedCredential:
-            return QStringLiteral("Suno rejected the stored credential. Paste a fresh bearer token "
-                                  "or complete Clerk cookie header in Account settings.");
-        case Kind::ProtocolMismatch:
-            return QStringLiteral("Suno sign-in hit an unexpected authentication response. Try "
-                                  "again; if it persists, refresh the captured sign-in flow.");
-        case Kind::MalformedResponse:
-            return QStringLiteral("Suno sign-in returned an unreadable authentication response. "
-                                  "Try again; if it persists, refresh the captured sign-in flow.");
-        case Kind::None:
-            break;
-    }
-    return {};
-}
-
 QString generationUnavailableMessage() {
     return QStringLiteral("Generation is unavailable because the required Suno CAPTCHA token flow "
                           "is not supported. No request was sent.");
@@ -976,12 +938,14 @@ QString SunoBridge::googleLoginError() const {
             return coordinatorError;
         }
     }
-    return synthesizedAuthFailureError(s_controller->authFailureKind());
+    return QString::fromLatin1(
+            vc::suno::auth::authFailureMessage(s_controller->authFailureKind()));
 }
 
 QString SunoBridge::authFailureKind() const {
     if (!s_controller) return QStringLiteral("none");
-    return authFailureKindString(s_controller->authFailureKind());
+    return QString::fromLatin1(
+            vc::suno::auth::authFailureKindId(s_controller->authFailureKind()));
 }
 
 bool SunoBridge::googleLoginAvailable() const {

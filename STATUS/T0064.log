@@ -1,0 +1,6 @@
+2026-10-26T20:42:10Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee18373 pid=18373 ttl=4h expires=2026-10-27T00:42:10Z
+2026-10-26T21:05:00Z  CHANGE   authFailureKindId/authFailureMessage moved to ClerkAuthClient; SunoBridge switches deleted; new vocabulary test.
+2026-10-26T21:05:00Z  VERIFY   cmake --build build-fast --target test_ClerkAuthClient unit_tests -j3 -> 350/350 linked.
+2026-10-26T21:05:00Z  VERIFY   ctest -R '^(test_ClerkAuthClient|unit_tests)$' -> 2/2 passed (88.30 s).
+2026-10-26T21:05:00Z  NOTE     Two claims were stale: no AuthFailureKind switch exists in AuthCoordinator, and the bridge DownloadState switch is user-facing text, not a toString copy.
+2026-10-26T20:49:36Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee19953
