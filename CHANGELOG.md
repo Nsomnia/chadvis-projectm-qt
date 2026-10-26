@@ -8,6 +8,15 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Changed
 
+- **projectM is 4.1.8, not 4.1.6.** Two releases of upstream fixes, none of which this project
+  could patch around from outside: an out-of-bounds read in custom waveform code, a `nullptr`
+  dereference in the texture sampler, an infinite loop on self-referential shader macros, four
+  HLSLParser correctness bugs, and 4.1.7's "reset to default framebuffer (FBO 0) after rendering
+  presets and transitions" — the framebuffer this renderer deliberately draws into. The public API
+  delta is byte-identical (`core.h`, `parameters.h`, `render_opengl.h`), which the build confirms:
+  the same sources compile and link against the new tag with no changes. The pin is a commit SHA,
+  as before. (T0164)
+
 - **The Qt floor is 6.8 LTS, not the EOL 6.7.** The old floor bought exactly one API — `QNetworkRequest::setTransferTimeout`, which `HttpPolicy` stamps onto every request — and that reason stands; what changed is that 6.7 reached end of support on 2025-03-26, so a floor nobody can get security fixes for ships known bugs to whoever follows the README. 6.8 is the current LTS and also carries the backported screen-reader fixes. The CI gate has been building against 6.8.3 all along, which is what makes the floor honest rather than aspirational, and `HttpPolicy.hpp`'s matching `static_assert` moved with it so an older Qt fails at compile time instead of at a missing call. (T0050)
 
 - **The first library sync asks for 100 clips a page instead of 20.** The feed honours `limit` up to 100 and answers `400` above it (measured with this app's own bearer: 20/50/100 return exactly that many clips, 200 is rejected; omitting the field yields the wire's default of 20). A 2 147-clip library was 108 round trips through the client's 1 Hz politeness limiter — about six minutes on every launch, with a spinner as the only feedback — and is now 22. `has_more` still decides when to stop, so a server that caps the page lower degrades to more pages rather than to a wrong answer, and `theFirstPageRequestsAHundredClips` asserts the request body because nothing else would notice the constant reverting. (T0334)
@@ -34,6 +43,20 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **The visualizer finally has presets: ~9,800 of them.** projectM ships no preset pack, so
+  every launch logged `PresetScanner: Found 0 potential preset files` and the only picture
+  available was projectM's built-in idle preset — for the live canvas and therefore for every
+  recording. The build now fetches the pack the projectM project calls its default (Jason
+  Fletcher's *cream of the crop*) and makes it discoverable: a dev build reads it from the build
+  tree, an installed app carries it inside the `.app` or `share/`, and `file::presetsDir()` probes
+  it after any real projectM install and before the empty user drop folder. Settings → Visualizer
+  gained a **Preset Library** row — the folder in use, *Choose…*, *Rescan*, and a count that says
+  plainly when it is zero — so a user with their own pack can point at it without editing
+  `config.toml`; that choice is saved as `preset_path`, and `CHADVIS_PRESET_DIR` overrides
+  everything for a one-off run. Measured on the built app: `Found 9795 potential preset files`
+  from the bundled pack, scanned in 3.6 s on the manager's worker thread. Offline configure warns
+  and keeps the idle preset; `-DCHADVIS_BUNDLE_PRESETS=OFF` skips the fetch. (T0323, T0237)
+
 - **The unread badge finally moves on its own.** `SunoNotificationService` had no `QTimer` at all, so `unreadCountChanged` only ever fired if something opened the Notifications view and asked. It now polls on one timer (60 s by default, and the interval is a constructor argument so a test can shorten it) and stays silent while signed out or already busy — an error every minute would be the timer talking rather than the user. (T0067)
 
 - **The transport is global, because playback is the point of the program.** It lived only inside Listen, so starting a track from the Library, Explore or a notification and then navigating anywhere left the user with no visible pause, skip or seek — the keyboard shortcuts worked, but nothing said so. `TransportBar` is now docked in the shell below every view, bound to `AudioBridge`, and shows the current title/artist with elapsed and total time, play/pause, previous/next, stop, seek and volume. It reads the playlist's current item rather than a Suno-specific bridge, so a local file and a downloaded clip are the same kind of queue entry, and its transport controls disable while the queue is empty (volume and *open audio file…* stay live). The Listen view's private copy is deleted rather than kept as a second implementation. Verified by `TestQmlStartup` (the window and the new bar instantiate) and the QML lint gate; its placement and feel are MT-001-D4. (T0321)
@@ -41,6 +64,17 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 - **The visualizer now has an audio path on a Qt that cannot tap `QMediaPlayer`.** Qt's own reference page for `QAudioBufferOutput` closes with "only supported with the FFmpeg backend", and this machine's Qt 6.12 multimedia ships `libdarwinmediaplugin` and **no** FFmpeg media plugin: `QT_MEDIA_BACKEND=ffmpeg` logs `Available backends QList("darwin")`, falls back, and a 1.2 s tone produces exactly **zero** `audioBufferReceived` emissions while playing normally. That is why the canvas rendered and never moved. `VisualizerAudioTap` is the fallback: when no buffer has arrived, the engine decodes the selected local file with the repository's own FFmpeg decoder and pushes the PCM into the same `AudioQueue` projectM and the recorder already drain. `QMediaPlayer` stays the only audio output and the master clock; the first delivered buffer clears the tap for the rest of the session, so a backend that does support the buffer output pays nothing. Measured by `playingAnOnDiskClipStartsTheTransport`, which asserts both the transport state and a non-zero visualizer queue, and pinned as MT-001-D4.4 for the GL half. (T0322)
 
 ### Fixed
+
+- **Notifications no longer print `@undefined`, and the "reactive" animations actually move.** Two
+  variants of the same QML mistake. `visible: modelData.author_handle !== ""` is true when the key
+  is absent (`undefined !== ""`), and `"@" + undefined` renders the literal text `@undefined` — a
+  notification with no handle showed a fake one; every such field is coerced before use now.
+  Separately, `Math.sin(Date.now() / 500)` in a binding is evaluated exactly once, because
+  `Date.now()` is not a bindable property, so the karaoke "animated dots" and the overlay glow's
+  pulse were frozen at their first frame. Both are real `SequentialAnimation`s now (staggered per
+  dot, gated on the overlay's own `glow` flag and playback), and the overlay delegate gives every
+  persisted JSON field a default, so a schema drift draws a sane element instead of a NaN-positioned
+  invisible one. (T0077, T0078)
 
 - **`pixelFormat` was decorative: every software encode recorded yuv420p whatever the setting said.** The codec context and the AVFrame were both hardcoded `AV_PIX_FMT_YUV420P`, and the scaler's target defaulted to it too, so asking for yuv422p/yuv444p/rgb24 produced a 420p file and reported nothing. The settings enum now has one mapping to FFmpeg, the encoder context takes it, and — the part that matters — after `avcodec_open2` the **negotiated** format drives both the scaler target and the frame, because an encoder that returns a different format than requested would otherwise get one layout written into a frame declared as another: corruption with no error. A negotiation still happens (libx265 promotes some profiles), so it is logged with both names rather than hidden. `validate()` refuses the two combinations that are certainly wrong — NV12/P010LE without a hardware encoder, and rgb24 with libx264/libx265, naming yuv444p as the colour-lossless path. `theChosenPixelFormatReachesTheMuxedStream` reads the finished file's own `codecpar->format` back as yuv422p, because a setting that reaches the struct and not the muxed stream is the bug. (T0171, first half)
 
