@@ -3,6 +3,9 @@
 Operating rules for this repository. The ranked backlog is [`TODO.md`](TODO.md); the docs hub
 is [`docs/README.md`](docs/README.md).
 
+## Suno Recon
+You can find some more recent suno.com recon files in ~/Documents/suno-recon-active-investigation/ and if needed you may run anything agentically to find the json schema or ask the user to record it with the appropriate browser extension or if needed via zap proxy or burp suite free.
+
 ## Build & test
 
 ```bash
