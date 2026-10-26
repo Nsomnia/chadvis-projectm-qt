@@ -226,6 +226,18 @@ void RecordingBridge::startRecording(const QString& outputPath)
         return;
     }
 
+    // The recorder captures pixels from the visualizer's own GL context, so a
+    // canvas that is not on screen is not a recording -- it is a file of frozen
+    // or empty frames, which is the "looks like it worked" failure this project
+    // refuses. Now that the transport bar offers Record from any view, this is
+    // reachable by a single click from the Library, so it refuses out loud
+    // instead of writing a broken file.
+    if (s_visualizer && !s_visualizer->isExposed()) {
+        emit recordingError(QStringLiteral(
+                "The visualizer is not on screen. Open the Video tab, then record."));
+        return;
+    }
+
     auto settings = vc::EncoderSettings::fromConfig();
     if (!outputPath.isEmpty()) {
         const auto requestedPath = vc::fs::path(outputPath.toStdString());

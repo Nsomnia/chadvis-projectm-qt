@@ -167,23 +167,15 @@ SunoController::SunoController(AudioEngine* audioEngine, LyricsSync* lyricsSync,
             [this](const std::vector<SunoClip>& clips) {
                 emit libraryUpdated(clips);
 
-                // Lyrics are requested for the NEW slice only: libraryUpdated
-                // carries the whole accumulated list after every page, and the
-                // list is append-ordered during a sync, so scanning from the
-                // previously seen size issues exactly one pass per clip — the
-                // old whole-list scan re-issued every prior page's queries on
-                // every page (k×20 getAlignedLyrics calls by page k). A smaller
-                // list means a fresh sync cleared it: rescan from zero.
-                const std::size_t firstNew =
-                        clips.size() < lastLyricsScanSize_ ? std::size_t{0} : lastLyricsScanSize_;
-                lastLyricsScanSize_ = clips.size();
-                for (std::size_t i = firstNew; i < clips.size(); ++i) {
-                    const auto& clip = clips[i];
-                    auto lyricsRes = db_.getAlignedLyrics(clip.id);
-                    if (lyricsRes.isErr() || lyricsRes.value().empty()) {
-                        lyricsManager_->queueLyricsFetch(clip.id);
-                    }
-                }
+                // No lyrics prefetch here, deliberately. Syncing the library is
+                // not a request for any track's lyrics: doing it eagerly issued
+                // one remote request per clip in the whole library -- measured
+                // 2026-10-26: 3,749 clips queued over a 38-page sync, which then
+                // drained at the client's polite 1/s for most of an hour, with
+                // the app idle. Lyrics are fetched when a track is actually
+                // opened for playback (openClipLyrics below), which is the only
+                // moment they are needed, and the result is cached in the DB so
+                // a second play costs nothing.
             });
     connect(libraryManager_.get(), &SunoLibraryManager::authenticationRequired, this,
             &SunoController::authenticationRequired);

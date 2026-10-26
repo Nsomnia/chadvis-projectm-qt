@@ -4,3 +4,8 @@
 2026-10-22T17:22:00Z  VERIFY   scripts/lint-qml.sh -> "qmllint: no blocking problems" (1105 baselined findings, unchanged).
 2026-10-22T17:22:00Z  VERIFY   ctest -> integration_tests (TestQmlStartup) Passed 10.83 s; test_ThemeQml Passed.
 2026-10-22T17:22:00Z  NOT-VERIFIED Placement/feel across each view, and the queue affordance: MT-001-D4.3.
+2026-10-26T04:14:00Z  CHANGE   Reported from a live run: "there is no record option whether playback is happening or not ... no record button in the media toolbar". Recording was reachable only via Video -> right dock -> Record tab, so a playing track had no visible capture control on the bar that is present on every view. TransportBar now carries a record/stop button (red dot, elapsed time while running) plus a one-line error text, and RecordingBridge::recordingError is captured in the bar through a Connections block so a refusal is visible where the click happened.
+2026-10-26T04:14:00Z  CHANGE   RecordingBridge::startRecording now refuses when the visualizer window is not exposed: the recorder reads pixels from that GL context, so a click from the Library would have written a file of frozen frames and reported success. The message names the fix ("Open the Video tab, then record").
+2026-10-26T04:16:00Z  VERIFY   ./build.sh --fast --tests builds and links the app bundle (04:16); scripts/lint-qml.sh -> no blocking problems.
+2026-10-26T04:16:00Z  NOT-VERIFIED Pressing Record from the bar, on screen, and the resulting file. Needs one human run; the guard's refusal path is what a click outside Video should produce.
+2026-10-26T04:19:00Z  VERIFY   ctest --test-dir build-fast/tests --output-on-failure -j4 -> 14/14 passed, 0 failed (92.9 s), including TestQmlStartup (loads the bar) and TestRecorder.

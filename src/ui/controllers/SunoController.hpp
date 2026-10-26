@@ -126,10 +126,6 @@ private:
     std::unique_ptr<SunoLyricsManager> lyricsManager_;
 
     std::unordered_map<std::string, LyricsData> directLyricsCache_;
-    /// Library size at the last lyrics scan: libraryUpdated carries the whole
-    /// accumulated list on every page, so the new-clip window is the suffix
-    /// past this mark (a smaller list means a fresh sync — rescan from zero).
-    std::size_t lastLyricsScanSize_{0};
     std::string activeClipId_;
 };
 

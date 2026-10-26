@@ -8,6 +8,14 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Changed
 
+- **Lyrics are fetched when a track is opened, not for the whole library after every sync.**
+  `libraryUpdated` queued one aligned-lyrics request per clip as each page arrived, so a 3,749-clip
+  first sync (measured 2026-10-26, 38 pages) left ~3,749 requests draining through the client's
+  polite 1 req/s limiter for most of an hour with the app otherwise idle — traffic nobody asked
+  for, for tracks nobody was going to play. Nothing was broken by it; it was simply a sync where
+  a fetch belonged. Lyrics now load on `openClipLyrics`, the moment a clip is opened for playback,
+  and land in the SQLite cache, so a second play costs nothing and an offline replay still works.
+
 - **projectM is 4.1.8, not 4.1.6.** Two releases of upstream fixes, none of which this project
   could patch around from outside: an out-of-bounds read in custom waveform code, a `nullptr`
   dereference in the texture sampler, an infinite loop on self-referential shader macros, four
@@ -76,6 +84,16 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   The scripts are parked in the ignored graveyard, not deleted from history. (T0112)
 
 ### Fixed
+
+- **There was no visible Record button while a track was playing.** Recording existed only three
+  clicks deep — Video tab → right dock → Record tab — so a user listening to a track had no way to
+  capture it, which is exactly the report that came back from a live run. The global transport bar
+  (docked under every view) now carries a record control: red dot while recording, elapsed time
+  beside it, and one click to start or stop. A start from anywhere else is refused out loud rather
+  than written as a file of frozen frames — `RecordingBridge::startRecording` checks the
+  visualizer window is actually exposed and names the fix ("Open the Video tab, then record"), and
+  the bar shows that refusal inline instead of only on a panel the user is not looking at.
+  (T0321)
 
 - **Notifications no longer print `@undefined`, and the "reactive" animations actually move.** Two
   variants of the same QML mistake. `visible: modelData.author_handle !== ""` is true when the key

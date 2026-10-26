@@ -27,6 +27,12 @@ Rectangle {
     readonly property bool hasTrack: AudioBridge.currentTrack
                                      && AudioBridge.currentTrack.title !== ""
 
+    /// Last recording failure, shown in the bar rather than only on the Video
+    /// tab's Record panel: the button that fails may have been pressed from
+    /// anywhere, and a failure nobody can see is the silent-failure class this
+    /// project treats as a defect.
+    property string recordError: ""
+
     // QML's url value type has no toLocalFile(); replicate QUrl::toLocalFile
     // (strip scheme, percent-decode, drop slash before Windows drive letter).
     function toLocalFilePath(url) {
@@ -176,6 +182,64 @@ Rectangle {
             }
         }
 
+        Rectangle {
+            visible: !root.compact
+            Layout.preferredWidth: 1
+            Layout.preferredHeight: parent.height - 20
+            color: Theme.border
+        }
+
+        // ── Record ─────────────────────────────────
+        // Recording belongs here, next to play, because a music video is the
+        // product and this bar is the only transport that exists on every view.
+        // Before this, the sole start button lived three clicks deep on the
+        // Video tab's dock, so a user playing a track had no visible way to
+        // capture it -- reported 2026-10-26 with the app running and a track
+        // playing.
+        RowLayout {
+            spacing: Theme.spacingSmall
+
+            Text {
+                visible: root.recordError.length > 0 && !RecordingBridge.isRecording
+                text: root.recordError
+                color: Theme.error
+                font: Theme.fontCaption
+                elide: Text.ElideRight
+                Layout.maximumWidth: 240
+                ToolTip.visible: errorHover.hovered
+                ToolTip.text: root.recordError
+                ToolTip.delay: 300
+                HoverHandler { id: errorHover }
+            }
+
+            Text {
+                visible: RecordingBridge.isRecording
+                text: RecordingBridge.recordingTime
+                color: Theme.recording
+                font: Theme.fontCaptionStrong
+            }
+
+            AppButton {
+                icon: RecordingBridge.isRecording
+                      ? "qrc:/qt/qml/ChadVis/resources/icons/stop.svg"
+                      : "qrc:/qt/qml/ChadVis/resources/icons/record.svg"
+                highlighted: RecordingBridge.isRecording
+                implicitWidth: 40
+                implicitHeight: 40
+                ToolTip.visible: hovered
+                ToolTip.text: RecordingBridge.isRecording
+                              ? "Stop and write the file"
+                              : "Record the visualizer and the playing audio"
+                ToolTip.delay: 300
+                onClicked: {
+                    if (RecordingBridge.isRecording)
+                        RecordingBridge.stopRecording()
+                    else
+                        RecordingBridge.startRecording()
+                }
+            }
+        }
+
         // ── Open file ──────────────────────────────
         AppButton {
             icon: "qrc:/qt/qml/ChadVis/resources/icons/plus.svg"
@@ -186,6 +250,19 @@ Rectangle {
             ToolTip.text: "Open audio file…"
             ToolTip.delay: 400
             onClicked: fileDialog.open()
+        }
+    }
+
+    Connections {
+        target: RecordingBridge
+
+        // One error surface for the whole bar. Cleared when a recording
+        // actually starts, so a stale refusal does not sit next to a running REC.
+        function onRecordingError(message) { root.recordError = message }
+
+        function onRecordingStateChanged() {
+            if (RecordingBridge.isRecording)
+                root.recordError = ""
         }
     }
 
