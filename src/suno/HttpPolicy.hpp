@@ -60,7 +60,7 @@ namespace vc::suno::http {
 // here turns a silent "no timeout at all" on an older Qt into a configure-time
 // complaint naming the reason. (DownloadQueue.cpp:409 already calls the setter
 // unguarded, so the floor was in fact already required — this just says so.)
-static_assert(QT_VERSION >= QT_VERSION_CHECK(6, 7, 0),
+static_assert(QT_VERSION >= QT_VERSION_CHECK(6, 8, 0),
               "vc::suno::http needs Qt >= 6.7 for QNetworkRequest::setTransferTimeout. "
               "Older than that, an unset transfer timeout means NO timeout rather than "
               "Qt's 30000 ms default, so the stall guard this file exists to provide "

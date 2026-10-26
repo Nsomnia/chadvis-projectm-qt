@@ -148,8 +148,8 @@ endif()
 # skipped for that dependency. A stale name degrades gracefully because the
 # probe re-runs after every install.
 
-# --- Qt6 (6.7+ floor, see Dependencies.cmake) ---
-# APT is deliberately empty: Debian/Ubuntu LTS Qt is older than the 6.7
+# --- Qt6 (6.8+ floor, see Dependencies.cmake) ---
+# APT is deliberately empty: Debian/Ubuntu LTS Qt is older than the 6.8
 # floor, so installing it would mutate the system and still fail the version
 # check. vcpkg/winget/choco are empty: building Qt from source takes hours
 # and the binary options are unreliable.

@@ -1,0 +1,7 @@
+2026-10-25T01:00:00Z  CLAIM    the Qt floor is 6.7, which is EOL
+2026-10-25T01:05:00Z  CHANGE   cmake/Dependencies.cmake: VERSION_LESS 6.7 -> 6.8, both user-facing messages, and the comment rewritten to say what the floor buys (setTransferTimeout) and why it moved anyway (6.7 EOL 2025-03-26; 6.8 is the current LTS with backported screen-reader fixes).
+2026-10-25T01:05:00Z  CHANGE   src/suno/HttpPolicy.hpp:63 static_assert QT_VERSION_CHECK(6, 7, 0) -> (6, 8, 0), so an older Qt fails at compile time rather than at a missing call.
+2026-10-25T01:05:00Z  CHANGE   cmake/DependencyBootstrap.cmake comment and docs/user/INSTALL.md's auto-install note both say 6.8.
+2026-10-25T01:10:00Z  VERIFY   ./build.sh --fast --tests -> exit 0 on Qt 6.12.0.
+2026-10-25T01:10:00Z  VERIFY   CI builds against Qt 6.8.3 on all three gates, and that lane has been green on this tree, so 6.8 is proven by the gate rather than assumed.
+2026-10-25T01:10:00Z  NOTE     Local Qt is 6.12, which is above the floor and therefore does not exercise the failure path; the CI lane is the only evidence that 6.8 configures and passes.

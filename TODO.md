@@ -184,13 +184,6 @@ line to describe an item is describing it in the wrong place. Finished work move
       `setInitialProperties` converts a whole class of runtime-only bug into a load-time
       failure. Also connect `QQmlApplicationEngine::objectCreationFailed` (since 6.4) — it
       is the difference between "the app showed no window" and a diagnosable error.
-- [ ] T0050 **The Qt floor is 6.7, which is EOL** (`cmake/Dependencies.cmake:20-25`) #risk-high
-      Standard support ended 2025-03-26. **Target Qt 6.8 LTS at minimum (6.8.8 current,
-      supported to 2029-10-08, and it receives the backported screen-reader fixes), and plan
-      6.12 LTS** (released 2026-09-30, supported to 2031-09-30). The only API gating the
-      floor is `QNetworkRequest::setTransferTimeout` (6.7), which both satisfy. Qt 7 does
-      not exist and no migration cliff is scheduled.
-
 Carried over from the superseded backlog and **confirmed by re-reading the tree**:
 
 - [ ] T0170 **Overlays and karaoke cannot appear in recorded video at all** (`src/visualizer/VisualizerWindow.cpp`, `src/recorder/`) #risk-high #blocks-feature

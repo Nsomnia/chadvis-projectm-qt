@@ -27,25 +27,29 @@ if(NOT Qt6_FOUND)
 endif()
 if(NOT Qt6_FOUND)
     message(FATAL_ERROR
-        "Qt6 (6.7+) with components Core Gui Multimedia Network Quick Qml "
+        "Qt6 (6.8+) with components Core Gui Multimedia Network Quick Qml "
         "QuickControls2 Sql DBus was not found. Install it with the Qt online "
         "installer, 'pip install aqtinstall', 'brew install qt' (macOS), or "
         "your distro's Qt6 packages, then re-run CMake. "
         "-DCHADVIS_AUTO_INSTALL_DEPS=ON attempts the install automatically on "
         "Homebrew/MacPorts/Arch/Fedora (Debian/Ubuntu's Qt is older than the "
-        "6.7 floor, so it is deliberately not attempted there).")
+        "6.8 floor, so it is deliberately not attempted there).")
 endif()
 
-# Qt 6.7 floor, and not for a new feature. `QNetworkRequest::setTransferTimeout`
-# arrived in 6.7, and on anything older the call does not exist -- so without the
-# floor an optional network-hardening feature silently vanishes on an older Qt
-# rather than failing loudly. `cmake/TargetSetup.cmake`'s HttpPolicy wiring
-# carries the matching `static_assert(QT_VERSION >= 6.7)` so both halves agree.
-if(Qt6_VERSION VERSION_LESS 6.7)
+# Qt 6.8 floor. 6.7 was the old floor and it bought exactly one API --
+# `QNetworkRequest::setTransferTimeout`, which src/suno/HttpPolicy.cpp stamps
+# onto every request -- and that reason has not changed; what changed is that
+# 6.7 reached end of support on 2025-03-26, so a floor nobody can get security
+# fixes for is a floor that ships known bugs to whoever follows the README.
+# 6.8 is the current LTS and also carries the backported screen-reader fixes.
+# The CI gate builds against 6.8.3, which is what makes this floor honest rather
+# than aspirational; `src/suno/HttpPolicy.hpp:63` carries the matching
+# `static_assert` so the two halves agree and an old Qt fails at compile time.
+if(Qt6_VERSION VERSION_LESS 6.8)
     message(FATAL_ERROR
-        "ChadVis requires Qt 6.7 or newer: QNetworkRequest::setTransferTimeout, "
-        "which src/suno/HttpPolicy.cpp stamps onto every request, was added in "
-        "6.7. On an older Qt the request policy would silently not exist.")
+        "ChadVis requires Qt 6.8 or newer: 6.7 is past end of support and cannot "
+        "receive security fixes. 6.8 LTS (or newer) is what this tree is built "
+        "and tested against.")
 endif()
 
 # pkg-config is optional: everything below degrades to manual search.
