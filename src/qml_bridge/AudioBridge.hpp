@@ -21,7 +21,6 @@ friend class QmlSingletonBridge<AudioBridge>;
     QML_ELEMENT
     QML_SINGLETON
 
-    Q_PROPERTY(int playbackState READ playbackState NOTIFY playbackStateChanged)
     Q_PROPERTY(qint64 position READ position NOTIFY positionChanged)
     Q_PROPERTY(qint64 duration READ duration NOTIFY durationChanged)
     Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
@@ -35,7 +34,6 @@ public:
     explicit AudioBridge(QObject* parent = nullptr);
     static void setAudioEngine(vc::AudioEngine* engine);
 
-    int playbackState() const;
     qint64 position() const;
     qint64 duration() const;
     qreal volume() const;
@@ -52,10 +50,6 @@ public slots:
     Q_INVOKABLE void previous();
     Q_INVOKABLE void setVolume(qreal volume);
     Q_INVOKABLE bool loadFile(const QString& filePath);
-    Q_INVOKABLE void addToPlaylist(const QString& filePath);
-    Q_INVOKABLE void clearPlaylist();
-    Q_INVOKABLE int playlistCount() const;
-    Q_INVOKABLE QVariantMap playlistItem(int index) const;
 
 signals:
     void playbackStateChanged();

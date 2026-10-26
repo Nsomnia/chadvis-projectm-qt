@@ -57,20 +57,6 @@ QVariantList PresetBridge::presets() const {
     return result;
 }
 
-QVariantList PresetBridge::activePresets() const {
-    if (!s_manager) return {};
-
-    const vc::PresetManager::PresetView active = s_manager->activePresets();
-    return toVariantList(active);
-}
-
-QVariantList PresetBridge::favoritePresets() const {
-    if (!s_manager) return {};
-
-    const vc::PresetManager::PresetView favorites = s_manager->favoritePresets();
-    return toVariantList(favorites);
-}
-
 QStringList PresetBridge::categories() const {
     if (!s_manager) return {};
 
@@ -98,10 +84,6 @@ int PresetBridge::presetCount() const {
     return s_manager ? static_cast<int>(s_manager->count()) : 0;
 }
 
-int PresetBridge::activeCount() const {
-    return s_manager ? static_cast<int>(s_manager->activeCount()) : 0;
-}
-
 QString PresetBridge::searchQuery() const { return searchQuery_; }
 
 QString PresetBridge::selectedCategory() const { return selectedCategory_; }
@@ -127,24 +109,9 @@ bool PresetBridge::selectByIndex(int index) {
     return s_manager->selectByIndex(static_cast<size_t>(index));
 }
 
-bool PresetBridge::selectByName(const QString& name) {
-    if (!s_manager) return false;
-    return s_manager->selectByName(name.toStdString());
-}
-
 bool PresetBridge::selectRandom() {
     if (!s_manager) return false;
     return s_manager->selectRandom();
-}
-
-bool PresetBridge::selectNext() {
-    if (!s_manager) return false;
-    return s_manager->selectNext();
-}
-
-bool PresetBridge::selectPrevious() {
-    if (!s_manager) return false;
-    return s_manager->selectPrevious();
 }
 
 void PresetBridge::toggleFavorite(int index) {
@@ -169,10 +136,6 @@ void PresetBridge::setRating(int index, int rating) {
         vc::RatingManager::instance().setRating((*presets)[index].name, static_cast<int>(rating));
         emit presetsChanged();
     }
-}
-
-int PresetBridge::getRating(const QString& presetName) const {
-    return vc::RatingManager::instance().getRating(presetName.toStdString());
 }
 
 QVariantList PresetBridge::filteredPresets() const {

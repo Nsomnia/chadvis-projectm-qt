@@ -26,8 +26,7 @@ QML_SINGLETON
 
 Q_PROPERTY(QWindow* visualizerWindow READ visualizerWindow NOTIFY visualizerWindowChanged)
 Q_PROPERTY(bool active READ active NOTIFY activeChanged)
-Q_PROPERTY(QString currentPreset READ currentPreset NOTIFY presetChanged)
-Q_PROPERTY(int fps READ fps NOTIFY statsChanged)
+    Q_PROPERTY(QString currentPreset READ currentPreset NOTIFY presetChanged)
 
 public:
 explicit VisualizerBridge(QObject* parent = nullptr);
@@ -35,8 +34,7 @@ static void setVisualizerEngine(vc::VisualizerWindow* engine);
 
 QWindow* visualizerWindow() const;
 bool active() const;
-QString currentPreset() const;
-int fps() const;
+    QString currentPreset() const;
 
 public slots:
     Q_INVOKABLE void nextPreset();
@@ -45,8 +43,7 @@ public slots:
 signals:
 void visualizerWindowChanged();
 void activeChanged();
-void presetChanged();
-void statsChanged();
+    void presetChanged();
 
 private:
 static vc::VisualizerWindow* s_engine;

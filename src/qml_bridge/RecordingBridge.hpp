@@ -25,7 +25,6 @@ friend class QmlSingletonBridge<RecordingBridge>;
     QML_SINGLETON
 
     Q_PROPERTY(bool isRecording READ isRecording NOTIFY recordingStateChanged)
-    Q_PROPERTY(QString currentFile READ currentFile NOTIFY recordingStateChanged)
     Q_PROPERTY(QString recordingTime READ recordingTime NOTIFY statsChanged)
     Q_PROPERTY(int framesWritten READ framesWritten NOTIFY statsChanged)
     Q_PROPERTY(QString fileSize READ fileSize NOTIFY statsChanged)

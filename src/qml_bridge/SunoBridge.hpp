@@ -12,15 +12,16 @@ namespace vc {
 namespace suno {
 class SunoController;
 class SunoClient;
-class SunoDownloader;
 class SunoExploreService;
 class SunoNotificationService;
 class SunoAudioUploadService;
-class SunoLibraryMutations;
 } // namespace suno
 } // namespace vc
 
 namespace qml_bridge {
+
+class SunoMutationsSection;
+class SunoDownloadSection;
 
 class SunoBridge : public QObject,
                    public QmlSingletonBridge<SunoBridge, SingletonPolicy::CachedUnparented> {
@@ -31,7 +32,6 @@ class SunoBridge : public QObject,
 
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(QVariantList clips READ clips NOTIFY clipsChanged)
-    Q_PROPERTY(int totalClips READ totalClips NOTIFY clipsChanged)
     Q_PROPERTY(bool hasMorePages READ hasMorePages NOTIFY hasMorePagesChanged)
     Q_PROPERTY(int currentPage READ currentPage NOTIFY currentPageChanged)
     Q_PROPERTY(QVariantList chatHistory READ chatHistory NOTIFY chatHistoryChanged)
@@ -111,7 +111,6 @@ public:
 
     bool loading() const;
     QVariantList clips() const;
-    int totalClips() const;
     bool hasMorePages() const;
     int currentPage() const;
     QVariantList chatHistory() const;
@@ -165,7 +164,7 @@ public slots:
     Q_INVOKABLE void downloadClips(const QStringList& clipIds);
     Q_INVOKABLE void sendChatMessage(const QString& message, const QString& workspaceId = {});
     Q_INVOKABLE void fetchChatHistory();
-    Q_INVOKABLE void clearLoading();
+    void clearLoading();
     Q_INVOKABLE void beginGoogleSignIn();
     Q_INVOKABLE void importSessionFromBrowser();
     Q_INVOKABLE void cancelGoogleSignIn();
@@ -340,38 +339,12 @@ private:
     void updateModelCatalog();
     void setStatusMessage(const QString& message);
     void setErrorMessage(const QString& message);
-    void setDownloadStatusForClip(const QString& clipId, const QString& message);
     void ensureExploreService();
     void destroyExploreService();
     void ensureNotificationService();
     void destroyNotificationService();
     void ensureAudioUploadService();
     void destroyAudioUploadService();
-    /// Owns the one `SunoLibraryMutations`. Created lazily like the other
-    /// services, and **destroyed on sign-out** for the same reason the
-    /// notification service is: an object that outlives the account must not
-    /// keep a resolver pointer into a destroyed `SunoAccountManager`.
-    void ensureMutationService();
-    void destroyMutationService();
-    /// Re-publishes `mutationsAvailable` after the resolver's verdict moves.
-    void onMutationsAvailabilityChanged();
-    /// The single place a settled mutation becomes a QML signal. Routes by verb
-    /// so a clip id and a playlist id never land on the same signal, and pairs
-    /// every `accepted` with `libraryRefreshRecommended`.
-    ///
-    /// Takes primitives rather than `vc::suno::MutationResult` so this header
-    /// keeps its convention of forward-declaring the `vc::suno` types instead of
-    /// including them. The one `MutationResult` is read in the lambda that
-    /// connects the service signal.
-    void onMutationSettled(int verb, const QString& subjectId, int outcome, const QString& reason);
-    /// Invoked by the mutation invokables. Ensures the service exists and then
-    /// reports the one reason nothing can be sent, so a QML call on a signed-out
-    /// app produces a sentence instead of silence.
-    [[nodiscard]] vc::suno::SunoLibraryMutations* ensureMutations();
-    void downloadInto(const QStringList& clipIds);
-    /// The single SunoDownloader, borrowed from SunoController. Null (and the
-    /// caller must fail closed) when no controller is attached.
-    vc::suno::SunoDownloader* ensureDownloader();
     void setDiscoverError(const QString& message);
     void setNotificationsError(const QString& message);
     QString clipTitle(const QString& clipId) const;
@@ -391,26 +364,19 @@ private:
     QString generationStatus_;
     QString statusMessage_;
     QString errorMessage_;
-    QString downloadStatus_;
     QString discoverError_;
     QString notificationsError_;
-    QString activeDownloadClipId_;
     vc::suno::SunoExploreService* exploreService_{nullptr};
     vc::suno::SunoNotificationService* notificationService_{nullptr};
     vc::suno::SunoAudioUploadService* audioUploadService_{nullptr};
-    /// The one `SunoLibraryMutations`, or null. Null is the fail-closed answer
-    /// and is also what a signed-out app sees.
-    vc::suno::SunoLibraryMutations* mutationService_{nullptr};
-    /// Not owned here. Re-resolved from the QObject tree by ensureDownloader()
-    /// whenever the controller changes, so a controller swap cannot leave a
-    /// dangling pointer or a stale signal connection behind.
-    vc::suno::SunoDownloader* downloader_{nullptr};
-    /// The clip whose download was requested as "save and play". Kept apart
-    /// from activeDownloadClipId_, which is the single status slot and is
-    /// latched by any event: a save-only request must never look like a play
-    /// request, or a batch would report the first clip it latches as "now
-    /// playing" and then filter out the rest of its own results.
-    QString playRequestClipId_;
+    /// The mutation surface, as its own object: the service's lifetime, the
+    /// eleven verbs and the routing of a settled result all live there. Null
+    /// only before the constructor has run.
+    SunoMutationsSection* mutations_{nullptr};
+    /// The download surface, as its own object: the downloader borrow, the
+    /// per-clip status, the save-vs-play latch and the batch refusal
+    /// accounting all live there. Null only before the constructor has run.
+    SunoDownloadSection* downloads_{nullptr};
     bool loading_{false};
     bool hasMorePages_{false};
     bool discoverLoading_{false};

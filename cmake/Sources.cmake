@@ -188,6 +188,10 @@ set(QML_BRIDGE_SOURCES
     src/qml_bridge/LyricsBridge.cpp
     src/qml_bridge/SunoBridge.hpp
     src/qml_bridge/SunoBridge.cpp
+    src/qml_bridge/SunoMutationsSection.hpp
+    src/qml_bridge/SunoMutationsSection.cpp
+    src/qml_bridge/SunoDownloadSection.hpp
+    src/qml_bridge/SunoDownloadSection.cpp
     src/qml_bridge/OverlayBridge.hpp
     src/qml_bridge/OverlayBridge.cpp
     src/qml_bridge/SettingsBridge.hpp

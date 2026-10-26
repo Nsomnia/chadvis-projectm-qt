@@ -31,11 +31,6 @@ QString VisualizerBridge::currentPreset() const {
 	return QString::fromStdString(s_engine->projectM().currentPresetName());
 }
 
-int VisualizerBridge::fps() const {
-	if (!s_engine) return 0;
-	return static_cast<int>(s_engine->actualFps());
-}
-
 void VisualizerBridge::nextPreset() {
 	if (s_engine) s_engine->nextPreset();
 }

@@ -44,6 +44,8 @@ add_executable(unit_tests
     lyrics/test_LyricTiming.cpp
     util/test_PathSafety.cpp
     qml_bridge/test_SunoBridge.cpp
+    qml_bridge/test_SunoMutationsSection.cpp
+    qml_bridge/test_SunoDownloadSection.cpp
 )
 
 set_target_properties(unit_tests PROPERTIES

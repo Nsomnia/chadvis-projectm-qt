@@ -286,11 +286,38 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `test_CredentialStorePolicy.cpp`). Kept `vc::Result` rather than migrating
       207 call sites to `std::expected`; its factories and `isOk()`/`isErr()`
       vocabulary stay. ctest 14/14.
-- [ ] T0062 `SunoBridge` is a god object: 1662 cpp + 405 hpp, 37 properties, 40 invokables (`src/qml_bridge/SunoBridge.cpp`) #cleanup
+- [x] T0062 `SunoBridge` is a god object: 1645 cpp + 429 hpp, 39 properties, 31 invokables (`src/qml_bridge/SunoBridge.cpp`) #cleanup
       Mixes service lifetime, QVariant translation, list caching, download orchestration,
-      chat and 11 mutation forwarders. **~60 % of the file (:1380-1662) is mutation
-      forwarding `SunoLibraryMutations` already owns.** Split into `SunoExploreBridge`,
-      `SunoNotificationsBridge`, `SunoUploadBridge`, `SunoMutationsBridge` (~200 LOC each).
+      chat and 11 mutation forwarders. Measured 2026-10-26: the mutation-forwarding
+      cluster is **`:1444-1645` = 202 LOC ≈ 12 % of the file** — the old "~60 % of the
+      file (:1380-1662)" figure was wrong, because `:1380-1443` is `updateFilteredClips`,
+      not forwarding. The real weight is spread over eight clusters: library+filter
+      (`:500-690`, `:1355-1443`), download orchestration (`:686-819`), auth
+      (`:918-1017`), discover (`:1018-1031`, `:1230-1279`), notifications
+      (`:1032-1044`, `:1136-1170`, `:1280-1323`), upload (`:646-654`, `:1205-1229`),
+      generation+gates (`:514-584`, `:1171-1188`), mutations (`:1444-1645`).
+      `src/suno/` needs **no** split to enable this — Explore, Notifications, Upload and
+      Mutations are already one class each with one `SunoClient*`. Split bridge-side into
+      per-feature C++ sections behind **one unchanged QML singleton** (159 QML
+      references in 10 files keep their names), which also satisfies T0132's
+      "one namespaced backend" direction instead of multiplying QML singletons.
+      Lease: `kilo/qml-bridge`, 2026-10-26.
+      **Done (2026-10-26), two slices:** the mutation cluster is now
+      `src/qml_bridge/SunoMutationsSection.hpp/.cpp` — service lifetime, the
+      eleven verbs, the clip-vs-playlist routing and the `update_type` refusal —
+      and the download-and-play cluster is now
+      `src/qml_bridge/SunoDownloadSection.hpp/.cpp` — the downloader borrow, the
+      per-clip status, the save-vs-play latch and the batch refusal accounting.
+      Both sit behind the **same** QML singleton: property, invokable and signal
+      names, arguments and order are unchanged, and each service keeps sole
+      ownership of its request body. `SunoBridge.cpp` 1645 -> 1328 LOC,
+      `.hpp` 429 -> 395. New suites `test_SunoMutationsSection` and
+      `test_SunoDownloadSection`; ctest 14/14.
+      **Left in the adapter on purpose:** library+filter, auth, discover,
+      notifications, upload and generation+gates are QML-adapter work —
+      translation, caching and naming over a service that is already
+      single-intent — so a section each would move indirection without moving
+      logic. They are the next candidates if a second job ever grows there.
 - [x] T0063 ~120 LOC of tolerant-JSON accessors duplicated across four files, with **disagreeing** tolerance rules (`src/suno/SunoNotificationService.cpp:19-76`, `SunoExploreService.cpp:21-32`, `SunoAccountManager.cpp:19-43`, `ClipParser.cpp:14-59`) #risk-high
       One `vc::suno::json` namespace in `ClipParser.hpp` now owns the contract:
       `stringValue`, `integerValue`, `doubleValue`, `booleanValue`, `stringList`.
@@ -340,13 +367,41 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `orchestrator/history`), and all four are `[LEAD]` rows in `OBSERVED-LEADS.md`
       marked `declared-unused`. Cross-check: every `endpoints::*` referenced by
       `SunoLibraryMutations.cpp` now has a `wired` row.
-- [ ] T0071 ~120 dead QML-facing bridge properties/invokables, including word-level karaoke timing that is implemented in C++ but never surfaced (`src/qml_bridge/LyricsBridge.hpp:32,34,101,111,91`) #cleanup
+- [x] T0071 ~120 dead QML-facing bridge properties/invokables, including word-level karaoke timing that is implemented in C++ but never surfaced (`src/qml_bridge/LyricsBridge.hpp:32,34,101,111,91`) #cleanup
       `currentWordIndex`, `wordProgress`, `getUpcomingLines`, `getContextLines`,
       `assDocument` have **zero QML readers** — the karaoke feature exists below the UI.
       Also dead: `VisualizerBridge.fps` (no FPS readout anywhere), `SettingsBridge.karaokeFont`
       (font not user-settable), `drawerOpen`, `refreshAudioDevices` (no button),
       `RecordingBridge.currentFile`, 9 `PresetBridge` members, and 11 unreferenced
       `SunoBridge` mutation invokables. (after: T0001)
+      Measured 2026-10-26 across `src/qml_bridge/*.hpp`: **132 properties + 88
+      invokables, of which 42 have zero QML readers** (16 properties, 26 invokables) —
+      the "~120" headline counted non-QML-facing members too. Only part of the 42 is
+      deletable: ~15 have no C++ caller either, while the rest are **test-pinned**
+      (`LyricsBridge.assDocument` 10 test refs, `getContextLines` 19, `getUpcomingLines` 21,
+      `VisualizerBridge.fps` 46, `PlaylistBridge.setShuffle` 6, `SunoBridge.updatePlaylistClips` 4)
+      and the 11 `SunoBridge` mutation invokables are the gated surface T0011 needs.
+      So the split of work is **delete / re-home to the owning section / keep with a
+      reason** — not a blanket delete.
+      **Done 2026-10-26 (`kilo/qml-bridge`).** Deleted 15 zero-reader QML-facing items
+      (AudioBridge `playbackState` + the 4 playlist invokables that duplicated
+      `PlaylistBridge`; PresetBridge `activePresets`/`favoritePresets`/`activeCount` +
+      `selectByName`/`selectNext`/`selectPrevious`/`getRating`, all of which only
+      re-forwarded `PresetManager`/`RatingManager`; VisualizerBridge `fps` + its
+      never-emitted `statsChanged`; `RecordingBridge.currentFile` — the **property** only,
+      the getter stays because the burn-in paths call it; `SunoBridge.totalClips`) and
+      trimmed the `Q_INVOKABLE` marker from `SunoBridge::clearLoading`, which stays a slot
+      because three controller signals connect to it. Surface: 132→125 properties,
+      88→79 invokables. **27 zero-reader items remain, each with a named owner**: 14
+      mutation items (T0011), 3 chat items (T0065/T0066), `authFailureKind` (T0064/T0327),
+      5 lyrics word-level/ASS items (T0120/T0121, test-pinned), 3 settings items
+      (`drawerOpen`/`karaokeFont` are config-backed rows — dropping the row would drop the
+      user's config keys; `refreshAudioDevices` is the documented manual retry), and
+      `PlaylistBridge.setShuffle` (the WRITE accessor of the `shuffle` property).
+      Verified: `./build.sh --fast --tests` clean (390/390, 0 errors),
+      `ctest --test-dir build-fast/tests --output-on-failure -j3` → **14/14 passed**
+      (incl. `integration_tests` and `integration_gl_tests`),
+      `./scripts/lint-qml.sh` → no blocking problems. Trail: `STATUS/T0071.log`.
 - [ ] T0072 No `reuseItems` anywhere; a nested non-interactive `GridView` inside a virtualized `ListView` (`src/qml/`) #performance
       Zero occurrences across 7 views. `DiscoverView.qml:115-127` materialises every clip of
       every feed. Also 16 `layer.enabled` sites, and `KaraokeMaster.qml:117-126` re-evaluates

@@ -24,7 +24,6 @@ void AudioBridge::setAudioEngine(vc::AudioEngine* engine) {
     s_engine = engine;
 }
 
-int AudioBridge::playbackState() const { return playbackState_; }
 qint64 AudioBridge::position() const { return position_; }
 qint64 AudioBridge::duration() const { return duration_; }
 qreal AudioBridge::volume() const { return volume_; }
@@ -54,26 +53,6 @@ bool AudioBridge::loadFile(const QString& filePath) {
     s_engine->playlist().addFile(path);
     s_engine->play();
     return true;
-}
-
-void AudioBridge::addToPlaylist(const QString& filePath) {
-    if (!s_engine) return;
-    auto path = vc::fs::path(filePath.toStdString());
-    if (vc::fs::exists(path)) s_engine->playlist().addFile(path);
-}
-
-void AudioBridge::clearPlaylist() { if (s_engine) s_engine->playlist().clear(); }
-int AudioBridge::playlistCount() const { return s_engine ? static_cast<int>(s_engine->playlist().size()) : 0; }
-
-QVariantMap AudioBridge::playlistItem(int index) const {
-    QVariantMap result;
-    if (!s_engine || index < 0) return result;
-    // Value accessor: one item copied, not a reference into the live vector and
-    // not a whole-list copy per invocation.
-    if (const auto item = s_engine->playlist().itemAt(static_cast<vc::usize>(index))) {
-        result = PlaylistItemPresenter::toVariantMap(*item);
-    }
-    return result;
 }
 
 void AudioBridge::onEngineStateChanged(vc::PlaybackState state) {

@@ -50,6 +50,8 @@ int runTestPcmFormat(int argc, char** argv);
 int runTestLoudnessAnalysis(int argc, char** argv);
 int runTestPathSafety(int argc, char** argv);
 int runTestSunoBridge(int argc, char** argv);
+int runTestSunoMutationsSection(int argc, char** argv);
+int runTestSunoDownloadSection(int argc, char** argv);
 
 // Breadcrumbs on stderr, one line in and one line out per suite. qtest writes
 // its own progress to stdout, and on the Windows lane no stdout from any test
@@ -136,6 +138,8 @@ int main(int argc, char* argv[]) {
     status |= RUN_SUITE(TestLoudnessAnalysis);
     status |= RUN_SUITE(TestPathSafety);
     status |= RUN_SUITE(TestSunoBridge);
+    status |= RUN_SUITE(TestSunoMutationsSection);
+    status |= RUN_SUITE(TestSunoDownloadSection);
 
     // Printed after the last suite returns, so a crash after this line is
     // teardown rather than a test.

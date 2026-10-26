@@ -1,4 +1,6 @@
 #include "SunoBridge.hpp"
+#include "SunoDownloadSection.hpp"
+#include "SunoMutationsSection.hpp"
 #include <QStringList>
 #include <QVariantMap>
 #include "core/Config.hpp"
@@ -12,7 +14,6 @@
 #include "suno/SunoDownloader.hpp"
 #include "suno/SunoExploreService.hpp"
 #include "suno/SunoLibraryManager.hpp"
-#include "suno/SunoLibraryMutations.hpp"
 #include "suno/SunoModels.hpp"
 #include "suno/SunoNotificationService.hpp"
 #include "suno/auth/AuthCoordinator.hpp"
@@ -25,15 +26,16 @@ vc::suno::SunoClient* SunoBridge::s_client = nullptr;
 
 SunoBridge::~SunoBridge() {
     destroyAudioUploadService();
-    destroyMutationService();
+    if (mutations_) {
+        mutations_->detach();
+    }
+    if (downloads_) {
+        downloads_->detach();
+    }
     delete notificationService_;
     notificationService_ = nullptr;
     delete exploreService_;
     exploreService_ = nullptr;
-    if (downloader_) {
-        disconnect(downloader_, nullptr, this, nullptr);
-        downloader_ = nullptr;
-    }
     s_controller = nullptr;
     s_client = nullptr;
 }
@@ -166,6 +168,35 @@ QVariantList toQVariantModels(const QList<vc::suno::SunoModelInfo>& models) {
 SunoBridge::SunoBridge(QObject* parent) : QObject(parent) {
     setInstance(this);
     generationStatus_ = generationUnavailableMessage();
+    mutations_ = new SunoMutationsSection(this);
+    connect(mutations_, &SunoMutationsSection::availabilityChanged, this,
+            &SunoBridge::mutationsAvailableChanged);
+    connect(mutations_, &SunoMutationsSection::busyChanged, this,
+            &SunoBridge::mutationsBusyChanged);
+    connect(mutations_, &SunoMutationsSection::clipSettled, this, &SunoBridge::clipMutationSettled);
+    connect(mutations_, &SunoMutationsSection::playlistSettled, this,
+            &SunoBridge::playlistMutationSettled);
+    connect(mutations_, &SunoMutationsSection::libraryRefreshRecommended, this,
+            &SunoBridge::libraryRefreshRecommended);
+    // The section reports a refusal or a rejection; the bridge keeps the one
+    // error channel it has always had.
+    connect(mutations_, &SunoMutationsSection::failure, this,
+            [this](const QString& reason) { setErrorMessage(reason); });
+    downloads_ = new SunoDownloadSection(this);
+    connect(downloads_, &SunoDownloadSection::statusChanged, this,
+            &SunoBridge::downloadStatusChanged);
+    connect(downloads_, &SunoDownloadSection::statusMessageRequested, this,
+            [this](const QString& message) { setStatusMessage(message); });
+    connect(downloads_, &SunoDownloadSection::errorMessageRequested, this,
+            [this](const QString& message) { setErrorMessage(message); });
+    connect(downloads_, &SunoDownloadSection::clipSaved, this, &SunoBridge::clipSaved);
+    connect(downloads_, &SunoDownloadSection::clipSaveRefused, this,
+            &SunoBridge::clipSaveRefused);
+    connect(downloads_, &SunoDownloadSection::clipDownloadSettled, this,
+            &SunoBridge::clipDownloadSettled);
+    // The library cache is the bridge's, so the section asks for a title
+    // instead of keeping a second copy of the list.
+    downloads_->setTitleProvider([this](const QString& clipId) { return clipTitle(clipId); });
     if (s_controller) {
         wireControllerSignals();
     }
@@ -194,13 +225,11 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
             bridgeInstance->destroyExploreService();
             // The downloader is a child of the outgoing controller, and
             // disconnecting the controller does not reach its children's
-            // signals, so drop the borrow explicitly. The next ensureDownloader()
-            // resolves the new controller's own downloader.
-            if (bridgeInstance->downloader_) {
-                QObject::disconnect(bridgeInstance->downloader_, nullptr, bridgeInstance, nullptr);
-                bridgeInstance->downloader_ = nullptr;
+            // signals, so the section drops the borrow explicitly. The next
+            // attach() resolves the new controller's own downloader.
+            if (bridgeInstance->downloads_) {
+                bridgeInstance->downloads_->detach();
             }
-            bridgeInstance->playRequestClipId_.clear();
             QObject::disconnect(previousController, nullptr, bridgeInstance, nullptr);
             if (auto* lm = previousController->libraryManager()) {
                 QObject::disconnect(lm, nullptr, bridgeInstance, nullptr);
@@ -228,11 +257,14 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
             bridgeInstance->destroyAudioUploadService();
             bridgeInstance->destroyNotificationService();
             bridgeInstance->destroyExploreService();
-            if (bridgeInstance->downloader_) {
-                QObject::disconnect(bridgeInstance->downloader_, nullptr, bridgeInstance, nullptr);
-                bridgeInstance->downloader_ = nullptr;
+            // The mutation service is dropped too: it borrows the resolver out of
+            // an account that no longer exists.
+            if (bridgeInstance->mutations_) {
+                bridgeInstance->mutations_->detach();
             }
-            bridgeInstance->playRequestClipId_.clear();
+            if (bridgeInstance->downloads_) {
+                bridgeInstance->downloads_->detach();
+            }
             bridgeInstance->updateModelCatalog();
             emit bridgeInstance->authenticationChanged();
             emit bridgeInstance->googleLoginStateChanged();
@@ -252,19 +284,22 @@ void SunoBridge::wireControllerSignals() {
     ensureNotificationService();
     ensureExploreService();
     ensureAudioUploadService();
-    ensureMutationService();
-    // Re-point rather than construct: the resolver lives inside
+    // The section owns the mutation service. Attaching re-points the gate
+    // resolver rather than constructing a new service: the resolver lives inside
     // SunoAccountManager, which is replaced on every sign-in, so a pointer
     // captured at construction would dangle. Called here because this function
     // runs whenever the controller is attached, which is exactly when the
     // account manager may have been swapped.
-    if (mutationService_ && s_controller->accountManager()) {
-        mutationService_->setGateResolver(&s_controller->accountManager()->gates());
+    if (mutations_) {
+        mutations_->attach(s_controller, s_client);
     }
     // Resolved rather than constructed: the downloader (and its one
     // DownloadQueue) belongs to the controller, so this only wires the
     // saved-file signal. Fails closed to a null borrow if it is ever absent.
-    ensureDownloader();
+    // The section owns the downloader borrow and the download-state handling.
+    if (downloads_) {
+        downloads_->attach(s_controller);
+    }
     auto* bridgeInstance = this;
 
     connect(s_controller, &vc::suno::SunoController::libraryUpdated, bridgeInstance,
@@ -285,73 +320,6 @@ void SunoBridge::wireControllerSignals() {
     connect(s_controller, &vc::suno::SunoController::statusMessage, bridgeInstance,
             [bridgeInstance](const std::string& message) {
                 bridgeInstance->setStatusMessage(QString::fromStdString(message));
-            });
-    connect(s_controller, &vc::suno::SunoController::downloadStateChanged, bridgeInstance,
-            [bridgeInstance](const QString& clipId, int state, int percent) {
-                // Only an explicit play request suppresses other clips' events.
-                // A save-only request leaves this empty, so a batch's results
-                // are never filtered out by the play path's bookkeeping.
-                if (!bridgeInstance->playRequestClipId_.isEmpty() &&
-                    clipId != bridgeInstance->playRequestClipId_) {
-                    return;
-                }
-                const QString title = bridgeInstance->clipTitle(clipId);
-                switch (static_cast<vc::suno::DownloadState>(state)) {
-                    case vc::suno::DownloadState::Queued:
-                        bridgeInstance->setDownloadStatusForClip(
-                                clipId, QStringLiteral("Queued for download"));
-                        break;
-                    case vc::suno::DownloadState::Downloading:
-                        bridgeInstance->setDownloadStatusForClip(
-                                clipId, QStringLiteral("Downloading %1… %2%")
-                                                .arg(title)
-                                                .arg(qMax(0, percent)));
-                        break;
-                    case vc::suno::DownloadState::Completed: {
-                        // Save and play are separate requests that share one queue
-                        // event, so the wording has to come from the request rather
-                        // than be hardcoded: a silent save must never claim the
-                        // transport moved.
-                        const bool wasPlayRequest = bridgeInstance->playRequestClipId_ == clipId;
-                        bridgeInstance->setDownloadStatusForClip(
-                                clipId,
-                                wasPlayRequest
-                                        ? QStringLiteral("Downloaded %1; now playing").arg(title)
-                                        : QStringLiteral("Saved %1 to your downloads").arg(title));
-                        if (wasPlayRequest) {
-                            bridgeInstance->playRequestClipId_.clear();
-                            bridgeInstance->activeDownloadClipId_.clear();
-                        }
-                        break;
-                    }
-                    case vc::suno::DownloadState::FailedRetryable:
-                    case vc::suno::DownloadState::FailedPermanent:
-                        bridgeInstance->setDownloadStatusForClip(
-                                clipId, QStringLiteral("Download failed for %1").arg(title));
-                        // T0168: the id-carrying channel. The status string above
-                        // still names the clip by title for the UI's single-line
-                        // summary, but nothing should have to parse it back out
-                        // to learn WHICH clip failed.
-                        emit bridgeInstance->clipDownloadSettled(
-                                clipId, state,
-                                QStringLiteral("Download failed for %1").arg(title));
-                        if (bridgeInstance->playRequestClipId_ == clipId) {
-                            bridgeInstance->playRequestClipId_.clear();
-                            bridgeInstance->activeDownloadClipId_.clear();
-                        }
-                        break;
-                    case vc::suno::DownloadState::Cancelled:
-                        bridgeInstance->setDownloadStatusForClip(
-                                clipId, QStringLiteral("Download cancelled for %1").arg(title));
-                        emit bridgeInstance->clipDownloadSettled(
-                                clipId, state,
-                                QStringLiteral("Download cancelled for %1").arg(title));
-                        if (bridgeInstance->playRequestClipId_ == clipId) {
-                            bridgeInstance->playRequestClipId_.clear();
-                            bridgeInstance->activeDownloadClipId_.clear();
-                        }
-                        break;
-                }
             });
 
     if (auto* lm = s_controller->libraryManager()) {
@@ -433,7 +401,9 @@ void SunoBridge::wireControllerSignals() {
                     // property would be correct but never re-read by a QML
                     // binding — the same invisibility the old CONSTANT
                     // declaration had.
-                    bridgeInstance->onMutationsAvailabilityChanged();
+                    if (bridgeInstance->mutations_) {
+                        bridgeInstance->mutations_->onGatesChanged();
+                    }
                 });
 
         // Declare, once, which catalogued surfaces THIS BUILD actually
@@ -500,8 +470,6 @@ void SunoBridge::wireControllerSignals() {
 bool SunoBridge::loading() const { return loading_; }
 
 QVariantList SunoBridge::clips() const { return clips_; }
-
-int SunoBridge::totalClips() const { return allClips_.size(); }
 
 bool SunoBridge::hasMorePages() const { return hasMorePages_; }
 
@@ -603,7 +571,9 @@ QString SunoBridge::statusMessage() const { return statusMessage_; }
 
 QString SunoBridge::errorMessage() const { return errorMessage_; }
 
-QString SunoBridge::downloadStatus() const { return downloadStatus_; }
+QString SunoBridge::downloadStatus() const {
+    return downloads_ ? downloads_->status() : QString();
+}
 
 QVariantList SunoBridge::discover() const { return discover_; }
 
@@ -684,137 +654,21 @@ void SunoBridge::searchLibrary(const QString& searchText) {
 }
 
 void SunoBridge::playClip(const QString& clipId) {
-    if (clipId.isEmpty() || !s_controller) {
-        setErrorMessage(QStringLiteral("This clip has no playable media yet."));
-        return;
-    }
-
-    LOG_INFO("SunoBridge: play requested for clip {}", clipId.toStdString());
-    setErrorMessage({});
-    activeDownloadClipId_ = clipId;
-    // Marked separately from activeDownloadClipId_, which is the single
-    // status slot and is latched by any download event: only an explicit
-    // play request may suppress other clips' events or be reported as
-    // "now playing".
-    playRequestClipId_ = clipId;
-    const QString title = clipTitle(clipId);
-    setStatusMessage(QStringLiteral("Preparing %1 for playback").arg(title));
-    setDownloadStatusForClip(clipId, QStringLiteral("Preparing %1 for playback").arg(title));
-    if (!s_controller->playClipById(clipId.toStdString())) {
-        // The controller logs the branch; this line ties the refusal to the
-        // gesture the user made, so a terminal capture is enough to tell "the
-        // click never arrived" from "the click arrived and play was refused".
-        LOG_WARN("SunoBridge: play request for {} was refused by the controller", clipId.toStdString());
-        playRequestClipId_.clear();
-        activeDownloadClipId_.clear();
-        setErrorMessage(QStringLiteral("This clip has no playable media yet."));
+    if (downloads_) {
+        downloads_->playClip(clipId);
     }
 }
 
-void SunoBridge::downloadClip(const QString& clipId) { downloadInto({clipId}); }
-
-void SunoBridge::downloadClips(const QStringList& clipIds) { downloadInto(clipIds); }
-
-/// Save-only by construction: nothing in this path can enqueue, jump, or
-/// otherwise touch the transport, so a batch cannot hijack playback. Playback
-/// stays the separate, explicit playClip() request.
-void SunoBridge::downloadInto(const QStringList& clipIds) {
-    auto* downloader = ensureDownloader();
-    if (!downloader || !s_controller) {
-        setErrorMessage(QStringLiteral(
-                "Downloads are unavailable because no download service is attached."));
-        return;
-    }
-    if (clipIds.isEmpty()) {
-        return;
-    }
-
-    setErrorMessage({});
-
-    int accepted = 0;
-    int rejected = 0;
-    int unknown = 0;
-    QString firstRejection;
-    for (const QString& clipId : clipIds) {
-        const auto clip = vc::suno::resolveClip(s_controller->clips(), s_controller->db(),
-                                                clipId.toStdString());
-        if (!clip) {
-            ++unknown;
-            emit clipSaveRefused(clipId,
-                                 QStringLiteral("This clip is no longer in the library, so it "
-                                                "cannot be saved."));
-            continue;
-        }
-        auto result = downloader->download(*clip);
-        if (!result) {
-            ++rejected;
-            if (firstRejection.isEmpty()) {
-                firstRejection = result.error();
-            }
-            // Per-clip, carrying the id. Without it a batch refusal collapses
-            // into one aggregate string and the UI cannot tell WHICH clips
-            // failed — so every rejected card stays stuck on "Saving" while one
-            // of them silently did nothing.
-            emit clipSaveRefused(clipId, result.error());
-            continue;
-        }
-        ++accepted;
-    }
-
-    if (accepted > 0) {
-        setStatusMessage(accepted == 1 ? QStringLiteral("Saving 1 clip to disk")
-                                       : QStringLiteral("Saving %1 clips to disk").arg(accepted));
-    }
-
-    // Report why a request was refused rather than leaving a dead button: the
-    // clip has no capture-backed media, or it is not in the loaded library.
-    QString message;
-    if (rejected == 1) {
-        message = firstRejection;
-    } else if (rejected > 1) {
-        message = QStringLiteral("%1 clips could not be saved. First reason: %2")
-                          .arg(rejected)
-                          .arg(firstRejection);
-    }
-    if (unknown > 0) {
-        QString missing;
-        if (unknown == 1) {
-            missing = QStringLiteral("1 clip is not in the loaded library.");
-        } else {
-            missing = QStringLiteral("%1 clips are not in the loaded library.").arg(unknown);
-        }
-        message = message.isEmpty() ? missing : QStringLiteral("%1 %2").arg(missing, message);
-    }
-    if (!message.isEmpty()) {
-        setErrorMessage(message);
+void SunoBridge::downloadClip(const QString& clipId) {
+    if (downloads_) {
+        downloads_->downloadClip(clipId);
     }
 }
 
-vc::suno::SunoDownloader* SunoBridge::ensureDownloader() {
-    if (!s_controller) {
-        downloader_ = nullptr;
-        return nullptr;
+void SunoBridge::downloadClips(const QStringList& clipIds) {
+    if (downloads_) {
+        downloads_->downloadClips(clipIds);
     }
-    // Asked of the controller directly rather than found via findChild. The
-    // controller owns the one SunoDownloader (and therefore the one
-    // DownloadQueue), so an accessor is the honest way to reach it: findChild
-    // resolves by object tree, which fails silently and without a diagnostic if
-    // the parent ever changes, and it also matches any other downloader that
-    // happened to be parented somewhere. Still re-resolved rather than cached
-    // blindly, so a controller swap cannot leave a dangling pointer or a
-    // duplicate signal connection behind.
-    auto* found = s_controller->downloader();
-    if (found == downloader_) {
-        return downloader_;
-    }
-    if (downloader_) {
-        disconnect(downloader_, nullptr, this, nullptr);
-    }
-    downloader_ = found;
-    if (downloader_) {
-        connect(downloader_, &vc::suno::SunoDownloader::fileSaved, this, &SunoBridge::clipSaved);
-    }
-    return downloader_;
 }
 
 int SunoBridge::credits() const {
@@ -1006,7 +860,9 @@ void SunoBridge::signOutSuno() {
     // would keep a borrowed pointer into an `SunoAccountManager` that is about to
     // be replaced, and would let a mutation surface read as available to an
     // account that no longer exists.
-    destroyMutationService();
+    if (mutations_) {
+        mutations_->detach();
+    }
 }
 
 void SunoBridge::refreshAccount() {
@@ -1321,17 +1177,6 @@ void SunoBridge::setNotificationsError(const QString& message) {
     emit notificationsErrorChanged();
 }
 
-void SunoBridge::setDownloadStatusForClip(const QString& clipId, const QString& message) {
-    if (activeDownloadClipId_.isEmpty()) {
-        activeDownloadClipId_ = clipId;
-    }
-    if (downloadStatus_ == message) {
-        return;
-    }
-    downloadStatus_ = message;
-    emit downloadStatusChanged();
-}
-
 QString SunoBridge::clipTitle(const QString& clipId) const {
     for (const auto& clipValue : allClips_) {
         const auto clip = clipValue.toMap();
@@ -1387,258 +1232,96 @@ void SunoBridge::updateFilteredClips() {
 //
 // It deliberately does NOT assemble JSON, validate enum members that were never
 // captured, or write anything to the local database.
-namespace {
-
-using vc::suno::MutationOutcome;
-using vc::suno::MutationResult;
-using vc::suno::MutationVerb;
-using vc::suno::PlaylistUpdateType;
-
-/// True for the five clip-scoped verbs. The remaining six act on a playlist.
-///
-/// This is the routing table that keeps `clipMutationSettled` and
-/// `playlistMutationSettled` honest: a playlist id must never arrive on a
-/// signal a card delegate is listening to, or a clip card would update from a
-/// playlist write.
-[[nodiscard]] bool isClipScoped(const MutationVerb verb) noexcept {
-    switch (verb) {
-        case MutationVerb::SetVisibility:
-        case MutationVerb::ToggleRemixPermission:
-        case MutationVerb::ToggleShowRemixes:
-        case MutationVerb::UpdateFeedbackState:
-        case MutationVerb::ShareLink:
-            return true;
-        case MutationVerb::PlaylistSetMetadata:
-        case MutationVerb::PlaylistUpdateClips:
-        case MutationVerb::PlaylistTracksAdd:
-        case MutationVerb::PlaylistTracksRemove:
-        case MutationVerb::PlaylistTracksReorder:
-        case MutationVerb::PlaylistCoverImage:
-            return false;
-    }
-    return false;
-}
-
-/// `update_type` arrives from QML as a string. The four members ARE captured, so
-/// this map is evidence-backed — and an unrecognised string returns nullopt
-/// rather than defaulting to one of them, because a silent `add` where the user
-/// asked for something else is the worst available outcome.
-[[nodiscard]] std::optional<PlaylistUpdateType> playlistUpdateTypeFrom(const QString& text) {
-    if (text == QLatin1String("add")) {
-        return PlaylistUpdateType::Add;
-    }
-    if (text == QLatin1String("remove")) {
-        return PlaylistUpdateType::Remove;
-    }
-    if (text == QLatin1String("remove_by_id")) {
-        return PlaylistUpdateType::RemoveById;
-    }
-    if (text == QLatin1String("reorder")) {
-        return PlaylistUpdateType::Reorder;
-    }
-    return std::nullopt;
-}
-
-} // namespace
-
-vc::suno::SunoLibraryMutations* SunoBridge::ensureMutations() {
-    if (mutationService_ && s_client) {
-        return mutationService_;
-    }
-    ensureMutationService();
-    return mutationService_;
-}
-
-void SunoBridge::ensureMutationService() {
-    if (mutationService_ || !s_client) {
-        return;
-    }
-    mutationService_ = new vc::suno::SunoLibraryMutations(s_client, this);
-    // Borrowed, not owned, and it must follow the account: the resolver lives in
-    // SunoAccountManager, which is replaced on sign-in. Re-pointing on every
-    // wireControllerSignals() means a stale pointer is impossible, and a null
-    // one (no account manager yet) fails closed inside the service.
-    if (s_controller && s_controller->accountManager()) {
-        mutationService_->setGateResolver(&s_controller->accountManager()->gates());
-    }
-    connect(mutationService_, &vc::suno::SunoLibraryMutations::availabilityChanged, this,
-            &SunoBridge::onMutationsAvailabilityChanged);
-    connect(mutationService_, &vc::suno::SunoLibraryMutations::mutationSettled, this,
-            [this](const MutationResult& result) {
-                onMutationSettled(static_cast<int>(result.verb), result.subjectId,
-                                  static_cast<int>(result.outcome), result.reason);
-            });
-}
-
-void SunoBridge::destroyMutationService() {
-    if (mutationService_) {
-        disconnect(mutationService_, nullptr, this, nullptr);
-        delete mutationService_;
-        mutationService_ = nullptr;
-        emit mutationsBusyChanged();
-        emit mutationsAvailableChanged();
-    }
-}
-
-void SunoBridge::onMutationsAvailabilityChanged() {
-    emit mutationsAvailableChanged();
-    // The resolver's verdict moved, so `mutationsBusy` did not necessarily move
-    // with it; this is only about the availability pair, and the busy signal is
-    // driven by the service's own completion. Deliberately not emitted here —
-    // a NOTIFY with no value change would make QML bindings re-read for nothing.
-}
-
-void SunoBridge::onMutationSettled(const int verb, const QString& subjectId, const int outcome,
-                                   const QString& reason) {
-    const auto verbEnum = static_cast<MutationVerb>(verb);
-    const auto outcomeEnum = static_cast<MutationOutcome>(outcome);
-    const QString verbName = QString::fromLatin1(vc::suno::toString(verbEnum));
-    const QString outcomeName = QString::fromLatin1(vc::suno::toString(outcomeEnum));
-
-    if (isClipScoped(verbEnum)) {
-        emit clipMutationSettled(subjectId, verbName, outcomeName, reason);
-    } else {
-        emit playlistMutationSettled(subjectId, verbName, outcomeName, reason);
-    }
-
-    if (outcomeEnum == MutationOutcome::Accepted) {
-        // The one thing an `accepted` can honestly tell the UI: the library must
-        // be re-read. Nothing was parsed out of the response and nothing was
-        // written locally, so the displayed state is stale until a fetch.
-        emit libraryRefreshRecommended();
-    } else if (!reason.isEmpty()) {
-        // A refusal or rejection also deserves a visible home, or the control
-        // just silently does nothing. Reuses the existing single-error slot
-        // rather than inventing a second status channel a UI would have to poll.
-        setErrorMessage(reason);
-    }
-    emit mutationsBusyChanged();
-}
+// ── The mutation surface ─────────────────────────────────────────────────────
+// The service, its lifetime and the routing of a settled result live in
+// `SunoMutationsSection`. These getters read through it, so the QML surface
+// keeps its names and its meaning.
 
 bool SunoBridge::mutationsAvailable() const {
-    return mutationService_ && mutationService_->isAvailable();
+    return mutations_ && mutations_->available();
 }
 
 QString SunoBridge::mutationsUnavailableReason() const {
-    if (!mutationService_) {
+    if (!mutations_) {
         return QStringLiteral("Library changes need a signed-in Suno account.");
     }
-    return mutationService_->unavailableReason();
+    return mutations_->unavailableReason();
 }
 
-bool SunoBridge::mutationsBusy() const { return mutationService_ && mutationService_->isBusy(); }
+bool SunoBridge::mutationsBusy() const { return mutations_ && mutations_->busy(); }
 
 // ── The invokables ───────────────────────────────────────────────────────────
-// Each is `if (auto* m = ensureMutations()) m->…`, so a signed-out app gets the
-// service's own one-sentence refusal on `clipMutationSettled` rather than a
-// silent no-op. Returning the `[[nodiscard]] bool` is deliberate and ignored
-// here: the result already arrived as a signal, so the bool carries no
-// information the caller lacks — and discarding it here is safe precisely
-// because the settlement path is unconditional.
+// Each forwards to the section, which owns the service and the routing. The
+// names, the arguments and the QML-visible behaviour are unchanged: this is a
+// move, not a new API.
 
 void SunoBridge::setClipVisibility(const QString& clipId, const bool isPublic) {
-    if (auto* m = ensureMutations()) {
-        (void)m->setClipVisibility(clipId, isPublic);
+    if (mutations_) {
+        mutations_->setClipVisibility(clipId, isPublic);
     }
 }
 
 void SunoBridge::setClipRemixPermission(const QString& clipId, const bool canRemix) {
-    if (auto* m = ensureMutations()) {
-        (void)m->setClipRemixPermission(clipId, canRemix);
+    if (mutations_) {
+        mutations_->setClipRemixPermission(clipId, canRemix);
     }
 }
 
 void SunoBridge::setClipShowRemixes(const QString& clipId, const bool showRemix) {
-    if (auto* m = ensureMutations()) {
-        (void)m->setClipShowRemixes(clipId, showRemix);
+    if (mutations_) {
+        mutations_->setClipShowRemixes(clipId, showRemix);
     }
 }
 
 void SunoBridge::setClipFeedback(const QString& clipId, const QString& reason) {
-    if (auto* m = ensureMutations()) {
-        (void)m->setClipFeedbackState(clipId, reason);
+    if (mutations_) {
+        mutations_->setClipFeedback(clipId, reason);
     }
 }
 
 void SunoBridge::shareClip(const QString& clipId, const QString& contentType) {
-    if (auto* m = ensureMutations()) {
-        (void)m->requestShareLink(clipId, contentType);
+    if (mutations_) {
+        mutations_->shareClip(clipId, contentType);
     }
 }
 
 void SunoBridge::setPlaylistMetadata(const QString& playlistId, const QString& name,
                                      const QString& description) {
-    if (auto* m = ensureMutations()) {
-        (void)m->setPlaylistMetadata(playlistId, name, description);
+    if (mutations_) {
+        mutations_->setPlaylistMetadata(playlistId, name, description);
     }
 }
 
 void SunoBridge::updatePlaylistClips(const QString& playlistId, const QString& updateType,
                                      const QVariantMap& metadata) {
-    // The member list already lives in this file: `playlistUpdateTypeFrom` is
-    // the string-side mirror of the captured enum in SunoLibraryMutations.hpp,
-    // so refusing here creates no second owner to drift. And the refusal can
-    // ONLY happen here: the service takes the enum, so a string that fails to
-    // map could be sent only by first being mapped onto some member — which is
-    // the guess. The previous fallthrough sent `Add` with empty metadata, a
-    // real mutation for a request the caller never made.
-    const auto type = playlistUpdateTypeFrom(updateType);
-    if (!type) {
-        // Through the single emit path, so a bridge-local refusal has exactly
-        // the shape of a service-side one: `playlistMutationSettled`, outcome
-        // `refused`, reason also shown in `errorMessage`. Before the service,
-        // because a bad argument is bad regardless of session state. The
-        // offending string is caller text and is deliberately not echoed.
-        onMutationSettled(static_cast<int>(MutationVerb::PlaylistUpdateClips), playlistId,
-                          static_cast<int>(MutationOutcome::Refused),
-                          QStringLiteral("That kind of playlist change is not one of "
-                                         "add, remove, remove_by_id or reorder, so "
-                                         "nothing was sent."));
-        return;
+    // The string-side mapping and the refusal for an unmapped member live in
+    // the section, beside the service that consumes the enum.
+    if (mutations_) {
+        mutations_->updatePlaylistClips(playlistId, updateType, metadata);
     }
-    auto* m = ensureMutations();
-    if (!m) {
-        return;
-    }
-    // QVariantMap -> QJsonObject, forwarded verbatim: nothing inside is named,
-    // defaulted or interpreted, because the capture establishes only that
-    // `metadata` is an object.
-    QJsonObject json;
-    for (auto it = metadata.constBegin(); it != metadata.constEnd(); ++it) {
-        json.insert(it.key(), QJsonValue::fromVariant(it.value()));
-    }
-    (void)m->updatePlaylistClips(playlistId, *type, json);
 }
 
 void SunoBridge::addClipsToPlaylist(const QString& playlistId, const QStringList& clipIds) {
-    if (auto* m = ensureMutations()) {
-        (void)m->addClipsToPlaylist(playlistId, clipIds);
+    if (mutations_) {
+        mutations_->addClipsToPlaylist(playlistId, clipIds);
     }
 }
 
 void SunoBridge::removeClipsFromPlaylist(const QString& playlistId, const QStringList& clipIds) {
-    if (auto* m = ensureMutations()) {
-        (void)m->removeClipsFromPlaylist(playlistId, clipIds);
+    if (mutations_) {
+        mutations_->removeClipsFromPlaylist(playlistId, clipIds);
     }
 }
 
 void SunoBridge::reorderPlaylistTracks(const QString& playlistId, const QVariantList& positions) {
-    auto* m = ensureMutations();
-    if (!m) {
-        return;
+    if (mutations_) {
+        mutations_->reorderPlaylistTracks(playlistId, positions);
     }
-    // Elements forwarded as given. The capture says `positions` is an array and
-    // nothing about its elements, so no element is validated or reshaped here.
-    QJsonArray json;
-    for (const QVariant& position : positions) {
-        json.append(QJsonValue::fromVariant(position));
-    }
-    (void)m->reorderPlaylistTracks(playlistId, json);
 }
 
 void SunoBridge::setPlaylistCoverImage(const QString& playlistId, const QString& imageId) {
-    if (auto* m = ensureMutations()) {
-        (void)m->setPlaylistCoverImage(playlistId, imageId);
+    if (mutations_) {
+        mutations_->setPlaylistCoverImage(playlistId, imageId);
     }
 }
 
