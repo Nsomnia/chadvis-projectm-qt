@@ -1,0 +1,6 @@
+2026-10-26T14:22:25Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee67035 pid=67035 ttl=4h expires=2026-10-26T18:22:25Z
+2026-10-26T14:26:00Z  CHANGE   .github/dependabot.yml header: six -> four CPM pins (fmt, spdlog, tomlplusplus, readerwriterqueue), projectM named as a system find_package, pffft recorded as removed 2026-10-04, "six workflows" -> seven (guards and dependabot-automerge landed), anomalyco/opencode/github replaced by dependabot/fetch-metadata in the action list, and the local-parse command changed to ruby because PyYAML is absent here.
+2026-10-26T14:26:00Z  VERIFY   ruby -ryaml -e 'YAML.load_file(%q(.github/dependabot.yml))' -> yaml ok.
+2026-10-26T14:26:00Z  VERIFY   ./scripts/check-workflows.py -> all workflow files ok.
+2026-10-26T14:26:00Z  VERIFY   release.yml half needed no edit: macOS legs carry required: true (:142,:151) and :33-42 records the MACOSX_BUNDLE premise as obsolete. grep -n 'required:' confirms no required: false remains.
+2026-10-26T14:22:56Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee67158

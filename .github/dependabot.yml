@@ -3,20 +3,21 @@
 #
 # SCOPE, AND WHY IT IS THIS NARROW
 #   GitHub Dependabot has no CMake ecosystem. It cannot read
-#   cmake/Dependencies.cmake, so the six CPM-pinned dependencies (spdlog 1.14.1,
-#   fmt 11.0.2, tomlplusplus 3.4.0, pffft e1dbebc9, readerwriterqueue v1.0.6,
-#   projectM) and the nine unpinned system find_package/pkg-config lookups are
-#   OUT OF SCOPE for this file. There is no honest way to express "bump a
-#   CPMAddPackage(VERSION ...)" in dependabot's schema, and pretending otherwise
-#   with a `package-ecosystem: ""` entry is worse than not having the file: a
-#   template that has never run reads as coverage and delivers none.
+#   cmake/Dependencies.cmake, so the four CPM-pinned dependencies (fmt 11.0.2,
+#   spdlog 1.14.1, tomlplusplus 3.4.0, readerwriterqueue v1.0.6), projectM
+#   (system find_package) and the nine unpinned system find_package/pkg-config
+#   lookups are OUT OF SCOPE for this file. pffft left on 2026-10-04 with its
+#   only consumer. There is no honest way to express "bump a CPMAddPackage's
+#   GIT_TAG" in dependabot's schema, and pretending otherwise with a
+#   `package-ecosystem: ""` entry is worse than not having the file: a template
+#   that has never run reads as coverage and delivers none.
 #
 #   What this repo DOES have is exactly one Dependabot-supported ecosystem:
-#   `github-actions`. The six workflows under .github/workflows/ use
+#   `github-actions`. The seven workflows under .github/workflows/ use
 #   actions/checkout, jurplel/install-qt-action, actions/cache,
-#   actions/upload-artifact, actions/download-artifact, ilammy/msvc-dev-cmd,
-#   and anomalyco/opencode/github, all of which are version-pinnable and all
-#   of which are a supply-chain risk worth tracking.
+#   actions/upload-artifact, actions/download-artifact,
+#   dependabot/fetch-metadata and ilammy/msvc-dev-cmd, all of which are
+#   version-pinnable and all of which are a supply-chain risk worth tracking.
 #
 #   To track the CMake dependencies instead, the options are (a) none, (b) a
 #   scheduled CI job that greps Dependencies.cmake and opens an issue, or
@@ -25,12 +26,14 @@
 #
 # HOW TO VERIFY IT IS LIVE (rather than a template again)
 #   After this is merged, the repository's Dependabot tab on GitHub must show
-#   these two actions with real versions, and Settings > Code security and
-#   quality > Dependabot alerts must be enabled. An empty list, or a list
-#   showing `actions/checkout` pinned to nothing, means the ecosystem or
-#   directory is wrong again.
+#   the `github-actions` ecosystem with real versions, and Settings > Code
+#   security and quality > Dependabot alerts must be enabled. An empty list,
+#   or a list showing `actions/checkout` pinned to nothing, means the ecosystem
+#   or directory is wrong again.
 #   Locally, the file parses as:
-#     python3 -c "import yaml,sys; yaml.safe_load(open('.github/dependabot.yml')); print('ok')"
+#     ruby -ryaml -e 'YAML.load_file(%q(.github/dependabot.yml))'
+#   (PyYAML is not installed for this box's system python, so the older
+#   `python3 -c "import yaml"` check failed here rather than passing.)
 # ---------------------------------------------------------------------------
 
 version: 2

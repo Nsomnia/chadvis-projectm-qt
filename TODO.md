@@ -504,10 +504,8 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       The serializer is **structurally** incapable of emitting them (`ConfigParsers.cpp:186-203`)
       — preserve that guarantee. Separately, a dozen log sites interpolate `clipId`, which is
       the account-linked half of the scrub plan.
-- [ ] T0111 `release.yml` believes macOS bundle packaging is broken and `.desktop`/dependabot comments are stale (`.github/workflows/release.yml:19-42`, `.github/dependabot.yml:7,16`) #cleanup
-      The workflow asserts `MACOSX_BUNDLE` is unset (it is set) and its macOS leg is
-      `required: false`. `dependabot.yml` says "the single workflow" when there are five, and
-      still lists `pffft` among pinned deps although it was removed 2026-10-04.
+- [x] T0111 `release.yml` believes macOS bundle packaging is broken and `.desktop`/dependabot comments are stale (`.github/workflows/release.yml:19-42`, `.github/dependabot.yml:7,16`) #cleanup
+      Release half was already fixed (`required: true`, obsolete premise recorded). Dependabot header updated: four CPM pins, projectM as a system lookup, pffft noted as removed, seven workflows, fetch-metadata instead of the dropped opencode action, and a parse command that works on this box.
 - [ ] T0113 `.gitignore` gaps beyond the ones already fixed (`.gitignore`) #risk-medium
       Stale build-artifact comments reference "22 of the 26 untracked files"; the root
       `build.log` (41 KB) is now ignored but the file is still present in the working tree.
