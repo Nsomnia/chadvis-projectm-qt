@@ -14,15 +14,19 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 - **The repository now has the surfaces GitHub actually reads, and CI stops running its gates one test at a time.** `SECURITY.md` (Advisories-only private channel, secret taxonomy, 7/30-day expectations), `CODEOWNERS`, issue forms for bugs and features, a PR template that carries this repo's verification bar, and an `.editorconfig` that matches `.clang-format` — none of which existed, so a security report had no private channel and a first-time contributor got a blank box. The bug form had two plain YAML scalars containing `: ` and a leading backtick, which GitHub rejects outright; they are folded scalars now, and the forms are parsed in verification rather than assumed. Every gating and sanitizer `ctest` run gained runner-sized `--parallel` (`nproc` / `sysctl -n hw.ncpu` / `$env:NUMBER_OF_PROCESSORS`), while the three runtime-environment GL/audio entries stay serial on purpose: they are `continue-on-error`, their signal is already fragile, and trading evidence for seconds there is a bad trade. (T0302, T0095)
 
-- **The backlog now carries only open work.** 79 items that had reached `[x]` were re-verified
+- **The backlog now carries only open work.** 81 items that had reached `[x]` were re-verified
   against the code rather than against their own `VERIFY` lines, and their lines are gone:
-  T0010, T0012–T0047, T0074–T0075, T0095, T0103, T0153–T0155, T0160–T0163, T0167–T0168, T0172,
-  T0178–T0179, T0183–T0187, T0189–T0190, T0192, T0194–T0195, T0198, T0200, T0205–T0206,
-  T0215–T0216, T0297–T0298, T0302–T0303, T0306, T0308, T0310, T0319, T0324–T0325. Two were held
-  back: `T0166`, whose fix (`8750494`) belongs to a loopback OAuth lane deleted wholesale in
-  `cc36dc0` and so is reachable only from history, and `T0191`, whose claim is about how the
-  palettes look rather than about what the code does. `STATUS/<id>.log` keeps each item's evidence,
-  `git log -p TODO.md` is the ID archive, and the fixes are the commits that named them.
+  T0010, T0012–T0047, T0074–T0075, T0095, T0103, T0153–T0155, T0160–T0163, T0166–T0168, T0172,
+  T0178–T0179, T0183–T0187, T0189–T0192, T0194–T0195, T0198, T0200, T0205–T0206, T0215–T0216,
+  T0297–T0298, T0302–T0303, T0306, T0308, T0310, T0319, T0324–T0325. Two of them needed a human
+  rather than a grep. `T0166`'s fix (`8750494`) belongs to a loopback OAuth lane deleted wholesale
+  in `cc36dc0` ("Clerk never sends a loopback"), so it is reachable only from history and the item
+  went with the lane. `T0191`'s ratio half was measured by `scripts/check-theme-contrast.py`
+  (16 gated pairs failed before the palettes were fixed) and its look half was answered by the only
+  authority that can answer it — the user, on the built app, looking at all four themes. The one
+  thing that look turned up is filed as `T0337`: ChadVis Dark's `background` is pure black and reads
+  too dark. `STATUS/<id>.log` keeps each item's evidence, `git log -p TODO.md` is the ID archive,
+  and the fixes are the commits that named them.
 
 ### Added
 
