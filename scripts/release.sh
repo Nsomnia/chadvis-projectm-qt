@@ -224,9 +224,16 @@ gh workflow run release.yml --ref "$BRANCH" -f "tag=$TAG" -f "ref=$SHA"
 
 RUN_ID=""
 for _ in $(seq 1 30); do
+  # gh --jq takes an expression, not jq's own options: `--arg since` is
+  # accepted by the jq BINARY and rejected here with
+  #   unknown command "since" for "gh run list"
+  # -- which is how this whole follow-and-verify tail failed on its first real
+  # dispatch (2026-10-25, v1.2.0-build.c4984f0). The timestamp is therefore
+  # interpolated into the expression; ISO-8601 UTC strings compare correctly as
+  # strings, and gh hands back exactly that format.
   RUN_ID="$(gh run list --workflow release.yml --event workflow_dispatch --limit 10 \
     --json databaseId,createdAt \
-    --jq --arg since "$STARTED" '[.[] | select(.createdAt >= $since)][0].databaseId // empty')"
+    --jq "[.[] | select(.createdAt >= \"$STARTED\")][0].databaseId // empty")"
   [ -n "$RUN_ID" ] && break
   sleep 4
 done

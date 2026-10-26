@@ -102,7 +102,13 @@ line to describe an item is describing it in the wrong place. Finished work move
       `unified/homepage/explore/mobile`, `unified/search/omnisearch`, `/api/search/` and
       `GET /playlist/{id}/?page=N` are bundle-declared only; they stay `[LEAD]`.
 
-- [ ] T0335 **The notification client is wired to v2 on a host the browser no longer uses, and the v3 shape is different** (`src/suno/SunoNotificationService.cpp`, `src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`) #risk-high #blocks-ui
+- [ ] T0335 **The notification client is wired to v2 on a host the browser no longer uses, and the v3 shape is different** (`src/suno/SunoNotificationService.cpp`, `src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`) #risk-medium #blocks-ui
+      **Downgraded 2026-10-25: v2 still answers.** Probed with this app's bearer, on both bases:
+      `GET /notification/v2` → 200 with `{notified_at, notifications, next_before_datetime_utc}`
+      (3 276 bytes) and `/notification/v2/badge-count` → 200 `{badge_count}` on the old base
+      (the new base answered 429 — the limiter, not a missing route). So nothing here is
+      broken today; the item is the eventual move the browser has already made, with the shape
+      delta below the reason it is a migration and not a URL edit.
       The 2026-10-24 capture ([§4.8](docs/suno_api/ENDPOINT-INVENTORY.md)) shows the site
       calling `GET https://suno.com/a/api/notification/v3?include_hooks=true` and getting a
       200 with `{notified_at, notifications[], next_before_datetime_utc}` per-entry
@@ -127,16 +133,24 @@ line to describe an item is describing it in the wrong place. Finished work move
       the day the route flips. Note that T0067's poll now fires this route every 60 s, so a
       dead v2 becomes a visible error every minute rather than an empty list.
 
-- [ ] T0334 **The library auto-pager has no finish line: ~90 pages at ~3 s, forever** (`src/suno/SunoLibraryManager.cpp`) #risk-high #perf
-      From the same 2026-10-23 run: `SunoLibraryManager: Fetched 20 clips` at ~3 s intervals
-      from 20:48:17 to 20:52:39 with no stop, no error and no visible progress — roughly 1 800
-      clips over four minutes against a live API. T0167 added the completeness report
-      (`{complete, pagesFetched, expectedTotal}`) and nothing consumes it: the manager keeps
-      paging on "a page came back", which never becomes false while the service answers. Two
-      things are missing and they are separable: a stop condition the manager can prove (a
-      short page, or `pagesFetched >= expectedTotal`), and a consumer that stops *asking* —
-      `SunoBridge`'s accumulated-list signal is what drives the loop today. This is also the
-      reason a feed defect (T0333) is hard to see: the log is saturated by this loop.
+- [ ] T0334 **The first library sync pages the whole library at ~3.4 s/page — six minutes of spinner for 2 147 clips** (`src/suno/SunoLibraryManager.cpp`) #risk-high #perf
+      **Corrected 2026-10-25: it is not infinite.** `onLibraryFetched` sets
+      `hasMorePages_ = client_->hasMorePages() && !nextCursor().isEmpty()` and logs
+      `Sync complete after N page(s)` on the last one, so the loop *does* terminate. What the
+      2026-10-23 log shows is an unfinished sync, not a runaway one: 90 pages in 4 min 22 s
+      at ~3.4 s/page (`QTimer::singleShot(1100)` plus request latency), and 2 147 clips at 20
+      per page is 108 pages — about six minutes of first launch, every launch
+      (`refreshLibrary(1)` runs on `Component.onCompleted`), with the spinner up and a
+      status line the only feedback. The library itself renders progressively; the Discover
+      page's emptiness that the user reported alongside this was a parser bug (T0333), not
+      this cadence.
+      **So the work is cadence and honesty, not a stop condition:** (a) a bigger page is the
+      cheap lever and is unverified — the feed accepts `limit: 20`; whether it accepts 50 or
+      100 is one probe, and the bundle's own default `page_size` for the unified routes is 12;
+      (b) a sync that resumes rather than restarts, so a relaunch does not re-page pages 1–N
+      to reach page N+1; (c) the `{complete, pagesFetched, expectedTotal}` T0167 reports is
+      still unconsumed, so nothing can say "still syncing, 940 of 2 147" — a progress number
+      would make six minutes diagnosable instead of looking stuck.
       **A page-size note, not a finding:** the client asks for 20 per page. The live browser
       traffic seen on 2026-10-24 pages notifications with a UTC cursor, and a v3-style feed
       may accept a larger page than 20 — but nothing captured says so, so a bigger page is
