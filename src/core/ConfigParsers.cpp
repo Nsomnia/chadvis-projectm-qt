@@ -230,7 +230,10 @@ std::string portablePath(const fs::path& path) {
 #define VC_SER_COLOR(key, member) out.insert(key, obj.member.toHex());
 
 // ── Unknown-key warning expansion (T0208) ────────────────────────────
-#define VC_KEY_NAME(key, member, TYPE) #key,
+// The key argument is already a string literal; `#key` would stringify it a
+// second time ("\"buffer_size\""), no key would ever match, and every load
+// would warn about every valid key. Pass it through.
+#define VC_KEY_NAME(key, member, TYPE) key,
 
 namespace {
 // T0208: a typo'd config key silently yields the default and vanishes on the
@@ -388,10 +391,13 @@ void ConfigParsers::parseRecording(const toml::table& tbl, RecordingConfig& cfg)
 
     // T0210: single default. The struct default is empty; loadDefault()'s
     // resolveFirstRunPaths sets <dataDir>/recordings for fresh installs, and
-    // this fallback covers configs that omit the key -- including the
-    // template, which no longer hardcodes a path. ~/Videos/ChadVis is gone.
-    cfg.outputDirectory = expandPath(
-        get(*t, "output_directory", (file::dataDir() / "recordings").string()));
+    // this fallback covers configs that omit the key -- including the shipped
+    // template, which declares the key empty rather than hardcoding a path.
+    // ~/Videos/ChadVis is gone.
+    const auto outputDir = get(*t, "output_directory", std::string());
+    cfg.outputDirectory = outputDir.empty()
+            ? file::dataDir() / "recordings"
+            : expandPath(outputDir);
 
     if (auto* vt = (*t)["video"].as_table()) {
         // Defaults come straight from ConfigData.hpp: crf 18, "medium",
@@ -474,7 +480,7 @@ void ConfigParsers::parseOverlay(const toml::table& tbl, OverlayConfig& cfg) {
         }
     }
 
-    warnUnknownKeys(*overlay, "overlay", {"elements"});
+    warnUnknownKeys(*overlay, "overlay", {"enabled", "elements"});
 }
 
 void ConfigParsers::parseUI(const toml::table& tbl, UIConfig& cfg) {

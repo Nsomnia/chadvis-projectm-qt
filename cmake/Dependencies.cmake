@@ -339,6 +339,12 @@ function(_chadvis_probe_ffmpeg)
     set(FFMPEG_INCLUDE_DIRS "${FFMPEG_INCLUDE_DIRS}" PARENT_SCOPE)
     set(FFMPEG_LIBRARIES "${FFMPEG_LIBRARIES}" PARENT_SCOPE)
     set(FFMPEG_VERSION "${FFMPEG_VERSION}" PARENT_SCOPE)
+    # The switch from a directory-scope pkg_check_modules to this function would
+    # otherwise drop these two: the AES probe below reads FFMPEG_LINK_LIBRARIES
+    # (full paths, the only spelling that links from a try_compile project) and
+    # falls back to ${FFMPEG_LIBRARY_DIRS}/${name}, which is not a file.
+    set(FFMPEG_LINK_LIBRARIES "${FFMPEG_LINK_LIBRARIES}" PARENT_SCOPE)
+    set(FFMPEG_LIBRARY_DIRS "${FFMPEG_LIBRARY_DIRS}" PARENT_SCOPE)
     set(_CHADVIS_FFMPEG_VIA "${_via}" PARENT_SCOPE)
     set(_CHADVIS_FFMPEG_MISSING "${_missing}" PARENT_SCOPE)
 endfunction()

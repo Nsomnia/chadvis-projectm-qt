@@ -23,12 +23,17 @@
 #include "core/Config.hpp"
 #include "core/ConfigLoader.hpp"
 #include "core/ConfigParsers.hpp"
+#include "core/Logger.hpp"
 #include "util/Color.hpp"
+#include "util/FileUtils.hpp"
+
+#include <spdlog/sinks/callback_sink.h>
 
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 using namespace vc;
 
@@ -457,6 +462,50 @@ private slots:
         QVERIFY(recording->contains("default_filename"));
         QVERIFY(recording->contains("container"));
         QVERIFY(recording->contains("output_directory"));
+    }
+
+    void validKeysAreNeverWarnedAsUnknown() {
+        // T0208's known-key lists expand from the same field tables as the
+        // parser. When the expansion stringified an already-quoted key
+        // ("\"buffer_size\""), nothing ever matched and every load warned about
+        // every valid key -- invisible to a test that does not read the log.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto path = fs::path(dir.path().toStdString()) / "config.toml";
+        const auto saved = ConfigLoader::save(config(), path);
+        QVERIFY2(saved.isOk(), saved.isErr() ? saved.error().message.c_str() : "");
+
+        std::vector<std::string> warnings;
+        auto sink = std::make_shared<spdlog::sinks::callback_sink_mt>(
+                [&warnings](const spdlog::details::log_msg& msg) {
+                    warnings.emplace_back(msg.payload.data(), msg.payload.size());
+                });
+        auto& log = vc::Logger::get();
+        log->sinks().push_back(sink);
+        const auto loaded = ConfigLoader::load(config(), path);
+        log->sinks().pop_back();
+
+        QVERIFY2(loaded.isOk(), loaded.isErr() ? loaded.error().message.c_str() : "");
+        for (const auto& line : warnings)
+            QVERIFY2(line.find("Unknown config key") == std::string::npos, line.c_str());
+    }
+
+    void outputDirectoryFallsBackToTheDataDirectory() {
+        // T0210: the shipped template declares `output_directory = ''` because
+        // the serializer always emits the key, so it cannot simply be omitted.
+        // Empty and absent must both mean the single default -- a literal empty
+        // path would make a recording land in the process's working directory.
+        const auto expected = vc::file::dataDir() / "recordings";
+
+        RecordingConfig fromAbsent;
+        ConfigParsers::parseRecording(toml::parse("[recording]\ncontainer = 'mp4'\n"),
+                                      fromAbsent);
+        QVERIFY(fromAbsent.outputDirectory == expected);
+
+        RecordingConfig fromEmpty;
+        ConfigParsers::parseRecording(toml::parse("[recording]\noutput_directory = ''\n"),
+                                      fromEmpty);
+        QVERIFY(fromEmpty.outputDirectory == expected);
     }
 
     void recordingEncoderSettingsRoundTripExactly() {

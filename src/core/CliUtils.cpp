@@ -234,7 +234,7 @@ std::string lowerFirst(std::string_view s) {
 
 } // namespace
 
-const std::vector<CliArg>& Cli::cliArgTable() {
+const std::vector<CliArg>& cliArgTable() {
     static const std::vector<CliArg> table = [] {
         std::vector<CliArg> out;
         std::string_view section;
@@ -256,7 +256,7 @@ const std::vector<CliArg>& Cli::cliArgTable() {
     return table;
 }
 
-std::string Cli::formatFlags(const CliArg& arg) {
+std::string formatFlags(const CliArg& arg) {
     std::string s;
     if (!arg.shortName.empty()) {
         s += arg.shortName;
@@ -273,7 +273,7 @@ std::string Cli::formatFlags(const CliArg& arg) {
     return s;
 }
 
-void Cli::printCliArg(const CliArg& arg) {
+void printCliArg(const CliArg& arg) {
     printOption(formatFlags(arg), arg.helpText,
                 arg.helpDefault.empty()
                     ? std::optional<std::string_view>{}
@@ -284,7 +284,7 @@ void Cli::printCliArg(const CliArg& arg) {
     }
 }
 
-void Cli::printOptionsForSection(std::string_view section) {
+void printOptionsForSection(std::string_view section) {
     for (const auto& arg : cliArgTable()) {
         if (arg.section == section) {
             printCliArg(arg);

@@ -15,10 +15,12 @@ prev_track = 'P'
 toggle_fullscreen = 'F'
 toggle_record = 'R'
 
-# T0210: no [[overlay.elements]] here -- a generated config has zero, so the
-# template matches it. Add your own elements below to discover the format.
+# T0210: the serializer always emits `elements`; a generated config has zero,
+# so the template declares an empty array. Add your own [[overlay.elements]]
+# below to discover the format.
 [overlay]
 enabled = true
+elements = []
 
 [recording]
 auto_record = false
@@ -28,8 +30,9 @@ enabled = true
 record_entire_song = false
 restart_track_on_record = false
 stop_at_track_end = false
-# T0210: omitted -- the parser default (<dataDir>/recordings) applies.
-# output_directory = '~/Videos/ChadVis'
+# T0210: empty means the default, <dataDir>/recordings, which is the same path
+# a fresh install resolves. Declared because the key is always serialized.
+output_directory = ''
 
     [recording.audio]
     bitrate = 320

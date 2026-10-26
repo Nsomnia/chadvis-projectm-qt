@@ -445,7 +445,7 @@ Result<void> Application::init(const AppOptions& opts) {
     // T0203: --preset was parsed but never consumed. It now feeds the existing
     // visualizer.forcePreset key, which pm::Bridge honors at init via
     // selectByName (useDefaultPreset still takes precedence there).
-    applyOverride(opts.presetName, CONFIG.visualizer().forcePreset,
+    applyOverride(opts.presetName, CONFIG.visualizerMut().forcePreset,
                   "visualizer.forcePreset");
     // Overrides write raw values into CONFIG after ConfigParsers has already
     // clamped the file-loaded values, so an out-of-range flag would sail past
@@ -467,7 +467,7 @@ Result<void> Application::init(const AppOptions& opts) {
     warnIfClamped(opts.recordingCrf, CONFIG.recording().video.crf, "recording.video.crf");
     // T0209: a --recording-codec/--recording-preset typo would otherwise sail
     // past parseRecording's validation; warn here too.
-    ConfigParsers::validateRecording(CONFIG.recording());
+    ConfigParsers::validateRecording(CONFIG.recordingMut());
 
     // Suno overrides
     applyOverride(opts.sunoDownloadPath, CONFIG.sunoMut().downloadPath, "suno.downloadPath");
