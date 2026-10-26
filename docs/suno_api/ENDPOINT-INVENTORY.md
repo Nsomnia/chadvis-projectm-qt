@@ -1468,6 +1468,7 @@ The lead inventory that still claims them is in
 
 ### 5.9 Recovered library and playlist mutation request contracts — `[T1]` (request side)
 
+**Response shapes for the library/playlist subset are now captured too — §5.13.**
 The 2026-09-30 recon probed the write surface by sending an empty object to each
 write route and re-sending with deliberately wrong-typed values. The server's own
 validation error names every required field, its expected type, and — for enums —
@@ -1679,6 +1680,95 @@ intercepts fetches made by pages it controls, so a native client cannot call
 `MangoLicense` + `MangoCrypto` + `SunoDownloader` do, and it is why this client
 makes one licence request per clip per hour rather than one per play.
 
+### 5.13 Mutation and account response shapes, captured live — `[T1]` 2026-10-26
+
+Driven against a signed-in account: one real control where the UI has one, and the
+client's own request bodies against routes §5.9 recovered. **Everything below is a
+response shape**, which is the half §5.9 never had. Every reversible change was
+undone in the same run (reaction cleared, permissions restored, visibility
+restored); the scratch playlists were trashed.
+
+#### Reactions and clip flags
+
+| Route | Request | Response |
+|---|---|---|
+| `POST /gen/{id}/update_reaction_type/` | `{"reaction":"LIKE","recommendation_metadata":{}}` | `{play_count, skip_count, flagged, reaction_type:"L", clip, updated_at}` |
+| same | `{"reaction":"DISLIKE","recommendation_metadata":{}}` | same shape, `reaction_type:"D"` |
+| same | `{"reaction":null,"recommendation_metadata":{}}` | same shape **without `reaction_type`** |
+| `POST /clips/{id}/toggle_remixes/` | `{"can_remix":bool}` | `{clip_id, can_remix}` — 71 bytes |
+| `POST /clips/{id}/toggle_show_remixes` | `{"show_remix":bool}` | `{clip_id, show_remix}` — 71 bytes |
+
+`clip` in the reaction response is an **id string**, not the clip. `reaction_type` is
+the initial of the request value and is **absent** when cleared — never `""`.
+
+#### Visibility
+
+`POST /gen/{id}/set_visibility/` with `{"is_public":bool}` returns the **entire updated
+clip** at the top level (10 076 bytes for a short clip), not `{clip: …}`. It carries one
+key the feed's copy did not: `pending_publish`.
+
+#### Playlist CRUD
+
+| Route | Request | Response |
+|---|---|---|
+| `POST /playlist/create/` | `{name, description}` | the full playlist object (25 keys; `entity_type, id, name, playlist_clips[], image_url, num_total_results, current_page, is_owned, is_trashed, is_public, is_hidden, user_display_name, user_handle, user_avatar_image_url, user_is_verified, description, reaction, upvote_count, dislike_count, flag_count, skip_count, play_count, song_count, is_discover_playlist, copy_failures`) |
+| `POST /playlist/set_metadata/` | `{playlist_id, name, description}` | the playlist object again, 456 bytes, **without** `image_url`/user fields |
+| `POST /playlist/v2/{id}/tracks/add` | `{clip_ids:[…]}` | `{successes, failures}` — 111 bytes for two |
+| `POST /playlist/v2/{id}/tracks/remove` | `{clip_ids:[…]}` | `{successes, failures}` |
+| `POST /playlist/v2/{id}/tracks/reorder-by-index` | `{positions:[{clip_id, index}]}` | `{success, updated_fields, errors}` — 66 bytes |
+| `POST /playlist/trash/` | `{"playlist_id":"<id>"}` **flat** | **`204 No Content`, empty body** |
+| `POST /playlist/v2/{id}/cover-image` | `{cover_source:{id, type}}`, `type ∈ {"generated","visual"}` | 404 `{status_code, detail, detail_fallback, error_type:"cover_source_not_found", retryable:false}` when `id` is not an image id |
+
+**Three traps, each measured:**
+
+1. **`trash` is the only 204 here, and its 422 lies about the field path.** Sending
+   `{"spec":{"playlist_id":…}}` answers `422 … loc ["body","spec","playlist_id"]` even
+   when `spec.playlist_id` is present: the route accepts more than one body schema and
+   FastAPI reports the *last* variant's error. The flat `{"playlist_id": …}` is the one
+   that works, and success is an empty 204 — a client that parses a body fails on the
+   *success* path.
+2. **`tracks/add` and `tracks/remove` report per-clip outcome**, not a status code:
+   `{successes, failures}`. A 200 with every id in `failures` is a failure.
+3. **A cover image is an image id, not a clip id.** Passing a clip id is a clean
+   `404 cover_source_not_found` (`retryable:false`), so the failure is diagnosable rather
+   than silent — but the caller has to know the source is an image.
+
+#### Account and quota (`GET /billing/info/`)
+
+11.9 KB of account state, and the single route a credits readout needs. Top-level keys: `subscription_platform, is_active, is_past_due,
+credits, subscription_type, subscription_anchor, subscription_id, renews_on, period,
+monthly_usage, monthly_limit, credit_packs, download_credit_packs, plan, models,
+max_active_custom_models, max_custom_model_clips, plan_price, plan_currency,
+plan_currency_price, default_currency, eligible_currencies, country_code,
+payment_method_type, can_upgrade_immediately, plans, accessible_features,
+revcat_subscriptions_offering_id, total_credits_left, free_persona_clips_remaining,
+free_cover_clips_remaining, free_remasters_remaining, free_mobile_remasters_remaining,
+free_mobile_v4_gens_remaining, free_web_v4_gens_remaining, free_vox_gens_remaining,
+has_been_subscriber_before, last_subscription_period_end, has_valid_school_email,
+has_been_student_subscriber_before, day0_boost, promotions, audio_upload_limits,
+voice_upload_limits, voice_record_limits, agentic_limits, period_end,
+remaster_model_types, download_usage, is_pause_scheduled, is_paused, is_gifted`.
+
+The numbers that matter for a UI: **`total_credits_left`** is what the site shows as
+"Credits Remaining" (8 234 in the capture), `monthly_usage` / `monthly_limit` are the
+period's spend against the plan allowance (2 290 of 10 000), `credits` is a smaller
+per-action balance (524), and `download_usage` carries the download allowance the
+account page shows as "Downloads Remaining" (57). `renews_on` / `period_end` give the
+billing date. `plan` names the tier; `plans` and `accessible_features` are the catalogue
+and the entitlement list.
+
+Two read-only companions: `GET /session/` → `{user, models, roles, flags, configs,
+experiments, statsig_custom_properties, data_sharing_consent}`, and
+`GET /user/user_config/` → the publication defaults and player preferences
+(`publish_remix_default`, `publish_pin_default`, `publish_comment_default`,
+`player_play_related`, `player_play_next_queued`, `show_credits`,
+`notification_preferences`, `data_restrictions_*`).
+
+**Not captured:** `POST /gen/trash` (trash/restore of a clip), dislike on a
+discover-feed clip owned by someone else, and the image-id space that `cover-image`
+needs. Anything billing-shaped beyond the read (`checkout`, `portal`, payment methods) is
+excluded by §5.10 and stays excluded.
+
 ## 6. Errors, statuses, and rate limits
 
 ### 6.1 What the captures establish
@@ -1822,4 +1912,4 @@ no owner.
 | `/api/edit/stems/{clip_id}` trailing slash | `suno-cli` @ `6d28c67a` spells it **without** a trailing slash; our lead rows carry a trailing slash. No capture from this repository selects either spelling. | Neither spelling may be rewritten into the other. This is a spelling conflict, not a retitling — path template *parameter names* (`{id}` vs `{clip_id}`) are **not** on the wire and are not drift, so they are deliberately not recorded here. | **Unresolved `[VERIFY]` at use time** |
 | Progressive media host and content type | The 2026-09-24 clip objects returned `mp3`/`webm-opus` over `streaming` on `audiopipe.suno.ai`, while the 2026-09-30 feed bodies returned `m4a-opus` over `progressive` on the CloudFront origin in 40 of 40 entries with no `mp3` and no `audiopipe` occurrence. Two captures of two accounts disagree about the default. | **Both observations stand as `[T1]`**; they are different corpora, not a correction of one another. The recon's 40-entry observation is the only evidence for which form is *observed as the default*, and the client's `mp3`-plus-`audiopipe` filter therefore rejects 100% of it (section 5.3). `audiopipe.suno.ai` does appear inside the recon's client bundles as a hostname regex and a constructed URL template, which is `[LEAD]` and does not affect its `[T1]` row in section 2.1. | **Unresolved which is served to a given account; both captured** |
 | Notification routes vs current client bundle | `/api/notification/v2`, `/v2/badge-count`, and `/v2/read` are `[T1]` from the 2026-08-25/2026-09-24 request-response exports and all three are `wired`, yet two passes over ~96 client-bundle chunks found **zero** `/api/notification*` strings. | The captures are real, so the rows stay `[T1]` and nothing is demoted: section 6.2's rule that absence from the bundle is evidence of client-side disuse rather than server removal applies symmetrically. What the negative changes is handling, not status — degrade a failing notification surface to a visible error state rather than deleting the service on a static negative, and do not present it as working. One authenticated probe settles it. | **Unresolved — captured routes, uncorroborated by the current client** |
-| Library mutation request contracts | This master and the backlog both treated library and playlist mutations as needing a fresh human capture. | **Request** contracts are `[T1]` — recovered from server validation errors, 64 write endpoints probed, and the library/playlist subset is canonical in section 5.9. **Response** shapes were not captured, and `playlist/create/`, `playlist/trash/`, `gen/{id}/set_metadata/` and `gen/trash` were never probed and remain `[LEAD]` (`gen/{id}/update_reaction_type/` was captured on 2026-10-26, §4.5.1); `POST /api/clips/delete/` answered 404. Recovered bodies are **flat** (section 1.5). | **Resolved for requests; responses and unprobed siblings remain uncaptured** |
+| Library mutation request contracts | This master and the backlog both treated library and playlist mutations as needing a fresh human capture. | **Request** contracts are `[T1]` — recovered from server validation errors, 64 write endpoints probed, and the library/playlist subset is canonical in section 5.9. **Response** shapes were not captured, and `playlist/create/`, `playlist/trash/`, `gen/{id}/set_metadata/` and `gen/trash` were never probed and remain `[LEAD]` (`gen/{id}/update_reaction_type/` was captured on 2026-10-26, §4.5.1); `POST /api/clips/delete/` answered 404. Recovered bodies are **flat** (section 1.5). | **Resolved for requests; the library/playlist response shapes are captured in §5.13; `gen/trash` and the `set_metadata`/`playlist/trash` siblings are still unprobed** |

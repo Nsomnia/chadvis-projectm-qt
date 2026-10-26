@@ -176,6 +176,10 @@ line to describe an item is describing it in the wrong place. Finished work move
 ## P1 — correctness, robustness, and debt that will bite
 
 - [ ] T0011 **The whole 11-route library/playlist mutation surface is runtime-unreachable and unobservable** (`src/suno/SunoLibraryMutations.hpp:493`, `src/suno/SunoLibraryMutations.cpp:394-397`) #risk-high
+      **The contract gap is closing:** as of 2026-10-26 the request *and* response shapes for reaction, both
+      remix toggles, visibility and the whole playlist CRUD set are captured (§5.13). `setEnabled` being
+      false and no QML connecting the four signals (T0320 a/b) is now the entire blocker — the wire format is
+      no longer a reason to leave the surface dark.
       `bool enabled_{false}` and `dispatch()` always refuses. `setEnabled` is declared
       (:281) and defined (:141) with **zero production callers**. Separately, **no QML
       file** connects `clipMutationSettled`, `playlistMutationSettled`, `clipSaveRefused`
@@ -757,10 +761,14 @@ proceed"; read it as "proceed, and leave the switch off".
       Request schemas were recovered; the **success** shape of every mutation verb was not, which is why the
       surface stays disabled (T0011). A 2xx must be treated as "accepted, shape unverified" — see T0018 for the
       case where the code gets this wrong.
-      **One verb is now fully captured (2026-10-26): `update_reaction_type`** — request and response, both
-      directions, including two traps a guess would get wrong (`reaction_type` absent on unlike, `clip` is an
-      id string). Eleven other verbs still owe their response shape; the same exercise (drive the control in a
-      signed-in browser, read the network log) takes a few minutes per verb.
+      **Broadly captured 2026-10-26** ([§5.13](docs/suno_api/ENDPOINT-INVENTORY.md)), response side:
+      `update_reaction_type` (LIKE → `"L"`, DISLIKE → `"D"`, null → **no** `reaction_type`, and `clip` is an
+      id), `toggle_remixes` / `toggle_show_remixes` (`{clip_id, can_remix|show_remix}`), `set_visibility`
+      (the whole updated clip), and the playlist verbs — `create`, `set_metadata`, `tracks/add`,
+      `tracks/remove`, `reorder-by-index`, `trash` (flat `{playlist_id}` → **204 empty**). Traps worth keeping:
+      `trash`'s 422 names `spec.playlist_id` for a body schema it does not use, `tracks/add` reports
+      `{successes, failures}` under a 200, and a cover image is an *image* id (a clip id is a clean
+      `404 cover_source_not_found`). Still uncaptured: `gen/trash` and the image-id space.
 - [ ] T0144 **Fresh notification captures** (`src/suno/SunoNotificationService.cpp`) #blocks-capture
       Decides whether the three wired notification routes are real or a 404 generator — the one open risk in the
       notification surface.
@@ -1017,6 +1025,10 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 - [ ] T0276 **Polling: NONE for Explore/Account** (`src/suno/`)
       All manual/event-driven. (T0067 covers the Notifications side.)
 - [ ] T0277 **Credits/quota UX: read-only snapshot** (`src/suno/`, `qml/`)
+      **Contract captured 2026-10-26** (§5.13): one authenticated `GET /billing/info/` carries
+      `total_credits_left` (the site's "Credits Remaining"), `monthly_usage`/`monthly_limit` (period spend
+      against the allowance), `download_usage` (the download allowance), `renews_on`/`period_end` (billing
+      date) and `plan` (the tier). No UI reads any of it today.
       No low-credit warning, spend tracking, purchase/upgrade flow, refresh scheduling, per-feature cost model.
 - [ ] T0278 **Missing endpoints to wire (with capture)** (`src/suno/`) (capture-gated)
       `POST /v1/client/verify` (heartbeat, 204), `GET /v1/environment`, `POST /v1/client/sign_ins`, social legs, `GET /v1/client/handshake`; `DELETE /v1/client` (remote sign-out) never observed → sign-out local-only; `[T1]`-but-absent constants (increment_play_count/v2, listen_milestone, notification/v2/clear-badge, onboarding/current|start, statsig/forked-onboarding, labs/configs, challenge/progress). Adding any requires constant + call site + test.
