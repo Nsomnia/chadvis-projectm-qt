@@ -92,6 +92,10 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Removed
 
+- **The `/oc` agent workflow.** It only ran on a comment trigger, and the comment was never
+  posted — so it held `id-token: write` and a provider key for a path nobody used. Parked in the
+  ignored graveyard; the OpenCode harness itself is unaffected.
+
 - **A rules file that nothing loaded.** `.opencode/rules/ponytail-senior-engineer-guidelines.md`
   had no reader: `opencode.jsonc` has no `instructions` key and the ponytail plugin that might
   have pulled it is commented out. A rules file believed by everyone and read by nothing is worse
