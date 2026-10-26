@@ -631,8 +631,8 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       whole family of documented bindings has no handler. **Grep every key in
       `panels/settings/ShortcutsSettings.qml` (9 entries) against `main.qml` and wire or
       delete the ones with no effect.**
-- [ ] T0140 Remove the stale dead-code comment in `ConfigLoader` and other drifted comments (`src/core/ConfigLoader.cpp:120-123`) #cleanup
-      The comment claims a fixed null deref that is already correct. Harmless but misleading.
+- [-] T0140 Remove the stale dead-code comment in `ConfigLoader` and other drifted comments (`src/core/ConfigLoader.cpp:120-123`) #cleanup
+      Reviewed and kept: the comment is not stale. It states why the code uses `operator[]` instead of the older `get("debug")->value_or(false)` — `toml::table_view::get()` returns `nullptr` for a missing key, so the old spelling dereferenced null on a `[general]` table without `debug`. That is the "why" the file's style asks for, not a claim of a live bug.
 
 - [ ] T0188 The interaction language the design docs specify: hover-grow, 44×44 targets, responsive breakpoints (`src/qml/components/AppButton.qml`) #feature
       **The hover-grow half is written, and only that half.** `AppButton` now has three states — 1.0 idle, 1.02 hover, 0.96 press — at `durationFast` (150 ms) with OutCubic going up and InCubic coming down, replacing `pressed ? 0.97 : 1.0` at `durationInstant`. The press factor was *reduced* from 0.97 to 0.96 and the hover factor is small on purpose: three adjacent buttons at 1.05 would shimmer, and the docs' own "if animation doesn't help understanding, remove it" argues against it. The easing asymmetry is what makes it read as an object rather than a value readout. Both states are gated on `root.enabled`, which was a real bug in the first cut: `AppButton` deliberately leaves its `MouseArea` enabled when disabled so the cursor can say "not now", so `pressed` and `containsMouse` are both live on a dead button and it would have shrunk on click. **Still open:** tap targets are `buttonHeight 36` and nowhere near the 44 the design philosophy asks for, `AppIconButton` was not audited for the same press-only defect, no hover state exists on `AppComboBox`/`AppTextField`/`AppSwitch`/`AppSlider`, and there is still no mobile breakpoint or bottom nav bar. Those are a redesign, not a patch.
@@ -1073,8 +1073,8 @@ terse per T0252; long evidence belongs in `docs/backlog/TXXXX.md`.
 - [ ] T0301 **No static-analysis, SBOM, or dependency-vulnerability lane** (`.github/workflows/`) #security
       No CodeQL, no CycloneDX/SPDX SBOM, no `vcpkg.json` (T0091), and Dependabot watches only `github-actions` (`.github/dependabot.yml:14-17`). The CPM-pinned and system dependencies have **no CVE signal at all**. Add CodeQL for C++ and an SBOM step; keep CPM pins on a manual review list until a manifest exists.
 
-- [ ] T0304 **`docs/GEMINI_FLASH_ANALYSYS.md` is an orphan with a misspelled filename** (`docs/`) #doc #cleanup
-      No document links it and the hub (`docs/README.md`) does not list it. Either fold its content into a linked doc and delete the file, or rename it (`ANALYSIS`) and add a hub row. An orphan doc is the "two files claim one fact" failure the hub's own rule forbids.
+- [x] T0304 **`docs/GEMINI_FLASH_ANALYSYS.md` is an orphan with a misspelled filename** (`docs/`) #doc #cleanup
+      Parked to `.backup_graveyard/2026-10-26-gemini-analysis/`: an unreviewed AI architecture analysis with no owner, on a subject `docs/dev/ARCHITECTURE.md` already owns. Nothing referenced it but this line; a rename would have made an unowned second copy look canonical.
 
 - [ ] T0305 **Four overlapping C++ skills, two of them with unclear provenance** (`.opencode/skills/`) #cleanup
       `c-cpp-profi`, `modern-cpp`, `cpp-coding-standards` and `cpp-pro` all cover modern C++ standards/idioms. `c-cpp-profi` has no upstream license; `cpp-pro` has no license file either. Consolidate to one standards skill and one security/idioms skill, record the license for each, and delete the rest. Skill sprawl costs context on every task that loads them.

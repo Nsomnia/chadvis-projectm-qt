@@ -92,6 +92,11 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Removed
 
+- **An orphan AI architecture analysis.** `docs/GEMINI_FLASH_ANALYSYS.md` was linked by no
+  document and listed by no hub row, and its subject is already owned by
+  `docs/dev/ARCHITECTURE.md`. It was parked rather than renamed: a misspelled filename that a hub
+  row suddenly endorsed is an unowned second copy that looks canonical.
+
 - **The `/oc` agent workflow.** It only ran on a comment trigger, and the comment was never
   posted — so it held `id-token: write` and a provider key for a path nobody used. Parked in the
   ignored graveyard; the OpenCode harness itself is unaffected.

@@ -1,0 +1,5 @@
+2026-10-26T14:19:25Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee64741 pid=64741 ttl=4h expires=2026-10-26T18:19:25Z
+2026-10-26T14:21:00Z  CHANGE   Parked docs/GEMINI_FLASH_ANALYSYS.md to .backup_graveyard/2026-10-26-gemini-analysis/. It was an unreviewed AI architecture analysis with no owner; docs/dev/ARCHITECTURE.md owns that subject, and docs/README.md never listed it.
+2026-10-26T14:21:00Z  VERIFY   grep -rn 'GEMINI_FLASH' --include='*.md' --include='*.yml' --include='*.sh' -> only TODO.md:1076 (this line). No workflow, script or doc referenced it.
+2026-10-26T14:21:00Z  VERIFY   ls docs/GEMINI* -> no matches; file no longer in the tree.
+2026-10-26T14:19:54Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee64863
