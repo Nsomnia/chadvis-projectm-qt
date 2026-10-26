@@ -42,8 +42,10 @@ rules and pointers, never the detail — the doc named on each line owns that de
 
 `./scripts/release.sh` (`--dry-run`, `--tag vX.Y.Z`) is the only correct way — it refuses a dirty
 tree, a HEAD that is not `origin/main`, an empty `[Unreleased]` section, a red gate, or a second
-run, then dispatches `release.yml` pinned to that commit. Full rule:
-[`docs/dev/RELEASING.md`](docs/dev/RELEASING.md).
+run, then dispatches `release.yml` pinned to that commit. An agent may start one itself only
+when `[Unreleased]` holds a release's worth of finished changes, the gate is green at that exact
+commit, and the tag kind is deliberate — and it still goes through `release.sh`, never a manual
+workflow dispatch. Full rule: [`docs/dev/RELEASING.md`](docs/dev/RELEASING.md#when-an-agent-may-start-a-release).
 
 ## Do not
 

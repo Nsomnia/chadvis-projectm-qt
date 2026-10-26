@@ -43,6 +43,28 @@ where that disagreement is visible.
 path does the build and the publish itself. A tag push (`on: push: tags: v*`)
 still works and is what an ordinary maintainer uses.
 
+## When an agent may start a release
+
+The default is a human decision. An agent may dispatch one itself when **all**
+of the following hold — and it still goes through `./scripts/release.sh`, never
+a hand-written `gh workflow run release.yml`, because the script is what applies
+the refusals below:
+
+1. **The CHANGELOG has a release worth of `[Unreleased]` entries.** A backlog of
+   finished, user-visible changes — not one half-done item and not an empty
+   section. The script refuses an empty section for exactly this reason.
+2. **The gate is green at that exact commit.** `build` and `windows` passed on
+   the pushed `HEAD`, and `guards` passed. "It compiled on my machine" is not
+   this; a local build has no gate record.
+3. **The tag kind is deliberate.** `vX.Y.Z` only for a real release that is
+   allowed to be "Latest"; anything that might still move is
+   `vX.Y.Z-build.<short-sha>`.
+
+Run `./scripts/release.sh --dry-run` first, then the real command, and report
+the run URL. If either path refuses — dirty tree, wrong HEAD, empty section, red
+gate, second run — stop and say which refusal fired. The refusal is the answer,
+not an obstacle to route around.
+
 ## Tags decide what kind of release it is
 
 | Tag | Kind | GitHub "Latest" |
