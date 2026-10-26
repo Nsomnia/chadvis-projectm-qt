@@ -75,6 +75,9 @@ include(Compiler)
 include(Dependencies)
 include(Sources)
 include(TargetSetup)
+# After TargetSetup: it defines project_lib and the app target the pack is
+# compiled against and copied into.
+include(PresetPack)
 include(Install)
 
 # ---------------------------------------------------------------------------

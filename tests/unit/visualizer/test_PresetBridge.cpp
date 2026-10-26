@@ -5,6 +5,7 @@
 #include <fstream>
 #include <memory>
 
+#include "core/Config.hpp"
 #include "qml_bridge/PresetBridge.hpp"
 #include "visualizer/PresetData.hpp"
 #include "visualizer/PresetManager.hpp"
@@ -45,14 +46,18 @@ private slots:
     void selectingThroughAFilteredRowSelectsThatRow();
     void favoritingThroughAFilteredRowTogglesThatRow();
     void ratingThroughAFilteredRowWritesThatRow();
+    void refusingANonDirectoryKeepsTheCurrentLibrary();
+    void choosingAFolderRecordsItAsThePresetPath();
 
 private:
     QTemporaryDir dir_;
+    fs::path presetPathBefore_;
     std::unique_ptr<PresetManager> manager_;
     std::unique_ptr<qml_bridge::PresetBridge> bridge_;
 };
 
 void TestPresetBridge::init() {
+    presetPathBefore_ = Config::instance().visualizer().presetPath;
     const fs::path root = dir_.path().toStdString();
     createPreset(root, "alpha");
     createPreset(root, "bravo");
@@ -77,6 +82,7 @@ void TestPresetBridge::cleanup() {
     bridge_.reset();
     qml_bridge::PresetBridge::setPresetManager(nullptr);
     manager_.reset();
+    Config::instance().visualizerMut().presetPath = presetPathBefore_;
 }
 
 void TestPresetBridge::unfilteredRowsCarryFullListIndices() {
@@ -176,6 +182,42 @@ void TestPresetBridge::ratingThroughAFilteredRowWritesThatRow() {
 
     QCOMPARE(RatingManager::instance().getRating(victim), 4);
     QCOMPARE(RatingManager::instance().getRating(slotZero), slotZeroBefore);
+}
+
+void TestPresetBridge::refusingANonDirectoryKeepsTheCurrentLibrary() {
+    // The only production caller is a FolderDialog, which cannot produce a
+    // non-directory — but the guard is what stops a programmatic or stale
+    // value from persisting a path that scans to nothing, i.e. from emptying
+    // a 9,795-preset library with one typo.
+    const QString before = bridge_->folder();
+    const std::size_t countBefore = manager_->count();
+
+    bridge_->setFolder(QStringLiteral("/nonexistent/not-a-preset-folder"));
+
+    QCOMPARE(bridge_->folder(), before);
+    QCOMPARE(manager_->count(), countBefore);
+}
+
+void TestPresetBridge::choosingAFolderRecordsItAsThePresetPath() {
+    // The folder the Settings row shows is the persisted config field, not a
+    // bridge-side copy: one owner is what makes a relaunch reopen on the same
+    // library.
+    const fs::path chosen = dir_.path().toStdString() + "/chosen";
+    fs::create_directories(chosen);
+    createPreset(chosen, "echo");
+
+    bridge_->setFolder(QString::fromStdString(chosen.string()));
+
+    QCOMPARE(bridge_->folder(), QString::fromStdString(chosen.string()));
+    QCOMPARE(QString::fromStdString(Config::instance().visualizer().presetPath.string()),
+             QString::fromStdString(chosen.string()));
+
+    // The rescan is asynchronous: the walk runs on the manager's worker and the
+    // finished list is published back through a queued event, so the count only
+    // changes once this thread has processed events. QTRY spins that loop (and
+    // still fails on a hang), which is also what keeps cleanup() from destroying
+    // the manager while its worker is mid-walk.
+    QTRY_COMPARE_WITH_TIMEOUT(static_cast<int>(manager_->count()), 1, 5000);
 }
 
 #include "test_PresetBridge.moc"

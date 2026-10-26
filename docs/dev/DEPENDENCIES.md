@@ -15,6 +15,31 @@ brew, vcpkg for C/C++) are one line in [`AGENTS.md`](../../AGENTS.md).
 
 `CMakeLists.txt` enforces C++23 at configure time; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## The preset pack
+
+Not a dependency — data the visualizer cannot work without. projectM ships **no** presets, so a
+build with none can only ever draw projectM's built-in idle preset, which is one picture for
+every recording.
+
+`cmake/PresetPack.cmake` fetches
+[projectM-visualizer/presets-cream-of-the-crop](https://github.com/projectM-visualizer/presets-cream-of-the-crop)
+— the pack the projectM project itself calls its default, ~9,800 `.milk` presets in category
+folders — into the **build** directory (never the source tree), compiles its path into the
+binary so a dev build finds it, installs it to `share/chadvis-projectm-qt/presets`, and on macOS
+copies it into `ChadVis.app/Contents/Resources/presets` so a drag-to-`/Applications` install
+carries it. `file::presetsDir()` owns discovery; [CONFIG.md](../user/CONFIG.md#visualizer)
+lists the probe order.
+
+- **Offline is not a failure.** A failed download, a 404, a timeout or a truncated archive
+  warns and leaves the path empty; the app then shows the idle preset exactly as before.
+- **`-DCHADVIS_BUNDLE_PRESETS=OFF`** skips it, for a stripped build or a distro that packages
+  presets itself.
+- **Licensing.** The pack's `LICENSE.md` travels with it and is installed alongside: the presets
+  were never released under individual licences, the projectM project redistributes them as its
+  default pack, and it removes any preset on an author's request. This repository does not
+  vendor them; the build fetches them from upstream, which keeps the licence claim where it
+  belongs.
+
 ## Why not Conan
 
 Conan 2 is a good tool and this project is the kind of project it is good at — but it would be a

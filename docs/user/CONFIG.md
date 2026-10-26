@@ -154,14 +154,19 @@ next launch.
 | `preset_path` | path | `''` | Preset directory. Empty means auto-detect |
 | `texture_paths` | array of strings | `[]` | Extra texture search paths |
 
-`beat_sensitivity` ships at `1.0`, not a beefier number. `preset_path` ships **empty on purpose**: an absent key or an explicit `''` both mean "auto-detect the system presets directory" through `file::presetsDir()` (`src/util/FileUtils.cpp:122-140`, called at `src/core/ConfigParsers.cpp:243-247`). Only a non-empty path is used literally. Auto-detect probes, in order:
+`beat_sensitivity` ships at `1.0`, not a beefier number. `preset_path` ships **empty on purpose**: an absent key or an explicit `''` both mean "auto-detect the preset directory" through `file::presetsDir()` (`src/util/FileUtils.cpp`, called at `src/core/ConfigParsers.cpp`). Only a non-empty path is used literally. Auto-detect probes, in order:
 
 1. `/usr/share/projectM/presets`
 2. `/usr/local/share/projectM/presets`
 3. `/opt/homebrew/share/projectM/presets`
 4. `%LOCALAPPDATA%\projectM\presets` (Windows only)
 5. `/usr/share/projectm-presets`
-6. `<dataDir>/presets` — and this is also the final fallback if none of the above exist
+6. **the preset pack this build fetched** — the projectM "cream of the crop" collection, ~9,800 `.milk` presets in category folders. A development build reads it from `build-*/_deps/presets-cream-of-the-crop-master`; an installed app carries it inside the macOS `.app` (`Contents/Resources/presets`) or in `share/chadvis-projectm-qt/presets` elsewhere. See [Dependencies](../dev/DEPENDENCIES.md#the-preset-pack).
+7. `<dataDir>/presets` — **only when it already contains a preset file**, so an empty drop folder cannot shadow the bundled pack. This is also the final fallback if none of the above exist.
+
+`CHADVIS_PRESET_DIR=/path/to/presets` in the environment overrides every probe above. Settings → Visualizer → **Preset Library** also shows the folder in use and offers *Choose…* (pick any folder; it is saved as `preset_path`) and *Rescan*.
+
+The pack comes from the build, not from this repository: a configure with no network leaves it empty, warns, and the visualizer then shows only projectM's own idle preset. Turn the fetch off entirely with `-DCHADVIS_BUNDLE_PRESETS=OFF`.
 
 **A save keeps that emptiness.** The serializer compares the live `preset_path` against
 `file::presetsDir()`: if they agree, the key is written back as `''`, so a config file is not

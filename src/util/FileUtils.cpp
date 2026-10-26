@@ -1,11 +1,13 @@
 #include "FileUtils.hpp"
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <format>
 #include <fstream>
 #include <regex>
 #include <sstream>
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QStandardPaths>
 #include <QString>
 #include "core/Logger.hpp"
@@ -30,6 +32,42 @@ fs::path genericBaseDir(QStandardPaths::StandardLocation location,
     if (base.isEmpty())
         return lastResort;
     return fs::path(base.toStdString()) / "chadvis-projectm-qt";
+}
+
+// ── Preset directory probe ───────────────────────────────────────────
+// True when `dir` holds a preset file at its top level or exactly one level
+// down. One level is what a real pack looks like (cream-of-the-crop ships one
+// directory per category), and it is cheap enough to run on every start --
+// unlike a full recursive walk, which the scan itself already owns.
+bool directoryHoldsPresets(const fs::path& dir) {
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec))
+        return false;
+
+    const auto hasPreset = [](const fs::path& entry) {
+        return presetExtensions.contains(entry.extension().string());
+    };
+
+    for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end;
+         !ec && it != end; it.increment(ec)) {
+        std::error_code entryEc;
+        if (it->is_regular_file(entryEc) && hasPreset(it->path()))
+            return true;
+        if (it->is_directory(entryEc)) {
+            for (fs::directory_iterator sub(it->path(),
+                                           fs::directory_options::skip_permission_denied,
+                                           ec),
+                 subEnd;
+                 !ec && sub != subEnd; sub.increment(ec)) {
+                std::error_code subEc;
+                if (sub->is_regular_file(subEc) && hasPreset(sub->path()))
+                    return true;
+            }
+            if (ec)
+                return false;
+        }
+    }
+    return false;
 }
 
 // ── ByteSizeFormatter ────────────────────────────────────────────────
@@ -120,6 +158,11 @@ fs::path cacheDir() {
 }
 
 fs::path presetsDir() {
+    // The user's own drop folder is checked for *content*, not mere existence:
+    // dataDir()/presets is also the create-for-later fallback, and an empty
+    // directory there must not shadow the bundled pack.
+    const fs::path userDir = dataDir() / "presets";
+
     std::vector<fs::path> candidates = {"/usr/share/projectM/presets",
                                         "/usr/local/share/projectM/presets",
                                         "/opt/homebrew/share/projectM/presets",
@@ -127,16 +170,39 @@ fs::path presetsDir() {
                                         fs::path(qEnvironmentVariable("LOCALAPPDATA").toStdString()) /
                                                 "projectM" / "presets",
 #endif
-                                        "/usr/share/projectm-presets",
-                                        dataDir() / "presets"};
+                                        "/usr/share/projectm-presets"};
 
-    for (const auto& p : candidates) {
-        if (fs::exists(p) && fs::is_directory(p)) {
-            return p;
-        }
+    // The pack this build fetched and installed. A dev binary reads it from the
+    // build tree through the definition; an installed one carries it inside the
+    // .app on macOS and in share/ elsewhere, so both spellings are probed. This
+    // needs a live application object, which is why the app-relative half is
+    // skipped rather than assumed when presetsDir() runs before one exists.
+#ifdef CHADVIS_BUNDLED_PRESET_DIR
+    candidates.emplace_back(CHADVIS_BUNDLED_PRESET_DIR);
+#endif
+    if (QCoreApplication::instance() != nullptr) {
+        const fs::path appDir = QCoreApplication::applicationDirPath().toStdString();
+        candidates.push_back(appDir / "share" / "chadvis-projectm-qt" / "presets");
+        candidates.push_back(appDir / ".." / "Resources" / "presets");
+        candidates.push_back(appDir / "presets");
     }
 
-    return dataDir() / "presets";
+    // Explicit override beats every default, including the bundled pack -- the
+    // reason it exists is a user whose own library should win.
+    if (const char* envDir = std::getenv("CHADVIS_PRESET_DIR");
+        envDir != nullptr && *envDir != '\0' && fs::is_directory(envDir)) {
+        return envDir;
+    }
+
+    if (directoryHoldsPresets(userDir))
+        return userDir;
+
+    for (const auto& p : candidates) {
+        if (fs::exists(p) && fs::is_directory(p))
+            return p;
+    }
+
+    return userDir;
 }
 
 Result<void> ensureDir(const fs::path& path) {

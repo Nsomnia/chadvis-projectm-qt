@@ -1,4 +1,7 @@
 #include "PresetBridge.hpp"
+#include <system_error>
+#include "core/Config.hpp"
+#include "core/Logger.hpp"
 #include "visualizer/PresetData.hpp"
 #include "visualizer/PresetManager.hpp"
 #include "visualizer/RatingManager.hpp"
@@ -219,6 +222,39 @@ void PresetBridge::rescan() {
     // cannot queue a pile of walks or multiply the QVariantList rebuilds that
     // presetsChanged triggers.
     s_manager->rescanAsync();
+}
+
+QString PresetBridge::folder() const {
+    return QString::fromStdString(vc::Config::instance().visualizer().presetPath.string());
+}
+
+void PresetBridge::setFolder(const QString& path) {
+    if (!s_manager || path.isEmpty()) return;
+
+    const vc::fs::path dir(path.toStdString());
+    std::error_code ec;
+    if (!vc::fs::is_directory(dir, ec)) {
+        // The only producer is a FolderDialog, which can only hand back a real
+        // directory, so this is a programmatic caller or a stale dialog value.
+        // Refusing keeps the previous library instead of blanking it.
+        LOG_WARN("PresetBridge: refused preset folder '{}' (not a directory)", path.toStdString());
+        return;
+    }
+
+    if (dir == vc::fs::path(folder().toStdString())) {
+        // Re-picking the current folder means "scan it again", which is what the
+        // Rescan button does -- no config write, no auto-save churn.
+        s_manager->rescanAsync();
+        return;
+    }
+
+    vc::Config::instance().visualizerMut().presetPath = dir;
+    if (auto saved = vc::Config::instance().save(vc::Config::instance().configPath()); !saved) {
+        LOG_ERROR("PresetBridge: could not persist the preset folder: {}",
+                      saved.error().message);
+    }
+    emit folderChanged();
+    s_manager->scanAsync(dir, true);
 }
 
 void PresetBridge::onPresetChanged(const vc::PresetInfo* preset) {

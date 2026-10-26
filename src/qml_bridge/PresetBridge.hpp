@@ -34,6 +34,10 @@ class PresetBridge : public QObject,
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
     Q_PROPERTY(QString selectedCategory READ selectedCategory WRITE setSelectedCategory NOTIFY
                        selectedCategoryChanged)
+    // The directory the current generation was scanned from -- the effective
+    // default when the user has never chosen, so the Settings row can show what
+    // is actually being read rather than an empty string.
+    Q_PROPERTY(QString folder READ folder WRITE setFolder NOTIFY folderChanged)
 
 public:
     explicit PresetBridge(QObject* parent = nullptr);
@@ -51,9 +55,15 @@ public:
     int activeCount() const;
     QString searchQuery() const;
     QString selectedCategory() const;
+    QString folder() const;
 
     void setSearchQuery(const QString& query);
     void setSelectedCategory(const QString& category);
+    /// Point the library at another directory: persists `visualizer.preset_path`
+    /// (one owner -- the config field -- rather than a second copy in the
+    /// bridge) and rescans that directory. A path that is not a directory is
+    /// refused with the old one kept, so a typo cannot empty the library.
+    void setFolder(const QString& path);
 
 public slots:
     Q_INVOKABLE bool selectByIndex(int index);
@@ -73,6 +83,7 @@ signals:
     void currentPresetChanged();
     void searchQueryChanged();
     void selectedCategoryChanged();
+    void folderChanged();
 
 private slots:
     void onPresetChanged(const vc::PresetInfo* preset);
