@@ -85,9 +85,14 @@ if(NOT PROJECTM_FOUND)
     CPMAddPackage(
         NAME projectm
         GIT_REPOSITORY https://github.com/projectM-visualizer/projectm.git
-        # v4.1.6, pinned to the commit the tag names. The upgrade to 4.1.8 is
-        # T0164 in TODO.md, not a version to float.
-        GIT_TAG 3158ee615eaafd93a8912b5f6dd84a9c47b2e00a
+        # v4.1.8, pinned to the commit the tag names. v4.1.7/4.1.8 fix an
+        # out-of-bounds read in custom waveform code, a nullptr deref in the
+        # texture sampler and an infinite loop on self-referential shader
+        # macros, and 4.1.7 resets to FBO 0 after rendering a preset -- the
+        # framebuffer this renderer draws into. The 4.1.7 -> 4.1.8 public API
+        # is byte-identical (core.h, parameters.h, render_opengl.h), so this
+        # is a security fix, not a migration (TODO T0164).
+        GIT_TAG 4967dc003e5206d7df3ff447287f7609c47d2343
         OPTIONS
             "BUILD_SHARED_LIBS OFF"
             "ENABLE_PLAYLIST ON"
