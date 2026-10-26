@@ -3,3 +3,4 @@
 2026-10-26T20:39:00Z  CHANGE   Result.hpp: deleted map/andThen/orElse/operator->/operator*/valueOr and TRY/TRY_VOID; Result<void>::error() now returns a shared empty Error on the success path. Migrated five operator* call sites to .value().
 2026-10-26T20:39:00Z  VERIFY   ./build.sh --fast --tests -> 334/334, exit 0.
 2026-10-26T20:39:00Z  VERIFY   ctest --test-dir build-fast/tests --output-on-failure -j3 -> 14/14 passed (85.94 s).
+2026-10-26T21:55:00Z  CHANGE   T0061 follow-up: CredentialStoreSecretService.cpp (Linux-only, not built on macOS) still used Result::operator* at :215 and :288; migrated to .value(). Caught by CI run 40399387609.

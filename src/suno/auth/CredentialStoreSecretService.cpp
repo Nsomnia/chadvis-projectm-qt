@@ -212,7 +212,7 @@ public:
         // a QVariant - which is the only overload QDBusMessage::operator<< takes.
         // Wrapping it as a plain QByteArray would send the *bytes* rather than the
         // struct, and the service would reject the call.
-        msg << QVariant::fromValue(secretStructure(*session, *encoded));
+        msg << QVariant::fromValue(secretStructure(session.value(), encoded.value()));
         // replace = true makes this an upsert in ONE call, like CredWriteW. The
         // macOS backend needs update-then-add because SecItemAdd rejects an
         // existing item; the Secret Service has a flag for exactly this.
@@ -285,7 +285,7 @@ public:
 
         QDBusMessage get =
                 serviceCall(unlocked.first(), kItemInterface, QStringLiteral("GetSecret"));
-        get << QDBusObjectPath(*session);
+        get << QDBusObjectPath(session.value());
         const QDBusMessage reply = bus_.call(get, QDBus::Block, kCallTimeoutMs);
         if (reply.type() != QDBusMessage::ReplyMessage) {
             return Result<QString>::err(
