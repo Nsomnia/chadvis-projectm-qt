@@ -184,7 +184,10 @@ Item {
                 font.bold: true
                 font.letterSpacing: 2
             }
-            // Simple animated dots
+            // Simple animated dots -- a real animation per dot. `Date.now()` in
+            // a binding is evaluated once (not a bindable property), so the
+            // "animation" this replaced never moved (T0078). The stagger is a
+            // pause proportional to the dot's index.
             Row {
                 spacing: 4
                 Repeater {
@@ -192,7 +195,13 @@ Item {
                     Rectangle {
                         width: 6; height: 6; radius: 3
                         color: root.accentColor
-                        opacity: 0.3 + (0.7 * Math.abs(Math.sin(Date.now() / 500 + index)))
+                        opacity: 0.3
+                        SequentialAnimation on opacity {
+                            loops: Animation.Infinite
+                            PauseAnimation { duration: index * 140 }
+                            NumberAnimation { to: 1.0; duration: 420; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 0.3; duration: 420; easing.type: Easing.InOutSine }
+                        }
                     }
                 }
             }

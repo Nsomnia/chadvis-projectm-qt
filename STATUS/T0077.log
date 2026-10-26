@@ -1,0 +1,8 @@
+2026-10-26T09:06:18Z  CLAIM    agent=solo/lead/derekvanee40328 pid=40328 ttl=4h expires=2026-10-26T13:06:18Z
+2026-10-26T03:06:18Z  CLAIM    agent=solo/lead/derekvanee40188 ttl=4h
+2026-10-26T03:08:00Z  CHANGE   src/qml/views/NotificationsView.qml: `visible: modelData.author_handle !== ""` is true when the key is missing (`undefined !== ""`), and `"@" + undefined` is the literal string "@undefined". The same shape existed for type, caption and content_title. Each is coerced with `|| ""` before the emptiness test and before concatenation.
+2026-10-26T03:08:00Z  CHANGE   src/qml/components/VisualizerOverlay.qml: the second half of this item -- nine unguarded `modelData.*` dereferences per overlay over JSON-persisted overlay state. Every dereference now carries a default through a named readonly property (`overlay`, `posX`, `posY`, `baseOpacity`, `textColor`, `glowing`, `animation`) or an inline `??`, so a schema drift draws a sane element rather than a NaN-positioned invisible one.
+2026-10-26T03:20:00Z  VERIFY   ctest --test-dir build-fast/tests -j4 -> 14/14 passed (TestQmlStartup loads the tree including NotificationsView and VisualizerOverlay).
+2026-10-26T03:20:00Z  VERIFY   ./scripts/lint-qml.sh -> no blocking problems.
+2026-10-26T03:20:00Z  NOT-VERIFIED Rendering with a notification that genuinely lacks a handle (needs a live account); the coercion is provably the fix for the `undefined !== ""` class.
+2026-10-26T09:18:40Z  RELEASE  agent=solo/lead/derekvanee42234

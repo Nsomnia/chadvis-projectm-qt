@@ -151,8 +151,11 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        visible: notificationCard.modelData.author_handle !== ""
-                        text: "@" + notificationCard.modelData.author_handle
+                        // `undefined !== ""` is true and `"@" + undefined` is
+                        // the literal "@undefined", so a missing key used to
+                        // render as a fake handle (T0077). Coerce first.
+                        visible: (notificationCard.modelData.author_handle || "") !== ""
+                        text: "@" + (notificationCard.modelData.author_handle || "")
                         color: Theme.textSecondary
                         font: Theme.fontCaption
                         elide: Text.ElideRight
@@ -160,8 +163,8 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        visible: notificationCard.modelData.type !== ""
-                        text: notificationCard.modelData.type
+                        visible: (notificationCard.modelData.type || "") !== ""
+                        text: notificationCard.modelData.type || ""
                         color: Theme.textDisabled
                         font: Theme.fontTiny
                         elide: Text.ElideRight
@@ -169,8 +172,8 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        visible: notificationCard.modelData.caption !== ""
-                        text: notificationCard.modelData.caption
+                        visible: (notificationCard.modelData.caption || "") !== ""
+                        text: notificationCard.modelData.caption || ""
                         color: Theme.textPrimary
                         font: Theme.fontBody
                         wrapMode: Text.WordWrap
@@ -178,8 +181,8 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        visible: notificationCard.modelData.content_title !== ""
-                        text: notificationCard.modelData.content_title
+                        visible: (notificationCard.modelData.content_title || "") !== ""
+                        text: notificationCard.modelData.content_title || ""
                         color: notificationCard.unread ? Theme.accent : Theme.textSecondary
                         font: Theme.fontBodyStrong
                         elide: Text.ElideRight
