@@ -6,6 +6,22 @@
 
 namespace vc::suno {
 
+namespace {
+
+/// Clips per feed request. The server honours `limit` up to 100 and rejects 200
+/// with a 400 (measured 2026-10-25 with this app's own bearer, on both API
+/// bases: 20/50/100 returned exactly that many clips, 200 answered
+/// `400 Bad Request`); omitting it yields the wire's own default of 20.
+///
+/// The number matters because the first sync pages the WHOLE library: 2 147
+/// clips is 108 round trips at 20 (each one delayed by the client's 1 Hz
+/// politeness limiter, so ~6 minutes on every launch) and 22 at 100. It is a
+/// request-size constant, not a contract: a server that starts capping the page
+/// simply returns fewer clips, and `has_more` still decides when to stop.
+constexpr int kLibraryPageSize = 100;
+
+} // namespace
+
 SunoLibraryManager::SunoLibraryManager(SunoClient* client, SunoDatabase& db, QObject* parent)
     : QObject(parent), client_(client), db_(db) {
     // Connect client signals. The vc::Signal ids are retained as members and
@@ -109,7 +125,7 @@ void SunoLibraryManager::onCredentialsRestored() {
         return;
     }
 
-    client_->fetchLibraryPage(std::nullopt, 20, searchText_);
+    client_->fetchLibraryPage(std::nullopt, kLibraryPageSize, searchText_);
 }
 
 void SunoLibraryManager::requestNextPage() {
@@ -125,7 +141,7 @@ void SunoLibraryManager::requestNextPage() {
 
     isSyncing_ = true;
     emit statusMessage("Fetching more Suno clips...");
-    client_->fetchLibraryPage(client_->nextCursor(), 20, searchText_);
+    client_->fetchLibraryPage(client_->nextCursor(), kLibraryPageSize, searchText_);
 }
 
 void SunoLibraryManager::setSearchText(const QString& text) {

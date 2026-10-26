@@ -165,6 +165,7 @@ private slots:
         // the test completes it from the outside -- the same drive-it-later
         // pattern every other FakeReply consumer in this tree uses.
         fake_net::FakeReply* feedReply = nullptr;
+        QByteArray feedBody;
         const QString storedBearer = fakeBearer();
         SunoClient client(
             QStringLiteral("test-device"), nullptr,
@@ -175,8 +176,9 @@ private slots:
                 }
                 return outcome;
             },
-            [&feedReply](const QNetworkRequest& request, const std::string&,
-                         const QByteArray&) {
+            [&feedReply, &feedBody](const QNetworkRequest& request, const std::string&,
+                                    const QByteArray& body) {
+                feedBody = body;
                 auto* reply = new fake_net::FakeReply(request);
                 feedReply = reply;
                 return reply;
@@ -213,6 +215,49 @@ private slots:
         // The manager must NOT have left the syncing gate raised: a stuck gate
         // is how a failed sync becomes a sync that can never be retried.
         QTRY_VERIFY_WITH_TIMEOUT(!manager.hasMorePages(), 2000);
+    }
+
+    // 100 clips per request, not 20: the first sync pages the entire library,
+    // so the page size is the difference between 108 round trips and 22 on a
+    // 2 147-clip library. The server accepts up to 100 and answers 400 above it
+    // (measured 2026-10-25); a server that later caps it lower still works,
+    // because `has_more` decides when to stop.
+    void theFirstPageRequestsAHundredClips()
+    {
+        fake_net::FakeReply* feedReply = nullptr;
+        QByteArray feedBody;
+        const QString storedBearer = fakeBearer();
+        SunoClient client(
+            QStringLiteral("test-device"), nullptr,
+            [storedBearer](CredentialStoreWorker::Request request) {
+                CredentialStoreWorker::Outcome outcome;
+                if (request.operation == CredentialStoreWorker::Operation::Restore) {
+                    outcome.bearer = storedBearer;
+                }
+                return outcome;
+            },
+            [&feedReply, &feedBody](const QNetworkRequest& request, const std::string&,
+                                    const QByteArray& body) {
+                feedBody = body;
+                auto* reply = new fake_net::FakeReply(request);
+                feedReply = reply;
+                return reply;
+            });
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+        SunoLibraryManager manager(&client, database);
+
+        client.setToken(fakeBearer().toStdString());
+        QVERIFY(client.isAuthenticated());
+        manager.refreshLibrary(1);
+
+        QTRY_VERIFY_WITH_TIMEOUT(feedReply != nullptr, 5000);
+        const QJsonObject body = QJsonDocument::fromJson(feedBody).object();
+        QCOMPARE(body.value(QStringLiteral("limit")).toInt(), 100);
+
+        // Leave nothing pending: an uncompeted reply keeps the 1 Hz queue busy
+        // into the next case.
+        feedReply->succeed(QByteArrayLiteral("{\"clips\":[],\"has_more\":false}"));
     }
 };
 

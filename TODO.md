@@ -144,13 +144,20 @@ line to describe an item is describing it in the wrong place. Finished work move
       status line the only feedback. The library itself renders progressively; the Discover
       page's emptiness that the user reported alongside this was a parser bug (T0333), not
       this cadence.
-      **So the work is cadence and honesty, not a stop condition:** (a) a bigger page is the
-      cheap lever and is unverified — the feed accepts `limit: 20`; whether it accepts 50 or
-      100 is one probe, and the bundle's own default `page_size` for the unified routes is 12;
-      (b) a sync that resumes rather than restarts, so a relaunch does not re-page pages 1–N
-      to reach page N+1; (c) the `{complete, pagesFetched, expectedTotal}` T0167 reports is
-      still unconsumed, so nothing can say "still syncing, 940 of 2 147" — a progress number
-      would make six minutes diagnosable instead of looking stuck.
+      **So the work is cadence and honesty, not a stop condition.** (a) **shipped
+      2026-10-25:** the page size is 100, not 20. Measured with this app's own bearer — `limit`
+      is honoured up to 100 (20/50/100 returned exactly that many clips) and 200 answers a
+      `400`, with the wire's own default when the field is omitted being 20. 2 147 clips is now
+      22 round trips instead of 108; pinned by `theFirstPageRequestsAHundredClips`, which
+      asserts the request body, because nothing else in the tree would notice the constant
+      reverting. A server that later caps the page lower is still handled: `has_more` decides.
+      (b) still open — a sync that resumes rather than restarts, so a relaunch does not re-page
+      pages 1–N to reach page N+1; (c) still open — the `{complete, pagesFetched, expectedTotal}`
+      T0167 reports is unconsumed, so nothing can say "still syncing, 940 of 2 147"; a progress
+      number would make the remaining minutes diagnosable instead of looking stuck.
+      **Verified:** aggregate `unit_tests` suite `TestSunoLibraryManager` -> 0, full ctest 14/14.
+      **Not verified:** the end-to-end wall-clock time against a live account — the 22-page
+      arithmetic assumes ~3.4 s/page holds at 100 clips per page (bigger bodies, same limiter).
       **A page-size note, not a finding:** the client asks for 20 per page. The live browser
       traffic seen on 2026-10-24 pages notifications with a UTC cursor, and a v3-style feed
       may accept a larger page than 20 — but nothing captured says so, so a bigger page is
