@@ -75,23 +75,28 @@ QtObject {
 
         "chadvis-dark": {
             displayName: "ChadVis Dark",
-            description: "The original ChadVis look. Green accent on black.",
+            description: "The original ChadVis look. Green accent on near-black.",
             isDark: true,
             author: "ChadVis (built-in)",
             colors: {
                 accent:          "#00FF88FF",
-                background:      "#000000FF",
-                surface:         "#0D0D0DFF",
-                surfaceRaised:   "#161616FF",
+                // Near-black, not #000: on a real display pure black makes the
+                // window read as a hole and leaves surface/surfaceRaised as
+                // three nearly identical planes. The ramp moves with it, and
+                // textDisabled gains contrast on the raised plane rather than
+                // losing it.
+                background:      "#0A0A0AFF",
+                surface:         "#131313FF",
+                surfaceRaised:   "#1C1C1CFF",
                 textPrimary:     "#E0E0E0FF",
                 textSecondary:   "#888888FF",
-                textDisabled:    "#606060FF",
+                textDisabled:    "#6A6A6AFF",
                 textOnAccent:    "#1A1A1AFF",
                 success:         "#00FF88FF",
                 warning:         "#FFB300FF",
                 error:           "#FF4444FF",
-                border:          "#232323FF",
-                borderLight:     "#353535FF"
+                border:          "#2A2A2AFF",
+                borderLight:     "#404040FF"
             }
         },
 

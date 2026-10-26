@@ -1,0 +1,5 @@
+2026-10-26T20:51:58Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee20940 pid=20940 ttl=4h expires=2026-10-27T00:51:58Z
+2026-10-26T21:30:00Z  CHANGE   chadvis-dark: background #0A0A0A, surface #131313, surfaceRaised #1C1C1C, border #2A2A2A, borderLight #404040, textDisabled #6A6A6A.
+2026-10-26T21:30:00Z  VERIFY   ./scripts/check-theme-contrast.py -> all measured pairs clear their WCAG minimum; chadvis-dark textDisabled 3.15:1 on raised (was 2.82).
+2026-10-26T21:30:00Z  VERIFY   ctest -R '^test_ThemeQml$' -> 1/1 passed (1.50 s).
+2026-10-26T20:53:00Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee21495

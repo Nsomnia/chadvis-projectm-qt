@@ -148,6 +148,12 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **ChadVis Dark no longer sits on pure black.** The default dark theme's `background` was
+  `#000000`, which on a real display reads as a hole and left `surface`/`surfaceRaised` as
+  three nearly identical planes. It is now near-black (`#0A0A0A`) with the whole ramp moved
+  with it, and `textDisabled` is lightened enough to keep 3.15:1 on the raised plane — better
+  than the old palette's 2.82:1. Every gated contrast pair still clears. (T0337)
+
 - **A bare `cmake` configure now really produces `RelWithDebInfo`.** The default was spelled
   `ReleaseWithDebInfo`, which is not a CMake configuration: the cache held a name CMake has no
   flags for, so the "optimized build with symbols" default compiled with neither `-O2` nor
