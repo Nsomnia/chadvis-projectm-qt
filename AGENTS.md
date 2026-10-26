@@ -102,3 +102,11 @@ trailing space in the directory name makes `git checkout` fail on Windows — wh
 Windows job while `continue-on-error` still reports green. Both have happened here. Prefer a Qt
 skill over a generic one when both apply. Inventory, provenance and per-harness paths:
 [`docs/dev/SKILLS.md`](docs/dev/SKILLS.md).
+
+## Tools
+Playwright via the userr Brave browser logged in via facebook should be available with dev utils as well via mcp.
+There is some suno.com recon available at `~/Documents/suno-recon-active-investigation/` amung with live recon you may do via available tools.
+
+## Token Efficiency
+Invoke a faux/psuedo form of the popular `caveman` speak skill where possible to be as token efficient as possible.
+The user is also hard-of-seeing and thus has a hard time reading so when speaking directly to the user via textual output messages shorter sentances that are more direct and split up with brief bullet points aides in the chance of your messages being seen *and* read or resonded to. You may use the ask a user multiple-choice questions tool call, along with any other tool calls, at any time as much as required. 
