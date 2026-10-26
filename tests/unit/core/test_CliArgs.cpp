@@ -124,7 +124,9 @@ void TestCliArgs::cliArgTableHasNoDuplicateLongNames() {
     std::set<std::string_view> seen;
     for (const auto& arg : table) {
         QVERIFY2(!seen.contains(arg.longName),
-                 qPrintable(QStringLiteral("duplicate flag: %1").arg(arg.longName)));
+                 qPrintable(QStringLiteral("duplicate flag: %1")
+                                   .arg(QString::fromUtf8(arg.longName.data(),
+                                                          static_cast<int>(arg.longName.size())))));
         seen.insert(arg.longName);
     }
 }
@@ -165,7 +167,9 @@ void TestCliArgs::cliArgTableSectionsAreNonEmpty() {
     QVERIFY(!table.empty());
     for (const auto& arg : table) {
         QVERIFY2(!arg.section.empty(),
-                 qPrintable(QStringLiteral("flag missing section: %1").arg(arg.longName)));
+                 qPrintable(QStringLiteral("flag missing section: %1")
+                                   .arg(QString::fromUtf8(arg.longName.data(),
+                                                          static_cast<int>(arg.longName.size())))));
         QVERIFY(!arg.helpText.empty());
     }
 }
