@@ -4,6 +4,9 @@ scratch/*
 
 # messy opencode stuff
 node_modules/
+# Browser-MCP traces and page dumps: generated per session, never evidence.
+.playwright-mcp/
+.chrome-devtools/
 
 # User note and working directories
 zzz*/
