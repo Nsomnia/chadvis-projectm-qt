@@ -18,19 +18,6 @@ namespace vc::suno {
 
 namespace {
 
-QString scalarString(const QJsonValue& value)
-{
-    if (value.isString())
-    {
-        return value.toString();
-    }
-    if (value.isDouble())
-    {
-        return QString::number(value.toDouble(), 'g', 15);
-    }
-    return {};
-}
-
 std::optional<SunoClip> parseClipEntry(const QJsonValue& value, int depth = 0)
 {
     if (!value.isObject() || depth >= 4)
@@ -85,7 +72,7 @@ QString feedLabel(const QJsonObject& feed, const QString& id)
     };
     for (const QString& key : labelKeys)
     {
-        const QString value = scalarString(feed.value(key));
+        const QString value = json::stringValue(feed.value(key));
         if (!value.isEmpty())
         {
             return value;
@@ -122,7 +109,7 @@ void appendFeed(const QJsonObject& feedObject, QList<SunoExploreService::Feed>& 
     for (const QString& key : {QStringLiteral("feed_id"), QStringLiteral("id"),
                                QStringLiteral("identifier")})
     {
-        feed.id = scalarString(feedObject.value(key));
+        feed.id = json::stringValue(feedObject.value(key));
         if (!feed.id.isEmpty()) break;
     }
     feed.label = feedLabel(feedObject, feed.id);

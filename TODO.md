@@ -291,10 +291,17 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       chat and 11 mutation forwarders. **~60 % of the file (:1380-1662) is mutation
       forwarding `SunoLibraryMutations` already owns.** Split into `SunoExploreBridge`,
       `SunoNotificationsBridge`, `SunoUploadBridge`, `SunoMutationsBridge` (~200 LOC each).
-- [ ] T0063 ~120 LOC of tolerant-JSON accessors duplicated across four files, with **disagreeing** tolerance rules (`src/suno/SunoNotificationService.cpp:19-76`, `SunoExploreService.cpp:21-32`, `SunoAccountManager.cpp:19-43`, `ClipParser.cpp:14-59`) #risk-high
-      `scalarString` is byte-identical in two files. `optBool` accepts `"True"`/`"False"`
-      but `booleanValue` accepts only `"true"`/`"1"` — **the two disagree on the captured
-      filter strings.** Fix: one `JsonCoerce` helper in `ClipParser.hpp`.
+- [x] T0063 ~120 LOC of tolerant-JSON accessors duplicated across four files, with **disagreeing** tolerance rules (`src/suno/SunoNotificationService.cpp:19-76`, `SunoExploreService.cpp:21-32`, `SunoAccountManager.cpp:19-43`, `ClipParser.cpp:14-59`) #risk-high
+      One `vc::suno::json` namespace in `ClipParser.hpp` now owns the contract:
+      `stringValue`, `integerValue`, `doubleValue`, `booleanValue`, `stringList`.
+      `ClipParser`'s four accessors delegate to it; the notification, Explore and
+      account services lost their private copies. The disagreement was resolved
+      **strict**, not liberal: bools accept only a real bool or an exact
+      "true"/"false" in any case — no `"1"`, no numbers, no trimming — because
+      `is_download_unlocked` reads through it and must fail closed if the wire
+      changes shape. `optString` stays string-only; number-aware reads call
+      `json::stringValue` explicitly. New tests pin every branch plus the
+      entitlement regressions that made the strict choice necessary.
 - [x] T0064 Duplicated enum→string and auth-failure maps, with three owners of one vocabulary (`src/qml_bridge/SunoBridge.cpp:73-88,90-106,333-374`) #cleanup
       `SunoBridge` owned both `AuthFailureKind` switches — the QML id and the user sentence.
       Both moved to the enum's own module as `auth::authFailureKindId` /

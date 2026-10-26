@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 
 using namespace vc::suno;
 using vc::i64;
@@ -24,6 +25,54 @@ class TestClipParser : public QObject {
     Q_OBJECT
 
 private slots:
+    /// T0063: every service reads through one tolerance contract. The two
+    /// spellings below used to disagree, so a captured "True" was true in the
+    /// feed path and false in the notification path. The contract is the
+    /// strict one: a bool or an exact true/false spelling, never a number.
+    void jsonToleranceIsOneContract() {
+        QCOMPARE(json::booleanValue(QJsonValue(QStringLiteral("True"))), true);
+        QCOMPARE(json::booleanValue(QJsonValue(QStringLiteral("FALSE"))), false);
+        QCOMPARE(json::booleanValue(QJsonValue(QStringLiteral("1")), true), true);
+        QCOMPARE(json::booleanValue(QJsonValue(QStringLiteral("0")), true), true);
+        QCOMPARE(json::booleanValue(QJsonValue(QStringLiteral(" true")), true), true);
+        QCOMPARE(json::booleanValue(QJsonValue(1.0), true), true);
+        QCOMPARE(json::booleanValue(QJsonValue(), true), true);
+
+        QCOMPARE(json::integerValue(QJsonValue(12.0)).value_or(-1), qint64{12});
+        QCOMPARE(json::integerValue(QJsonValue(QStringLiteral("12"))).value_or(-1),
+                 qint64{12});
+        QVERIFY(!json::integerValue(QJsonValue(QStringLiteral("twelve"))).has_value());
+
+        QCOMPARE(json::doubleValue(QJsonValue(QStringLiteral("1.5")), -1.0), 1.5);
+        QCOMPARE(json::doubleValue(QJsonValue(QStringLiteral("nope")), -1.0), -1.0);
+
+        QCOMPARE(json::stringValue(QJsonValue(42.0)), QStringLiteral("42"));
+        QCOMPARE(json::stringValue(QJsonValue(1.5)), QStringLiteral("1.5"));
+        QCOMPARE(json::stringValue(QJsonValue(true)), QStringLiteral("true"));
+        QVERIFY(json::stringValue(QJsonValue(QJsonArray{})).isEmpty());
+
+        const auto strings = json::stringList(QJsonValue(QJsonArray{
+                QStringLiteral("a"), 1.0, QStringLiteral("b")}));
+        QCOMPARE(strings.size(), std::size_t{2});
+        QCOMPARE(QString::fromStdString(strings[0]), QStringLiteral("a"));
+        QCOMPARE(QString::fromStdString(strings[1]), QStringLiteral("b"));
+    }
+
+    void accessorsUseTheSameContract() {
+        const QJsonObject obj{
+                {QStringLiteral("flag"), QStringLiteral("True")},
+                {QStringLiteral("count"), QStringLiteral("12")},
+                {QStringLiteral("ratio"), QStringLiteral("1.5")},
+                {QStringLiteral("id"), 7.0},
+        };
+        QCOMPARE(ClipParser::optBool(obj, QStringLiteral("flag")), true);
+        QCOMPARE(ClipParser::optInt(obj, QStringLiteral("count")), qint64{12});
+        QCOMPARE(ClipParser::optDouble(obj, QStringLiteral("ratio")), 1.5);
+        // A text field read strictly: a number is skipped, as the contract says.
+        QVERIFY(ClipParser::optString(obj, QStringLiteral("id")).isEmpty());
+        QCOMPARE(json::stringValue(obj.value(QStringLiteral("id"))), QStringLiteral("7"));
+    }
+
     void fullClipRoundtrip() {
         auto parsed = ClipParser::parseClip(objFrom(kFullClipJson));
         QVERIFY(parsed.has_value());

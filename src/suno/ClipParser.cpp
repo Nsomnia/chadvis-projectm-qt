@@ -14,49 +14,23 @@ namespace vc::suno {
 
 QString ClipParser::optString(const QJsonObject& obj, const QString& key,
                               const QString& def) {
+    // String-only on purpose: the tolerance contract says a wrong-typed field
+    // is skipped. Numeric ids are read where the caller knows they are ids, via
+    // json::stringValue.
     const QJsonValue v = obj.value(key);
     return v.isString() ? v.toString() : def;
 }
 
 qint64 ClipParser::optInt(const QJsonObject& obj, const QString& key, qint64 def) {
-    const QJsonValue v = obj.value(key);
-    if (v.isDouble()) {
-        return static_cast<qint64>(v.toDouble());
-    }
-    // Some fields arrive as numeric strings; accept them rather than dropping.
-    if (v.isString()) {
-        bool ok = false;
-        const qint64 parsed = v.toString().toLongLong(&ok);
-        if (ok) return parsed;
-    }
-    return def;
+    return json::integerValue(obj.value(key)).value_or(def);
 }
 
 bool ClipParser::optBool(const QJsonObject& obj, const QString& key, bool def) {
-    const QJsonValue v = obj.value(key);
-    if (v.isBool()) {
-        return v.toBool();
-    }
-    // Captured filters use "True"/"False" strings; be liberal in what we read.
-    if (v.isString()) {
-        const QString s = v.toString();
-        if (s.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0) return true;
-        if (s.compare(QStringLiteral("false"), Qt::CaseInsensitive) == 0) return false;
-    }
-    return def;
+    return json::booleanValue(obj.value(key), def);
 }
 
 double ClipParser::optDouble(const QJsonObject& obj, const QString& key, double def) {
-    const QJsonValue v = obj.value(key);
-    if (v.isDouble()) {
-        return v.toDouble();
-    }
-    if (v.isString()) {
-        bool ok = false;
-        const double parsed = v.toString().toDouble(&ok);
-        if (ok) return parsed;
-    }
-    return def;
+    return json::doubleValue(obj.value(key), def);
 }
 
 // ─────────────────────────────────────────────────────────────

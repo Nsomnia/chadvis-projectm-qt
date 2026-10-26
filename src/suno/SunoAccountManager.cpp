@@ -17,32 +17,6 @@ namespace vc::suno {
 
 namespace {
 
-QString stringOrNumber(const QJsonObject& object, const QString& key) {
-    const QJsonValue value = object.value(key);
-    if (value.isString()) return value.toString();
-    if (!value.isDouble()) return {};
-    const double number = value.toDouble();
-    if (std::floor(number) == number) {
-        return QString::number(static_cast<qint64>(number));
-    }
-    return QString::number(number, 'g', 15);
-}
-
-/// Tolerant string-list read for capabilities/features/badges arrays.
-std::vector<std::string> optStringList(const QJsonObject& obj, const QString& key) {
-    std::vector<std::string> out;
-    const QJsonValue v = obj.value(key);
-    if (!v.isArray()) {
-        return out;
-    }
-    for (const auto& item : v.toArray()) {
-        if (item.isString()) {
-            out.push_back(item.toString().toStdString());
-        }
-    }
-    return out;
-}
-
 std::optional<SunoUserSummary> parseUser(const QJsonObject& root) {
     // Session envelope: { user: {...}, models: [...] } — tolerate nesting.
     QJsonObject userObj = root.value(QStringLiteral("user")).toObject();
@@ -100,14 +74,14 @@ QList<SunoModelInfo> parseModels(const QJsonObject& root) {
         SunoModelInfo model;
         model.name = P::optString(m, "name").toStdString();
         model.external_key = P::optString(m, "external_key").toStdString();
-        model.major_version = stringOrNumber(m, QStringLiteral("major_version")).toStdString();
+        model.major_version = json::stringValue(m.value(QStringLiteral("major_version"))).toStdString();
         model.description = P::optString(m, "description").toStdString();
         model.can_use = P::optBool(m, "can_use", false);
         model.is_default_model = P::optBool(m, "is_default_model", false);
         model.is_default_free_model = P::optBool(m, "is_default_free_model", false);
-        model.capabilities = optStringList(m, "capabilities");
-        model.features = optStringList(m, "features");
-        model.badges = optStringList(m, "badges");
+        model.capabilities = json::stringList(m.value(QStringLiteral("capabilities")));
+        model.features = json::stringList(m.value(QStringLiteral("features")));
+        model.badges = json::stringList(m.value(QStringLiteral("badges")));
 
         const QJsonObject limits = m.value(QStringLiteral("max_lengths")).toObject();
         model.max_lengths.title = P::optInt(limits, "title");
@@ -140,7 +114,7 @@ std::optional<SunoBillingInfo> parseBilling(const QJsonObject& root) {
     const QJsonObject plan = root.value(QStringLiteral("plan")).toObject();
     info.plan.plan_key = P::optString(plan, "plan_key").toStdString();
     info.plan.name = P::optString(plan, "name").toStdString();
-    info.plan.level = stringOrNumber(plan, QStringLiteral("level")).toStdString();
+    info.plan.level = json::stringValue(plan.value(QStringLiteral("level"))).toStdString();
     info.plan.monthly_price_usd = P::optDouble(plan, "monthly_price_usd", 0.0);
 
     const QJsonValue packs = root.value(QStringLiteral("credit_packs"));

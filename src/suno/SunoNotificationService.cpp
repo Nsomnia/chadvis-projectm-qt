@@ -3,6 +3,7 @@
 #include <QTimer>
 
 #include "SunoClient.hpp"
+#include "ClipParser.hpp"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -17,52 +18,6 @@
 namespace vc::suno {
 
 namespace {
-
-QString scalarString(const QJsonValue& value) {
-    if (value.isString()) {
-        return value.toString();
-    }
-    if (value.isDouble()) {
-        return QString::number(value.toDouble(), 'g', 15);
-    }
-    if (value.isBool()) {
-        return value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
-    }
-    return {};
-}
-
-std::optional<qint64> integerValue(const QJsonValue& value) {
-    if (value.isDouble()) {
-        return static_cast<qint64>(value.toDouble());
-    }
-    if (value.isString()) {
-        bool ok = false;
-        const qint64 parsed = value.toString().toLongLong(&ok);
-        if (ok) {
-            return parsed;
-        }
-    }
-    return std::nullopt;
-}
-
-bool booleanValue(const QJsonValue& value, bool fallback = false) {
-    if (value.isBool()) {
-        return value.toBool();
-    }
-    if (value.isString()) {
-        const QString normalized = value.toString().trimmed().toLower();
-        if (normalized == QStringLiteral("true") || normalized == QStringLiteral("1")) {
-            return true;
-        }
-        if (normalized == QStringLiteral("false") || normalized == QStringLiteral("0")) {
-            return false;
-        }
-    }
-    if (value.isDouble()) {
-        return value.toDouble() != 0.0;
-    }
-    return fallback;
-}
 
 QString firstString(std::initializer_list<QString> values) {
     for (const QString& value : values) {
@@ -103,72 +58,72 @@ std::optional<SunoNotificationService::Notification> parseNotification(const QJs
             contentValue.isObject() ? contentValue.toObject() : QJsonObject{};
 
     SunoNotificationService::Notification notification;
-    notification.id = scalarString(object.value(QStringLiteral("id")));
+    notification.id = json::stringValue(object.value(QStringLiteral("id")));
     notification.type = firstString({
-            scalarString(object.value(QStringLiteral("notification_type"))),
-            scalarString(object.value(QStringLiteral("type"))),
+            json::stringValue(object.value(QStringLiteral("notification_type"))),
+            json::stringValue(object.value(QStringLiteral("type"))),
     });
     notification.createdAt = firstString({
-            scalarString(object.value(QStringLiteral("updated_at"))),
-            scalarString(object.value(QStringLiteral("created_at"))),
-            scalarString(object.value(QStringLiteral("notified_at"))),
+            json::stringValue(object.value(QStringLiteral("updated_at"))),
+            json::stringValue(object.value(QStringLiteral("created_at"))),
+            json::stringValue(object.value(QStringLiteral("notified_at"))),
     });
-    notification.read = booleanValue(object.value(QStringLiteral("is_read")),
-                                     booleanValue(object.value(QStringLiteral("read"))));
+    notification.read = json::booleanValue(object.value(QStringLiteral("is_read")),
+                                     json::booleanValue(object.value(QStringLiteral("read"))));
 
     notification.author.userId = firstString({
-            scalarString(authorObject.value(QStringLiteral("user_id"))),
-            scalarString(authorObject.value(QStringLiteral("id"))),
+            json::stringValue(authorObject.value(QStringLiteral("user_id"))),
+            json::stringValue(authorObject.value(QStringLiteral("id"))),
     });
     notification.author.displayName = firstString({
-            scalarString(authorObject.value(QStringLiteral("display_name"))),
-            scalarString(authorObject.value(QStringLiteral("name"))),
-            scalarString(authorObject.value(QStringLiteral("username"))),
+            json::stringValue(authorObject.value(QStringLiteral("display_name"))),
+            json::stringValue(authorObject.value(QStringLiteral("name"))),
+            json::stringValue(authorObject.value(QStringLiteral("username"))),
     });
     notification.author.handle = firstString({
-            scalarString(authorObject.value(QStringLiteral("handle"))),
-            scalarString(authorObject.value(QStringLiteral("username"))),
+            json::stringValue(authorObject.value(QStringLiteral("handle"))),
+            json::stringValue(authorObject.value(QStringLiteral("username"))),
     });
 
     notification.contentType = firstString({
-            scalarString(object.value(QStringLiteral("content_type"))),
-            scalarString(contentObject.value(QStringLiteral("content_type"))),
-            scalarString(contentObject.value(QStringLiteral("type"))),
-            scalarString(object.value(QStringLiteral("entity_type"))),
+            json::stringValue(object.value(QStringLiteral("content_type"))),
+            json::stringValue(contentObject.value(QStringLiteral("content_type"))),
+            json::stringValue(contentObject.value(QStringLiteral("type"))),
+            json::stringValue(object.value(QStringLiteral("entity_type"))),
     });
     notification.contentId = firstString({
-            scalarString(object.value(QStringLiteral("content_id"))),
-            scalarString(contentObject.value(QStringLiteral("content_id"))),
-            scalarString(contentObject.value(QStringLiteral("id"))),
+            json::stringValue(object.value(QStringLiteral("content_id"))),
+            json::stringValue(contentObject.value(QStringLiteral("content_id"))),
+            json::stringValue(contentObject.value(QStringLiteral("id"))),
     });
     notification.contentAncillaryId = firstString({
-            scalarString(object.value(QStringLiteral("content_ancillary_id"))),
-            scalarString(contentObject.value(QStringLiteral("content_ancillary_id"))),
-            scalarString(contentObject.value(QStringLiteral("ancillary_id"))),
+            json::stringValue(object.value(QStringLiteral("content_ancillary_id"))),
+            json::stringValue(contentObject.value(QStringLiteral("content_ancillary_id"))),
+            json::stringValue(contentObject.value(QStringLiteral("ancillary_id"))),
     });
     notification.contentTitle = firstString({
-            scalarString(object.value(QStringLiteral("content_title"))),
-            scalarString(contentObject.value(QStringLiteral("content_title"))),
-            scalarString(contentObject.value(QStringLiteral("title"))),
-            scalarString(contentObject.value(QStringLiteral("name"))),
+            json::stringValue(object.value(QStringLiteral("content_title"))),
+            json::stringValue(contentObject.value(QStringLiteral("content_title"))),
+            json::stringValue(contentObject.value(QStringLiteral("title"))),
+            json::stringValue(contentObject.value(QStringLiteral("name"))),
     });
     notification.contentMessage = firstString({
-            scalarString(object.value(QStringLiteral("content_message"))),
-            scalarString(object.value(QStringLiteral("caption"))),
-            scalarString(contentObject.value(QStringLiteral("content_message"))),
-            scalarString(contentObject.value(QStringLiteral("message"))),
-            scalarString(contentObject.value(QStringLiteral("caption"))),
+            json::stringValue(object.value(QStringLiteral("content_message"))),
+            json::stringValue(object.value(QStringLiteral("caption"))),
+            json::stringValue(contentObject.value(QStringLiteral("content_message"))),
+            json::stringValue(contentObject.value(QStringLiteral("message"))),
+            json::stringValue(contentObject.value(QStringLiteral("caption"))),
     });
     notification.caption = firstString({
-            scalarString(object.value(QStringLiteral("caption"))),
+            json::stringValue(object.value(QStringLiteral("caption"))),
             notification.contentMessage,
             contentValue.isString() ? contentValue.toString() : QString{},
-            scalarString(contentObject.value(QStringLiteral("description"))),
+            json::stringValue(contentObject.value(QStringLiteral("description"))),
     });
     notification.priority =
-            static_cast<int>(integerValue(object.value(QStringLiteral("priority"))).value_or(0));
+            static_cast<int>(json::integerValue(object.value(QStringLiteral("priority"))).value_or(0));
     notification.totalUsers =
-            static_cast<int>(integerValue(object.value(QStringLiteral("total_users"))).value_or(0));
+            static_cast<int>(json::integerValue(object.value(QStringLiteral("total_users"))).value_or(0));
     return notification;
 }
 
@@ -214,7 +169,7 @@ SunoNotificationService::parseResponse(const QJsonObject& root) {
     }
 
     Response response;
-    response.notifiedAt = scalarString(root.value(QStringLiteral("notified_at")));
+    response.notifiedAt = json::stringValue(root.value(QStringLiteral("notified_at")));
     const QJsonArray values = notificationsValue.toArray();
     response.notifications.reserve(values.size());
     for (const QJsonValue& value : values) {
@@ -226,7 +181,7 @@ SunoNotificationService::parseResponse(const QJsonObject& root) {
 }
 
 std::expected<qint64, QString> SunoNotificationService::parseBadgeCount(const QJsonObject& root) {
-    const auto count = integerValue(root.value(QStringLiteral("badge_count")));
+    const auto count = json::integerValue(root.value(QStringLiteral("badge_count")));
     if (!count || *count < 0) {
         return std::unexpected(
                 QStringLiteral("Notification badge response has no valid badge_count"));
