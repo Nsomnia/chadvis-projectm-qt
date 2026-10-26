@@ -29,7 +29,7 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         
-        auto opts = std::move(*optsResult);
+        auto opts = std::move(optsResult).value();
         
         // Initialize application
         auto initResult = app.init(opts);

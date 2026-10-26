@@ -160,7 +160,7 @@ void Playlist::addFile(const fs::path& path) {
     
     auto metaResult = MetadataReader::read(path);
     if (metaResult) {
-        item.metadata = std::move(*metaResult);
+        item.metadata = std::move(metaResult).value();
     } else {
         LOG_WARN("Failed to read metadata: {}", metaResult.error().message);
         item.metadata.title = path.stem().string();
@@ -701,7 +701,7 @@ Result<void> Playlist::loadM3U(const fs::path& path) {
 
         auto metaResult = MetadataReader::read(resolved);
         if (metaResult) {
-            item.metadata = std::move(*metaResult);
+            item.metadata = std::move(metaResult).value();
             // #EXTINF fills the gaps the file's own tags leave, and never
             // overrides them: the file is the fresher record of what it is.
             //

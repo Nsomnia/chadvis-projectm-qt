@@ -54,7 +54,7 @@ Result<AppOptions> parse(const std::initializer_list<const char*>& args) {
 void TestCliArgs::headlessAloneParses() {
     auto result = parse({"--headless"});
     QVERIFY(result.isOk());
-    const AppOptions opts = std::move(*result);
+    const AppOptions opts = std::move(result).value();
     QVERIFY(opts.headless);
     QVERIFY(!opts.startRecording);
 }
@@ -62,7 +62,7 @@ void TestCliArgs::headlessAloneParses() {
 void TestCliArgs::recordAloneParses() {
     auto result = parse({"--record"});
     QVERIFY(result.isOk());
-    const AppOptions opts = std::move(*result);
+    const AppOptions opts = std::move(result).value();
     QVERIFY(opts.startRecording);
     QVERIFY(!opts.headless);
 }

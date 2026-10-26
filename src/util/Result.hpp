@@ -6,7 +6,6 @@
 #include <source_location>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -43,9 +42,14 @@ struct Error {
     }
 };
 
-// Result type - either value or error
+// Result type - either value or error.
 // [[nodiscard]] at the class level flags every discarded Result return
 // (values AND errors) at all call sites.
+//
+// Deliberately small: this is an error channel, not a functional-programming
+// toolkit. The unused monadic surface and the non-compiling TRY/TRY_VOID
+// macros were deleted rather than repaired (T0061). New code that wants
+// combinators uses std::expected directly.
 template <typename T>
 class [[nodiscard]] Result {
     std::variant<T, Error> data_;
@@ -96,73 +100,20 @@ public:
     [[nodiscard]] const Error& error() const& {
         return std::get<Error>(data_);
     }
-
-    // Safe access with default
-    [[nodiscard]] T valueOr(T defaultVal) const {
-        return isOk() ? std::get<T>(data_) : std::move(defaultVal);
-    }
-
-    // Monadic operations (functional programming gang)
-    template <typename F>
-    auto map(F&& fn) -> Result<decltype(fn(std::declval<T>()))> {
-        using U = decltype(fn(std::declval<T>()));
-        if (isOk()) {
-            return Result<U>::ok(fn(value()));
-        }
-        return Result<U>::err(error());
-    }
-
-    template <typename F>
-    auto andThen(F&& fn) -> decltype(fn(std::declval<T>())) {
-        if (isOk()) {
-            return fn(value());
-        }
-        return decltype(fn(std::declval<T>()))::err(error());
-    }
-
-    // or_else: run fallback on error, pass success through untouched.
-    // F must be callable as Result<T>(const Error&).
-    template <typename F>
-    auto orElse(F&& fn) const& -> decltype(fn(std::declval<const Error&>())) {
-        using R = decltype(fn(std::declval<const Error&>()));
-        static_assert(std::is_same_v<R, Result>,
-                      "orElse callback must return Result<T> of the same type");
-        if (isErr()) {
-            return fn(error());
-        }
-        return *this;
-    }
-
-    template <typename F>
-    auto orElse(F&& fn) && -> decltype(fn(std::move(error()))) {
-        using R = decltype(fn(std::move(error())));
-        static_assert(std::is_same_v<R, Result>,
-                      "orElse callback must return Result<T> of the same type");
-        if (isErr()) {
-            return fn(std::move(error()));
-        }
-        return std::move(*this);
-    }
-
-    // Pointer-like access
-    T* operator->() {
-        return &value();
-    }
-    const T* operator->() const {
-        return &value();
-    }
-    T& operator*() & {
-        return value();
-    }
-    const T& operator*() const& {
-        return value();
-    }
 };
 
 // Specialization for void
 template <>
 class [[nodiscard]] Result<void> {
     std::optional<Error> error_;
+
+    // Returned when a caller asks for error() on a successful Result. Callers
+    // are expected to guard with isErr(); this exists so the unguarded path is
+    // a defined empty value rather than UB (T0061).
+    static const Error& emptyError() {
+        static const Error kEmpty{};
+        return kEmpty;
+    }
 
 public:
     Result() = default;
@@ -190,37 +141,8 @@ public:
     }
 
     [[nodiscard]] const Error& error() const {
-        return *error_;
-    }
-
-    // or_else: run fallback on error, pass success through untouched.
-    // F must be callable as Result<void>(const Error&).
-    template <typename F>
-    auto orElse(F&& fn) const -> decltype(fn(error())) {
-        using R = decltype(fn(error()));
-        static_assert(std::is_same_v<R, Result>,
-                      "orElse callback must return Result<void>");
-        if (isErr()) {
-            return fn(error());
-        }
-        return *this;
+        return error_ ? *error_ : emptyError();
     }
 };
-
-// Helper macro for early return on error (the ? operator we wish we had)
-#define TRY(expr)                                              \
-    do {                                                       \
-        auto _result = (expr);                                 \
-        if (!_result)                                          \
-            return Result<decltype(_result)::value_type>::err( \
-                    _result.error());                          \
-    } while (0)
-
-#define TRY_VOID(expr)                                 \
-    do {                                               \
-        auto _result = (expr);                         \
-        if (!_result)                                  \
-            return Result<void>::err(_result.error()); \
-    } while (0)
 
 } // namespace vc

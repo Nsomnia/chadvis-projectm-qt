@@ -274,7 +274,7 @@ public:
         auto path = pathFor(nsKey);
         if (!path) return Result<void>::err(path.error());
 
-        QSaveFile file(*path);
+        QSaveFile file(path.value());
         if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             return Result<void>::err(QStringLiteral("Cannot open secret file for writing: %1")
                                              .arg(file.errorString())
@@ -309,7 +309,7 @@ public:
         auto path = pathFor(nsKey);
         if (!path) return Result<QString>::err(path.error());
 
-        QFile file(*path);
+        QFile file(path.value());
         if (!file.open(QIODevice::ReadOnly)) {
             return Result<QString>::err(
                     QStringLiteral("No secret stored under '%1'").arg(nsKey).toStdString());
@@ -320,7 +320,7 @@ public:
     Result<void> remove(const QString& nsKey) override {
         auto path = pathFor(nsKey);
         if (!path) return Result<void>::err(path.error());
-        QFile::remove(*path); // removing an absent key is not an error
+        QFile::remove(path.value()); // removing an absent key is not an error
         return Result<void>::ok();
     }
 
@@ -353,12 +353,12 @@ private:
     Result<QString> pathFor(const QString& nsKey) {
         auto dir = rootDir();
         if (!dir) return dir;
-        if (!QFileInfo::exists(*dir) && !QDir().mkpath(*dir)) {
+        if (!QFileInfo::exists(dir.value()) && !QDir().mkpath(dir.value())) {
             return Result<QString>::err(QStringLiteral("Cannot create secret storage directory: %1")
-                                                .arg(*dir)
+                                                .arg(dir.value())
                                                 .toStdString());
         }
-        return Result<QString>(*dir + QStringLiteral("/") + sanitizedFileName(nsKey));
+        return Result<QString>(dir.value() + QStringLiteral("/") + sanitizedFileName(nsKey));
     }
 
     QString root_;     // explicit override (tests), checked first

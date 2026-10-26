@@ -275,12 +275,16 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `enqueue`'s metadata parameter. Two claims were stale and kept: `SunoDatabase::searchClips`/
       `getAllClips` and `GateResolver::setTierPolicy` are exercised by tests, and
       `BridgeRegistration::getThemeBridge` no longer exists. 75 lines gone; ctest 14/14.
-- [ ] T0061 `Result<T>`'s monadic surface is unused **and non-compiling** (`src/util/Result.hpp:106-159,211-224`) #cleanup
-      `map`/`andThen`/`orElse`/`operator->`/`operator*` have zero users; `TRY`/`TRY_VOID`
-      have zero users **and** expand `::value_type`, which a member `Result<T>` does not
-      define (:83-99). `Result<void>::error()` dereferences unconditionally (:192-194) —
-      UB on the success path, safe only because callers guard with `isErr()`. Fix: adopt
-      `std::expected` as `SunoWorkspace` already does, and delete the rest.
+- [x] T0061 `Result<T>`'s monadic surface is unused **and non-compiling** (`src/util/Result.hpp:106-159,211-224`) #cleanup
+      Deleted `map`/`andThen`/`orElse`/`operator->`/`operator*`/`valueOr` and the
+      `TRY`/`TRY_VOID` macros (zero users; the macros expanded a nonexistent
+      `::value_type`). `Result<void>::error()` on the success path now returns a
+      shared empty `Error` instead of dereferencing an empty `optional` — defined,
+      not UB. Five `operator*` call sites migrated to `.value()` (`Playlist.cpp`,
+      `CredentialStore.cpp`, `main.cpp`, `test_CliArgs.cpp`,
+      `test_CredentialStorePolicy.cpp`). Kept `vc::Result` rather than migrating
+      207 call sites to `std::expected`; its factories and `isOk()`/`isErr()`
+      vocabulary stay. ctest 14/14.
 - [ ] T0062 `SunoBridge` is a god object: 1662 cpp + 405 hpp, 37 properties, 40 invokables (`src/qml_bridge/SunoBridge.cpp`) #cleanup
       Mixes service lifetime, QVariant translation, list caching, download orchestration,
       chat and 11 mutation forwarders. **~60 % of the file (:1380-1662) is mutation

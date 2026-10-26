@@ -667,7 +667,7 @@ private slots:
         if (loaded.isErr()) {
             QFAIL(qPrintable(QString::fromStdString(loaded.error().full())));
         }
-        QCOMPARE(*loaded, secret);
+        QCOMPARE(loaded.value(), secret);
         const auto removed = store.remove(key);
         if (removed.isErr()) {
             QFAIL(qPrintable(QString::fromStdString(removed.error().full())));
