@@ -55,44 +55,39 @@ line to describe an item is describing it in the wrong place. Finished work move
 
 ## P0 — the product is broken, data is corrupted, or a secret is exposed
 
-- [ ] T0333 **The Discover feed renders empty while the account is signed in and working** (`src/suno/SunoClient.cpp`, `src/suno/SunoLibraryManager.cpp`, `src/qml/views/DiscoverView.qml`) #blocks-ui #risk-high
-      User report 2026-10-23, with a full startup log attached. The session is healthy —
-      `auth state -> ActiveValid`, `SunoAccountManager: session loaded (5 model(s), 60 server
-      flag(s), user 'Danny Steel')` — and **Library pages arrive continuously** (`Fetched 20
-      clips` every ~3 s for minutes). The feed itself shows nothing. Two candidate causes, and
-      the log cannot separate them:
-      **(a) the route moved — and this is now REFUTED as the cause of the empty view.** The
-      whole base moved: `https://suno.com/a/api` serves `feed/v3`, `unified/library`,
-      `unified/feed` and `notification/v3` (2026-10-24 HAR, recorded in
-      [§4.5](docs/suno_api/ENDPOINT-INVENTORY.md) and §4.8). But the old host was still
-      answering the same day: the browser called `studio-api-prod.suno.com/api/feed/v3` on
-      2026-10-21 and got 200, and **this client's own log shows `Fetched 20 clips` ninety
-      times**, which is a successful parse of a 20-clip page. So the feed API is not empty and
-      it is not refusing us. **The break is between `SunoLibraryManager` and whatever the view
-      binds to.** The next step is a code question, not a capture: does the accumulated list
-      reach `SunoBridge`, and does the view's model ever get it? A parse failure or a failed
-      DB write would look exactly like this and neither logs at INFO.
-      **If the user meant the Discover/Explore view:** the log contains **no explore request
-      at all** — not a failure, an absence — so that view either never opens its fetch or its
-      fetch is gated on state the session never reached. Equally a code question, and the
-      route to check against the bundle's map is `explore -> /unified/homepage/explore` and
-      `combined-explore -> /unified/explore` (ours is the combined one), neither captured on
-      the wire yet.
-      **(b) the envelope is not what `ClipParser` expects.** `feed envelope has no clips array`
-      is a message this code can already emit (`tests/unit/suno/` asserts it), and the feed
-      request carries filters (`is_liked`, `search_text`) that this UI cannot set.
-      **What decides it:** one authenticated capture of the Discover request/response, or a
-      runtime probe that logs the status, the top-level keys of the parsed object, and the
-      first array's length — never the body, never a bearer. Do not change the route on the
-      strength of a lead: AGENTS.md requires a capture or a runtime check that fails closed.
+
+      **Closed 2026-10-25: the parser read a two-releases-old envelope.** A
+      `route-probe.mjs` run against both API bases settled the ambiguity in one
+      shot — `unified/explore` answers **200 with 165 KB and 2 feeds on both**
+      `studio-api-prod.suno.com/api` and `suno.com/a/api`, byte-identical, so the
+      host was never the problem and nothing had moved for us. The live envelope
+      is the same *content_item* shape as `unified/library`:
+      `feeds[]` name themselves `feed_id`/`feed_title`, every item is
+      `{content_id, content_type, content_item}`, one item's `content_item` is a
+      **nested feed** (`generic_feed`, whose items are the clips), and the first
+      feed is six `shortcut` tiles (`shortcut_schema`) that are navigation, not
+      content. The parser expected `id`/`title` on the feed and a clip at the top
+      of each item, so every feed came back labelled "Explore" with zero clips
+      while the backend was healthy — an empty page with a 200 behind it.
+      `parsePage` now reads `feed_id`/`feed_title`, unwraps `content_item`,
+      republishes a nested feed as its own labelled section (depth-bounded at 2),
+      drops a container feed that held only nested sections, and drops
+      `shortcut`/`shortcut_schema` entries — the last of those matters because
+      `ClipParser` is tolerant enough to accept a tile (it has an `id`) and would
+      have rendered a card with no artist and no duration. Pinned by
+      `parsesTheContentItemEnvelopeWithNestedFeeds`, which reproduces the live
+      shape key-for-key. VERIFY in `STATUS/T0333.log`. **Not verified:** the
+      rendering itself — that is MT-001-D3 with a signed-in session.
 
 - [ ] T0336 **Adopt the moved API base: `https://suno.com/a/api` — one constant, one host entry, two cursor styles** (`src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`, `src/suno/SunoClient.cpp`) #risk-high #cod-high
-      The 2026-10-24 HAR shows the browser using `suno.com/a/api` for **every** route this
-      client owns: `feed/v3` (200, 20 clips, `has_more`, opaque `next_cursor`),
-      `unified/library` (200, the feeds envelope), `unified/feed`, `notification/v3` and
-      `notification/v2/badge-count` — while `studio-api-prod.suno.com` receives nothing but a
-      404 on the `/api/forbidden` media placeholder. That host still answered 200 on
-      2026-10-21, so nothing is removed; the move is an adoption, not a rescue.
+      **Downgraded from urgent on 2026-10-25, not closed.** The 2026-10-24 HAR shows the
+      browser using `suno.com/a/api` for every route this client owns — `feed/v3`,
+      `unified/library`, `unified/feed`, `notification/v3`, `notification/v2/badge-count` —
+      while `studio-api-prod.suno.com` receives nothing but a 404 on the `/api/forbidden`
+      media placeholder. But `route-probe.mjs`, run against both bases with this app's own
+      bearer, gets **byte-identical 200s** for `feed/v3` and `unified/explore`, so the old
+      base is a live alias, not a dead endpoint: adopting the new one is hygiene and
+      future-proofing, not a fix, and it must not be sold as either.
       **Scope, in the order that makes each step checkable:** (1) `CapturedHosts` gains
       `suno.com` for `Role::StudioApi` — earned by two captures, and the allowlist is
       fail-closed, so a wrong base fails loudly rather than silently talking to nobody;

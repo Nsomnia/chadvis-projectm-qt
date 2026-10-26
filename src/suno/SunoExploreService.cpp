@@ -59,7 +59,12 @@ std::optional<SunoClip> parseClipEntry(const QJsonValue& value, int depth = 0)
     }
 
     auto direct = ClipParser::parseClip(object);
-    if (direct)
+    // An id is the one field every clip shape has. Without this, a
+    // `shortcut_schema` tile (name/image_url/redirect_url, no clip fields)
+    // parses into a clip with an empty id and renders as an untitled card --
+    // measured against the 2026-10-24 Explore response, whose first feed is six
+    // of them.
+    if (direct && !direct->id.empty())
     {
         return std::move(*direct);
     }
@@ -68,7 +73,11 @@ std::optional<SunoClip> parseClipEntry(const QJsonValue& value, int depth = 0)
 
 QString feedLabel(const QJsonObject& feed, const QString& id)
 {
+    // `feed_title` first: the live wire names it that way (2026-10-24), and the
+    // older `title`/`name` spellings are still accepted because the 2026-09-24
+    // fixture used them and both shapes are in the wild.
     static const QStringList labelKeys{
+        QStringLiteral("feed_title"),
         QStringLiteral("title"),
         QStringLiteral("name"),
         QStringLiteral("label"),
@@ -83,6 +92,95 @@ QString feedLabel(const QJsonObject& feed, const QString& id)
         }
     }
     return id.isEmpty() ? QStringLiteral("Explore") : id;
+}
+
+/// The Explore envelope has had three shapes, and every one of them is still in
+/// the wild, so this accepts all three instead of the newest:
+///
+///   1. `items[]` are clip schemas, or wrappers holding one under `item`,
+///      `clip` or `clip_schema` (the 2026-09-24 capture).
+///   2. `items[]` are `{content_id, content_type, content_item}` and
+///      `content_item` is the song schema (the 2026-10-24 wire).
+///   3. `content_item` is *itself a feed* — `content_type: "generic_feed"`,
+///      carrying `feed_id`, `feed_title` and its own `items` — whose entries are
+///      the clips. That nested feed is published as its own section rather than
+///      flattened, because its title is the only label the user can see.
+///
+/// A `content_type: "shortcut"` entry is a navigation tile (`shortcut_schema`:
+/// name, image_url, redirect_url) and parses as no clip; it is dropped rather
+/// than rendered as an untitled card.
+///
+/// This is what the previous parser could not read at all: it looked for
+/// `id`/`title` on the feed (the wire says `feed_id`/`feed_title`) and for a clip
+/// at the top of each item (the wire wraps it in `content_item`), so every feed
+/// came back labelled "Explore" with zero clips while the API was answering
+/// 165 KB of feeds -- an empty page with a healthy backend (T0333).
+void appendFeed(const QJsonObject& feedObject, QList<SunoExploreService::Feed>& out,
+                int depth)
+{
+    SunoExploreService::Feed feed;
+    for (const QString& key : {QStringLiteral("feed_id"), QStringLiteral("id"),
+                               QStringLiteral("identifier")})
+    {
+        feed.id = scalarString(feedObject.value(key));
+        if (!feed.id.isEmpty()) break;
+    }
+    feed.label = feedLabel(feedObject, feed.id);
+
+    int expandedChildren = 0;
+    const QJsonArray items = feedObject.value(QStringLiteral("items")).toArray();
+    feed.clips.reserve(items.size());
+    for (const QJsonValue& item : items)
+    {
+        QJsonValue candidate = item;
+        const QJsonObject wrapper = item.toObject();
+        for (const QString& key : {QStringLiteral("content_item"), QStringLiteral("item"),
+                                   QStringLiteral("clip_schema"), QStringLiteral("clip")})
+        {
+            const QJsonValue nested = wrapper.value(key);
+            if (nested.isObject())
+            {
+                candidate = nested;
+                break;
+            }
+        }
+
+        // A navigation tile is not content. `shortcut_schema` carries an `id`
+        // (the destination slug), so it would otherwise pass ClipParser's
+        // tolerant parse and render as a clip card with no artist or duration.
+        const QJsonObject candidateObject = candidate.toObject();
+        if (wrapper.value(QStringLiteral("content_type")).toString() ==
+                    QLatin1String("shortcut") ||
+            candidateObject.value(QStringLiteral("entity_type")).toString() ==
+                    QLatin1String("shortcut_schema"))
+        {
+            continue;
+        }
+
+        // A nested feed: publish it as its own section, bounded at two levels.
+        const bool looksLikeFeed = candidateObject.value(QStringLiteral("items")).isArray() &&
+                                   (candidateObject.contains(QStringLiteral("feed_id")) ||
+                                    candidateObject.contains(QStringLiteral("feed_title")) ||
+                                    candidateObject.contains(QStringLiteral("presentation")));
+        if (looksLikeFeed && depth < 2)
+        {
+            appendFeed(candidateObject, out, depth + 1);
+            ++expandedChildren;
+            continue;
+        }
+
+        if (auto clip = parseClipEntry(candidate))
+        {
+            feed.clips.push_back(std::move(*clip));
+        }
+    }
+
+    // A container feed whose only content was nested sections is not itself a
+    // section: publishing it would render a title above an empty row.
+    if (!feed.clips.isEmpty() || expandedChildren == 0)
+    {
+        out.push_back(std::move(feed));
+    }
 }
 
 }
@@ -146,30 +244,7 @@ SunoExploreService::parsePage(const QJsonObject& root)
         {
             continue;
         }
-
-        const QJsonObject feedObject = feedValue.toObject();
-        Feed feed;
-        feed.id = scalarString(feedObject.value(QStringLiteral("id")));
-        if (feed.id.isEmpty())
-        {
-            feed.id = scalarString(feedObject.value(QStringLiteral("identifier")));
-        }
-        feed.label = feedLabel(feedObject, feed.id);
-
-        const QJsonValue itemsValue = feedObject.value(QStringLiteral("items"));
-        if (itemsValue.isArray())
-        {
-            const QJsonArray items = itemsValue.toArray();
-            feed.clips.reserve(items.size());
-            for (const QJsonValue& item : items)
-            {
-                if (auto clip = parseClipEntry(item))
-                {
-                    feed.clips.push_back(std::move(*clip));
-                }
-            }
-        }
-        page.feeds.push_back(std::move(feed));
+        appendFeed(feedValue.toObject(), page.feeds, 0);
     }
 
     const QJsonValue cursorValue = root.value(QStringLiteral("next_cursor"));

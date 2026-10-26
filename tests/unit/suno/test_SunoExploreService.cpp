@@ -85,6 +85,76 @@ private slots:
         QVERIFY(page->hasMore());
     }
 
+    // The live 2026-10-24 envelope, which the old parser could not read at all:
+    // feeds name themselves feed_id/feed_title, every item wraps its payload in
+    // content_item, and one item's payload is *another feed* whose items are the
+    // clips. Measured against the wire: 2 root feeds, 6 shortcut tiles, 3
+    // generic_feed containers, 10 clips inside the first container.
+    void parsesTheContentItemEnvelopeWithNestedFeeds()
+    {
+        const QJsonObject shortcut{
+            {QStringLiteral("content_id"), QStringLiteral("s-1")},
+            {QStringLiteral("content_type"), QStringLiteral("shortcut")},
+            {QStringLiteral("content_item"), QJsonObject{
+                                                 {QStringLiteral("id"), QStringLiteral("create")},
+                                                 {QStringLiteral("entity_type"), QStringLiteral("shortcut_schema")},
+                                                 {QStringLiteral("name"), QStringLiteral("Create")},
+                                                 {QStringLiteral("redirect_url"), QStringLiteral("/create")},
+                                             }},
+        };
+        const QJsonObject nestedFeed{
+            {QStringLiteral("feed_id"), QStringLiteral("feed-staff-picks")},
+            {QStringLiteral("feed_title"), QStringLiteral("Staff Picks")},
+            {QStringLiteral("items"), QJsonArray{
+                                          QJsonObject{
+                                              {QStringLiteral("content_id"), QStringLiteral("c-1")},
+                                              {QStringLiteral("content_type"), QStringLiteral("clip")},
+                                              {QStringLiteral("content_item"),
+                                               clip(QStringLiteral("one"), QStringLiteral("One"))},
+                                          },
+                                      }},
+            {QStringLiteral("next_cursor"), QStringLiteral("10")},
+        };
+
+        const QJsonObject root{
+            {QStringLiteral("feeds"), QJsonArray{
+                                          QJsonObject{
+                                              {QStringLiteral("feed_id"), QStringLiteral("shortcuts")},
+                                              {QStringLiteral("feed_title"), QStringLiteral("Shortcuts")},
+                                              {QStringLiteral("items"), QJsonArray{shortcut}},
+                                          },
+                                          QJsonObject{
+                                              {QStringLiteral("feed_id"), QStringLiteral("for-you")},
+                                              {QStringLiteral("feed_container_type"), QStringLiteral("feed")},
+                                              {QStringLiteral("feed_title"), QStringLiteral("For You")},
+                                              {QStringLiteral("items"), QJsonArray{
+                                                                            QJsonObject{
+                                                                                {QStringLiteral("content_id"), QStringLiteral("n-1")},
+                                                                                {QStringLiteral("content_type"), QStringLiteral("generic_feed")},
+                                                                                {QStringLiteral("content_item"), nestedFeed},
+                                                                            },
+                                                                        }},
+                                          },
+                                      }},
+            {QStringLiteral("next_cursor"), QStringLiteral("3")},
+        };
+
+        const auto page = SunoExploreService::parsePage(root);
+        QVERIFY(page.has_value());
+        // The container ("For You") is not published: it holds no clips of its
+        // own, and a title above an empty row reads as a failure.
+        QCOMPARE(page->feeds.size(), 2);
+        QCOMPARE(page->feeds[0].id, QStringLiteral("shortcuts"));
+        QCOMPARE(page->feeds[0].label, QStringLiteral("Shortcuts"));
+        QVERIFY(page->feeds[0].clips.isEmpty());
+        QCOMPARE(page->feeds[1].id, QStringLiteral("feed-staff-picks"));
+        QCOMPARE(page->feeds[1].label, QStringLiteral("Staff Picks"));
+        QCOMPARE(page->feeds[1].clips.size(), 1);
+        QCOMPARE(QString::fromStdString(page->feeds[1].clips[0].id), QStringLiteral("one"));
+        QCOMPARE(page->nextCursor, QStringLiteral("3"));
+        QVERIFY(page->hasMore());
+    }
+
     void malformedAndExhaustedResponses()
     {
         QVERIFY(!SunoExploreService::parsePage(QJsonObject{}).has_value());

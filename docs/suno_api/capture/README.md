@@ -38,6 +38,23 @@ npm packages, no login, no cookies. It works without a session because the
 rights endpoint answers an **anonymous** request with a guest token — the
 whole channel can be exercised without credentials.
 
+## Route 1b — the base probe (`route-probe.mjs`) — T0333 / T0336
+
+```bash
+node docs/suno_api/capture/route-probe.mjs
+```
+
+Sends the app's own keychain bearer to the four route/base combinations that
+matter — `unified/explore` and `feed/v3` on `studio-api-prod.suno.com/api` and on
+`suno.com/a/api`, plus `notification/v3` on the new base — and prints **shapes**:
+status, byte count, top-level key names, array lengths, and the first element's
+key names. No values, no ids, no tokens.
+
+It exists because "is the API dead or is our parser wrong?" is one run to answer
+and a day to guess at. Measured 2026-10-25: **both bases answer all three routes
+with byte-identical bodies**, so a route that returns 200 with no rows is a
+parser problem, not a host problem.
+
 ## Route 2 — the browser userscript (for the authenticated variant)
 
 Install [`mango-capture.user.js`](mango-capture.user.js) in Tampermonkey or
