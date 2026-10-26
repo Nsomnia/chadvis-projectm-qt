@@ -98,9 +98,15 @@ line to describe an item is describing it in the wrong place. Finished work move
       `notification/v3` exist only on the new base.
       **Do not share one pagination helper:** `feed/v3` returns `has_more` + an opaque 36-char
       cursor, `unified/library` returns a numeric string offset (`"10"`) and no `has_more`.
-      **Not captured, so not wired:** `unified/homepage`, `unified/homepage/explore`,
-      `unified/homepage/explore/mobile`, `unified/search/omnisearch`, `/api/search/` and
-      `GET /playlist/{id}/?page=N` are bundle-declared only; they stay `[LEAD]`.
+      **Measured 2026-10-26, and it changes what the migration is worth:** `page_size` on
+      `unified/library` is **ignored** — 20/50/100 all return a byte-identical 96 450-byte body
+      (11 rows, `item_count 57`, `next_cursor "10"`), so this route does not sync more per call.
+      `/feed/v3`, which this client already uses, *does* honour `limit` up to 100, and that is
+      where the page-size win came from. `GET /playlist/{id}/?page=N` is now verified rather than
+      a lead: a flat playlist body, `playlist_clips[] = {clip, relative_index, created_at}`,
+      1-based pages, and no `has_more` — an empty array past the end is the only end signal.
+      **Still bundle-declared only:** `unified/homepage`, `unified/homepage/explore`,
+      `unified/homepage/explore/mobile`, `unified/search/omnisearch` and `/api/search/`.
 
 - [ ] T0335 **The notification client is wired to v2 on a host the browser no longer uses, and the v3 shape is different** (`src/suno/SunoNotificationService.cpp`, `src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`) #risk-medium #blocks-ui
       **Downgraded 2026-10-25: v2 still answers.** Probed with this app's bearer, on both bases:
@@ -965,6 +971,13 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       No persona struct, endpoint, UI, or mention (except `is_persona_root` bool on clip).
 - [ ] T0264 **Playlists sync / CRUD reads: ABSENT as reads** (`src/suno/`)
       No playlist model, fetch-list/get-tracks, create/delete/duplicate, local playlist cache/table, or reconciliation. Mutations can add/remove/reorder/rename/cover-image but never read back; Explore silently drops `type=="playlist"` items.
+      **The read contract is captured (2026-10-26, read-only probe), so the blocking half is gone:**
+      `GET /a/api/playlist/{id}/?page=N` returns the playlist object flat at top level with
+      `playlist_clips[] = {clip, relative_index, created_at}`, 1-based pages and no `has_more` —
+      an empty `playlist_clips` past the end is the end signal. The listing half is
+      `unified/library`, whose `library_playlists` feed carries every owned playlist with
+      `song_count`/`num_total_results` in one page of 10. What remains is the model, the cache and
+      the UI — no capture needed.
 - [ ] T0265 **Video: `video_url` parsed, no download or status polling** (`src/suno/`)
       `VIDEO_GENERATE_STATUS` / `VIDEO_GEN_PENDING_BATCHES` constants exist; no video download or status polling.
 - [ ] T0266 **WAV: conversion + `pollWavFile` stubs; `downloadFormat==WAV` refused** (`src/suno/SunoDownloader.cpp`)

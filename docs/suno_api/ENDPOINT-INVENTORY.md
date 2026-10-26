@@ -664,7 +664,7 @@ token flow and durable processing contract are unimplemented (section 1.4).
 | POST | `/unified/library` (host `suno.com`, base `/a/api`) | Bearer | The library as a set of *feeds*: playlists, albums, and playlist cards | `[T1]` browser 2026-10-24 | not-in-code |
 | POST | `/feed/v3` (host `suno.com`, base `/a/api`) | Bearer | The same cursor-based library feed, on the new base | `[T1]` browser 2026-10-24 | **our path, old host** |
 | POST | `/unified/feed` (host `suno.com`, base `/a/api`) | Bearer | Generic container feed: `{feed_id, cursor, page_size, request_metadata?, target_user_id?, customization?}`. Transport for `liked_songs`, `generic_playlist:<id>` and `recently_played` | `[T1]` browser 2026-10-21 (`recently_played`) | declared-unused |
-| GET | `/playlist/{playlist_id}/?page=N` (host `suno.com`, base `/a/api`) | Bearer | One playlist with its clips: `{playlist, playlist_clips[].clip}`. **Numbered page, not a cursor** | `[LEAD]` bundle-declared, uncaptured | not-in-code |
+| GET | `/playlist/{playlist_id}/?page=N` (host `suno.com`, base `/a/api`) | Bearer | One playlist and its clips. **Numbered page, not a cursor**; body is the playlist object at top level (see §4.5) | `[T1]` probe 2026-10-26 | not-in-code |
 | POST | `/api/gen/{gen_id}/set_visibility/` | Bearer | Set a clip's public/private visibility; body `is_public: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/clips/{clip_id}/toggle_remixes/` | Bearer | Toggle remix permission; body `can_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
 | POST | `/api/clips/{clip_id}/toggle_show_remixes` | Bearer | Toggle remix-list visibility; body `show_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
@@ -708,8 +708,17 @@ type/duration`, `media_urls[].url/content_type/delivery/encoding`, `image_url`,
 `is_liked`, `display_name`, `handle`, `created_at`, `caption`, `albums[]`,
 `action_config.actions[]`).
 
-**Pagination is a numeric string offset, and 10 is the server's default.** Two
-sessions (2026-10-21 and 2026-10-24) sent `{cursor: null, customization:
+**Pagination is a numeric string offset, and `page_size` is ignored.** Measured
+2026-10-26 with a fresh bearer: `page_size` 20, 50 and 100 return a **byte-identical
+96 450-byte body** to the request that omits it — 11 rows, `item_count: 57`,
+`next_cursor: "10"`. So this route cannot be made to return more per call, and the
+"more than ten tracks a call" hope is settled as **no** for `/unified/library`. (The
+clip feed `/feed/v3` is the opposite: it honours `limit` up to 100 and answers 400 at
+200 — that is the route a bulk library sync should use, and §4.5's other rows need no
+`page_size`.) A third feed also appeared in that response — `recently_played`, 9 items,
+`next_cursor "10"` — so the library page is assembled from at least three containers.
+
+Two sessions (2026-10-21 and 2026-10-24) sent `{cursor: null, customization:
 {include_synthetic: true}}` with **no `page_size`** and got the same first page:
 `library_playlists` with `items` length **11**, `item_count: 57`,
 `next_cursor: "10"`. The array is 11 because it carries one synthetic row
@@ -730,6 +739,25 @@ a placeholder pointed at a host this client has never called, and the *playable*
 form is still `media_urls[]`. **Do not wire `studio-api.prod` or the
 `m-stratovibe.prod` telemetry host** that appears in the same session: neither is
 an audio or API route this client needs.
+
+#### 2026-10-26 — a playlist's clips, read back (`[T1]`, read-only probe)
+
+```
+GET https://suno.com/a/api/playlist/{playlist_id}/?page=1     200  17 130 bytes for a 2-clip playlist
+```
+
+The body is the **playlist object at top level** — not `{playlist, playlist_clips}` as
+the bundle's shape implied. Keys: `entity_type, id, name, playlist_clips[], image_url,
+num_total_results, current_page, is_owned, is_trashed, is_public, is_hidden,
+user_display_name, user_handle, user_avatar_image_url, user_is_verified, description,
+upvote_count, dislike_count, flag_count, skip_count, play_count, song_count,
+total_duration, is_discover_playlist`. Each `playlist_clips[]` entry is
+`{clip, relative_index, created_at}`, and `clip` is the same `song_schema` the feed
+returns.
+
+**Paging:** `?page=N` is 1-based and there is **no `has_more`**; a page past the end is a
+200 with an empty `playlist_clips` and a 699-byte body, so "finished" is
+`current_page * page_size >= num_total_results` or an empty array, never a flag.
 
 **Two cursor styles coexist, per route.** `unified/library`'s `next_cursor` is a
 numeric string offset (`"10"`); `feed/v3`'s is a 36-character opaque token with a
