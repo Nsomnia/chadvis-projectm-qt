@@ -97,6 +97,7 @@ jobs:
   tsan:
     name: ThreadSanitizer (ubuntu / gcc, reporting only)
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository

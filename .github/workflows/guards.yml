@@ -1,0 +1,42 @@
+# ===========================================================================
+# guards.yml -- the fast gate that runs before the expensive one.
+#
+# check-workflows.py exists because GitHub rejects a workflow file that a YAML
+# parser accepts: a repeated key (a duplicated `modules:` in build.yml) takes
+# the required gate down while every local `yaml.safe_load` stays green. That
+# has happened here once, and cost three commits on main.
+#
+# It was mandated in AGENTS.md, the PR template and RELEASING.md but run by no
+# workflow, so it only helped someone who remembered it. This job remembers.
+# It needs no Qt and no compiler, so it answers in about twenty seconds
+# instead of after a twenty-five-minute build.
+# ===========================================================================
+
+name: guards
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: guards-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  guards:
+    name: workflow files GitHub will accept
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check workflow files
+        run: ./scripts/check-workflows.py

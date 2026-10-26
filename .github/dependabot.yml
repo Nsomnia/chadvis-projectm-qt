@@ -44,8 +44,9 @@ updates:
       time: "06:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
-    # Note: no `labels` key — the "dependencies"/"github-actions" labels do not
-    # exist in this repo, and Dependabot silently skips labels that don't exist.
+    labels:
+      - "dependencies"
+      - "github-actions"
     commit-message:
       prefix: "ci"
     groups:

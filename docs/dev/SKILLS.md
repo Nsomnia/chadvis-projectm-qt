@@ -17,13 +17,20 @@ must say **when** to use the skill, not just what it does.
 | OpenCode | `.opencode/skills/<name>/SKILL.md` | `~/.config/opencode/skills/` |
 | WorkBuddy | `.workbuddy-ai/skills/<name>/SKILL.md` | `~/.workbuddy-ai/skills/` |
 | Claude Code | `.claude/skills/<name>/SKILL.md` | `~/.claude/skills/` |
+| Kilo | `.kilo/rules/*.md` (rules; no skill loader observed) | not established |
 
-`.opencode/skills/` is the canonical copy. The WorkBuddy project path is a symlink
-to it, so there is one source of truth and no second copy to drift:
+`.opencode/skills/` is the canonical copy. The WorkBuddy and Claude Code project
+paths are symlinks to it, so there is one source of truth and no second copy to
+drift:
 
 ```bash
 ln -s ../.opencode/skills .workbuddy-ai/skills
+ln -s ../.opencode/skills .claude/skills
 ```
+
+Claude Code reads `CLAUDE.md`, not `AGENTS.md`. The root `CLAUDE.md` is a one-line
+import (`@AGENTS.md`) precisely so the operating rules are not invisible in that
+harness. Do not put rules in it — that would be a second copy.
 
 Note that the `find-skills` helper installed in this environment documents
 `~/.workbuddy/skills/` as the user-level target. On this machine that directory does

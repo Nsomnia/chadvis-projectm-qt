@@ -28,6 +28,7 @@ fact, that is a bug — fix it here rather than adding a third copy.
 | [Contributing](dev/CONTRIBUTING.md) | C++23 conventions, error handling, and PR process. |
 | [Dependencies](dev/DEPENDENCIES.md) | Which of four suppliers owns what, and why Conan is deliberately not one of them. |
 | [Agent skills](dev/SKILLS.md) | Which skill covers what, the vendored Qt set and its upstream, the harness directory layout, and where the gaps are. |
+| [Codebase exploration prompt](dev/CODEBASE-EXPLORATION-PROMPT.md) | The reusable prompt for a whole-tree improvement sweep, and where its output belongs. |
 
 ## Suno API research
 

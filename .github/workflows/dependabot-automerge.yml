@@ -1,0 +1,80 @@
+# ===========================================================================
+# dependabot-automerge.yml -- merge a green non-major dependency bump.
+#
+# The build gate already answers the only question a `uses:` bump raises: does
+# the tree still build and pass. Waiting 4-6 days for a human to click merge on
+# a patch bump is latency with no signal behind it.
+#
+# MAJORS STAY MANUAL. A major bump can change an action's inputs or behaviour,
+# and the repo SHA-pins third-party actions for supply-chain reasons; a human
+# reads those. This job deliberately does nothing for them.
+#
+# WHY IT WAITS FOR CHECKS INSTEAD OF `gh pr merge --auto`
+#   Auto-merge only blocks on *required* status checks. This repository has no
+#   branch protection rule, so --auto would merge immediately, before the gate
+#   ran. `gh pr checks --watch --fail-fast` waits for the checks that exist and
+#   exits non-zero if any fails, which is the behaviour wanted either way.
+#
+# IF THE MERGE STEP FAILS ON PERMISSIONS: Dependabot-triggered runs can get a
+# read-only GITHUB_TOKEN. The fix is Settings > Actions > General > Workflow
+# permissions > "Read and write permissions", not switching to
+# pull_request_target (which would run base-branch code with a write token and
+# with secrets, a much worse trade for a merge button).
+# ===========================================================================
+
+name: dependabot-automerge
+
+on:
+  pull_request:
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    name: merge a non-major bump once the gate is green
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Read the update type
+        id: meta
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2, resolved 2026-10-26 via GH API
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for the gate, then squash-merge
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # A pull_request workflow can start before the gate has registered
+          # its checks. Wait for them to appear; `gh pr checks` exits 8 while
+          # they are pending and 1 when none are reported yet.
+          reported=0
+          for _ in $(seq 1 20); do
+            set +e
+            out=$(gh pr checks "$PR_URL" 2>&1)
+            code=$?
+            set -e
+            case "$out" in
+              *"no checks reported"*) sleep 15 ;;
+              *) reported=1; break ;;
+            esac
+          done
+          if [ "$reported" -ne 1 ]; then
+            printf '%s\n' "$out"
+            echo "no checks were ever reported; leaving the PR open" >&2
+            exit 1
+          fi
+
+          gh pr checks "$PR_URL" --watch --fail-fast
+          gh pr merge "$PR_URL" --squash --delete-branch

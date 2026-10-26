@@ -6,8 +6,19 @@ on:
   pull_request_review_comment:
     types: [created]
 
+# Serialise per ref rather than cancel: an in-flight agent turn is work a
+# cancellation throws away. Without this, two /oc comments launch two parallel
+# jobs that both hold id-token: write.
+concurrency:
+  group: opencode-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   opencode:
+    # The default job timeout is six hours. This job is started by a comment,
+    # so its cost is unbounded by human intent; an agent that loops is 20
+    # minutes, not a runner-day.
+    timeout-minutes: 20
     # Deny-by-default: a comment can start this job only if its body matches a
     # command AND the commenter is OWNER, MEMBER or COLLABORATOR. Anyone else
     # typing /oc must not reach a job that holds id-token: write and the

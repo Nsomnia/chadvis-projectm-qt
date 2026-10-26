@@ -28,10 +28,10 @@ rules and pointers, never the detail — the doc named on each line owns that de
 
 ## CI reality
 
-* Gates: `build.yml` (Ubuntu gcc + clang, macOS) and `windows.yml` (Release, the same headless
-  entries, a `windeployqt` artifact). The sanitizer lanes report and count; they do not gate, and
-  a lane that produced no log is broken, not clean. A failing gate gets fixed or reverted, never
-  re-armed with `continue-on-error`.
+* Gates: `guards.yml` (runs `check-workflows.py` in seconds), `build.yml` (Ubuntu gcc + clang,
+  macOS) and `windows.yml` (Release, the same headless entries, a `windeployqt` artifact). The
+  sanitizer lanes report and count; they do not gate, and a lane that produced no log is broken,
+  not clean. A failing gate gets fixed or reverted, never re-armed with `continue-on-error`.
 * `integration_tests`, `integration_gl_tests`, `test_OffscreenRenderSpike` skip headless — see
   the green-is-not-evidence rule above.
 * **A workflow file that parses is not one GitHub accepts.** A repeated YAML key is rejected
@@ -104,8 +104,9 @@ skill over a generic one when both apply. Inventory, provenance and per-harness 
 [`docs/dev/SKILLS.md`](docs/dev/SKILLS.md).
 
 ## Tools
-Playwright via the userr Brave browser logged in via facebook should be available with dev utils as well via mcp.
-There is some suno.com recon available at `~/Documents/suno-recon-active-investigation/` amung with live recon you may do via available tools.
+Playwright via the user's Brave browser, logged in via Facebook, should be available with dev
+utils as well via MCP. Suno recon lives at `~/Documents/suno-recon-active-investigation/`; live
+recon may be done with the available tools.
 
 ## Token Efficiency
 Invoke a faux/psuedo form of the popular `caveman` speak skill where possible to be as token efficient as possible.

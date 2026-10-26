@@ -80,6 +80,9 @@ jobs:
   build:
     name: ${{ matrix.os }} / ${{ matrix.compiler }}
     runs-on: ${{ matrix.os }}
+    # A stuck step otherwise runs to the six-hour default. 120 matches
+    # windows.yml; a cold unbottled macOS run was measured at 1h23m.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:

@@ -107,6 +107,12 @@ on:
         required: false
         type: string
 
+# release.sh refuses a second local run, but that guard lives on one machine.
+# Two dispatches from the Actions tab race the same tag; serialise them.
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 

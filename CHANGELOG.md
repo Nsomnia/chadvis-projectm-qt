@@ -8,6 +8,16 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Changed
 
+- **Every long job now has a timeout, and the agent and release workflows are serialised.**
+  `build.yml`, `asan.yml` and `tsan.yml` would otherwise run to GitHub's six-hour default after a
+  stuck step; all four now stop at 120 minutes, matching `windows.yml`. `opencode.yml` gains
+  `timeout-minutes: 20` and a per-ref concurrency group — it is started by a comment, so its cost
+  was unbounded by intent — and `release.yml` gains one so two dispatches cannot race the same tag.
+  The harness layout is documented where it lives: root `CLAUDE.md` imports `AGENTS.md` and
+  `.claude/skills` symlinks the canonical `.opencode/skills`, so Claude Code sees the rules;
+  `SKILLS.md` gains the Kilo row, and the stale `.agent/` exploration prompt moved to
+  `docs/dev/CODEBASE-EXPLORATION-PROMPT.md` with its output routed to `TODO.md`, not the root.
+
 - **Lyrics are fetched when a track is opened, not for the whole library after every sync.**
   `libraryUpdated` queued one aligned-lyrics request per clip as each page arrived, so a 3,749-clip
   first sync (measured 2026-10-26, 38 pages) left ~3,749 requests draining through the client's
@@ -51,6 +61,15 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **A guards gate, so the workflow checker runs instead of being remembered.** `guards.yml` runs
+  `scripts/check-workflows.py` on every push and PR and answers in about twenty seconds — before
+  the twenty-five-minute build queue. The checker exists because GitHub rejects a YAML file that
+  parses (a repeated `modules:` key took main's gate down for three commits); it was named in
+  `AGENTS.md`, the PR template and `RELEASING.md` but run by no workflow. Non-major Dependabot
+  bumps now also merge themselves after that gate reports green (`dependabot-automerge.yml`),
+  majors stay manual, and the `dependencies` / `github-actions` labels exist so Dependabot can
+  apply them.
+
 - **The visualizer finally has presets: ~9,800 of them.** projectM ships no preset pack, so
   every launch logged `PresetScanner: Found 0 potential preset files` and the only picture
   available was projectM's built-in idle preset — for the live canvas and therefore for every
@@ -72,6 +91,11 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 - **The visualizer now has an audio path on a Qt that cannot tap `QMediaPlayer`.** Qt's own reference page for `QAudioBufferOutput` closes with "only supported with the FFmpeg backend", and this machine's Qt 6.12 multimedia ships `libdarwinmediaplugin` and **no** FFmpeg media plugin: `QT_MEDIA_BACKEND=ffmpeg` logs `Available backends QList("darwin")`, falls back, and a 1.2 s tone produces exactly **zero** `audioBufferReceived` emissions while playing normally. That is why the canvas rendered and never moved. `VisualizerAudioTap` is the fallback: when no buffer has arrived, the engine decodes the selected local file with the repository's own FFmpeg decoder and pushes the PCM into the same `AudioQueue` projectM and the recorder already drain. `QMediaPlayer` stays the only audio output and the master clock; the first delivered buffer clears the tap for the rest of the session, so a backend that does support the buffer output pays nothing. Measured by `playingAnOnDiskClipStartsTheTransport`, which asserts both the transport state and a non-zero visualizer queue, and pinned as MT-001-D4.4 for the GL half. (T0322)
 
 ### Removed
+
+- **A rules file that nothing loaded.** `.opencode/rules/ponytail-senior-engineer-guidelines.md`
+  had no reader: `opencode.jsonc` has no `instructions` key and the ponytail plugin that might
+  have pulled it is commented out. A rules file believed by everyone and read by nothing is worse
+  than none. Parked in the ignored graveyard; wire it back only with a loader that is verified.
 
 - **Four dead scripts, and the documentation that told people to run one of them.** `setup-arch.sh`,
   `run_debug.sh` and `install_projectm_v4_local.sh` all pointed at the pre-bundle binary path, and
