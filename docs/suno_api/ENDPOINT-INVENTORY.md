@@ -145,6 +145,20 @@ Route catalog tables carry an `Implemented` column with exactly three values:
 > not become implemented by being captured. Do not read `declared-unused` as
 > "unsupported," and do not read `wired` as "verified."
 
+Reachability is a third axis, and it is **not** this column. The eleven library /
+playlist mutation routes (`set_visibility`, `update_feedback_state`,
+`toggle_remixes`, `toggle_show_remixes`, `share/link`, `playlist/set_metadata`,
+`playlist/update_clips`, the three `v2/.../tracks/*` routes, and
+`v2/.../cover-image`) are sent from `SunoLibraryMutations.cpp`, so they are
+`wired`. No QML path invokes that class today, so they are also
+**runtime-unreachable** — T0011 owns that half. Recording `wired` here is not a
+claim that a user can trigger the route.
+
+`/gen/{id}/convert_wav/`, `/gen/{id}/wav_file/`, `/v1/orchestrator/chat` and
+`/v1/orchestrator/history` have constants but no row in this catalogue: they are
+`[LEAD]`, and the `[LEAD]` inventory (with their `declared-unused` status) lives
+in [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md).
+
 Audit method and boundaries, so the column is not over-read:
 
 - The audit surface is the constant set in `src/suno/SunoEndpoints.hpp`
@@ -665,18 +679,18 @@ token flow and durable processing contract are unimplemented (section 1.4).
 | POST | `/feed/v3` (host `suno.com`, base `/a/api`) | Bearer | The same cursor-based library feed, on the new base | `[T1]` browser 2026-10-24 | **our path, old host** |
 | POST | `/unified/feed` (host `suno.com`, base `/a/api`) | Bearer | Generic container feed: `{feed_id, cursor, page_size, request_metadata?, target_user_id?, customization?}`. Transport for `liked_songs`, `generic_playlist:<id>` and `recently_played` | `[T1]` browser 2026-10-21 (`recently_played`) | declared-unused |
 | GET | `/playlist/{playlist_id}/?page=N` (host `suno.com`, base `/a/api`) | Bearer | One playlist and its clips. **Numbered page, not a cursor**; body is the playlist object at top level (see §4.5) | `[T1]` probe 2026-10-26 | not-in-code |
-| POST | `/api/gen/{gen_id}/set_visibility/` | Bearer | Set a clip's public/private visibility; body `is_public: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
-| POST | `/api/clips/{clip_id}/toggle_remixes/` | Bearer | Toggle remix permission; body `can_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
-| POST | `/api/clips/{clip_id}/toggle_show_remixes` | Bearer | Toggle remix-list visibility; body `show_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
-| POST | `/api/gen/{gen_id}/update_feedback_state/` | Bearer | Record a feedback state; body `feedback_reason: string` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
+| POST | `/api/gen/{gen_id}/set_visibility/` | Bearer | Set a clip's public/private visibility; body `is_public: boolean` | `[T1]` validation-probe contract 2026-09-30 | wired |
+| POST | `/api/clips/{clip_id}/toggle_remixes/` | Bearer | Toggle remix permission; body `can_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | wired |
+| POST | `/api/clips/{clip_id}/toggle_show_remixes` | Bearer | Toggle remix-list visibility; body `show_remix: boolean` | `[T1]` validation-probe contract 2026-09-30 | wired |
+| POST | `/api/gen/{gen_id}/update_feedback_state/` | Bearer | Record a feedback state; body `feedback_reason: string` | `[T1]` validation-probe contract 2026-09-30 | wired |
 | POST | `/api/gen/{gen_id}/update_reaction_type/` | Bearer | Like / unlike (and dislike) a clip. Request `{reaction: "LIKE"|null, recommendation_metadata: {}}`; response `{play_count, skip_count, flagged, clip, updated_at}` (+ `reaction_type: "L"` on a like only) | `[T1]` live UI capture 2026-10-26 | not-in-code |
-| POST | `/api/share/link` | Bearer | Mint a share link; body `content_id`, `content_type` (both strings) | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
-| POST | `/api/playlist/set_metadata` | Bearer | Rename/describe a playlist; body `name`, `description`, `playlist_id` (all strings) | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
-| POST | `/api/playlist/update_clips/` | Bearer | Add/remove/reorder playlist clips; body `playlist_id`, `metadata`, `update_type` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
-| POST | `/api/playlist/v2/{id}/tracks/add` | Bearer | Append 1–100 clips by id | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
-| POST | `/api/playlist/v2/{id}/tracks/remove` | Bearer | Remove 1–100 clips by id | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
-| POST | `/api/playlist/v2/{id}/tracks/reorder-by-index` | Bearer | Reorder by index; body `positions` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
-| POST | `/api/playlist/v2/{id}/cover-image` | Bearer | Set playlist cover; body `id`, `type` | `[T1]` validation-probe contract 2026-09-30 | not-in-code |
+| POST | `/api/share/link` | Bearer | Mint a share link; body `content_id`, `content_type` (both strings) | `[T1]` validation-probe contract 2026-09-30 | wired |
+| POST | `/api/playlist/set_metadata` | Bearer | Rename/describe a playlist; body `name`, `description`, `playlist_id` (all strings) | `[T1]` validation-probe contract 2026-09-30 | wired |
+| POST | `/api/playlist/update_clips/` | Bearer | Add/remove/reorder playlist clips; body `playlist_id`, `metadata`, `update_type` | `[T1]` validation-probe contract 2026-09-30 | wired |
+| POST | `/api/playlist/v2/{id}/tracks/add` | Bearer | Append 1–100 clips by id | `[T1]` validation-probe contract 2026-09-30 | wired |
+| POST | `/api/playlist/v2/{id}/tracks/remove` | Bearer | Remove 1–100 clips by id | `[T1]` validation-probe contract 2026-09-30 | wired |
+| POST | `/api/playlist/v2/{id}/tracks/reorder-by-index` | Bearer | Reorder by index; body `positions` | `[T1]` validation-probe contract 2026-09-30 | wired |
+| POST | `/api/playlist/v2/{id}/cover-image` | Bearer | Set playlist cover; body `id`, `type` | `[T1]` validation-probe contract 2026-09-30 | wired |
 
 #### 2026-10-24 — the unified library endpoint on the site host (`[T1]`)
 

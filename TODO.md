@@ -331,13 +331,15 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `SunoUserSessionId` — 15 structs, 3.8 KB, zero references under `src/` or `tests/`.
       Kept `SunoPlanInfo`, `SunoModelLimits` and `SunoMetadata`: they look unused by name
       but are members of live `SunoBillingInfo` / `SunoModelInfo` / `SunoClip`.
-- [ ] T0069 Eleven endpoints are wired in code but recorded `not-in-code` in the inventory (`docs/suno_api/ENDPOINT-INVENTORY.md:610-620,1206-1216`) #data-loss
-      `GEN_SET_VISIBILITY`, `GEN_UPDATE_FEEDBACK_STATE`, `CLIP_TOGGLE_REMIXES`,
-      `CLIP_TOGGLE_SHOW_REMIXES`, `SHARE_LINK`, `PLAYLIST_SET_METADATA`,
-      `PLAYLIST_UPDATE_CLIPS`, `PLAYLIST_V2_TRACKS_ADD/REMOVE/REORDER`, `PLAYLIST_V2_COVER_IMAGE`.
-      All are sent from `SunoLibraryMutations.cpp`. The inventory is **wrong about the code
-      and right about the behaviour** (T0011); both halves need recording. Also 8
-      constants exist in `SunoEndpoints.hpp` with no inventory row at all.
+- [x] T0069 Eleven endpoints are wired in code but recorded `not-in-code` in the inventory (`docs/suno_api/ENDPOINT-INVENTORY.md:610-620,1206-1216`) #data-loss
+      All eleven rows now read `wired`, matching `SunoLibraryMutations.cpp`; a new
+      paragraph records the third axis: they are wired **and runtime-unreachable**
+      (T0011 owns that half), so `wired` is not a reachability claim. The "8 constants
+      with no inventory row" half was stale: only four constants are absent from this
+      `[T1]` catalogue (`convert_wav`, `wav_file`, `orchestrator/chat`,
+      `orchestrator/history`), and all four are `[LEAD]` rows in `OBSERVED-LEADS.md`
+      marked `declared-unused`. Cross-check: every `endpoints::*` referenced by
+      `SunoLibraryMutations.cpp` now has a `wired` row.
 - [ ] T0071 ~120 dead QML-facing bridge properties/invokables, including word-level karaoke timing that is implemented in C++ but never surfaced (`src/qml_bridge/LyricsBridge.hpp:32,34,101,111,91`) #cleanup
       `currentWordIndex`, `wordProgress`, `getUpcomingLines`, `getContextLines`,
       `assDocument` have **zero QML readers** — the karaoke feature exists below the UI.
