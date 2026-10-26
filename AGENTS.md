@@ -63,7 +63,10 @@ run, then dispatches `release.yml` pinned to that commit. Full rule:
   the server itself decides — not a captured guess. A form with neither a capture nor a runtime
   check stays refused, and what may never ship is a path whose failure mode is a wrong file.
   Capture procedure: [`docs/suno_api/capture/README.md`](docs/suno_api/capture/README.md).
-* **Never `rm`.** Move it to `.backup_graveyard/` with a date-time suffix (gitignored).
+* **Never `rm` source.** Move it to `.backup_graveyard/` with a date-time suffix (gitignored).
+  **Generated build directories are exempt:** `build*/` are discarded, never parked — the user
+  copies a binary they want to keep into `~/Documents` by hand, and a parked multi-GB tree is
+  disk the next build needs. No script backs up a build.
 * Anything unusually destructive gets user approval first.
 
 ## Working style

@@ -5,6 +5,7 @@
 #include <libavcodec/version.h>
 #include <libavutil/mathematics.h>
 #include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
 #include "core/Logger.hpp"
 #include "lyrics/LyricsData.hpp"
 #include "recorder/ResamplerEngine.hpp"
@@ -88,6 +89,38 @@ void closeExclusive(int fd) {
 }
 
 #endif
+
+/// `PixelFormat` is the settings enum the user picks; this is the only place it
+/// becomes an FFmpeg value. RGB24 and the two hardware layouts are included so
+/// a wrong combination reaches `avcodec_open2` (or `validate()`) with its real
+/// name instead of being silently replaced by yuv420p.
+/// The reverse direction, for log sentences. Deliberately not
+/// `av_get_pix_fmt_name`: that symbol resolves with C++ linkage from this
+/// translation unit on this toolchain ("declaration possibly missing
+/// extern \"C\"" from ld), and a six-case switch costs nothing and cannot fail.
+const char* avPixelFormatName(AVPixelFormat format) {
+    switch (format) {
+        case AV_PIX_FMT_YUV420P: return "yuv420p";
+        case AV_PIX_FMT_YUV422P: return "yuv422p";
+        case AV_PIX_FMT_YUV444P: return "yuv444p";
+        case AV_PIX_FMT_RGB24:   return "rgb24";
+        case AV_PIX_FMT_NV12:    return "nv12";
+        case AV_PIX_FMT_P010LE:  return "p010le";
+        default:                 return "an unknown format";
+    }
+}
+
+AVPixelFormat avPixelFormatFor(PixelFormat format) {
+    switch (format) {
+        case PixelFormat::YUV420P: return AV_PIX_FMT_YUV420P;
+        case PixelFormat::YUV422P: return AV_PIX_FMT_YUV422P;
+        case PixelFormat::YUV444P: return AV_PIX_FMT_YUV444P;
+        case PixelFormat::RGB24:   return AV_PIX_FMT_RGB24;
+        case PixelFormat::NV12:    return AV_PIX_FMT_NV12;
+        case PixelFormat::P010LE:  return AV_PIX_FMT_P010LE;
+    }
+    return AV_PIX_FMT_YUV420P;
+}
 
 } // namespace
 
@@ -895,7 +928,9 @@ Result<void> VideoRecorderFFmpeg::initVideoStream(
     }
     videoCodecCtx_->pix_fmt = getHWPixelFormat(settings);
   } else {
-    videoCodecCtx_->pix_fmt = AV_PIX_FMT_YUV420P;
+    // Decorative until 2026-10-25: this was a hardcoded YUV420P, so a settings
+    // file asking for yuv422p/yuv444p/rgb24 recorded 420p and reported nothing.
+    videoCodecCtx_->pix_fmt = avPixelFormatFor(settings.video.pixelFormat);
   }
 
   if (formatCtx_->oformat->flags & AVFMT_GLOBALHEADER) {
@@ -923,8 +958,27 @@ Result<void> VideoRecorderFFmpeg::initVideoStream(
   av_dict_free(&opts);
 
   if (ret < 0) {
-    return Result<void>::err("Failed to open video codec: " +
-      ffmpegError(ret));
+    // The requested pixel format travels in `videoCodecCtx_->pix_fmt`, so an
+    // encoder that cannot take it fails here with its own sentence rather than
+    // recording a different one. That is the fail-closed half of this change.
+    return Result<void>::err("Failed to open video codec (" +
+      settings.video.pixelFormatName() + "): " + ffmpegError(ret));
+  }
+
+  if (!settings.video.isHardwareAccelerated() || !hwDeviceCtx_) {
+    // Post-open the context owns the truth: an encoder may negotiate a format
+    // other than the one asked for (libx265 promotes 8-bit requests to 10-bit
+    // for some profiles). The scaler and the AVFrame have to agree with what it
+    // actually opened, or sws_scale writes one layout into a frame declared as
+    // another -- corruption with no error. The disagreement is reported rather
+    // than hidden, because "recorded yuv420p, you asked for yuv444p" is a fact
+    // the user needs.
+    if (videoCodecCtx_->pix_fmt != avPixelFormatFor(settings.video.pixelFormat)) {
+      LOG_WARN("Video encoder negotiated {} instead of the requested {}",
+        avPixelFormatName(videoCodecCtx_->pix_fmt),
+        settings.video.pixelFormatName());
+    }
+    swPixelFormat_ = videoCodecCtx_->pix_fmt;
   }
 
   if (avcodec_parameters_from_context(videoStream_->codecpar,
@@ -936,7 +990,7 @@ Result<void> VideoRecorderFFmpeg::initVideoStream(
   videoFrame_.reset(av_frame_alloc());
   if (!videoFrame_)
     return Result<void>::err("Failed to allocate video frame");
-  videoFrame_->format = AV_PIX_FMT_YUV420P;
+  videoFrame_->format = videoCodecCtx_->pix_fmt;
   videoFrame_->width = videoCodecCtx_->width;
   videoFrame_->height = videoCodecCtx_->height;
   // Checked. av_frame_get_buffer is the only thing that allocates videoFrame_'s

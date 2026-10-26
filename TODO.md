@@ -198,6 +198,18 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       recording is one frame short. Separately `AV_PIX_FMT_YUV420P` is hardcoded while
       `EncoderSettings::pixelFormat` exists and `validate()` never checks that the chosen
       format is supported. Both are one-liners and both fail silently.
+      **The pixel-format half shipped 2026-10-26; the frame-0 half is still open and needs GL.**
+      `avPixelFormatFor()` maps the settings enum to an `AVPixelFormat`, the encoder context
+      takes it instead of `AV_PIX_FMT_YUV420P`, and after `avcodec_open2` the *negotiated*
+      format drives both `swPixelFormat_` (the sws target) and `videoFrame_->format` — an
+      encoder that returns a different format is now logged rather than silently written into a
+      frame declared as the other one. `validate()` refuses the two combinations that are
+      certainly wrong: NV12/P010LE without a hardware encoder, and rgb24 with libx264/libx265
+      (the error names yuv444p as the colour-lossless path). Pinned by
+      `theChosenPixelFormatReachesTheMuxedStream` — which reads the finished file's
+      `codecpar->format` back as yuv422p, not the settings struct — and
+      `impossiblePixelFormatsAreRefusedByValidation`. The frame-0 half stays open because it is
+      a PBO readback on a real GL context, and a headless run proves nothing about it.
 - [ ] T0173 projectM's broken-preset retry: the premise needs GL evidence before anything is changed (`src/visualizer/projectm/Bridge.cpp:48`) #risk-medium
       Originally filed as: registering `projectm_set_preset_switch_requested_event_callback` overrides projectM's own single-slot handler, killing its 5-retry recovery. **Inspection says the premise is wrong.** projectM has TWO callback slots here (`ProjectMCWrapper.cpp:98-112`): `preset_switch_requested` and `preset_switch_failed`. `Bridge::init` overwrites only the **requested** one. The retry lives in the **failed** handler — `PlaylistCWrapper::OnPresetSwitchFailed` (`PlaylistCWrapper.cpp:57-100`) — which the app never touches, and it is still installed, so a failed preset load should still retry up to `m_presetSwitchRetryCount` and advance via `PlayPresetIndex`. The claim cannot be settled by reading: it needs a real window, a corrupt `.milk` next to a valid one, and a forced switch, because the whole path is GL-dependent and every headless lane skips it. **Do not "fix" this on the current evidence** — re-installing both callbacks or forwarding failures into the app's pending mechanism would change working native wiring on the strength of a claim that inspection contradicts. If it is taken up: verify with the broken-preset experiment first (a temp dir with one truncated `.milk` and one valid preset, force play, count retries through the app's `switched` signal), and only then decide. Distinct from T0057, which is about the never-emitted `presetLoading` flag.
 - [ ] T0180 **ASan lane: `TestQmlStartup::settingsWindowOpensOnNavigate` throws at teardown with the engine still mid-creation** (`tests/integration/test_main.cpp:70-126`, `tests/integration/CMakeLists.txt:33`) #risk-high

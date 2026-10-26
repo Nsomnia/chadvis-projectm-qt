@@ -2750,6 +2750,76 @@ private slots:
         QVERIFY(owned == nullptr);
         QVERIFY(fs::file_size(path) > 0);
     }
+
+    // T0171's second half: `pixelFormat` was decorative. The encoder context and
+    // the AVFrame were both hardcoded YUV420P, so a settings file asking for 422
+    // recorded 420 and nothing said so. The observation is the finished file's
+    // own codec parameters, not the settings struct: a setting that reaches the
+    // struct and not the muxed stream is exactly the bug.
+    void theChosenPixelFormatReachesTheMuxedStream() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const fs::path path =
+            fs::path(dir.path().toStdString()) / "pixfmt.mp4";
+
+        EncoderSettings settings = timelineSettings(
+            QString::fromStdString(path.string()));
+        settings.video.pixelFormat = PixelFormat::YUV422P;
+        QVERIFY2(settings.validate().isOk(), "yuv422p + libx264 must be legal");
+
+        VideoRecorderFFmpeg encoder;
+        auto started = encoder.init(settings);
+        QVERIFY2(started.isOk(), started.isErr() ? started.error().message.c_str()
+                                                 : "init failed");
+        u64 bytesWritten = 0;
+        for (int i = 0; i < 3; ++i) {
+            GrabbedFrame frame = solidFrame(static_cast<u8>(40 + i * 30));
+            frame.timestamp += i * kIntervalUs;
+            QVERIFY(encoder.encodeVideo(frame, bytesWritten));
+        }
+        encoder.flush(bytesWritten);
+        encoder.cleanup();
+
+        const std::string written = encoder.getOutputPath();
+        const std::string pathStr = written.empty() ? path.string() : written;
+        AVFormatContext* raw = nullptr;
+        QCOMPARE(avformat_open_input(&raw, pathStr.c_str(), nullptr, nullptr), 0);
+        AVFormatContextInPtr format(raw);
+        QVERIFY(format);
+        QVERIFY(avformat_find_stream_info(format.get(), nullptr) >= 0);
+        const int index = av_find_best_stream(format.get(), AVMEDIA_TYPE_VIDEO, -1,
+                                              -1, nullptr, 0);
+        QVERIFY(index >= 0);
+        QCOMPARE(format->streams[index]->codecpar->format,
+                 static_cast<int>(AV_PIX_FMT_YUV422P));
+    }
+
+    // The other half: a format the encoder cannot take is refused with a
+    // sentence instead of being recorded as something else.
+    void impossiblePixelFormatsAreRefusedByValidation() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        EncoderSettings settings = testSettings(
+            QString::fromStdString((fs::path(dir.path().toStdString()) / "x.mp4").string()));
+
+        settings.video.pixelFormat = PixelFormat::NV12;
+        auto softwareNv12 = settings.validate();
+        QVERIFY(softwareNv12.isErr());
+        QVERIFY2(softwareNv12.error().message.find("hardware") != std::string::npos,
+                 softwareNv12.error().message.c_str());
+
+        settings.video.pixelFormat = PixelFormat::RGB24;
+        auto h264Rgb = settings.validate();
+        QVERIFY(h264Rgb.isErr());
+        QVERIFY2(h264Rgb.error().message.find("rgb24") != std::string::npos,
+                 h264Rgb.error().message.c_str());
+
+        // The two formats a software encoder does take stay legal.
+        settings.video.pixelFormat = PixelFormat::YUV420P;
+        QVERIFY(settings.validate().isOk());
+        settings.video.pixelFormat = PixelFormat::YUV444P;
+        QVERIFY(settings.validate().isOk());
+    }
 };
 
 int runTestRecorder(int argc, char** argv) {

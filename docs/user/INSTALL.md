@@ -74,7 +74,7 @@ cd chadvis-projectm-qt
 
 Use `./build.sh --rebuild` when a clean rebuild is required, or `./build.sh --debug` / `./build.sh --release` to select a configuration. Run `./build.sh --help` for the compact option list. A bare `./build.sh` with no flags reuses whatever CMake settings are already cached in `build/`.
 
-`--rebuild` archives the existing `build/` directory into `.backup_graveyard/` under a timestamped name instead of deleting it. Nothing is thrown away. We are not animals.
+`--rebuild` deletes the existing `build/` directory and configures from scratch. Build directories are generated artefacts, so nothing backs them up or parks them — a parked tree is disk the next build needs, and nobody has ever restored one. Keep a binary you care about by copying it out (`build/chadvis-projectm-qt.app` on macOS, `build/chadvis-projectm-qt` elsewhere) before rebuilding.
 
 ### 🍎 macOS / Homebrew
 

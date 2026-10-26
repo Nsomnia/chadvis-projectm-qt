@@ -459,16 +459,16 @@ BUILD_DIR="$ROOT/$BUILD_DIR"
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
-archive_build_dir() {
+# Build directories are generated artefacts and are DISCARDED, never parked.
+# Parking them was a mistake worth recording: six profiles left ~2 GB of dead
+# build trees in .backup_graveyard, which is disk the machine needed for the
+# next build, and nobody ever restored one. The user copies a binary they want
+# to keep into ~/Documents by hand. Nothing in this script backs a build up.
+discard_build_dir() {
     [[ -d "$BUILD_DIR" ]] || return 0
-    local graveyard="$ROOT/.backup_graveyard"
-    local stamp destination
-    stamp="$(date +%Y%m%d-%H%M%S)"
-    destination="$graveyard/$(basename "$BUILD_DIR")-$stamp"
-    [[ -e "$destination" ]] && destination="$destination-$$"
-    mkdir -p "$graveyard"
-    printf '%sARCHIVE%s %s -> %s\n' "$YELLOW" "$RESET" "$BUILD_DIR" "$destination"
-    mv "$BUILD_DIR" "$destination"
+    printf '%sDISCARD%s %s (generated directory; nothing is backed up)\n' \
+        "$YELLOW" "$RESET" "$BUILD_DIR"
+    cmake -E remove_directory "$BUILD_DIR"
 }
 
 configure_build() {
@@ -639,14 +639,14 @@ sdk_is_stale() {
 
 do_build() {
     # Reconfigure when the machine changed under this build directory, for any
-    # of the reasons the staleness checks know about. Reconfigure, never nuke:
-    # it costs seconds and keeps every object that is still valid. The one
-    # exception is a different Qt installation, where the objects belong to the
-    # other Qt (see qt_prefix_changed).
+    # of the reasons the staleness checks know about. Reconfigure in place: it
+    # costs seconds and keeps every object that is still valid. A different Qt
+    # installation invalidates most objects on its own (include paths change),
+    # and the user asks for --rebuild when they want the tree gone.
     if [[ -f "$BUILD_DIR/CMakeCache.txt" ]] && qt_prefix_changed; then
-        printf 'build.sh: %s belongs to a different Qt installation; parking it and configuring fresh.\n' \
+        printf 'build.sh: %s was configured against a different Qt installation; reconfiguring in place.\n' \
             "$BUILD_DIR" >&2
-        archive_build_dir
+        printf 'build.sh: use --rebuild for a clean tree (the old directory is discarded, not kept).\n' >&2
         configure_build
     elif [[ -f "$BUILD_DIR/CMakeCache.txt" ]] && { qt_is_stale || sdk_is_stale || cmake_is_stale; }; then
         configure_build
@@ -741,11 +741,11 @@ case "$ACTION" in
         printf '  log                   %s\n' "$LOG_FILE"
         ;;
     clean)
-        archive_build_dir
-        printf '%sOK%s %s archived\n' "$GREEN" "$RESET" "$(basename "$BUILD_DIR")"
+        discard_build_dir
+        printf '%sOK%s %s removed\n' "$GREEN" "$RESET" "$(basename "$BUILD_DIR")"
         ;;
     rebuild)
-        archive_build_dir
+        discard_build_dir
         configure_build
         do_build
         ;;

@@ -264,6 +264,24 @@ Result<void> EncoderSettings::validate() const {
         return Result<void>::err("CRF must be between 0 and 51");
     }
 
+    // Pixel format. Two combinations are certain rather than codec trivia, and
+    // both used to be silent: the recorder hardcoded yuv420p for every software
+    // encoder, so a settings file asking for anything else recorded 420p and
+    // said nothing (T0171). A hardware layout on a software codec is refused
+    // here; asking an encoder for a format it does not take now fails at
+    // avcodec_open2 with the format named.
+    if (!video.isHardwareAccelerated() &&
+        (video.pixelFormat == PixelFormat::NV12 ||
+         video.pixelFormat == PixelFormat::P010LE)) {
+        return Result<void>::err(video.pixelFormatName() +
+            " is a hardware pixel format; it needs a hardware encoder (NVENC/VAAPI)");
+    }
+    if ((video.codec == VideoCodec::H264 || video.codec == VideoCodec::H265) &&
+        video.pixelFormat == PixelFormat::RGB24) {
+        return Result<void>::err(
+            "libx264/libx265 do not accept rgb24; use yuv444p for the colour-lossless path");
+    }
+
     return Result<void>::ok();
 }
 
