@@ -145,7 +145,9 @@ enum class Role {
     ArtworkOrigin,
     /// Captured progressive-media CloudFront distribution.
     CloudFront,
-    /// suno.com / suno.ai themselves. `Origin`/`Referer` only - never a request target.
+    /// Suno's alternate web domain, `suno.ai`. `Origin`/`Referer` only - never a
+    /// request target. `suno.com` itself is `StudioApi` since T0336: it is the
+    /// browser's API base now, and a host gets one row.
     WebApp,
     /// Ably SSE push. Known only as a response value; see the registry note.
     Realtime,

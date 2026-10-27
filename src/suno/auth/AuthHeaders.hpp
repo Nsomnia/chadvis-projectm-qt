@@ -19,7 +19,6 @@ namespace vc::suno::auth {
 inline constexpr const char* kBrowserUserAgent =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";
-inline constexpr const char* kStudioApiHost = "studio-api-prod.suno.com";
 
 /// Immutable header set for studio-api requests; apply() stamps them onto a
 /// QNetworkRequest in one shot.

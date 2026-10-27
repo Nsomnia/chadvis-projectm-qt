@@ -144,6 +144,44 @@ private slots:
         QCOMPARE(notification.caption, QStringLiteral("A caption"));
     }
 
+    /// T0335: v3 carries the sentence as rich-text segments, not `caption`.
+    /// Before this the parser built an empty caption and no error, so the list
+    /// rendered blank cards the moment the route flipped.
+    void parsesV3TextSegments()
+    {
+        const QJsonObject root{
+            {QStringLiteral("notified_at"), QStringLiteral("2026-10-24T03:08:00.000Z")},
+            {QStringLiteral("notifications"), QJsonArray{
+                                               QJsonObject{
+                                                   {QStringLiteral("id"), QStringLiteral("v3-1")},
+                                                   {QStringLiteral("notification_type"), QStringLiteral("comment_mention")},
+                                                   {QStringLiteral("updated_at"), QStringLiteral("2026-10-24T03:00:00.000Z")},
+                                                   {QStringLiteral("is_read"), false},
+                                                   {QStringLiteral("text"), QJsonArray{
+                                                                                  QJsonObject{{QStringLiteral("text"), QStringLiteral("Ada")},
+                                                                                              {QStringLiteral("bold"), true}},
+                                                                                  QJsonObject{{QStringLiteral("text"), QStringLiteral(" mentioned you")}},
+                                                                              }},
+                                                   {QStringLiteral("avatars"), QJsonArray{
+                                                                                  QJsonObject{{QStringLiteral("image_url"), QStringLiteral("https://cdn2.suno.ai/a.jpg")}},
+                                                                              }},
+                                                   {QStringLiteral("thumbnail_url"), QStringLiteral("https://cdn2.suno.ai/t.jpg")},
+                                               },
+                                           }},
+        };
+
+        auto parsed = SunoNotificationService::parseResponse(root);
+        QVERIFY(parsed.has_value());
+        QCOMPARE(parsed->notifications.size(), 1);
+        const auto& notification = parsed->notifications.front();
+        QCOMPARE(notification.id, QStringLiteral("v3-1"));
+        QCOMPARE(notification.type, QStringLiteral("comment_mention"));
+        QCOMPARE(notification.createdAt, QStringLiteral("2026-10-24T03:00:00.000Z"));
+        QVERIFY(!notification.read);
+        QCOMPARE(notification.caption, QStringLiteral("Ada mentioned you"));
+        QCOMPARE(notification.contentMessage, QStringLiteral("Ada mentioned you"));
+    }
+
     void toleratesMalformedEntriesAndNestedContent()
     {
         const QJsonObject root{

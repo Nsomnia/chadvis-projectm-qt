@@ -267,6 +267,11 @@ QByteArray validJsonFor(const QUrl& url)
     if (path.contains(QStringLiteral("/notification/v2/read"))) {
         return compactJson(QJsonObject{{QStringLiteral("ok"), true}});
     }
+    // The list moved to v3 (T0335); the fixture serves the v3 spelling and keeps
+    // the v2 branch for the mark-read route above.
+    if (path.contains(QStringLiteral("/notification/v3"))) {
+        return compactJson(notificationList());
+    }
     if (path.contains(QStringLiteral("/notification/v2"))) {
         return compactJson(notificationList());
     }

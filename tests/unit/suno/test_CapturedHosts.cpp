@@ -234,23 +234,20 @@ private slots:
                               QStringLiteral("suno.com")}));
     }
 
-    void theRoleCensusIsThreeDoublesAndOneOfEveryOtherRole()
+    void theRoleCensusIsThreeStudioApiHostsOneDoubleAndOneOfEveryOtherRole()
     {
         // Three roles carry two hosts and the other six carry one each, which is
-        // 12. The doubles are deliberate: StudioApi spans both tiers of the one
-        // API surface, the cdn1/cdn2 artwork pair is two captured hosts rather
-        // than a wildcard, because "some Suno CDN" is not a captured fact, and
-        // WebApp covers both Suno web domains (suno.com and its suno.ai alias)
-        // rather than a wildcard, because "some Suno domain" is not a captured
-        // fact either.
-        QCOMPARE(static_cast<int>(hostsForRole(Role::StudioApi).size()), 2);
+        // 12. StudioApi is three: both tiers of the captured API surface plus
+        // suno.com/a/api, the browser's base since 2026-10-24. The cdn1/cdn2
+        // artwork pair is two captured hosts rather than a wildcard, because
+        // "some Suno CDN" is not a captured fact. Every other role is one.
+        QCOMPARE(static_cast<int>(hostsForRole(Role::StudioApi).size()), 3);
         QCOMPARE(static_cast<int>(hostsForRole(Role::ArtworkOrigin).size()), 2);
-        QCOMPARE(static_cast<int>(hostsForRole(Role::WebApp).size()), 2);
+        QCOMPARE(static_cast<int>(hostsForRole(Role::WebApp).size()), 1);
 
         std::size_t total = 0;
         for (const Role role : kAllRoles) {
-            if (role != Role::StudioApi && role != Role::ArtworkOrigin &&
-                role != Role::WebApp) {
+            if (role != Role::StudioApi && role != Role::ArtworkOrigin) {
                 QCOMPARE(static_cast<int>(hostsForRole(role).size()), 1);
             }
             total += hostsForRole(role).size();
@@ -412,7 +409,8 @@ private slots:
         // no row and conclude the host was unverified.
         QCOMPARE(hostsOf(hostsForRole(Role::StudioApi)),
                  QStringList({QStringLiteral("studio-api-prod.suno.com"),
-                              QStringLiteral("studio-api-staging.suno.com")}));
+                              QStringLiteral("studio-api-staging.suno.com"),
+                              QStringLiteral("suno.com")}));
         QCOMPARE(hostsOf(hostsForRole(Role::ClerkAuth)),
                  QStringList({QStringLiteral("auth.suno.com")}));
         QCOMPARE(hostsOf(hostsForRole(Role::MediaOrigin)),
@@ -422,7 +420,7 @@ private slots:
         QCOMPARE(hostsOf(hostsForRole(Role::CloudFront)),
                  QStringList({QStringLiteral("d2lwuy8qc234o3.cloudfront.net")}));
         QCOMPARE(hostsOf(hostsForRole(Role::WebApp)),
-                 QStringList({QStringLiteral("suno.ai"), QStringLiteral("suno.com")}));
+                 QStringList({QStringLiteral("suno.ai")}));
         QCOMPARE(hostsOf(hostsForRole(Role::Realtime)),
                  QStringList({QStringLiteral("main.realtime.ably.net")}));
         QCOMPARE(hostsOf(hostsForRole(Role::UploadOrigin)),
@@ -554,6 +552,10 @@ private slots:
         // The positive case, stated first and exactly. Without it every other test
         // in this file would be satisfied by a predicate that refuses everything.
         expectPermitted(QUrl{QStringLiteral("https://studio-api-prod.suno.com/api/session/")},
+                        Tier::Production);
+        // T0336: the browser's base. It is the same role, or AuthHeaders would
+        // refuse to attach the bearer to every call after the base moved.
+        expectPermitted(QUrl{QStringLiteral("https://suno.com/a/api/feed/v3")},
                         Tier::Production);
     }
 

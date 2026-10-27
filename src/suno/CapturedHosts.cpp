@@ -121,18 +121,24 @@ constexpr HostRule kUploadTarget{"suno-uploads.s3.amazonaws.com", Tier::Producti
                                  "2026-09-24 capture, temporary direct multipart upload "
                                  "target"};
 
-// suno.com. `Origin`/`Referer` only - it is a header value this client imitates, not a
-// request target. [T1] Burp/HAR/recon, and the OAuth final destination.
-constexpr HostRule kSunoWeb{"suno.com", Tier::Production, Evidence::Captured, Role::WebApp,
-                            "Origin/Referer header value and OAuth final destination"};
+// suno.com. Two jobs in one row, and the role is the credential-bearing one:
+// it is the browser's API base (`/a/api`, 2026-10-24 HAR — every route this
+// client owns moved there, and `unified/library` / `notification/v3` exist only
+// there) and it remains the web origin whose `Origin`/`Referer` this client
+// imitates. `Role::StudioApi` is what `AuthHeaders` reads before attaching a
+// bearer, so this row has to carry it (T0336). A host gets one row; see the
+// uniqueness assertion below.
+constexpr HostRule kSunoWeb{"suno.com", Tier::Production, Evidence::Captured, Role::StudioApi,
+                            "2026-10-24 browser HAR: /a/api is the API base for feed/v3, "
+                            "unified/library, unified/feed, notification/v3; also the web origin "
+                            "whose Origin/Referer this client sends"};
 
-// suno.ai. The same treatment as suno.com: Suno's alternate web domain,
-// which answers 308 Permanent Redirect to https://suno.com/ (checked
-// 2026-10-17). `Origin`/`Referer` only, never a request target — the
-// client still speaks to suno.com (Clerk's configured origin), and this
-// row exists so the registry recognises the domain a user may have
-// landed on instead of refusing it as unknown. A bare host, not a
-// wildcard: subdomains such as api.suno.ai stay refused.
+// suno.ai. The alternate web domain, which answers 308 Permanent Redirect to
+// https://suno.com/ (checked 2026-10-17). `Origin`/`Referer` only, never a request
+// target — the client speaks to suno.com (Clerk's configured origin), and this
+// row exists so the registry recognises the domain a user may have landed on
+// instead of refusing it as unknown. A bare host, not a wildcard: subdomains such
+// as api.suno.ai stay refused. (suno.com is `StudioApi` since T0336.)
 constexpr HostRule kSunoAi{"suno.ai", Tier::Production, Evidence::Captured, Role::WebApp,
                            "Alternate Suno web domain; 308-redirects to suno.com (checked "
                            "2026-10-17). Origin/Referer only, like suno.com"};
@@ -151,10 +157,10 @@ constexpr std::array<HostRule, 1> kMediaOrigins{kAudiopipe};
 constexpr std::array<HostRule, 1> kClerkAuthHosts{kAuthSuno};
 constexpr std::array<HostRule, 2> kArtworkOrigins{kCdn1, kCdn2};
 constexpr std::array<HostRule, 1> kCloudFrontHosts{kCloudFront};
-constexpr std::array<HostRule, 2> kWebAppHosts{kSunoAi, kSunoWeb};
+constexpr std::array<HostRule, 1> kWebAppHosts{kSunoAi};
 constexpr std::array<HostRule, 1> kRealtimeHosts{kAbly};
 constexpr std::array<HostRule, 1> kUploadOrigins{kUploadTarget};
-constexpr std::array<HostRule, 2> kStudioApiHosts{kStudioProd, kStudioStaging};
+constexpr std::array<HostRule, 3> kStudioApiHosts{kStudioProd, kStudioStaging, kSunoWeb};
 constexpr std::array<HostRule, 1> kOrchestratorHosts{kOrpheus};
 
 constexpr std::array<HostRule, 10> kProductionHosts{kAudiopipe, kAuthSuno, kCdn1,

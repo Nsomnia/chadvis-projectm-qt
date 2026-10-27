@@ -39,7 +39,13 @@ namespace vc::suno::endpoints {
 
 // ── Base URLs ──────────────────────────────────────────────
 // T1 bases: Burp 2026-08-25 / browser HAR 2026-09-23. MODAL_BASE is LEAD.
-constexpr std::string_view API_BASE = "https://studio-api-prod.suno.com/api"; // [T1]
+//
+// T0336: `studio-api-prod` is a live alias, not a dead host -- route-probe with
+// this app's own bearer gets byte-identical 200s from both bases for feed/v3 and
+// unified/explore. The browser moved to `suno.com/a/api` on 2026-10-24 (HAR),
+// and `unified/library` / `notification/v3` exist only there. This base follows
+// the browser so a future removal of the alias is not a break:
+constexpr std::string_view API_BASE = "https://suno.com/a/api"; // [T1]
 constexpr std::string_view MODAL_BASE = "https://suno-ai--orpheus-prod-web.modal.run"; // [LEAD]
 constexpr std::string_view CDN_BASE = "https://cdn1.suno.ai"; // [T1]
 constexpr std::string_view CDN_CLOUDFRONT_BASE = "https://d2lwuy8qc234o3.cloudfront.net"; // [T1]
@@ -209,7 +215,11 @@ constexpr std::string_view MANGO_RIGHTS = "/mango/rights"; // [T1] POST
 // the very allowance the streaming path exists to avoid.
 
 // ── Studio API: Notifications ───────────────────────────────
-// T1: misc-telemetry.md (Burp 2026-08-25).
+// T1: misc-telemetry.md (Burp 2026-08-25); v3 from the 2026-10-24 browser HAR.
+// The browser lists on v3 and still counts/mutates on v2: one session made 25
+// `/a/api/notification/v3?include_hooks=true` calls alongside 25 v2 badge-count
+// calls. There is no v3 badge route (T0335).
+constexpr std::string_view NOTIFICATION_V3 = "/notification/v3"; // [T1] GET
 constexpr std::string_view NOTIFICATION_V2 = "/notification/v2"; // [T1] GET
 constexpr std::string_view NOTIFICATION_BADGE_COUNT = "/notification/v2/badge-count"; // [T1] GET
 

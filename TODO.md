@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-10-25
+updated: 2026-10-26
 ---
 
 # ChadVis backlog
@@ -55,6 +55,20 @@ line to describe an item is describing it in the wrong place. Finished work move
 ---
 
 ## P0 — the product is broken, data is corrupted, or a secret is exposed
+
+- [ ] T0346 Bring every non-Studio Sun capability found in the endpoint surface into the product — the capability sweep (`src/suno/`, `src/qml_bridge/`) #feature #user-priority
+      Provenance is **sunox register §1** in
+      [docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md](docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md)
+      (commit `8a20930d0ab9adcce802aeaf4ece492821daef69`, claims dated ≤2026-09-14, retrieved
+      2026-10-27, MIT — all citations in this item and in T0346.md are `[LEAD]`, not ours) combined
+      with **our own captured inventory and `src/suno/` grep facts** (24 endpoint constants wired,
+      11 mutation verbs disabled, `SunoBridge::generate()` refuses). Hard gates that a
+      third-party surface never lifts: every mutation needs **our own capture or a
+      fail-closed self-verifying route** (never a `[LEAD]` body), no new `CapturedHosts`
+      host without a capture, and Studio multitrack export is out of scope. Eleven
+      families with build/partial/missing status per grep, module placement inside the
+      existing layering, and the per-family sub-task rule are in
+      [docs/backlog/T0346.md](docs/backlog/T0346.md); each family claims its own sub-tasks here before any work.
 
 
       **Closed 2026-10-25: the parser read a two-releases-old envelope.** A
@@ -188,6 +202,12 @@ line to describe an item is describing it in the wrong place. Finished work move
       `mutationsUnavailableReason` / `mutationsBusy`. ~727 LOC plus 11 `Q_INVOKABLE`s can
       neither run nor be seen. Decide: wire it behind an explicit user setting **and** add
       the QML handlers, or delete it and mark the constants `declared-unused`.
+      **[LEAD] corroboration, not new scope:** the sunox register (§1; §7.6) in
+      docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md — claims ≤2026-09-14, retrieved 2026-10-27 —
+      evidences *another client actually driving this route family per-route* (playlist v2 CRUD
+      one mutation at a time with `partial_mutation` recovery; downloads gated per source).
+      Per-route reachability for the same routes we hold unreachable is engineering evidence at
+      this class, still `[LEAD]` for us; the §5.13 captures remain what closes the wire format.
 - [ ] T0049 **Qt 6.12 can convert missing `required property` into a load-time error — not used** (`src/qml/`, `src/core/Application.cpp`) #risk-high
       "When instantiating a component with missing required properties, the engine now
       reports an error instead of silently constructing an incomplete object." Marking
@@ -234,6 +254,58 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       The reported symptom. `AuthCoordinator::beginGoogleSignIn()` opens `https://suno.com/create?redirected_from=signin` and stops there, by design: Clerk's flow delivers the OAuth `code` to `auth.suno.com/social/complete/` and **never to 127.0.0.1**, so there is no callback for a desktop client to catch. For a returning user the browser simply opens on an already-signed-in page, nothing is exchanged, and the app waits forever for a paste the UI only mentions in a collapsed field. **The credential exists, in the right place, right now.** The recon answers the whole question end to end: `suno-recon-cat-stealth-modekl/suno-oauth-google.md` captures the live flow — `POST /v1/client/sign_ins` with `strategy=oauth_google` sets `__client` (`HttpOnly`, `Secure`, `SameSite=None`, **Max-Age 31536000 ≈ 1 year**, a refresh JWT whose payload says `"token_type":"refresh"`) plus `__client_uat`; `reports/endpoints.md` confirms `POST auth.suno.com/v1/client/sessions/{sid}/tokens` mints fresh `__session` bearers from it and that the `__session` bearer itself (`aud: suno-api`) is what the API wants. On this machine, Brave's cookie store holds `__client`, `__client_Jnxw-muT`, `__client_uat(_Jnxw-muT)` and `__session(_Jnxw-muT)` for `suno.com`/`auth.suno.com` — verified by read-only query on a copy of the DB. **The fix: harvest the browser's cookie store.** `HttpOnly` blocks `document.cookie` (which is why T0182 died) but not the on-disk SQLite store; the recon's own `bin/freshtok.py` already does this for Brave on macOS (keychain `Brave Safe Storage` → PBKDF2-SHA1, 1003 iters, `saltysalt`, 16-byte key → AES-128-CBC, v10 layout, 13-byte header). Implement the same in C++: copy the DB (WAL-safe), select the Clerk cookie family for `suno.com` hosts only, decrypt, assemble a `Cookie:` header, and hand it to `SunoClient::setCookie()` — which already persists to `CredentialStore` and kicks a bearer fetch, and whose `classifyStoredCredential()` already accepts exactly these three name prefixes. **Explicit user action, never automatic**: the first read of a browser's Safe Storage secret makes macOS ask the user to allow it, which is precisely the consent moment this needs. Never log a value; `suno.com` hosts only.
       **Shipped as `[?]` — code complete, all gates green, and the shipped decrypt proven against the real store, with exactly one leg unverified: a human pressing the button.** Three decrypt defects were found only by driving the real Brave store, none reproducible in the synthetic fixtures: `QFile::copy` silently refuses to overwrite the temp file `QTemporaryFile` already created (so every real-store read returned nothing while the synthetic one passed); `kCCOptionPKKS7Padding` strips-or-silently-does-not as Brave re-encrypts cookies live (so the crypto call now uses `options = 0` with an explicit tail handler); and the 16-byte host-binding prefix on `.suno.com` cookies begins with byte `0xdd`, which a control-character-only "binary" check classifies as printable — the unit fixture now uses exactly that byte. Real-data evidence: the shipped `decryptChromiumValue` on this machine's live `__client` value returns 689 clean bytes, matching openssl ground truth; the full `harvest()` path read the same store. **What remains is MT-001-D2**: each newly-linked binary gets its own one-time macOS consent prompt for "Brave Safe Storage", which on an unattended machine times out and reports no session — correct behaviour, but the shipped app will prompt the same way the first time, and the user must press **Already signed in? Import the session** once and click Allow.
       **Post-shipment, pressing the button found three more defects, each fatal on its own.** (1) `deriveChromiumKey` passed CommonCrypto a salt **length of 10 for the nine-byte `"saltysalt"`**, so the derived key included the terminator and matched no Chromium build; every real cookie decrypted to noise and the app called its own bug "this build's format support needs updating". The synthetic round-trip could not see it because it encrypted with the same wrong key. Now `sizeof - 1`, with a known-answer test (`fecbbdb2774354b6b8466d2758047cb5`). (2) A browser stores each family **twice** — host-only `__client` and `__client_Jnxw-muT` — and all four JWT copies made the header **4695 bytes against `CredentialStore`'s 2560-byte ceiling**, so the import authenticated and then could not persist: the session worked until quit. `assembleCookieHeader` keeps one cookie per family (the host-only copy) and the live header now measures **2333** bytes. (3) The backend used `kSecUseDataProtectionKeychain`, which needs an `application-identifier` entitlement an ad-hoc bundle cannot have — every write returned `errSecMissingEntitlement` (-34018), so even a small credential was never stored. It uses the login keychain now; reads stay on the worker, a denied read is a failure rather than a plaintext fallback, and `CHADVIS_LIVE_KEYCHAIN=1 … liveKeychainRoundTrip` proves a real store/load/remove. Remaining for `[x]`: one human pass with the rebuilt app (import, quit, relaunch, still signed in) — MT-001-D2.
+
+- [ ] T0339 **The paste path bypasses `classifyStoredCredential`, and the classifier itself treats `__client_uat` as a credential** (`src/qml_bridge/SettingsBridge.cpp:359-391`, `src/suno/auth/ClerkAuthClient.cpp:323-370`, `src/suno/SunoClient.cpp:687-717`, `tests/unit/suno/test_ClerkAuthClient.cpp`) #risk-medium
+      `SettingsBridge::commitSunoCredential()` always calls `SunoClient::setCookie()`, whatever the
+      shape, and `setToken()` has **zero production callers** — so `AuthTypes.hpp`'s promise that
+      `classifyStoredCredential` is "how a pasted header is classified" is false on the only paste
+      UI. Two consequences: a bare JWT goes out as `Cookie: eyJ…`, gets a 401, and reads as "Suno
+      rejected the stored credential" instead of the field's own "wants a cookie header" refusal;
+      and `classifyStoredCredential` accepts `__client_uat`-only as `ClerkCookieHeader`, because
+      `hasClerkCookie` includes that family — but `__client_uat` is session-presence metadata, not a
+      credential (ENDPOINT-INVENTORY.md §3.3; T0182). `BrowserCookieImport` already refuses that
+      shape; restore does not. Classify once at the paste boundary: `BearerToken` → `setToken`,
+      `ClerkCookieHeader` → `setCookie`, `Unsupported` → refuse with the named reason and neither
+      store nor fetch (or, if a bare JWT paste is a deliberate non-goal, refuse it there and say so
+      — today it does neither). Tighten the family test so `__client_uat` alone is not a credential
+      while `__client` + `__client_uat` still is. Test all three routes and assert no `/v1/client`
+      call for a refused value.
+
+- [ ] T0340 **The minted bearer is not bound to the session that minted it, and `applyBearer` clears the session id when `sid` is missing** (`src/suno/auth/ClerkAuthClient.cpp:671-684`, `src/suno/SunoClient.cpp:957-963`) #risk-high #security
+      The web client refuses to activate a session until the `tokens` jwt appears in the jar's
+      `__session*` values (`login-auth-redir-js-2_sso-callback-redirect-127.0.0.1.js:1505-1510,1560-1575`),
+      i.e. it binds bearer to session. `handleTokensBody` accepts any usable `{jwt}`, then sets
+      `lastObservedSessionId_ = ctx.sessionId` without comparing the token's own `sid`; a reply for
+      session B answering a request for A installs B's bearer and points the next refresh at B.
+      **Do not port the cookie-list check literally** — it verifies a browser Set-Cookie write we
+      have no jar for, and on a static header it would fire on every mint. Portable part: when the
+      `sid` claim exists and differs from `ctx.sessionId`, fail `ProtocolMismatch`; when it is absent
+      keep today's tolerance, but assign `lastActiveSessionId_` only when non-empty instead of
+      clearing it. Unit-test both branches. Both bundles are untracked scratch — never commit them.
+
+- [ ] T0341 **Clerk's failure envelope and `Retry-After` are discarded, and the specific `authFailed` reason never reaches QML** (`src/suno/auth/ClerkAuthClient.cpp:571-590,630-668`, `src/suno/SunoClient.*`, `src/qml_bridge/SunoBridge.cpp:784-804`) #risk-medium #blocks-ui
+      On a non-2xx the client chooses a sentence from the status alone; the body's `errors[0]`
+      (`code`, `message`, `long_message`, `meta.lockoutExpiresInSeconds`) is never read, and a 429's
+      `Retry-After` is ignored (`login-auth-redir-js-2_sso-callback-redirect-127.0.0.1.js:1083-1112`).
+      Codes the web UI branches on: `form_identifier_not_found`, `user_locked`, `needs_birthday`,
+      `not_implemented` (`login-auth-redir-js.js:634,659,697,1707-1712`). Worse,
+      `ClerkAuthClient::authFailed(reason)` carries a good sentence that dies at `SunoClient`: the
+      bridge falls back to the static per-kind text, so "rate limiting, retry shortly" renders as
+      "unexpected authentication response". Map a bounded code set to fixed sentences (never surface
+      raw `long_message`, which can echo the identifier), parse `Retry-After` with the existing
+      `http::parseRetryAfter`, and store the secret-free reason for `googleLoginError()`. Unknown
+      code keeps today's status sentence.
+
+- [ ] T0342 **`GET /v1/client` refuses an envelope whose `last_active_session_id` is absent even when exactly one session is present** (`src/suno/auth/ClerkAuthClient.cpp:91-190`) #risk-medium (after: T0340)
+      `tokenFromSessions` returns `nullopt` for an empty selector, so a body with one session and no
+      `last_active_session_id` is reported `NoActiveSession` although it carries a usable
+      `last_active_token.jwt`. The web client's selector is
+      `last_active_session_id ?? sessions?.[0]?.id ?? null`
+      (`login-auth-redir-js-2_sso-callback-redirect-127.0.0.1.js:1497-1503`), and the captured
+      instance runs `single_session_mode: true` (§3.4), so the single-session case is unambiguous
+      there. Adopt the fallback **only when exactly one session exists**; with two or more keep
+      refusing rather than guessing. Extend the parser tests with 0/1/2-session bodies.
+
 ## P2 — robustness, cleanup, and debt
 
 - [ ] T0327 **The credential-store handoff is a captured lambda across threads, and that is the whole TSan class** (`src/suno/SunoClient.cpp:267-335`) #risk-high
@@ -402,6 +474,12 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       `ctest --test-dir build-fast/tests --output-on-failure -j3` → **14/14 passed**
       (incl. `integration_tests` and `integration_gl_tests`),
       `./scripts/lint-qml.sh` → no blocking problems. Trail: `STATUS/T0071.log`.
+      **[LEAD] strengthens the remaining five:** register §7.4 of
+      docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md (the paperfoot row, opened 2026-10-10 — sunox
+      @ `8a20930d` does not speak to this claim) records that the word-level data lives under
+      `aligned_words[]` with per-word `word`, `start_s`, `end_s` (`success`, `p_align`; a missing
+      key is an error, not an empty list),
+      so karaoke-in-QML (T0120/T0121's owner) has a known data source; only the bridge is missing.
 - [ ] T0072 No `reuseItems` anywhere; a nested non-interactive `GridView` inside a virtualized `ListView` (`src/qml/`) #performance
       Zero occurrences across 7 views. `DiscoverView.qml:115-127` materialises every clip of
       every feed. Also 16 `layer.enabled` sites, and `KaraokeMaster.qml:117-126` re-evaluates
@@ -606,7 +684,38 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 - [ ] T0197 Nothing re-applies the theme when `ui().theme` changes from somewhere other than the Appearance panel (`src/qml/main.qml`) #risk-med
       `main.qml`'s `applyTheme()` runs **once**, in `Component.onCompleted`. Every path a user can reach today is covered — Settings previews live and Apply commits, and the commit value equals what is already on screen — so nothing is broken. The gap opens the moment a second writer appears: a profile switch, a config reload, or T0193's `ThemeCatalog` adopting a theme on disk. Then `config.toml` and the window disagree, silently, which is the exact failure T0047 was filed for. **The fix is small but not free, which is why it is here rather than done:** a `Connections { target: SettingsBridge; onThemeNameChanged: … }` must *not* apply unconditionally, because T0192 makes `--theme` a session override that is supposed to outrank the stored value — an unconditional re-apply would stomp the override the instant the user commits anything in Settings. The rule to encode is "re-apply on `themeNameChanged` **unless** a session override is active", and that rule needs eyes on it (MT-001-G) rather than a green ctest.
 
+- [ ] T0343 **TOS acceptance is `[T1]` and `declared-unused`; a stale acceptance silently removes the signed-in surface** (`src/suno/SunoAccountManager.*`, `src/qml/panels/settings/SunoSettings.qml`, `src/qml_bridge/SunoBridge.*`) #blocks-ui #risk-medium (after: T0341)
+      `GET /api/user/tos_acceptance` answers `{has_accepted_tos, has_accepted_tos_timestamp}`
+      (`ENDPOINT-INVENTORY.md:615`; `USER_TOS_ACCEPTANCE` is already declared in
+      `SunoEndpoints.hpp:170`). The web client re-prompts when the flag is false or the timestamp
+      precedes `2025-11-07T08:00:00Z`
+      (`login-auth-redir-js-2_sso-callback-redirect-127.0.0.1.js:895-965,537-548`) — a state a freshly
+      imported one-year credential can be in. Fetch it once from `SunoAccountManager::refreshAll()`,
+      show a settings notice naming the reason, and **never POST acceptance**: accepting terms is a
+      legal act the user performs in their browser, not an import side effect. A failed fetch shows
+      nothing (silence, not a false "not accepted").
+
+- [ ] T0344 **The envelope knows when the refresh credential dies, and the app forgets it** (`src/suno/auth/ClerkAuthClient.*`, `src/suno/SunoClient.*`, `src/qml/panels/settings/SunoSettings.qml`) #blocks-ui (after: T0342)
+      `cookie_expires_at` (epoch-ms) and each session's `abandon_at`/`expire_at` are already in the
+      captured envelopes ([TOUCH-TOKENS-SHAPES.md](docs/suno_api/TOUCH-TOKENS-SHAPES.md);
+      ENDPOINT-INVENTORY.md §3.3), and the parser reads only `id` and `last_active_token.jwt`. The
+      `__client` refresh credential lives about a year, so the failure arrives as a sudden
+      `RejectedCredential` with no warning. Carry the dates out of the envelope and show an advisory
+      "re-import before <date>" when inside, say, 14 days. **Advisory only** — §3.3 explicitly calls
+      `cookie_expires_at` advisory metadata, so it must never gate a request, force a refresh, or
+      turn a working session into `NeedsReauth`.
+
 ## P3 — polish and speculative
+
+- [ ] T0345 **Record the web client's own redirect validator, which is not the loopback gate** (`docs/suno_api/OAUTH_REDIRECT_ANALYSIS.md`) [P] #cleanup
+      The bundle's `isSafeRedirectUrl` accepts any `https:` URL and only restricts `http:` to
+      `localhost`, `127.0.0.1`, `[::1]`, `::1`
+      (`login-auth-redir-js-2_sso-callback-redirect-127.0.0.1.js:1286-1298`), and its SSO callback is
+      always `<origin>/sso-callback?redirect_url=<path+query+hash>` (`:1310-1320`). Two facts worth
+      having before the native-callback gate opens: the web client is permissive on https (so its
+      acceptance is no evidence that Clerk will accept ours), and any validator we port must be
+      **stricter** than this one — exact host, port and path, not "any https". Doc-only: this
+      records what the web client does and explicitly does not relax the five-proof gate above it.
 
 - [ ] T0117 Localization: zero `qsTr` across 58 QML files, ~200 user-visible literals (#feature) #cod-high
       Wiring is `qt_add_translations(project_lib SOURCE_TARGETS … RESOURCE_PREFIX /qt/qml/ChadVis/i18n
@@ -1033,14 +1142,20 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
 
 - [ ] T0259 **Generation submit/poll/complete: none** (`src/suno/`)
       NO `submitted → streaming → complete` polling, generation timeout, cancellation. Needs captcha-token flow + durable-processing contract captures first (human decision: never solve Turnstile — browser handoff + import). Hazard: `POST /api/generate/v2-web/` reportedly answers `200 {"status":"error","clips":[]}` after drawing credits — empty `clips[]` must not read as success.
+      **[LEAD] Aug/Sep-2026 server gates worth a capture each** (sunox register §7.6 in docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md; claims ≤2026-09-14, retrieved 2026-10-27):
+      `metadata.control_sliders.aug_creativity` must be a **whole number 0–4** (fractional → deterministic `400`, no clip drawn) and is gated by `/api/session/` flag `aug-creativity` (gated defaults omitted; explicit values fail closed when the flag is absent); `is_mumble=true` is accepted-then-**erased** unless the `mumble-mode` session flag; `is_max_mode=true` is preserved under the `max-mode` flag but final length is server-authoritative, and a description-mode `duration: 10` completed at ~73–80 s — acceptance ≠ compliance, so duration is sent only in v6 Custom mode. Third-party restatement of paid behaviour, not our evidence.
 - [ ] T0260 **Extend / remix creation: none** (`src/suno/`)
       NO `extend` endpoint/method anywhere; remix *relations* exist as endpoint constants but no caller implements remix/extend creation or listing. Upload `completed(uploadId)` has no downstream consumer.
+      **[LEAD] route-shape leads** (sunox register §7.6 in docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md; claims ≤2026-09-14, retrieved 2026-10-27): extend is `task:"extend"` on `/api/generate/v2-web/` (`continue_clip_id`, `continued_aligned_prompt`, `continue_at`, title needing a non-null string defaulting to the source's, feed/v3 enrichment for missing style metadata); uploaded-audio continuation is `task:"upload_extend"`; `POST /api/generate/concat/v2/` needs original generation history (`Bad history.` on an edited source). Capture targets, not a request builder — our captures decide.
 - [ ] T0261 **Stem separation: no request, download, or stem-aware naming** (`src/suno/`)
       `isStem()` + feed `stem` filter + `metadata.type` exist, but no stem-split request, stem download, or stem-aware naming; stem metadata fields (`history`, `infillLyrics`) dropped by parser; `stems` deleted from `WorkspaceState`.
+      **[LEAD] contract leads** (sunox register §7.6 in docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md; claims ≤2026-09-14, retrieved 2026-10-27): current extraction is `task:"gen_stem"` on `/api/generate/v2-web/` (NOT `/api/edit/stems/{clip_id}`, which stays a trailing-slash-conflict lead), `mv` forced to `chirp-v3-0`, Auto Split as group `Twelve`/task `twelve`/`stem_type_id` 91, Split-from-Mix as `extract` target+`Instrumental` complement; result classification from `metadata.stem_task`/`stem_type_group_name`/`stem_name`; tiers Auto Split (12 bank) / Split-from-Mix (pair) / Premier-Advanced (240 names, fail closed on Pro); result pages `GET /api/clip/{id}/stems/pages` → `stems?page=<zero-based>` — reads, not a Studio render; stem results share the parent's unlock (register §7.6).
 - [ ] T0262 **Cover: constant exists, no download/upload** (`src/suno/`)
       `PLAYLIST_V2_COVER_IMAGE` constant exists; no cover download/upload in downloader; `image_url` never fetched.
+      **[LEAD] routes** (sunox register §7.6; new paths §4.1 in docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md; claims ≤2026-09-14, retrieved 2026-10-27): direct prompt-image `POST /api/gen/prompt_image/` (200-char prompt → `image_url`) composed with `POST /api/gen/{clip_id}/set_metadata/`; the `SONG_COVER_ART` batch family (`video_gen/image/generate` + `/video/generate`, `prompt_images` typed `uploaded|generated|s3_filename`, `batch_id` + `image_ids`/`video_ids`, `poll_batches` with `processing|complete|error`, 402/429/`moderation_error` branches, model-configs + cost reads, `pending_batches`/`history` recovery, apply by ID not URL). All capture targets; no new host.
 - [ ] T0263 **Personas: ABSENT** (`src/suno/`, `qml/`)
       No persona struct, endpoint, UI, or mention (except `is_persona_root` bool on clip).
+      **[LEAD] the whole family now has named routes** (sunox register §7.6; new paths §4.1 in docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md; claims ≤2026-09-14, retrieved 2026-10-27): full CRUD (`get-personas/get-loved/get-followed/get-persona/get-persona-paginated/`, `create/`, `edit-persona/`, `set_visibility/?is_public=`, `toggle_love/` empty body, `trash-persona/?undo&hide` + bulk `PUT /api/persona/bulk-trash-personas/` with trash `undo:false hide:false` / restore `undo:true` / delete `hide:true`) and the Aug-24 voice-verification flow (local trim → WAV `voice_recording` upload → `POST /api/processed_clip/voice-vox-stem` → 1 s×120 poll → `GET /api/voice-verification/phrase/?language=` → 15 s verification WAV → `POST /api/voice-verification/` → 1.5 s×40 poll → `verification_id` into `POST /api/persona/create/`; 409 = already-exists signal; server-sourced `voice_record_limits` 10–240 s). Reads first, capture first; the verification chain is a multi-mutation flow that gets its own sub-task.
 - [ ] T0264 **Playlists sync / CRUD reads: ABSENT as reads** (`src/suno/`)
       No playlist model, fetch-list/get-tracks, create/delete/duplicate, local playlist cache/table, or reconciliation. Mutations can add/remove/reorder/rename/cover-image but never read back; Explore silently drops `type=="playlist"` items.
       **The read contract is captured (2026-10-26, read-only probe), so the blocking half is gone:**
@@ -1050,12 +1165,15 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       `unified/library`, whose `library_playlists` feed carries every owned playlist with
       `song_count`/`num_total_results` in one page of 10. What remains is the model, the cache and
       the UI — no capture needed.
+      **[LEAD] ordering note for the sub-task** (sunox register §7.6 in docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md; claims ≤2026-09-14, retrieved 2026-10-27): larger batch `tracks/remove` requests were reported answering **500 even when the same clips removed one-per-request succeeded** — submit one remove per clip, stop on first failure, and split `requested`/`succeeded`/`failed`/`not_attempted` for the retry decision. Also `PATCH /api/playlist/v2/{id}` carries uploaded-cover `metadata.cover_image_s3_id` (`image_<upload_id>`), not the flat `set_metadata` `image_url`. Third-party report; our removal capture still decides.
 - [ ] T0265 **Video: `video_url` parsed, no download or status polling** (`src/suno/`)
       `VIDEO_GENERATE_STATUS` / `VIDEO_GEN_PENDING_BATCHES` constants exist; no video download or status polling.
+      **[LEAD] route leads** (sunox register §7.6 in docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md; claims ≤2026-09-14, retrieved 2026-10-27): the legacy manager is `POST /api/video/generate/{clip_id}/` (no body client-side) with a 4 s `GET …/status/` poll, `video_url` + `video_is_stale` on completion — but its per-clip eligibility predicate was never captured anywhere, so the POST stays fail-closed here; the newer `video_gen` batch/cost/`poll_batches` surface is logged in T0262.
 - [ ] T0266 **WAV: conversion + `pollWavFile` stubs; `downloadFormat==WAV` refused** (`src/suno/SunoDownloader.cpp`)
       `m4a-opus` download refused (pinned P1 defect) -- **the refusal is now specified**: the
       captured progressive body is AES-128-CTR encrypted and needs a content-rights call
       (T0317); the `m4a-opus` form is no longer "unsupported", it is "not yet decrypted".
+      **[LEAD] the Aug-30 clip-level download contract** (sunox register §7.6 in [docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md](docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md); claims ≤2026-09-14, retrieved 2026-10-27): a source downloads without a write **only when its decoded `is_download_unlocked` is exactly `true`** (missing/`null`/`false` all locked); `POST /api/download/authorize` `{"item_id","item_type":"clip"}` is potentially metered, **not replay-safe**, never retried blind after an ambiguous result (redirect following must be off); authorized sources then answer prepared `GET /api/download/clip/{id}?format=mp3|m4a|wav|mp4`; stem results reuse the parent's unlock; billing `download_usage` threes (`current_period_downloads_limit/_used`, `additional_download_remaining`) stay live-read, never inferred. Capture targets; the prepared-URL host stays untrusted without our capture (paperfoot §5.1).
 - [ ] T0267 **Trash/restore and permanent delete: NO verb, NO endpoint** (`src/suno/`) (capture-gated)
       Deliberate — no captured contract; `POST /api/clips/delete/` 404'd. DB *stores* `is_liked`/`is_trashed`, so read side implies verbs that don't exist.
       **Like/unlike left this item on 2026-10-26: captured from the real UI, both directions.**
@@ -1092,6 +1210,7 @@ below is scoped to Explore + Account), resampler rate-conversion detail (T0153),
       No low-credit warning, spend tracking, purchase/upgrade flow, refresh scheduling, per-feature cost model.
 - [ ] T0278 **Missing endpoints to wire (with capture)** (`src/suno/`) (capture-gated)
       `POST /v1/client/verify` (heartbeat, 204), `GET /v1/environment`, `POST /v1/client/sign_ins`, social legs, `GET /v1/client/handshake`; `DELETE /v1/client` (remote sign-out) never observed → sign-out local-only; `[T1]`-but-absent constants (increment_play_count/v2, listen_milestone, notification/v2/clear-badge, onboarding/current|start, statsig/forked-onboarding, labs/configs, challenge/progress). Adding any requires constant + call site + test.
+      Add from the sunox register (§4.1/§7.6 in docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md) as `[LEAD]` capture targets, same terms: `GET /api/generate/cowrite-lyrics/models/`, `POST /api/generate/lyrics-infill/`, `POST /api/generate/lyrics-mashup` + `GET /api/generate/lyrics/{id}` poll, `POST /api/edit/fade|crop/{clip_id}/` + `POST /api/clips/adjust-speed/` + `/api/clips/reverse-clip/` + `GET /api/edit/action/{id}/` poll, `POST /api/gen/prompt_image/`, `POST /api/generate/upsample` (§7.6: `variation_category subtle|normal|high`, `style_profile natural|boost|clarity` halibut-only, `chirp-bass` omits variation), and the `/api/session/` flags (`aug-creativity`, `mumble-mode`, `max-mode`) as gate-pairing evidence — dated ≤2026-09-14, retrieved 2026-10-27, never promoted on their own authority.
 - [ ] T0279 **Feature-flag visibility: none** (`src/suno/`, `qml/`)
       Diagnostics panel from `GateResolver::evaluateAll()` (already deterministic) + raw `flags` map viewer + `configs.gen-endpoint` display + per-gate "why" sentences.
 - [ ] T0280 **Staging toggle: `TierPolicy::raiseTo(Staging)` exists, NO UI/config wiring** (`src/suno/`, `config/`)

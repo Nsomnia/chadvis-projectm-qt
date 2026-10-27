@@ -179,7 +179,7 @@ private slots:
         const std::string url = std::string(API_BASE) + std::string(LIBRARY_FEED);
         QCOMPARE(occurrences(url, "/api"), 1);
         QCOMPARE(QString::fromStdString(url),
-                 QStringLiteral("https://studio-api-prod.suno.com/api/feed/v3"));
+                 QStringLiteral("https://suno.com/a/api/feed/v3"));
     }
 };
 

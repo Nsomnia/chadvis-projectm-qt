@@ -46,6 +46,25 @@ QJsonObject firstProfile(const QJsonObject& object) {
     return profile.isObject() ? profile.toObject() : QJsonObject{};
 }
 
+/// v3's human-readable sentence is an array of rich-text segments:
+/// `text[] = {text, bold, action?}`. The client renders one caption, so the
+/// segments are concatenated in order. Whitespace is NOT inserted: the server
+/// sends the spaces inside the segments, and inventing separators would double
+/// them ("Ada  followed you"). Returns empty when the field is absent or not an
+/// array, which is what v2 does.
+QString notificationText(const QJsonValue& value) {
+    if (!value.isArray()) {
+        return {};
+    }
+    QString text;
+    for (const QJsonValue& segment : value.toArray()) {
+        if (segment.isObject()) {
+            text += json::stringValue(segment.toObject().value(QStringLiteral("text")));
+        }
+    }
+    return text;
+}
+
 std::optional<SunoNotificationService::Notification> parseNotification(const QJsonValue& value) {
     if (!value.isObject()) {
         return std::nullopt;
@@ -110,12 +129,14 @@ std::optional<SunoNotificationService::Notification> parseNotification(const QJs
     notification.contentMessage = firstString({
             json::stringValue(object.value(QStringLiteral("content_message"))),
             json::stringValue(object.value(QStringLiteral("caption"))),
+            notificationText(object.value(QStringLiteral("text"))),
             json::stringValue(contentObject.value(QStringLiteral("content_message"))),
             json::stringValue(contentObject.value(QStringLiteral("message"))),
             json::stringValue(contentObject.value(QStringLiteral("caption"))),
     });
     notification.caption = firstString({
             json::stringValue(object.value(QStringLiteral("caption"))),
+            notificationText(object.value(QStringLiteral("text"))),
             notification.contentMessage,
             contentValue.isString() ? contentValue.toString() : QString{},
             json::stringValue(contentObject.value(QStringLiteral("description"))),
@@ -218,7 +239,8 @@ void SunoNotificationService::enqueueRefresh() {
     const quint64 generation = refreshGeneration_;
     QPointer<SunoNotificationService> guard(this);
     client_->enqueueAuthenticatedRequest(
-            qstr(endpoints::NOTIFICATION_V2), "GET", {}, [guard, generation](QNetworkReply* reply) {
+            qstr(endpoints::NOTIFICATION_V3) + QStringLiteral("?include_hooks=true"), "GET", {},
+            [guard, generation](QNetworkReply* reply) {
                 if (guard) {
                     guard->handleRefreshReply(reply, ReplyKind::List, generation);
                 } else if (reply) {

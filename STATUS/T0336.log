@@ -1,0 +1,4 @@
+2026-10-26T21:16:44Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee30819 pid=30819 ttl=4h expires=2026-10-27T01:16:44Z
+2026-10-27T00:31:00Z  CHANGE   API_BASE -> https://suno.com/a/api; CapturedHosts kSunoWeb carries Role::StudioApi (one row per host); suno.ai stays WebApp; AuthHeaders loses the now-unused kStudioApiHost literal so the host has one owner.
+2026-10-27T00:31:00Z  VERIFY   ./build.sh --fast --tests -> 338/338 built; ./build.sh --fast --safe -> 100% tests passed, 0 failed (12/12), incl. test_CapturedHosts (host uniqueness + role lookup) and unit_tests.
+2026-10-27T00:31:00Z  NOTE     Not verified: no live request was made from this build against either base; the byte-identical-200 measurement behind the move is the 2026-10-25 route-probe run recorded in TODO.md.
