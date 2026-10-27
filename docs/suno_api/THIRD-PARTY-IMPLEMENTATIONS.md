@@ -39,6 +39,7 @@ an allowlist entry.
 | Source | Pinned commit | Retrieved | License | Ships capture artifacts? |
 |---|---|---|---|---|
 | [`paperfoot/suno-cli`](https://github.com/paperfoot/suno-cli) | `6d28c67a733b32183a80d81306bf0013f46b00b7` | 2026-10-10 | MIT | **No.** Its `conformance/` validates its own CLI output schemas, not captured traffic. |
+| [`Nsomnia/sunox-chadvis-suno-frontend-projectm-qt-research`](https://github.com/Nsomnia/sunox-chadvis-suno-frontend-projectm-qt-research) (`docs/suno/overview.md`) | `8a20930d0ab9adcce802aeaf4ece492821daef69` | 2026-10-27 | MIT | **No.** It describes local HAR/NetLog corpora and bundle scans by filename; none is committed to that repository. |
 
 Pins are **commit SHAs**, never tags or branch names, so a stale citation is
 visible by grep and cannot silently drift. A re-read at a different SHA is a new
@@ -56,6 +57,25 @@ A Rust CLI for the unofficial Suno web API, actively maintained through
 dated claims, and explicitly retires its own obsolete routes rather than leaving
 them to rot. That is a mark of a careful source, not of a reliable one for our
 purposes: care about provenance is not provenance.
+
+### What `sunox` is
+
+The second source is `docs/suno/overview.md` in
+[`Nsomnia/sunox-chadvis-suno-frontend-projectm-qt-research`](https://github.com/Nsomnia/sunox-chadvis-suno-frontend-projectm-qt-research)
+(MIT; retrieved 2026-10-27 at `8a20930d0ab9adcce802aeaf4ece492821daef69`, the
+only commit touching that path). `sunox` is a Rust CLI for the same unofficial
+Suno web API, and the overview is its dated machine-readable endpoint reference.
+Like `suno-cli` it is disciplined about provenance — every claim carries a
+`LIVE-READ` / `CURRENT-BUNDLE` / `OFFICIAL` / `INFERENCE` label, sourced from an
+audited Pro account, through 2026-09-14, with its own superseded routes retired
+in place rather than left to rot. Its "live-verified" is its label, not ours:
+nothing here is anything but `[LEAD]` for this repository.
+
+**Studio is excluded from this review by instruction.** The source's Studio
+render-state and multitrack-export material is outside the register below; this
+file carries only its non-Studio surface, and the Studio delta is limited to a
+pointer: the source documents a separate Studio export flow in its own Studio
+section, which we have not reviewed here.
 
 ## 2. Claims that agree with a captured row
 
@@ -77,6 +97,29 @@ confirmed, or re-litigate it as if it were new.
 Five agreements, zero master edits. **Agreement is not news.** Rewording a
 `[T1]` because a second source says the same thing is how a capture quietly
 acquires an unverifiable dependency.
+
+### 2.1 `sunox` claims that agree with a captured row
+
+Same rule, second source: report-only, zero master edits. Where the source's
+*route-level* claim matches a `[T1]` row but its request-shape detail goes
+beyond anything we captured, only the route match counts here; the shape detail
+lives in section 7.6 as `[LEAD]` names.
+
+| Our row | Their claim | Our disposition |
+|---|---|---|
+| §4.4 `POST /api/generate/v2-web/` is the live generation submission route | Independent match, including pre-submit `POST /api/c/check` with `{"ctype":"generation"}`. | Unchanged. Already `[T1]`. Its task-variant field values are `[LEAD]` shape names (section 7.6), not route facts. |
+| §4.4 `POST /api/prompts/upsample` | Independent match, including the `upsampled`/`request_id` response fields our capture held. | Unchanged. |
+| §4.5 `POST /api/feed/v3` cursor-based filtering | Independent match, including an `ids` filter (with `presence` values spelled `"True"`/`"False"`) used as a batch post-submit lookup. | Unchanged. The `ids` filter spelling is an extension of the captured envelope and is a `[LEAD]` shape fact, not a route fact. |
+| §4.4 `GET /api/gen/{id}/comments` | Independent match. | Unchanged. |
+| §4.5 playlist v2 `tracks/add`, `tracks/remove`, `tracks/reorder-by-index` | Independent match to the 2026-09-30 validation-probe rows. | Unchanged. Its remove-batching behaviour note is in section 7.6. |
+| §4.7 `GET /api/custom-model/pending/` | Independent match. | Unchanged. |
+| §4.9 shared page-load bootstrap — `/api/modals`, `/api/labs/configs`, `/api/challenge/progress`, `/api/cms/nudges/share-nudge`, `/api/cms/nudges/publish-nudge`, `/api/share/stats`, `/api/realtime/discover`, `/api/profiles/pinned-clips`, `/api/video_gen/pending_batches` | Independent match on all nine, observed by them on 2026-06-30 against routes we captured on 2026-08-25. | Unchanged. Two independent reconstructions of one bootstrap set is consistency, not promotion. |
+| §4.2/§4.3 `GET /api/project/me`, `GET /api/project/default`, `GET /api/project/default/pinned-clips` | Independent match. | Unchanged. |
+| §4.9 `GET /api/personalization/settings` | Independent match. Its POST sibling is new and is a section 4.1 lead below. | Unchanged. |
+| §4.4 `/api/gen/{gen_id}/convert_wav/` and `/api/gen/{gen_id}/wav_file/` | They retain the same two routes as "older compatibility" for WAV, matching our `declared-unused` posture. They add two OPUS siblings — see section 4.1. | Unchanged. |
+| §7 "model keys and limits are per-account, never hardcoded" | Their model table (display names per `chirp-hawk`, `chirp-hawk-wild`, `chirp-goose`, `chirp-fenix`, …) is re-read from `/api/billing/info/` on their account on 2026-09-11 — the same rule our §7 states. | Unchanged. Values are per-account; nothing here is a constant. |
+
+Eleven agreements of this kind, zero master edits.
 
 ## 3. Claims that disagree with a captured row
 
@@ -126,6 +169,24 @@ that cites another row "no matter how confident it reads". The rule generalises:
 **a claim's grade is a function of its provenance, not of how many repositories
 agree with each other.**
 
+### 3.4 `sunox` disagreements
+
+Each of these also has a row in the master's Appendix A. None is resolved here.
+
+- **`GET? /api/generate/cowrite-lyrics/models/`.** Our
+  [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) §4.4 row spells the co-write
+  model-discovery route `POST?` (loose normalized scan); `sunox` @ `8a20930d`
+  (2026-10-27) calls it `GET` and reports a live authenticated read. →
+  Appendix A.
+- **`POST /api/clips/adjust-speed/`.** Our §4.6 lead says `GET?` — a
+  transcription artifact the section already warns is not trusted; `sunox`
+  reports a live `POST` with a body carrying `clip_id`, `speed_multiplier`,
+  `keep_pitch`, and `title`, answered by a processing clip directly. →
+  Appendix A.
+- **`POST /api/clips/delete/`.** `sunox` live-verifies permanent clip deletion
+  through this route with `{"ids": [...]}` on 2026-07-10; this master's
+  2026-10-26 probe of the same spelling answered `404`. → Appendix A.
+
 ## 4. Paths absent from our catalogue
 
 The authoritative rows live in [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) — this
@@ -163,6 +224,48 @@ phrase. **Bundle literals are not captures** — §5.3 already records the
 distinction for `audiopipe.suno.ai`, which appears in that corpus only inside a
 hostname regex and a constructed URL template.
 
+### 4.1 Paths absent — `sunox`
+
+Each row below is a `[LEAD]` claim from `sunox` @ `8a20930d` (2026-10-27),
+verified against our catalogue first: what we already carry as `[LEAD]` was not
+re-registered. The authoritative rows now live in
+[`OBSERVED-LEADS.md`](OBSERVED-LEADS.md) in the sections shown.
+
+| Path | Registered in |
+|---|---|
+| `POST? /api/download/authorize` | OBSERVED-LEADS.md §4.6 |
+| `POST? /api/video_gen/text/generate` | OBSERVED-LEADS.md §4.6 |
+| `POST? /api/video_gen/history` | OBSERVED-LEADS.md §4.6 |
+| `GET? /api/trending/` | OBSERVED-LEADS.md §4.5 |
+| `GET? /api/living_radio/{station_id}/song-list` | OBSERVED-LEADS.md §4.5 |
+| `GET? /api/gen/{gen_id}/opus_file/` | OBSERVED-LEADS.md §4.4 |
+| `POST? /api/gen/{gen_id}/convert_opus` | OBSERVED-LEADS.md §4.4 |
+| `PUT? /api/persona/edit-persona/{persona_id}/` | OBSERVED-LEADS.md §4.7 |
+| `PUT? /api/persona/set_visibility/{persona_id}/` | OBSERVED-LEADS.md §4.7 |
+| `PUT? /api/persona/trash-persona/{persona_id}/` | OBSERVED-LEADS.md §4.7 |
+| `PUT? /api/persona/bulk-trash-personas/` | OBSERVED-LEADS.md §4.7 |
+| `GET? /api/voice-verification/phrase/` | OBSERVED-LEADS.md §4.7 |
+| `POST? /api/voice-verification/` | OBSERVED-LEADS.md §4.7 |
+| `GET? /api/voice-verification/{verification_id}` | OBSERVED-LEADS.md §4.7 |
+| `GET? /api/processed_clip/{processed_clip_id}` | OBSERVED-LEADS.md §4.7 |
+| `GET? /api/profiles/listen-history` | OBSERVED-LEADS.md §4.8 |
+| `POST? /api/profiles/block` | OBSERVED-LEADS.md §4.8 |
+| `POST? /api/personalization/settings` | OBSERVED-LEADS.md §4.9 |
+| `PATCH? /api/lyrics-projects/{project_id}` | OBSERVED-LEADS.md §4.4 |
+| `DELETE? /api/lyrics-projects/{project_id}` | OBSERVED-LEADS.md §4.4 |
+
+Twenty rows. Three neighboring claims are **enrichments of routes we already
+carry**, not new rows: `GET /api/clip/{clip_id}/stems?page=` (a zero-based page
+query on our §4.6 `stems` lead), `PATCH /api/playlist/v2/{playlist_id}`
+(cover-image S3 id and `is_public` on our §4.5 v2 playlist lead), and
+`DELETE /api/playlist/v2/{playlist_id}/save` (the unsave sibling of our §4.5
+save lead). Their shape facts that go beyond our rows are recorded as
+`[LEAD]` names in section 7.6 — request **bodies are not reproduced here**, per
+the standing rule. `POST /api/download/authorize` extends the download
+preparation family in §4.6 of
+[`OBSERVED-LEADS.md`](OBSERVED-LEADS.md); the family's written disposition there
+(rows and their "none may be added to `CapturedHosts.cpp`" note) is unchanged.
+
 ## 5. Host observations — explicitly NOT allowlist candidates
 
 **This section adds nothing to `src/suno/CapturedHosts.cpp`. It exists so that a
@@ -195,6 +298,26 @@ The source names no new `suno.ai` CDN origin, no new S3 bucket, and no new
 regional API host. Its base API host is the production Studio host we already
 hold as `[T1]`.
 
+### 5.3 `sunox` and the API base host — commentary, not a conflict
+
+`sunox` @ `8a20930d` treats `https://studio-api-prod.suno.com` as its API base
+through 2026-09 (its last dated claim is 2026-09-14), which was correct against
+everything we had held through 2026-10-22 — including our own §5.12 probe of
+that date. Our 2026-10-24 browser HAR and the 2026-10-26 route probe
+(`TODO.md` T0333/T0336) changed our picture, not theirs: the signed-in browser
+now calls the API on `https://suno.com` under the `/a/api` base, and the old
+Studio host answers those routes as a **byte-identical live alias** for the
+routes probed. The master's §2.1 host table records this (2026-10-26). This is a
+dated difference, not a disagreement about one date: nothing in `sunox`
+contradicts our newer evidence, and no Appendix A row is warranted.
+
+Disposition: no host change, no allowlist change, no `src/` change. Both host
+names are already `[T1]` in the master's §2.1 with the current characterization
+(`studio-api-prod.suno.com` kept in code as a captured host, the new base used
+by `API_BASE`). `sunox` names no path under `/a/api` and no other new host, so
+section 4 of this review adds no §5 row for it; the captcha-provider hosts it
+mentions are already covered by the §5 intro above.
+
 ## 6. What this source cannot settle
 
 - **The native-callback gate.** It implements **no loopback callback at all**;
@@ -219,6 +342,33 @@ hold as `[T1]`.
 - **Model retirement.** Its claim that pre-v6 models were retired on 2026-09-09
   is a dated, time-dependent server fact with no captured support from us. §7
   keeps its "do not hardcode a generation key" rule and is not edited.
+
+### 6.1 What `sunox` cannot settle
+
+- **Entitlements and per-account gates.** Its `aug-creativity` / `mumble-mode` /
+  `max-mode` session-flag gating, plan features (`get_stems`, `custom_models`,
+  `generate_song_image`, `generate_song_video`), and model length limits were
+  all read on **its Pro account**. Our §7 already holds that flags, credit
+  limits, and per-account model availability are per-account and never
+  hardcoded; nothing here changes that.
+- **Its `OFFICIAL` labels.** Stem-tier pricing (Auto Split 12-stem 50 credits;
+  Split-from-Mix 10/20; Premier-only Advanced Split) and the 2026-09-03
+  download-accounting policy come from Suno Help-Center articles, not wire
+  observations. Documented product text is not a request/response contract for
+  us; it is carried in section 7.6 only as [LEAD] context.
+- **Its request bodies and field types.** Request field *names* are leads and
+  are recorded as names only (section 7.6); no third-party body is reproduced,
+  and no field type, default, or response shape is adopted as a fact. Its
+  "live-verified" claims are its conversations with its own account.
+- **Cowrite cost.** It explicitly does not promise `/api/generate/cowrite-lyrics/`
+  is free or permanently exempt from anti-abuse checks; neither do we, and our
+  row is `declared-unused`.
+- **Studio.** Excluded by instruction — everything on the Studio side
+  (render-state, multitrack export, Studio-gated stems export) is out of scope
+  of this review and adds no row anywhere here.
+- **The API base.** See section 5.3: its 2026-09 base-host claim and our
+  2026-10 route-probe answer are different dates, not a conflict, and it cannot
+  speak to what changed after 2026-09-14.
 
 ## 7. Server behaviours this source documents
 
@@ -287,6 +437,116 @@ right, the feature's data source is already known and only the bridge is missing
   all?
 - **Pre-v6 generation models are reported retired** as of 2026-09-09. §7's "do
   not hardcode a generation key" rule is unchanged and this adds nothing to it.
+
+### 7.6 Server behaviours documented by `sunox`
+
+All `[LEAD]`, second source, dates kept from the source (latest 2026-09-14).
+Where the claim repeats a `suno-cli` row above, it is corroboration only.
+
+**Repeating an existing row — corroboration, no edit:**
+
+- **A `2xx` is not a success** (§7.1): a second independent client reports
+  `POST /api/generate/v2-web/` answering `HTTP 200` with `{"status":"error",
+  "clips":[]}` after credits were drawn, and treats `status: "error"` or an
+  empty `clips[]` as failure. Our §5.9/T0143 discipline is unchanged.
+- **JWT staleness** (§7.2): the same ~30-minute rejection window despite a
+  valid `exp`.
+- **Trash route shape** (§7.3): identical shape and restore semantics
+  (`{"clip_ids":[...], "trash":bool}` → `{"ids":[...], "is_trashed":bool}`).
+- **Feed by-ids pair batching** (§7.5): four or more mixed-batch identifiers
+  return only the first two, so it batches in pairs.
+- **`Browser-Token` construction** (§7.5): base64 of a timestamp-shaped JSON
+  wrapper, regenerated per request.
+
+**New behaviours — names only, no bodies reproduced:**
+
+- **`metadata.control_sliders.aug_creativity` must be an integer 0–4.** A
+  fractional value returned a deterministic `400` and produced no clip
+  (live, 2026-09-11, v6). Integer values were preserved in completed clips.
+- **`/api/session/` gates which sliders survive.** The source gates Variety on
+  the `aug-creativity` flag, Mumble on `mumble-mode`, and Max Mode on
+  `max-mode` (all `[LEAD]` flag names, read from its account). When the
+  `mumble-mode` gate is absent, a request carrying `metadata.is_mumble=true`
+  was answered — submit and finished clips — with `is_mumble=false`: the server
+  clears it, the client cannot force it. `is_max_mode=true` is preserved, but
+  output length is **server-authoritative** (one output far exceeded the
+  requested duration).
+- **`duration` is not honoured in description mode.** A v6 simple/description
+  request with top-level `duration: 10` completed at ~73–80 seconds:
+  acceptance did not mean compliance. The source's current-Web reading is that
+  duration is sent only for v6 Custom mode.
+- **`metadata.last_tags_generation` is never fabricated.** The tags/request_id
+  carried into a generation submit exist only when `POST /api/prompts/upsample`
+  actually ran; `personalization_enabled` is part of the captured submit shape,
+  not something the client may inject independently.
+- **`captcha_version` is per-request.** Its June HAR held both `required`
+  values at `captcha_version: 1`, while its later code maps version `2` to
+  Turnstile. Our master resolves `POST /api/c/check` as `[T1]` version `2` =
+  Turnstile (Appendix A); the value varies per request/account and must be read
+  from the response, not assumed.
+- **`/api/persona/` create answered `HTTP 409` means "already exists for this
+  clip"** — a useful recovery signal, per the source: read list/detail before
+  replaying a lost create response.
+- **`/api/generate/concat/v2/` needs original generation history.** A live
+  submission from an original generation source completed; one whose source was
+  an `edit_fade` product was rejected with `Bad history.`
+- **`/api/generate/lyrics-infill/` has a dedicated `400` branch** — detail
+  `Lyrics too long to enhance.`
+- **Large playlist `tracks/remove` batches can answer `500` while removing the
+  same clips one request per clip succeeds.** Removal discipline is per-clip
+  with partial-mutation bookkeeping (`requested`/`succeeded`/`failed`/
+  `not_attempted` id sets) — a recovery pattern, keyed to the route our master
+  already carries as `[T1]`.
+- **Legacy `POST /api/playlist/set_metadata` `image_url` can fail with
+  "Failed to upload image" for freshly uploaded covers**; the playlist-v2 PATCH
+  with `cover_image_s3_id` is the path the source prefers for that case.
+- **Downloads are gated on `is_download_unlocked`.** Only a clip whose decoded
+  value is exactly `true` may fetch without `POST /api/download/authorize`
+  (field names `item_id`, `item_type`); prepared fetches take
+  `GET /api/download/clip/{clip_id}?format=mp3|m4a|wav|mp4`. The authorize call
+  is metered, not replay-safe, and must never be blind-retried after an
+  ambiguous transport result (a redirect is itself ambiguous). Billing
+  advertises the consumption: `download_usage` with
+  `current_period_downloads_limit`, `current_period_downloads_used`,
+  `additional_download_remaining`, plus optional `download_credit_packs` —
+  illustrative field names, not runtime constants (master §5.13 rules apply).
+  Stems share their parent's authorization: authorize the source once, never
+  per stem id.
+- **Fade/crop are two-step.** `POST /api/edit/fade/{clip_id}/` and
+  `POST /api/edit/crop/{clip_id}/` (carrying `is_crop_remove`) answer with an
+  `action_clip_id` to poll at `GET /api/edit/action/{action_clip_id}/` until
+  `status: "complete"`, while `/api/clips/adjust-speed/` and
+  `/api/clips/reverse-clip/` return a processing clip directly.
+- **Stem extraction rides the generation route.** Current web stem extraction
+  is a `POST /api/generate/v2-web/` submission, field names `task: "gen_stem"`
+  (mv forced `chirp-v3-0`), `stem_type_id`, `stem_type_group_name`,
+  `stem_task`, `stem_name`; complement results are classified from
+  `stem_task == "remove"` or group `Instrumental`. Result pages are read via
+  `GET /api/clip/{clip_id}/stems/pages` and `GET /api/clip/{clip_id}/stems?page=`
+  (zero-based). Stem tier and instrument-availability rules are Help-Center
+  claims (§6.1): Pro must not be offered Premier-only instruments even though
+  the full instrument catalogue exists in the bundle.
+- **Cover art has two distinct transports.** A direct `POST /api/gen/prompt_image/`
+  whose consumed response field is `image_url`, and a separate
+  `POST /api/video_gen/image/generate` batch (name-level: prompt hard-sliced at
+  800 UTF-16 units, `quantity` 2, `image_gen_category`, optional `prompt_images`
+  and `aspect_ratio` `1:1`) whose status is recovered through the
+  `pending_batches`/`poll_batches` pair our master already carries.
+- **Remaster parameters exist as names.** `POST /api/generate/upsample`
+  carries `variation_category` (`subtle|normal|high`) for
+  `chirp-halibut`/`chirp-flounder`/`chirp-carp` and — v6 `chirp-halibut` only —
+  `style_profile` (`natural|boost|clarity`); `chirp-bass` omits variation
+  entirely and an explicit value is rejected. Two builder-only fields are
+  documented by name and rejected by its own account: `tags` (staff-only) and
+  `freedom`. Source gates: complete, non-trashed, non-infill, ≤960 s, and the
+  server `action_config` must expose Remaster visible and enabled. Names only —
+  our §4.4/OBSERVED-LEADS row is unchanged, and no default is inferred.
+- **Uploads are guarded before presign.** Accepted audio extensions
+  `mp3,m4a,wav,flac,ogg,aac`, maximum 524,288,000 bytes; `upload_type` enum
+  `file_upload|studio_file_upload|audio_recording|voice_recording|video_recording|marketplace_submission|stem_mix|external_daw_sample`;
+  image uploads (`png|jpg|jpeg|webp`) require `moderation_status: "approved"`
+  before the finished bytes are usable. Our §5.6 three-step audio contract and
+  the §4.6 upload leads are unchanged.
 
 ## 8. Standing rule for the next source
 

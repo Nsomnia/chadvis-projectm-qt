@@ -61,6 +61,14 @@ old-inventory rows, but none of them is a capture either. In particular
 `current endpoint constants` means "`src/suno/SunoEndpoints.hpp` says so", which
 is an implementation mirror and explicitly not evidence.
 
+A third citation family exists: **third-party source** rows, contributed by
+another client's implementation and reviewed in
+[`THIRD-PARTY-IMPLEMENTATIONS.md`](THIRD-PARTY-IMPLEMENTATIONS.md). They are
+`[LEAD]` like everything else here — another client's traffic is not evidence —
+and each carries the source name, its pinned commit SHA, and the review date
+inline. A third-party row's Method column is reconstructed, hence the trailing
+`?`, and its Purpose column paraphrases the source's claim, nothing more.
+
 ## Evidence-label legend
 
 The label authority is
@@ -251,6 +259,8 @@ an evidence statement.
 | GET? | `/api/clip/{id}` | Bearer? | Claimed clip-status/detail poll | `[LEAD]` old inventory/topic prose | not-in-code |
 | POST? | `/api/gen/{id}/convert_wav/` | Bearer? | Convert generation/clip to WAV | `[LEAD]` current endpoint map/topic prose | declared-unused |
 | GET? | `/api/gen/{id}/wav_file/` | Bearer? | WAV artifact retrieval | `[LEAD]` current endpoint map | declared-unused |
+| GET? | `/api/gen/{id}/opus_file/` | Bearer? | Legacy OPUS artifact retrieval; sibling of the WAV pair, retained only as legacy compatibility | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| POST? | `/api/gen/{id}/convert_opus` | Bearer? | Legacy OPUS conversion | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 | POST? | `/api/gen/bulk_increment_play_counts/v2` | Bearer? | Bulk play-count telemetry | `[LEAD]` old inventory/raw scan | not-in-code |
 | POST? | `/api/gen/increment_action_counts/` | Bearer? | Bulk action-count telemetry | `[LEAD]` old inventory/raw scan | not-in-code |
 | `?` | `/api/gen/{gen_id}/increment_action_count/` | Bearer? | Action-count telemetry for a single generation; sibling of the bulk route above | `[LEAD]` 2026-09 bundle corpus | not-in-code |
@@ -274,6 +284,8 @@ an evidence statement.
 | `?` | `/api/gen/{gen_id}/unlock-preview` | Bearer? | Unlock a generation preview | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/lyricists/{lyricist_id}` | Bearer? | Lyricist detail | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/lyrics-projects/{project_id}` | Bearer? | Lyrics-project detail; member route of the captured collection routes | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| `PATCH?` | `/api/lyrics-projects/{project_id}` | Bearer? | Rename/update a lyrics project | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| `DELETE?` | `/api/lyrics-projects/{project_id}` | Bearer? | Delete a lyrics project | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 | `?` | `/api/prompts/v2/{prompt_id}` | Bearer? | Prompt detail, v2 spelling | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/prompts/suggestions/contextual` | Bearer? | Contextual prompt suggestions | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/processed_clip/{processed_clip_id}/waveform-aggregates` | Bearer? | Waveform aggregates for a processed clip | `[LEAD]` 2026-09 bundle corpus | not-in-code |
@@ -320,6 +332,8 @@ stay in the master.
 | `?` | `/api/playlist_reaction/{playlist_id}/set_visibility/` | Bearer? | Set playlist visibility | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/playlist_reaction/{playlist_id}/update_reaction_type/` | Bearer? | Update a playlist reaction type | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/recommend/feedback/song/{clip_id}` | Bearer? | Recommendation feedback for a song | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| GET? | `/api/trending/` | Bearer? | Trending clips feed (playlist-like); bare root of the carried metaplaylist route | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| GET? | `/api/living_radio/{station_id}/song-list` | Bearer? | Living-radio station song list | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 
 The search rows are the worst offenders in this file: six of them claim a
 server-side search surface that **no reviewed capture supports**. The master
@@ -387,6 +401,9 @@ three-leg audio upload stay in the master.
 | `?` | `/api/video_gen/image/generate` | Bearer? | Image video-generation submission | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/video_gen/video/generate` | Bearer? | Video-generation submission | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/video_gen/model-configs` | Bearer? | Video-generation model configurations | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| POST? | `/api/download/authorize` | Bearer? | Download authorization for a clip whose `is_download_unlocked` is not true; response reads `ok`/`reason`/`message`/`credit_deducted` per the source; metered, treats replay as unsafe | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| POST? | `/api/video_gen/text/generate` | Bearer? | Cover-art prompt enhancement (text generation, not a media submit) | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| POST? | `/api/video_gen/history` | Bearer? | Generated cover-art batch history | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 
 The three download rows (`/api/download/clip/{clip_id}`,
 `/api/download/sample-pack/{clip_id}`, `/api/studio/clip/{clip_id}/download`)
@@ -419,6 +436,14 @@ Master section: 4.7. The captured pending-custom-model route stays in the master
 | `?` | `/api/custom-model/bases/` | Bearer? | Custom-model base list; distinct from the create/archive mutations above | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/persona/get-persona/{persona_id}/` | Bearer? | Single persona by id; distinct from the get-persona-paginated route | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/persona/{persona_id}/toggle_love/` | Bearer? | Toggle love on a persona | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| PUT? | `/api/persona/edit-persona/{persona_id}/` | Bearer?/entitlement? | Edit persona fields | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| PUT? | `/api/persona/set_visibility/{persona_id}/?is_public=…` | Bearer?/entitlement? | Persona visibility; value in the query string, empty body per the source | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| PUT? | `/api/persona/trash-persona/{persona_id}/?undo=…&hide=…` | Bearer?/entitlement? | Trash/hide a persona via query flags | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| PUT? | `/api/persona/bulk-trash-personas/` | Bearer?/entitlement? | Bulk persona trash modes (`undo`/`hide` combinations) | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| GET? | `/api/voice-verification/phrase/` | Bearer?/entitlement? | Server-selected verification phrase by language | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| POST? | `/api/voice-verification/` | Bearer?/entitlement? | Start voice/phrase verification comparison | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| GET? | `/api/voice-verification/{verification_id}` | Bearer?/entitlement? | Poll a verification's status | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| GET? | `/api/processed_clip/{processed_clip_id}` | Bearer? | Processed vocal status/preview; distinct from the waveform-aggregates lead above | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 
 Every row in this table is gated on an **entitlement** that no capture
 establishes. The master records that no plan matrix, verification requirement,
@@ -469,6 +494,8 @@ notification-read routes stay in the master.
 | `?` | `/api/profiles/pin-clip/{clip_id}` | Bearer? | Pin a clip to a profile | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/profiles/{handle}/remixes-inspired/` | Bearer? | Remixes inspired by a profile | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/profiles/{handle}/remixes-inspired-count/` | Bearer? | Inspired-remix count for a profile | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| GET? | `/api/profiles/listen-history` | Bearer? | Listen history for a profile | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| POST? | `/api/profiles/block` | Bearer? | Block a profile | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 
 Three separate rows here are **mutations described with a `GET?` method**
 (`/api/profiles/follow`, `/api/comment/{id}/reaction` aside,
@@ -498,6 +525,7 @@ master.
 | `?` | `/api/v2/integrations` | Bearer? | Integrations surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/v2/integrations/musixmatch` | Bearer? | Musixmatch integration surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/v2/integrations/musixmatch/authorize-url` | Bearer? | Musixmatch authorization-URL surface; no capture establishes the flow or the redirect | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| POST? | `/api/personalization/settings` | Bearer? | Update personalization (My Taste) settings; only the GET is captured in the master | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 
 `/api/cms/paywall/plan-options` exists only because a loose scan produced
 `/marketplace/api/cms/paywall/plan-options` and the frontend prefix was stripped
