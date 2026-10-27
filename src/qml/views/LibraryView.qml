@@ -299,6 +299,15 @@ Item {
             color: Theme.border
         }
 
+        // ── Playlists ──────────────────────────────────
+        // A lens on this grid, not a second page: opening one swaps the model
+        // below to its clips, and the strip's own back button swaps it back.
+        PlaylistStrip {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacingLarge
+            Layout.rightMargin: Theme.spacingLarge
+        }
+
         // ═════════════════════════════════════════════
         // CLIP GRID
         // ═════════════════════════════════════════════
@@ -312,7 +321,10 @@ Item {
                 anchors.margins: Theme.spacingLarge
                 clip: true
 
-                model: SunoBridge.clips
+                // A playlist is a lens, so there is one grid and one model swap.
+                model: SunoBridge.openPlaylistId !== ""
+                       ? SunoBridge.playlistClips
+                       : SunoBridge.clips
 
                 readonly property int columns: Math.max(2, Math.floor(width / Theme.cardTileMinimum))
                 cellWidth: Math.floor(width / columns)

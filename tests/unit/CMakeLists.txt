@@ -338,6 +338,22 @@ target_link_libraries(test_SunoExploreService PRIVATE
 
 add_test(NAME test_SunoExploreService COMMAND test_SunoExploreService)
 
+add_executable(test_SunoPlaylistService
+    suno/test_SunoPlaylistService.cpp
+)
+
+set_target_properties(test_SunoPlaylistService PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoPlaylistService PRIVATE
+    Qt6::Core
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_SunoPlaylistService COMMAND test_SunoPlaylistService)
+
 add_executable(test_SunoNotificationService
     suno/test_SunoNotificationService.cpp
 )

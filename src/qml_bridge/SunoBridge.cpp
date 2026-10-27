@@ -16,6 +16,7 @@
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoModels.hpp"
 #include "suno/SunoNotificationService.hpp"
+#include "suno/SunoPlaylistService.hpp"
 #include "suno/auth/AuthCoordinator.hpp"
 #include "ui/controllers/SunoController.hpp"
 
@@ -34,6 +35,8 @@ SunoBridge::~SunoBridge() {
     }
     delete notificationService_;
     notificationService_ = nullptr;
+    delete playlistService_;
+    playlistService_ = nullptr;
     delete exploreService_;
     exploreService_ = nullptr;
     s_controller = nullptr;
@@ -70,7 +73,10 @@ constexpr vc::suno::FeatureGate kGatesImplementedByThisBuild[]{
         vc::suno::FeatureGate::Library,       vc::suno::FeatureGate::Explore,
         vc::suno::FeatureGate::Notifications, vc::suno::FeatureGate::Upload,
         vc::suno::FeatureGate::Billing,       vc::suno::FeatureGate::AccountProfile,
-        vc::suno::FeatureGate::MediaDelivery};
+        vc::suno::FeatureGate::MediaDelivery,
+        // The read side (list + one playlist's clips) is a real call site now;
+        // the write verbs stay refused by SunoLibraryMutations / T0011.
+        vc::suno::FeatureGate::Playlists};
 
 QString generationUnavailableMessage() {
     return QStringLiteral("Generation is unavailable because the required Suno CAPTCHA token flow "
@@ -223,6 +229,7 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
             bridgeInstance->destroyAudioUploadService();
             bridgeInstance->destroyNotificationService();
             bridgeInstance->destroyExploreService();
+            bridgeInstance->destroyPlaylistService();
             // The downloader is a child of the outgoing controller, and
             // disconnecting the controller does not reach its children's
             // signals, so the section drops the borrow explicitly. The next
@@ -257,6 +264,7 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
             bridgeInstance->destroyAudioUploadService();
             bridgeInstance->destroyNotificationService();
             bridgeInstance->destroyExploreService();
+            bridgeInstance->destroyPlaylistService();
             // The mutation service is dropped too: it borrows the resolver out of
             // an account that no longer exists.
             if (bridgeInstance->mutations_) {
@@ -592,6 +600,23 @@ int SunoBridge::unreadCount() const { return unreadCount_; }
 bool SunoBridge::notificationsLoading() const { return notificationsLoading_; }
 
 QString SunoBridge::notificationsError() const { return notificationsError_; }
+
+QVariantList SunoBridge::playlists() const { return playlists_; }
+
+bool SunoBridge::playlistsLoading() const
+{
+    return playlistService_ && playlistService_->isLoading();
+}
+
+QString SunoBridge::playlistsError() const { return playlistsError_; }
+
+QVariantList SunoBridge::playlistClips() const { return playlistClips_; }
+
+QString SunoBridge::openPlaylistId() const { return currentPlaylistId_; }
+
+QString SunoBridge::openPlaylistName() const { return currentPlaylistName_; }
+
+bool SunoBridge::playlistHasMore() const { return playlistHasMore_; }
 
 void SunoBridge::setFilterText(const QString& filter) {
     if (filterText_ == filter) return;
@@ -1323,6 +1348,190 @@ void SunoBridge::setPlaylistCoverImage(const QString& playlistId, const QString&
     if (mutations_) {
         mutations_->setPlaylistCoverImage(playlistId, imageId);
     }
+}
+
+
+// ── Playlists (read side) ─────────────────────────────────────────────────────
+
+namespace {
+
+QVariantMap toPlaylistVariant(const vc::suno::SunoPlaylistService::Summary& playlist) {
+    QVariantMap result;
+    result[QStringLiteral("id")] = playlist.id;
+    result[QStringLiteral("name")] = playlist.name;
+    result[QStringLiteral("description")] = playlist.description;
+    result[QStringLiteral("image_url")] = playlist.imageUrl;
+    result[QStringLiteral("user_display_name")] = playlist.userDisplayName;
+    result[QStringLiteral("user_handle")] = playlist.userHandle;
+    result[QStringLiteral("num_total_results")] = playlist.numTotalResults;
+    result[QStringLiteral("song_count")] = playlist.songCount;
+    result[QStringLiteral("total_duration")] = static_cast<qlonglong>(playlist.totalDuration);
+    result[QStringLiteral("is_owned")] = playlist.isOwned;
+    result[QStringLiteral("is_public")] = playlist.isPublic;
+    return result;
+}
+
+} // namespace
+
+void SunoBridge::ensurePlaylistService() {
+    if (playlistService_ || !s_client) {
+        return;
+    }
+    // Parented to the bridge: one per process, replaced only when the client is,
+    // because the service connects to that client's auth signals.
+    playlistService_ = new vc::suno::SunoPlaylistService(s_client, this);
+    connect(playlistService_, &vc::suno::SunoPlaylistService::playlistsReset,
+            this, &SunoBridge::onPlaylistsReset);
+    connect(playlistService_, &vc::suno::SunoPlaylistService::playlistsReady,
+            this, &SunoBridge::onPlaylistsReady);
+    connect(playlistService_, &vc::suno::SunoPlaylistService::playlistReset,
+            this, &SunoBridge::onPlaylistReset);
+    connect(playlistService_, &vc::suno::SunoPlaylistService::playlistPageReady,
+            this, &SunoBridge::onPlaylistPageReady);
+    connect(playlistService_, &vc::suno::SunoPlaylistService::loadingChanged,
+            this, &SunoBridge::onPlaylistLoadingChanged);
+    connect(playlistService_, &vc::suno::SunoPlaylistService::failed,
+            this, &SunoBridge::onPlaylistFailed);
+}
+
+void SunoBridge::destroyPlaylistService() {
+    delete playlistService_;
+    playlistService_ = nullptr;
+}
+
+void SunoBridge::refreshPlaylists() {
+    ensurePlaylistService();
+    if (!playlistService_) {
+        return;
+    }
+    setPlaylistsError({});
+    playlistService_->refresh();
+}
+
+void SunoBridge::openPlaylist(const QString& playlistId) {
+    ensurePlaylistService();
+    if (!playlistService_ || playlistId.isEmpty()) {
+        return;
+    }
+    setPlaylistsError({});
+    playlistService_->openPlaylist(playlistId);
+}
+
+void SunoBridge::requestNextPlaylistPage() {
+    if (playlistService_) {
+        setPlaylistsError({});
+        playlistService_->loadMore();
+    }
+}
+
+void SunoBridge::closePlaylist() {
+    const bool hadId = !currentPlaylistId_.isEmpty();
+    currentPlaylistId_.clear();
+    currentPlaylistName_.clear();
+    if (!playlistClips_.isEmpty()) {
+        playlistClips_.clear();
+        emit playlistClipsChanged();
+    }
+    if (playlistHasMore_) {
+        playlistHasMore_ = false;
+        emit playlistHasMoreChanged();
+    }
+    if (hadId) {
+        emit playlistChanged();
+    }
+}
+
+void SunoBridge::onPlaylistsReset() {
+    if (playlists_.isEmpty()) {
+        return;
+    }
+    playlists_.clear();
+    emit playlistsChanged();
+}
+
+void SunoBridge::onPlaylistsReady() {
+    if (!playlistService_) {
+        return;
+    }
+    QVariantList rows;
+    const auto& summaries = playlistService_->playlists();
+    rows.reserve(summaries.size());
+    for (const auto& summary : summaries) {
+        rows.push_back(toPlaylistVariant(summary));
+    }
+    playlists_ = std::move(rows);
+    emit playlistsChanged();
+}
+
+void SunoBridge::onPlaylistReset() {
+    rememberPlaylistClips();
+    playlistClips_.clear();
+    currentPlaylistId_.clear();
+    currentPlaylistName_.clear();
+    if (!playlistService_) {
+        emit playlistClipsChanged();
+        emit playlistChanged();
+        return;
+    }
+    const auto& playlist = playlistService_->currentPlaylist();
+    currentPlaylistId_ = playlist.id;
+    currentPlaylistName_ = playlist.name;
+    for (const auto& clip : playlistService_->clips()) {
+        playlistClips_.push_back(toDiscoverClip(clip));
+    }
+    emit playlistClipsChanged();
+    emit playlistChanged();
+    onPlaylistPageTail();
+}
+
+void SunoBridge::onPlaylistPageReady() {
+    if (!playlistService_) {
+        return;
+    }
+    rememberPlaylistClips();
+    // Appends only what is new: the service accumulates too, so its clip count
+    // is the total and the rows already copied are the prefix.
+    const auto& all = playlistService_->clips();
+    for (qsizetype index = playlistClips_.size(); index < all.size(); ++index) {
+        playlistClips_.push_back(toDiscoverClip(all.at(index)));
+    }
+    emit playlistClipsChanged();
+    onPlaylistPageTail();
+}
+
+void SunoBridge::rememberPlaylistClips() {
+    if (!s_controller || !playlistService_) {
+        return;
+    }
+    // A playlist clip the library never paged in still has to be resolvable by
+    // the play gesture, which reads the library and the database by id.
+    const auto& clips = playlistService_->clips();
+    s_controller->rememberClips(std::vector<vc::suno::SunoClip>(clips.begin(), clips.end()));
+}
+
+void SunoBridge::onPlaylistPageTail() {
+    const bool hasMore = playlistService_ && playlistService_->hasMore();
+    if (hasMore != playlistHasMore_) {
+        playlistHasMore_ = hasMore;
+        emit playlistHasMoreChanged();
+    }
+}
+
+void SunoBridge::onPlaylistLoadingChanged() {
+    emit playlistsLoadingChanged();
+}
+
+void SunoBridge::onPlaylistFailed(const QString& message) {
+    setPlaylistsError(message);
+    emit playlistsLoadingChanged();
+}
+
+void SunoBridge::setPlaylistsError(const QString& message) {
+    if (playlistsError_ == message) {
+        return;
+    }
+    playlistsError_ = message;
+    emit playlistsErrorChanged();
 }
 
 } // namespace qml_bridge

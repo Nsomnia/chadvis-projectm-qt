@@ -95,6 +95,15 @@ constexpr std::string_view SESSION_CATALOG = "/session/"; // [T1] alias for SESS
 // ── Studio API: Playlists ───────────────────────────────────
 // T1: playlists.md (Burp 2026-08-25).
 constexpr std::string_view PLAYLIST_ME = "/playlist/me"; // [T1] GET
+// One playlist and its clips. Verified read, probe 2026-10-26:
+//   GET https://suno.com/a/api/playlist/{id}/?page=1   200, playlist object at
+//   top level, `playlist_clips[] = {clip, relative_index, created_at}`.
+// Paging is a 1-based page number with NO `has_more`: a page past the end is a
+// 200 carrying an empty `playlist_clips`, so "finished" is an empty array or
+// `current_page * page_size >= num_total_results`. Both spellings matter here --
+// the capture has a slash before `?page=`, and a probe is not a licence to tidy
+// it away. Owner: SunoPlaylistService.
+constexpr std::string_view PLAYLIST_BY_ID = "/playlist/{}"; // [T1] GET
 
 // ── Studio API: Library & playlist MUTATIONS ────────────────
 // [T1] REQUEST contracts only, recovered 2026-09-30 by reading server

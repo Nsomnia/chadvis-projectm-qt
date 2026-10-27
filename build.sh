@@ -59,6 +59,7 @@ SAFE_TESTS=(
     test_SunoAudioUploadService
     test_SunoRequestEpoch
     test_SunoExploreService
+    test_SunoPlaylistService
     test_SunoNotificationService
     test_ClerkAuthClient
     test_HttpPolicy

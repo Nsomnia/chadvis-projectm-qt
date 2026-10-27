@@ -14,6 +14,7 @@ class SunoController;
 class SunoClient;
 class SunoExploreService;
 class SunoNotificationService;
+class SunoPlaylistService;
 class SunoAudioUploadService;
 } // namespace suno
 } // namespace vc
@@ -89,6 +90,18 @@ class SunoBridge : public QObject,
             bool notificationsLoading READ notificationsLoading NOTIFY notificationsLoadingChanged)
     Q_PROPERTY(QString notificationsError READ notificationsError NOTIFY notificationsErrorChanged)
 
+    // ── Playlists (read side) ─────────────────────────────────────────────
+    // The list of the account's playlists, and the clips of the one the user
+    // opened. Reads only -- the write verbs already live on this singleton
+    // (`addClipsToPlaylist` and friends) and stay gated by T0011.
+    Q_PROPERTY(QVariantList playlists READ playlists NOTIFY playlistsChanged)
+    Q_PROPERTY(bool playlistsLoading READ playlistsLoading NOTIFY playlistsLoadingChanged)
+    Q_PROPERTY(QString playlistsError READ playlistsError NOTIFY playlistsErrorChanged)
+    Q_PROPERTY(QVariantList playlistClips READ playlistClips NOTIFY playlistClipsChanged)
+    Q_PROPERTY(QString openPlaylistId READ openPlaylistId NOTIFY playlistChanged)
+    Q_PROPERTY(QString openPlaylistName READ openPlaylistName NOTIFY playlistChanged)
+    Q_PROPERTY(bool playlistHasMore READ playlistHasMore NOTIFY playlistHasMoreChanged)
+
     /// Can this build change the library at all? Both layers must permit: the
     /// client switch inside `SunoLibraryMutations` (off until a success response
     /// is captured) and the owning `FeatureGate` verdict.
@@ -148,6 +161,13 @@ public:
     int unreadCount() const;
     bool notificationsLoading() const;
     QString notificationsError() const;
+    QVariantList playlists() const;
+    bool playlistsLoading() const;
+    QString playlistsError() const;
+    QVariantList playlistClips() const;
+    QString openPlaylistId() const;
+    QString openPlaylistName() const;
+    bool playlistHasMore() const;
     bool mutationsAvailable() const;
     QString mutationsUnavailableReason() const;
     bool mutationsBusy() const;
@@ -173,6 +193,15 @@ public slots:
     Q_INVOKABLE void refreshDiscover();
     Q_INVOKABLE void loadMoreDiscover();
     Q_INVOKABLE void refreshNotifications();
+    /// Re-read the account's playlists. Cheap, idempotent, GET-only.
+    Q_INVOKABLE void refreshPlaylists();
+    /// Open one playlist and reset `playlistClips` to its first page.
+    Q_INVOKABLE void openPlaylist(const QString& playlistId);
+    /// Append the next page of the open playlist. No-op when there is none.
+    Q_INVOKABLE void requestNextPlaylistPage();
+    /// Close the open playlist: clears `playlistClips` and the open id, so a
+    /// view returns to the list without a second request.
+    Q_INVOKABLE void closePlaylist();
     Q_INVOKABLE void markAllNotificationsRead();
 
     // ── Library & playlist mutations ──────────────────────────────────────
@@ -258,6 +287,14 @@ signals:
     void unreadCountChanged();
     void notificationsLoadingChanged();
     void notificationsErrorChanged();
+    void playlistsChanged();
+    void playlistsLoadingChanged();
+    void playlistsErrorChanged();
+    void playlistClipsChanged();
+    /// The open playlist changed identity or name (opened, closed, or its first
+    /// page carried a different name than the list row did).
+    void playlistChanged();
+    void playlistHasMoreChanged();
     /// One clip's audio is on disk, tagged and sidecarred. The per-clip result
     /// channel for a download: unlike downloadStatus, which is a single string
     /// describing the most recent event, this fires for every clip of a batch
@@ -343,6 +380,17 @@ private:
     void destroyExploreService();
     void ensureNotificationService();
     void destroyNotificationService();
+    void ensurePlaylistService();
+    void destroyPlaylistService();
+    void onPlaylistsReset();
+    void onPlaylistsReady();
+    void onPlaylistReset();
+    void onPlaylistPageReady();
+    void onPlaylistLoadingChanged();
+    void onPlaylistFailed(const QString& message);
+    void rememberPlaylistClips();
+    void onPlaylistPageTail();
+    void setPlaylistsError(const QString& message);
     void ensureAudioUploadService();
     void destroyAudioUploadService();
     void setDiscoverError(const QString& message);
@@ -360,6 +408,11 @@ private:
     QVariantList modelCatalog_;
     QVariantList discover_;
     QVariantList notifications_;
+    QVariantList playlists_;
+    QVariantList playlistClips_;
+    QString playlistsError_;
+    QString currentPlaylistId_;
+    QString currentPlaylistName_;
     QString filterText_;
     QString generationStatus_;
     QString statusMessage_;
@@ -368,6 +421,7 @@ private:
     QString notificationsError_;
     vc::suno::SunoExploreService* exploreService_{nullptr};
     vc::suno::SunoNotificationService* notificationService_{nullptr};
+    vc::suno::SunoPlaylistService* playlistService_{nullptr};
     vc::suno::SunoAudioUploadService* audioUploadService_{nullptr};
     /// The mutation surface, as its own object: the service's lifetime, the
     /// eleven verbs and the routing of a settled result all live there. Null
@@ -383,6 +437,7 @@ private:
     bool discoverHasMore_{false};
     bool discoverLoaded_{false};
     bool notificationsLoading_{false};
+    bool playlistHasMore_{false};
     int unreadCount_{0};
     bool controllerSignalsWired_{false};
     int currentPage_{1};

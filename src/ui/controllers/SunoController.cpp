@@ -293,6 +293,16 @@ SunoController::~SunoController() = default;
 
 void SunoController::downloadAndPlay(const SunoClip& clip) { downloader_->downloadAndPlay(clip); }
 
+void SunoController::rememberClips(const std::vector<SunoClip>& clips) {
+    if (clips.empty()) {
+        return;
+    }
+    if (auto result = db_.saveClips(clips); !result) {
+        LOG_WARN("SunoController: could not persist {} clip(s) from a playlist page",
+                 clips.size());
+    }
+}
+
 bool SunoController::playClipById(const std::string& clipId) {
     // Every false return here is a dead gesture, so each one says why. A silent
     // refusal is indistinguishable from a broken button, and that is exactly the

@@ -1,0 +1,22 @@
+2026-10-27T01:10:00Z  CLAIM    playlists had reads captured and no read surface at all
+2026-10-27T01:10:00Z  CHANGE   new src/suno/SunoPlaylistService.{hpp,cpp}: GET /playlist/me (tolerant envelope) and
+                              GET /playlist/{id}/?page=N on the captured top-level playlist body; paging has no
+                              has_more, so hasMoreAfter(clipsSeen, totalResults) is the only end signal.
+2026-10-27T01:10:00Z  CHANGE   src/qml_bridge/SunoBridge.*: playlists / playlistsLoading / playlistsError /
+                              playlistClips / openPlaylistId / openPlaylistName / playlistHasMore, plus
+                              refreshPlaylists, openPlaylist, requestNextPlaylistPage, closePlaylist. The
+                              three-layer gate now lists FeatureGate::Playlists because a call site exists.
+2026-10-27T01:10:00Z  CHANGE   src/ui/controllers/SunoController::rememberClips upserts a playlist page into the DB;
+                              without it playClipById (library + DB lookup by id) refused a playlist clip the
+                              library had never paged in, reporting "no playable media" for a clip the server
+                              had just returned.
+2026-10-27T01:10:00Z  CHANGE   src/qml/components/PlaylistStrip.qml + LibraryView: a chip row above the grid, and the
+                              grid model swaps to playlistClips while a playlist is open. Read-only: the write
+                              verbs stay refused by T0011.
+2026-10-27T01:20:00Z  VERIFY   ./build-fast/tests/unit/test_SunoPlaylistService -> Totals: 10 passed, 0 failed
+                              (captured body, past-the-end page, paging arithmetic, non-playlist refusal,
+                              both list envelopes, id-less rows, the /playlist/{id}/?page=N spelling).
+2026-10-27T01:20:00Z  VERIFY   ./scripts/lint-qml.sh -> no blocking problems (baseline unchanged).
+2026-10-27T01:20:00Z  VERIFY   ./build.sh --fast --safe -> see the commit body; 13/13 including the new entry.
+2026-10-27T01:20:00Z  NOTE     Not verified: no signed-in run, so the strip's live rendering and real 42-clip
+                              paging are MT-001, not this log.

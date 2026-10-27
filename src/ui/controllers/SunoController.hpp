@@ -59,6 +59,13 @@ public:
     bool playClipById(const std::string& clipId);
     Result<AlignedLyrics> getLyrics(const std::string& clipId);
     void refreshLibrary(int page = 1);
+    /// Persist clips fetched outside the library sync (a playlist page).
+    ///
+    /// `playClipById` resolves through the synced library and the database, so
+    /// without this the play gesture on a playlist clip that the library has
+    /// never paged in is refused as "no playable media" -- a wrong reason for a
+    /// clip the server just handed us. Upsert, so a re-read is harmless.
+    void rememberClips(const std::vector<SunoClip>& clips);
     void syncDatabase(bool forceAuth = false);
 
     // Auth - triggers signal for QML to handle

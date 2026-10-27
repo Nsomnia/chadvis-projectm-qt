@@ -70,7 +70,7 @@ line to describe an item is describing it in the wrong place. Finished work move
       existing layering, and the per-family sub-task rule are in
       [docs/backlog/T0346.md](docs/backlog/T0346.md); each family claims its own sub-tasks here before any work.
 
-
+- [x] T0333 **The Discover feed renders empty while the account is signed in and working** (`src/suno/SunoClient.cpp`, `src/suno/SunoLibraryManager.cpp`, `src/qml/views/DiscoverView.qml`) #blocks-ui #risk-high
       **Closed 2026-10-25: the parser read a two-releases-old envelope.** A
       `route-probe.mjs` run against both API bases settled the ambiguity in one
       shot — `unified/explore` answers **200 with 165 KB and 2 feeds on both**
@@ -176,6 +176,12 @@ line to describe an item is describing it in the wrong place. Finished work move
       pages 1–N to reach page N+1; (c) still open — the `{complete, pagesFetched, expectedTotal}`
       T0167 reports is unconsumed, so nothing can say "still syncing, 940 of 2 147"; a progress
       number would make the remaining minutes diagnosable instead of looking stuck.
+      **Corroborated 2026-10-27 by the user's own browser extension**, crawling the same API:
+      "500 of ~6,752 -- a lower bound, filters applied -- 5 pages, 500 seen, 500 added", i.e. **100
+      tracks per call, page after page**, on a library far larger than the 2 147 this item was
+      measured against. That is an independent client proving the 100-clip page size on the
+      account's own route, and it moves the arithmetic: at 100/page a ~6 752-clip library is ~68
+      round trips, not 108, and (b)/(c) below are what still cost the minutes.
       **Verified:** aggregate `unit_tests` suite `TestSunoLibraryManager` -> 0, full ctest 14/14.
       **Not verified:** the end-to-end wall-clock time against a live account — the 22-page
       arithmetic assumes ~3.4 s/page holds at 100 clips per page (bigger bodies, same limiter).
@@ -190,6 +196,36 @@ line to describe an item is describing it in the wrong place. Finished work move
       Phase 3 of the plan. Discovery of `<configDir>/themes/*.json`, the §11 validation table (schema version, `id` pattern and uniqueness, 64 KiB cap, reserved `custom`, bad-hex rejects the whole file, contrast warns but never auto-adjusts), and `availableThemes` for the Settings combo. Named `ThemeCatalog`, **never** `Theme` — a C++ type named `Theme` shadows the QML singleton, which is exactly how `ThemeBridge` became unreachable and was deleted as dead code (T0055). `Theme.qml` must keep never parsing files itself; it asks the catalog for a resolved definition.
 ## P1 — correctness, robustness, and debt that will bite
 
+- [x] T0347 **Playlists had reads captured and no read surface at all** (`src/suno/SunoPlaylistService.*`, `src/qml/components/PlaylistStrip.qml`, `src/qml_bridge/SunoBridge.*`) #feature
+      `GET /playlist/me` was `declared-unused` and `GET /playlist/{id}/?page=N` was `not-in-code`,
+      so the account's playlists could not be listed, opened, or played from. `SunoPlaylistService`
+      owns both reads: the captured top-level playlist body (`playlist_clips[] = {clip,
+      relative_index, created_at}`), 1-based paging with **no `has_more`** (end = empty page or
+      `clips.size() >= num_total_results`, pinned as `hasMoreAfter`), and a tolerant list envelope
+      (bare array or `playlists`/`playlist_list`/`results`). The bridge exposes
+      `playlists`/`playlistClips`/`openPlaylistId`/`playlistHasMore` + four invokables, and the
+      library grid swaps its model to the open playlist, so a playlist is a lens rather than a
+      second page. `FeatureGate::Playlists` is now in `kGatesImplementedByThisBuild` because a call
+      site exists. **Playability:** `playClipById` resolves through the synced library and the DB,
+      so a playlist clip the library never paged in was refused as "no playable media" --
+      `SunoController::rememberClips` upserts each fetched playlist page into the DB.
+      Pinned by `test_SunoPlaylistService` (10 cases, incl. the `/playlist/{id}/?page=N` spelling and
+      the past-the-end page). VERIFY in `STATUS/T0347.log`.
+      **Not verified:** the live rendering -- no signed-in session was driven, so the strip's empty
+      state and the paging under a real 42-clip playlist are MT-001 territory.
+      **Not in this item:** writes. `addClipsToPlaylist` and the rest stay refused by T0011.
+
+- [ ] T0348 **The `SunoEndpoints.hpp` "deliberately ABSENT" list is stale for four captured routes** (`src/suno/SunoEndpoints.hpp`, `src/suno/SunoLibraryMutations.*`) #feature #risk-medium
+      The list still claims reaction and playlist create/trash are unprobed, but §5.13 of
+      [ENDPOINT-INVENTORY.md](docs/suno_api/ENDPOINT-INVENTORY.md) carries request **and** response
+      bodies for all four (2026-10-26): `POST /gen/{id}/update_reaction_type/` (`"LIKE"`/`null` in,
+      `reaction_type: "L"` out, **absent** on unlike, `clip` an id string);
+      `POST /playlist/create/` (25-key playlist object); `POST /playlist/trash/` (flat
+      `{playlist_id}`, **204 empty body** -- parsing a body fails on the success path, and its 422
+      names the wrong field path); `POST /playlist/v2/{id}/cover-image` (`cover_source{id,type}`).
+      Add the constants with their evidence labels, correct the absent-list, and give the verbs the
+      response discipline the captured bodies now allow. Complements T0011 (reachability), does not
+      duplicate it.
 - [ ] T0011 **The whole 11-route library/playlist mutation surface is runtime-unreachable and unobservable** (`src/suno/SunoLibraryMutations.hpp:493`, `src/suno/SunoLibraryMutations.cpp:394-397`) #risk-high
       **The contract gap is closing:** as of 2026-10-26 the request *and* response shapes for reaction, both
       remix toggles, visibility and the whole playlist CRUD set are captured (§5.13). `setEnabled` being
