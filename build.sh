@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env ∑bash
 # ChadVis build wrapper (macOS / Linux) with per-profile build directories.
 #
 # The point of this script is iteration speed. Two things dominate that on a
@@ -158,9 +158,9 @@ NICE_LEVEL="${CHADVIS_NICE:-10}"
 # and exits. Anything the help text mentions must therefore exist before the
 # loop, not after it -- otherwise `./build.sh --help` dies on `set -u` before it
 # prints a line, which is exactly the "help is broken" bug nobody reports.
-CPU_PERCENT="${CHADVIS_CPU_PERCENT:-75}"
-MEM_PERCENT="${CHADVIS_MEM_PERCENT:-75}"
-PER_JOB_MIB="${CHADVIS_PER_JOB_MIB:-512}"
+CPU_PERCENT="${CHADVIS_CPU_PERCENT:-99}"
+MEM_PERCENT="${CHADVIS_MEM_PERCENT:-99}"
+PER_JOB_MIB="${CHADVIS_PER_JOB_MIB:-1024}"
 QT_OVERRIDE="${CHADVIS_QT_PATH:-}"
 
 while [[ $# -gt 0 ]]; do
