@@ -1,4 +1,4 @@
-#!/usr/bin/env ∑bash
+#!/usr/bin/env bash
 # ChadVis build wrapper (macOS / Linux) with per-profile build directories.
 #
 # The point of this script is iteration speed. Two things dominate that on a
@@ -101,6 +101,7 @@ ${BOLD}Actions${RESET}
   ${GREEN}-h, --help${RESET}       this text
 
 ${BOLD}Tuning${RESET}
+  ${GREEN}--target T${RESET}      build only target T (repeatable; skips the rest of the tree)
   ${GREEN}-j, --jobs N${RESET}     compile jobs (default: ${CPU_PERCENT}% of LOGICAL cores, floored at the physical count, capped by ${MEM_PERCENT}% of available RAM)
   ${GREEN}--ctest-jobs N${RESET}  parallel ctest entries (default: same as --jobs; the suites are idle ~84% of the time)
   ${GREEN}--nice N${RESET}         nice level for every child (default ${NICE_LEVEL}, ${YELLOW}0 disables${RESET})
@@ -141,6 +142,7 @@ BUILD_TYPE=""
 SANITIZER=""
 FAST_ITERATION="OFF"
 WANT_TESTS_ONLY=0
+EXPLICIT_TARGETS=()
 ACTION="build"          # build | test | safe | run | rebuild | clean
 TEST_FILTER=""
 RUN_ARGS=()
@@ -174,6 +176,11 @@ while [[ $# -gt 0 ]]; do
         --asan)        PROFILE="asan" ;;
         --ubsan)       PROFILE="ubsan" ;;
         --tests)       WANT_TESTS_ONLY=1 ;;
+        # Build ONE target and stop. On this box a full --tests build is ~40
+        # executables and most of the wall clock is linking files nobody asked
+        # about; --target test_SunoPlaylistService is the difference between a
+        # 90 s iteration and a 6-minute one.
+        --target)      [[ $# -ge 2 ]] || die "$1 needs a target name"; EXPLICIT_TARGETS+=("$2"); shift ;;
         --test)        ACTION="test" ;;
         --safe)        ACTION="safe" ;;
         --run)         ACTION="run" ;;
@@ -449,6 +456,14 @@ if [[ -z "$ccache_bin" && "$USE_CCACHE" == "yes" ]]; then
     die "--ccache requested but neither ccache nor sccache is on PATH"
 fi
 
+# The shared precompiled header (src/pch.hpp) is only cacheable when ccache is
+# told to tolerate PCH differences and __TIME__/__DATE__. Without this the PCH
+# change made every TU a permanent ccache miss, which is the opposite of what a
+# PCH is for. Set only when the user has not expressed a preference.
+if [[ -n "$ccache_bin" && -z "${CCACHE_SLOPPINESS:-}" ]]; then
+    export CCACHE_SLOPPINESS="pch_defines,time_macros"
+fi
+
 # Nice the whole build rather than asking the user to remember to. The child
 # compilers and linkers inherit it, so one nice buys the desktop the whole tree.
 NICE_CMD=()
@@ -660,11 +675,14 @@ do_build() {
     # array is empty and to the quoted expansion when it is not, so a plain
     # `cmake --build . ` (no target list) is expressible without tripping -u.
     local target_args=()
-    if [[ "$WANT_TESTS_ONLY" -eq 1 ]]; then
+    if [[ ${#EXPLICIT_TARGETS[@]} -gt 0 ]]; then
+        target_args=(--target "${EXPLICIT_TARGETS[@]}")
+    elif [[ "$WANT_TESTS_ONLY" -eq 1 ]]; then
         target_args=(--target unit_tests "${SAFE_TESTS[@]}")
     fi
-    printf '%sBUILD%s %s (%s jobs%s)\n' "$CYAN" "$RESET" "$BUILD_DIR" "$JOBS" \
-        "$( [[ "$WANT_TESTS_ONLY" -eq 1 ]] && printf ', tests only' )"
+    printf '%sBUILD%s %s (%s jobs%s%s)\n' "$CYAN" "$RESET" "$BUILD_DIR" "$JOBS" \
+        "$( [[ "$WANT_TESTS_ONLY" -eq 1 ]] && printf ', tests only' )" \
+        "$( [[ ${#EXPLICIT_TARGETS[@]} -gt 0 ]] && printf ', targets: %s' "${EXPLICIT_TARGETS[*]}" )"
     printf '%sBUDGET%s %s of %s logical cores (%s physical), %s MiB available of %s total, %s MiB/job, bound: %s%s\n' \
         "$YELLOW" "$RESET" "$JOBS" "$BUDGET_LOGICAL" "$BUDGET_PHYS" "$BUDGET_AVAIL_MIB" \
         "${BUDGET_TOTAL_MIB:-?}" "$PER_JOB_MIB" "$BUDGET_BINDER" \

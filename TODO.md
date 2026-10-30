@@ -367,6 +367,17 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 
 ## P2 — robustness, cleanup, and debt
 
+- [ ] T0355 **The song-page enrichment reads (`attribution`, `comments`, `remixes/count`, `get_similar`) are still unimplemented** (`src/suno/SunoClipDetailService.*`, `src/qml/components/ClipDetailSheet.qml`) #feature
+      Four `[T1]` GETs, all `declared-unused`: `GET /clips/{id}/attribution` (`source_clips[]` with
+      `relationship COV|EX`), `GET /gen/{id}/comments?order=most_liked`
+      (`results`, `allow_comment`, `total_count`), `GET /clips/remixes/count?clip_id=`,
+      `GET /clips/get_similar/?id=`. They are page-inspection reads that degrade gracefully, so a
+      failed one must leave the section hidden rather than fail the sheet — the clip is already on
+      screen. A header for this (`SunoClipDetailService.hpp`) was written on 2026-10-30 and then
+      deleted unused: a `Q_OBJECT` type with no `.cpp` and no target is a compile-cost with no
+      behaviour, and the design fits in this line. Owner per T0346: `SunoExploreService` reads or a
+      small service; UI in `ClipDetailSheet`, which already exists.
+
 - [ ] T0352 **The mutation surface cannot be enabled on a cold start: the gates are switched on after the section is built** (`src/qml_bridge/SunoMutationsSection.cpp`, `src/qml_bridge/SunoBridge.cpp`) #risk-medium #blocks-feature
       Evidence, this machine, 2026-10-30, `--debug`:
       `SunoMutationsSection: mutation surface stays off: library is unavailable: Suno offers this and
