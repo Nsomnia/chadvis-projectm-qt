@@ -1,0 +1,19 @@
+2026-10-30T01:55:00Z  CLAIM    generation submit and completion poll
+2026-10-30T01:40:00Z  PROBE    owner-grant live probes:
+                              POST /api/c/check {"ctype":"generation"} -> 200 {required:true, captcha_version:2}
+                              POST /api/generate/v2-web/ {} -> 422 loc ["body","params","prompt"]
+                              POST /api/generate/v2-web/ flat minimal -> 422 token_validation_failed
+                              POST /api/generate/v2-web/ {"task":"__bad__"} -> 422 literal_error, full task enum
+2026-10-30T01:55:00Z  CHANGE   src/suno/SunoGenerationService.{hpp,cpp}: preflight -> submit -> bounded poll.
+                              Flat body (the `params` nesting is the multi-schema 422 trap), task:"generate",
+                              token+token_provider only when a challenge was solved, 4 s x 90 poll on
+                              /clips/get_songs_by_ids?ids=...
+2026-10-30T01:55:00Z  CHANGE   SunoBridge gains generationState/generationError/generationCaptchaRequired +
+                              submitGeneration(); FeatureGate::Generation joins the implemented set.
+                              CreateView gets the real form back (prompt, tags, model, instrumental, notice).
+2026-10-30T01:56:00Z  VERIFY   test_SunoGenerationService -> 9/9 passed.
+2026-10-30T01:57:00Z  VERIFY   ./build.sh --fast -> 359/359, app links; ./scripts/lint-qml.sh -> no blocking problems.
+2026-10-30T01:58:00Z  VERIFY   ./build.sh --fast --safe -> 14/14 passed (unit_tests 88 s).
+2026-10-30T01:58:00Z  NOTE     NOT verified: a live 200 submit. The account's preflight requires a Turnstile
+                              token that nothing in this build can produce; the refusal path is what was
+                              exercised. No credit was spent.

@@ -15,6 +15,7 @@ class SunoClient;
 class SunoExploreService;
 class SunoNotificationService;
 class SunoPlaylistService;
+class SunoGenerationService;
 class SunoAudioUploadService;
 } // namespace suno
 } // namespace vc
@@ -54,6 +55,14 @@ class SunoBridge : public QObject,
     // invisible to every QML binding. NOTIFY is required for the change to be
     // observable at all.
     Q_PROPERTY(bool generationAvailable READ generationAvailable NOTIFY generationAvailableChanged)
+    // Generation, phase by phase. `generationCaptchaRequired` is the one the UI
+    // needs to branch on: this account's preflight answers `required: true`
+    // (captcha_version 2, Cloudflare Turnstile), so a submit without a token is
+    // refused by the server and must be explained, never retried blindly.
+    Q_PROPERTY(QString generationState READ generationState NOTIFY generationStateChanged)
+    Q_PROPERTY(QString generationError READ generationError NOTIFY generationErrorChanged)
+    Q_PROPERTY(bool generationCaptchaRequired READ generationCaptchaRequired NOTIFY
+                       generationCaptchaRequiredChanged)
     Q_PROPERTY(QString generationUnavailableReason READ generationUnavailableReason NOTIFY
                        generationAvailableChanged)
     /// Every gated surface with its verdict and the reason it is held.
@@ -139,6 +148,9 @@ public:
     bool googleLoginAvailable() const;
     QVariantList models() const;
     bool generationAvailable() const;
+    QString generationState() const;
+    QString generationError() const;
+    bool generationCaptchaRequired() const;
     /// Why generation is unavailable, naming which resolution step is holding it.
     /// Exists so the disabled Generate button can explain itself instead of
     /// being an unexplained dead control.
@@ -194,6 +206,11 @@ public slots:
     Q_INVOKABLE void loadMoreDiscover();
     Q_INVOKABLE void refreshNotifications();
     /// Re-read the account's playlists. Cheap, idempotent, GET-only.
+    /// Preflight, then submit. With no challenge outstanding this is the whole
+    /// gesture; with one, it emits `generationCaptchaRequired` and stops.
+    Q_INVOKABLE void submitGeneration(const QString& prompt, const QString& tags,
+                                      const QString& title, bool instrumental,
+                                      const QString& model, const QString& captchaToken);
     Q_INVOKABLE void refreshPlaylists();
     /// Open one playlist and reset `playlistClips` to its first page.
     Q_INVOKABLE void openPlaylist(const QString& playlistId);
@@ -274,6 +291,10 @@ signals:
     /// diagnostics surface does not have to couple to one gate's verdict.
     void gateStatusesChanged();
     void generationStatusChanged();
+    void generationStateChanged();
+    void generationErrorChanged();
+    void generationCaptchaRequiredChanged();
+    void generationClipsReady(const QVariantList& clips);
     void audioUploadChanged();
     void statusMessageChanged();
     void errorMessageChanged();
@@ -380,6 +401,9 @@ private:
     void destroyExploreService();
     void ensureNotificationService();
     void destroyNotificationService();
+    void ensureGenerationService();
+    void setGenerationError(const QString& message);
+    void destroyGenerationService();
     void ensurePlaylistService();
     void destroyPlaylistService();
     void onPlaylistsReset();
@@ -422,6 +446,15 @@ private:
     vc::suno::SunoExploreService* exploreService_{nullptr};
     vc::suno::SunoNotificationService* notificationService_{nullptr};
     vc::suno::SunoPlaylistService* playlistService_{nullptr};
+    vc::suno::SunoGenerationService* generationService_{nullptr};
+    QString generationError_;
+    QString pendingPrompt_;
+    QString pendingTags_;
+    QString pendingTitle_;
+    QString pendingModel_;
+    QString pendingCaptchaToken_;
+    bool pendingInstrumental_{false};
+    bool generationCaptchaRequired_{false};
     vc::suno::SunoAudioUploadService* audioUploadService_{nullptr};
     /// The mutation surface, as its own object: the service's lifetime, the
     /// eleven verbs and the routing of a settled result all live there. Null

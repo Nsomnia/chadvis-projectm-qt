@@ -79,6 +79,8 @@ set(SUNO_SOURCES
     src/suno/SunoAudioUploadService.cpp
     src/suno/SunoExploreService.hpp
     src/suno/SunoExploreService.cpp
+    src/suno/SunoGenerationService.hpp
+    src/suno/SunoGenerationService.cpp
     src/suno/SunoPlaylistService.hpp
     src/suno/SunoPlaylistService.cpp
     src/suno/SunoNotificationService.hpp

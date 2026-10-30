@@ -16,6 +16,7 @@
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoModels.hpp"
 #include "suno/SunoNotificationService.hpp"
+#include "suno/SunoGenerationService.hpp"
 #include "suno/SunoPlaylistService.hpp"
 #include "suno/auth/AuthCoordinator.hpp"
 #include "ui/controllers/SunoController.hpp"
@@ -37,6 +38,8 @@ SunoBridge::~SunoBridge() {
     notificationService_ = nullptr;
     delete playlistService_;
     playlistService_ = nullptr;
+    delete generationService_;
+    generationService_ = nullptr;
     delete exploreService_;
     exploreService_ = nullptr;
     s_controller = nullptr;
@@ -76,7 +79,12 @@ constexpr vc::suno::FeatureGate kGatesImplementedByThisBuild[]{
         vc::suno::FeatureGate::MediaDelivery,
         // The read side (list + one playlist's clips) is a real call site now;
         // the write verbs stay refused by SunoLibraryMutations / T0011.
-        vc::suno::FeatureGate::Playlists};
+        vc::suno::FeatureGate::Playlists,
+        // Submits through /generate/v2-web/ and polls the batch back. One real
+        // gauntlet remains and it is not code: this account's preflight answers
+        // `required: true`, so a token from a solved challenge is the difference
+        // between a working submit and the refusal the UI names.
+        vc::suno::FeatureGate::Generation};
 
 QString generationUnavailableMessage() {
     return QStringLiteral("Generation is unavailable because the required Suno CAPTCHA token flow "
@@ -230,6 +238,7 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
             bridgeInstance->destroyNotificationService();
             bridgeInstance->destroyExploreService();
             bridgeInstance->destroyPlaylistService();
+            bridgeInstance->destroyGenerationService();
             // The downloader is a child of the outgoing controller, and
             // disconnecting the controller does not reach its children's
             // signals, so the section drops the borrow explicitly. The next
@@ -265,6 +274,7 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
             bridgeInstance->destroyNotificationService();
             bridgeInstance->destroyExploreService();
             bridgeInstance->destroyPlaylistService();
+            bridgeInstance->destroyGenerationService();
             // The mutation service is dropped too: it borrows the resolver out of
             // an account that no longer exists.
             if (bridgeInstance->mutations_) {
@@ -627,15 +637,27 @@ void SunoBridge::setFilterText(const QString& filter) {
 
 void SunoBridge::generate(const QString& prompt, const QString& tags, bool instrumental,
                           const QString& model) {
-    Q_UNUSED(prompt)
-    Q_UNUSED(tags)
-    Q_UNUSED(instrumental)
-    Q_UNUSED(model)
-    const QString message = generationUnavailableMessage();
-    if (generationStatus_ != message) {
-        generationStatus_ = message;
-        emit generationStatusChanged();
+    submitGeneration(prompt, tags, {}, instrumental, model, {});
+}
+
+void SunoBridge::submitGeneration(const QString& prompt, const QString& tags,
+                                  const QString& title, bool instrumental,
+                                  const QString& model, const QString& captchaToken) {
+    ensureGenerationService();
+    if (!generationService_) {
+        setErrorMessage(QStringLiteral("Generation is unavailable in this build."));
+        return;
     }
+    pendingPrompt_ = prompt;
+    pendingTags_ = tags;
+    pendingTitle_ = title.isEmpty() ? prompt.left(60) : title;
+    pendingModel_ = model;
+    pendingInstrumental_ = instrumental;
+    pendingCaptchaToken_ = captchaToken;
+    setGenerationError({});
+    // Always preflight: `required` is what decides whether the submit may carry
+    // no token, and it can change between sessions.
+    generationService_->checkCaptcha();
 }
 
 void SunoBridge::uploadAudio(const QString& localFilePath) {
@@ -1397,6 +1419,93 @@ void SunoBridge::ensurePlaylistService() {
 void SunoBridge::destroyPlaylistService() {
     delete playlistService_;
     playlistService_ = nullptr;
+    delete generationService_;
+    generationService_ = nullptr;
+}
+
+void SunoBridge::ensureGenerationService() {
+    if (generationService_ || !s_client) {
+        return;
+    }
+    generationService_ = new vc::suno::SunoGenerationService(s_client, this);
+    connect(generationService_, &vc::suno::SunoGenerationService::preflightReady,
+            this, [this] {
+                if (!generationService_ || generationService_->preflight().required) {
+                    return;
+                }
+                generationService_->submit({pendingPrompt_, pendingTags_, pendingTitle_, {},
+                                            pendingModel_, pendingInstrumental_,
+                                            pendingCaptchaToken_,
+                                            generationService_->preflight().captchaVersion});
+            });
+    connect(generationService_, &vc::suno::SunoGenerationService::captchaRequired,
+            this, [this](int) {
+                if (generationCaptchaRequired_) {
+                    return;
+                }
+                generationCaptchaRequired_ = true;
+                emit generationCaptchaRequiredChanged();
+            });
+    connect(generationService_, &vc::suno::SunoGenerationService::stateChanged,
+            this, &SunoBridge::generationStateChanged);
+    connect(generationService_, &vc::suno::SunoGenerationService::clipsSubmitted,
+            this, [this] {
+                setStatusMessage(QStringLiteral("Suno accepted the song; rendering."));
+            });
+    connect(generationService_, &vc::suno::SunoGenerationService::completed,
+            this, [this] {
+                QVariantList rows;
+                for (const auto& clip : generationService_->clips()) {
+                    rows.push_back(toDiscoverClip(clip));
+                }
+                setStatusMessage(QStringLiteral("Song ready."));
+                emit generationClipsReady(rows);
+            });
+    connect(generationService_, &vc::suno::SunoGenerationService::failed,
+            this, &SunoBridge::setGenerationError);
+}
+
+void SunoBridge::destroyGenerationService() {
+    delete generationService_;
+    generationService_ = nullptr;
+}
+
+QString SunoBridge::generationState() const {
+    if (!generationService_) {
+        return QStringLiteral("idle");
+    }
+    switch (generationService_->state()) {
+    case vc::suno::SunoGenerationService::State::Idle:
+        return QStringLiteral("idle");
+    case vc::suno::SunoGenerationService::State::CheckingCaptcha:
+        return QStringLiteral("preflight");
+    case vc::suno::SunoGenerationService::State::NeedsCaptcha:
+        return QStringLiteral("captcha");
+    case vc::suno::SunoGenerationService::State::Submitting:
+        return QStringLiteral("submitting");
+    case vc::suno::SunoGenerationService::State::Polling:
+        return QStringLiteral("rendering");
+    case vc::suno::SunoGenerationService::State::Completed:
+        return QStringLiteral("ready");
+    case vc::suno::SunoGenerationService::State::Failed:
+        return QStringLiteral("failed");
+    }
+    return QStringLiteral("idle");
+}
+
+QString SunoBridge::generationError() const { return generationError_; }
+
+bool SunoBridge::generationCaptchaRequired() const { return generationCaptchaRequired_; }
+
+void SunoBridge::setGenerationError(const QString& message) {
+    if (generationError_ == message) {
+        return;
+    }
+    generationError_ = message;
+    emit generationErrorChanged();
+    if (!message.isEmpty()) {
+        setErrorMessage(message);
+    }
 }
 
 void SunoBridge::refreshPlaylists() {

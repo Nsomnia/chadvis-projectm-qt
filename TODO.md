@@ -364,6 +364,20 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 
 ## P2 — robustness, cleanup, and debt
 
+- [?] T0351 **Generation submit + poll exist; the captcha token is the one missing input** (`src/suno/SunoGenerationService.*`, `src/qml_bridge/SunoBridge.*`, `src/qml/views/CreateView.qml`) #feature #blocks-ui
+      Wired end to end: `POST /c/check` preflight (`required` + `captcha_version`), the flat
+      `/generate/v2-web/` body with `task:"generate"`, the batch's clip ids from the submit reply,
+      and a bounded `GET /clips/get_songs_by_ids?ids=…` poll (4 s, 90 tries) that emits the finished
+      clips. CreateView has a real prompt/tags/model/instrumental form again. Pinned by
+      `test_SunoGenerationService` (9 cases: preflight parsing incl. provider 2 vs 1, the flat body,
+      token+provider only when a challenge was solved, clip-id extraction with the batch-id fallback,
+      and submit-before-preflight refused rather than guessed).
+      **Blocked on one measured fact, not on code:** this account's preflight answers
+      `required: true, captcha_version: 2` (Cloudflare Turnstile), and a submit without a token is a
+      422 `token_validation_failed`. The UI says so and paths the user to suno.com/create. What
+      closes this is a token source — the site solves it in the browser, and nothing in this build
+      can. VERIFY in `STATUS/T0351.log`.
+
 - [x] T0350 **A full build re-parses the same Qt headers in every translation unit** (`src/pch.hpp`, `cmake/TargetSetup.cmake`, `tests/unit/CMakeLists.txt`) #perf
       Measured on the reference box (2 physical cores, 8 GB): one `project_lib` TU compiles in **1.8 s with the
       shared precompiled header and 4.9 s without it** (-63%), and there are ~350 such TUs. The header holds
