@@ -199,6 +199,27 @@ line to describe an item is describing it in the wrong place. Finished work move
       Phase 3 of the plan. Discovery of `<configDir>/themes/*.json`, the §11 validation table (schema version, `id` pattern and uniqueness, 64 KiB cap, reserved `custom`, bad-hex rejects the whole file, contrast warns but never auto-adjusts), and `availableThemes` for the Settings combo. Named `ThemeCatalog`, **never** `Theme` — a C++ type named `Theme` shadows the QML singleton, which is exactly how `ThemeBridge` became unreachable and was deleted as dead code (T0055). `Theme.qml` must keep never parsing files itself; it asks the catalog for a resolved definition.
 ## P1 — correctness, robustness, and debt that will bite
 
+- [ ] T0356 **Suno has a real OAuth 2.0 device-less loopback flow, and it is the in-app sign-in this app wanted** (`src/suno/auth/`, `docs/suno_api/`) #feature #blocks-ui
+      Measured 2026-10-30, no credential needed:
+      `POST https://studio-api-prod.suno.com/api/v2/external/oauth/register/` with
+      `{"client_name":…,"redirect_uris":["http://127.0.0.1:41234/callback"],"grant_types":
+      ["authorization_code","refresh_token"],"response_types":["code"],
+      "token_endpoint_auth_method":"none"}` answers **201** with a `client_id`. A loopback
+      redirect on an arbitrary port is accepted, which is the thing five-proof Clerk OAuth could
+      never do (T0199/T0345). Companion: `GET /api/v2/external/oauth/authorize/` with
+      `code_challenge`/`code_challenge_method=S256`/`state`/`scope`/`resource`, then a form POST to
+      the token endpoint with `grant_type=authorization_code` + `code_verifier`.
+      **The catch, and it is the whole decision:** the reference implementation requests
+      `resource=https://api.suno.com/mcp` and `scope "api:v0 credits:spend download library:read
+      library:search library:write offline_access profile:read"`, so the token is **MCP-scoped**,
+      not the studio-api bearer this client sends today. Viability therefore splits:
+      (a) **sign-in UX — viable now:** browser → Google/Facebook → loopback catches the code → the
+      app holds a Suno-issued refresh token, no cookie harvesting and no keychain prompt;
+      (b) **replacing `__session` — unproven:** it needs one authorized run against
+      `suno.com/a/api/feed/v3` with that access token to see whether the studio API accepts it.
+      Next: implement (a) as `SunoOAuthLoopback` (QTcpServer on 127.0.0.1:0, register, open
+      `QDesktopServices`, catch `/callback`, exchange, store), then settle (b) with one read.
+
 - [x] T0347 **Playlists had reads captured and no read surface at all** (`src/suno/SunoPlaylistService.*`, `src/qml/components/PlaylistStrip.qml`, `src/qml_bridge/SunoBridge.*`) #feature
       `GET /playlist/me` was `declared-unused` and `GET /playlist/{id}/?page=N` was `not-in-code`,
       so the account's playlists could not be listed, opened, or played from. `SunoPlaylistService`
