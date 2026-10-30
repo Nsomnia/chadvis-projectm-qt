@@ -63,9 +63,12 @@ line to describe an item is describing it in the wrong place. Finished work move
       2026-10-27, MIT — all citations in this item and in T0346.md are `[LEAD]`, not ours) combined
       with **our own captured inventory and `src/suno/` grep facts** (24 endpoint constants wired,
       11 mutation verbs disabled, `SunoBridge::generate()` refuses). Hard gates that a
-      third-party surface never lifts: every mutation needs **our own capture or a
-      fail-closed self-verifying route** (never a `[LEAD]` body), no new `CapturedHosts`
-      host without a capture, and Studio multitrack export is out of scope. Eleven
+      third-party surface never lifts: **the owner's 2026-10-30 grant (AGENTS.md
+      "Authorized live work") replaces the old capture requirement** — this agent may call any
+      authenticated route, reads and mutations, with the stored session, and record its own
+      observation at `[T1]`; a `[LEAD]` body is still only a lead, no new `CapturedHosts` host
+      without our own observation, no credential or body ever committed, fail-closed on any
+      wrong-object/wrong-file failure mode, and Studio multitrack export stays out of scope. Eleven
       families with build/partial/missing status per grep, module placement inside the
       existing layering, and the per-family sub-task rule are in
       [docs/backlog/T0346.md](docs/backlog/T0346.md); each family claims its own sub-tasks here before any work.
@@ -249,6 +252,9 @@ line to describe an item is describing it in the wrong place. Finished work move
       `mutationsUnavailableReason` / `mutationsBusy`. ~727 LOC plus 11 `Q_INVOKABLE`s can
       neither run nor be seen. Decide: wire it behind an explicit user setting **and** add
       the QML handlers, or delete it and mark the constants `declared-unused`.
+      **Gates lifted 2026-10-30 (owner grant, AGENTS.md):** the wire format AND the reachability
+      decision are unblocked — probe the live account, record the answer, then wire it behind the
+      existing setting. The service stays `enabled_{false}` only until that probe lands.
       **[LEAD] corroboration, not new scope:** the sunox register (§1; §7.6) in
       docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md — claims ≤2026-09-14, retrieved 2026-10-27 —
       evidences *another client actually driving this route family per-route* (playlist v2 CRUD

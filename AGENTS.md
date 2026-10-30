@@ -56,15 +56,40 @@ workflow dispatch. Full rule: [`docs/dev/RELEASING.md`](docs/dev/RELEASING.md#wh
 * **A secret may be printed in the session transcript** — it is local and ephemeral. That
   permission stops at the repository and at any remote. The app's runtime log is durable and gets
   attached to issues, so it stays free of credentials: log `url.path()`, not `url.toString()`.
-* **Never send a cookie, bearer, or automatic remote image request off the captured allowlist**
-  (`src/suno/CapturedHosts.cpp`). This is an unofficial suno.com client: a new host needs a
-  capture first, and a lead is never a host entry. `docs/suno_api/` is the record — if a doc and
-  `src/` disagree, `src/` wins.
-* **A route may ship on `[LEAD]` evidence only if it verifies itself at runtime and fails
-  closed.** The bar is a verified answer — an authenticated unwrap, a container sniff, a status
-  the server itself decides — not a captured guess. A form with neither a capture nor a runtime
-  check stays refused, and what may never ship is a path whose failure mode is a wrong file.
-  Capture procedure: [`docs/suno_api/capture/README.md`](docs/suno_api/capture/README.md).
+* **Never send a cookie, bearer, or automatic remote image request off the allowlist**
+  (`src/suno/CapturedHosts.cpp`). This is an unofficial suno.com client: a host becomes an entry
+  after **our own observation** — a request this client made, or an authenticated probe an agent
+  ran with the account owner's session — never on a third-party document. A lead is never a host
+  entry. `docs/suno_api/` is the record — if a doc and `src/` disagree, `src/` wins.
+
+### Authorized live work (owner grant, 2026-10-30)
+
+The account owner has authorized this agent to **use their stored session directly** — reads and
+writes, against `suno.com` and its captured hosts — instead of waiting for a separate capture
+pass. The grant is deliberate and covers:
+
+* **Live probing of any authenticated route**, including mutations, with the credentials already
+  in `CredentialStore`; results may be recorded as evidence at `[T1]` on the same footing as a
+  Burp/HAR capture, because they are our own observation of the live service.
+* **Wiring a route from that evidence without a second capture.** A successful live response from
+  this client is the proof; a `[LEAD]` third-party document is still just a lead.
+* **Spending credits.** Generation and other credit-bearing routes are authorized. Reference
+  scale: ~10 credits per song against ~7 500 available. Do not run a spend loop to "explore";
+  probe one call, record what it answered, then decide.
+
+What the grant does **not** lift, and nothing in it should be read as lifting:
+
+* **The credential rule above.** Nothing captured, no cookie, token, or account identifier is
+  ever committed, quoted in `TODO.md`/`STATUS/`/`docs/`, or put in a commit message. Evidence is
+  recorded as status code, top-level keys and counts — never the body, never the header.
+* **Fail closed.** A wired route whose failure mode is a wrong file, a wrong object, or a silent
+  partial write stays refused until it has a runtime check. The grant frees the *evidence*
+  requirement, not the *correctness* requirement.
+* **Anything irreversibly destructive** (account deletion, trashing a library, spending a
+  metered download allowance) still gets the owner's explicit go-ahead per action.
+
+Historical capture procedure, still valid when a route needs a reproducible artifact:
+[`docs/suno_api/capture/README.md`](docs/suno_api/capture/README.md).
 * **Never `rm` source.** Move it to `.backup_graveyard/` with a date-time suffix (gitignored).
   **Generated build directories are exempt:** `build*/` are discarded, never parked — the user
   copies a binary they want to keep into `~/Documents` by hand, and a parked multi-GB tree is
