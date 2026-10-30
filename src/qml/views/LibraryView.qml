@@ -376,6 +376,12 @@ Item {
                 }
 
                 onAtYEndChanged: {
+                    // The fill/paging loop is the LIBRARY's. While a playlist is
+                    // the model there is nothing to page here, and asking anyway
+                    // would walk the library in the background behind a view that
+                    // never renders it.
+                    if (SunoBridge.openPlaylistId !== "")
+                        return
                     if (atYEnd && SunoBridge.hasMorePages && !SunoBridge.loading)
                         SunoBridge.requestNextLibraryPage()
                 }
@@ -386,6 +392,8 @@ Item {
                 onCountChanged: tryFillViewport()
                 onHeightChanged: tryFillViewport()
                 function tryFillViewport() {
+                    if (SunoBridge.openPlaylistId !== "")
+                        return
                     if (clipGrid.count > 0 && !SunoBridge.loading && SunoBridge.hasMorePages
                             && clipGrid.contentHeight <= clipGrid.height) {
                         Qt.callLater(function() {

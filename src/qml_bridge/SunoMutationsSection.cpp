@@ -1,6 +1,7 @@
 #include "SunoMutationsSection.hpp"
 
 #include <QJsonArray>
+#include <QTimer>
 #include <QJsonObject>
 #include <QJsonValue>
 
@@ -85,7 +86,28 @@ void SunoMutationsSection::detach() {
     client_ = nullptr;
 }
 
-void SunoMutationsSection::onGatesChanged() { emit availabilityChanged(); }
+void SunoMutationsSection::attemptEnable() {
+    if (!service_ || service_->isAvailable()) {
+        return;
+    }
+    if (!service_->setEnabled(true)) {
+        LOG_DEBUG("SunoMutationsSection: mutation surface stays off: {}",
+                  service_->unavailableReason().toStdString());
+        return;
+    }
+    LOG_INFO("SunoMutationsSection: mutation surface enabled");
+}
+
+void SunoMutationsSection::onGatesChanged() {
+    // The gates arrive AFTER the services are constructed: `wireControllerSignals`
+    // builds the mutation section first and enables the resolver's gates later in
+    // the same function. So the enable attempted at construction is expected to be
+    // refused on a cold start, and this is the retry that actually lands. Logged
+    // once per attempt, not once per signal, because a refusal here is the honest
+    // state and the reason is already in the sentence.
+    attemptEnable();
+    emit availabilityChanged();
+}
 
 bool SunoMutationsSection::available() const {
     return service_ && service_->isAvailable();
@@ -116,6 +138,7 @@ void SunoMutationsSection::ensureServiceForController() {
         if (controller_ && controller_->accountManager()) {
             service_->setGateResolver(&controller_->accountManager()->gates());
         }
+
         return;
     }
     if (!client_) {
@@ -133,10 +156,6 @@ void SunoMutationsSection::ensureServiceForController() {
     // 2026-10-30 grant settled that, so the verbs are reachable and the gate
     // resolver decides the rest. A refusal is logged with its reason rather than
     // swallowed -- `isAvailable()` still answers false if a gate says no.
-    if (!service_->setEnabled(true)) {
-        LOG_WARN("SunoMutationsSection: mutation surface stays off: {}",
-                 service_->unavailableReason().toStdString());
-    }
     connect(service_, &vc::suno::SunoLibraryMutations::availabilityChanged, this,
             &SunoMutationsSection::availabilityChanged);
     connect(service_, &vc::suno::SunoLibraryMutations::mutationSettled, this,

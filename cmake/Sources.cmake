@@ -236,6 +236,7 @@ set(QML_SOURCES
     src/qml/components/TransportBar.qml
     src/qml/components/ClipCard.qml
     src/qml/components/ClipDetailSheet.qml
+    src/qml/components/PlaylistStrip.qml
     src/qml/views/LibraryView.qml
     src/qml/views/DiscoverView.qml
     src/qml/views/NotificationsView.qml

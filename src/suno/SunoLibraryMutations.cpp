@@ -103,9 +103,17 @@ namespace {
 [[nodiscard]] FeatureGate gateFor(const MutationVerb verb) noexcept
 {
     switch (verb) {
+        // Visibility and the two remix toggles set a CLIP property; they are
+        // Library writes. They were grouped with `ShareLink` under Sharing, and
+        // that over-grouping had a measured cost on 2026-10-30: this account's
+        // session flag map has no `realtime-share-asset-status`, so the Sharing
+        // gate refused -- and `everyGatePermits` refused the whole surface with
+        // it. A flag about realtime share-asset status gates sharing an asset,
+        // not hiding a clip.
         case MutationVerb::SetVisibility:
         case MutationVerb::ToggleRemixPermission:
         case MutationVerb::ToggleShowRemixes:
+            return FeatureGate::Library;
         case MutationVerb::ShareLink:
             return FeatureGate::Sharing;
         case MutationVerb::UpdateFeedbackState:

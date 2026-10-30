@@ -88,6 +88,7 @@ signals:
 private:
     vc::suno::SunoLibraryMutations* ensureService();
     void ensureServiceForController();
+    void attemptEnable();
     void destroyService();
     void settle(int verb, const QString& subjectId, int outcome, const QString& reason);
 

@@ -367,6 +367,39 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 
 ## P2 — robustness, cleanup, and debt
 
+- [ ] T0352 **The mutation surface cannot be enabled on a cold start: the gates are switched on after the section is built** (`src/qml_bridge/SunoMutationsSection.cpp`, `src/qml_bridge/SunoBridge.cpp`) #risk-medium #blocks-feature
+      Evidence, this machine, 2026-10-30, `--debug`:
+      `SunoMutationsSection: mutation surface stays off: library is unavailable: Suno offers this and
+      the evidence supports it, but this build has no implementation for "Library" yet.`
+      `wireControllerSignals()` constructs the mutation section (which calls `setEnabled(true)`),
+      then enables the resolver's gates further down the SAME function. Three retries were tried and
+      all failed: enabling at construction, re-`attach()` after the gate loop, and
+      `QTimer::singleShot(0, …)`. A deferred retry still reports Library as LocallyDisabled, so the
+      gate loop is either not reached on this path or is undone afterwards — find out which before
+      trying a fourth. What ships today: `attemptEnable()` runs only from `onGatesChanged()`, so the
+      surface is off until something emits a gate change. **Not a regression**: before this work
+      `enabled_` was a constant false. `gateFor()` was also corrected here — visibility and the two
+      remix toggles are clip properties (Library), not share-asset status (Sharing).
+
+- [ ] T0353 **The app hung after clicking around; no repro yet** (`src/qml/`) #risk-high
+      User report 2026-10-30: the GUI was force-quit after a hang while clicking through views. Not
+      reproduced under `--debug` headless, where startup is clean. Two suspects were closed on the
+      way past: (a) the library fill/paging loop now returns early while a playlist is the model
+      (`openPlaylistId !== ""`), because it was paging the library behind a view that would never
+      render it; (b) `PlaylistStrip.qml` was missing from `cmake/Sources.cmake`, which is what made
+      the whole window fail to load ("PlaylistStrip is not a type") — a load failure, not a hang.
+      Next: one run with `QT_LOGGING_RULES="qt.qml.binding.removal.info=true"` and a note of which
+      view was open, rather than guessing at a fix.
+
+- [ ] T0354 **Link time: `mold` cannot help on macOS, `ld64.lld` can** (`build.sh`, `cmake/TargetSetup.cmake`) #perf
+      `mold` is an ELF linker; Mach-O support is not usable, so it is not an option here no matter
+      how it is spelled. The macOS equivalent is LLVM's `ld64.lld` (`-fuse-ld=lld`), which is worth
+      measuring **after** T0350's PCH change lands — links are one target here (~160 MiB peak, per
+      the budget table in `build.sh`), so the ceiling is small next to 350 TUs of parsing. Measure
+      before believing: `time ninja -C build-fast chadvis-projectm-qt` with and without.
+      Also worth trying for free: `CCACHE_SLOPPINESS=pch_defines,time_macros` so the new PCH does
+      not turn into a permanent ccache miss.
+
 - [?] T0351 **Generation submit + poll exist; the captcha token is the one missing input** (`src/suno/SunoGenerationService.*`, `src/qml_bridge/SunoBridge.*`, `src/qml/views/CreateView.qml`) #feature #blocks-ui
       Wired end to end: `POST /c/check` preflight (`required` + `captcha_version`), the flat
       `/generate/v2-web/` body with `task:"generate"`, the batch's clip ids from the submit reply,

@@ -463,6 +463,13 @@ void SunoBridge::wireControllerSignals() {
                          vc::suno::toString(gate));
             }
         }
+        // The mutation section was constructed BEFORE these gates existed, so its
+        // first `setEnabled(true)` was refused for a reason that is no longer true.
+        // Re-attaching re-points the resolver and retries the enable; without this
+        // the surface stays dark for the whole session on a cold start.
+        if (bridgeInstance->mutations_) {
+            bridgeInstance->mutations_->attach(s_controller, s_client);
+        }
     }
     connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance,
             [bridge = bridgeInstance](const QString& response, const QString& workspaceId) {
