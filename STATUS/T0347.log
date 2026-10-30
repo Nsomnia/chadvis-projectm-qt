@@ -20,3 +20,16 @@
 2026-10-27T01:20:00Z  VERIFY   ./build.sh --fast --safe -> see the commit body; 13/13 including the new entry.
 2026-10-27T01:20:00Z  NOTE     Not verified: no signed-in run, so the strip's live rendering and real 42-clip
                               paging are MT-001, not this log.
+2026-10-30T01:05:00Z  PROBE    live, signed in as the account owner (owner grant, AGENTS.md "Authorized live work"):
+                              GET https://suno.com/a/api/playlist/me -> 200, 10 608 bytes,
+                                  {num_total_results:int, current_page:int, playlists:array[12]}
+                              GET https://suno.com/a/api/playlist/{id}/?page=1 -> 200, 17 130 bytes,
+                                  playlist object at TOP level, playlist_clips:array[2], entries
+                                  {clip, created_at, relative_index}
+                              GET .../?page=99 -> 200, 700 bytes, playlist_clips:array[0]
+2026-10-30T01:05:00Z  VERIFY   the shipped parser matches the live wire key-for-key: the `playlists` envelope
+                              (pinned by listReadsTheConfirmedLiveEnvelope), the top-level page body, the
+                              {clip,relative_index,created_at} wrapper, and the empty-page end signal that
+                              `hasMoreAfter` encodes. 12 playlists on this account.
+2026-10-30T01:05:00Z  NOTE     Still not verified: rendering in the app (no GUI run), and the multi-page walk
+                              on a playlist larger than one page -- the probed playlist has 2 clips.

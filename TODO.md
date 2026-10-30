@@ -214,8 +214,11 @@ line to describe an item is describing it in the wrong place. Finished work move
       `SunoController::rememberClips` upserts each fetched playlist page into the DB.
       Pinned by `test_SunoPlaylistService` (10 cases, incl. the `/playlist/{id}/?page=N` spelling and
       the past-the-end page). VERIFY in `STATUS/T0347.log`.
-      **Not verified:** the live rendering -- no signed-in session was driven, so the strip's empty
-      state and the paging under a real 42-clip playlist are MT-001 territory.
+      **Live-verified 2026-10-30** (owner grant): `playlist/me` answers 200 with 12 playlists under a
+      `playlists` array, the page body is the top-level playlist object with
+      `playlist_clips[] = {clip, created_at, relative_index}`, and page 99 is a 200 with an empty
+      array -- every shape the parser asserts. **Not verified:** the rendering itself (no GUI run),
+      and a multi-page walk on a playlist bigger than one page.
       **Not in this item:** writes. `addClipsToPlaylist` and the rest stay refused by T0011.
 
 - [ ] T0348 **The `SunoEndpoints.hpp` "deliberately ABSENT" list is stale for four captured routes** (`src/suno/SunoEndpoints.hpp`, `src/suno/SunoLibraryMutations.*`) #feature #risk-medium
