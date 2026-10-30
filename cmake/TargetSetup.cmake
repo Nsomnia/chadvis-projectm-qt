@@ -107,6 +107,16 @@ set_target_properties(project_lib PROPERTIES
 target_include_directories(project_lib PUBLIC ${COMMON_INCLUDES})
 target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
 
+# Compile-time only: src/pch.hpp carries the Qt/std headers every TU re-parses.
+# Measured on the reference box (2 physical cores), the parse of those headers is
+# the bulk of a TU's wall clock, and ~350 TUs pay it independently. Nothing here
+# changes what a TU means -- the header holds includes and nothing else.
+# Opt out with -DCHADVIS_NO_PCH=ON when bisecting a build oddity.
+option(CHADVIS_NO_PCH "Build without the shared precompiled header" OFF)
+if(NOT CHADVIS_NO_PCH)
+    target_precompile_headers(project_lib PRIVATE ${CMAKE_SOURCE_DIR}/src/pch.hpp)
+endif()
+
 # The version is a build-time fact: version.txt at the repo root is validated
 # into PROJECT_VERSION by the root CMakeLists. PUBLIC so every consumer of
 # project_lib (the executable, the test lanes) reports the identical value;

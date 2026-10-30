@@ -1,0 +1,9 @@
+2026-10-30T00:40:00Z  CLAIM    the build re-parses the same Qt headers in ~350 translation units
+2026-10-30T00:40:00Z  EVIDENCE reference box: 2 physical cores / 4 logical, 8 GB. A full --fast rebuild is 347-402
+                              ninja edges and each project_lib TU spent seconds re-parsing identical headers.
+2026-10-30T00:40:00Z  CHANGE   src/pch.hpp (Qt Core/Network/Json + std, includes only), wired with
+                              target_precompile_headers for project_lib and unit_tests; -DCHADVIS_NO_PCH=ON opts out.
+                              Single-file test executables deliberately get no PCH: building one costs what it saves.
+2026-10-30T00:40:00Z  MEASURE  same TU, same flags, CCACHE_DISABLE=1: with PCH 1.8 s, without 4.9 s (-63%).
+2026-10-30T00:41:00Z  VERIFY   ./build.sh --fast --tests -> 347/347, 0 errors, full rebuild from the PCH change.
+2026-10-30T00:42:00Z  VERIFY   ./build.sh --fast --safe -> 13/13 passed (unit_tests 89 s).

@@ -40,6 +40,7 @@ an allowlist entry.
 |---|---|---|---|---|
 | [`paperfoot/suno-cli`](https://github.com/paperfoot/suno-cli) | `6d28c67a733b32183a80d81306bf0013f46b00b7` | 2026-10-10 | MIT | **No.** Its `conformance/` validates its own CLI output schemas, not captured traffic. |
 | [`Nsomnia/sunox-chadvis-suno-frontend-projectm-qt-research`](https://github.com/Nsomnia/sunox-chadvis-suno-frontend-projectm-qt-research) (`docs/suno/overview.md`) | `8a20930d0ab9adcce802aeaf4ece492821daef69` | 2026-10-27 | MIT | **No.** It describes local HAR/NetLog corpora and bundle scans by filename; none is committed to that repository. |
+| The user's own browser extension, `suno-master-utility-browser-extension` at `~/Documents/suno-master-utility-browser-extension/` | unpinned local worktree (no commit recorded) | 2026-10-30 | unpublished, author-owned | **Yes, in the extension's own `lib/`** — `api.js` carries a route register with a per-route evidence class. It is the **user's own client**, not a third party, but its route claims are still not our captures and are graded `[LEAD]` here on the same one-rule terms. |
 
 Pins are **commit SHAs**, never tags or branch names, so a stale citation is
 visible by grep and cannot silently drift. A re-read at a different SHA is a new

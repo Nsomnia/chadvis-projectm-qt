@@ -138,6 +138,28 @@ private slots:
         QCOMPARE(wrapped->at(0).name, QStringLiteral("Night drive"));
     }
 
+    void listReadsTheConfirmedLiveEnvelope()
+    {
+        // The user's own extension client (a confirmed 200 in their register)
+        // documents `/api/playlist/me` as
+        // `{num_total_results, current_page, playlists:[...]}`. The wrapper is
+        // what the real route sends, so the key is pinned rather than assumed.
+        const auto parsed = SunoPlaylistService::parseList(QJsonValue(QJsonObject{
+            {QStringLiteral("num_total_results"), 2},
+            {QStringLiteral("current_page"), 1},
+            {QStringLiteral("playlists"),
+             QJsonArray{
+                     QJsonObject{{QStringLiteral("id"), QStringLiteral("pl_1")},
+                                 {QStringLiteral("name"), QStringLiteral("Mine")}},
+                     QJsonObject{{QStringLiteral("id"), QStringLiteral("pl_2")},
+                                 {QStringLiteral("name"), QStringLiteral("Also mine")}},
+             }},
+        }));
+        QVERIFY(parsed.has_value());
+        QCOMPARE(parsed->size(), 2);
+        QCOMPARE(parsed->at(1).id, QStringLiteral("pl_2"));
+    }
+
     void listRefusesAnEnvelopeWithNoArray()
     {
         const auto parsed = SunoPlaylistService::parseList(

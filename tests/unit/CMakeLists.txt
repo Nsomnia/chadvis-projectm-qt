@@ -52,6 +52,13 @@ set_target_properties(unit_tests PROPERTIES
     AUTOMOC ON
 )
 
+# Same accelerator as project_lib: this one target compiles ~100 files and they
+# all re-parse the same Qt headers. Single-file test executables deliberately do
+# NOT get a PCH -- building one costs about what it saves for one TU.
+if(NOT CHADVIS_NO_PCH)
+    target_precompile_headers(unit_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/pch.hpp)
+endif()
+
 target_link_libraries(unit_tests PRIVATE
     Qt6::Core
     Qt6::Test

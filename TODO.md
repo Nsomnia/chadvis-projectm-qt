@@ -226,6 +226,17 @@ line to describe an item is describing it in the wrong place. Finished work move
       Add the constants with their evidence labels, correct the absent-list, and give the verbs the
       response discipline the captured bodies now allow. Complements T0011 (reachability), does not
       duplicate it.
+
+- [ ] T0349 **Persona reads are a `[LEAD]` path family with a documented body, and zero code** (`src/suno/SunoEndpoints.hpp`, `src/suno/SunoPersonaService.*`, `src/qml/panels/settings/`) #feature
+      T0346 family 8 assumed no persona route was captured, so the family stalled on "capture first".
+      The user's own extension register (`lib/api.js`, `SunoAPI.ENDPOINTS`) grades three reads as
+      **CONFIRMED LIVE (200 + known body)**: `GET /api/persona/get-personas/` ->
+      `{personas:[...]}`, `/api/persona/get-loved-personas/`, `/api/persona/get-followed-personas/`.
+      That is not our capture, so it stays `[LEAD]` for the grade — but these are idempotent GETs, so
+      the route bar (`fail closed`) is satisfiable: parse tolerantly, render nothing when the body is
+      not the expected shape, and never infer a persona from a failed read. The write half
+      (`create/`, `edit-persona/`, `set_visibility/`, the voice-verification chain) stays capture-
+      gated exactly as family 8 says. UI behind the existing `Personas` feature gate.
 - [ ] T0011 **The whole 11-route library/playlist mutation surface is runtime-unreachable and unobservable** (`src/suno/SunoLibraryMutations.hpp:493`, `src/suno/SunoLibraryMutations.cpp:394-397`) #risk-high
       **The contract gap is closing:** as of 2026-10-26 the request *and* response shapes for reaction, both
       remix toggles, visibility and the whole playlist CRUD set are captured (§5.13). `setEnabled` being
@@ -343,6 +354,14 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
       refusing rather than guessing. Extend the parser tests with 0/1/2-session bodies.
 
 ## P2 — robustness, cleanup, and debt
+
+- [x] T0350 **A full build re-parses the same Qt headers in every translation unit** (`src/pch.hpp`, `cmake/TargetSetup.cmake`, `tests/unit/CMakeLists.txt`) #perf
+      Measured on the reference box (2 physical cores, 8 GB): one `project_lib` TU compiles in **1.8 s with the
+      shared precompiled header and 4.9 s without it** (-63%), and there are ~350 such TUs. The header holds
+      includes only -- no macros, no `using` -- so it cannot change what a TU means; `-DCHADVIS_NO_PCH=ON` opts
+      out for a bisect. `unit_tests` gets the same PCH; the single-file test executables deliberately do not,
+      because building theirs costs about what it saves. **Not measured:** end-to-end wall clock for a cold full
+      rebuild, and the win will be smaller for a TU that was already cheap. VERIFY in `STATUS/T0350.log`.
 
 - [ ] T0327 **The credential-store handoff is a captured lambda across threads, and that is the whole TSan class** (`src/suno/SunoClient.cpp:267-335`) #risk-high
       The 39-report CI baseline and the 206-warning local run are one pattern: `CredentialStoreWorker::requestRestore` posts `QMetaObject::invokeMethod(guiReceiver_, [this, outcome, generation, shutdown]{...}, Qt::QueuedConnection)`. Qt copies that functor **on the worker thread** while constructing the `QMetaCallEvent` and reads it **on the GUI thread** when dispatching; both accesses are instrumented code in our translation unit (`qobjectdefs_impl.h:548`), while the happens-before edge lives in libQt6Core's event queue, which is not built with TSan. TSan therefore sees a write and a read with no edge between them and says so 206 times, "as if synchronized via sleep" — it can only infer the interleaving from the test's wait loop. The handoff itself is correct today (`restoreInFlight_`, `restoreGeneration_`, `restoreDiscarded_` and `restoreCompletions_` are GUI-thread-only by construction; `shuttingDown_` is atomic), which is exactly why suppressing the class is tempting and wrong: **a real race inside a capture produces an indistinguishable report.** Fix by construction, not by suppression: give the outcome a mutex-guarded slot on the receiver and post a **parameterless** queued call (`QMetaObject::invokeMethod(receiver, &SunoClient::onRestoreOutcomeReady, Qt::QueuedConnection)`), so every byte that crosses the thread boundary moves under our own lock and the event carries no functor storage. Target: zero reports on `TestSunoRequestEpoch` and `TestBoundedBody`, with `cmake/tsan.supp` still empty. Rule and rationale: [INVARIANTS.md](docs/dev/INVARIANTS.md#threads-and-ownership); measurement: [TESTING.md](docs/dev/TESTING.md#the-sanitizer-lanes).
