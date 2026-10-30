@@ -1,6 +1,7 @@
 # agent and scratch or git cloned
 third_party/*
 scratch/*
+claudesonnet5_old-project-init.rtf
 
 # messy opencode stuff
 node_modules/

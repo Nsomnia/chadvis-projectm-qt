@@ -106,9 +106,10 @@ skill over a generic one when both apply. Inventory, provenance and per-harness 
 [`docs/dev/SKILLS.md`](docs/dev/SKILLS.md).
 
 ## Tools
-Playwright via the user's Brave browser, logged in via Facebook, should be available with dev
+browser-devtools mcp and Playwright mcp both via the user's Brave browser, logged in via Facebook, should be available with dev
 utils as well via MCP. Suno recon lives at `~/Documents/suno-recon-active-investigation/`; live
 recon may be done with the available tools.
+Recon and logic (huge amounts plus tests) at `/Users/derekvanee/Documents/suno-master-utility-browser-extension/`.
 
 ## Token Efficiency
 Invoke a faux/psuedo form of the popular `caveman` speak skill where possible to be as token efficient as possible.
