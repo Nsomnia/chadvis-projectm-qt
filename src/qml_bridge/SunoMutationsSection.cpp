@@ -6,6 +6,7 @@
 
 #include <optional>
 
+#include "core/Logger.hpp"
 #include "suno/SunoAccountManager.hpp"
 #include "suno/SunoLibraryMutations.hpp"
 #include "ui/controllers/SunoController.hpp"
@@ -126,6 +127,15 @@ void SunoMutationsSection::ensureServiceForController() {
     // manager yet) fails closed inside the service.
     if (controller_ && controller_->accountManager()) {
         service_->setGateResolver(&controller_->accountManager()->gates());
+    }
+    // Enabled here, once, and only here: T0011 held this switch off because the
+    // wire format was unproven. The 2026-10-26 captures (§5.13) and the owner's
+    // 2026-10-30 grant settled that, so the verbs are reachable and the gate
+    // resolver decides the rest. A refusal is logged with its reason rather than
+    // swallowed -- `isAvailable()` still answers false if a gate says no.
+    if (!service_->setEnabled(true)) {
+        LOG_WARN("SunoMutationsSection: mutation surface stays off: {}",
+                 service_->unavailableReason().toStdString());
     }
     connect(service_, &vc::suno::SunoLibraryMutations::availabilityChanged, this,
             &SunoMutationsSection::availabilityChanged);

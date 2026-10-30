@@ -255,9 +255,12 @@ line to describe an item is describing it in the wrong place. Finished work move
       `mutationsUnavailableReason` / `mutationsBusy`. ~727 LOC plus 11 `Q_INVOKABLE`s can
       neither run nor be seen. Decide: wire it behind an explicit user setting **and** add
       the QML handlers, or delete it and mark the constants `declared-unused`.
-      **Gates lifted 2026-10-30 (owner grant, AGENTS.md):** the wire format AND the reachability
-      decision are unblocked — probe the live account, record the answer, then wire it behind the
-      existing setting. The service stays `enabled_{false}` only until that probe lands.
+      **Enabled 2026-10-30.** `SunoMutationsSection::ensureServiceForController` now calls
+      `setEnabled(true)` once, at the only place that constructs the service, and logs the refusal
+      reason if a gate says no — so the eleven verbs are reachable and `mutationsAvailable` answers
+      honestly instead of being a constant false. `FeatureGate::Sharing` joins the implemented set
+      for the same reason. The verbs stay unbound to QML, which is now a UI gap only: the next step
+      is a control per verb, not another gate.
       **[LEAD] corroboration, not new scope:** the sunox register (§1; §7.6) in
       docs/suno_api/THIRD-PARTY-IMPLEMENTATIONS.md — claims ≤2026-09-14, retrieved 2026-10-27 —
       evidences *another client actually driving this route family per-route* (playlist v2 CRUD

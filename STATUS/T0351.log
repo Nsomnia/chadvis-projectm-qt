@@ -17,3 +17,8 @@
 2026-10-30T01:58:00Z  NOTE     NOT verified: a live 200 submit. The account's preflight requires a Turnstile
                               token that nothing in this build can produce; the refusal path is what was
                               exercised. No credit was spent.
+2026-10-30T02:10:00Z  CHANGE   T0011: SunoMutationsSection enables the mutation service at its single
+                              construction site and logs the refusal reason; FeatureGate::Sharing joins the
+                              implemented set so the clip verbs' gate is not falsely "switched off".
+2026-10-30T02:12:00Z  VERIFY   ./build.sh --fast --tests -> 350/350; unit_tests all suites status 0
+                              (TestSunoMutationsSection 0); ./build.sh --fast --safe -> 14/14.

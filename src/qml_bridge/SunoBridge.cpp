@@ -84,7 +84,12 @@ constexpr vc::suno::FeatureGate kGatesImplementedByThisBuild[]{
         // gauntlet remains and it is not code: this account's preflight answers
         // `required: true`, so a token from a solved challenge is the difference
         // between a working submit and the refusal the UI names.
-        vc::suno::FeatureGate::Generation};
+        vc::suno::FeatureGate::Generation,
+        // The mutation surface's own gates: the clip verbs are Sharing and
+        // Library reads, and the playlist verbs are Playlists. Both now have call
+        // sites, so the resolver must stop answering `LocallyDisabled` for them
+        // or every write refuses for a reason that is not true.
+        vc::suno::FeatureGate::Sharing};
 
 QString generationUnavailableMessage() {
     return QStringLiteral("Generation is unavailable because the required Suno CAPTCHA token flow "
