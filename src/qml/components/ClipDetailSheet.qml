@@ -18,6 +18,15 @@ Popup {
 
     signal saveRequested(string clipId)
 
+    // Supplemental reads (ancestry, remixes, comments, similar) are asked for
+    // when the sheet gets its clip, and dropped on close: they describe THIS
+    // clip, and a stale answer must never attach to the next one.
+    onClipDataChanged: {
+        if (clipData && clipData.id)
+            SunoBridge.loadClipDetail(clipData.id)
+    }
+    onClosed: SunoBridge.loadClipDetail("")
+
     readonly property bool canSave: !!clipData
                                    && clipData.status === "complete"
                                    && clipData.has_media !== false
@@ -283,6 +292,98 @@ Popup {
                     text: "♪ Instrumental"
                     color: Theme.textSecondary
                     font: Theme.fontBody
+                }
+            }
+        }
+
+        // ── Ancestry, remixes, comments ──────────────
+        // Silent when a section did not answer: the clip itself is already on
+        // screen, and an empty "Based on" heading would read as a defect.
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacingMedium
+            Layout.rightMargin: Theme.spacingMedium
+            spacing: Theme.spacingTiny
+
+            readonly property var detail: SunoBridge.clipDetail
+            readonly property var sources: detail && detail.sources ? detail.sources : []
+            readonly property var comments: detail && detail.comments ? detail.comments : []
+            readonly property var similar: detail && detail.similar ? detail.similar : []
+            readonly property int remixCount: detail && detail.remix_count !== undefined
+                                              ? detail.remix_count : -1
+
+            Text {
+                Layout.fillWidth: true
+                visible: parent.sources.length > 0
+                text: "Based on"
+                color: Theme.textSecondary
+                font: Theme.fontCaptionStrong
+            }
+
+            Repeater {
+                model: parent.sources
+                delegate: Text {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    text: (modelData.relationship === "COV" ? "Cover of " : "Extended from ")
+                          + (modelData.title || modelData.id)
+                          + (modelData.creator ? " — " + modelData.creator : "")
+                    color: Theme.textPrimary
+                    font: Theme.fontCaption
+                    elide: Text.ElideRight
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: parent.remixCount > 0
+                text: parent.remixCount === 1 ? "1 remix" : parent.remixCount + " remixes"
+                color: Theme.textSecondary
+                font: Theme.fontCaption
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: parent.comments.length > 0
+                text: "Comments"
+                color: Theme.textSecondary
+                font: Theme.fontCaptionStrong
+                Layout.topMargin: Theme.spacingTiny
+            }
+
+            Repeater {
+                model: parent.comments
+                delegate: Text {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    text: (modelData.author ? modelData.author + ": " : "") + modelData.text
+                    color: Theme.textPrimary
+                    font: Theme.fontCaption
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: parent.similar.length > 0
+                text: "Similar"
+                color: Theme.textSecondary
+                font: Theme.fontCaptionStrong
+                Layout.topMargin: Theme.spacingTiny
+            }
+
+            Repeater {
+                model: parent.similar
+                delegate: Text {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    text: (modelData.title || modelData.id)
+                          + (modelData.creator ? " — " + modelData.creator : "")
+                    color: Theme.textPrimary
+                    font: Theme.fontCaption
+                    elide: Text.ElideRight
                 }
             }
         }

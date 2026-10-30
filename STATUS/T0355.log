@@ -1,0 +1,11 @@
+2026-10-30T03:20:00Z  CLAIM    song-page enrichment reads (attribution, remixes, comments, similar)
+2026-10-30T03:05:00Z  CHANGE   src/suno/SunoClipDetailService.{hpp,cpp}: four independent GETs, one handler
+                              per route, tolerant parsers (no key invented, missing key = empty section).
+2026-10-30T03:05:00Z  CHANGE   SunoBridge: clipDetail map + loadClipDetail(id), filled per settled reply.
+                              ClipDetailSheet: ancestry / remix count / top 5 comments / similar, each
+                              hidden when empty; loads on clip change and clears on close.
+2026-10-30T03:18:00Z  VERIFY   test_SunoClipDetailService -> 8/8 passed.
+2026-10-30T03:19:00Z  VERIFY   ./build.sh --fast -> 365/365, app links; lint-qml no blocking problems.
+2026-10-30T03:20:00Z  VERIFY   ./build.sh --fast --safe -> 15/15 passed (92 s).
+2026-10-30T03:20:00Z  NOTE     NOT verified live: no capture exists for these four bodies, so the parser
+                              keys are catalogue-grade. A renamed key renders nothing, never a guess.

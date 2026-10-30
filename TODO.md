@@ -367,16 +367,19 @@ Carried over from the superseded backlog and **confirmed by re-reading the tree*
 
 ## P2 — robustness, cleanup, and debt
 
-- [ ] T0355 **The song-page enrichment reads (`attribution`, `comments`, `remixes/count`, `get_similar`) are still unimplemented** (`src/suno/SunoClipDetailService.*`, `src/qml/components/ClipDetailSheet.qml`) #feature
-      Four `[T1]` GETs, all `declared-unused`: `GET /clips/{id}/attribution` (`source_clips[]` with
-      `relationship COV|EX`), `GET /gen/{id}/comments?order=most_liked`
-      (`results`, `allow_comment`, `total_count`), `GET /clips/remixes/count?clip_id=`,
-      `GET /clips/get_similar/?id=`. They are page-inspection reads that degrade gracefully, so a
-      failed one must leave the section hidden rather than fail the sheet — the clip is already on
-      screen. A header for this (`SunoClipDetailService.hpp`) was written on 2026-10-30 and then
-      deleted unused: a `Q_OBJECT` type with no `.cpp` and no target is a compile-cost with no
-      behaviour, and the design fits in this line. Owner per T0346: `SunoExploreService` reads or a
-      small service; UI in `ClipDetailSheet`, which already exists.
+- [?] T0355 **Song-page detail: ancestry, remix count, comments and similar are read and shown** (`src/suno/SunoClipDetailService.*`, `src/qml_bridge/SunoBridge.*`, `src/qml/components/ClipDetailSheet.qml`) #feature
+      Four `[T1]` GETs that were all `declared-unused`, now wired: `GET /clips/{id}/attribution`
+      (`source_clips[]`, `relationship COV|EX` -> "Cover of" / "Extended from"),
+      `GET /gen/{id}/comments?order=most_liked`, `GET /clips/remixes/count?clip_id=`,
+      `GET /clips/get_similar/?id=`. Each section settles on its own and renders only when it has
+      something: a failed read leaves the sheet exactly as it was, because the clip is already on
+      screen. `load("")` on close drops the detail rather than attaching a stale answer to the next
+      clip. Pinned by `test_SunoClipDetailService` (8 cases: relationship preservation, originals
+      have no ancestry, nested-vs-flat comment author, count-from-number or count-from-array,
+      unwrapped similar clips, empty-id no-op).
+      **Not verified:** the live bodies. Every parser key came from the catalogue, not a capture, so
+      a renamed key renders nothing rather than guessing. Verify with a signed-in run once the
+      session is fresh.
 
 - [ ] T0352 **The mutation surface cannot be enabled on a cold start: the gates are switched on after the section is built** (`src/qml_bridge/SunoMutationsSection.cpp`, `src/qml_bridge/SunoBridge.cpp`) #risk-medium #blocks-feature
       Evidence, this machine, 2026-10-30, `--debug`:

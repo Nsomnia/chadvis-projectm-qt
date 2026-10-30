@@ -16,6 +16,7 @@ class SunoExploreService;
 class SunoNotificationService;
 class SunoPlaylistService;
 class SunoGenerationService;
+class SunoClipDetailService;
 class SunoAudioUploadService;
 } // namespace suno
 } // namespace vc
@@ -59,6 +60,10 @@ class SunoBridge : public QObject,
     // needs to branch on: this account's preflight answers `required: true`
     // (captcha_version 2, Cloudflare Turnstile), so a submit without a token is
     // refused by the server and must be explained, never retried blindly.
+    // Song-page detail: ancestry (what it is derived from), remix count, comments
+    // and similar clips. One map, filled section by section; an unreadable
+    // section is simply absent, never a blank that replaces the clip on screen.
+    Q_PROPERTY(QVariantMap clipDetail READ clipDetail NOTIFY clipDetailChanged)
     Q_PROPERTY(QString generationState READ generationState NOTIFY generationStateChanged)
     Q_PROPERTY(QString generationError READ generationError NOTIFY generationErrorChanged)
     Q_PROPERTY(bool generationCaptchaRequired READ generationCaptchaRequired NOTIFY
@@ -148,6 +153,7 @@ public:
     bool googleLoginAvailable() const;
     QVariantList models() const;
     bool generationAvailable() const;
+    QVariantMap clipDetail() const;
     QString generationState() const;
     QString generationError() const;
     bool generationCaptchaRequired() const;
@@ -219,6 +225,8 @@ public slots:
     /// Close the open playlist: clears `playlistClips` and the open id, so a
     /// view returns to the list without a second request.
     Q_INVOKABLE void closePlaylist();
+    /// Ask for the open clip's ancestry, remixes, comments and similar tracks.
+    Q_INVOKABLE void loadClipDetail(const QString& clipId);
     Q_INVOKABLE void markAllNotificationsRead();
 
     // ── Library & playlist mutations ──────────────────────────────────────
@@ -291,6 +299,7 @@ signals:
     /// diagnostics surface does not have to couple to one gate's verdict.
     void gateStatusesChanged();
     void generationStatusChanged();
+    void clipDetailChanged();
     void generationStateChanged();
     void generationErrorChanged();
     void generationCaptchaRequiredChanged();
@@ -401,6 +410,9 @@ private:
     void destroyExploreService();
     void ensureNotificationService();
     void destroyNotificationService();
+    void ensureClipDetailService();
+    void onClipDetailChanged();
+    void destroyClipDetailService();
     void ensureGenerationService();
     void setGenerationError(const QString& message);
     void destroyGenerationService();
@@ -447,6 +459,8 @@ private:
     vc::suno::SunoNotificationService* notificationService_{nullptr};
     vc::suno::SunoPlaylistService* playlistService_{nullptr};
     vc::suno::SunoGenerationService* generationService_{nullptr};
+    vc::suno::SunoClipDetailService* clipDetailService_{nullptr};
+    QVariantMap clipDetail_;
     QString generationError_;
     QString pendingPrompt_;
     QString pendingTags_;

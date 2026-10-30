@@ -61,6 +61,8 @@ SAFE_TESTS=(
     test_SunoExploreService
     test_SunoPlaylistService
     test_SunoGenerationService
+    test_SunoClipDetailService
+    test_SunoClipDetailService
     test_SunoNotificationService
     test_ClerkAuthClient
     test_HttpPolicy

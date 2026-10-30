@@ -378,6 +378,23 @@ target_link_libraries(test_SunoGenerationService PRIVATE
 
 add_test(NAME test_SunoGenerationService COMMAND test_SunoGenerationService)
 
+add_executable(test_SunoClipDetailService
+    suno/test_SunoClipDetailService.cpp
+)
+
+set_target_properties(test_SunoClipDetailService PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoClipDetailService PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_SunoClipDetailService COMMAND test_SunoClipDetailService)
+
 add_executable(test_SunoNotificationService
     suno/test_SunoNotificationService.cpp
 )

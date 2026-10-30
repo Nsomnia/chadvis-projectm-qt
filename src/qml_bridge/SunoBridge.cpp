@@ -16,6 +16,7 @@
 #include "suno/SunoLibraryManager.hpp"
 #include "suno/SunoModels.hpp"
 #include "suno/SunoNotificationService.hpp"
+#include "suno/SunoClipDetailService.hpp"
 #include "suno/SunoGenerationService.hpp"
 #include "suno/SunoPlaylistService.hpp"
 #include "suno/auth/AuthCoordinator.hpp"
@@ -40,6 +41,8 @@ SunoBridge::~SunoBridge() {
     playlistService_ = nullptr;
     delete generationService_;
     generationService_ = nullptr;
+    delete clipDetailService_;
+    clipDetailService_ = nullptr;
     delete exploreService_;
     exploreService_ = nullptr;
     s_controller = nullptr;
@@ -244,6 +247,7 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
             bridgeInstance->destroyExploreService();
             bridgeInstance->destroyPlaylistService();
             bridgeInstance->destroyGenerationService();
+            bridgeInstance->destroyClipDetailService();
             // The downloader is a child of the outgoing controller, and
             // disconnecting the controller does not reach its children's
             // signals, so the section drops the borrow explicitly. The next
@@ -280,6 +284,7 @@ void SunoBridge::setSunoController(vc::suno::SunoController* controller) {
             bridgeInstance->destroyExploreService();
             bridgeInstance->destroyPlaylistService();
             bridgeInstance->destroyGenerationService();
+            bridgeInstance->destroyClipDetailService();
             // The mutation service is dropped too: it borrows the resolver out of
             // an account that no longer exists.
             if (bridgeInstance->mutations_) {
@@ -1433,6 +1438,80 @@ void SunoBridge::destroyPlaylistService() {
     playlistService_ = nullptr;
     delete generationService_;
     generationService_ = nullptr;
+    delete clipDetailService_;
+    clipDetailService_ = nullptr;
+}
+
+void SunoBridge::ensureClipDetailService() {
+    if (clipDetailService_ || !s_client) {
+        return;
+    }
+    clipDetailService_ = new vc::suno::SunoClipDetailService(s_client, this);
+    connect(clipDetailService_, &vc::suno::SunoClipDetailService::detailChanged,
+            this, &SunoBridge::onClipDetailChanged);
+    connect(clipDetailService_, &vc::suno::SunoClipDetailService::failed,
+            this, [this](const QString& message) {
+                // Silent by design: the sheet already shows the clip. A failed
+                // supplemental read is not an error the user has to read.
+                LOG_DEBUG("SunoBridge: clip detail unavailable: {}", message.toStdString());
+            });
+}
+
+void SunoBridge::destroyClipDetailService() {
+    delete clipDetailService_;
+    clipDetailService_ = nullptr;
+}
+
+QVariantMap SunoBridge::clipDetail() const { return clipDetail_; }
+
+void SunoBridge::loadClipDetail(const QString& clipId) {
+    ensureClipDetailService();
+    if (!clipDetailService_) {
+        return;
+    }
+    clipDetail_ = QVariantMap{};
+    emit clipDetailChanged();
+    clipDetailService_->load(clipId);
+}
+
+void SunoBridge::onClipDetailChanged() {
+    if (!clipDetailService_) {
+        return;
+    }
+    const auto& detail = clipDetailService_->detail();
+    QVariantMap map;
+    map[QStringLiteral("clip_id")] = detail.clipId;
+    map[QStringLiteral("remix_count")] = detail.remixCount;
+    map[QStringLiteral("total_comments")] = detail.totalComments;
+
+    QVariantList sources;
+    for (const auto& source : detail.sources) {
+        QVariantMap row = toDiscoverClip(source.clip);
+        row[QStringLiteral("relationship")] = source.relationship;
+        sources.push_back(row);
+    }
+    map[QStringLiteral("sources")] = sources;
+
+    QVariantList comments;
+    const int shown = std::min<int>(static_cast<int>(detail.comments.size()), 5);
+    for (int index = 0; index < shown; ++index) {
+        const auto& comment = detail.comments.at(index);
+        QVariantMap row;
+        row[QStringLiteral("author")] = comment.author;
+        row[QStringLiteral("text")] = comment.text;
+        row[QStringLiteral("likes")] = comment.likeCount;
+        comments.push_back(row);
+    }
+    map[QStringLiteral("comments")] = comments;
+
+    QVariantList similar;
+    for (const auto& clip : detail.similar) {
+        similar.push_back(toDiscoverClip(clip));
+    }
+    map[QStringLiteral("similar")] = similar;
+
+    clipDetail_ = std::move(map);
+    emit clipDetailChanged();
 }
 
 void SunoBridge::ensureGenerationService() {
@@ -1480,6 +1559,8 @@ void SunoBridge::ensureGenerationService() {
 void SunoBridge::destroyGenerationService() {
     delete generationService_;
     generationService_ = nullptr;
+    delete clipDetailService_;
+    clipDetailService_ = nullptr;
 }
 
 QString SunoBridge::generationState() const {
