@@ -85,19 +85,28 @@ if(NOT PROJECTM_FOUND)
     CPMAddPackage(
         NAME projectm
         GIT_REPOSITORY https://github.com/projectM-visualizer/projectm.git
-        # v4.1.8, pinned to the commit the tag names. v4.1.7/4.1.8 fix an
-        # out-of-bounds read in custom waveform code, a nullptr deref in the
-        # texture sampler and an infinite loop on self-referential shader
-        # macros, and 4.1.7 resets to FBO 0 after rendering a preset -- the
-        # framebuffer this renderer draws into. The 4.1.7 -> 4.1.8 public API
-        # is byte-identical (core.h, parameters.h, render_opengl.h), so this
-        # is a security fix, not a migration (TODO T0164).
-        GIT_TAG 4967dc003e5206d7df3ff447287f7609c47d2343
+        # Unreleased master (2026-10-31), pinned to the commit, on the owner's
+        # decision (TODO Human decisions: "projectM pin policy — the latter").
+        # The point of the bump is the 4.2.0 API: `projectm_set_frame_time()`
+        # (@since 4.2.0, master-only) is the only offline-render time source, and
+        # it buys deterministic frame-stepping for the render queue. Every v4.1.8
+        # symbol this tree uses is present unchanged in master's headers
+        # (core.h/audio.h/render_opengl.h/parameters.h), including
+        # projectm_opengl_render_frame, so this is a feature bump, not a
+        # migration. Cost, stated plainly: master is unreleased, so upgrades are
+        # no longer "a tag moved" — a future bump is a deliberate re-pin after a
+        # rebuild. Reverting is one line: 4967dc0... is v4.1.8.
+        GIT_TAG 349b7cc2db312d47cef6be24c6856ced6643a385
         OPTIONS
             "BUILD_SHARED_LIBS OFF"
             "ENABLE_PLAYLIST ON"
             "ENABLE_SDL_UI OFF"
             "BUILD_TESTING OFF"
+            # master unconditionally vendors glm and defines glm::glm, which
+            # collides with the system glm this tree already requires
+            # (find_package(glm) in Dependencies.cmake). Use the system copy.
+            # Upstream spells it ENABLE_SYSTEM_GLM.
+            "ENABLE_SYSTEM_GLM ON"
     )
 
     if(TARGET libprojectM::projectM AND TARGET libprojectM::playlist)

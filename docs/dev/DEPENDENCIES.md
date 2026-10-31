@@ -54,7 +54,18 @@ close are already tracked:
   binary package that does not exist for Qt 6.12 there. Qt stays a system kit.
 - **projectM.** The pin lives in `cmake/FindProjectM4.cmake` and is a deliberate policy decision
   (T0164), not a version to be resolved. A Conan recipe would have to mirror the pin exactly to
-  gain nothing.
+  gain nothing. **Changed 2026-10-31 by owner decision:** the pin is now unreleased master
+  `349b7cc` (4.2.0-dev) instead of tag v4.1.8, because `projectm_set_frame_time()` (the only
+  offline-render time source) exists only on master. Consequences, stated plainly: master is
+  unreleased, so a future upgrade is a deliberate re-pin and a rebuild, not a tag move; and
+  master's vendored glm collides with this tree's system glm, so the CPM options must keep
+  `ENABLE_SYSTEM_GLM ON`. Reverting is one line back to `4967dc003…` (v4.1.8), which built
+  cleanly on this box. Verified: full `--fast --tests` build + `unit_tests` all suites 0 on the
+  master pin.
+- **CPM source cache.** `CPM_SOURCE_CACHE` now defaults to `<source>/.cpm-cache` instead of
+  OFF (same owner decision, closing half of T0090): one checkout shared by every build profile
+  rather than a fresh clone per build directory. `CPM_SOURCE_CACHE` in the environment or the
+  cache overrides it.
 - **Reproducibility, the real benefit,** is a CI property here. The honest cheap fix is to pin
   the CPM tags to commit SHAs and check in a manifest the release lane can read (T0090, T0091,
   T0301 — SBOM), which is hours of work rather than a cross-platform packaging migration.

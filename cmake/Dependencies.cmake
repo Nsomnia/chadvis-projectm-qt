@@ -113,6 +113,21 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/CPM.cmake")
          https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.0/CPM.cmake
          ${CMAKE_SOURCE_DIR}/cmake/CPM.cmake)
 endif()
+
+# One shared source cache for every build profile (owner decision 2026-10-31,
+# closes half of T0090). CPM's own default is OFF, which re-clones each source
+# dependency into every fresh build directory — so `build-fast/` and
+# `build-tsan/` each held their own projectM checkout. An environment variable
+# still wins. A cache entry already set to OFF is CPM's default from an earlier
+# configure, not a user decision, so it is upgraded; any other explicit path is
+# left alone.
+if(NOT DEFINED ENV{CPM_SOURCE_CACHE}
+   AND (NOT DEFINED CPM_SOURCE_CACHE
+        OR CPM_SOURCE_CACHE STREQUAL "OFF"
+        OR CPM_SOURCE_CACHE STREQUAL ""))
+    set(CPM_SOURCE_CACHE "${CMAKE_SOURCE_DIR}/.cpm-cache" CACHE PATH
+        "Shared CPM source checkout cache (default: <source>/.cpm-cache)" FORCE)
+endif()
 include(${CMAKE_SOURCE_DIR}/cmake/CPM.cmake)
 
 # ---------------------------------------------------------------------------
