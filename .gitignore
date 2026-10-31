@@ -176,3 +176,6 @@ __pycache__/
 SUNO-HAR-CAPTURE-ROUTE-CHECKLIST-DO-NOT-COMMIT-LOCAL-ONLY.txt
 *.har
 *.har.txt
+
+# CPM source cache (shared across build profiles)
+.cpm-cache/

@@ -47,6 +47,11 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       11 families, build/partial/missing per grep. Owner grant (AGENTS.md "Authorized live work")
       replaces capture requirement — agent may call any authenticated route, record at `[T1]`.
       Per-family sub-tasks in [`docs/backlog/T0346.md`](docs/backlog/T0346.md).
+      **UI surface evidence (2026-10-31):** a recorded session's surfaces are catalogued in
+      [`docs/suno_api/UI-SURFACE-INVENTORY.md`](docs/suno_api/UI-SURFACE-INVENTORY.md) —
+      playlists incl. recover/delete, trash restore-vs-permanent, Voices from a recording,
+      cover art, Hooks/Albums/Workspaces/History sections, multi-modal v6 create. Surfaces
+      only; every route behind them still needs a capture.
 
 - [ ] T0336 **Adopt moved API base `https://suno.com/a/api`** (`SunoEndpoints.hpp`, `CapturedHosts.cpp`, `SunoClient.cpp`) #risk-high #cod-high
       Old base `studio-api-prod.suno.com` still answers — live alias, not dead.
@@ -478,6 +483,9 @@ Engineering tasks with stated dependency. `[!]` = proceed, leave switch off.
 
 - [ ] T0146 **New host leads need capture before wiring** (`CapturedHosts.cpp`) #security
       `content.suno.run`, `cdn3.suno.ai`, `suno.sng.link`, CloudFront allowlist, `audiopipe-dev` staging.
+      **New 2026-10-31:** `platform.suno.com` — its own auth error page ("No platform account
+      found for this email") seen after sign-out. Separate host, separate account concept;
+      lead only, not a `CapturedHosts` entry.
       Excluded on purpose: money-moving, consent routes, `/b-side/*` (77 staff routes incl. impersonate), contest downloads, `/labs/*`.
 
 - [ ] T0147 **Keep excluded on purpose** (`src/suno/`) #security
@@ -500,17 +508,31 @@ Engineering tasks with stated dependency. `[!]` = proceed, leave switch off.
 
 ---
 
-## Human decisions — not tasks
+## Human decisions — resolved 2026-10-31
 
-Forks with real cost on one side. None resolved by agent inferring intent.
+Owner answered every fork. Recorded as decisions, not options; a later change is
+a new decision, not a re-read of these.
 
-- **Generation / Turnstile.** Never solve — hand off to browser + import (recommended) · embedded-webview managed solve · drop Create surface. Option 1 costs afternoon; option 2 = ToS exposure; option 3 costs "Suno client" label.
-- **Third-party client posture.** Ship as unofficial/unaffiliated, no audio redistribution, no money/legal routes (recommended) · something more assertive. Legal judgement only user can make.
-- **Auth: one more capture or manual credentials forever?** Scoped capture settles Clerk loopback + sign-out + `touch` vs `tokens` (recommended) · accept manual paste as shipping 1.1.x.
-- **The scope call.** Download manager + library view + account, renderer as product (recommended)? Determines which half gets next 6 months.
-- **Windows in CI.** Add `windows-latest` as `continue-on-error` for signal (recommended) · omit. Windows = major userbase, credential storage plaintext = worst silence.
-- **projectM pin policy.** Stay on 4.1.6, ship realtime-throttled v1 · pin unreleased master SHA for offline render now. First free; second buys offline rendering at permanent upgrade cost.
-- **Burn-in dependency policy.** Add `libavfilter`+`libass` as hard dep · behind CMake option degrading to "no post pass" (recommended).
+- **Generation / Turnstile → hand off to the browser, import the result.** Never solve
+  the challenge in-process. CreateView keeps telling the user to finish at suno.com/create.
+- **Third-party posture → unofficial and unaffiliated.** No audio redistribution, no
+  money-moving routes, no legal/consent writes. This is the boilerplate the README and
+  release notes may state as settled.
+- **Auth capture → one scoped HAR session.** Sign out, sign in, then browse with devtools
+  recording (see the gitignored route checklist at the repo root). The owner does this;
+  the agent sanitises and wires. Manual paste stays as the fallback, not the plan.
+- **Scope → Suno client first, renderer second.** projectM music-video work gets spare
+  time and only within API/credit allowance. The renderer's independence (T0115) stays
+  valuable because it is the half that survives upstream.
+- **projectM pin → unreleased master.** Pinned to `349b7cc` (4.2.0-dev) 2026-10-31 for
+  `projectm_set_frame_time()` (offline render) and current fixes; upgradable only by a
+  deliberate re-pin. Owner reports mild lag and suspects hidden rendering — the render
+  timer already stops when the window is not exposed, so the remaining lag is per-frame
+  cost, not a hidden loop.
+- **Burn-in deps → behind a CMake option.** "No post pass" means: without `libavfilter`
+  the app still launches and records, and only the burn-in pass is unavailable. That is
+  the option chosen; a hard dependency is rejected.
+- **Windows in CI** — unchanged policy: `continue-on-error` signal only.
 
 ---
 

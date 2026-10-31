@@ -30,6 +30,10 @@
   (`[T1]`), the per-assistant connection steps, and the early-access gate. It
   is the companion record for TODO.md T0356/T0357; the inventory gains rows
   only as MCP routes are captured authenticated.
+- [`UI-SURFACE-INVENTORY.md`](UI-SURFACE-INVENTORY.md) is the **web client's
+  visible surface list**, derived from a recorded replay (`[LEAD]`: UI evidence
+  only, no request data). It answers "does this capability have a button" for
+  T0346's families; it never states a method, path, or body.
 - [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) is the single
   location for the observed Google web flow, the Clerk cookie families, and the
   **native-callback gate**. The intended desktop sign-in path is the system
