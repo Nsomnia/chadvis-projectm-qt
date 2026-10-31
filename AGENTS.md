@@ -4,6 +4,10 @@ Operating rules for this repository. This file is loaded into **every** session,
 rules and pointers, never the detail — the doc named on each line owns that detail. Backlog:
 [`TODO.md`](TODO.md). Docs hub: [`docs/README.md`](docs/README.md).
 
+Prioritize features over tests so long as at least some basic minimal tests are done at a minimum where they fit. Do not write tests just for the sake of writing tests. Do write tests to keep hard to debug or hard logic together. Use your best instinct. If any of the AGENTS.md, TODO.md, scripts/tasks.sh, or any other harness/repo/task logic seems wrong or sub-optimal: inform the user with your better replacement and wait for their respond to approve such as change.
+
+You can keep working for as long as you wish. The TODO.md is very granular with lot's of tests and about half the codebase was written with ancient LLM models.
+
 ## Build & test
 
 ```bash
