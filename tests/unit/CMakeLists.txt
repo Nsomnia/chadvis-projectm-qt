@@ -395,6 +395,23 @@ target_link_libraries(test_SunoClipDetailService PRIVATE
 
 add_test(NAME test_SunoClipDetailService COMMAND test_SunoClipDetailService)
 
+add_executable(test_SunoOAuthLoopback
+    suno/test_SunoOAuthLoopback.cpp
+)
+
+set_target_properties(test_SunoOAuthLoopback PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoOAuthLoopback PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_SunoOAuthLoopback COMMAND test_SunoOAuthLoopback)
+
 add_executable(test_SunoNotificationService
     suno/test_SunoNotificationService.cpp
 )

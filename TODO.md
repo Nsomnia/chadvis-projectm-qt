@@ -78,7 +78,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 
 ## P1 — correctness, robustness, debt that will bite
 
-- [ ] T0356 **Suno OAuth 2.0 loopback flow — in-app sign-in** (`src/suno/auth/`, `docs/suno_api/`) #feature #blocks-ui
+- [?] T0356 **Suno OAuth 2.0 loopback flow — in-app sign-in** (`src/suno/auth/`, `docs/suno_api/`) #feature #blocks-ui
       `POST /api/v2/external/oauth/register/` → 201 with `client_id`. Loopback on arbitrary port accepted.
       (a) sign-in UX viable now: browser → Google/FB → loopback → refresh token. No cookie harvest.
       (b) replacing `__session` unproven: token is MCP-scoped (`resource=https://api.suno.com/mcp`).
@@ -89,6 +89,12 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       The resource exists; the register probe's token has a home. Full chain:
       [`docs/suno_api/MCP.md`](docs/suno_api/MCP.md). What closes (b): one authorized exchange —
       mint a token, answer MCP `initialize` with it, and one studio-api read to see if it speaks both.
+      **(a) implemented 2026-10-31 as `SunoOAuthLoopback`** (register → PKCE S256 → system browser →
+      127.0.0.1:0 `/callback` → token exchange), wired to Settings → Account ("Sign in with Suno
+      (official OAuth)"); token set stored under credential key `suno/mcp`, deliberately NOT
+      `suno/default`. 9 unit tests (RFC 7636 vector, authorize-URL parameters, callback parser,
+      query decoding, state/emptiness). **Not verified live**: a browser run and the token exchange
+      itself — MT-level.
 
 - [ ] T0357 **Suno MCP Beta: chat surface in ChadVis** (`src/suno/`, `docs/suno_api/MCP.md`) #feature
       Suno launched an official MCP server (`https://api.suno.com/mcp`, beta, early access). No API key —

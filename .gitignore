@@ -171,3 +171,8 @@ build.log
 __pycache__/
 *.pyc
 .qt-stitch/
+
+# ── Local Suno capture artifacts: never commit ──────────────────────────────
+SUNO-HAR-CAPTURE-ROUTE-CHECKLIST-DO-NOT-COMMIT-LOCAL-ONLY.txt
+*.har
+*.har.txt

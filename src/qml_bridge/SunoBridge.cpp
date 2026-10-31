@@ -3,6 +3,9 @@
 #include "SunoMutationsSection.hpp"
 #include <QStringList>
 #include <QVariantMap>
+#include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "suno/ClipParser.hpp"
@@ -20,6 +23,8 @@
 #include "suno/SunoGenerationService.hpp"
 #include "suno/SunoPlaylistService.hpp"
 #include "suno/auth/AuthCoordinator.hpp"
+#include "suno/auth/CredentialStore.hpp"
+#include "suno/auth/SunoOAuthLoopback.hpp"
 #include "ui/controllers/SunoController.hpp"
 
 namespace qml_bridge {
@@ -900,6 +905,84 @@ void SunoBridge::importSessionFromBrowser() {
             emit googleLoginErrorChanged();
         }
     }
+}
+
+QString SunoBridge::sunoMcpSignInState() const { return sunoMcpSignInState_; }
+
+QString SunoBridge::sunoMcpSignInError() const { return sunoMcpSignInError_; }
+
+void SunoBridge::beginSunoMcpSignIn()
+{
+    // T0356(a): Suno's OWN OAuth 2.0 server, the lane api.suno.com/mcp
+    // advertises. Different from beginGoogleSignIn() above: there the exchange
+    // is Clerk's and no code ever returns to this process; here we register a
+    // loopback client, catch the code ourselves, and end up holding a token
+    // set. The token is for the MCP resource, NOT the studio-api bearer
+    // (`suno/default`), so it is stored under its own key and does not touch
+    // SunoClient's credential — proving it can replace `__session` is still
+    // T0356(b), one authorized read away.
+    if (!s_client) {
+        return;
+    }
+
+    if (!sunoMcpSignIn_) {
+        using Loopback = vc::suno::auth::SunoOAuthLoopback;
+        sunoMcpSignIn_ = std::make_unique<Loopback>(s_client->networkManager(), this);
+
+        connect(sunoMcpSignIn_.get(), &Loopback::authorizationUrlReady, this,
+                [this](const QUrl&) {
+                    sunoMcpSignInState_ = QStringLiteral("waiting");
+                    sunoMcpSignInError_.clear();
+                    emit sunoMcpSignInChanged();
+                });
+        connect(sunoMcpSignIn_.get(), &Loopback::authorized, this,
+                [this](const Loopback::TokenSet& tokens) {
+                    // Store the token set under its own key. Presence and
+                    // lifetime only in the log -- never the token itself.
+                    QJsonObject payload;
+                    payload.insert(QStringLiteral("access_token"), tokens.accessToken);
+                    payload.insert(QStringLiteral("refresh_token"), tokens.refreshToken);
+                    payload.insert(QStringLiteral("token_type"), tokens.tokenType);
+                    payload.insert(QStringLiteral("scope"), tokens.scope);
+                    payload.insert(QStringLiteral("expires_in"), tokens.expiresInSeconds);
+                    payload.insert(QStringLiteral("obtained_at"),
+                                   QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+                    vc::suno::auth::CredentialStore store;
+                    const auto stored = store.store(
+                            QStringLiteral("suno/mcp"),
+                            QString::fromUtf8(QJsonDocument(payload).toJson(
+                                    QJsonDocument::Compact)));
+                    if (!stored.isOk()) {
+                        sunoMcpSignInState_ = QStringLiteral("idle");
+                        sunoMcpSignInError_ = QStringLiteral(
+                                "Signed in, but the token could not be saved to the "
+                                "credential store.");
+                        LOG_WARN("SunoBridge: MCP token store failed");
+                        emit sunoMcpSignInChanged();
+                        return;
+                    }
+                    sunoMcpSignInState_ = QStringLiteral("authorized");
+                    sunoMcpSignInError_.clear();
+                    LOG_INFO("SunoBridge: Suno MCP sign-in complete (token stored)");
+                    emit sunoMcpSignInChanged();
+                });
+        connect(sunoMcpSignIn_.get(), &Loopback::failed, this,
+                [this](const QString& safeError) {
+                    sunoMcpSignInState_ = QStringLiteral("idle");
+                    sunoMcpSignInError_ = safeError;
+                    emit sunoMcpSignInChanged();
+                });
+    }
+
+    sunoMcpSignInError_.clear();
+    QString safeError;
+    if (!sunoMcpSignIn_->begin(&safeError)) {
+        sunoMcpSignInState_ = QStringLiteral("idle");
+        sunoMcpSignInError_ = safeError;
+    } else {
+        sunoMcpSignInState_ = QStringLiteral("starting");
+    }
+    emit sunoMcpSignInChanged();
 }
 
 void SunoBridge::cancelGoogleSignIn() {

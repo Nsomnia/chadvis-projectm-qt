@@ -126,6 +126,8 @@ set(SUNO_AUTH_SOURCES
     src/suno/auth/AuthCoordinator.cpp
     src/suno/auth/BrowserCookieImport.hpp
     src/suno/auth/BrowserCookieImport.cpp
+    src/suno/auth/SunoOAuthLoopback.hpp
+    src/suno/auth/SunoOAuthLoopback.cpp
 )
 
 set(RECORDER_SOURCES

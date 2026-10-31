@@ -6,6 +6,7 @@
 #include <QVariantList>
 #include <QtQml/qqml.h>
 #include <cstddef>
+#include <memory>
 #include "QmlSingletonBridge.hpp"
 
 namespace vc {
@@ -18,6 +19,9 @@ class SunoPlaylistService;
 class SunoGenerationService;
 class SunoClipDetailService;
 class SunoAudioUploadService;
+namespace auth {
+class SunoOAuthLoopback;
+}
 } // namespace suno
 } // namespace vc
 
@@ -42,6 +46,8 @@ class SunoBridge : public QObject,
     Q_PROPERTY(bool isAuthenticated READ isAuthenticated NOTIFY authenticationChanged)
     Q_PROPERTY(QString googleLoginState READ googleLoginState NOTIFY googleLoginStateChanged)
     Q_PROPERTY(QString googleLoginError READ googleLoginError NOTIFY googleLoginErrorChanged)
+    Q_PROPERTY(QString sunoMcpSignInState READ sunoMcpSignInState NOTIFY sunoMcpSignInChanged)
+    Q_PROPERTY(QString sunoMcpSignInError READ sunoMcpSignInError NOTIFY sunoMcpSignInChanged)
     Q_PROPERTY(QString authFailureKind READ authFailureKind NOTIFY authFailureKindChanged)
     Q_PROPERTY(
             bool googleLoginAvailable READ googleLoginAvailable NOTIFY googleLoginAvailableChanged)
@@ -149,6 +155,10 @@ public:
     bool isAuthenticated() const;
     QString googleLoginState() const;
     QString googleLoginError() const;
+    /// T0356(a): "idle" | "starting" | "waiting" | "authorized".
+    QString sunoMcpSignInState() const;
+    /// Empty unless the last MCP sign-in attempt failed; a safe sentence.
+    QString sunoMcpSignInError() const;
     QString authFailureKind() const;
     bool googleLoginAvailable() const;
     QVariantList models() const;
@@ -205,6 +215,8 @@ public slots:
     void clearLoading();
     Q_INVOKABLE void beginGoogleSignIn();
     Q_INVOKABLE void importSessionFromBrowser();
+    /// T0356(a): the official Suno OAuth 2.0 loopback sign-in (MCP lane).
+    Q_INVOKABLE void beginSunoMcpSignIn();
     Q_INVOKABLE void cancelGoogleSignIn();
     Q_INVOKABLE void signOutSuno();
     Q_INVOKABLE void refreshAccount();
@@ -287,6 +299,7 @@ signals:
     void authenticationChanged();
     void googleLoginStateChanged();
     void googleLoginErrorChanged();
+    void sunoMcpSignInChanged();
     void authFailureKindChanged();
     void googleLoginAvailableChanged();
     void authenticationFailed(const QString& reason);
@@ -460,6 +473,11 @@ private:
     vc::suno::SunoPlaylistService* playlistService_{nullptr};
     vc::suno::SunoGenerationService* generationService_{nullptr};
     vc::suno::SunoClipDetailService* clipDetailService_{nullptr};
+    /// T0356(a). Lazily built because it owns a loopback listener only while a
+    /// sign-in is in flight; created on the first press.
+    std::unique_ptr<vc::suno::auth::SunoOAuthLoopback> sunoMcpSignIn_;
+    QString sunoMcpSignInState_{QStringLiteral("idle")};
+    QString sunoMcpSignInError_;
     QVariantMap clipDetail_;
     QString generationError_;
     QString pendingPrompt_;

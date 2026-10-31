@@ -18,6 +18,11 @@ Rectangle {
     signal signOutRequested()
     signal importRequested()
     signal cancelRequested()
+    signal mcpSignInRequested()
+
+    readonly property string mcpState: SunoBridge.sunoMcpSignInState
+    readonly property string mcpError: SunoBridge.sunoMcpSignInError
+    readonly property bool mcpWaiting: mcpState === "waiting"
 
     readonly property bool importedPending: loginState === "browserImported"
                                             && !root.authenticated
@@ -117,6 +122,49 @@ Rectangle {
                 text: "Imported. Verifying your session — this updates when "
                       + "suno.com answers."
                 color: Theme.success
+                font: Theme.fontCaption
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+            }
+
+            // T0356(a): the official Suno OAuth server (the lane
+            // api.suno.com/mcp advertises), not Clerk. A real loopback catches
+            // the code, so this one completes on its own — no paste, no import.
+            // It stores an MCP-scoped token under its own key; it is not yet
+            // the studio-api bearer (T0356(b)), so the copy must not promise a
+            // fully signed-in library.
+            AppButton {
+                Layout.fillWidth: true
+                text: root.mcpWaiting ? "Waiting for your browser…"
+                                      : "Sign in with Suno (official OAuth)"
+                enabled: root.googleLoginAvailable && !root.mcpWaiting
+                buttonRadius: Theme.radiusMedium
+                onClicked: root.mcpSignInRequested()
+                ToolTip.text: "Opens suno.com in your browser. Approve the "
+                              + "connection there and ChadVis catches the callback."
+                ToolTip.visible: hovered
+                ToolTip.delay: 350
+                Accessible.name: "Sign in with Suno using official OAuth"
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignHCenter
+                visible: root.mcpState === "authorized"
+                text: "Suno OAuth connected. The MCP token is stored — chat and "
+                      + "generation wiring comes next."
+                color: Theme.success
+                font: Theme.fontCaption
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignHCenter
+                visible: root.mcpError.length > 0
+                text: root.mcpError
+                color: Theme.error
                 font: Theme.fontCaption
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap

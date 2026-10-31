@@ -112,6 +112,19 @@ Flickable {
             bridgeApi["beginGoogleSignIn"]()
     }
 
+    function beginSunoMcpSignIn() {
+        // T0356(a): the official Suno OAuth loopback sign-in. Unlike the Google
+        // path above this one returns a token on its own, so no paste/import
+        // follows it; the card reports the outcome from SunoBridge state.
+        feedbackMessage = ""
+        feedbackIsError = false
+        if (!bridgeSupports("beginSunoMcpSignIn")) {
+            showFeedback("The Suno OAuth sign-in is unavailable in this build.", true)
+            return
+        }
+        bridgeApi["beginSunoMcpSignIn"]()
+    }
+
     function importSessionFromBrowser() {
         // T0199. The half T0181 could not provide. The browser half ends with
         // the user signed in at suno.com and no channel back to this process;
@@ -540,6 +553,7 @@ readonly property string noteText: row.note !== undefined
             signingOut: root.signingOut
             onSignInRequested: root.beginGoogleSignIn()
             onImportRequested: root.importSessionFromBrowser()
+            onMcpSignInRequested: root.beginSunoMcpSignIn()
             onCancelRequested: root.cancelGoogleSignIn()
             onSignOutRequested: root.signOutSuno()
         }
