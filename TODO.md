@@ -82,7 +82,23 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `POST /api/v2/external/oauth/register/` → 201 with `client_id`. Loopback on arbitrary port accepted.
       (a) sign-in UX viable now: browser → Google/FB → loopback → refresh token. No cookie harvest.
       (b) replacing `__session` unproven: token is MCP-scoped (`resource=https://api.suno.com/mcp`).
-      Needs one authorized read to test if studio API accepts it. Companion: `biyan113/suno-mcp` oauth.go.
+      Companion: `biyan113/suno-mcp` oauth.go.
+      **MCP launched, auth chain verified 2026-10-31** (unauthenticated `[T1]`, no credentials attached):
+      `api.suno.com/mcp` challenges per RFC 9728 → RFC 8414 server metadata at the same
+      `external/oauth` family (authorize/token/revoke/register/jwks, PKCE S256, refresh grant).
+      The resource exists; the register probe's token has a home. Full chain:
+      [`docs/suno_api/MCP.md`](docs/suno_api/MCP.md). What closes (b): one authorized exchange —
+      mint a token, answer MCP `initialize` with it, and one studio-api read to see if it speaks both.
+
+- [ ] T0357 **Suno MCP Beta: chat surface in ChadVis** (`src/suno/`, `docs/suno_api/MCP.md`) #feature
+      Suno launched an official MCP server (`https://api.suno.com/mcp`, beta, early access). No API key —
+      OAuth approve once; songs save to library, spend credits, works on Free.
+      Capabilities announced: create from chat, upload own audio (voice memo → song), remix
+      (covers/mashups/extend), Voices. Board answer to Turnstile may improve again: instead of handing
+      the user to suno.com/create, walk the RFC 9728→8414→register/authorize/token chain (T0356's
+      client) and speak MCP directly. Early-access gate:
+      <https://sunomusic.typeform.com/to/JMPYxZqQ>. Facts + setup + probe evidence in
+      [`docs/suno_api/MCP.md`](docs/suno_api/MCP.md).
 
 - [ ] T0348 **`SunoEndpoints.hpp` "deliberately ABSENT" list stale for 4 routes** (`SunoEndpoints.hpp`, `SunoLibraryMutations.*`) #feature #risk-medium
       §5.13 has request+response bodies: `update_reaction_type`, `playlist/create`, `playlist/trash` (204 empty),

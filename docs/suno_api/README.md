@@ -25,6 +25,11 @@
   can neither promote a row into the inventory nor demote one out of it. It owns
   what each registered source may and may not settle, and records the hosts those
   sources name that are deliberately **not** allowlist candidates.
+- [`MCP.md`](MCP.md) is the **official Suno MCP Beta surface** — the announcement
+  facts, the RFC 9728→RFC 8414 auth chain observed live unauthenticated
+  (`[T1]`), the per-assistant connection steps, and the early-access gate. It
+  is the companion record for TODO.md T0356/T0357; the inventory gains rows
+  only as MCP routes are captured authenticated.
 - [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) is the single
   location for the observed Google web flow, the Clerk cookie families, and the
   **native-callback gate**. The intended desktop sign-in path is the system
