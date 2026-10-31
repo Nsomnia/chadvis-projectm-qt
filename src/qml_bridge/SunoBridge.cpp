@@ -468,12 +468,14 @@ void SunoBridge::wireControllerSignals() {
                          vc::suno::toString(gate));
             }
         }
-        // The mutation section was constructed BEFORE these gates existed, so its
-        // first `setEnabled(true)` was refused for a reason that is no longer true.
-        // Re-attaching re-points the resolver and retries the enable; without this
-        // the surface stays dark for the whole session on a cold start.
+        // `setLocallyEnabled` only writes the resolver's table — it emits
+        // nothing, and `GateResolver` is not a QObject, so no signal can carry
+        // this change. The section therefore has to be told at the one moment
+        // the answer became true; `attach()` above re-points the resolver but
+        // does not retry the enable, which is what left the surface dark for the
+        // whole session on a cold start.
         if (bridgeInstance->mutations_) {
-            bridgeInstance->mutations_->attach(s_controller, s_client);
+            bridgeInstance->mutations_->onGatesChanged();
         }
     }
     connect(s_controller, &vc::suno::SunoController::chatMessageReceived, bridgeInstance,

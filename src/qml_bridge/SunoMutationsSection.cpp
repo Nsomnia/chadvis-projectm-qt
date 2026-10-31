@@ -156,6 +156,12 @@ void SunoMutationsSection::ensureServiceForController() {
     // 2026-10-30 grant settled that, so the verbs are reachable and the gate
     // resolver decides the rest. A refusal is logged with its reason rather than
     // swallowed -- `isAvailable()` still answers false if a gate says no.
+    //
+    // The same entry point as the signal, deliberately: the service is also
+    // re-created here after a sign-out dropped it, which is a moment the gate
+    // resolver has already been enabled and whose `gatesChanged` has already
+    // passed. Without this the surface is off until the next account refresh.
+    attemptEnable();
     connect(service_, &vc::suno::SunoLibraryMutations::availabilityChanged, this,
             &SunoMutationsSection::availabilityChanged);
     connect(service_, &vc::suno::SunoLibraryMutations::mutationSettled, this,
