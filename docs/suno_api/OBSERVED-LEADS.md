@@ -710,3 +710,53 @@ section (section 6) and drop the row.
   binding native-callback gate. Consult it before anything in section 3.4.
 - [`raw/README.md`](raw/README.md) — provenance, SHA-256 hashes, and handling
   rules for evidence. Never cite it as a contract.
+- [`MCP.md`](MCP.md) — the official Suno MCP Beta record; TODO.md T0356/T0357.
+
+---
+
+## §Web route manifest — suno.com page router (`[LEAD]`, 2026-10-31)
+
+Source: `_sentryRouteManifest` in suno.com's own page JavaScript (user-supplied
+paste, 2026-10-31). **Page routes, not API routes** — this is the web app's
+router table and says nothing about request/response contracts. Recorded here
+because the OAuth-related landings and feature-surface pages plan captures.
+A bundle string is a lead, never evidence (AGENTS.md).
+
+**OAuth-relevant landings** (5 redirects + Clerk callback — T0356's browser leg
+may land a user on these instead of 127.0.0.1):
+
+- `/oauth-redirect`, `/oauth-redirect-v2`, `/oauth-redirect-custom`,
+  `/oauth-redirect-staff` — four redirect landing pages.
+- `/sso-callback` — Clerk SSO callback (already documented in
+  [`ENDPOINT-INVENTORY.md`](ENDPOINT-INVENTORY.md) and
+  [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md)).
+- `/link-account`, `/auth/session-recovery`, `/auth/verify`, `/auth/birthday`,
+  `/auth/error`.
+
+**Feature surfaces that imply API surface worth capture planning**
+(each page names a capability; the API routes behind them are separate leads):
+
+- `/stem-separation`, `/remaster/:slug` — stem/remaster UI in the main nav.
+- `/remix-welcome`, `/create/v2`, `/create/visuals`, `/create/voice`, `/v6` —
+  create surfaces; `/v6` likely the v6-model generation UI.
+- `/hooks`, `/hooks/create`, `/me/hooks`, `/liked-hooks` — Hooks as a
+  first-class library entity (T0264-class).
+- `/spark` (+ `/spark-terms`, `/mobile-paywall`) — a named product ("Spark").
+- `/text-message-song`, `/vinyl-gift` — niche generation flows.
+- `/audio-search`, `/search` — search UI.
+- `/earn-credits`, `/redeem` — credits UX (T0277).
+- `/community-collab/c/:projectId`, `/collab/:contest_id` — collab/contest flows.
+- `/labs/*` (canvas, turntable, verse, vocal-isolator, pedalboard, drum-like
+  experiment pages) — experimental surfaces; capture targets if ever reachable
+  to ordinary accounts, otherwise status-only.
+- `/chat/:slug` — chatroom pages (a `suno_chat` route exists in the endpoint
+  dumps already).
+
+**Not recorded here as routes**: the ~90 `/b-side/*` staff paths — already
+excluded on purpose (T0146, disclosure material only). The manifest confirms
+they exist; existence changes nothing about the exclusion.
+
+**Funnel terms** (`[LEAD]`, marketing prose): `/first-listen`, `/braylon`,
+`/banoffee`, `/template-webpage` — internal codenames/launch pages, no product
+value identified.
+
