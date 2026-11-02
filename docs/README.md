@@ -21,6 +21,7 @@ fact, that is a bug — fix it here rather than adding a third copy.
 | [Architecture](dev/ARCHITECTURE.md) | Process ownership, init and teardown order, the QML shell, bridge registration, Suno data flow. |
 | [Invariants](dev/INVARIANTS.md) | Hard-won constraints that must not be violated: threading contracts, buffer lifetime, timestamp rules, and testing traps. |
 | [Theme engine plan](dev/THEME-ENGINE-PLAN.md) | What a theme is, where definitions live, the hex byte-order trap, and the remaining phases. |
+| [Reactive GUI plan](dev/REACTIVE-GUI-PLAN.md) | Motion tokens, juicy buttons/glowing sliders/wiggle/glow/transform primitives, a GUI for the 11 wired Suno mutations, audio-reactive chrome, and phased implementation (T0358–T0361). Baseline `main` at `9831417`, Qt 6.8 floor. |
 | [Testing](dev/TESTING.md) | The 41 `unit_tests` suites from 42 sources, the 11 standalone executables, and the two integration entries. How to actually run them. |
 | [QML linting](dev/QML-LINTING.md) | `./scripts/lint-qml.sh`: what it checks, what it deliberately does not, and how to read its three buckets. Written for someone who does not know QML. |
 | [Manual QA](dev/manual-qa.md) | The MT-001 GUI checklist. Real-GUI versus offscreen coverage, per item. |

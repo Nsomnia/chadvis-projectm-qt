@@ -83,6 +83,18 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **A reactive-GUI plan, tracked, not yet implemented.** [`docs/dev/REACTIVE-GUI-PLAN.md`](docs/dev/REACTIVE-GUI-PLAN.md)
+  inventories the app's 55 QML files and the Oct 26–31 Suno endpoints expansion, then specifies
+  — in implementable phases — motion tokens + a reduced-motion switch (Phase 0), juicy buttons,
+  glowing sliders, wiggle/shake, glow and transform primitives (Phase 1), a GUI for the 11 wired
+  Suno mutations that currently have zero QML callers plus generation-state and notification
+  visuals (Phase 2), audio-reactive chrome driven by a new throttled, smoothed
+  `audioLevel`/`beatPulse` bridge (Phase 3), and view polish (Phase 4). No QML or C++ behaviour
+  changes in this entry: the plan, the docs-hub row, and the tracking items T0358–T0361 are the
+  change. Baseline: `origin/main` at `9831417`, Qt 6.8 floor. QML Live Preview MCP is noted as
+  Qt 6.12-only and therefore blocked on that floor; the Suno MCP Beta tool list is still
+  unenumerated (T0356b/T0357).
+
 - **A guards gate, so the workflow checker runs instead of being remembered.** `guards.yml` runs
   `scripts/check-workflows.py` on every push and PR and answers in about twenty seconds — before
   the twenty-five-minute build queue. The checker exists because GitHub rejects a YAML file that

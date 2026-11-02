@@ -111,6 +111,30 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       <https://sunomusic.typeform.com/to/JMPYxZqQ>. Facts + setup + probe evidence in
       [`docs/suno_api/MCP.md`](docs/suno_api/MCP.md).
 
+- [~] T0358 **Reactive GUI Phase 0 + 1: motion tokens, reduced motion, juicy primitives** (`src/qml/styles/Theme.qml`, `src/qml/components/AppButton.qml`, `src/qml/components/AppSlider.qml`, `src/qml/components/AppSwitch.qml`, `src/qml/components/AppComboBox.qml`, `src/qml/components/AppTextField.qml`, `src/qml/components/AccountChip.qml`, `src/qml_bridge/SettingsBridge*`) #feature #blocks-ui
+      Plan: [`docs/dev/REACTIVE-GUI-PLAN.md`](docs/dev/REACTIVE-GUI-PLAN.md) §3–§4. Add
+      `durationMicro`/`durationPop`/`motionScale` to `Theme.qml` (no new singleton yet),
+      persisted `SettingsBridge.reduceMotion` seeded from `main.qml`, gate existing animations on
+      `motionScale`, extend `AppButton`/`AppSlider` without breaking public API, add new
+      `Wiggle.qml`, `GlowFrame.qml`, `RefreshSpinner.qml` (register every new file in
+      `cmake/Sources.cmake`), replace the 4 copy-pasted 900 ms spinners, activate dormant
+      `glowAccent`/shadow tokens. No Qt 6.12-only APIs (floor is 6.8). Verify: `lint-qml.sh`,
+      `./build.sh --fast --tests`, Qt Quick Tests, QML Profiler traces. Agent on it 2026-11-01
+      under Derek's standing authorisation to push to `main` and keep working; no Qt build
+      exists in the agent VM, so desktop `./build.sh --fast --tests` + a real run remain the
+      verification gate before any Phase 0/1 code is claimed complete.
+
+- [ ] T0359 **Reactive GUI Phase 2: GUI for the 11 wired Suno mutations + generation + notifications** (`src/qml/components/ClipDetailSheet.qml`, `src/qml/components/ClipCard.qml`, `src/qml/components/PlaylistStrip.qml`, `src/qml/views/LibraryView.qml`, `src/qml/views/CreateView.qml`, `src/qml/views/NotificationsView.qml`, `src/qml/components/NavRail.qml`) #feature #blocks-ui (after: T0358)
+      Plan: [`docs/dev/REACTIVE-GUI-PLAN.md`](docs/dev/REACTIVE-GUI-PLAN.md) §6.1–§6.4. The 11
+      verbs in `SunoMutationsSection` have zero QML callers today (T0011's UI gap): add a
+      mutation section + overflow menu to `ClipDetailSheet`, a context-menu entry on `ClipCard`,
+      playlist rename/description/cover/add/remove/reorder, new `Toast.qml` +
+      `GenerationStatus.qml`, generation state visuals for every `generationState` (including
+      captcha-required browser handoff — no fake in-app token input), notification badge on the
+      rail + mark-all-read feedback. Optimistic UI forbidden for mutations except playlist
+      reorder with a specified revert. Optional in this phase, only if prioritised: §1.4
+      one-method surfaces (like/unlike, playlist create, playlist trash) + T0348 doc fixes.
+
 - [ ] T0348 **`SunoEndpoints.hpp` "deliberately ABSENT" list stale for 4 routes** (`SunoEndpoints.hpp`, `SunoLibraryMutations.*`) #feature #risk-medium
       §5.13 has request+response bodies: `update_reaction_type`, `playlist/create`, `playlist/trash` (204 empty),
       `playlist/v2/{id}/cover-image`. Add constants, correct absent-list, give verbs response discipline.
@@ -335,6 +359,21 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 ---
 
 ## P3 — polish and speculative
+
+- [ ] T0360 **Reactive GUI Phase 3: audio-reactive chrome** (`src/qml_bridge/AudioBridge.*`, `src/qml/components/TransportBar.qml`, `src/qml/components/ClipCard.qml`, `src/qml/views/ListenView.qml`, `src/qml/components/VisualizerOverlay.qml`, `src/qml/components/KaraokeMaster.qml`, `src/qml/panels/LyricsPanel.qml`) #feature (after: T0359)
+      Plan: [`docs/dev/REACTIVE-GUI-PLAN.md`](docs/dev/REACTIVE-GUI-PLAN.md) §5. Add throttled
+      (~30 Hz), C++-smoothed `audioLevel`/`beatPulse` (+ bands if the pipeline allows) and
+      `energyActive` to the audio bridge — never on the realtime callback thread — then drive
+      transport glow, the playing card, the Listen hero, and overlay beat modulation from them
+      through springs, never raw per-frame bindings. CI green is NOT evidence for audio: a real
+      run with real audio is the verification gate.
+
+- [ ] T0361 **Reactive GUI Phase 4: view polish, particles, hero moments** (`src/qml/views/`, `src/qml/panels/`, `src/qml/settings/`) #feature (after: T0360)
+      Plan: [`docs/dev/REACTIVE-GUI-PLAN.md`](docs/dev/REACTIVE-GUI-PLAN.md) §6.5 + §4.8. Listen/
+      Video/Lyrics/Presets polish, Discover tile parity with `ClipCard`, theme-change fade,
+      bounded one-shot particles (one system per screen, never in a delegate, Phase 4 only),
+      once-per-session hero moments. Extend `docs/dev/manual-qa.md` (MT-001) with the new motion
+      checklist and run a full reduced-motion pass.
 
 - [ ] T0345 **Record web client's redirect validator** (`OAUTH_REDIRECT_ANALYSIS.md`) [P] #cleanup
       Bundle's `isSafeRedirectUrl` accepts any `https:` URL. Our validator must be stricter — exact host/port/path.
