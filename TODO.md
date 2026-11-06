@@ -138,13 +138,14 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       reorder with a specified revert. Optional in this phase, only if prioritised: §1.4
       one-method surfaces (like/unlike, playlist create, playlist trash) + T0348 doc fixes.
 
-- [ ] T0348 **`SunoEndpoints.hpp` "deliberately ABSENT" list stale for 4 routes** (`SunoLibraryMutations.*`) #feature #risk-medium
+- [x] T0348 **`SunoEndpoints.hpp` "deliberately ABSENT" list stale for 4 routes** (`SunoLibraryMutations.*`) #feature #risk-medium
       Constants + absent-list **done 2026-11-06**: §5.13 bodies landed in `SunoEndpoints.hpp`
       (`PLAYLIST_CREATE`, `PLAYLIST_TRASH`, `PLAYLIST_V2_BY_ID`, `GEN_UPDATE_REACTION_TYPE`,
       `GEN_SET_METADATA`), and HAR-11 cleared them from the absent list. Remaining: the verbs
       themselves in `SunoLibraryMutations` with response discipline — `playlist/trash` returns
       204 (parse nothing), `update_reaction_type` returns state with `reaction_type` absent when
       cleared, `playlist/create` returns the 25-key object.
+      **DONE 2026-11-06:** verbs landed in `SunoLibraryMutations` with response discipline (204 parses nothing, reaction clear sends null, 8 new tests). `SunoMutationsSection::isClipScoped` covers the new verbs (7 clip / 9 playlist).
 
 - [ ] T0349 **Persona: reads and create are `[T1]` now, zero code** (`SunoEndpoints.hpp`, `SunoPersonaService.*`, `src/qml/panels/settings/`) #feature
       HAR-11 (2026-11-06) captured all three: `GET /persona/get-personas/`,
@@ -176,12 +177,13 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Host allowlist is NOT widened by this task: `suno-data-uploads.s3.amazonaws.com` and
       `api.suno.com` need their own `CapturedHosts.cpp` change with evidence, fail-closed.
 
-- [ ] T0363 **`POST /gen/{id}/set_audio_description` + upload TOS flags are unmodelled** (`src/suno/SunoLibraryMutations.*`) #feature #risk-medium
+- [x] T0363 **`POST /gen/{id}/set_audio_description` + upload TOS flags are unmodelled** (`src/suno/SunoLibraryMutations.*`) #feature #risk-medium
       HAR-11 shows the site sends `{"gemini_description_accepted":true,"audio_content_types":
       ["Song Demo","Voice","Sample"]}` and `set_metadata` carries
       `is_audio_upload_tos_accepted`. Uploaded audio is a different publication contract from a
       generated clip. Model the two flags before any upload UI ships, or an upload can be
       published under the wrong consent state.
+      **DONE 2026-11-06:** `ClipMetadataUpdate` + `AudioDescriptionConsent` typed records with body builders in `SunoLibraryMutations`; verbs arrive with T0362.
 
 - [x] T0364 **`--fast --tests` fails to link: projectM source build vs repo spdlog/fmt** (`cmake/FindProjectM4.cmake`, `cmake/Dependencies.cmake`) #risk-high #cod-high
       On 2026-11-06 a cold `build-fast` configure+link died at `tests/unit/unit_tests`:
@@ -213,18 +215,20 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `setToken()` has zero production callers. `__client_uat` accepted as credential but is metadata, not credential.
       Classify at paste boundary: `BearerToken` → `setToken`, `ClerkCookieHeader` → `setCookie`, `Unsupported` → refuse.
 
-- [ ] T0340 **Minted bearer not bound to session that minted it** (`ClerkAuthClient.cpp:671-684`, `SunoClient.cpp:957-963`) #risk-high #security
+- [x] T0340 **Minted bearer not bound to session that minted it** (`ClerkAuthClient.cpp:671-684`, `SunoClient.cpp:957-963`) #risk-high #security
       `handleTokensBody` accepts any `{jwt}`, sets `lastObservedSessionId_` without comparing token's `sid`.
       Fix: when `sid` claim exists and differs from `ctx.sessionId`, fail `ProtocolMismatch`. When absent, keep tolerance
       but don't clear `lastActiveSessionId_`.
+      **DONE 2026-11-06:** sid mismatch fails `ProtocolMismatch` (secret-free), absent sid keeps the observed session; 5 new tests in `test_ClerkAuthClient`.
 
 - [ ] T0341 **Clerk failure envelope and `Retry-After` discarded** (`ClerkAuthClient.cpp:571-590,630-668`, `SunoClient.*`, `SunoBridge.cpp:784-804`) #risk-medium #blocks-ui
       Body's `errors[0]` never read. 429's `Retry-After` ignored. `authFailed(reason)` good sentence dies at `SunoClient`.
       Map bounded code set to fixed sentences. Never surface raw `long_message` (can echo identifier).
 
-- [ ] T0342 **`GET /v1/client` refuses envelope with no `last_active_session_id`** (`ClerkAuthClient.cpp:91-190`) #risk-medium (after: T0340)
+- [x] T0342 **`GET /v1/client` refuses envelope with no `last_active_session_id`** (`ClerkAuthClient.cpp:91-190`) #risk-medium (after: T0340)
       One session + no selector → `NoActiveSession` despite usable `jwt`. Web client: `last_active_session_id ?? sessions?.[0]?.id`.
       Adopt fallback only when exactly one session. Two+ keep refusing.
+      **DONE 2026-11-06** with T0340; deduped across both envelope halves.
 
 - [ ] T0049 **Qt 6.12 required property → load-time error, not used** (`src/qml/`, `Application.cpp`) #risk-high
       Mark C++-injected QML deps `required`, supply via `setInitialProperties`. Connect `objectCreationFailed` (since 6.4).
@@ -315,8 +319,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0165 **Preset discovery misses `.milk7`/`.milkdrop`** (`PresetScanner.cpp`) #risk-medium
       projectM tests `.milk` exact, case-sensitive. `.Milk`/`.MILK`/`.milk7`/`.milkdrop` skipped. No `milkdrop.ini` in v4.
 
-- [ ] T0058 `RatingManager` process-wide mutex-less singleton keyed on preset name (`RatingManager.cpp:9-25`) #blocks-feature
+- [x] T0058 `RatingManager` process-wide mutex-less singleton keyed on preset name (`RatingManager.cpp:9-25`) #blocks-feature
       Same preset name in two banks shares rating. Bare `std::map`, no lock. Fix: inject, key on path, add mutex.
+      **DONE 2026-11-06:** keyed on path + mutex (singleton kept; DI is T0131). `PresetBridge::migrateNameKeyedRatings` moves old name-keyed stars onto path keys once; path keys win.
 
 - [ ] T0065 `SunoOrchestrator` permanently-failing stub with unreachable members (`SunoOrchestrator.cpp:14-44`) #cleanup
       Both methods only `emit errorOccurred`. Private handlers never called. `client_` written never read.

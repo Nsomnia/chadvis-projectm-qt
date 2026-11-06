@@ -26,6 +26,18 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   generation body. Records: `ENDPOINT-INVENTORY.md` §4.12, `UI-SURFACE-INVENTORY.md`,
   `OBSERVED-LEADS.md` promotions, and `TODO.md`'s quick-reference.
 
+- **Suno MCP client exists.** `SunoMcpClient` speaks JSON-RPC 2.0 at `https://api.suno.com/mcp` with `initialize -> notifications/initialized -> tools/list -> tools/call`, plain JSON and SSE framing, and fail-closed protocol errors. (T0357)
+
+- **Suno library mutation verbs for reaction, playlist create, and legacy playlist trash.** `SunoLibraryMutations` adds `setReaction`, `createPlaylist`, and `trashPlaylist` with a 2xx-means-accepted discipline; a 204 trash parses nothing. (T0348)
+
+- **Upload consent flags are modelled.** `ClipMetadataUpdate` and `AudioDescriptionConsent` carry `isAudioUploadTosAccepted`, `geminiDescriptionAccepted`, and `audioContentTypes` as typed fields with body builders. (T0363)
+
+
+- **Clerk bearer tokens are bound to the session that minted them.** A mismatched `sid` now fails closed instead of using a bearer from another session, and `GET /v1/client` falls back to the sole session when no selector is present. (T0340, T0342)
+
+- **Preset star ratings are keyed by path, not by preset name.** Same-named presets in different banks keep separate stars, and reads/writes are mutex-guarded. Existing name-keyed ratings migrate to path keys on first non-empty preset list without overwriting newer path ratings. (T0058)
+
+- **The documented test build now links reliably.** Paired `spdlog`/`fmt`/`tomlplusplus` target include directories are prepended so headers and archives come from the same install. (T0364)
 ### Changed
 
 - **The file-wide `-Wdeprecated-declarations` suppression is gone from the recorder.** It wrapped
