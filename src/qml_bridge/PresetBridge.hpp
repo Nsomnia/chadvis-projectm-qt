@@ -12,7 +12,18 @@
 #include "QmlSingletonBridge.hpp"
 #include "visualizer/PresetManager.hpp"
 
+namespace vc { class RatingManager; }
+
 namespace qml_bridge {
+
+/// One-shot upgrade for ratings written before T0058: those were keyed on the
+/// preset NAME, so each star is moved onto its preset's path key. A path that
+/// already carries a rating is never overwritten, and the old name keys are left
+/// in place -- they are unreachable, not wrong, and deleting them would drop the
+/// only copy of a star when the name repeats across two banks.
+/// Returns how many ratings were moved; the caller persists when it is non-zero.
+std::size_t migrateNameKeyedRatings(const vc::PresetManager::PresetList& presets,
+                                    vc::RatingManager& ratings);
 
 class PresetBridge : public QObject,
                      public QmlSingletonBridge<PresetBridge, SingletonPolicy::CachedQmlParented> {
@@ -85,6 +96,10 @@ private:
     /// driven from the constructor because QML creates this singleton lazily.
     void attachManager();
 
+    /// Runs the name-keyed rating migration once, as soon as a non-empty preset
+    /// generation exists, and persists the result. Safe to call repeatedly.
+    void migrateRatingsOnFirstList();
+
     /// Value form handed to QML. `fullListIndex` is the preset's position in
     /// the FULL manager generation — the list every index-based QML-facing
     /// slot (selectByIndex, toggleFavorite, toggleBlacklisted, setRating)
@@ -103,6 +118,9 @@ private:
     static vc::PresetManager* s_manager;
 
     bool signalsAttached_{false};
+    /// True once the name-keyed ratings have been migrated (or there was nothing
+    /// to migrate), so every later list change skips the pass and the save.
+    bool ratingsMigrated_{false};
     QString searchQuery_;
     QString selectedCategory_;
 };

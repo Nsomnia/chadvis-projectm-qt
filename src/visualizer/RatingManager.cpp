@@ -11,12 +11,14 @@ RatingManager& RatingManager::instance() {
     return instance;
 }
 
-void RatingManager::setRating(const std::string& name, int stars) {
-    ratings_[name] = std::clamp(stars, 0, 5);
+void RatingManager::setRating(const std::string& path, int stars) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ratings_[path] = std::clamp(stars, 0, 5);
 }
 
-int RatingManager::getRating(const std::string& name) const {
-    auto it = ratings_.find(name);
+int RatingManager::getRating(const std::string& path) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = ratings_.find(path);
     return (it != ratings_.end()) ? it->second : 0;
 }
 
@@ -25,27 +27,42 @@ Result<void> RatingManager::load() {
     if (!fs::exists(path))
         return Result<void>::ok();
 
+    // Parse into a local table first: a parse error must leave the live ratings
+    // untouched, and the file walk stays outside the lock either way.
+    std::map<std::string, int> parsed;
     try {
         auto tbl = toml::parse_file(path.string());
         for (auto&& [key, value] : tbl) {
             if (auto stars = value.as_integer()) {
-                ratings_[std::string(key.str())] =
-                        static_cast<int>(stars->get());
+                parsed[std::string(key.str())] = static_cast<int>(stars->get());
             }
         }
-        LOG_INFO("Loaded {} preset ratings", ratings_.size());
     } catch (const toml::parse_error& e) {
         return Result<void>::err("Failed to parse ratings: " +
                                  std::string(e.description()));
     }
+
+    std::size_t total = 0;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto& [key, stars] : parsed)
+            ratings_[key] = stars;
+        total = ratings_.size();
+    }
+    LOG_INFO("Loaded {} preset ratings", total);
     return Result<void>::ok();
 }
 
 Result<void> RatingManager::save() {
     auto path = file::configDir() / "ratings.toml";
     toml::table tbl;
-    for (auto const& [name, stars] : ratings_) {
-        tbl.insert(name, stars);
+    {
+        // Snapshot under the lock, serialize and write outside it: save() runs on
+        // every rating click, and the disk write must not block a reader.
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto const& [key, stars] : ratings_) {
+            tbl.insert(key, stars);
+        }
     }
 
     // Serialize first, then let the shared writer own the temp+rename: a

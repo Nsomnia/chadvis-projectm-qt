@@ -24,6 +24,7 @@ int runTestPresetScanner(int argc, char** argv);
 int runTestPresetBridge(int argc, char** argv);
 int runTestPresetManager(int argc, char** argv);
 int runTestPresetPersistence(int argc, char** argv);
+int runTestRatingManager(int argc, char** argv);
 int runTestSunoEndpoints(int argc, char** argv);
 int runTestSunoAuthFailure(int argc, char** argv);
 int runTestSunoClient(int argc, char** argv);
@@ -113,6 +114,7 @@ int main(int argc, char* argv[]) {
     status |= RUN_SUITE(TestPresetBridge);
     status |= RUN_SUITE(TestPresetManager);
     status |= RUN_SUITE(TestPresetPersistence);
+    status |= RUN_SUITE(TestRatingManager);
     status |= RUN_SUITE(TestSunoEndpoints);
     status |= RUN_SUITE(TestSunoAuthFailure);
     status |= RUN_SUITE(TestSunoClient);

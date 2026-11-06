@@ -10,6 +10,22 @@ namespace qml_bridge {
 
 vc::PresetManager* PresetBridge::s_manager = nullptr;
 
+std::size_t migrateNameKeyedRatings(const vc::PresetManager::PresetList& presets,
+                                    vc::RatingManager& ratings) {
+    std::size_t migrated = 0;
+    for (const auto& preset : presets) {
+        // A name key with no path twin is a rating from before T0058; a path
+        // that already holds stars was written after, so it always wins.
+        const int stars = ratings.getRating(preset.name);
+        const std::string path = preset.path.string();
+        if (stars > 0 && ratings.getRating(path) == 0) {
+            ratings.setRating(path, stars);
+            ++migrated;
+        }
+    }
+    return migrated;
+}
+
 PresetBridge::PresetBridge(QObject* parent) : QObject(parent) { attachManager(); }
 
 void PresetBridge::attachManager() {
@@ -31,6 +47,27 @@ void PresetBridge::attachManager() {
     auto* self = this;
     s_manager->presetChanged.connect([self](const vc::PresetInfo* p) { self->onPresetChanged(p); });
     s_manager->listChanged.connect([self]() { self->onListChanged(); });
+
+    // A manager that was already scanned before the bridge existed (tests, a
+    // synchronous startup scan) has its list waiting here; otherwise the first
+    // listChanged publication runs the migration.
+    migrateRatingsOnFirstList();
+}
+
+void PresetBridge::migrateRatingsOnFirstList() {
+    if (ratingsMigrated_ || !s_manager) return;
+
+    const vc::PresetManager::Snapshot presets = s_manager->allPresets();
+    if (presets->empty()) return; // wait for the first real generation
+    ratingsMigrated_ = true;
+
+    if (migrateNameKeyedRatings(*presets, vc::RatingManager::instance()) == 0) return;
+    // Persist once so the file is rewritten with path keys. The old name keys
+    // otherwise stay as unreachable entries -- harmless, and still the only copy
+    // of a star whose name is shared by two banks.
+    if (auto saved = vc::RatingManager::instance().save(); !saved) {
+        LOG_WARN("PresetBridge: could not persist migrated ratings: {}", saved.error().message);
+    }
 }
 
 void PresetBridge::setPresetManager(vc::PresetManager* manager) {
@@ -133,7 +170,8 @@ void PresetBridge::setRating(int index, int rating) {
     // without it once a rescan publishes a new list.
     const vc::PresetManager::Snapshot presets = s_manager->allPresets();
     if (static_cast<std::size_t>(index) < presets->size()) {
-        vc::RatingManager::instance().setRating((*presets)[index].name, static_cast<int>(rating));
+        vc::RatingManager::instance().setRating((*presets)[index].path.string(),
+                                                static_cast<int>(rating));
         emit presetsChanged();
     }
 }
@@ -225,7 +263,10 @@ void PresetBridge::onPresetChanged(const vc::PresetInfo* preset) {
     emit currentPresetChanged();
 }
 
-void PresetBridge::onListChanged() { emit presetsChanged(); }
+void PresetBridge::onListChanged() {
+    migrateRatingsOnFirstList();
+    emit presetsChanged();
+}
 QVariantMap PresetBridge::presetToVariant(const vc::PresetInfo& info, int fullListIndex) const {
     QVariantMap map;
     map[QStringLiteral("index")] = fullListIndex;
@@ -236,7 +277,7 @@ QVariantMap PresetBridge::presetToVariant(const vc::PresetInfo& info, int fullLi
     map[QStringLiteral("favorite")] = info.favorite;
     map[QStringLiteral("blacklisted")] = info.blacklisted;
     map[QStringLiteral("playCount")] = static_cast<int>(info.playCount);
-    map[QStringLiteral("rating")] = vc::RatingManager::instance().getRating(info.name);
+    map[QStringLiteral("rating")] = vc::RatingManager::instance().getRating(info.path.string());
     return map;
 }
 

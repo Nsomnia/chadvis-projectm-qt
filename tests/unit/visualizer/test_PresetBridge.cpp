@@ -46,6 +46,7 @@ private slots:
     void selectingThroughAFilteredRowSelectsThatRow();
     void favoritingThroughAFilteredRowTogglesThatRow();
     void ratingThroughAFilteredRowWritesThatRow();
+    void nameKeyedRatingsMigrateToPathKeys();
     void refusingANonDirectoryKeepsTheCurrentLibrary();
     void choosingAFolderRecordsItAsThePresetPath();
 
@@ -171,10 +172,10 @@ void TestPresetBridge::ratingThroughAFilteredRowWritesThatRow() {
     // process-wide in-memory singleton, so slot 0 is compared against its own
     // before-value rather than an assumed zero.
     const PresetManager::Snapshot generation = manager_->allPresets();
-    const std::string victim = (*generation)[3].name;
-    const std::string slotZero = (*generation)[0].name;
+    const std::string victim = (*generation)[3].path.string();
+    const std::string slotZero = (*generation)[0].path.string();
     const int slotZeroBefore = RatingManager::instance().getRating(slotZero);
-    bridge_->setSearchQuery(QString::fromStdString(victim));
+    bridge_->setSearchQuery(QString::fromStdString((*generation)[3].name));
 
     const QVariantList rows = bridge_->filteredPresets();
     QCOMPARE(rows.size(), qsizetype(1));
@@ -182,6 +183,34 @@ void TestPresetBridge::ratingThroughAFilteredRowWritesThatRow() {
 
     QCOMPARE(RatingManager::instance().getRating(victim), 4);
     QCOMPARE(RatingManager::instance().getRating(slotZero), slotZeroBefore);
+}
+
+void TestPresetBridge::nameKeyedRatingsMigrateToPathKeys() {
+    // Ratings written before T0058 were keyed on the preset name. On upgrade they
+    // must land on the path key, or every existing star goes dark -- and a path
+    // that already carries a rating must keep it, because that one was written
+    // after the rekey and is the current truth.
+    const PresetManager::Snapshot generation = manager_->allPresets();
+    const PresetInfo& legacy = (*generation)[0];
+    const PresetInfo& alreadyRated = (*generation)[1];
+
+    QCOMPARE(RatingManager::instance().getRating(legacy.path.string()), 0);
+    RatingManager::instance().setRating(legacy.name, 4);
+    RatingManager::instance().setRating(alreadyRated.name, 5);
+    RatingManager::instance().setRating(alreadyRated.path.string(), 3);
+
+    const std::size_t migrated =
+            qml_bridge::migrateNameKeyedRatings(*generation, RatingManager::instance());
+
+    QCOMPARE(migrated, std::size_t(1));
+    QCOMPARE(RatingManager::instance().getRating(legacy.path.string()), 4);
+    QCOMPARE(RatingManager::instance().getRating(alreadyRated.path.string()), 3);
+
+    // Leave no name key behind: init() builds a fresh bridge for each later test,
+    // and a live name key would be migrated again -- and written to the real
+    // ratings file -- on every one of them.
+    RatingManager::instance().setRating(legacy.name, 0);
+    RatingManager::instance().setRating(alreadyRated.name, 0);
 }
 
 void TestPresetBridge::refusingANonDirectoryKeepsTheCurrentLibrary() {

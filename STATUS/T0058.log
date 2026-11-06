@@ -1,0 +1,4 @@
+2026-11-06T22:45:00Z  CLAIM    RatingManager key + mutex
+2026-11-06T22:45:00Z  CHANGE   src/visualizer/RatingManager.{hpp,cpp}: key on preset path, mutex on all map access, load parses-then-merges, save snapshots under lock. src/qml_bridge/PresetBridge: callers pass path; migrateNameKeyedRatings moves pre-T0058 name-keyed stars onto path keys exactly once, path keys win, name keys left in file.
+2026-11-06T22:45:00Z  VERIFY   pending full build (orchestrator).
+2026-11-06T22:52:00Z  VERIFY   ./build.sh --fast --tests --safe -> 16/16 passed (93.32 s); test_SunoLibraryMutations expectation fixed at /gen/{id}/ path.
