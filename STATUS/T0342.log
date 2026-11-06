@@ -1,0 +1,2 @@
+2026-11-06T22:45:00Z  VERIFY   covered by T0340 log; implementation shipped in same change (see STATUS/T0340.log).
+2026-11-06T22:52:00Z  VERIFY   ./build.sh --fast --tests --safe -> 16/16 passed (93.32 s).

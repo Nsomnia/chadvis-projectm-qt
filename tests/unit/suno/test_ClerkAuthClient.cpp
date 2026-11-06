@@ -70,11 +70,18 @@ QString b64url(const QJsonObject& object)
 }
 
 /// Sanitized, unsigned fixture token. No captured or real credential is used.
-QString fakeJwt(const QString& marker, qint64 expiryEpochSecs)
+/// `sid` reproduces the standard Clerk session claim; empty omits it, which is
+/// the tolerance branch T0340 keeps.
+QString fakeJwt(const QString& marker, qint64 expiryEpochSecs, const QString& sid = {})
 {
     const QString header = b64url({{"alg", "NONE"}, {"typ", "JWT"}});
-    const QString payload = b64url({{"exp", expiryEpochSecs}, {"test_marker", marker}});
-    return header + "." + payload + ".ZmFrZQ";
+    QJsonObject payload{{"exp", expiryEpochSecs}, {"test_marker", marker}};
+    if (!sid.isEmpty())
+    {
+        payload["sid"] = sid;
+    }
+    const QString payloadB64 = b64url(payload);
+    return header + "." + payloadB64 + ".ZmFrZQ";
 }
 
 QByteArray jsonBody(const QJsonObject& object)
@@ -340,15 +347,21 @@ private slots:
         QCOMPARE(outcome.failureKind, AuthFailureKind::NoActiveSession);
     }
 
+    /// A selector is still required whenever the envelope is ambiguous: two or
+    /// more sessions with no selector, a selector that matches no session, or a
+    /// direct token with no session at all (T0342 keeps the multi-session
+    /// refusal; only the single-session case gained a fallback).
     void sessionSelectorRequired_data()
     {
         QTest::addColumn<QByteArray>("body");
-        QTest::newRow("missing-selector")
-            << QByteArray(R"({"response":{"sessions":[{"id":"a","last_active_token":{"jwt":"token-a"}}]}})");
+        QTest::newRow("two-sessions-without-selector")
+            << QByteArray(R"({"response":{"sessions":[{"id":"a","last_active_token":{"jwt":"token-a"}},{"id":"b","last_active_token":{"jwt":"token-b"}}]}})");
+        QTest::newRow("three-sessions-without-selector")
+            << QByteArray(R"({"response":{"sessions":[{"id":"a","last_active_token":{"jwt":"token-a"}},{"id":"b","last_active_token":{"jwt":"token-b"}},{"id":"c","last_active_token":{"jwt":"token-c"}}]}})");
+        QTest::newRow("split-halves-name-two-sessions")
+            << QByteArray(R"({"response":{"sessions":[{"id":"a","last_active_token":{"jwt":"token-a"}}]},"client":{"sessions":[{"id":"b","last_active_token":{"jwt":"token-b"}}]}})");
         QTest::newRow("unmatched-selector")
             << QByteArray(R"({"response":{"last_active_session_id":"b","sessions":[{"id":"a","last_active_token":{"jwt":"token-a"}}]}})");
-        QTest::newRow("client-selector-missing")
-            << QByteArray(R"({"client":{"sessions":[{"id":"a","last_active_token":{"jwt":"token-a"}}]}})");
         QTest::newRow("direct-token-is-not-envelope")
             << QByteArray(R"({"response":{"last_active_session_id":"a","last_active_token":{"jwt":"token-a"}}})");
     }
@@ -359,6 +372,46 @@ private slots:
         const ParseOutcome outcome = parseBody(body);
         QCOMPARE(outcome.bearerCount, 0);
         QCOMPARE(outcome.failureCount, 1);
+        QCOMPARE(outcome.failureKind, AuthFailureKind::NoActiveSession);
+    }
+
+    /// T0342: one session and no `last_active_session_id` is not a refusal.
+    /// The web client reads `last_active_session_id ?? sessions?.[0]?.id`, so
+    /// the sole session is the answer whether it arrives in the `response`
+    /// half or the `client` half.
+    void singleSessionWithoutSelectorFallsBack()
+    {
+        const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
+        const QString jwt = fakeJwt(QStringLiteral("sole-session"), expiry);
+        const QJsonArray sessions{session(QStringLiteral("sess_only"), jwt)};
+
+        const std::array<QByteArray, 2> bodies{
+            jsonBody({{"response", QJsonObject{{"sessions", sessions}}}}),
+            jsonBody({{"client", QJsonObject{{"sessions", sessions}}}}),
+        };
+        for (const QByteArray& body : bodies)
+        {
+            const ParseOutcome outcome = parseBody(body);
+            verifySuccess(outcome, QStringLiteral("sole-session"), expiry);
+            QCOMPARE(outcome.sessionId, QStringLiteral("sess_only"));
+        }
+    }
+
+    /// The fallback must not swallow an id-less session: `sessions[0]?.id` is
+    /// undefined there, so there is no session to report.
+    void idlessSessionWithoutSelectorStillRefuses()
+    {
+        const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
+        const QByteArray body = jsonBody({
+            {"response", QJsonObject{
+                             {"sessions", QJsonArray{
+                                              session(QString(), fakeJwt(QStringLiteral("idless"), expiry)),
+                                          }},
+                         }},
+        });
+
+        const ParseOutcome outcome = parseBody(body);
+        QCOMPARE(outcome.bearerCount, 0);
         QCOMPARE(outcome.failureKind, AuthFailureKind::NoActiveSession);
     }
 
@@ -500,6 +553,77 @@ private slots:
         const ParseOutcome outcome = parseTokensBody(body, QStringLiteral("sess_tokens"));
         verifySuccess(outcome, QStringLiteral("tokens-session"), expiry);
         QCOMPARE(outcome.sessionId, QStringLiteral("sess_tokens"));
+    }
+
+    /// T0340: the minted bearer must belong to the session the request named.
+    /// A "sid" claim that says otherwise is a protocol mismatch -- not a
+    /// credential verdict, and the error must not quote either identifier.
+    void tokensBodyWithMismatchedSidClaimFails()
+    {
+        const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
+        const QString jwt = fakeJwt(QStringLiteral("tokens-wrong-session"), expiry,
+                                    QStringLiteral("sess_other"));
+        const QByteArray body = jsonBody({{"jwt", jwt}});
+
+        const ParseOutcome outcome = parseTokensBody(body, QStringLiteral("sess_tokens"));
+        QCOMPARE(outcome.bearerCount, 0);
+        QCOMPARE(outcome.failureCount, 1);
+        QCOMPARE(outcome.failureKind, AuthFailureKind::ProtocolMismatch);
+        QCOMPARE(outcome.error,
+                 QStringLiteral("Clerk minted a bearer token for a session other than the one "
+                                "requested"));
+        QVERIFY(!outcome.error.contains(jwt));
+        QVERIFY(!outcome.error.contains(QStringLiteral("sess_other")));
+        QVERIFY(!outcome.error.contains(QStringLiteral("sess_tokens")));
+        QVERIFY(outcome.sessionId.isEmpty());
+    }
+
+    /// A "sid" claim that agrees with the request is accepted, and the claim is
+    /// what gets recorded as the observed session.
+    void tokensBodyWithMatchingSidClaimSucceeds()
+    {
+        const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
+        const QString jwt = fakeJwt(QStringLiteral("tokens-bound"), expiry,
+                                    QStringLiteral("sess_tokens"));
+        const QByteArray body = jsonBody({{"jwt", jwt}});
+
+        const ParseOutcome outcome = parseTokensBody(body, QStringLiteral("sess_tokens"));
+        verifySuccess(outcome, QStringLiteral("tokens-bound"), expiry);
+        QCOMPARE(outcome.sessionId, QStringLiteral("sess_tokens"));
+    }
+
+    /// T0340's other half: an absent "sid" stays tolerated, but it must not
+    /// wipe a session an earlier envelope already named.
+    void tokensBodyWithoutSidClaimKeepsObservedSession()
+    {
+        const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 3600;
+        ClerkAuthClient client;
+        QSignalSpy bearers(&client, &ClerkAuthClient::bearerReady);
+        QSignalSpy failures(&client, &ClerkAuthClient::authFailed);
+
+        const QByteArray envelope = jsonBody({
+            {"response", QJsonObject{
+                             {"last_active_session_id", "sess_envelope"},
+                             {"sessions", QJsonArray{
+                                              session(QStringLiteral("sess_envelope"),
+                                                      fakeJwt(QStringLiteral("envelope"), expiry)),
+                                          }},
+                         }},
+        });
+        ClerkAuthClientTestAccess::processEnvelope(client, envelope);
+        QCOMPARE(ClerkAuthClientTestAccess::lastObservedSessionId(client),
+                 QStringLiteral("sess_envelope"));
+
+        const QByteArray body =
+            jsonBody(token(fakeJwt(QStringLiteral("tokens-no-sid"), expiry)));
+        ClerkAuthClientTestAccess::processTokensBody(client, body,
+                                                     QStringLiteral("sess_tokens"));
+
+        QCOMPARE(failures.count(), 0);
+        QCOMPARE(bearers.count(), 2);
+        QCOMPARE(client.failureKind(), AuthFailureKind::None);
+        QCOMPARE(ClerkAuthClientTestAccess::lastObservedSessionId(client),
+                 QStringLiteral("sess_envelope"));
     }
 
     /// A tokens body without a usable `jwt` is a shape error, not a bearer:

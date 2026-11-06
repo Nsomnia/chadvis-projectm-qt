@@ -90,6 +90,10 @@ public:
     /// 200 response of exactly `{ "jwt": "<bearer>" }`. The caller
     /// (SunoClient) falls back to touch() when this fails with a protocol
     /// or shape error, because neither route is proven sufficient alone.
+    ///
+    /// The body names no session, so the minted token's own "sid" claim is
+    /// checked against `sessionId` (T0340): a mismatch fails ProtocolMismatch,
+    /// an absent claim is tolerated -- the request URL already named the session.
     void mintBearerViaTokens(const Credentials& creds, const QString& sessionId);
 
     /// Classification of the most recently completed request. Reset to None

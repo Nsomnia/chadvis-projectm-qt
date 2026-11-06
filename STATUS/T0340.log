@@ -1,0 +1,4 @@
+2026-11-06T22:45:00Z  CLAIM    Clerk sid binding + single-session fallback
+2026-11-06T22:45:00Z  CHANGE   src/suno/auth/ClerkAuthClient.{hpp,cpp}: sid claim mismatch on tokens route fails ProtocolMismatch without recording session; absent sid tolerated and does not wipe observed session; GET /v1/client falls back to sole named session when no selector (deduped across both envelope halves); two+ sessions still refuse.
+2026-11-06T22:45:00Z  VERIFY   pending full build (orchestrator).
+2026-11-06T22:52:00Z  VERIFY   ./build.sh --fast --tests --safe -> 16/16 passed (93.32 s) including test_ClerkAuthClient.

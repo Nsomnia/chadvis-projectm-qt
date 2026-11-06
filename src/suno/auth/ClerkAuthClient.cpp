@@ -59,6 +59,16 @@ QString undecodableBearerReason() {
     return QStringLiteral("Clerk returned a bearer token that could not be decoded");
 }
 
+/// T0340: the tokens route names no session in its body, so the only in-body
+/// statement of which session a minted bearer belongs to is its "sid" claim.
+/// A claimant that disagrees with the session the request named handed us
+/// somebody else's bearer. Secret-free on purpose: a session id is an account
+/// identifier and neither value may reach a log or a reason string.
+QString mintedBearerSessionMismatchReason() {
+    return QStringLiteral("Clerk minted a bearer token for a session other than the one "
+                          "requested");
+}
+
 /// Why a bearer we decoded is still unusable, as secret-free prose. Same shape
 /// as noClerkCookieReason(): the caller must be able to tell which part of a
 /// credential was wrong, and no branch may quote any part of the credential.
@@ -112,6 +122,20 @@ std::optional<TokenCandidate> tokenFromSessions(const QJsonArray& sessions,
     return std::nullopt;
 }
 
+/// Append every distinct session id either half of the envelope names. Entries
+/// without an id name no session and are not counted: the fallback below must
+/// be able to name the session it adopts. The split halves are deduplicated
+/// because the captured envelopes mirror the same client object twice, so one
+/// session legitimately appears in both.
+void appendSessionIds(QStringList& ids, const QJsonArray& sessions) {
+    for (const QJsonValue& entry : sessions) {
+        const QString id = entry.toObject()["id"].toString();
+        if (!id.isEmpty() && !ids.contains(id)) {
+            ids << id;
+        }
+    }
+}
+
 std::expected<BearerToken, EnvelopeParseError> decodeUsableBearer(const QString& jwt) {
     const auto claims = JwtUtils::claims(jwt);
     if (!claims) {
@@ -140,7 +164,8 @@ std::expected<BearerToken, EnvelopeParseError> decodeUsableBearer(const QString&
 }
 
 /// Parse the captured session envelopes and require an exact active-session
-/// selector match before accepting any bearer token.
+/// selector match before accepting any bearer token. An envelope that names no
+/// selector is accepted only when it names exactly one session (T0342).
 std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByteArray& body) {
     QJsonParseError parseError{};
     const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
@@ -170,6 +195,23 @@ std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByt
         candidate = tokenFromSessions(client["sessions"].toArray(), activeSessionId);
     }
 
+    // T0342: the web client reads `last_active_session_id ?? sessions?.[0]?.id`,
+    // and so do we -- but only when the envelope names exactly one session. An
+    // account with several sessions and no selector still refuses, because the
+    // choice of which bearer to install would be a guess.
+    if (!candidate.has_value() && activeSessionId.isEmpty()) {
+        QStringList namedSessionIds;
+        appendSessionIds(namedSessionIds, response["sessions"].toArray());
+        appendSessionIds(namedSessionIds, client["sessions"].toArray());
+        if (namedSessionIds.size() == 1) {
+            const QString soleSessionId = namedSessionIds.first();
+            candidate = tokenFromSessions(response["sessions"].toArray(), soleSessionId);
+            if (!candidate.has_value()) {
+                candidate = tokenFromSessions(client["sessions"].toArray(), soleSessionId);
+            }
+        }
+    }
+
     if (!candidate.has_value()) {
         return std::unexpected(EnvelopeParseError{
                 AuthFailureKind::NoActiveSession,
@@ -191,7 +233,13 @@ std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByt
 /// out of it. Extra members are ignored, not rejected: the capture shows
 /// exactly one member today, and a future additive member must not turn a
 /// working mint into a shape error.
-std::expected<BearerToken, EnvelopeParseError> parseTokensBody(const QByteArray& body)
+struct ParsedTokensBody {
+    BearerToken bearer;
+    /// The token's own "sid" claim, or empty when Clerk omitted it.
+    QString sessionId;
+};
+
+std::expected<ParsedTokensBody, EnvelopeParseError> parseTokensBody(const QByteArray& body)
 {
     QJsonParseError parseError{};
     const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
@@ -206,7 +254,11 @@ std::expected<BearerToken, EnvelopeParseError> parseTokensBody(const QByteArray&
     if (!bearer) {
         return std::unexpected(bearer.error());
     }
-    return *bearer;
+    // Decoding already succeeded, so this cannot fail in practice; the guard
+    // keeps a missing sid claim from being read out of an absent object.
+    const auto claims = JwtUtils::claims(jwt);
+    return ParsedTokensBody{*bearer,
+                            claims ? JwtUtils::claimString(*claims, "sid") : QString()};
 }
 
 /// The three Clerk cookie families relevant to the captured sign-in flow,
@@ -675,12 +727,28 @@ void ClerkAuthClient::handleTokensBody(const QByteArray& body, const CallContext
         return;
     }
 
-    // The tokens body names no session; the session is the one this call
-    // asked about, and it is what SunoClient's fallback (touch) needs if a
-    // later exchange has to name one.
-    lastObservedSessionId_ = ctx.sessionId;
+    // T0340: bind the minted bearer to the session that minted it. The tokens
+    // body names no session, so an "sid" claim that disagrees with the session
+    // this request named means the exchange handed back a bearer belonging to
+    // some other session -- refusing is the only correct answer, because using
+    // it would mean acting as a session the caller never asked about.
+    if (!tokens->sessionId.isEmpty() && tokens->sessionId != ctx.sessionId) {
+        emitFailure(AuthFailureKind::ProtocolMismatch, mintedBearerSessionMismatchReason());
+        return;
+    }
+
+    // An absent "sid" stays tolerated (the route itself named the session), but
+    // it must not wipe a session an earlier envelope already named. Only when
+    // nothing has been observed yet does the request's own session id stand in
+    // for the claim -- it is what SunoClient's touch fallback needs if a later
+    // exchange has to name one.
+    if (!tokens->sessionId.isEmpty()) {
+        lastObservedSessionId_ = tokens->sessionId;
+    } else if (lastObservedSessionId_.isEmpty()) {
+        lastObservedSessionId_ = ctx.sessionId;
+    }
     failureKind_ = AuthFailureKind::None;
-    emit bearerReady(*tokens);
+    emit bearerReady(tokens->bearer);
 }
 
 void ClerkAuthClient::handleEnvelopeBody(const QByteArray& body, const CallContext&) {
