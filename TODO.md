@@ -417,6 +417,89 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 
 ---
 
+## P2b — endpoint coverage from urls.txt (1058 unique URLs) + UI-07 follow-ups
+
+Evidence: the owner's URL dump at `~/Documents/suno-recon-cat-stealth-modekl/urls.txt`
+(1 058 unique; 4 750 URL lines) and the signed-in DevTools HAR
+`~/Downloads/suno.com4.har`. Route *existence* below comes from that dump; verbs and
+bodies are unproven until a browser walk or an app-originated call captures them.
+Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline.
+
+- [ ] T0366 **Search family: remote search, suggest, history** (`src/suno/SunoEndpoints.hpp`, `SunoClient.cpp`, `SunoLibraryManager.cpp`, `docs/suno_api/`) #feature #blocks-ui (after: T0066)
+      `/a/api/search`, `/search/history`, `/search/users`, `/unified/search/omnisearch`,
+      `/unified/search/suggest`, `/unified/search/suggest/history`,
+      `/unified/search/suggest/history/item`. Typing in the library box and Explore search
+      capture the verbs. T0066 threads `searchText` then drops it — this closes that with the
+      real route instead of local filtering.
+- [ ] T0367 **Onboarding + user-config writes** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature
+      `/onboarding/{start,current,back,skip,complete,submit}`,
+      `/onboarding/audio-upload/{abort,remove}`,
+      `/user/{me,update_user_config,reset_onboarding,vip_program_acceptance}`. `reset_onboarding`
+      is reversible on the owner account; wire `GET /onboarding/current` only.
+- [ ] T0368 **Queue: `/queue/inject`, `/queue/start` + queue view** (`src/suno/`, `src/qml/`) #feature (after: T0321)
+      Playbar Queue is a first-class site surface with no ChadVis counterpart. Capture both
+      bodies from the playbar queue affordance; local queue UI is the second half.
+- [ ] T0369 **Visuals product family — status-only, fail closed** (`docs/suno_api/OBSERVED-LEADS.md`) #feature
+      `/visual/{models,assets,assets/uploads,characters,compositions,cost,generations,plays,presets,prompts/references,prompts/rewrite,signals,workflows}`.
+      All 403 `feature_disabled` for this account (UI-07). Record statuses + gate names; do not
+      wire. Revisit after T0370.
+- [ ] T0370 **Statsig staff-flag override for capability recon** (`docs/dev/`, `docs/suno_api/`) #feature
+      The site ships `suno-staff-statsig-overrides` and `suno-staff-flag-toolbar-config`
+      (UI-07 bundle strings). A local override reveals gated surfaces without server changes —
+      use it to enumerate `visual/*`, `suno_chat/*`, and the flag names behind 403s. Record
+      observations only; no server-side writes.
+- [ ] T0371 **Custom-model training family** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature
+      `/custom-model/{create,edit,archive,bases,pending}`. Training is likely credit-bearing;
+      capture with one scratch model from the studio UI, wire reads only, fail closed on writes.
+- [ ] T0372 **Clip edit family** (`src/suno/SunoEndpoints.hpp`, `SunoOrchestrator.*`, `docs/suno_api/`) #feature
+      `/clips/{adjust-speed,reverse-clip,aligned_clips}` and
+      `/generate/{concat/v2,sum,rhymes,upsample,lyrics-mashup}`. Reachable from Remix/Sample;
+      trim has no standalone save (range rides the generate body, UI-07). Promote then wire.
+- [ ] T0373 **Listen-for-Credits clip-review sub-family** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature
+      `/preferences/clip-review/{pending,opt-out,submit}` — distinct from `/preferences/tasks`.
+      Capture `pending`/`opt-out` (reversible); the submit stays captcha-gated and untouched.
+- [ ] T0374 **Social actions + share attribution** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature
+      `/profiles/{follow,block,mutual-followers}`, `/comment/{block,unblock}-user`,
+      `/recommend/hide-creator`, `/share/{event,attribute}`, `/song_copy/send-song`,
+      `/report_v2/refund_prompt/clicked`, `/image_insights/analyze`,
+      `/instrument/describe-doodle`. Follow/block need a scratch second account; reads only.
+- [ ] T0375 **Notifications: clear-badge + read variants** (`src/suno/SunoEndpoints.hpp`, `SunoNotificationService.cpp`) #feature
+      `/notification/v2/clear-badge`, `/notification/v2/read` (constant exists,
+      `NOTIFICATION_V2_READ`). Click mark-all-read and the badge in the UI; pin status + body.
+- [ ] T0376 **Studio multitrack save/render** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature
+      `/studio/save-project`, `/studio/render-state`, `/studio/render-state-multitrack`, plus the
+      captured `GET /studio/project/{id}`. Create a scratch project, add one clip, save; capture
+      bodies, wire reads first.
+- [ ] T0377 **Integrations: musixmatch connector** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature (after: T0356)
+      `/v2/integrations/musixmatch`, `/v2/integrations/musixmatch/authorize-url`. Owner action:
+      connect a real integration; capture `{connections:[…]}` with one attached.
+- [ ] T0378 **`v2/integrations` with a real MCP link** (`docs/suno_api/MCP.md`) #feature (after: T0356, T0377)
+      Needs a hosted MCP server plus a Suno-side connect. Captures the connected-object shape
+      that UI-07 could not (no Integrations surface, `{connections:[]}`).
+- [ ] T0379 **Auth/platform endpoint census** (`docs/suno_api/ENDPOINT-INVENTORY.md`) #cleanup
+      `auth.suno.com/v1/client/{verify,sessions/{id}/touch}`, `/social/complete/google-oauth2/`,
+      `suno.com/api/{docs,graphql,health,healthz,trpc,v1}`. Status-only; not for wiring.
+- [ ] T0380 **Persona visibility write — capture when a track uses the voice** (`docs/suno_api/`, `SunoPersonaService.*`) #feature
+      Blocked on data state: the Public switch is server-disabled for an unused voice (UI-07).
+      Make one scratch generation with the persona, then toggle Public (reversible). Anchors T0349.
+- [ ] T0381 **`project/{id}/clips` `update_type:"remove"`** (`SunoLibraryMutations.*`, `docs/suno_api/`) #feature
+      `"add"` is captured (UI-07-adjacent); `"remove"` is not. Remove a clip from a scratch
+      workspace via the UI, capture the body, and mirror the add path's 2xx handling.
+- [ ] T0382 **Uploads status route + processed_clip vocabulary** (`docs/suno_api/`) #cleanup
+      `GET /uploads/audio/{id}/` was never observed; poll a stem across its lifecycle and record
+      every `processed_clip.status` value (`complete` now known, UI-07). Update §4.10/§4.12.
+- [ ] T0383 **Wire gen/trash + UI-07 reads into the client** (`SunoLibraryMutations.*`, `SunoClient.*`, `src/suno/SunoEndpoints.hpp`) #feature #blocks-ui (after: T0267)
+      Trash/restore contract is now proven: `POST /gen/trash {trash,clip_ids}` →
+      `{ids,is_trashed}`; playlist trash/recover is `{undo:true|false}`. Implement both behind
+      the existing mutation discipline (2xx = accepted, shape pinned by a unit test), then wire
+      the Hooks/History/Albums reads. Anchors UI-07 §4.12.
+- [ ] T0384 **Feature-flags authed shape** (`docs/suno_api/`) #cleanup
+      The app never calls `/api/feature-flags`; the browser 401s (Bearer-only). Capture only
+      through an app-originated call (bookmarklet/extension holding the app's own header), never
+      by pasting a token into a file.
+
+---
+
 ## P3 — polish and speculative
 
 - [ ] T0360 **Reactive GUI Phase 3: audio-reactive chrome** (`src/qml_bridge/AudioBridge.*`, `src/qml/components/TransportBar.qml`, `src/qml/components/ClipCard.qml`, `src/qml/views/ListenView.qml`, `src/qml/components/VisualizerOverlay.qml`, `src/qml/components/KaraokeMaster.qml`, `src/qml/panels/LyricsPanel.qml`) #feature (after: T0359)
