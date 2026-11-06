@@ -7,8 +7,12 @@
 namespace vc {
 
 RatingManager& RatingManager::instance() {
-    static RatingManager instance;
-    return instance;
+    // A leaked singleton: GUI teardown destroys bridges in a different order
+    // than startup created them. A normal function-local static's mutex and
+    // map are destroyed during static teardown and a late scan callback can
+    // still lock it (reported as "mutex lock failed: Invalid argument").
+    static auto* instance = new RatingManager();
+    return *instance;
 }
 
 void RatingManager::setRating(const std::string& path, int stars) {

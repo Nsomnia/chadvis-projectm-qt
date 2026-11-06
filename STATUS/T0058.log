@@ -2,3 +2,5 @@
 2026-11-06T22:45:00Z  CHANGE   src/visualizer/RatingManager.{hpp,cpp}: key on preset path, mutex on all map access, load parses-then-merges, save snapshots under lock. src/qml_bridge/PresetBridge: callers pass path; migrateNameKeyedRatings moves pre-T0058 name-keyed stars onto path keys exactly once, path keys win, name keys left in file.
 2026-11-06T22:45:00Z  VERIFY   pending full build (orchestrator).
 2026-11-06T22:52:00Z  VERIFY   ./build.sh --fast --tests --safe -> 16/16 passed (93.32 s); test_SunoLibraryMutations expectation fixed at /gen/{id}/ path.
+2026-11-06T23:10:00Z  NOTE     CI caught static teardown race: destroyed mutex lock "Invalid argument" in integration_tests. RatingManager::instance is now a leaked singleton so it outlives bridge teardown and scan callbacks.
+2026-11-06T23:10:00Z  VERIFY   ./build.sh --fast --tests --safe -> 16/16 passed (146.56 s).
