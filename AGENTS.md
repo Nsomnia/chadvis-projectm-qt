@@ -134,11 +134,9 @@ Windows job while `continue-on-error` still reports green. Both have happened he
 skill over a generic one when both apply. Inventory, provenance and per-harness paths:
 [`docs/dev/SKILLS.md`](docs/dev/SKILLS.md).
 
-## Tools
-browser-devtools mcp and Playwright mcp both via the user's Brave browser, logged in via Facebook, should be available with dev
-utils as well via MCP. Suno recon lives at `~/Documents/suno-recon-active-investigation/`; live
-recon may be done with the available tools.
-Recon and logic (huge amounts plus tests) at `/Users/derekvanee/Documents/suno-master-utility-browser-extension/`.
+## Tools/Notes
+- Suno.com recon data is available upon request to the user if there is a very specific need.
+- browser-mcp (browser user) is available on the users brave, chrome, chrome-for-testing, and camofox, browsers. If needed can add `--caps cdp` to the command arguments in opencode.jsonc which adds the cdp command, which sends raw Chrome DevTools Protocol commands (breakpoints, response mocking, profiling, emulation). It's off by default, since its output is verbose and it can freeze or break a tab.
 
 ## Token Efficiency
 Invoke a faux/psuedo form of the popular `caveman` speak skill where possible to be as token efficient as possible.
