@@ -162,7 +162,14 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       4. `POST /persona/create/` from that stem (T0349's write half).
       5. Free reads: `GET /clip/{id}`, `GET /project/{id}/pinned-clips`, `GET /cms/cover-art-suggestions`,
          `POST /realtime/token` (Ably credential), `GET /challenge/progress`.
-      6. `POST /video_gen/image/generate` + `cost/image` + `poll_batches` for generated cover art.
+      6. Cover art: `POST /gen/prompt_image/` (synchronous, returns the `image_s3_id` that
+         `playlist/v2/{id}/cover-image` needs), or the batched `video_gen/image/generate` +
+         `cost/image` + `poll_batches`.
+      7. Voice verification (persona HAR, §5.15): `GET /voice-verification/phrase/` ->
+         `processed_clip/voice-vox-stem` -> `POST /voice-verification/` -> poll
+         `GET /voice-verification/{id}`. This is what makes a voice persona usable.
+      8. `POST /playlist/v2/{id}/trash` is the undoable trash; it returns per-field outcome,
+         so prefer it over the legacy 204 `playlist/trash/` once a verb exists.
       Host allowlist is NOT widened by this task: `suno-data-uploads.s3.amazonaws.com` and
       `api.suno.com` need their own `CapturedHosts.cpp` change with evidence, fail-closed.
 
@@ -185,6 +192,16 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `.cpm-cache/projectm/*` whose clone answered `fatal: bad object 349b7cc`.
       Fix the spdlog/fmt duplication (compiled-lib flags must match on both sides) so the
       documented `./build.sh --fast --tests` works from cold.
+
+- [ ] T0365 **Listen for Credits: a route family that EARNS credits, zero code** (`src/suno/SunoPreferencesService.*`, `src/qml/panels/settings/`) #feature #user-priority
+      Persona HAR 2026-11-06 captured the whole program (ENDPOINT-INVENTORY §5.15): `summary`,
+      `tasks`, `submit`, `tasks/release-buffer`, `rewards`, `stats`, `leaderboard`, `profile`,
+      plus the `listen_and_rank` survey. Reading a task and playing its clips costs nothing and
+      pays credits per accepted rating (`daily_submit_cap: 200`, streak reward at 5 tasks/day).
+      **The submit step is captcha-gated**: it answers 403 `verification_required` until the
+      owner's browser handoff completes. So build the read side + a queue view, and hand the
+      submit to the browser rather than faking it. Always `release-buffer` a claimed task that
+      will not be finished — abandoning tasks degrades availability.
 
 - [ ] T0339 **Paste path bypasses `classifyStoredCredential`** (`SettingsBridge.cpp:359-391`, `ClerkAuthClient.cpp:323-370`, `SunoClient.cpp:687-717`) #risk-medium
       `setToken()` has zero production callers. `__client_uat` accepted as credential but is metadata, not credential.
@@ -688,6 +705,27 @@ Capture: `~/Documents/suno-recon-har-recordings-full-api/suno.com_Archive.har` (
 - `feed/v3` filter keys: `disliked public trashed unlocked upload fullSong fromStudioProject
   stem stemComplement persona user workspace sort` — values are strings `"True"`/`"False"`
 
+### Confirmed live, 2026-11-06 persona/voice/credits HAR (`[T1]`)
+Capture: `~/Documents/suno-master-utility-browser-extension/scratchpad/suno.com_me_persona.har`.
+Detail: ENDPOINT-INVENTORY §4.11 + §5.15.
+- `GET /voice-verification/phrase/` -> `{phrase_id, phrase_text}`
+- `POST /processed_clip/voice-vox-stem` `{upload_id, recording_type|range}` — stem from an UPLOAD
+  (`/clip/{id}/vox-stem` is the gen-clip twin; not interchangeable)
+- `POST /voice-verification/` + `GET /voice-verification/{id}` -> `status:"approved"`
+- `GET /preferences/{summary,tasks,stats,rewards,leaderboard,profile}`, `PUT /preferences/profile`,
+  `POST /preferences/{submit,tasks/release-buffer}` — **Listen for Credits**, earns credits
+- `POST /preferences/submit` -> 403 `verification_required` (captcha-gated)
+- `POST /gen/prompt_image/` `{prompt}` -> `{image_url, image_s3_id, upload_id}`; `image_s3_id`
+  is the id `playlist/v2/{id}/cover-image` wants
+- `POST /playlist/v2/{id}/trash` `{"undo":false}` -> `{success, updated_fields:["is_trashed"], errors:{}}`
+  (200, undoable — unlike `/playlist/trash/` which is 204 with no body)
+- `POST /unified/library` `{cursor, customization:{include_synthetic}}` -> nested `feeds[]`
+- `POST /video_gen/action` -> 204; `POST /suno_chat/rooms` -> 403 feature_disabled;
+  `GET /visual/models` -> 403 feature_disabled
+- `GET /v2/integrations` -> `{connections:[]}` (in-app connector list; MCP would appear here)
+- `GET /labs/configs` -> live-radio, genre-wheel, listen-and-rank, milo
+- `GET /api/feature-flags` (legacy base, 401 anon)
+
 ### Confirmed live via user's extension (`[LEAD]` — not our capture)
 - `GET /api/persona/get-personas/` → `{personas:[...]}` — **now `[T1]`, see HAR-11 above**
 - `GET /api/persona/get-loved-personas/` — still extension-only
@@ -707,6 +745,7 @@ Capture: `~/Documents/suno-recon-har-recordings-full-api/suno.com_Archive.har` (
 - Extend: `task:"extend"` on `/generate/v2-web/`, `task:"upload_extend"`
 - ~~Cover batch: `video_gen/image/generate` + `/video/generate`, `poll_batches`~~ **captured** (HAR-11)
 - ~~Persona CRUD: full route family named~~ **captured** (reads + create); edit/visibility still open
+- ~~Voice-verification chain~~ **captured 2026-11-06** (§5.15): phrase -> upload stem -> verify -> poll
 - Generation gates: `aug_creativity` (0–4 whole), `mumble-mode`, `max-mode` session flags
 
 ### Session notes
@@ -717,10 +756,12 @@ Capture: `~/Documents/suno-recon-har-recordings-full-api/suno.com_Archive.har` (
 ### Recon dirs (priority by mtime)
 1. `~/Documents/suno-recon-har-recordings-full-api/` — newest, signed-in full-API HAR
    (`suno.com_Archive.har`, 154 MB, 2026-11-05/06) + `network-endpoints.txt`
-2. `~/Documents/sunox-chadvis-suno-frontend-projectm-qt-research/` — API intelligence, protocol audits, capability matrix
+2. `~/Documents/suno-master-utility-browser-extension/scratchpad/` — `suno.com_me_persona.har`
+   (2026-11-06, persona/voice/credits) and `suno.com_me.har` (truncated, unusable)
+3. `~/Documents/sunox-chadvis-suno-frontend-projectm-qt-research/` — API intelligence, protocol audits, capability matrix
 2. `~/Documents/suno-recon-active-investigation/` — `suno-session.json`, `app-endpoints.md`, `interesting-api-calls.md`, HAR captures
 3. `~/Documents/suno-recon/` — JS crawler snippets, endpoint lists, API probe tools
-4. `~/Documents/suno-recon-cat-stealth-modekl/` — `captured_endpoints*.json`, `network-endpoints.txt`, OAuth google flow, feature flags
+5. `~/Documents/suno-recon-cat-stealth-modekl/` — `captured_endpoints*.json`, `network-endpoints.txt`, OAuth google flow, feature flags
 
 ### Suno layer maturity
 Only playback (download tracks locally for free via trick) tested. Tagging, artwork, lyrics — unknown if done.

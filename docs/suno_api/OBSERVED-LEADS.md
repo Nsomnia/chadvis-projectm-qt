@@ -432,7 +432,8 @@ Master section: 4.7. The captured pending-custom-model route stays in the master
 | GET? | `/api/persona/get-persona-paginated/{id}/` | Bearer? | Paginated persona surface | `[LEAD]` old inventory/topic prose | not-in-code |
 | POST? | `/api/custom-model/create/` | Bearer?/entitlement? | Create custom model | `[LEAD]` old inventory/topic prose; training schema unproved | not-in-code |
 | POST? | `/api/custom-model/archive/` | Bearer?/entitlement? | Archive custom model | `[LEAD]` old inventory/topic prose | not-in-code |
-| POST | `/api/clip/{clip_id}/vox-stem` | Bearer | Vocal-stem extraction over a user-selected range | **promoted `[T1]` 2026-11-06**, HAR-11; master §5.14. The old constructed path `/api/processed_clip/voice-vox-stem` was WRONG — do not add it | constant-only |
+| POST | `/api/clip/{clip_id}/vox-stem` | Bearer | Vocal-stem extraction from a GEN clip over a user-selected range | **promoted `[T1]` 2026-11-06**, HAR-11; master §5.14 | constant-only |
+| POST | `/api/processed_clip/voice-vox-stem` | Bearer | Vocal-stem extraction from an UPLOAD; `upload_id` + `recording_type` or a vocal range | **promoted `[T1]` 2026-11-06**, persona HAR; master §5.15. Both stem routes are real and not interchangeable — this one by upload id, `clip/{id}/vox-stem` by gen clip id | constant-only |
 | `?` | `/api/custom-model/bases/` | Bearer? | Custom-model base list; distinct from the create/archive mutations above | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | GET | `/api/persona/get-persona/{persona_id}/` | Bearer | Single persona by id | **promoted `[T1]` 2026-11-06**, HAR-11; master §4.10 | constant-only |
 | `?` | `/api/persona/{persona_id}/toggle_love/` | Bearer? | Toggle love on a persona | `[LEAD]` 2026-09 bundle corpus | not-in-code |
@@ -440,9 +441,9 @@ Master section: 4.7. The captured pending-custom-model route stays in the master
 | PUT? | `/api/persona/set_visibility/{persona_id}/?is_public=…` | Bearer?/entitlement? | Persona visibility; value in the query string, empty body per the source | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 | PUT? | `/api/persona/trash-persona/{persona_id}/?undo=…&hide=…` | Bearer?/entitlement? | Trash/hide a persona via query flags | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 | PUT? | `/api/persona/bulk-trash-personas/` | Bearer?/entitlement? | Bulk persona trash modes (`undo`/`hide` combinations) | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
-| GET? | `/api/voice-verification/phrase/` | Bearer?/entitlement? | Server-selected verification phrase by language | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
-| POST? | `/api/voice-verification/` | Bearer?/entitlement? | Start voice/phrase verification comparison | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
-| GET? | `/api/voice-verification/{verification_id}` | Bearer?/entitlement? | Poll a verification's status | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
+| GET | `/api/voice-verification/phrase/` | Bearer | Server-selected verification phrase; `{phrase_id, phrase_text}` | **promoted `[T1]` 2026-11-06**, persona HAR; master §5.15 | constant-only |
+| POST | `/api/voice-verification/` | Bearer | Start a voice/phrase comparison; `{voice_recording_id, verification_recording_id, phrase_id}` | **promoted `[T1]` 2026-11-06**, persona HAR; master §5.15 | constant-only |
+| GET | `/api/voice-verification/{verification_id}` | Bearer | Poll a verification; terminal `status:"approved"` | **promoted `[T1]` 2026-11-06**, persona HAR; master §5.15 | constant-only |
 | GET? | `/api/processed_clip/{processed_clip_id}` | Bearer? | Processed vocal status/preview; distinct from the waveform-aggregates lead above | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 
 Every row in this table is gated on an **entitlement** that no capture
@@ -516,7 +517,7 @@ master.
 | GET? | `/api/cms` | Bearer? | CMS content surface | `[LEAD]` old inventory/raw scan | not-in-code |
 | GET? | `/api/cms/paywall/plan-options` | Bearer? | Paywall plan options | `[LEAD]` loose scan after `/marketplace/` normalization | not-in-code |
 | POST? | `/api/moderation/ack-copyright-warning` | Bearer? | Acknowledge copyright warning | `[LEAD]` old inventory/raw scan | not-in-code |
-| GET? | `/api/preferences/clip-review/pending` | Bearer? | Clip-review preference state | `[LEAD]` old inventory/raw scan | not-in-code |
+| GET? | `/api/preferences/clip-review/pending` | Bearer? | Clip-review preference state | `[LEAD]` old inventory/raw scan. **The live family is `preferences/{summary,tasks,stats,rewards,leaderboard,profile}` — see master §5.15; this `clip-review` spelling is unprobed and may be dead** | not-in-code |
 | POST? | `/api/preferences/clip-review/submit` | Bearer? | Submit clip review | `[LEAD]` old inventory/raw scan | not-in-code |
 | POST? | `/api/preferences/clip-review/opt-out` | Bearer? | Opt out of clip review | `[LEAD]` old inventory/raw scan | not-in-code |
 | POST? | `/api/labs/verse/messages/` | Bearer? | Labs Verse messages | `[LEAD]` raw scan | not-in-code |

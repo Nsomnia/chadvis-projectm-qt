@@ -17,6 +17,10 @@
 //   suno.com_Archive.har. This is the capture that turned the whole Studio
 //   mutation set live and found the upload -> stem -> persona chain. Call it
 //   "HAR-11" in comments below.
+// - 2026-11-06 persona/voice HAR (signed-in, 96 MB): ~/Documents/
+//   suno-master-utility-browser-extension/scratchpad/suno.com_me_persona.har.
+//   Call it "persona HAR". It closes voice verification, the Listen-for-Credits
+//   family, and the cover-art image id space.
 //
 // Evidence tiers:
 // - [T1] observed in one of the real captures listed above.
@@ -70,6 +74,9 @@ constexpr std::string_view STATIC_BASE = "https://cdn-o.suno.com"; // [T1]
 constexpr std::string_view GENERATE = "/generate/v2-web/"; // [T1] POST
 constexpr std::string_view CAPTCHA_CHECK = "/c/check"; // [T1] POST
 constexpr std::string_view COWRITE_LYRICS = "/generate/cowrite-lyrics/"; // [T1] POST
+// Persona HAR (2026-11-06): returns `[]` for this account. Empty is a valid
+// answer, not a failure.
+constexpr std::string_view COWRITE_LYRICS_MODELS = "/generate/cowrite-lyrics/models/"; // [T1] GET
 
 // ── Studio API: Generation follow-up (per-clip writes) ──────
 // HAR-11 [T1]. Each of these was previously either absent or on the
@@ -125,7 +132,16 @@ constexpr std::string_view LIBRARY_FEED = "/feed/v3"; // [T1] POST
 // Values are the STRINGS "True"/"False", not booleans. Paging is a cursor:
 // send the last clip id as `cursor` with `limit` (20 observed).
 constexpr std::string_view UNIFIED_FEED = "/unified/feed"; // [T1] POST
+// Persona HAR (2026-11-06) [T1]: the library listing the /me page calls.
+// Body `{"cursor":null,"customization":{"include_synthetic":true}}`; response is
+// `{feeds:[{feed_id:"library_playlists", feed_title, feed_direct_link, items[]}]}`
+// — nested feeds, not a flat clip list. `page_size` is ignored (T0336).
+constexpr std::string_view UNIFIED_LIBRARY = "/unified/library"; // [T1] POST
 constexpr std::string_view UNIFIED_HOMEPAGE = "/unified/homepage";
+// Verified live 2026-10-24 as `/unified/explore`. An OPTIONS preflight for
+// `/unified/homepage/explore` also appears in the 2026-10-14 auth-flow HAR, so
+// the page may use the longer path; only a preflight was captured, so do not
+// switch this constant without a request/response.
 constexpr std::string_view UNIFIED_EXPLORE = "/unified/explore";
 constexpr std::string_view SOCIAL_FOLLOWING_FEED = "/social/following-feed";
 constexpr std::string_view NOTIFICATION_V2_READ = "/notification/v2/read";
@@ -196,6 +212,15 @@ constexpr std::string_view PLAYLIST_BY_ID = "/playlist/{}"; // [T1] GET
 constexpr std::string_view PLAYLIST_CREATE = "/playlist/create/"; // [T1] POST
 constexpr std::string_view PLAYLIST_TRASH = "/playlist/trash/"; // [T1] POST -> 204
 constexpr std::string_view PLAYLIST_V2_BY_ID = "/playlist/v2/{}"; // [T1] PATCH
+// Two trash routes exist and they are NOT the same contract. Use this one.
+//   POST /playlist/v2/{id}/trash  {"undo":false}
+//        -> 200 {success:true, updated_fields:["is_trashed"], errors:{}}
+//   POST /playlist/trash/         {"playlist_id":…}  -> 204, empty body
+// The v2 route reports per-field outcome and is the one the 2026-11-06 persona
+// session used; the legacy route returns nothing, so a caller cannot tell a
+// partial write from a success. `{"undo":true}` is the un-trash spelling and is
+// UNTESTED — do not ship it without a capture.
+constexpr std::string_view PLAYLIST_V2_TRASH = "/playlist/v2/{}/trash"; // [T1] POST
 
 // ── Studio API: Library & playlist MUTATIONS ────────────────
 // [T1] REQUEST contracts only, recovered 2026-09-30 by reading server
@@ -317,6 +342,19 @@ constexpr std::string_view VIDEO_GEN_COST_IMAGE = "/video_gen/cost/image"; // [T
 constexpr std::string_view VIDEO_GEN_HISTORY = "/video_gen/history"; // [T1] POST
 constexpr std::string_view VIDEO_GEN_IMAGE_GENERATE = "/video_gen/image/generate"; // [T1] POST
 constexpr std::string_view VIDEO_GEN_POLL_BATCHES = "/video_gen/poll_batches"; // [T1] POST
+// Persona HAR (2026-11-06) [T1]: 204 with an empty body. One body shape covers
+// every entity type, so unused fields are sent as null:
+//   {"entity_type":"video","entity_id":…,"action":"seen","batch_id":null,
+//    "clip_id":null,"watch_ms":null,"surface":null,"cover_art_session_id":null}
+// `action` values observed: "seen". `watch_ms` and `cover_art_session_id` are
+// the watch/cover-art telemetry slots — untested values, present because the
+// site always sends the full object.
+constexpr std::string_view VIDEO_GEN_ACTION = "/video_gen/action"; // [T1] POST -> 204
+// The single-image cover-art generator (distinct from image/generate's batches).
+// Body `{prompt}` -> `{image_url, image_s3_id, upload_id}`. `image_s3_id` is the
+// image id that `playlist/v2/{id}/cover-image` expects — this route is where that
+// id space comes from.
+constexpr std::string_view GEN_PROMPT_IMAGE = "/gen/prompt_image/"; // [T1] POST
 
 // ── Studio API: Persona ────────────────────────────────────
 // HAR-11 [T1]. This family was [LEAD] (T0349) until the capture: the reads and
@@ -329,6 +367,36 @@ constexpr std::string_view VIDEO_GEN_POLL_BATCHES = "/video_gen/poll_batches"; /
 constexpr std::string_view PERSONA_GET = "/persona/get-persona/{}/"; // [T1] GET
 constexpr std::string_view PERSONA_LIST = "/persona/get-personas/"; // [T1] GET
 constexpr std::string_view PERSONA_CREATE = "/persona/create/"; // [T1] POST
+
+// ── Studio API: Voice verification (persona voice chain) ───
+// Persona HAR (2026-11-06) [T1]. Completes the write half T0349 called
+// capture-gated. The chain verifies that the singer of a "verification"
+// recording is the same person as the voice being enrolled:
+//
+//   1. GET  /voice-verification/phrase/
+//        -> {phrase_id, phrase_text}
+//           ("Singing voices drift softly through a peaceful midnight chorus")
+//   2. Upload the verification take, then
+//      POST /processed_clip/voice-vox-stem
+//        {"upload_id":…, "recording_type":"verification"}
+//        -> {id, status:"submitted", voice_recording_id, …}
+//      or, for a timed slice of an upload:
+//        {"upload_id":…, "vocal_start_s":0, "vocal_end_s":39.48}
+//        -> the same shape, no `recording_type`
+//   3. POST /voice-verification/
+//        {"voice_recording_id":…, "verification_recording_id":…, "phrase_id":…}
+//   4. GET  /voice-verification/{id}  -> poll: status "approved" (also the only
+//      observed terminal value), plus `verification_prompt_text`.
+//
+// Two stem extractors exist and are NOT interchangeable:
+//   * /processed_clip/voice-vox-stem takes an UPLOAD id (this chain).
+//   * /clip/{id}/vox-stem takes a GEN clip id (the persona-from-existing-song path).
+// A client must pick by what it holds; passing the wrong id kind is a 404/422,
+// not a fallback.
+constexpr std::string_view PROCESSED_CLIP_VOICE_VOX_STEM = "/processed_clip/voice-vox-stem"; // [T1] POST
+constexpr std::string_view VOICE_VERIFICATION_PHRASE = "/voice-verification/phrase/"; // [T1] GET
+constexpr std::string_view VOICE_VERIFICATION_CREATE = "/voice-verification/"; // [T1] POST
+constexpr std::string_view VOICE_VERIFICATION_BY_ID = "/voice-verification/{}"; // [T1] GET, poll
 
 // ── Studio API: Rights ─────────────────────────────────────
 // T1: clips-relations.md (Burp 2026-08-25); response shape reproduced and the
@@ -433,6 +501,64 @@ constexpr std::string_view CHALLENGE_PROGRESS = "/challenge/progress"; // [T1] G
 // generation. Response = {variant, refund_amount}. Read-only; this client does
 // not file reports.
 constexpr std::string_view REPORT_V2_REFUND_PROMPT = "/report_v2/refund_prompt"; // [T1] GET
+
+// ── Studio API: Listen for Credits (preferences) ───────────
+// Persona HAR (2026-11-06) [T1]. A human-labelling program that PAYS credits:
+// rate clips for prompt-following, get paid per accepted task. It is the only
+// route family found so far that adds to the balance rather than spending it.
+// `GET /labs/configs` lists it as the `listen-and-rank` lab.
+//
+//   summary   {tasks_completed, credits_processed, credits_waiting,
+//              tasks_available, daily_submit_limit_reached, daily_submit_cap:200,
+//              next_available_in_seconds, rater_profile_required, …}
+//   tasks     {task_id, review_items:[{key, url, …}], project, project_category}
+//   submit    {task_id, preference:{<item_key>:<item_key>}, feedback,
+//              listen_time_seconds:{<key>:<seconds>}}  -> 403
+//             `verification_required` until the rater profile + captcha are done
+//   rewards   streak program: {current_streak_days, tasks_today,
+//              min_tasks_per_streak_day:5, claimable[], next_reward{reward_key,
+//              credits, interval_days, days_remaining}, …}
+//   stats     {tasks_completed, credits_earned, listening_seconds, …}
+//   profile   GET -> {} until filled; PUT with the creator profile -> {profile:{…}}
+//   leaderboard {window, metric, window_start, entries:[{rank, handle, …}]}
+//   release-buffer  POST, empty body -> 200
+//
+// `submit` is captcha-gated in practice (`verification_required`). A GUI that
+// pretends to submit without the owner's browser handoff would earn nothing.
+constexpr std::string_view PREFERENCES_SUMMARY = "/preferences/summary"; // [T1] GET
+constexpr std::string_view PREFERENCES_TASKS = "/preferences/tasks"; // [T1] GET
+constexpr std::string_view PREFERENCES_SUBMIT = "/preferences/submit"; // [T1] POST
+constexpr std::string_view PREFERENCES_TASKS_RELEASE_BUFFER = "/preferences/tasks/release-buffer"; // [T1] POST
+constexpr std::string_view PREFERENCES_REWARDS = "/preferences/rewards"; // [T1] GET
+constexpr std::string_view PREFERENCES_STATS = "/preferences/stats"; // [T1] GET
+constexpr std::string_view PREFERENCES_PROFILE = "/preferences/profile"; // [T1] GET/PUT
+constexpr std::string_view PREFERENCES_LEADERBOARD = "/preferences/leaderboard"; // [T1] GET
+// Post-task survey, one slug per flow. Observed: "listen_and_rank".
+constexpr std::string_view SURVEY_QUESTIONS = "/survey/survey-questions/{}"; // [T1] GET
+
+// ── Studio API: Labs, integrations, chat, visuals ──────────
+// Persona HAR (2026-11-06) [T1] unless noted. Three of these are FEATURE-GATED
+// for this account and answer 403 `feature_disabled`; record them so nobody
+// reads a 403 as a broken client.
+//
+//   labs/configs  -> [{lab_id, name_override, description_override,
+//                      cover_image_url, staff_only, enabled_ga, has_statsig_segment}]
+//                    lab ids observed: live-radio, genre-wheel, listen-and-rank, milo
+//   v2/integrations -> {connections:[]}   -- the in-app connector list; this is
+//                    where an MCP connection would appear. Empty for this account.
+//   suno_chat/rooms POST {title} -> 403 feature_disabled "Suno Chat isn't available"
+//   visual/models -> 403 feature_disabled "Visuals aren't available right now."
+constexpr std::string_view LABS_CONFIGS = "/labs/configs"; // [T1] GET
+constexpr std::string_view INTEGRATIONS_V2 = "/v2/integrations"; // [T1] GET
+constexpr std::string_view SUNO_CHAT_ROOMS = "/suno_chat/rooms"; // [T1] POST, 403 gated
+constexpr std::string_view VISUAL_MODELS = "/visual/models"; // [T1] GET, 403 gated
+
+// ── Legacy base (NOT under API_BASE) ───────────────────────
+// `GET https://suno.com/api/feature-flags` answered 401 `{"error":"Unauthorized"}`
+// anonymously in the 2026-10-24 capture. Absolute on purpose: the `/api` prefix
+// is part of the captured path, and no `/a/api/feature-flags` request exists, so
+// joining this to API_BASE would invent a route.
+constexpr std::string_view FEATURE_FLAGS_LEGACY_URL = "https://suno.com/api/feature-flags"; // [T1] 401 anon
 
 // ── B-Side / Orchestrator ──────────────────────────────────
 // Recon/research only. These are joined to MODAL_BASE, not API_BASE.

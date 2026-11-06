@@ -169,6 +169,11 @@ nothing above is stale because of the launch. Two things it does change:
   scoped for MCP; do not assume it opens `/a/api` routes, and do not assume an
   `/a/api` session cookie opens `/mcp`. That is still the one authorized
   exchange T0356(b)/T0357 needs.
+- **There is an in-app connector list.** `GET /a/api/v2/integrations` answered
+  `200 {"connections": []}` for the account (§4.11). That is the surface where a
+  connected MCP server would show up, and it is the cheapest way to tell whether
+  the account has any connector attached. Empty here, so the MCP path is still
+  unlinked to the web account.
 
 ## Disciplinary note
 

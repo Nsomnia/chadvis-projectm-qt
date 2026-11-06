@@ -3,7 +3,7 @@
 **Status:** Canonical API-spec master, consolidated 2026-09-24; non-contractual
 material extracted 2026-09-26; 2026-08-25 `auth.suno.com` export folded in
 2026-09-28; contradictions and staleness corrected 2026-10-05
-**Current evidence baseline:** the 2026-09-24 Burp export reviewed on 2026-09-24, reconciled with the 2026-08-25 Burp corpus — including the 13-item `auth.suno.com` export folded in on 2026-09-28 — the 2026-09-22 sanitized OAuth recon, the 2026-09-23 browser HAR, the 2026-09-28/30 sanitized recon where it directly captured a request or response (section 1.2, item 5), and the **2026-11-05/06 signed-in full-API HAR** (section 4.10) which is the current top of the ladder for the Studio mutation set, the upload/stem/persona chain, and the `video_gen` image family
+**Current evidence baseline:** the 2026-09-24 Burp export reviewed on 2026-09-24, reconciled with the 2026-08-25 Burp corpus — including the 13-item `auth.suno.com` export folded in on 2026-09-28 — the 2026-09-22 sanitized OAuth recon, the 2026-09-23 browser HAR, the 2026-09-28/30 sanitized recon where it directly captured a request or response (section 1.2, item 5), the **2026-11-05/06 signed-in full-API HAR** (section 4.10) which is the current top of the ladder for the Studio mutation set, the upload/stem/persona chain, and the `video_gen` image family, and the **2026-11-06 persona/voice HAR** (section 4.11) which closes voice verification, the Listen-for-Credits family, and the cover-art image id space
 **Scope:** Suno web authentication, Studio API, library/feed, generation, media processing, account surfaces, social surfaces, and capture-backed contracts
 
 > **Unofficial and reverse-engineered.** Suno does not publish this API as a
@@ -696,6 +696,7 @@ token flow and durable processing contract are unimplemented (section 1.4).
 | POST | `/api/playlist/create/` | Bearer | Create a playlist; body `{name, description}`; response is the full 25-key playlist object | `[T1]` HAR-11 2026-11-06; §5.13 | constant-only |
 | POST | `/api/playlist/trash/` | Bearer | Trash a playlist; body `{"playlist_id":…}` **flat**; 204 with empty body | `[T1]` HAR-11 2026-11-06; §5.13 | constant-only |
 | PATCH | `/api/playlist/v2/{id}` | Bearer | Edit name/publicity/description; body `{metadata:{name,is_public}, bio:{description}}` | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
+| POST | `/api/playlist/v2/{id}/trash` | Bearer | **Undoable** playlist trash; body `{"undo":false}`; returns `{success, updated_fields, errors}` | `[T1]` persona HAR 2026-11-06; §4.11 | constant-only |
 
 #### 2026-10-24 — the unified library endpoint on the site host (`[T1]`)
 
@@ -870,9 +871,10 @@ carries that link plus stem extraction and the persona built from it.
 | GET | `/api/persona/get-persona/{id}/` | Bearer | One persona | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
 | POST | `/api/persona/create/` | Bearer | Create a persona from a clip + vocal stem + range; spends credits | `[T1]` HAR-11 2026-11-06; §5.14 | constant-only |
 
-Persona **creation** is captured now, from an uploaded vocal stem. Persona edit,
-visibility, and the voice-verification chain are still `[LEAD]` from the sunox
-register, and so are `get-loved-personas/` and `get-followed-personas/`.
+Persona **creation** is captured now, from an uploaded vocal stem, and so is the
+voice-verification chain that gates a voice persona (§5.15). Persona edit and
+visibility are still `[LEAD]`, as are `get-loved-personas/` and
+`get-followed-personas/`.
 
 No plan matrix, verification requirement, or per-account model limit is canonical
 without a current capture. Persona creation is captured (HAR-11, §5.14); no
@@ -990,6 +992,13 @@ the pagination key only.
 | GET | `/api/realtime/discover` | Bearer | Realtime/Ably discovery and token metadata | `[T1]` Burp 2026-08-25 | declared-unused |
 | POST | `/api/realtime/token` | Bearer | Ably token for the SSE stream; body `{capabilities:[{channel_pattern,subscribe}]}` | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
 | GET | `/api/report_v2/refund_prompt` | Bearer | Refund dialog copy; response `{variant, refund_amount}` | `[T1]` HAR-11 2026-11-06; §4.10 | not-in-code (deliberate) |
+| GET | `/api/labs/configs` | Bearer | Lab catalogue; ids `live-radio`, `genre-wheel`, `listen-and-rank`, `milo` | `[T1]` persona HAR 2026-11-06; §4.11 | constant-only |
+| GET | `/api/v2/integrations` | Bearer | In-app connector list; `{connections:[]}` — where an MCP connection appears | `[T1]` persona HAR 2026-11-06; §4.11 | constant-only |
+| POST | `/api/suno_chat/rooms` | Bearer | Create a Suno Chat room; **403 `feature_disabled`** | `[T1]` persona HAR 2026-11-06; §4.11 | constant-only (gated) |
+| GET | `/api/visual/models` | Bearer | Visuals models; **403 `feature_disabled`** | `[T1]` persona HAR 2026-11-06; §4.11 | constant-only (gated) |
+| GET | `/api/feature-flags` (legacy base) | Bearer | Feature flags; **401** anonymous. Captured on `suno.com/api`, not `/a/api` | `[T1]` browser 2026-10-24; §4.11 | constant-only |
+| GET | `/api/preferences/{summary,tasks,stats,rewards,leaderboard,profile}` | Bearer | Listen-for-Credits rating program (earns credits) | `[T1]` persona HAR 2026-11-06; §5.15 | constant-only |
+| POST | `/api/preferences/{submit,tasks/release-buffer}` | Bearer | Submit a rating (captcha-gated) / return a claimed task | `[T1]` persona HAR 2026-11-06; §5.15 | constant-only |
 | GET | `/api/challenge/progress` | Bearer | Challenge/bonus progress | `[T1]` Burp 2026-08-25 | not-in-code |
 | GET | `/api/contests/` | Bearer | Contest catalog | `[T1]` Burp 2026-08-25 | declared-unused |
 | GET | `/api/music_player/playbar_state` | Bearer | Read playbar state | `[T1]` Burp 2026-08-25 | declared-unused |
@@ -1058,6 +1067,58 @@ Three corrections this capture forces on earlier sections:
 `GET /api/challenge/progress` and `/api/video_gen/*` were already reached by the
 2026-08-25 Burp corpus; this capture is the first with request bodies for the
 `video_gen` image family.
+
+### 4.11 The 2026-11-06 persona / voice / credits HAR — `[T1]`
+
+A second signed-in session, this time driving `/me` + the persona and voice
+surfaces: `~/Documents/suno-master-utility-browser-extension/scratchpad/suno.com_me_persona.har`.
+Every row answered 200 unless the status column says otherwise.
+
+| Method | Path | Purpose | Implemented |
+|---|---|---|---|
+| GET | `/a/api/voice-verification/phrase/` | Phrase to sing for verification; `{phrase_id, phrase_text}` | constant-only |
+| POST | `/a/api/processed_clip/voice-vox-stem` | Stem from an **upload**; `{upload_id, recording_type}` or a vocal range | constant-only |
+| POST | `/a/api/voice-verification/` | Start the comparison; `{voice_recording_id, verification_recording_id, phrase_id}` | constant-only |
+| GET | `/a/api/voice-verification/{id}` | Poll; terminal `status:"approved"` | constant-only |
+| GET | `/a/api/preferences/summary` | Listen-for-Credits balance: `tasks_available`, `daily_submit_cap:200`, `credits_processed` | constant-only |
+| GET | `/a/api/preferences/tasks` | Next rating task: `{task_id, review_items[], project, project_category}` | constant-only |
+| POST | `/a/api/preferences/submit` | Submit ratings; **403 `verification_required`** until the rater profile + captcha are done | constant-only |
+| POST | `/a/api/preferences/tasks/release-buffer` | Give a task back; empty body -> 200 | constant-only |
+| GET | `/a/api/preferences/rewards` | Streak program; `min_tasks_per_streak_day:5`, `next_reward.credits` | constant-only |
+| GET | `/a/api/preferences/stats` | Lifetime rater stats | constant-only |
+| GET | `/a/api/preferences/leaderboard` | Daily credits leaderboard | constant-only |
+| GET/PUT | `/a/api/preferences/profile` | Rater creator profile; GET `{}` until filled | constant-only |
+| GET | `/a/api/survey/survey-questions/{slug}` | Post-task survey; observed slug `listen_and_rank` | constant-only |
+| GET | `/a/api/labs/configs` | Lab catalogue; ids `live-radio`, `genre-wheel`, `listen-and-rank`, `milo` | constant-only |
+| GET | `/a/api/v2/integrations` | In-app connector list; `{connections:[]}` here — where an MCP connection appears | constant-only |
+| POST | `/a/api/suno_chat/rooms` | Create a Suno Chat room; **403 `feature_disabled`** for this account | constant-only (gated) |
+| GET | `/a/api/visual/models` | Visuals models; **403 `feature_disabled`** | constant-only (gated) |
+| GET | `/a/api/generate/cowrite-lyrics/models/` | Cowrite model list; `[]` for this account | constant-only |
+| POST | `/a/api/gen/prompt_image/` | Single cover-art image; `{prompt}` -> `{image_url, image_s3_id, upload_id}` | constant-only |
+| POST | `/a/api/video_gen/action` | Seen/watch telemetry; **204** | not-in-code (deliberate) |
+| POST | `/a/api/playlist/v2/{id}/trash` | **Undoable** playlist trash; `{"undo":false}` -> `{success, updated_fields:["is_trashed"], errors:{}}` | constant-only |
+| POST | `/a/api/unified/library` | Library listing; `{cursor, customization:{include_synthetic}}` -> nested `feeds[]` | constant-only |
+| GET | `/a/api/feature-flags` (legacy `/api` base) | **401** anonymous. Served outside `/a/api`; see §4.11 note | constant-only |
+
+**Two trash routes, two contracts.** `POST /playlist/v2/{id}/trash` returns a
+per-field result and is what this session used; `POST /playlist/trash/` in §5.13
+returns `204` and nothing else. Prefer the v2 route: a caller can tell a partial
+write from a success. `{"undo":true}` is the un-trash spelling and is untested.
+
+**`feature-flags` is the odd one.** The only captured request is
+`GET https://suno.com/api/feature-flags` (pre-`/a/api` base), answered `401
+{"error":"Unauthorized"}` with no credential. No `/a/api/feature-flags` request
+exists, so the constant is absolute rather than joined to `API_BASE`.
+
+**Coverage note — every other capture on this machine was diffed, not just
+these two.** The 2026-10-14 auth-flow HARs (three files) produced no API route
+that is not already in §3.2 or §4; they add only the `/auth/session-recovery`
+page and an `OPTIONS` preflight for `/unified/homepage/explore`, which means the
+homepage/explore surface may be served under that longer path (only a preflight
+was captured, so it stays `[VERIFY]`). The 2026-10-24 network log supplied
+`/feature-flags` and `/unified/library`. `~/…/scratchpad/suno.com_me.har` from
+2026-10-31 is a **truncated** export: `jq` fails at EOF and the tail is JS
+source, so it yields no new routes and should be re-taken if it matters.
 
 ## 5. Capture-backed contracts
 
@@ -1862,10 +1923,12 @@ experiments, statsig_custom_properties, data_sharing_consent}`, and
 `player_play_related`, `player_play_next_queued`, `show_credits`,
 `notification_preferences`, `data_restrictions_*`).
 
-**Not captured:** `POST /gen/trash` (trash/restore of a clip), dislike on a
-discover-feed clip owned by someone else, and the image-id space that `cover-image`
-needs. Anything billing-shaped beyond the read (`checkout`, `portal`, payment methods) is
-excluded by §5.10 and stays excluded.
+**Not captured:** `POST /gen/trash` (trash/restore of a clip) and dislike on a
+discover-feed clip owned by someone else. The image-id space that `cover-image`
+needs **was** captured on 2026-11-06 (§5.15): `POST /gen/prompt_image/` returns
+`image_s3_id`, and that is the id `{"cover_source":{"id":…,"type":"generated"}}`
+expects. Anything billing-shaped beyond the read (`checkout`, `portal`, payment
+methods) is excluded by §5.10 and stays excluded.
 
 ### 5.14 Audio upload → vocal stem → persona, and the model capability matrix — `[T1]` 2026-11-05/06
 
@@ -1957,6 +2020,85 @@ strings `"True"`/`"False"` rather than booleans: `disliked`, `public`,
 `"default"` is the fallback), `sort`
 (`{sortBy ∈ upvote_count|created_at, sortDirection ∈ asc|desc}`). Paging is a
 cursor: pass the last clip id as `cursor` with `limit`.
+
+### 5.15 Voice verification, Listen for Credits, and cover-art image ids — `[T1]` 2026-11-06
+
+Three families that were `[LEAD]` before this session, all from the persona HAR
+(§4.11).
+
+#### Voice verification — the write half of a persona voice
+
+`T0349` called this capture-gated. The chain is four calls, and the two stem
+routes in it are different by what they take as input.
+
+```
+GET  /voice-verification/phrase/
+     -> {phrase_id, phrase_text}
+POST /uploads/audio/ -> signed S3 POST -> initialize-clip/ -> upload-finish/
+POST /processed_clip/voice-vox-stem
+     {"upload_id": "<upload>", "recording_type": "verification"}
+     -> {id, status: "submitted", voice_recording_id, vocal_start_s, vocal_end_s}
+     (the timed variant sends vocal_start_s/vocal_end_s instead of recording_type,
+      and the response omits recording_type)
+POST /voice-verification/
+     {"voice_recording_id": …, "verification_recording_id": …, "phrase_id": …}
+GET  /voice-verification/{id}
+     -> {id, status: "approved", verification_prompt_text, …}
+```
+
+`/processed_clip/voice-vox-stem` takes an **upload** id.
+`/clip/{id}/vox-stem` (§5.14) takes a **gen clip** id. Passing the wrong kind is
+an error, not a fallback.
+
+`status` was only ever observed as `"submitted"` then `"approved"`. Do not
+enumerate a rejection vocabulary that was never captured.
+
+#### Listen for Credits — a route family that ADDS credits
+
+`GET /labs/configs` lists the lab as `listen-and-rank`. The program pays credits
+for rating clips on prompt-following, which makes it the only surface found that
+increases the balance instead of spending it.
+
+| Route | Contract |
+|---|---|
+| `GET /preferences/summary` | `{tasks_completed, credits_processed, credits_waiting, tasks_available, daily_submit_limit_reached, daily_submit_cap: 200, next_available_in_seconds, rater_profile_required, rater_profile_completed, …}` |
+| `GET /preferences/tasks` | `{task_id, review_items:[{key, url, …}], project, project_category}` — `url` points at an mp3 in `suno-data-uploads.s3.amazonaws.com/labelmaker-inputs/…` |
+| `POST /preferences/submit` | `{task_id, preference:{<key>:<key>}, feedback, listen_time_seconds:{<key>:<seconds>}}`; **403 `verification_required`** with `retryable:false` until the rater profile and captcha are satisfied |
+| `POST /preferences/tasks/release-buffer` | Empty body -> 200. Returns a claimed task. |
+| `GET /preferences/rewards` | Streak program: `current_streak_days`, `tasks_today`, `min_tasks_per_streak_day: 5`, `claimable[]`, `next_reward{reward_key, credits, interval_days, days_remaining}` |
+| `GET /preferences/stats` | `{tasks_completed, credits_earned, listening_seconds, projects_contributed, active_days, current_streak_days, longest_streak_days, …}` |
+| `GET /preferences/leaderboard` | `{window:"daily", metric:"credits", window_start, window_end, entries:[{rank, handle, display_name, avatar_image_url, …}]}` |
+| `GET /preferences/profile` | `{}` until filled |
+| `PUT /preferences/profile` | `{creator_type, musical_background, preferred_genres[], other_genres, language_fluencies[], other_languages, listening_setup, …}` -> `{profile:{…}}` |
+| `GET /survey/survey-questions/{slug}` | `{questions:[{id, slug, prompt, type, options[], is_required, order}]}`; observed slug `listen_and_rank` |
+
+Two consequences worth stating plainly. Submission is captcha-gated in practice,
+so a headless loop cannot farm it. And `release-buffer` exists precisely because
+tasks can be claimed and abandoned — a client that claims without releasing
+degrades the account's task availability.
+
+#### Cover-art image ids — the space §5.13 said was missing
+
+`POST /gen/prompt_image/` with `{prompt}` answers
+`{image_url, image_s3_id, upload_id}`, where `image_s3_id` is of the form
+`image_<uuid>`. That is exactly what `POST /playlist/v2/{id}/cover-image` wants:
+
+```json
+{"cover_source": {"id": "<image_s3_id>", "type": "generated"}}
+```
+
+`POST /video_gen/image/generate` (§4.10) is the batched variant and needs
+`video_gen/poll_batches`; `gen/prompt_image/` is the single-image synchronous
+one. Both were captured with the same account.
+
+#### Feature-gated surfaces — record the 403, do not "fix" it
+
+`POST /suno_chat/rooms` -> `403 {"error_type":"feature_disabled","detail":"Suno
+Chat isn't available right now.","retryable":false}` and
+`GET /visual/models` -> `403 ... "Visuals aren't available right now."`. These are
+**account/feature gates**, not client bugs. `GET /v2/integrations` answers
+`{connections: []}`, which is the in-app connector list and the surface where an
+MCP connection would appear.
 
 ## 6. Errors, statuses, and rate limits
 

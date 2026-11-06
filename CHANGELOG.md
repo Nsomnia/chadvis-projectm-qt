@@ -83,6 +83,22 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **A second capture closed voice verification, Listen for Credits, and the cover-art id space.**
+  The 2026-11-06 persona/voice HAR (`suno.com_me_persona.har`) added 20 routes to
+  `SunoEndpoints.hpp`: the four-call voice-verification chain (`phrase/` →
+  `processed_clip/voice-vox-stem` → `voice-verification/` → poll), the whole Listen-for-Credits
+  rating family under `/preferences/`, `POST /gen/prompt_image/` (which is where the
+  `image_s3_id` that `playlist/v2/{id}/cover-image` needs comes from), the undoable
+  `POST /playlist/v2/{id}/trash`, `POST /unified/library`, `video_gen/action`,
+  `labs/configs`, `v2/integrations` (the in-app connector list, where an MCP connection would
+  appear), and three feature-gated surfaces that answer `403 feature_disabled` on this account
+  (`suno_chat/rooms`, `visual/models`, and the submit half of preferences). Contracts in
+  `docs/suno_api/ENDPOINT-INVENTORY.md` §4.11 + §5.15. Two corrections: both stem routes are
+  real and are not interchangeable (`/clip/{id}/vox-stem` takes a gen clip id,
+  `/processed_clip/voice-vox-stem` takes an upload id), and playlist trash has two spellings
+  with different result shapes. The 2026-10-14 auth-flow HARs and the 2026-10-24 network log
+  were diffed too; they added `/feature-flags` and `/unified/library` and nothing else.
+
 - **`SunoEndpoints.hpp` now carries every route the 2026-11-05/06 signed-in HAR captured,
   and the audio-upload chain finally has a map.** The new capture (508 `suno.com` requests)
   added ~30 routes no earlier capture had: upload → `initialize-clip` → `vox-stem` →
