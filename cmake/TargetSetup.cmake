@@ -32,6 +32,23 @@ set(COMMON_INCLUDES
     ${readerwriterqueue_SOURCE_DIR}
 )
 
+# Header/archive pairing (2026-11-06). GLM and FFmpeg resolve through pkg-config
+# to a bare /opt/local/include or /usr/local/include, and that directory can
+# also carry a second copy of a library we consume as a CMake target. When the
+# second copy is newer, the TU compiles against one ABI and links another: a
+# MacPorts spdlog 1.17 header against the CPM 1.14.1 archive failed with
+# `undefined symbol: spdlog::logger::err_handler_(std::string const&) const`,
+# which is a link error rather than a warning. Prepending each target's own
+# include dir keeps its headers and its archive from the same install.
+foreach(_paired_pkg IN ITEMS spdlog::spdlog fmt::fmt tomlplusplus::tomlplusplus)
+    if(TARGET ${_paired_pkg})
+        get_target_property(_paired_includes ${_paired_pkg} INTERFACE_INCLUDE_DIRECTORIES)
+        if(_paired_includes)
+            list(PREPEND COMMON_INCLUDES ${_paired_includes})
+        endif()
+    endif()
+endforeach()
+
 # Common link libraries. projectM links via proper targets on every platform
 # (imported targets from the system install, or ALIAS targets from the CPM
 # source build); raw flags only in the Linux pkg-config fallback.

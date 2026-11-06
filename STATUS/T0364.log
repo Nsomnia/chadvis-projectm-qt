@@ -1,0 +1,3 @@
+2026-11-06T22:00:00Z  CLAIM    link failure cold build-fast
+2026-11-06T22:00:00Z  CHANGE   cmake/TargetSetup.cmake: prepend spdlog/fmt/tomlplusplus interface include dirs to COMMON_INCLUDES so TUs compile against same install as linked archive. MacPorts 1.17 header vs CPM 1.14.1 archive caused undefined spdlog symbol.
+2026-11-06T22:00:00Z  VERIFY   ./build.sh --fast --tests -> ninja no work (already linked after fix); ./build.sh --fast --tests --safe -> 16/16 passed, unit_tests status 0 (89 s).
