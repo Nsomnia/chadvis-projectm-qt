@@ -99,7 +99,7 @@ namespace {
 ///  * The feedback reaction goes to `Library`: `disliked` is a captured feed
 ///    filter key (§5.2), so it is a state on the user's own feed item rather
 ///    than a sharing act.
-///  * The six playlist routes go to `Playlists`.
+///  * The playlist routes go to `Playlists`.
 [[nodiscard]] FeatureGate gateFor(const MutationVerb verb) noexcept
 {
     switch (verb) {
@@ -117,6 +117,7 @@ namespace {
         case MutationVerb::ShareLink:
             return FeatureGate::Sharing;
         case MutationVerb::UpdateFeedbackState:
+        case MutationVerb::UpdateReactionType:
             return FeatureGate::Library;
         case MutationVerb::PlaylistSetMetadata:
         case MutationVerb::PlaylistUpdateClips:
@@ -125,6 +126,8 @@ namespace {
         case MutationVerb::PlaylistTracksReorder:
         case MutationVerb::PlaylistCoverImage:
         case MutationVerb::PlaylistTrashV2:
+        case MutationVerb::PlaylistCreate:
+        case MutationVerb::PlaylistTrash:
             return FeatureGate::Playlists;
         case MutationVerb::ClipTrashRestore:
             return FeatureGate::Library;
@@ -356,6 +359,66 @@ QJsonObject SunoLibraryMutations::playlistCoverImageBody(const QString& imageId)
     return body;
 }
 
+QJsonObject SunoLibraryMutations::reactionBody(const std::optional<ReactionType> reaction)
+{
+    QJsonObject body;
+    // `null` is a VALUE here, not an omission: §5.13's clear is
+    // `{"reaction":null}`, and the reply then omits `reaction_type` entirely.
+    // Omitting the key instead would send a body §5.13 never shows.
+    if (reaction) {
+        body.insert(QStringLiteral("reaction"),
+                    QString::fromLatin1(toString(*reaction)));
+    } else {
+        body.insert(QStringLiteral("reaction"), QJsonValue(QJsonValue::Null));
+    }
+    // Captured as an empty object beside every reaction value, including the
+    // clear, so it is always sent and never filled in with a guess.
+    body.insert(QStringLiteral("recommendation_metadata"), QJsonObject{});
+    return body;
+}
+
+QJsonObject SunoLibraryMutations::playlistCreateBody(const QString& name,
+                                                     const QString& description)
+{
+    QJsonObject body;
+    body.insert(QStringLiteral("name"), name);
+    body.insert(QStringLiteral("description"), description);
+    return body;
+}
+
+QJsonObject SunoLibraryMutations::legacyPlaylistTrashBody(const QString& playlistId)
+{
+    QJsonObject body;
+    // Flat. §5.13 trap 1: the nested `spec` variant answers 422 naming
+    // `spec.playlist_id` even when it is present, so this shape is load-bearing.
+    body.insert(QStringLiteral("playlist_id"), playlistId);
+    return body;
+}
+
+QJsonObject SunoLibraryMutations::metadataBody(const ClipMetadataUpdate& metadata)
+{
+    QJsonObject body;
+    body.insert(QStringLiteral("title"), metadata.title);
+    body.insert(QStringLiteral("image_url"), metadata.imageUrl);
+    body.insert(QStringLiteral("is_audio_upload_tos_accepted"),
+                metadata.isAudioUploadTosAccepted);
+    return body;
+}
+
+QJsonObject SunoLibraryMutations::audioDescriptionBody(
+        const AudioDescriptionConsent& consent)
+{
+    QJsonObject body;
+    body.insert(QStringLiteral("gemini_description_accepted"),
+                consent.geminiDescriptionAccepted);
+    QJsonArray types;
+    for (const QString& type : consent.audioContentTypes) {
+        types.append(type);
+    }
+    body.insert(QStringLiteral("audio_content_types"), types);
+    return body;
+}
+
 // ── Endpoints ────────────────────────────────────────────────────────────────
 
 QString SunoLibraryMutations::endpointFor(const MutationVerb verb, const QString& id)
@@ -378,6 +441,8 @@ QString SunoLibraryMutations::endpointFor(const MutationVerb verb, const QString
         case MutationVerb::PlaylistSetMetadata:
         case MutationVerb::PlaylistUpdateClips:
         case MutationVerb::ClipTrashRestore:
+        case MutationVerb::PlaylistCreate:
+        case MutationVerb::PlaylistTrash:
             // Collection routes: no {id} in the template, and none may be
             // invented. `gen/trash` takes `clip_ids` in the body, so the
             // subject id is not a path segment here.
@@ -396,6 +461,9 @@ QString SunoLibraryMutations::endpointFor(const MutationVerb verb, const QString
             break;
         case MutationVerb::PlaylistTrashV2:
             tmpl = endpoints::PLAYLIST_V2_TRASH;
+            break;
+        case MutationVerb::UpdateReactionType:
+            tmpl = endpoints::GEN_UPDATE_REACTION_TYPE;
             break;
     }
     const auto filled = fillPath(tmpl, id);
@@ -519,7 +587,9 @@ void SunoLibraryMutations::handleReply(QNetworkReply* reply, const MutationVerb 
 
     if (status >= 200 && status < 300) {
         // Accepted, and nothing further is claimed. No parsed reply, no field
-        // read, no local state written. The caller re-reads the library.
+        // read, no local state written. The caller re-reads the library. This is
+        // also the whole of the `playlist/trash` 204 case: an empty body
+        // succeeds, so there is nothing to parse on the success path.
         settle(verb, subjectId, MutationOutcome::Accepted, status, {});
         return;
     }
@@ -532,7 +602,7 @@ void SunoLibraryMutations::handleReply(QNetworkReply* reply, const MutationVerb 
         settle(verb, subjectId, MutationOutcome::Failed, status, transport);
         return;
     }
-    if (status >= 400 && status < 500) {
+    if (outcomeForStatus(status) == MutationOutcome::Rejected) {
         settle(verb, subjectId, MutationOutcome::Rejected, status,
                rejectionReason(body, status));
         return;
@@ -541,6 +611,19 @@ void SunoLibraryMutations::handleReply(QNetworkReply* reply, const MutationVerb 
     // retryable, but still carry the server's sentence when there is one.
     settle(verb, subjectId, MutationOutcome::Failed, status,
            rejectionReason(body, status));
+}
+
+MutationOutcome SunoLibraryMutations::outcomeForStatus(const int httpStatus) noexcept
+{
+    if (httpStatus >= 200 && httpStatus < 300) {
+        return MutationOutcome::Accepted;
+    }
+    if (httpStatus >= 400 && httpStatus < 500) {
+        return MutationOutcome::Rejected;
+    }
+    // 0 is the absence of an HTTP answer and 5xx is one this client treats as
+    // retryable. The sentence differs; the verdict does not.
+    return MutationOutcome::Failed;
 }
 
 void SunoLibraryMutations::settle(const MutationVerb verb, const QString& subjectId,
@@ -799,6 +882,48 @@ bool SunoLibraryMutations::setPlaylistTrashed(const QString& playlistId, const b
     const QString endpoint = endpointFor(MutationVerb::PlaylistTrashV2, playlistId);
     return dispatch(MutationVerb::PlaylistTrashV2, playlistId, endpoint,
                     playlistTrashBody(!trashed));
+}
+
+bool SunoLibraryMutations::setReaction(const QString& genId,
+                                       const std::optional<ReactionType> reaction)
+{
+    if (genId.isEmpty()) {
+        return refuse(MutationVerb::UpdateReactionType, genId,
+                      QStringLiteral("This clip has no identifier, so a reaction cannot "
+                                     "be recorded."));
+    }
+    const QString endpoint = endpointFor(MutationVerb::UpdateReactionType, genId);
+    return dispatch(MutationVerb::UpdateReactionType, genId, endpoint,
+                    reactionBody(reaction));
+}
+
+bool SunoLibraryMutations::createPlaylist(const QString& name,
+                                          const QString& description)
+{
+    // The reply is the new playlist object, so nothing here is named from it.
+    // `subjectId` is the name because a create has no id until the server
+    // answers, and an empty subject would break the one signal a UI binds.
+    if (name.isEmpty()) {
+        return refuse(MutationVerb::PlaylistCreate, name,
+                      QStringLiteral("A new playlist needs a name."));
+    }
+    // `description` may legitimately be empty, and the name rules are the
+    // server's: only the empty name above is refused, because a create with no
+    // name cannot be what the user intended.
+    return dispatch(MutationVerb::PlaylistCreate, name,
+                    qstr(endpoints::PLAYLIST_CREATE),
+                    playlistCreateBody(name, description));
+}
+
+bool SunoLibraryMutations::trashPlaylist(const QString& playlistId)
+{
+    if (playlistId.isEmpty()) {
+        return refuse(MutationVerb::PlaylistTrash, playlistId,
+                      QStringLiteral("No playlist was named, so it cannot be trashed."));
+    }
+    return dispatch(MutationVerb::PlaylistTrash, playlistId,
+                    qstr(endpoints::PLAYLIST_TRASH),
+                    legacyPlaylistTrashBody(playlistId));
 }
 
 } // namespace vc::suno

@@ -1,0 +1,4 @@
+2026-11-06T22:45:00Z  CLAIM    mutation verbs remainder
+2026-11-06T22:45:00Z  CHANGE   src/suno/SunoLibraryMutations.{hpp,cpp}: setReaction (update_reaction_type, null when cleared), createPlaylist, trashPlaylist (legacy flat 204 accepted, nothing parsed); outcomeForStatus extracted as test seam; gates Library/Playlists; no endpoint header changes.
+2026-11-06T22:45:00Z  VERIFY   pending full build (orchestrator).
+2026-11-06T22:52:00Z  VERIFY   ./build.sh --fast --tests --safe -> 16/16 passed (93.32 s), unit_tests includes updated TestSunoLibraryMutations (15/16 there passed except one fixed test expectation).

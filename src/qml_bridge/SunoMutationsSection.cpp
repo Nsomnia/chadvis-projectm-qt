@@ -20,7 +20,7 @@ using vc::suno::MutationOutcome;
 using vc::suno::MutationVerb;
 using vc::suno::PlaylistUpdateType;
 
-/// True for the five clip-scoped verbs. The remaining six act on a playlist.
+/// True for the seven clip-scoped verbs. The remaining nine act on a playlist.
 ///
 /// This is the routing table that keeps `clipMutationSettled` and
 /// `playlistMutationSettled` honest: a playlist id must never arrive on a
@@ -34,6 +34,7 @@ using vc::suno::PlaylistUpdateType;
         case MutationVerb::UpdateFeedbackState:
         case MutationVerb::ShareLink:
         case MutationVerb::ClipTrashRestore:
+        case MutationVerb::UpdateReactionType:
             return true;
         case MutationVerb::PlaylistSetMetadata:
         case MutationVerb::PlaylistUpdateClips:
@@ -42,6 +43,8 @@ using vc::suno::PlaylistUpdateType;
         case MutationVerb::PlaylistTracksReorder:
         case MutationVerb::PlaylistCoverImage:
         case MutationVerb::PlaylistTrashV2:
+        case MutationVerb::PlaylistCreate:
+        case MutationVerb::PlaylistTrash:
             return false;
     }
     return false;

@@ -1,0 +1,4 @@
+2026-11-06T22:45:00Z  CLAIM    upload TOS flags
+2026-11-06T22:45:00Z  CHANGE   src/suno/SunoLibraryMutations.{hpp,cpp}: ClipMetadataUpdate carries isAudioUploadTosAccepted; AudioDescriptionConsent carries geminiDescriptionAccepted + audioContentTypes; body builders only, no new verbs (T0362 wires them).
+2026-11-06T22:45:00Z  VERIFY   pending full build (orchestrator).
+2026-11-06T22:52:00Z  VERIFY   ./build.sh --fast --tests --safe -> 16/16 passed (93.32 s).

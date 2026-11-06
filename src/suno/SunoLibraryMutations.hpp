@@ -24,6 +24,13 @@
 // route in this file is a *rejection*. There is not one success body in the
 // corpus. The consequences are load-bearing and this file is written to them:
 //
+// **Partly superseded 2026-10-26, and nothing here changed.** §5.13 captured
+// success bodies for the reaction and playlist verbs. A 2xx is still `Accepted`
+// and still parses nothing, and §5.13 is why: `playlist/trash` succeeds with
+// `204 No Content` and no body at all, and `update_reaction_type` OMITS
+// `reaction_type` when the reaction is cleared — never `""`. A parser written
+// against either fails on the *success* path.
+//
 //   * A 2xx is `MutationOutcome::Accepted` and NOTHING MORE. It asserts no
 //     field, because no field has been seen. There is no parsed response type
 //     in this header, no `parseMutationReply`, and no accessor that would let a
@@ -97,6 +104,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <optional>
 #include <string_view>
 
 class QNetworkReply;
@@ -123,6 +131,9 @@ enum class MutationVerb {
     PlaylistCoverImage,      ///< POST /api/playlist/v2/{id}/cover-image
     ClipTrashRestore,        ///< POST /api/gen/trash — UI-07 [T1] (see GEN_TRASH)
     PlaylistTrashV2,         ///< POST /api/playlist/v2/{id}/trash — UI-07 [T1]
+    UpdateReactionType,      ///< POST /api/gen/{gen_id}/update_reaction_type/ — §5.13 [T1]
+    PlaylistCreate,          ///< POST /api/playlist/create/ — §5.13 [T1]
+    PlaylistTrash,           ///< POST /api/playlist/trash/ — §5.13 [T1], 204
 };
 
 /// `const char*` for the same reason as `hosts::toString`, `http::toString`
@@ -157,6 +168,12 @@ enum class MutationVerb {
             return "clip-trash-restore";
         case MutationVerb::PlaylistTrashV2:
             return "playlist-trash-v2";
+        case MutationVerb::UpdateReactionType:
+            return "update-reaction-type";
+        case MutationVerb::PlaylistCreate:
+            return "playlist-create";
+        case MutationVerb::PlaylistTrash:
+            return "playlist-trash";
     }
     return "unknown";
 }
@@ -241,6 +258,54 @@ enum class PlaylistUpdateType {
     }
     return "unknown";
 }
+
+/// `request.reaction` on `update_reaction_type` (§5.13). The captured vocabulary
+/// is exactly two members plus **`null`**, and `null` is the clear rather than a
+/// member — which is why the verb takes `std::optional<ReactionType>` and not an
+/// enum with a `None` enumerator that would have to be translated on the way out.
+enum class ReactionType {
+    Like,    ///< `"LIKE"` -> reply carries `reaction_type:"L"`
+    Dislike, ///< `"DISLIKE"` -> reply carries `reaction_type:"D"`
+};
+
+[[nodiscard]] constexpr const char* toString(const ReactionType type) noexcept
+{
+    switch (type) {
+        case ReactionType::Like:
+            return "LIKE";
+        case ReactionType::Dislike:
+            return "DISLIKE";
+    }
+    return "unknown";
+}
+
+/// The request record for `set_metadata` (§5.13, HAR-11):
+/// `{title, image_url, is_audio_upload_tos_accepted}`.
+///
+/// The TOS flag is a typed `bool` field rather than a key in a loose
+/// `QJsonObject` because uploaded audio is a different publication contract from
+/// a generated clip — an upload published under a guessed consent state is the
+/// failure this record exists to prevent. `false` is the honest default: it is
+/// the state "the user has not accepted", never "we did not ask".
+struct ClipMetadataUpdate {
+    QString title;
+    QString imageUrl;
+    bool isAudioUploadTosAccepted{false};
+};
+
+/// The request record for `set_audio_description` (§5.14, HAR-11):
+/// `{gemini_description_accepted, audio_content_types}`.
+///
+/// Both are first-class typed fields for the same reason as
+/// `ClipMetadataUpdate`: this is a consent record, not a set of headers.
+struct AudioDescriptionConsent {
+    bool geminiDescriptionAccepted{false};
+    /// `audio_content_types`. Captured values: `"Song Demo"`, `"Voice"`,
+    /// `"Sample"`. That is NOT a complete member list — §5.14 records the rest
+    /// of the vocabulary as uncaptured — so nothing validates against it here,
+    /// and an unfamiliar value is passed through rather than refused.
+    QStringList audioContentTypes;
+};
 
 /// The transport for every `[T1]` library/playlist mutation.
 ///
@@ -416,6 +481,38 @@ public:
     [[nodiscard]] bool setPlaylistCoverImage(const QString& playlistId,
                                              const QString& imageId);
 
+    /// POST /api/gen/{gen_id}/update_reaction_type/ — body `reaction`,
+    /// `recommendation_metadata: object`.
+    ///
+    /// §5.13: `{"reaction":"LIKE"|"DISLIKE"|null,
+    /// "recommendation_metadata":{}}` -> `{play_count, skip_count, flagged,
+    /// reaction_type, clip, updated_at}`, where `reaction_type` is the request
+    /// value's initial and is **absent — never `""` — when the request sent
+    /// `null`**. A caller reads a cleared reaction as "the key is missing", so
+    /// nothing here parses it; the verb settles `Accepted` like every other.
+    [[nodiscard]] bool setReaction(const QString& genId,
+                                   std::optional<ReactionType> reaction);
+
+    /// POST /api/playlist/create/ — body `name`, `description`.
+    ///
+    /// §5.13: the reply is the full 25-key playlist object. It is not parsed,
+    /// for the reason in this file's header, and `MutationResult` carries no
+    /// playlist: a caller that wants the new object re-reads `/playlist/me`.
+    [[nodiscard]] bool createPlaylist(const QString& name,
+                                      const QString& description);
+
+    /// POST /api/playlist/trash/ — body `playlist_id`, **flat**.
+    ///
+    /// §5.13: success is `204 No Content` with an empty body, so there is
+    /// nothing to parse even though a shape was captured. The nested
+    /// `{"spec":{"playlist_id":…}}` variant answers 422 while naming
+    /// `spec.playlist_id` — the route accepts more than one body schema and the
+    /// error reports the wrong one — which is why this body is flat.
+    ///
+    /// `setPlaylistTrashed` (v2) is the better verb: it reports per-field
+    /// outcome, where this route reports nothing at all.
+    [[nodiscard]] bool trashPlaylist(const QString& playlistId);
+
     // ── Body and endpoint builders ──────────────────────────────────────────
     // Public and static so the request side can be exercised without a network.
     // Every one is flat by construction — a top-level QJsonObject with no
@@ -441,6 +538,18 @@ public:
     [[nodiscard]] static QJsonObject playlistCoverImageBody(const QString& imageId);
     [[nodiscard]] static QJsonObject clipTrashBody(const QStringList& clipIds, bool trash);
     [[nodiscard]] static QJsonObject playlistTrashBody(bool undo);
+    [[nodiscard]] static QJsonObject reactionBody(std::optional<ReactionType> reaction);
+    [[nodiscard]] static QJsonObject playlistCreateBody(const QString& name,
+                                                        const QString& description);
+    [[nodiscard]] static QJsonObject legacyPlaylistTrashBody(const QString& playlistId);
+    [[nodiscard]] static QJsonObject metadataBody(const ClipMetadataUpdate& metadata);
+    [[nodiscard]] static QJsonObject audioDescriptionBody(
+            const AudioDescriptionConsent& consent);
+
+    /// The status-only verdict `handleReply` settles on, extracted so the
+    /// discipline §5.13 made testable can be pinned without a network: **a 204
+    /// with no body is a success.** Nothing else about the reply participates.
+    [[nodiscard]] static MutationOutcome outcomeForStatus(int httpStatus) noexcept;
 
     /// Path templates with the `{id}` placeholder filled from `id`.
     ///
