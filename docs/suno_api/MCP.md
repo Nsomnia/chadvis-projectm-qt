@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-10-31
+updated: 2026-11-06
 grades: "This file records our own unauthenticated observations at `[T1]`; everything
 else is announcement/marketing prose at `[LEAD]`. No credentials were attached to any
 probe below: every request was unauthenticated, and the responses carry no secrets."
@@ -152,6 +152,23 @@ sign-in + approval once. No key is issued. Official per-assistant setup
 - **Other assistants**: any tool that takes a custom MCP server/connector URL —
   same URL, no key. For ChadVis itself the equivalent is T0357: speak MCP as a
   client, walk the OAuth chain above, and chat-drive generation through it.
+
+## Cross-check against the 2026-11-05/06 full-API HAR — `[T1]`
+
+That signed-in capture (508 `suno.com` requests, ENDPOINT-INVENTORY §4.10) made
+**zero** calls to `api.suno.com`, `/mcp`, or any MCP transport. The web app still
+speaks the plain `https://suno.com/a/api` surface, so MCP has not replaced it and
+nothing above is stale because of the launch. Two things it does change:
+
+- **The Studio API kept growing in parallel.** The same capture found ~30 routes
+  no earlier capture had, including the upload → vocal-stem → persona chain
+  (§5.14). Keeping up means watching the browser, not the MCP announcement.
+- **The OAuth server is shared, the surface is not.** The MCP resource's
+  authorization server is `studio-api-prod.suno.com/api/v2/external/oauth`,
+  which is a *different* API tree from `/a/api`. A bearer minted for MCP is
+  scoped for MCP; do not assume it opens `/a/api` routes, and do not assume an
+  `/a/api` session cookie opens `/mcp`. That is still the one authorized
+  exchange T0356(b)/T0357 needs.
 
 ## Disciplinary note
 

@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-10-30
+updated: 2026-11-06
 ---
 
 # ChadVis backlog
@@ -135,14 +135,56 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       reorder with a specified revert. Optional in this phase, only if prioritised: §1.4
       one-method surfaces (like/unlike, playlist create, playlist trash) + T0348 doc fixes.
 
-- [ ] T0348 **`SunoEndpoints.hpp` "deliberately ABSENT" list stale for 4 routes** (`SunoEndpoints.hpp`, `SunoLibraryMutations.*`) #feature #risk-medium
-      §5.13 has request+response bodies: `update_reaction_type`, `playlist/create`, `playlist/trash` (204 empty),
-      `playlist/v2/{id}/cover-image`. Add constants, correct absent-list, give verbs response discipline.
+- [ ] T0348 **`SunoEndpoints.hpp` "deliberately ABSENT" list stale for 4 routes** (`SunoLibraryMutations.*`) #feature #risk-medium
+      Constants + absent-list **done 2026-11-06**: §5.13 bodies landed in `SunoEndpoints.hpp`
+      (`PLAYLIST_CREATE`, `PLAYLIST_TRASH`, `PLAYLIST_V2_BY_ID`, `GEN_UPDATE_REACTION_TYPE`,
+      `GEN_SET_METADATA`), and HAR-11 cleared them from the absent list. Remaining: the verbs
+      themselves in `SunoLibraryMutations` with response discipline — `playlist/trash` returns
+      204 (parse nothing), `update_reaction_type` returns state with `reaction_type` absent when
+      cleared, `playlist/create` returns the 25-key object.
 
-- [ ] T0349 **Persona reads: `[LEAD]` path family with body, zero code** (`SunoEndpoints.hpp`, `SunoPersonaService.*`, `src/qml/panels/settings/`) #feature
-      User's extension grades 3 reads CONFIRMED LIVE: `GET /api/persona/get-personas/` → `{personas:[...]}`,
-      `get-loved-personas/`, `get-followed-personas/`. `[LEAD]` grade but idempotent GETs — fail-closed satisfiable.
-      Write half (create/edit/visibility/voice-verification) stays capture-gated. UI behind `Personas` gate.
+- [ ] T0349 **Persona: reads and create are `[T1]` now, zero code** (`SunoEndpoints.hpp`, `SunoPersonaService.*`, `src/qml/panels/settings/`) #feature
+      HAR-11 (2026-11-06) captured all three: `GET /persona/get-personas/`,
+      `GET /persona/get-persona/{id}/`, `POST /persona/create/` with its full body
+      (ENDPOINT-INVENTORY §4.10, §5.14). Reads are idempotent — wire them first.
+      `create/` spends credits and needs `rights_clearance_available` honoured, so it comes after
+      the upload chain (T0362). Untested twins stay out: `get-loved-personas/`,
+      `get-followed-personas/` are still extension-only `[LEAD]`. UI behind `Personas` gate.
+
+- [ ] T0362 **Wire the HAR-11 surfaces: upload → stem → persona, and the free reads** (`src/suno/SunoUploadService.*`, `src/suno/SunoPersonaService.*`, `src/suno/SunoClient.cpp`, `src/qml_bridge/SunoBridge*`) #feature #user-priority
+      Endpoint constants + docs landed 2026-11-06 (ENDPOINT-INVENTORY §4.10, §5.14). This is the
+      wiring half, in dependency order, each step independently verifiable:
+      1. `GET /custom-model/shared` → per-model `capabilities` + `allowed_condition_combinations`
+         (the authoritative cover/mashup/upload_extend matrix; nothing may hard-code a mode list).
+      2. Upload chain: `POST /uploads/audio/` → signed S3 POST → `initialize-clip/` →
+         `upload-finish/`. Honour `rights_clearance_available`.
+      3. `POST /clip/{id}/vox-stem` → poll `GET /processed_clip/{id}` → `vocal_audio_url`.
+      4. `POST /persona/create/` from that stem (T0349's write half).
+      5. Free reads: `GET /clip/{id}`, `GET /project/{id}/pinned-clips`, `GET /cms/cover-art-suggestions`,
+         `POST /realtime/token` (Ably credential), `GET /challenge/progress`.
+      6. `POST /video_gen/image/generate` + `cost/image` + `poll_batches` for generated cover art.
+      Host allowlist is NOT widened by this task: `suno-data-uploads.s3.amazonaws.com` and
+      `api.suno.com` need their own `CapturedHosts.cpp` change with evidence, fail-closed.
+
+- [ ] T0363 **`POST /gen/{id}/set_audio_description` + upload TOS flags are unmodelled** (`src/suno/SunoLibraryMutations.*`) #feature #risk-medium
+      HAR-11 shows the site sends `{"gemini_description_accepted":true,"audio_content_types":
+      ["Song Demo","Voice","Sample"]}` and `set_metadata` carries
+      `is_audio_upload_tos_accepted`. Uploaded audio is a different publication contract from a
+      generated clip. Model the two flags before any upload UI ships, or an upload can be
+      published under the wrong consent state.
+
+- [ ] T0364 **`--fast --tests` fails to link: projectM source build vs repo spdlog/fmt** (`cmake/FindProjectM4.cmake`, `cmake/Dependencies.cmake`) #risk-high #cod-high
+      On 2026-11-06 a cold `build-fast` configure+link died at `tests/unit/unit_tests`:
+      `ld: symbol(s) not found for architecture x86_64` on
+      `spdlog::logger::log_<std::basic_string<...>>` defined in `_deps/spdlog-build/libspdlogd.a`
+      but referenced from `libproject_libd.a[3](FileUtils.cpp.o)`. projectM is pinned to 349b7cc
+      and built from source, then both spdlog copies land in one link line. Not caused by the
+      endpoint/docs work in the same session; no source change was made to CMake.
+      Two environment repairs already applied here, both still needed on a fresh box:
+      `sudo port install glm` (glm was missing) and deleting a corrupt
+      `.cpm-cache/projectm/*` whose clone answered `fatal: bad object 349b7cc`.
+      Fix the spdlog/fmt duplication (compiled-lib flags must match on both sides) so the
+      documented `./build.sh --fast --tests` works from cold.
 
 - [ ] T0339 **Paste path bypasses `classifyStoredCredential`** (`SettingsBridge.cpp:359-391`, `ClerkAuthClient.cpp:323-370`, `SunoClient.cpp:687-717`) #risk-medium
       `setToken()` has zero production callers. `__client_uat` accepted as credential but is metadata, not credential.
@@ -622,10 +664,34 @@ recon dirs, and user's extension (`~/Documents/suno-master-utility-browser-exten
 - `POST /playlist/v2/{id}/cover-image` → `cover_source{id,type}`
 - `POST /api/v2/external/oauth/register/` → 201 with `client_id` (loopback redirect accepted)
 
+### Confirmed live, 2026-11-06 full-API HAR (`[T1]`)
+Capture: `~/Documents/suno-recon-har-recordings-full-api/suno.com_Archive.har` (signed-in,
+508 `suno.com` requests). Detail: ENDPOINT-INVENTORY §4.10 + §5.14.
+- `GET /clip/{id}` → one clip, 40 keys, no envelope
+- `POST /uploads/audio/` `{extension,upload_type}` → `{id,url,fields,is_file_uploaded}` (signed S3 POST)
+- `POST /uploads/audio/{id}/initialize-clip/` → `{clip_id, rights_clearance_available}`
+- `POST /uploads/audio/{id}/upload-finish/` `{upload_type,upload_filename,agreed_to_vip_upload_terms}`
+- `POST /clip/{id}/vox-stem` `{vocal_start_s,vocal_end_s}` → `{id,status,source_clip_id,…}`
+- `GET /processed_clip/{id}` → adds `vocal_audio_url`; stem on `suno-data-uploads.s3.amazonaws.com`
+- `POST /persona/create/` → persona from `root_clip_id` + `vox_audio_id` + range
+- `GET /persona/get-persona/{id}/`, `GET /persona/get-personas/`
+- `GET /custom-model/shared` → `generation_config.capabilities` (18) + `allowed_condition_combinations`
+- `PATCH /playlist/v2/{id}` `{metadata:{name,is_public},bio:{description}}` → playlist
+- `POST /project/{id}/clips` `{update_type:"add",metadata:{clip_ids}}` → 204
+- `GET /project/{id}/pinned-clips`
+- `DELETE /lyrics-projects/{id}` → 204 (only captured DELETE)
+- `POST /realtime/token` `{capabilities:[{channel_pattern,subscribe}]}` → Ably token
+- `POST /video_gen/image/generate` `{prompt,quantity,image_gen_category,aspect_ratio}`; `cost/image`, `poll_batches`
+- `GET /cms/cover-art-suggestions` → `{items:[{slug,label,prompt}]}`
+- `POST /gen/{id}/listen_milestone` `{milestone:"5s"|"30s"|"60s"}`; `increment_play_count/v2`
+- `GET /challenge/progress`; `GET /report_v2/refund_prompt`
+- `feed/v3` filter keys: `disliked public trashed unlocked upload fullSong fromStudioProject
+  stem stemComplement persona user workspace sort` — values are strings `"True"`/`"False"`
+
 ### Confirmed live via user's extension (`[LEAD]` — not our capture)
-- `GET /api/persona/get-personas/` → `{personas:[...]}`
-- `GET /api/persona/get-loved-personas/`
-- `GET /api/persona/get-followed-personas/`
+- `GET /api/persona/get-personas/` → `{personas:[...]}` — **now `[T1]`, see HAR-11 above**
+- `GET /api/persona/get-loved-personas/` — still extension-only
+- `GET /api/persona/get-followed-personas/` — still extension-only
 
 ### Captured but `declared-unused` in code
 - `POST /gen/{id}/downbeats_streaming/v2`
@@ -637,10 +703,10 @@ recon dirs, and user's extension (`~/Documents/suno-master-utility-browser-exten
 - `POST /api/generate/concat/v2/` (extend)
 
 ### Lead-only (sunox register §7.6, ≤2026-09-14, retrieved 2026-10-27)
-- Stem separation: `task:"gen_stem"` on `/generate/v2-web/`, `GET /api/clip/{id}/stems/pages`
+- ~~Stem separation: `task:"gen_stem"`~~ **superseded** by HAR-11 `POST /clip/{id}/vox-stem`
 - Extend: `task:"extend"` on `/generate/v2-web/`, `task:"upload_extend"`
-- Cover batch: `video_gen/image/generate` + `/video/generate`, `poll_batches`
-- Persona CRUD: full route family named, voice-verification chain
+- ~~Cover batch: `video_gen/image/generate` + `/video/generate`, `poll_batches`~~ **captured** (HAR-11)
+- ~~Persona CRUD: full route family named~~ **captured** (reads + create); edit/visibility still open
 - Generation gates: `aug_creativity` (0–4 whole), `mumble-mode`, `max-mode` session flags
 
 ### Session notes
@@ -649,7 +715,9 @@ recon dirs, and user's extension (`~/Documents/suno-master-utility-browser-exten
 - `freshtok.py` at `~/Documents/suno-recon-active-investigation/bin/` extracts `__session` from Brave cookies
 
 ### Recon dirs (priority by mtime)
-1. `~/Documents/sunox-chadvis-suno-frontend-projectm-qt-research/` — API intelligence, protocol audits, capability matrix
+1. `~/Documents/suno-recon-har-recordings-full-api/` — newest, signed-in full-API HAR
+   (`suno.com_Archive.har`, 154 MB, 2026-11-05/06) + `network-endpoints.txt`
+2. `~/Documents/sunox-chadvis-suno-frontend-projectm-qt-research/` — API intelligence, protocol audits, capability matrix
 2. `~/Documents/suno-recon-active-investigation/` — `suno-session.json`, `app-endpoints.md`, `interesting-api-calls.md`, HAR captures
 3. `~/Documents/suno-recon/` — JS crawler snippets, endpoint lists, API probe tools
 4. `~/Documents/suno-recon-cat-stealth-modekl/` — `captured_endpoints*.json`, `network-endpoints.txt`, OAuth google flow, feature flags

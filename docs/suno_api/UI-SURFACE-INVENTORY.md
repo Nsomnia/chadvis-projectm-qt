@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-10-31
+updated: 2026-11-06
 source: "scratch/suno-missing-api-flows.json (Puppeteer replay, 732 steps, user-recorded 2026-10-30)"
 grade: "UI evidence only — [LEAD]. A replay records clicks, not requests: it proves a
 surface EXISTS and what its controls are, never a method, path, or body. Every route
@@ -85,3 +85,25 @@ The replay contains **zero** request data (`api/` appears 0 times), so no row ca
 be promoted to `[T1]` from it. The next artifact needed is one HAR export
 (DevTools → Network → Export HAR, "with content") recorded while repeating these
 surfaces; see the local checklist file in the repo root (gitignored).
+
+## What the 2026-11-06 HAR closed — `[T1]`
+
+A signed-in full-API capture (`~/Documents/suno-recon-har-recordings-full-api/suno.com_Archive.har`)
+supplied the request data this replay could not. Contracts in
+[`ENDPOINT-INVENTORY.md`](ENDPOINT-INVENTORY.md) §4.10 and §5.14.
+
+| Surface above | Now has a `[T1]` route |
+|---|---|
+| Playlist create / rename / description / public switch | `POST /playlist/create/`, `PATCH /playlist/v2/{id}` |
+| Playlist delete | `POST /playlist/trash/` (204) |
+| Playlist cover art | `POST /playlist/v2/{id}/cover-image`, `POST /video_gen/image/generate`, `GET /cms/cover-art-suggestions` |
+| Record → Name this Voice | `POST /uploads/audio/` → `initialize-clip/` → `POST /clip/{id}/vox-stem` → `GET /processed_clip/{id}` → `POST /persona/create/` |
+| Library filter: Uploads | `feed/v3` filter key `upload` |
+| Library filter: Voices-only | `feed/v3` filter key `persona` |
+| Workspaces / Studio Projects | `GET /project/me`, `GET /project/{id}`, `GET /project/{id}/pinned-clips`, `POST /project/{id}/clips` |
+| Cover / mashup via uploaded audio | same upload chain; the generated persona is the reusable input |
+
+**Still uncaptured, and still the reason this file is `[LEAD]`:** Trash
+restore-vs-permanent-delete (`gen/trash`), playlist *recover*, Hooks / Liked
+Hooks, Albums, History, Reuse Prompt, the trim-handle save, Speech, and Sounds.
+A second HAR recorded while clicking only those is the next artifact.

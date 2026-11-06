@@ -83,6 +83,20 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **`SunoEndpoints.hpp` now carries every route the 2026-11-05/06 signed-in HAR captured,
+  and the audio-upload chain finally has a map.** The new capture (508 `suno.com` requests)
+  added ~30 routes no earlier capture had: upload → `initialize-clip` → `vox-stem` →
+  `processed_clip` poll → `persona/create`, the `video_gen` image family, `clip/{id}`,
+  `project/{id}/clips`, `project/{id}/pinned-clips`, `DELETE /lyrics-projects/{id}`,
+  `custom-model/shared` (the server's own model-capability matrix), `realtime/token`,
+  `cms/cover-art-suggestions`, `challenge/progress`, and the playlist write set.
+  Four entries left the "deliberately ABSENT" list because a capture now exists
+  (`playlist/create`, `playlist/trash`, `gen/{id}/set_metadata/`,
+  `gen/{id}/update_reaction_type/`), and the absent list now names the reaction write as the
+  real like mechanism instead of an invented toggle. Contracts and the upload chain are
+  recorded in `docs/suno_api/ENDPOINT-INVENTORY.md` §4.10 and §5.14. Wiring is T0362; no
+  runtime behavior changed in this commit.
+
 - **A reactive-GUI plan, tracked, not yet implemented.** [`docs/dev/REACTIVE-GUI-PLAN.md`](docs/dev/REACTIVE-GUI-PLAN.md)
   inventories the app's 55 QML files and the Oct 26–31 Suno endpoints expansion, then specifies
   — in implementable phases — motion tokens + a reduced-motion switch (Phase 0), juicy buttons,

@@ -372,7 +372,7 @@ three-leg audio upload stay in the master.
 | `?` | `/api/download/clips/zip/prepare` | Bearer? | Prepare clip ZIP download | `[VERIFY]` method/payload not captured | not-in-code |
 | `?` | `/api/openai-speech/` | Bearer? | Claimed speech compatibility surface | `[VERIFY]` GET claim is scan-only; no method/schema contract | not-in-code |
 | GET? | `/api/deepgram-token` | Bearer? | Claimed transcription token | `[LEAD]` old inventory/topic prose | not-in-code |
-| POST? | `/api/uploads/audio/{id}/initialize-clip/` | Bearer? | Initialize clip from uploaded audio | `[LEAD]` old inventory/topic prose; not captured in 2026-09-24 export | not-in-code |
+| POST | `/api/uploads/audio/{id}/initialize-clip/` | Bearer | Initialize clip from uploaded audio | **promoted `[T1]` 2026-11-06**, HAR-11; master §4.10/§5.14 | constant-only |
 | GET? | `/api/uploads/audio/{id}/` | Bearer? | Audio upload/processing status | `[LEAD]` old inventory/topic prose | not-in-code |
 | POST? | `/api/uploads/audio/{id}/convert_wav/` | Bearer? | Convert uploaded audio to WAV | `[LEAD]` old upload topic prose | not-in-code |
 | POST? | `/api/uploads/image` | Bearer? | Image upload, no trailing slash | `[LEAD]` raw scan; multipart fields unproved | not-in-code |
@@ -425,16 +425,16 @@ Master section: 4.7. The captured pending-custom-model route stays in the master
 
 | Method | Path | Auth | Purpose | Evidence | Implemented |
 |---|---|---|---|---|---|
-| POST? | `/api/persona/create/` | Bearer?/entitlement? | Create persona | `[LEAD]` old inventory/topic prose | not-in-code |
-| GET? | `/api/persona/get-personas/` | Bearer? | User personas | `[LEAD]` old inventory/topic prose | not-in-code |
+| POST | `/api/persona/create/` | Bearer | Create persona | **promoted `[T1]` 2026-11-06**, HAR-11; master §4.10/§5.14 | constant-only |
+| GET | `/api/persona/get-personas/` | Bearer | User personas | **promoted `[T1]` 2026-11-06**, HAR-11; master §4.10 | constant-only |
 | GET? | `/api/persona/get-followed-personas/` | Bearer? | Followed personas | `[LEAD]` old inventory/topic prose | not-in-code |
 | GET? | `/api/persona/get-loved-personas/` | Bearer? | Loved personas | `[LEAD]` old inventory/topic prose | not-in-code |
 | GET? | `/api/persona/get-persona-paginated/{id}/` | Bearer? | Paginated persona surface | `[LEAD]` old inventory/topic prose | not-in-code |
 | POST? | `/api/custom-model/create/` | Bearer?/entitlement? | Create custom model | `[LEAD]` old inventory/topic prose; training schema unproved | not-in-code |
 | POST? | `/api/custom-model/archive/` | Bearer?/entitlement? | Archive custom model | `[LEAD]` old inventory/topic prose | not-in-code |
-| POST? | `/api/processed_clip/voice-vox-stem` | Bearer? | Voice/stem processing | `[LEAD]` old inventory/topic prose | not-in-code |
+| POST | `/api/clip/{clip_id}/vox-stem` | Bearer | Vocal-stem extraction over a user-selected range | **promoted `[T1]` 2026-11-06**, HAR-11; master §5.14. The old constructed path `/api/processed_clip/voice-vox-stem` was WRONG — do not add it | constant-only |
 | `?` | `/api/custom-model/bases/` | Bearer? | Custom-model base list; distinct from the create/archive mutations above | `[LEAD]` 2026-09 bundle corpus | not-in-code |
-| `?` | `/api/persona/get-persona/{persona_id}/` | Bearer? | Single persona by id; distinct from the get-persona-paginated route | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+| GET | `/api/persona/get-persona/{persona_id}/` | Bearer | Single persona by id | **promoted `[T1]` 2026-11-06**, HAR-11; master §4.10 | constant-only |
 | `?` | `/api/persona/{persona_id}/toggle_love/` | Bearer? | Toggle love on a persona | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | PUT? | `/api/persona/edit-persona/{persona_id}/` | Bearer?/entitlement? | Edit persona fields | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |
 | PUT? | `/api/persona/set_visibility/{persona_id}/?is_public=…` | Bearer?/entitlement? | Persona visibility; value in the query string, empty body per the source | `[LEAD]` third-party `sunox` @ `8a20930d` (2026-10-27) | not-in-code |

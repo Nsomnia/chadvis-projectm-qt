@@ -3,7 +3,7 @@
 **Status:** Canonical API-spec master, consolidated 2026-09-24; non-contractual
 material extracted 2026-09-26; 2026-08-25 `auth.suno.com` export folded in
 2026-09-28; contradictions and staleness corrected 2026-10-05
-**Current evidence baseline:** the 2026-09-24 Burp export reviewed on 2026-09-24, reconciled with the 2026-08-25 Burp corpus — including the 13-item `auth.suno.com` export folded in on 2026-09-28 — the 2026-09-22 sanitized OAuth recon, the 2026-09-23 browser HAR, and the 2026-09-28/30 sanitized recon where it directly captured a request or response (section 1.2, item 5)
+**Current evidence baseline:** the 2026-09-24 Burp export reviewed on 2026-09-24, reconciled with the 2026-08-25 Burp corpus — including the 13-item `auth.suno.com` export folded in on 2026-09-28 — the 2026-09-22 sanitized OAuth recon, the 2026-09-23 browser HAR, the 2026-09-28/30 sanitized recon where it directly captured a request or response (section 1.2, item 5), and the **2026-11-05/06 signed-in full-API HAR** (section 4.10) which is the current top of the ladder for the Studio mutation set, the upload/stem/persona chain, and the `video_gen` image family
 **Scope:** Suno web authentication, Studio API, library/feed, generation, media processing, account surfaces, social surfaces, and capture-backed contracts
 
 > **Unofficial and reverse-engineered.** Suno does not publish this API as a
@@ -628,6 +628,8 @@ The endpoint mirror also carries a `SESSION_CATALOG` alias for the same
 | GET | `/api/project/default` | Bearer | Default workspace and project clips | `[T1]` Burp 2026-08-25 | declared-unused |
 | GET | `/api/project/{project_id}` | Bearer | Project detail | `[T1]` HAR 2026-09-23 | declared-unused |
 | GET | `/api/project/default/pinned-clips` | Bearer | Pinned default-workspace clips | `[T1]` HAR 2026-09-23 | declared-unused |
+| GET | `/api/project/{project_id}/pinned-clips` | Bearer | Pinned clips for any project, not just `default` | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
+| POST | `/api/project/{project_id}/clips` | Bearer | Add clips to a project; body `{update_type, metadata:{clip_ids}}`; 204 | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
 
 Project **read** operations are `[T1]`. Project **mutation** operations are not: the
 2026-09-28 recon establishes that the following are **registered** — create-project,
@@ -691,6 +693,9 @@ token flow and durable processing contract are unimplemented (section 1.4).
 | POST | `/api/playlist/v2/{id}/tracks/remove` | Bearer | Remove 1–100 clips by id | `[T1]` validation-probe contract 2026-09-30 | wired |
 | POST | `/api/playlist/v2/{id}/tracks/reorder-by-index` | Bearer | Reorder by index; body `positions` | `[T1]` validation-probe contract 2026-09-30 | wired |
 | POST | `/api/playlist/v2/{id}/cover-image` | Bearer | Set playlist cover; body `id`, `type` | `[T1]` validation-probe contract 2026-09-30 | wired |
+| POST | `/api/playlist/create/` | Bearer | Create a playlist; body `{name, description}`; response is the full 25-key playlist object | `[T1]` HAR-11 2026-11-06; §5.13 | constant-only |
+| POST | `/api/playlist/trash/` | Bearer | Trash a playlist; body `{"playlist_id":…}` **flat**; 204 with empty body | `[T1]` HAR-11 2026-11-06; §5.13 | constant-only |
+| PATCH | `/api/playlist/v2/{id}` | Bearer | Edit name/publicity/description; body `{metadata:{name,is_public}, bio:{description}}` | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
 
 #### 2026-10-24 — the unified library endpoint on the site host (`[T1]`)
 
@@ -817,15 +822,16 @@ No reviewed capture establishes server-side search as a `searchText` field on
 remain `[LEAD]`; clients must use local filtering until a direct request/response
 capture proves the remote search contract.
 
-**Library and playlist mutations are captured, but only their request side.**
-The rows above carry **request** contracts recovered by schema probe
-(section 5.9). Their **response** shapes are not captured, and four
-commonly-assumed sibling routes were never probed at all — `playlist/create/`,
-`playlist/trash/` and `gen/{id}/set_metadata/` are **client-bundle route
-strings only**, `[LEAD]` on both axes, `gen/{id}/update_reaction_type/` is now
-captured (§4.5.1), and
-`POST /api/clips/delete/` answered `404` when exercised as a POST. None of these
-may be wired on the strength of a neighbouring row.
+**Library and playlist mutations were request-only until 2026-11-06.** The rows
+above carry **request** contracts recovered by schema probe (section 5.9), and
+their response shapes are in §5.13. Three siblings that used to be
+"client-bundle strings only" were captured by HAR-11 and are rows in §4.10:
+`playlist/create/` (25-key playlist object), `playlist/trash/` (flat body, 204
+empty), `gen/{id}/set_metadata/` (updated clip back), and
+`gen/{id}/update_reaction_type/` (§4.5.1). Still unprobed: `gen/trash`,
+`POST /api/clips/delete/` (answered `404`), and any `DELETE` spelling other
+than `/lyrics-projects/{id}`. None of these may be wired on the strength of a
+neighbouring row.
 
 ### 4.6 Clips, media, rights, upload, and processing
 
@@ -842,22 +848,35 @@ may be wired on the strength of a neighbouring row.
 | POST | `/api/uploads/audio/` | Bearer | Initialize an audio upload and return a temporary direct-upload URL/policy | `[T1]` Burp 2026-09-24; JSON request/response | wired |
 | POST | `/api/uploads/audio/{id}/upload-finish/` | Bearer | Finalize a completed direct audio upload | `[T1]` Burp 2026-09-24; JSON request/empty-object response | wired |
 | POST | Returned URL on `suno-uploads.s3.amazonaws.com` | Temporary signed multipart fields | Direct-upload captured audio bytes | `[T1]` Burp 2026-09-24; 204 response | wired |
+| POST | `/api/uploads/audio/{id}/initialize-clip/` | Bearer | Turn a finished upload into a clip; `{clip_id, rights_clearance_available}` | `[T1]` HAR-11 2026-11-06; §5.14 | constant-only |
+| GET | `/api/clip/{clip_id}` | Bearer | One clip with no feed envelope | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
+| POST | `/api/clip/{clip_id}/vox-stem` | Bearer | Extract a vocal stem from a clip over a user-selected range | `[T1]` HAR-11 2026-11-06; §5.14 | constant-only |
+| GET | `/api/processed_clip/{pack_id}` | Bearer | Poll a processed stem; adds `vocal_audio_url` | `[T1]` HAR-11 2026-11-06; §5.14 | constant-only |
+| GET | `/api/processed_clip/{pack_id}/waveform-aggregates` | Bearer | Waveform for a processed stem | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
 
 The direct-upload row is the only row in this document whose target is not
 fixed by the catalog: the URL and fields come from the initializer response and
-must never be hard-coded (section 2.2). The three upload rows are the only
-implemented transport sequence; the non-transport upload lifecycle is not
-captured (section 5.6).
+must never be hard-coded (section 2.2). HAR-11 (2026-11-06) closed the
+non-transport half: `initialize-clip` links the upload to a clip, and §5.14
+carries that link plus stem extraction and the persona built from it.
 
 ### 4.7 Persona and custom models
 
 | Method | Path | Auth | Purpose | Evidence | Implemented |
 |---|---|---|---|---|---|
 | GET | `/api/custom-model/pending/` | Bearer | Pending custom-model state | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/custom-model/shared` | Bearer | Model catalogue + `generation_config.capabilities` / `allowed_condition_combinations` | `[T1]` HAR-11 2026-11-06; §5.14 | constant-only |
+| GET | `/api/persona/get-personas/` | Bearer | Persona list | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
+| GET | `/api/persona/get-persona/{id}/` | Bearer | One persona | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
+| POST | `/api/persona/create/` | Bearer | Create a persona from a clip + vocal stem + range; spends credits | `[T1]` HAR-11 2026-11-06; §5.14 | constant-only |
 
-No plan matrix, verification requirement, per-account model limit, or voice-clone
-availability statement is canonical without a current capture. No persona
-creation, custom-model training, archive, or voice-clone route is captured.
+Persona **creation** is captured now, from an uploaded vocal stem. Persona edit,
+visibility, and the voice-verification chain are still `[LEAD]` from the sunox
+register, and so are `get-loved-personas/` and `get-followed-personas/`.
+
+No plan matrix, verification requirement, or per-account model limit is canonical
+without a current capture. Persona creation is captured (HAR-11, §5.14); no
+custom-model **training**, archive, or voice-clone route is.
 
 ### 4.8 Social, sharing, notifications, and following
 
@@ -967,7 +986,10 @@ the pagination key only.
 | GET | `/api/modals` | Bearer | App modal catalog | `[T1]` Burp 2026-08-25 | declared-unused |
 | GET | `/api/cms/nudges/publish-nudge` | Bearer | Publish nudge state/content | `[T1]` Burp 2026-08-25 | declared-unused |
 | GET | `/api/cms/nudges/share-nudge` | Bearer | Share nudge state/content | `[T1]` Burp 2026-08-25 | declared-unused |
+| GET | `/api/cms/cover-art-suggestions` | Bearer | CMS cover-art prompt suggestions; `{items:[{slug,label,prompt}]}` | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
 | GET | `/api/realtime/discover` | Bearer | Realtime/Ably discovery and token metadata | `[T1]` Burp 2026-08-25 | declared-unused |
+| POST | `/api/realtime/token` | Bearer | Ably token for the SSE stream; body `{capabilities:[{channel_pattern,subscribe}]}` | `[T1]` HAR-11 2026-11-06; §4.10 | constant-only |
+| GET | `/api/report_v2/refund_prompt` | Bearer | Refund dialog copy; response `{variant, refund_amount}` | `[T1]` HAR-11 2026-11-06; §4.10 | not-in-code (deliberate) |
 | GET | `/api/challenge/progress` | Bearer | Challenge/bonus progress | `[T1]` Burp 2026-08-25 | not-in-code |
 | GET | `/api/contests/` | Bearer | Contest catalog | `[T1]` Burp 2026-08-25 | declared-unused |
 | GET | `/api/music_player/playbar_state` | Bearer | Read playbar state | `[T1]` Burp 2026-08-25 | declared-unused |
@@ -980,6 +1002,62 @@ keys with zero capture evidence, and they are listed — clearly marked as flag
 names, never as routes — in
 [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md). Forcing a client-side flag is not proof
 that the backend has enabled a route, plan, model, or entitlement.
+
+### 4.10 The 2026-11-05/06 signed-in full-API HAR — `[T1]`
+
+One signed-in browser session, 508 `suno.com` requests, captured at
+`~/Documents/suno-recon-har-recordings-full-api/suno.com_Archive.har`. It
+settles the mutation set §5.9 only had rejections for, and it is the first
+capture of the audio-upload → vocal-stem → persona chain (§5.14). Every row
+below answered 200 unless noted.
+
+| Method | Path | Purpose | Implemented |
+|---|---|---|---|
+| GET | `/a/api/clip/{clip_id}` | One clip, no feed envelope (40 keys, same clip schema) | constant-only |
+| POST | `/a/api/clip/{clip_id}/vox-stem` | Extract a vocal stem from a clip; body `{vocal_start_s, vocal_end_s}` | constant-only |
+| GET | `/a/api/processed_clip/{pack_id}` | Poll a processed stem; adds `vocal_audio_url` | constant-only |
+| GET | `/a/api/processed_clip/{pack_id}/waveform-aggregates` | Waveform for a processed stem | constant-only |
+| POST | `/a/api/uploads/audio/{id}/initialize-clip/` | Turn a finished upload into a clip; `{clip_id, rights_clearance_available}` | constant-only |
+| POST | `/a/api/gen/{id}/listen_milestone` | Playback telemetry; `{milestone:"5s"\|"30s"\|"60s"}` | not-in-code (deliberate) |
+| POST | `/a/api/gen/{id}/increment_play_count/v2` | Play counter; `{sample_factor:1}` | not-in-code (deliberate) |
+| POST | `/a/api/gen/{id}/update_reaction_type/` | **Like / dislike / clear**; `{reaction, recommendation_metadata}` | constant-only |
+| POST | `/a/api/gen/{id}/set_metadata/` | Title + image + upload-TOS flag | constant-only |
+| POST | `/a/api/gen/{id}/set_audio_description` | Gemini/AI audio description accept; `audio_content_types` vocabulary | constant-only |
+| POST | `/a/api/persona/create/` | Create a persona from a clip + vocal stem + range | constant-only |
+| GET | `/a/api/persona/get-persona/{id}/` | One persona | constant-only |
+| GET | `/a/api/persona/get-personas/` | Persona list | constant-only |
+| POST | `/a/api/playlist/create/` | `{name, description}` → full playlist object (§5.13) | constant-only |
+| POST | `/a/api/playlist/trash/` | `{"playlist_id":…}` **flat** → 204 empty | constant-only |
+| PATCH | `/a/api/playlist/v2/{id}` | `{metadata:{name,is_public}, bio:{description}}` → playlist | constant-only |
+| POST | `/a/api/project/{id}/clips` | `{update_type:"add", metadata:{clip_ids:[…]}}` → 204 | constant-only |
+| GET | `/a/api/project/{id}/pinned-clips` | Pin read for any project, not just `default` | constant-only |
+| DELETE | `/a/api/lyrics-projects/{id}` | **204 empty** — the only captured DELETE verb | constant-only |
+| GET | `/a/api/custom-model/shared` | Model catalogue + `generation_config.capabilities` (§5.14) | constant-only |
+| GET | `/a/api/cms/cover-art-suggestions` | `{items:[{slug,label,prompt}]}` cover-art prompts | constant-only |
+| POST | `/a/api/realtime/token` | Ably token; body is a `capabilities[]` list | constant-only |
+| GET | `/a/api/video_gen/model-configs` | Video/image model matrix | constant-only |
+| POST | `/a/api/video_gen/cost/image` | Credit cost of one image | constant-only |
+| POST | `/a/api/video_gen/image/generate` | Cover-art generation; `{prompt,quantity,image_gen_category,aspect_ratio}` | constant-only |
+| POST | `/a/api/video_gen/history` | Generated-media history | constant-only |
+| POST | `/a/api/video_gen/poll_batches` | Poll generated-media batches | constant-only |
+| GET | `/a/api/challenge/progress` | Daily challenges + earned credits | constant-only |
+| GET | `/a/api/report_v2/refund_prompt` | Refund dialog copy; `{variant, refund_amount}` | not-in-code (deliberate) |
+
+Three corrections this capture forces on earlier sections:
+
+1. **`/api/playlist/trash/` and `/api/gen/trash` are not the same story.**
+   Playlist trash is captured here and in §5.13 with a flat body and a 204.
+   Clip trash (`/api/gen/trash`) is still unprobed and stays `[LEAD]`.
+2. **A "like" is a reaction write.** No `/toggle_like` path exists in any
+   capture; `update_reaction_type` with `reaction ∈ {LIKE, DISLIKE, null}` is
+   the whole mechanism. The constant file's absent-list was corrected to match.
+3. **`gen/{id}/set_metadata/` is real.** It was on the never-probed list; the
+   site sends `{title, image_url, is_audio_upload_tos_accepted}` and gets the
+   updated clip back.
+
+`GET /api/challenge/progress` and `/api/video_gen/*` were already reached by the
+2026-08-25 Burp corpus; this capture is the first with request bodies for the
+`video_gen` image family.
 
 ## 5. Capture-backed contracts
 
@@ -1423,9 +1501,12 @@ the temporary URL/fields, or retain them beyond the upload operation.
 The 200 response was an empty object.
 
 This proves the initialize → direct multipart → finish transport sequence only.
-The export did not capture `initialize-clip`, processing-status, or
-upload-to-generation linkage, so those steps remain `[LEAD]`/`[VERIFY]` rather
-than a complete product workflow.
+The original export did not capture `initialize-clip`, processing-status, or
+upload-to-generation linkage. **HAR-11 closed all three on 2026-11-06** — see
+§5.14, which owns the link to a clip, the vocal-stem extraction and poll, and
+the persona that makes the upload reusable. `finish` here returns an empty
+object in both captures; the clip id comes from `initialize-clip`, not from
+`finish`.
 
 ### 5.7 Other captured analysis contracts
 
@@ -1455,12 +1536,15 @@ comes back. Two families are therefore listed separately.
 client has no documented success shape to parse and no documented failure
 envelope:
 
-- Library and playlist mutations — see section 5.9 for the full recovered
-  request set
+- Library and playlist mutations — see section 5.9 for the recovered request
+  set; **responses are captured since 2026-10-26 in §5.13**, so this family is
+  in the list for the routes §5.13 did not touch, not for the whole set
 - Billing mutations (section 5.10), which are additionally excluded on purpose
 - Prompt mutation payloads beyond captured route/method evidence
-- Audio-upload `initialize-clip`, processing status, generation linkage, and
-  post-finish lifecycle beyond the captured three-step transport sequence
+- ~~Audio-upload `initialize-clip`, processing status, generation linkage, and
+  post-finish lifecycle~~ **captured 2026-11-06, §5.14** — the link is
+  `initialize-clip` → `clip_id`, extraction is `vox-stem` + `processed_clip`
+  poll, and the consumer is `persona/create/`
 - Download preparation, ZIP export, and exact `Content-Disposition`/filename
   behaviour
 - Persona/custom-model creation, training, archive, and voice verification
@@ -1782,6 +1866,97 @@ experiments, statsig_custom_properties, data_sharing_consent}`, and
 discover-feed clip owned by someone else, and the image-id space that `cover-image`
 needs. Anything billing-shaped beyond the read (`checkout`, `portal`, payment methods) is
 excluded by §5.10 and stays excluded.
+
+### 5.14 Audio upload → vocal stem → persona, and the model capability matrix — `[T1]` 2026-11-05/06
+
+The chain behind "upload your own audio" for cover / mashup / inspiration, in
+the order the site runs it. All bodies below are the site's own.
+
+**Step 1 — reserve an upload.** `POST /uploads/audio/`
+
+```json
+{"extension": "wav", "upload_type": "audio_recording"}
+```
+
+Response: `{id, url, fields, is_file_uploaded}`. `url` + `fields` are a signed
+S3 POST policy; the bytes go to `suno-uploads.s3.amazonaws.com` as multipart
+form data with those fields verbatim (204). The URL and fields must never be
+constructed (§2.2).
+
+**Step 2 — make it a clip.** `POST /uploads/audio/{id}/initialize-clip/`
+
+```json
+{"user_reviewed_tags": true}
+```
+
+Response: `{clip_id, rights_clearance_available}`. `rights_clearance_available`
+is the gate on whether the upload can feed a persona or a cover; treat `false`
+as "ask the user, do not guess".
+
+**Step 3 — finalize.** `POST /uploads/audio/{id}/upload-finish/`
+
+```json
+{"upload_type": "audio_recording",
+ "upload_filename": "….wav",
+ "agreed_to_vip_upload_terms": false}
+```
+
+**Step 4 — extract a vocal stem.** `POST /clip/{clip_id}/vox-stem`
+
+```json
+{"vocal_start_s": 45, "vocal_end_s": 74}
+```
+
+Response: `{id, status, source_clip_id, vocal_start_s, vocal_end_s}`. `id` is a
+**processed-clip** id, not a gen id, and the range must come from the user's
+selection — there is no auto-detect route in the capture.
+
+**Step 5 — poll it.** `GET /processed_clip/{pack_id}` → the same five keys plus
+`vocal_audio_url` once `status` settles. The stem is then downloadable from
+`suno-data-uploads.s3.amazonaws.com/studio/uploads/processed_{id}_vocals.m4a`.
+
+**Step 6 — create the persona.** `POST /persona/create/`
+
+```json
+{"root_clip_id": "<gen clip>", "name": "…", "description": "…",
+ "is_public": false, "persona_type": "vox",
+ "vox_audio_id": "<processed-clip id>", "vocal_start_s": 13.11,
+ "vocal_end_s": 178.22, "user_input_styles": "…",
+ "clips": ["<gen clip>"]}
+```
+
+A persona is the reusable artifact: generation can later condition on it, which
+is what makes voice-consistent covers and mashups possible. Creation spends
+credits.
+
+**Not captured in this chain:** the `upload_type` vocabulary beyond
+`audio_recording` (named values seen elsewhere: `Song Demo`, `Voice`,
+`Sample`), the failure envelope when `rights_clearance_available` is `false`,
+and whether `project/{id}/clips` `update_type` accepts `remove`.
+
+#### Model capabilities — `GET /custom-model/shared`
+
+The only server-side statement of what a model can do. Response:
+`{generation_config, items}` where `generation_config` is
+`{major_version, capabilities, allowed_condition_combinations, max_lengths}`.
+Captured `capabilities` (18): `generate`, `extend`, `upload_extend`, `cover`,
+`cover_extend`, `artist_consistency`, `artist_cover`, `artist_extend`, `infill`,
+`infill_intro`, `infill_outro`, `artist_infill`, `cover_infill`,
+`playlist_condition`, `underpainting`, `overpainting`, `vox`, `vox_extend`.
+
+`allowed_condition_combinations` is the real constraint on chaining modes, so a
+UI must read it rather than assume any two capabilities compose.
+
+#### `POST /feed/v3` filter vocabulary (adds to §5.2)
+
+23 distinct keys observed in one session, all inside `filters`, values as the
+strings `"True"`/`"False"` rather than booleans: `disliked`, `public`,
+`trashed`, `unlocked`, `upload`, `fullSong`, `fromStudioProject`, `stem`,
+`stemComplement` (presence objects), `persona` (`{presence, personaId}`),
+`user` (`{presence, userId}`), `workspace` (`{presence, workspaceId}` where
+`"default"` is the fallback), `sort`
+(`{sortBy ∈ upvote_count|created_at, sortDirection ∈ asc|desc}`). Paging is a
+cursor: pass the last clip id as `cursor` with `limit`.
 
 ## 6. Errors, statuses, and rate limits
 

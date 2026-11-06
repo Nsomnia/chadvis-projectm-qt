@@ -12,6 +12,11 @@
 //   kilo/scratchpad/suno.com.har.
 // - 2026-09-22 sanitized OAuth recon: docs/suno_api/raw/
 //   sanitized-recon-2026-09-22.json.
+// - 2026-11-05/06 full-API browser HAR (signed-in session, 508 suno.com
+//   requests): ~/Documents/suno-recon-har-recordings-full-api/
+//   suno.com_Archive.har. This is the capture that turned the whole Studio
+//   mutation set live and found the upload -> stem -> persona chain. Call it
+//   "HAR-11" in comments below.
 //
 // Evidence tiers:
 // - [T1] observed in one of the real captures listed above.
@@ -48,8 +53,14 @@ namespace vc::suno::endpoints {
 constexpr std::string_view API_BASE = "https://suno.com/a/api"; // [T1]
 constexpr std::string_view MODAL_BASE = "https://suno-ai--orpheus-prod-web.modal.run"; // [LEAD]
 constexpr std::string_view CDN_BASE = "https://cdn1.suno.ai"; // [T1]
+// HAR-11 [T1]: cdn2 answered 592 requests to cdn1's 65 -- artwork, images, and
+// the m4a media bodies live on cdn2 now. Any new media URL should prefer the
+// value the API returned and treat these bases as fallbacks only.
+constexpr std::string_view CDN2_BASE = "https://cdn2.suno.ai"; // [T1]
 constexpr std::string_view CDN_CLOUDFRONT_BASE = "https://d2lwuy8qc234o3.cloudfront.net"; // [T1]
 constexpr std::string_view WEB_BASE = "https://suno.com"; // [T1]
+// Static app assets (favicons, persona-shape.svg, sil-100.mp3). Cache only.
+constexpr std::string_view STATIC_BASE = "https://cdn-o.suno.com"; // [T1]
 
 // Clerk auth endpoints/versions live in suno/auth/ClerkAuthClient.hpp
 // (AUTH_BASE, CLERK_API_VERSION, CLERK_JS_VERSION).
@@ -59,6 +70,26 @@ constexpr std::string_view WEB_BASE = "https://suno.com"; // [T1]
 constexpr std::string_view GENERATE = "/generate/v2-web/"; // [T1] POST
 constexpr std::string_view CAPTCHA_CHECK = "/c/check"; // [T1] POST
 constexpr std::string_view COWRITE_LYRICS = "/generate/cowrite-lyrics/"; // [T1] POST
+
+// ── Studio API: Generation follow-up (per-clip writes) ──────
+// HAR-11 [T1]. Each of these was previously either absent or on the
+// "deliberately ABSENT" list; every one is now a captured 200 with a body.
+// Bodies are the site's own, so a caller can copy the shape:
+//   listen_milestone  {"milestone":"5s"|"30s"|"60s"}   -- playback telemetry
+//   increment_play    {"sample_factor":1}              -- play counter
+//   update_reaction   {"reaction":"LIKE"|"DISLIKE"|null,"recommendation_metadata":{}}
+//   set_metadata      {"title":…,"image_url":…,"is_audio_upload_tos_accepted":bool}
+//   set_audio_desc    {"gemini_description_accepted":true,
+//                      "audio_content_types":["Song Demo","Voice","Sample"]}
+//
+// `set_metadata` and `update_reaction_type` return the full clip/state, per
+// ENDPOINT-INVENTORY §5.13. The telemetry pair is fire-and-forget: the site
+// sends it, nothing in the response matters, and this client does not call it.
+constexpr std::string_view GEN_LISTEN_MILESTONE = "/gen/{}/listen_milestone"; // [T1] POST
+constexpr std::string_view GEN_INCREMENT_PLAY_COUNT = "/gen/{}/increment_play_count/v2"; // [T1] POST
+constexpr std::string_view GEN_UPDATE_REACTION_TYPE = "/gen/{}/update_reaction_type/"; // [T1] POST
+constexpr std::string_view GEN_SET_METADATA = "/gen/{}/set_metadata/"; // [T1] POST
+constexpr std::string_view GEN_SET_AUDIO_DESCRIPTION = "/gen/{}/set_audio_description"; // [T1] POST
 
 // ── Studio API: Lyrics / analysis ───────────────────────────
 // T1: aligned-lyrics-v2.md (Burp 2026-08-25). WAV paths are LEAD.
@@ -72,6 +103,9 @@ constexpr std::string_view WAV_FILE = "/gen/{}/wav_file/"; // [LEAD] GET
 // T1: lyrics-projects-crud.md, styles-prompts-v2.md, cowrite-lyrics.md.
 constexpr std::string_view LYRICS_PROJECTS = "/lyrics-projects"; // [T1] GET/POST
 constexpr std::string_view LYRICS_PROJECTS_FLUSH = "/lyrics-projects/{}/flush"; // [T1] POST
+// HAR-11 [T1]: DELETE answers 204 with an empty body, so success has no shape
+// to parse. This is the only captured DELETE verb in the whole corpus.
+constexpr std::string_view LYRICS_PROJECTS_BY_ID = "/lyrics-projects/{}"; // [T1] DELETE
 constexpr std::string_view PROMPTS_V2 = "/prompts/v2"; // [T1] GET/POST
 constexpr std::string_view PROMPTS_SUGGESTIONS = "/prompts/suggestions"; // [T1] GET
 constexpr std::string_view PROMPTS_UPSAMPLE = "/prompts/upsample"; // [T1] POST
@@ -81,6 +115,15 @@ constexpr std::string_view LYRICISTS = "/lyricists"; // [T1] GET
 // T1: feed-v3-library-listing.md (Burp 2026-08-25); full Burp export also
 // captured POST /api/unified/homepage.
 constexpr std::string_view LIBRARY_FEED = "/feed/v3"; // [T1] POST
+// HAR-11 [T1] filter vocabulary (23 distinct filter keys seen across one
+// session, all inside `filters`): `disliked`, `public`, `trashed`, `unlocked`,
+// `upload`, `fullSong`, `persona` (object: {presence, personaId}),
+// `user` ({presence, userId}), `workspace` ({presence, workspaceId}, where
+// `"default"` is the fallback workspace), `stem`/`stemComplement`
+// ({presence}), `fromStudioProject` ({presence}),
+// `sort` ({sortBy ∈ upvote_count|created_at, sortDirection ∈ asc|desc}).
+// Values are the STRINGS "True"/"False", not booleans. Paging is a cursor:
+// send the last clip id as `cursor` with `limit` (20 observed).
 constexpr std::string_view UNIFIED_FEED = "/unified/feed"; // [T1] POST
 constexpr std::string_view UNIFIED_HOMEPAGE = "/unified/homepage";
 constexpr std::string_view UNIFIED_EXPLORE = "/unified/explore";
@@ -91,6 +134,42 @@ constexpr std::string_view AUDIO_UPLOAD_STORAGE_HOST = "suno-uploads.s3.amazonaw
 constexpr std::string_view UPLOADS_AUDIO_UPLOAD_FINISH = "/uploads/audio/{}/upload-finish/"; // [T1] POST
 constexpr std::string_view SESSION = "/session/"; // [T1] GET
 constexpr std::string_view SESSION_CATALOG = "/session/"; // [T1] alias for SESSION
+
+// ── Studio API: Audio upload -> stem -> persona chain ──────
+// HAR-11 [T1]. This is the chain behind "upload your own audio" for
+// cover / mashup / inspiration, and it was not in any earlier capture:
+//
+//   1. POST /uploads/audio/                    {"extension":"wav",
+//                                               "upload_type":"audio_recording"}
+//      -> {id, url, fields, is_file_uploaded}  -- direct S3 POST target
+//   2. POST <url> multipart, `fields` verbatim -> 204  (bytes land in S3)
+//   3. POST /uploads/audio/{id}/initialize-clip/ {"user_reviewed_tags":true}
+//      -> {clip_id, rights_clearance_available}
+//   4. POST /uploads/audio/{id}/upload-finish/  {"upload_type":…,
+//      "upload_filename":…, "agreed_to_vip_upload_terms":bool}
+//   5. POST /clip/{clip_id}/vox-stem  {"vocal_start_s","vocal_end_s"}
+//      -> {id, status, source_clip_id, vocal_start_s, vocal_end_s}
+//   6. poll GET /processed_clip/{pack_id} -> the same keys plus
+//      `vocal_audio_url` (the extracted vocal stem, also served from
+//      suno-data-uploads.s3.amazonaws.com/studio/uploads/…)
+//   7. POST /persona/create/ with root_clip_id + vox_audio_id + vocal range
+//      -> persona, which later generation can condition on.
+//
+// `upload_type` values observed: "audio_recording". The `audio_content_types`
+// vocabulary on set_audio_description names the rest: "Song Demo", "Voice",
+// "Sample". Step 2's URL and fields come from step 1 and MUST NOT be
+// constructed (same rule as ENDPOINT-INVENTORY §2.2).
+constexpr std::string_view UPLOADS_AUDIO_INITIALIZE_CLIP = "/uploads/audio/{}/initialize-clip/"; // [T1] POST
+constexpr std::string_view PROCESSED_UPLOAD_STORAGE_HOST = "suno-data-uploads.s3.amazonaws.com";
+constexpr std::string_view CLIP_VOX_STEM = "/clip/{}/vox-stem"; // [T1] POST
+constexpr std::string_view PROCESSED_CLIP = "/processed_clip/{}"; // [T1] GET, poll
+constexpr std::string_view PROCESSED_CLIP_WAVEFORM_AGGREGATES = "/processed_clip/{}/waveform-aggregates"; // [T1] GET
+
+// ── Studio API: Clip read ──────────────────────────────────
+// HAR-11 [T1]: a single clip with no feed envelope. 40 top-level keys, the same
+// clip schema the feed carries, minus paging. Use it for a share/deep-link
+// resolve; the feed remains the paged path.
+constexpr std::string_view CLIP_BY_ID = "/clip/{}"; // [T1] GET
 
 // ── Studio API: Playlists ───────────────────────────────────
 // T1: playlists.md (Burp 2026-08-25).
@@ -104,6 +183,19 @@ constexpr std::string_view PLAYLIST_ME = "/playlist/me"; // [T1] GET
 // the capture has a slash before `?page=`, and a probe is not a licence to tidy
 // it away. Owner: SunoPlaylistService.
 constexpr std::string_view PLAYLIST_BY_ID = "/playlist/{}"; // [T1] GET
+
+// HAR-11 [T1] + §5.13: the playlist write set, now fully captured.
+//   POST /playlist/create/        {name, description} -> full playlist object
+//   POST /playlist/trash/         {"playlist_id":…} FLAT -> 204, empty body
+//   POST /playlist/set_metadata/  {playlist_id, name, description}
+//   PATCH /playlist/v2/{id}       {"metadata":{"name","is_public"},
+//                                  "bio":{"description"}} -> 200 playlist
+// The PATCH is the only captured PATCH verb and is the modern edit path;
+// set_metadata is the older POST twin that returns a thinner object.
+// Trash's flat body is load-bearing: the nested variant answers 422 (§5.13).
+constexpr std::string_view PLAYLIST_CREATE = "/playlist/create/"; // [T1] POST
+constexpr std::string_view PLAYLIST_TRASH = "/playlist/trash/"; // [T1] POST -> 204
+constexpr std::string_view PLAYLIST_V2_BY_ID = "/playlist/v2/{}"; // [T1] PATCH
 
 // ── Studio API: Library & playlist MUTATIONS ────────────────
 // [T1] REQUEST contracts only, recovered 2026-09-30 by reading server
@@ -144,23 +236,31 @@ constexpr std::string_view PLAYLIST_V2_COVER_IMAGE = "/playlist/v2/{}/cover-imag
 // Named so a future reader does not "complete" the list from a bundle string.
 // Every one of these is the shape AGENTS.md §1 exists to refuse:
 //
-//   * LIKE / UNLIKE.  There is no like verb in the corpus at any confidence.
-//     `is_liked` appears only as a *feed filter key* (§5.2) and as a *response
-//     ownership field* (§5.x). A state is not a verb. Adding
-//     `/clips/{}/toggle_like` would be constructing a path and then calling it
-//     [T1].
-//   * TRASH / RESTORE.  `POST /api/gen/trash` and `POST /api/playlist/trash/`
-//     are client-bundle route strings that were NEVER PROBED — [LEAD] on both
-//     axes. `POST /api/clips/delete/` WAS exercised and answered 404. No
-//     `DELETE` verb was probed on any route, so a DELETE spelling of any of
-//     these is entirely unproved. `is_trashed` is likewise a response field,
-//     not a verb.
-//   * PLAYLIST CREATE / RENAME-BY-ID / TRASH, `gen/{id}/set_metadata/`,
-//     `gen/{id}/update_reaction_type/`.  Never probed. [LEAD].
+//   * LIKE / UNLIKE as a path.  There is still no `/toggle_like` in any
+//     capture, and adding one would be constructing a path. HAR-11 [T1] found
+//     the real mechanism instead: GEN_UPDATE_REACTION_TYPE above, with
+//     `{"reaction":"LIKE"|"DISLIKE"|null}`. A like is a reaction write, not a
+//     like verb. Use that, never an invented toggle.
+//   * CLIP TRASH / RESTORE.  `POST /api/gen/trash` remains a client-bundle
+//     route string that was never probed — [LEAD] on both axes. `POST
+//     /api/clips/delete/` WAS exercised and answered 404. `is_trashed` is a
+//     response field and a feed filter key, not a verb.
+//   * PLAYLIST REORDER-BY-ID (only `tracks/reorder-by-index` is captured),
+//     `gen/{id}/set_visibility` variants beyond the captured `is_public`
+//     boolean, and the custom-model TRAINING / VOICE-CLONE writes. HAR-11
+//     captured persona creation from an uploaded vocal stem, but not training
+//     a model, and not the image-id space `playlist/v2/{id}/cover-image`
+//     needs.
 //
-// If a capture lands for one of these, add the constant HERE with its evidence
-// label — never in the calling file — and add the verb to SunoLibraryMutations
-// with the same request/response discipline the existing eleven carry.
+// CLEARED from this list on 2026-11-06 by HAR-11: playlist create, playlist
+// trash, playlist edit (`PATCH /playlist/v2/{id}`), `gen/{id}/set_metadata/`,
+// `gen/{id}/update_reaction_type/`, and persona creation. They are constants
+// above, each with the request body the site itself sent.
+//
+// If a capture lands for one of the rest, add the constant HERE with its
+// evidence label — never in the calling file — and add the verb to
+// SunoLibraryMutations with the same request/response discipline the existing
+// eleven carry.
 
 // ── Studio API: Billing ────────────────────────────────────
 // T1: billing-suite.md (Burp 2026-08-25).
@@ -188,6 +288,13 @@ constexpr std::string_view PROJECT_DEFAULT = "/project/default"; // [T1] GET
 constexpr std::string_view PROJECT_ME = "/project/me"; // [T1] GET
 constexpr std::string_view PROJECT_BY_ID = "/project/{}"; // [T1] GET
 constexpr std::string_view PROJECT_PINNED_CLIPS = "/project/default/pinned-clips"; // [T1] GET
+// HAR-11 [T1]: the workspace is a project, and it has its own pin read and
+// clip membership write. `default` is only one project id.
+constexpr std::string_view PROJECT_PINNED_CLIPS_BY_ID = "/project/{}/pinned-clips"; // [T1] GET
+// {"update_type":"add","metadata":{"clip_ids":[…]}} -> 204, empty body. The
+// body nests under `metadata` unlike the flat playlist writes, and `remove` is
+// the untested twin of `add`.
+constexpr std::string_view PROJECT_CLIPS = "/project/{}/clips"; // [T1] POST -> 204
 
 // ── Studio API: Clips / relations ───────────────────────────
 // T1: clips-relations.md + feed-v3-library-listing.md.
@@ -200,9 +307,28 @@ constexpr std::string_view CLIP_GET_SONGS_BY_IDS = "/clips/get_songs_by_ids"; //
 constexpr std::string_view GEN_COMMENTS = "/gen/{}/comments"; // [T1] GET
 
 // ── Studio API: Video generation ───────────────────────────
-// T1: video-render-status.md (Burp 2026-08-25).
+// T1: video-render-status.md (Burp 2026-08-25). The `video_gen` image/video
+// family below is HAR-11 [T1]: Suno's cover-art generator, which is the likely
+// source of a generated playlist/album image.
 constexpr std::string_view VIDEO_GENERATE_STATUS = "/video/generate/{}/status/"; // [T1] GET
 constexpr std::string_view VIDEO_GEN_PENDING_BATCHES = "/video_gen/pending_batches"; // [T1] POST
+constexpr std::string_view VIDEO_GEN_MODEL_CONFIGS = "/video_gen/model-configs"; // [T1] GET
+constexpr std::string_view VIDEO_GEN_COST_IMAGE = "/video_gen/cost/image"; // [T1] POST
+constexpr std::string_view VIDEO_GEN_HISTORY = "/video_gen/history"; // [T1] POST
+constexpr std::string_view VIDEO_GEN_IMAGE_GENERATE = "/video_gen/image/generate"; // [T1] POST
+constexpr std::string_view VIDEO_GEN_POLL_BATCHES = "/video_gen/poll_batches"; // [T1] POST
+
+// ── Studio API: Persona ────────────────────────────────────
+// HAR-11 [T1]. This family was [LEAD] (T0349) until the capture: the reads and
+// the create are now observed 200s. Reads are idempotent, so they are safe to
+// wire first; `create/` spends credits and needs the failure discipline.
+//   create body: {root_clip_id, name, description, is_public, persona_type,
+//                 vox_audio_id, vocal_start_s, vocal_end_s, user_input_styles,
+//                 clips:[…]}  -- every field the site sends, some optional.
+// `vox_audio_id` is a processED clip id (the vocal stem), not a gen id.
+constexpr std::string_view PERSONA_GET = "/persona/get-persona/{}/"; // [T1] GET
+constexpr std::string_view PERSONA_LIST = "/persona/get-personas/"; // [T1] GET
+constexpr std::string_view PERSONA_CREATE = "/persona/create/"; // [T1] POST
 
 // ── Studio API: Rights ─────────────────────────────────────
 // T1: clips-relations.md (Burp 2026-08-25); response shape reproduced and the
@@ -235,6 +361,17 @@ constexpr std::string_view NOTIFICATION_BADGE_COUNT = "/notification/v2/badge-co
 // ── Studio API: Custom Models ──────────────────────────────
 // T1: misc-telemetry.md (Burp 2026-08-25).
 constexpr std::string_view CUSTOM_MODEL_PENDING = "/custom-model/pending/"; // [T1] GET
+// HAR-11 [T1]: the model catalogue, and the only place the server states what a
+// model can DO. Response = {generation_config, items};
+// `generation_config` = {major_version, capabilities, allowed_condition_combinations,
+// max_lengths}. Captured `capabilities` (18) include `generate`, `extend`,
+// `upload_extend`, `cover`, `cover_extend`, `artist_cover`, `artist_extend`,
+// `infill`, `cover_infill`, `playlist_condition`, `underpainting`,
+// `overpainting`, `vox`, `vox_extend`. That is the authoritative answer to
+// "which model can do a cover / mashup / upload-extend", and it names
+// `allowed_condition_combinations`, which is the real constraint on chaining
+// those modes. Read this before hard-coding a mode list anywhere.
+constexpr std::string_view CUSTOM_MODEL_SHARED = "/custom-model/shared"; // [T1] GET
 
 // ── Studio API: Personalization ─────────────────────────────
 // T1: session-user-config.md (Burp 2026-08-25).
@@ -265,6 +402,10 @@ constexpr std::string_view STATSIG_EXPERIMENT = "/statsig/experiment/"; // [T1] 
 // T1: misc-telemetry.md (Burp 2026-08-25).
 constexpr std::string_view CMS_NUDGES_PUBLISH = "/cms/nudges/publish-nudge"; // [T1] GET
 constexpr std::string_view CMS_NUDGES_SHARE = "/cms/nudges/share-nudge"; // [T1] GET
+// HAR-11 [T1]: CMS-driven cover-art prompt suggestions. Read-only and free;
+// the natural prompt source for a generated playlist/album image.
+// Response = {items:[{slug, label, prompt}]}, where label/prompt are objects.
+constexpr std::string_view CMS_COVER_ART_SUGGESTIONS = "/cms/cover-art-suggestions"; // [T1] GET
 
 // ── Studio API: Sharing ────────────────────────────────────
 // T1: misc-telemetry.md (Burp 2026-08-25).
@@ -273,6 +414,25 @@ constexpr std::string_view SHARE_STATS = "/share/stats"; // [T1] GET
 // ── Realtime (Ably SSE) ────────────────────────────────────
 // T1: misc-telemetry.md (Burp 2026-08-25).
 constexpr std::string_view REALTIME_DISCOVER = "/realtime/discover"; // [T1] GET
+// HAR-11 [T1]: the browser READS /realtime/discover and then POSTs here for the
+// Ably token. Request is a capability list, one per subscribed channel:
+//   {"capabilities":[{"channel_pattern":"user:{user_id}","subscribe":true}]}
+// Response is the Ably token request. Without this the SSE stream has no
+// credential, so discover alone is not enough to open one.
+constexpr std::string_view REALTIME_TOKEN = "/realtime/token"; // [T1] POST
+
+// ── Studio API: Challenges / rewards ───────────────────────
+// HAR-11 [T1]: daily-challenge state, including the credit reward.
+// Response keys: current_level, challenges, total_credits, earned_credits,
+// user_created_at, all_bonus, has_next_refresh, challenge_mode, reward_method,
+// challenge_set. Read-only.
+constexpr std::string_view CHALLENGE_PROGRESS = "/challenge/progress"; // [T1] GET
+
+// ── Studio API: Reporting / refunds ────────────────────────
+// HAR-11 [T1]: the copy the refund dialog shows before a user reports a bad
+// generation. Response = {variant, refund_amount}. Read-only; this client does
+// not file reports.
+constexpr std::string_view REPORT_V2_REFUND_PROMPT = "/report_v2/refund_prompt"; // [T1] GET
 
 // ── B-Side / Orchestrator ──────────────────────────────────
 // Recon/research only. These are joined to MODAL_BASE, not API_BASE.
@@ -280,8 +440,10 @@ constexpr std::string_view ORCHESTRATOR_CHAT = "/v1/orchestrator/chat"; // [LEAD
 constexpr std::string_view ORCHESTRATOR_HISTORY = "/v1/orchestrator/history"; // [LEAD]
 
 // ── CDN ────────────────────────────────────────────────────
-// Constructed fallbacks; no exact constructed path was captured.
+// HAR-11 [T1]: the m4a progressive body is served from
+// CDN_CLOUDFRONT_BASE + this path -- four distinct clips answered 200 with it.
+// The mp3 spelling below is still a constructed fallback.
 constexpr std::string_view CDN_CLIP_MP3 = "/{}.mp3"; // [LEAD]
-constexpr std::string_view CDN_CLIP_M4A = "/1/clip/{}.m4a"; // [LEAD]
+constexpr std::string_view CDN_CLIP_M4A = "/1/clip/{}.m4a"; // [T1]
 
 } // namespace vc::suno::endpoints
