@@ -25,6 +25,7 @@ add_executable(unit_tests
     suno/test_BrowserCookieImport.cpp
     suno/test_CredentialRestoreWorker.cpp
     suno/test_SunoLibraryManager.cpp
+    suno/test_SunoLibraryMutations.cpp
     suno/test_LyricsFetchQueue.cpp
     suno/test_SunoDatabase.cpp
     suno/test_AuthCoordinator.cpp

@@ -275,13 +275,13 @@ constexpr std::string_view PLAYLIST_V2_COVER_IMAGE = "/playlist/v2/{}/cover-imag
 //     the real mechanism instead: GEN_UPDATE_REACTION_TYPE above, with
 //     `{"reaction":"LIKE"|"DISLIKE"|null}`. A like is a reaction write, not a
 //     like verb. Use that, never an invented toggle.
-//   * CLIP TRASH / RESTORE.  UI-07 (2026-11-06) exercised `POST /a/api/gen/trash`
-//     live for restore-to-library and got 200, so the route exists; the
-//     {clip_ids, trash:bool} body from the third-party notes stands as
-//     unconfirmed until the HAR body is read. `POST /a/api/clips/delete/` was
-//     exercised earlier and answered 404. `is_trashed` is also a response field
-//     and a feed filter key. The route is a client-side primitive; wire it
-//     only behind capture-grade tests, never as a library delete.
+//   * CLIP TRASH / RESTORE.  UI-07 (2026-11-06/07) captured it live:
+//     `POST /a/api/gen/trash` `{"trash":false,"clip_ids":[…]}` ->
+//     `{"ids":[…],"is_trashed":false}` (restore direction); `trash:true` is
+//     the twin. GEN_TRASH above is the constant, and `ClipTrashRestore` in
+//     SunoLibraryMutations is the verb. `POST /a/api/clips/delete/` was
+//     exercised earlier and answered 404. `is_trashed` is also a response
+//     field and a feed filter key.
 //   * PLAYLIST REORDER-BY-ID (only `tracks/reorder-by-index` is captured),
 //     `gen/{id}/set_visibility` variants beyond the captured `is_public`
 //     boolean, and the custom-model TRAINING / VOICE-CLONE writes. HAR-11

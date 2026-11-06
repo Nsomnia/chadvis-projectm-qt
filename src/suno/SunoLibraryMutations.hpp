@@ -42,20 +42,17 @@
 //     library rather than trust a local write it did not observe.
 //
 // ── What is NOT here, and why ────────────────────────────────────────────────
-// **No like/unlike and no trash/restore.** Both were requested, and neither has
-// a captured request contract at any confidence:
+// **No like/unlike as a path.** `is_liked` exists as a feed filter key and as
+// a response ownership field. A like is a reaction write
+// (`GEN_UPDATE_REACTION_TYPE`, HAR-11 [T1]), not a like verb — inventing
+// `/clips/{}/toggle_like` and grading it [T1] because it sounds right is the
+// exact failure AGENTS.md §1 names.
 //
-//   * Like: `is_liked` exists as a feed filter key and as a response ownership
-//     field. There is no like *route* in the master. A state is not a verb.
-//   * Trash: `POST /api/gen/trash` and `POST /api/playlist/trash/` are
-//     client-bundle strings that were never probed ([LEAD] on both axes);
-//     `POST /api/clips/delete/` was exercised and answered **404**; and no
-//     `DELETE` was probed on any route, so a DELETE spelling is unproved.
-//
-// Inventing `/clips/{}/toggle_like` and grading it [T1] because it sounds right
-// is the exact failure AGENTS.md §1 names. The absence is recorded in
-// `SunoEndpoints.hpp` next to the eleven routes that do exist, so a future
-// reader cannot mistake the gap for an oversight.
+// Trash/restore is here now: UI-07 [T1] captured `POST /gen/trash`
+// (`ClipTrashRestore`) and `POST /playlist/v2/{id}/trash` (`PlaylistTrashV2`)
+// with success bodies (§4.12), so the two verbs below are the whole
+// trash story. `POST /api/clips/delete/` was exercised and answered **404**;
+// no `DELETE` was probed on any route, so a DELETE spelling is unproved.
 //
 // ── Fail-closed, in two independent layers ───────────────────────────────────
 // A mutation against a user's own library is a *normal* mutation and gets no
@@ -124,6 +121,8 @@ enum class MutationVerb {
     PlaylistTracksRemove,    ///< POST /api/playlist/v2/{id}/tracks/remove
     PlaylistTracksReorder,   ///< POST /api/playlist/v2/{id}/tracks/reorder-by-index
     PlaylistCoverImage,      ///< POST /api/playlist/v2/{id}/cover-image
+    ClipTrashRestore,        ///< POST /api/gen/trash — UI-07 [T1] (see GEN_TRASH)
+    PlaylistTrashV2,         ///< POST /api/playlist/v2/{id}/trash — UI-07 [T1]
 };
 
 /// `const char*` for the same reason as `hosts::toString`, `http::toString`
@@ -154,6 +153,10 @@ enum class MutationVerb {
             return "playlist-tracks-reorder";
         case MutationVerb::PlaylistCoverImage:
             return "playlist-cover-image";
+        case MutationVerb::ClipTrashRestore:
+            return "clip-trash-restore";
+        case MutationVerb::PlaylistTrashV2:
+            return "playlist-trash-v2";
     }
     return "unknown";
 }
@@ -386,6 +389,24 @@ public:
     [[nodiscard]] bool reorderPlaylistTracks(const QString& playlistId,
                                              const QJsonArray& positions);
 
+    /// POST /api/gen/trash — body `trash: boolean`, `clip_ids: array`.
+    ///
+    /// UI-07 [T1]: `{"trash":false,"clip_ids":[…]}` -> `{"ids":[…],
+    /// "is_trashed":false}` (restore-to-library); `trash:true` is the twin
+    /// direction, same route. Batch: the capture shows arrays, so this takes
+    /// a list. Only non-emptiness is enforced — the 1–100 `clip_ids` bound
+    /// is captured for the playlist tracks routes, not for this one.
+    [[nodiscard]] bool setClipsTrashed(const QStringList& clipIds, bool trashed);
+
+    /// POST /api/playlist/v2/{id}/trash — body `undo: boolean`.
+    ///
+    /// UI-07 [T1]: `{"undo":false}` (trash) and `{"undo":true}` (recover)
+    /// both -> `{"success":true,"updated_fields":["is_trashed"],"errors":{}}`.
+    /// Prefer over legacy `playlist/trash/` (204, no outcome). Takes the
+    /// *trashed* state so callers read like every other verb; `undo` is
+    /// derived as `!trashed`.
+    [[nodiscard]] bool setPlaylistTrashed(const QString& playlistId, bool trashed);
+
     /// POST /api/playlist/v2/{id}/cover-image — body `id: string`, and
     /// `type: ENUM {generated}`.
     ///
@@ -418,6 +439,8 @@ public:
     [[nodiscard]] static QJsonObject playlistClipIdsBody(const QStringList& clipIds);
     [[nodiscard]] static QJsonObject playlistReorderBody(const QJsonArray& positions);
     [[nodiscard]] static QJsonObject playlistCoverImageBody(const QString& imageId);
+    [[nodiscard]] static QJsonObject clipTrashBody(const QStringList& clipIds, bool trash);
+    [[nodiscard]] static QJsonObject playlistTrashBody(bool undo);
 
     /// Path templates with the `{id}` placeholder filled from `id`.
     ///

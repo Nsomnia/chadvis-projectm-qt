@@ -70,6 +70,8 @@ public:
     void removeClipsFromPlaylist(const QString& playlistId, const QStringList& clipIds);
     void reorderPlaylistTracks(const QString& playlistId, const QVariantList& positions);
     void setPlaylistCoverImage(const QString& playlistId, const QString& imageId);
+    void setClipTrashed(const QStringList& clipIds, bool trashed);
+    void setPlaylistTrashed(const QString& playlistId, bool trashed);
 
 signals:
     void availabilityChanged();

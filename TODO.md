@@ -488,11 +488,17 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
 - [ ] T0382 **Uploads status route + processed_clip vocabulary** (`docs/suno_api/`) #cleanup
       `GET /uploads/audio/{id}/` was never observed; poll a stem across its lifecycle and record
       every `processed_clip.status` value (`complete` now known, UI-07). Update §4.10/§4.12.
-- [ ] T0383 **Wire gen/trash + UI-07 reads into the client** (`SunoLibraryMutations.*`, `SunoClient.*`, `src/suno/SunoEndpoints.hpp`) #feature #blocks-ui (after: T0267)
+- [?] T0383 **Wire gen/trash + UI-07 reads into the client** (`SunoLibraryMutations.*`, `SunoClient.*`, `src/suno/SunoEndpoints.hpp`) #feature #blocks-ui (after: T0267)
       Trash/restore contract is now proven: `POST /gen/trash {trash,clip_ids}` →
       `{ids,is_trashed}`; playlist trash/recover is `{undo:true|false}`. Implement both behind
       the existing mutation discipline (2xx = accepted, shape pinned by a unit test), then wire
       the Hooks/History/Albums reads. Anchors UI-07 §4.12.
+      **Mutations done 2026-11-07:** `ClipTrashRestore` (`setClipsTrashed`) and
+      `PlaylistTrashV2` (`setPlaylistTrashed`) in `SunoLibraryMutations`, bridge
+      wrappers `setClipTrashed`/`setPlaylistTrashed`, `test_SunoLibraryMutations`
+      pinned (6 cases). **Reads still open:** Hooks/History/Albums constants exist
+      (`VIDEO_HOOKS_*`, `PROFILES_LISTEN_HISTORY`, `UNIFIED_FEED`); shapes for
+      history/trashed now in §4.12; no read service exists yet.
 - [ ] T0384 **Feature-flags authed shape** (`docs/suno_api/`) #cleanup
       The app never calls `/api/feature-flags`; the browser 401s (Bearer-only). Capture only
       through an app-originated call (bookmarklet/extension holding the app's own header), never

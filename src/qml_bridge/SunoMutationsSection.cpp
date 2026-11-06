@@ -33,6 +33,7 @@ using vc::suno::PlaylistUpdateType;
         case MutationVerb::ToggleShowRemixes:
         case MutationVerb::UpdateFeedbackState:
         case MutationVerb::ShareLink:
+        case MutationVerb::ClipTrashRestore:
             return true;
         case MutationVerb::PlaylistSetMetadata:
         case MutationVerb::PlaylistUpdateClips:
@@ -40,6 +41,7 @@ using vc::suno::PlaylistUpdateType;
         case MutationVerb::PlaylistTracksRemove:
         case MutationVerb::PlaylistTracksReorder:
         case MutationVerb::PlaylistCoverImage:
+        case MutationVerb::PlaylistTrashV2:
             return false;
     }
     return false;
@@ -320,6 +322,18 @@ void SunoMutationsSection::setPlaylistCoverImage(const QString& playlistId,
                                                   const QString& imageId) {
     if (auto* m = ensureService()) {
         (void)m->setPlaylistCoverImage(playlistId, imageId);
+    }
+}
+
+void SunoMutationsSection::setClipTrashed(const QStringList& clipIds, const bool trashed) {
+    if (auto* m = ensureService()) {
+        (void)m->setClipsTrashed(clipIds, trashed);
+    }
+}
+
+void SunoMutationsSection::setPlaylistTrashed(const QString& playlistId, const bool trashed) {
+    if (auto* m = ensureService()) {
+        (void)m->setPlaylistTrashed(playlistId, trashed);
     }
 }
 

@@ -32,6 +32,7 @@ int runTestStoredCredentialClassification(int argc, char** argv);
 int runTestBrowserCookieImport(int argc, char** argv);
 int runTestCredentialRestoreWorker(int argc, char** argv);
 int runTestSunoLibraryManager(int argc, char** argv);
+int runTestSunoLibraryMutations(int argc, char** argv);
 int runTestLyricsFetchQueue(int argc, char** argv);
 int runTestSunoDatabase(int argc, char** argv);
 int runTestAuthCoordinator(int argc, char** argv);
@@ -120,6 +121,7 @@ int main(int argc, char* argv[]) {
     status |= RUN_SUITE(TestBrowserCookieImport);
     status |= RUN_SUITE(TestCredentialRestoreWorker);
     status |= RUN_SUITE(TestSunoLibraryManager);
+    status |= RUN_SUITE(TestSunoLibraryMutations);
     status |= RUN_SUITE(TestLyricsFetchQueue);
     status |= RUN_SUITE(TestSunoDatabase);
     status |= RUN_SUITE(TestAuthCoordinator);

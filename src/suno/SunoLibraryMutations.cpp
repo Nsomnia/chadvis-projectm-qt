@@ -124,7 +124,10 @@ namespace {
         case MutationVerb::PlaylistTracksRemove:
         case MutationVerb::PlaylistTracksReorder:
         case MutationVerb::PlaylistCoverImage:
+        case MutationVerb::PlaylistTrashV2:
             return FeatureGate::Playlists;
+        case MutationVerb::ClipTrashRestore:
+            return FeatureGate::Library;
     }
     return FeatureGate::Library;
 }
@@ -177,10 +180,10 @@ QString SunoLibraryMutations::unavailableReason() const
     }
     if (!enabled_) {
         return QStringLiteral(
-                "Library changes are switched off in this build. The request side "
-                "is capture-backed, but no successful response has ever been "
-                "captured, so this client cannot yet confirm what Suno does with "
-                "the result.");
+                "Library changes are switched off in this build. The request "
+                "side is capture-backed and trash responses are captured "
+                "(§4.12), so this client cannot yet confirm the result of "
+                "every other verb.");
     }
     return {};
 }
@@ -327,6 +330,22 @@ QJsonObject SunoLibraryMutations::playlistReorderBody(const QJsonArray& position
     return body;
 }
 
+QJsonObject SunoLibraryMutations::clipTrashBody(const QStringList& clipIds, const bool trash)
+{
+    QJsonObject body;
+    body.insert(QStringLiteral("trash"), trash);
+    body.insert(QStringLiteral("clip_ids"), playlistClipIdsBody(clipIds)
+                                            .value(QStringLiteral("clip_ids")));
+    return body;
+}
+
+QJsonObject SunoLibraryMutations::playlistTrashBody(const bool undo)
+{
+    QJsonObject body;
+    body.insert(QStringLiteral("undo"), undo);
+    return body;
+}
+
 QJsonObject SunoLibraryMutations::playlistCoverImageBody(const QString& imageId)
 {
     QJsonObject body;
@@ -358,8 +377,10 @@ QString SunoLibraryMutations::endpointFor(const MutationVerb verb, const QString
         case MutationVerb::ShareLink:
         case MutationVerb::PlaylistSetMetadata:
         case MutationVerb::PlaylistUpdateClips:
+        case MutationVerb::ClipTrashRestore:
             // Collection routes: no {id} in the template, and none may be
-            // invented.
+            // invented. `gen/trash` takes `clip_ids` in the body, so the
+            // subject id is not a path segment here.
             return {};
         case MutationVerb::PlaylistTracksAdd:
             tmpl = endpoints::PLAYLIST_V2_TRACKS_ADD;
@@ -372,6 +393,9 @@ QString SunoLibraryMutations::endpointFor(const MutationVerb verb, const QString
             break;
         case MutationVerb::PlaylistCoverImage:
             tmpl = endpoints::PLAYLIST_V2_COVER_IMAGE;
+            break;
+        case MutationVerb::PlaylistTrashV2:
+            tmpl = endpoints::PLAYLIST_V2_TRASH;
             break;
     }
     const auto filled = fillPath(tmpl, id);
@@ -743,6 +767,38 @@ bool SunoLibraryMutations::setPlaylistCoverImage(const QString& playlistId,
     const QString endpoint = endpointFor(MutationVerb::PlaylistCoverImage, playlistId);
     return dispatch(MutationVerb::PlaylistCoverImage, playlistId, endpoint,
                     playlistCoverImageBody(imageId));
+}
+
+bool SunoLibraryMutations::setClipsTrashed(const QStringList& clipIds, const bool trashed)
+{
+    if (clipIds.isEmpty()) {
+        return refuse(MutationVerb::ClipTrashRestore, {},
+                      QStringLiteral("No clips were selected, so nothing was "
+                                     "trashed or restored."));
+    }
+    for (const QString& clipId : clipIds) {
+        if (clipId.isEmpty()) {
+            return refuse(MutationVerb::ClipTrashRestore, {},
+                          QStringLiteral("One of the selected clips has no "
+                                         "identifier, so nothing was done."));
+        }
+    }
+    // No 1–100 bound here: that bound is captured for the playlist tracks
+    // routes, not for `gen/trash`, so only non-emptiness is enforced above.
+    return dispatch(MutationVerb::ClipTrashRestore, clipIds.front(),
+                    qstr(endpoints::GEN_TRASH), clipTrashBody(clipIds, trashed));
+}
+
+bool SunoLibraryMutations::setPlaylistTrashed(const QString& playlistId, const bool trashed)
+{
+    if (playlistId.isEmpty()) {
+        return refuse(MutationVerb::PlaylistTrashV2, playlistId,
+                      QStringLiteral("No playlist was named, so it cannot be "
+                                     "trashed or restored."));
+    }
+    const QString endpoint = endpointFor(MutationVerb::PlaylistTrashV2, playlistId);
+    return dispatch(MutationVerb::PlaylistTrashV2, playlistId, endpoint,
+                    playlistTrashBody(!trashed));
 }
 
 } // namespace vc::suno

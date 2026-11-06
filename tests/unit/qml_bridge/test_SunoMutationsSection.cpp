@@ -102,6 +102,8 @@ private slots:
                                         {QStringLiteral("clip-1")});
         section.reorderPlaylistTracks(QStringLiteral("playlist-1"), {0});
         section.setPlaylistCoverImage(QStringLiteral("playlist-1"), QStringLiteral("image-1"));
+        section.setClipTrashed({QStringLiteral("clip-1")}, true);
+        section.setPlaylistTrashed(QStringLiteral("playlist-1"), true);
 
         QCOMPARE(clipSettled.count(), 0);
         QCOMPARE(playlistSettled.count(), 0);
