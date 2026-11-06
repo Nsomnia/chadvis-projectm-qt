@@ -128,6 +128,8 @@ set(SUNO_AUTH_SOURCES
     src/suno/auth/BrowserCookieImport.cpp
     src/suno/auth/SunoOAuthLoopback.hpp
     src/suno/auth/SunoOAuthLoopback.cpp
+    src/suno/SunoMcpClient.hpp
+    src/suno/SunoMcpClient.cpp
 )
 
 set(RECORDER_SOURCES

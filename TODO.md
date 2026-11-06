@@ -110,6 +110,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       client) and speak MCP directly. Early-access gate:
       <https://sunomusic.typeform.com/to/JMPYxZqQ>. Facts + setup + probe evidence in
       [`docs/suno_api/MCP.md`](docs/suno_api/MCP.md).
+      **MCP client landed 2026-11-06:** `src/suno/SunoMcpClient.{hpp,cpp}` + `test_SunoMcpClient`
+      (7 cases, JSON/SSE framing, fail-closed). Still open: bridge wiring, chat surface,
+      live handshake. Bearer from `suno/mcp` (T0356), never `suno/default`.
 
 - [~] T0358 **Reactive GUI Phase 0 + 1: motion tokens, reduced motion, juicy primitives** (`src/qml/styles/Theme.qml`, `src/qml/components/AppButton.qml`, `src/qml/components/AppSlider.qml`, `src/qml/components/AppSwitch.qml`, `src/qml/components/AppComboBox.qml`, `src/qml/components/AppTextField.qml`, `src/qml/components/AccountChip.qml`, `src/qml_bridge/SettingsBridge*`) #feature #blocks-ui
       Plan: [`docs/dev/REACTIVE-GUI-PLAN.md`](docs/dev/REACTIVE-GUI-PLAN.md) §3–§4. Add
@@ -180,7 +183,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       generated clip. Model the two flags before any upload UI ships, or an upload can be
       published under the wrong consent state.
 
-- [ ] T0364 **`--fast --tests` fails to link: projectM source build vs repo spdlog/fmt** (`cmake/FindProjectM4.cmake`, `cmake/Dependencies.cmake`) #risk-high #cod-high
+- [x] T0364 **`--fast --tests` fails to link: projectM source build vs repo spdlog/fmt** (`cmake/FindProjectM4.cmake`, `cmake/Dependencies.cmake`) #risk-high #cod-high
       On 2026-11-06 a cold `build-fast` configure+link died at `tests/unit/unit_tests`:
       `ld: symbol(s) not found for architecture x86_64` on
       `spdlog::logger::log_<std::basic_string<...>>` defined in `_deps/spdlog-build/libspdlogd.a`
@@ -192,6 +195,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `.cpm-cache/projectm/*` whose clone answered `fatal: bad object 349b7cc`.
       Fix the spdlog/fmt duplication (compiled-lib flags must match on both sides) so the
       documented `./build.sh --fast --tests` works from cold.
+      **DONE 2026-11-06:** `cmake/TargetSetup.cmake` prepends each paired target's own
+      interface include dir to `COMMON_INCLUDES` (spdlog/fmt/tomlplusplus). Verified:
+      `--fast --tests --safe` 16/16, unit_tests status 0. Cold-configure retest still open.
 
 - [ ] T0365 **Listen for Credits: a route family that EARNS credits, zero code** (`src/suno/SunoPreferencesService.*`, `src/qml/panels/settings/`) #feature #user-priority
       Persona HAR 2026-11-06 captured the whole program (ENDPOINT-INVENTORY §5.15): `summary`,

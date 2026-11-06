@@ -1,0 +1,4 @@
+2026-11-06T22:00:00Z  CLAIM    MCP client half of T0357
+2026-11-06T22:00:00Z  CHANGE   src/suno/SunoMcpClient.{hpp,cpp}: JSON-RPC 2.0 over HTTP, initialize -> notifications/initialized -> tools/list -> tools/call, plain JSON and SSE framings, fail-closed on missing result/error and isError, bounded BodyReader.
+2026-11-06T22:00:00Z  VERIFY   test_SunoMcpClient -> 7/7 passed; ./build.sh --fast --tests --safe -> 16/16 passed.
+2026-11-06T22:00:00Z  NOTE     Not done: chat surface, bridge wiring, live handshake against api.suno.com/mcp. Bearer must come from suno/mcp credential (T0356), never suno/default.
