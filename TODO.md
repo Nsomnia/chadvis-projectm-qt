@@ -726,6 +726,34 @@ Detail: ENDPOINT-INVENTORY §4.11 + §5.15.
 - `GET /labs/configs` -> live-radio, genre-wheel, listen-and-rank, milo
 - `GET /api/feature-flags` (legacy base, 401 anon)
 
+### Confirmed live, 2026-11-07 sign-in + DevTools HAR (UI-07, `[T1]`)
+Detail: ENDPOINT-INVENTORY §4.12. All 200s.
+- Library tabs: `GET /video/hooks/user_hooks`, `GET /video/hooks/me/liked/v2`,
+  `GET /video/hooks/suggested_clips`, `GET /profiles/listen-history?limit=20`,
+  `GET /clips/trashed_v2?limit=20`,
+  `GET /playlist/me?page=1&show_trashed={false|true}&show_sharelist=false`,
+  `GET /project/me?page=1&sort=max_created_at_last_updated_clip&show_trashed=false&exclude_shared=false`,
+  `GET /lyrics-projects?limit=100&sort=updated_at`
+- Albums/Playlists feeds: `POST /unified/feed {feed_id:"library_albums"|"library_playlists",cursor,page_size,request_metadata}` -> `{feed:{…items[]}}`
+- Trash: `POST /gen/trash {trash,clip_ids}` -> `{ids,is_trashed}`;
+  list `GET /clips/trashed_v2?limit=20`
+- Playlist trash + recover: `POST /playlist/v2/{id}/trash {"undo":false}` and
+  `{"undo":true}` -> `{success,updated_fields:["is_trashed"],errors:{}}`
+- Persona: `PUT /persona/edit-persona/{id}/` (name/desc/is_public/styles/vox_audio_id/range),
+  `GET /persona/get-persona-paginated/{id}/?page=1`, `POST /persona/{id}/toggle_love/`
+- Create: `POST /c/check {"ctype":"generation"}`; speech and sounds share
+  `POST /generate/v2-web/` (`metadata.is_speech`, `task:"sound"`); simple mode uses
+  `task:"agentic_thinking"` + `gpt_description_prompt`
+- Studio: `GET /studio/list-projects`, `POST /studio/create-project?title=&major_version=2`,
+  `GET /studio/project/{id}`, `GET /agent/conversation/{id}`, `GET /plugins/catalog`,
+  `GET /plugins/{id}/presets`
+- Uploads: image chain `POST /uploads/image/ {extension:"png"}` -> S3 ->
+  `upload-finish/ {upload_id,moderation_status}`; audio `upload_type:"file_upload"`;
+  `upload-finish/` -> `{}`; `initialize-clip/` -> `{clip_id,rights_clearance_available:false}`
+  observed (the false branch is real)
+- `GET /processed_clip/{id}` -> `status:"complete"` for a finished voice stem
+- `POST /prompts/suggestions/contextual {signature,count}`; `GET /statsig/experiment/forked-onboarding`
+
 ### Confirmed live via user's extension (`[LEAD]` — not our capture)
 - `GET /api/persona/get-personas/` → `{personas:[...]}` — **now `[T1]`, see HAR-11 above**
 - `GET /api/persona/get-loved-personas/` — still extension-only

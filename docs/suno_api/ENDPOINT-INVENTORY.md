@@ -829,10 +829,11 @@ their response shapes are in §5.13. Three siblings that used to be
 "client-bundle strings only" were captured by HAR-11 and are rows in §4.10:
 `playlist/create/` (25-key playlist object), `playlist/trash/` (flat body, 204
 empty), `gen/{id}/set_metadata/` (updated clip back), and
-`gen/{id}/update_reaction_type/` (§4.5.1). Still unprobed: `gen/trash`,
-`POST /api/clips/delete/` (answered `404`), and any `DELETE` spelling other
-than `/lyrics-projects/{id}`. None of these may be wired on the strength of a
-neighbouring row.
+`gen/{id}/update_reaction_type/` (§4.5.1). `gen/trash` was exercised live on
+2026-11-06 via the trash page's restore button and answered 200. `POST
+/api/clips/delete/` answered `404`; any `DELETE` spelling other than
+`/lyrics-projects/{id}` remains unprobed. None of these may be wired on the
+strength of a neighbouring row.
 
 ### 4.6 Clips, media, rights, upload, and processing
 
@@ -1056,7 +1057,10 @@ Three corrections this capture forces on earlier sections:
 
 1. **`/api/playlist/trash/` and `/api/gen/trash` are not the same story.**
    Playlist trash is captured here and in §5.13 with a flat body and a 204.
-   Clip trash (`/api/gen/trash`) is still unprobed and stays `[LEAD]`.
+   Clip trash (`/api/gen/trash`) was exercised live on 2026-11-06 via the
+   trash page's restore button and answered 200; third-party sweeps state
+   `{"clip_ids": [...], "trash": bool}` — unconfirmed until the owner's HAR
+   body is read.
 2. **A "like" is a reaction write.** No `/toggle_like` path exists in any
    capture; `update_reaction_type` with `reaction ∈ {LIKE, DISLIKE, null}` is
    the whole mechanism. The constant file's absent-list was corrected to match.
@@ -1103,7 +1107,9 @@ Every row answered 200 unless the status column says otherwise.
 **Two trash routes, two contracts.** `POST /playlist/v2/{id}/trash` returns a
 per-field result and is what this session used; `POST /playlist/trash/` in §5.13
 returns `204` and nothing else. Prefer the v2 route: a caller can tell a partial
-write from a success. `{"undo":true}` is the un-trash spelling and is untested.
+write from a success. `{"undo":true}` is the un-trash spelling; both directions
+were sent live on 2026-11-06 against a scratch playlist and answered 200
+(trash via the playlist page, recover via the trashed page — see §4.12).
 
 **`feature-flags` is the odd one.** The only captured request is
 `GET https://suno.com/api/feature-flags` (pre-`/a/api` base), answered `401
@@ -1119,6 +1125,110 @@ was captured, so it stays `[VERIFY]`). The 2026-10-24 network log supplied
 `/feature-flags` and `/unified/library`. `~/…/scratchpad/suno.com_me.har` from
 2026-10-31 is a **truncated** export: `jq` fails at EOF and the tail is JS
 source, so it yields no new routes and should be re-taken if it matters.
+
+### 4.12 The 2026-11-06/07 signed-in UI capture — `[T1]`
+
+A live signed-in Chrome walk of the whole `/me` surface and the create flows —
+sidebar, tabs, trash, playlists, persona page, `Create` modes, upload chain —
+driven through a CDP-backed browser tool, with the owner's DevTools HAR
+(`~/Downloads/suno.com4.har`, ~507 MB) confirming every body below. Status 200
+unless noted.
+
+**Library tabs.** The tabs are React-server-component pages (`?_rsc=…`); their
+JSON data arrives through these:
+
+| Method | Path | Body / shape |
+|---|---|---|
+| GET | `/a/api/video/hooks/user_hooks?start_index=0&page_size=10&user_handle=…` | Hooks tab (video-hook family) |
+| GET | `/a/api/video/hooks/me/liked/v2?start_index=0&page_size=10&user_handle=` | Liked Hooks tab |
+| GET | `/a/api/video/hooks/suggested_clips?page_size=30&start_index=0` | suggested clips for the hook composer |
+| GET | `/a/api/profiles/listen-history?limit=20` | History tab |
+| GET | `/a/api/clips/trashed_v2?limit=20` | Trash list |
+| GET | `/a/api/playlist/me?page=1&show_trashed={false\|true}&show_sharelist=false` | Playlists tab; trash view flips `show_trashed` |
+| GET | `/a/api/project/me?page=1&sort=max_created_at_last_updated_clip&show_trashed=false&exclude_shared=false` | Workspaces tab |
+| GET | `/a/api/lyrics-projects?limit=100&sort=updated_at` | Studio Projects tab |
+| POST | `/a/api/unified/feed` | Albums tab: `{"feed_id":"library_albums","cursor":null,"page_size":12,"request_metadata":{"term":"","library_scope":"all"}}` → `{feed:{feed_id,feed_title,feed_direct_link,items:[{content_id,content_type:"album",content_item}],presentation,item_count}}`. Playlists variant sends `feed_id:"library_playlists"` + `customization:{include_synthetic:true}` |
+| POST | `/a/api/unified/homepage/explore` | `{"cursor":"3"}` — cursor-paged discover |
+
+**Clip trash / restore.** `POST /a/api/gen/trash`
+`{"trash":false,"clip_ids":[…]}` → `{"ids":[…],"is_trashed":false}`.
+Exercised live from the trash page's restore button; `trash:true` is the twin
+direction, same route.
+
+**Playlist trash / recover.** `POST /a/api/playlist/v2/{id}/trash`
+`{"undo":false}` and `{"undo":true}` both → `{"success":true,
+"updated_fields":["is_trashed"],"errors":{}}`. Both directions sent live; the
+scratch playlist round-tripped back to active.
+
+**Personas.** `PUT /a/api/persona/edit-persona/{id}/`
+`{persona_id,name,description,is_public,persona_type:"vox",
+user_input_styles,vox_audio_id,vocal_start_s,vocal_end_s}` → 200 (no-op save).
+`GET /a/api/persona/get-persona-paginated/{id}/?page=1` lists clips using the
+voice. `POST /a/api/persona/{id}/toggle_love/` fires on a plain page load with
+no user gesture — treat it as a like/unlike echo, not telemetry. The voice
+page's Public switch is disabled server-side for this account ("no tracks
+using the voice"), so the visibility write stays uncaptured.
+
+**Create modes share one generation route.** `POST /a/api/c/check`
+`{"ctype":"generation"}` → `{required:false,captcha_version:2}`.
+`POST /a/api/generate/v2-web/` carries every mode in one envelope:
+speech via `metadata.is_speech:true` (+ `backing_music`, `mv:"chirp-goose"`),
+sounds via `task:"sound"` + `mv:"chirp-hawk"` + `metadata.sound_configs.user_loop`,
+simple/agent via `task:"agentic_thinking"` + `gpt_description_prompt`.
+Speech cost 10 credits against a 2-clip-per-generation answer.
+
+**Studio (multitrack) surface.**
+
+| Method | Path | Shape |
+|---|---|---|
+| GET | `/a/api/studio/list-projects?limit=16&name=&archived=false&sort_order=desc` | `{projects:[{last_version_at,id,title,created_at,updated_at,archived,major_version}]}` |
+| POST | `/a/api/studio/create-project?title=…&major_version=2` | query params, empty body → project object |
+| GET | `/a/api/studio/project/{id}` | `{state:{tracks[],timing,loop,selection,…},latest_version_id,owner_user_id,…}` |
+| GET | `/a/api/agent/conversation/{project_id}?limit=100&include_internal=true` | `{conversation_id:"studio_agent_project#…",entries:[],artifacts:[]}` |
+| GET | `/a/api/plugins/catalog?include_archived=true` | plugin catalogue |
+| GET | `/a/api/plugins/{id}/presets` | plugin presets |
+
+**Image upload mirrors the audio chain.**
+`POST /a/api/uploads/image/` `{"extension":"png"}` → `{id,url,fields,
+is_file_uploaded}` (signed S3 target); `POST /a/api/uploads/image/{id}/upload-finish/`
+→ `{upload_id,moderation_status:"approved"}`.
+
+**Prompt suggestions (simple mode).**
+`POST /a/api/prompts/suggestions/contextual` `{signature:{has_audio_condition,
+attached_song_count,source_genres[],image_count,has_video,has_lyrics},count:5}`
+→ `{suggestions[],transform,is_genre_conditioned}`.
+
+**Audio upload chain corrections** (UI-07). `upload_type` also takes
+`"file_upload"`. `upload-finish/` answers `{}` — success is status-only.
+`initialize-clip/` answered `{"clip_id":…,"rights_clearance_available":false}`
+for a plain sine MP3, so **the false branch is real and observed**; the client
+must branch on it instead of treating it as an error. A 3 s file is rejected
+client-side as too short with no network call. No `uploads/audio/{id}/`
+GET-status route was observed.
+
+**`processed_clip` status.** `GET /a/api/processed_clip/{id}` for a finished
+voice stem answered `status:"complete"` with `voice_recording_id`,
+`vocal_start_s`, `vocal_end_s`, `vocal_audio_url` — so the status vocabulary
+goes beyond `submitted`/`approved`.
+
+**`statsig/experiment/forked-onboarding`** → `{onboarding_group:"default",
+reason:"statsig_parameter_store"}` — the onboarding bucket endpoint.
+
+**Trim has no standalone route.** The sample-trim UI (00:00.0–01:00.0 handles)
+is create-form state carried into the generation body — start/end ride the same
+payload, as with `vox-stem` ranges; there is no "trim save" endpoint.
+
+**A page-context `fetch()` to `/a/api/*` answers 401** — the bearer is attached
+by the app's own client, not cookies; console-level probes learn nothing.
+`feature-flags` is unreachable from the browser too (the app never calls it;
+`statsig` is the gate store). `v2/integrations` needs a real MCP link and no
+Integrations surface exists in this account's UI.
+
+**Environment tiers.** The bundle picks its Datadog env by which base is
+allowed: `studio-api-prod.suno.com` = prod, `studio-api-staging.suno.com` =
+staging. The current browser surface has moved to `suno.com/a/api`; a
+`studio-api.prod.suno.com/api/forbidden.webm` asset fetch also appears (legacy
+prod asset host).
 
 ## 5. Capture-backed contracts
 
@@ -1660,11 +1770,12 @@ Four rules govern how far these may be taken:
   facts here are the *rejections*; no success body was observed for any route in
   this table.
 - **Neighbouring routes are not covered.** `POST /api/playlist/create/`,
-  `POST /api/playlist/trash/`, `POST /api/gen/{gen_id}/set_metadata/`,
-  `POST /api/gen/{gen_id}/update_reaction_type/`, and
-  `POST /api/gen/trash` are client-bundle route strings that were **not
-  probed**: `[LEAD]` on both axes. `POST /api/clips/delete/` was exercised and
-  answered `404`. No `DELETE` on any route was probed at all, so a `DELETE`
+  `POST /api/playlist/trash/`, `POST /api/gen/{gen_id}/set_metadata/` and
+  `POST /api/gen/{gen_id}/update_reaction_type/` are rows in §4.10 (HAR-11).
+  `POST /api/gen/trash` answered 200 on a restore-to-library click on
+  2026-11-06 (§4.12): existence `[T1]`, request body unconfirmed.
+  `POST /api/clips/delete/` was exercised and answered `404`. No `DELETE` on
+  any route was probed at all, so a `DELETE`
   spelling of any of these is entirely unproved. Existence, contract, and
   entitlement remain three independent axes (section 1.1) — a captured request
   field is not evidence that the account may perform the action.
@@ -1923,7 +2034,8 @@ experiments, statsig_custom_properties, data_sharing_consent}`, and
 `player_play_related`, `player_play_next_queued`, `show_credits`,
 `notification_preferences`, `data_restrictions_*`).
 
-**Not captured:** `POST /gen/trash` (trash/restore of a clip) and dislike on a
+**Not captured:** `suno_chat/rooms` and `visual/models` bodies (both answer
+403 `feature_disabled` for this account, probed 2026-11-06), and dislike on a
 discover-feed clip owned by someone else. The image-id space that `cover-image`
 needs **was** captured on 2026-11-06 (§5.15): `POST /gen/prompt_image/` returns
 `image_s3_id`, and that is the id `{"cover_source":{"id":…,"type":"generated"}}`
@@ -2246,4 +2358,4 @@ no owner.
 | `POST /api/clips/delete/` live claim vs `404` probe | `sunox` @ `8a20930d` (2026-10-27) live-verifies permanent clip deletion through `POST /api/clips/delete/` with `{"ids": [...]}` on 2026-07-10; this master's 2026-10-26 probe of the same spelling answered `404` (see the library-mutation row above). | Both observations stand separately: the dates and account states differ and nothing is captured twice. Do not build deletion on either authority. The trash route's reported shape (§7.3 wording above) remains the only thing this client may act on, and it stays unwired. | **Unresolved — the 404 vs live-claim gap is not explained by either artifact** |
 | Progressive media host and content type | The 2026-09-24 clip objects returned `mp3`/`webm-opus` over `streaming` on `audiopipe.suno.ai`, while the 2026-09-30 feed bodies returned `m4a-opus` over `progressive` on the CloudFront origin in 40 of 40 entries with no `mp3` and no `audiopipe` occurrence. Two captures of two accounts disagree about the default. | **Both observations stand as `[T1]`**; they are different corpora, not a correction of one another. The recon's 40-entry observation is the only evidence for which form is *observed as the default*, and the client's `mp3`-plus-`audiopipe` filter therefore rejects 100% of it (section 5.3). `audiopipe.suno.ai` does appear inside the recon's client bundles as a hostname regex and a constructed URL template, which is `[LEAD]` and does not affect its `[T1]` row in section 2.1. | **Unresolved which is served to a given account; both captured** |
 | Notification routes vs current client bundle | `/api/notification/v2`, `/v2/badge-count`, and `/v2/read` are `[T1]` from the 2026-08-25/2026-09-24 request-response exports and all three are `wired`, yet two passes over ~96 client-bundle chunks found **zero** `/api/notification*` strings. | The captures are real, so the rows stay `[T1]` and nothing is demoted: section 6.2's rule that absence from the bundle is evidence of client-side disuse rather than server removal applies symmetrically. What the negative changes is handling, not status — degrade a failing notification surface to a visible error state rather than deleting the service on a static negative, and do not present it as working. One authenticated probe settles it. | **Unresolved — captured routes, uncorroborated by the current client** |
-| Library mutation request contracts | This master and the backlog both treated library and playlist mutations as needing a fresh human capture. | **Request** contracts are `[T1]` — recovered from server validation errors, 64 write endpoints probed, and the library/playlist subset is canonical in section 5.9. **Response** shapes were not captured, and `playlist/create/`, `playlist/trash/`, `gen/{id}/set_metadata/` and `gen/trash` were never probed and remain `[LEAD]` (`gen/{id}/update_reaction_type/` was captured on 2026-10-26, §4.5.1); `POST /api/clips/delete/` answered 404. Recovered bodies are **flat** (section 1.5). | **Resolved for requests; the library/playlist response shapes are captured in §5.13; `gen/trash` and the `set_metadata`/`playlist/trash` siblings are still unprobed** |
+| Library mutation request contracts | This master and the backlog both treated library and playlist mutations as needing a fresh human capture. | **Request** contracts are `[T1]` — recovered from server validation errors, 64 write endpoints probed, and the library/playlist subset is canonical in section 5.9. **Response** shapes were not captured, and `playlist/create/`, `playlist/trash/` and `gen/{id}/set_metadata/` response rows are captured in §5.13 and §4.10; `gen/trash` answered 200 on a restore-to-library click on 2026-11-06 (§4.12): existence `[T1]`, body unconfirmed. `POST /api/clips/delete/` answered 404. Recovered bodies are **flat** (section 1.5). | **Resolved for requests; playlist/create/trash response shapes captured; `gen/trash` exists (200) but its body contract is open until the owner's HAR is read** |

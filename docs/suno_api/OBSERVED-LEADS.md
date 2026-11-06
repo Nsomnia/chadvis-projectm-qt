@@ -265,7 +265,7 @@ an evidence statement.
 | POST? | `/api/gen/increment_action_counts/` | Bearer? | Bulk action-count telemetry | `[LEAD]` old inventory/raw scan | not-in-code |
 | `?` | `/api/gen/{gen_id}/increment_action_count/` | Bearer? | Action-count telemetry for a single generation; sibling of the bulk route above | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | POST? | `/api/gen/prompt_image/` | Bearer? | Prompt-image job | `[LEAD]` old inventory/topic prose | not-in-code |
-| POST? | `/api/gen/trash` | Bearer? | Trash generated items | `[LEAD]` old inventory/topic prose | not-in-code |
+| POST | `/api/gen/trash` | Bearer | Trash/restore generated items: `{trash, clip_ids}` -> `{ids, is_trashed}` | **promoted `[T1]` 2026-11-07**, UI-07; master §4.12 | constant-only |
 | POST? | `/api/gen/set_metadata/` | Bearer? | Set generation metadata | `[LEAD]` old inventory | not-in-code |
 | GET? | `/api/prompts/` | Bearer? | Legacy prompt collection | `[LEAD]` old inventory/current endpoint map | declared-unused |
 | POST? | `/api/prompts/delete/` | Bearer? | Delete prompt | `[LEAD]` raw scan | not-in-code |
@@ -375,8 +375,9 @@ three-leg audio upload stay in the master.
 | POST | `/api/uploads/audio/{id}/initialize-clip/` | Bearer | Initialize clip from uploaded audio | **promoted `[T1]` 2026-11-06**, HAR-11; master §4.10/§5.14 | constant-only |
 | GET? | `/api/uploads/audio/{id}/` | Bearer? | Audio upload/processing status | `[LEAD]` old inventory/topic prose | not-in-code |
 | POST? | `/api/uploads/audio/{id}/convert_wav/` | Bearer? | Convert uploaded audio to WAV | `[LEAD]` old upload topic prose | not-in-code |
-| POST? | `/api/uploads/image` | Bearer? | Image upload, no trailing slash | `[LEAD]` raw scan; multipart fields unproved | not-in-code |
-| POST? | `/api/uploads/image/` | Bearer? | Image upload, trailing slash | `[LEAD]` raw scan; do not alias automatically | not-in-code |
+| POST | `/api/uploads/image/` | Bearer | Image upload: `{extension}` -> signed S3 target | **promoted `[T1]` 2026-11-07**, UI-07; master §4.12 | constant-only |
+| POST? | `/api/uploads/image` | Bearer? | Same upload without trailing slash — unproven spelling; do not alias automatically | `[LEAD]` raw scan | not-in-code |
+| POST | `/api/uploads/image/{id}/upload-finish/` | Bearer | Finalize image upload -> `{upload_id, moderation_status}` | **promoted `[T1]` 2026-11-07**, UI-07; master §4.12 | constant-only |
 | GET? | `/api/uploads/video` | Bearer? | Video upload info, no trailing slash | `[VERIFY]` spelling/method not captured | not-in-code |
 | GET? | `/api/uploads/video/` | Bearer? | Video upload info, trailing slash | `[VERIFY]` spelling/method not captured | not-in-code |
 | POST? | `/api/uploads/video/{upload_id}/upload-finish/` | Bearer? | Finalize video upload | `[LEAD]` old inventory/topic prose | not-in-code |
@@ -384,7 +385,7 @@ three-leg audio upload stay in the master.
 | GET? | `/api/video/hooks/feed` | Bearer? | Video-hook feed | `[LEAD]` old inventory/topic prose | not-in-code |
 | GET? | `/api/video/hooks/{hook_id}/flag` | Bearer? | Flag video hook | `[LEAD]` old inventory/topic prose; mutation-by-GET is not trusted | not-in-code |
 | `?` | `/api/video/hooks/fetch_hook_lyrics` | Bearer? | Fetch hook lyrics | `[LEAD]` raw scan | not-in-code |
-| `?` | `/api/video/hooks/suggested_clips` | Bearer? | Suggested video-hook clips | `[LEAD]` raw scan | not-in-code |
+| GET | `/api/video/hooks/suggested_clips` | Bearer | Suggested video-hook clips (`page_size`, `start_index`) | **promoted `[T1]` 2026-11-07**, UI-07; master §4.12 | constant-only |
 | `?` | `/api/video_gen/poll_batches` | Bearer? | Poll video batches | `[LEAD]` old inventory/loose scan | not-in-code |
 | `?` | `/api/download/clip/{clip_id}` | Bearer? | Download-preparation/authorization family, distinct from the captured media_urls playback array; our captures never recorded it | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/download/sample-pack/{clip_id}` | Bearer? | Download-preparation/authorization family, distinct from the captured media_urls playback array; our captures never recorded it | `[LEAD]` 2026-09 bundle corpus | not-in-code |
@@ -392,7 +393,7 @@ three-leg audio upload stay in the master.
 | `?` | `/api/clips/{clip_id}/set_remix_type` | Bearer? | Set a clip's remix type | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/edit/action/{action_clip_id}/` | Bearer? | Apply an edit action to a clip | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/edit/fade/{clip_id}/` | Bearer? | Fade edit over a clip | `[LEAD]` 2026-09 bundle corpus | not-in-code |
-| `?` | `/api/uploads/image/{upload_id}/upload-finish/` | Bearer? | Finalize an image upload | `[LEAD]` 2026-09 bundle corpus | not-in-code |
+
 | `?` | `/api/uploads/midi/` | Bearer? | MIDI upload surface | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/uploads/midi/{upload_id}/upload-finish/` | Bearer? | Finalize a MIDI upload | `[LEAD]` 2026-09 bundle corpus | not-in-code |
 | `?` | `/api/uploads/video/{upload_id}/` | Bearer? | Upload status by upload id; spelling differs from the two uploads/video rows above | `[LEAD]` 2026-09 bundle corpus | not-in-code |

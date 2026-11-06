@@ -6,6 +6,26 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- **The Suno endpoint schema now covers the whole live `/me` surface, with bodies instead of
+  guesses.** A signed-in browser walk plus the owner's 507 MB DevTools HAR
+  (`suno.com4.har`) added twenty route constants to `src/suno/SunoEndpoints.hpp` — the library
+  tabs (`/video/hooks/user_hooks`, `/video/hooks/me/liked/v2`, `/profiles/listen-history`,
+  `/clips/trashed_v2`, `playlist/me` and `project/me` query shapes), the Albums/Playlists feed
+  (`POST /unified/feed` with `feed_id:"library_albums"`), the Studio family
+  (`studio/list-projects`, `studio/create-project`, `studio/project/{id}`,
+  `agent/conversation/{id}`, `plugins/catalog`, `plugins/{id}/presets`), the image-upload chain,
+  contextual prompt suggestions, and `statsig/experiment/forked-onboarding`. Three doc claims
+  were wrong and are now corrected: `gen/trash` was not "unprobed" (it answers 200 with
+  `{trash, clip_ids}` → `{ids, is_trashed}`), `{"undo":true}` un-trash was not "untested" (sent
+  live; the scratch playlist round-tripped), and the upload failure branch is real —
+  `initialize-clip/` answered `rights_clearance_available:false` for an ordinary upload. Speech
+  and Sounds turned out to share `/generate/v2-web/` (`metadata.is_speech:true` /
+  `task:"sound"`), and the sample trim has **no standalone save route** — its range rides the
+  generation body. Records: `ENDPOINT-INVENTORY.md` §4.12, `UI-SURFACE-INVENTORY.md`,
+  `OBSERVED-LEADS.md` promotions, and `TODO.md`'s quick-reference.
+
 ### Changed
 
 - **The file-wide `-Wdeprecated-declarations` suppression is gone from the recorder.** It wrapped

@@ -103,7 +103,27 @@ supplied the request data this replay could not. Contracts in
 | Workspaces / Studio Projects | `GET /project/me`, `GET /project/{id}`, `GET /project/{id}/pinned-clips`, `POST /project/{id}/clips` |
 | Cover / mashup via uploaded audio | same upload chain; the generated persona is the reusable input |
 
-**Still uncaptured, and still the reason this file is `[LEAD]`:** Trash
-restore-vs-permanent-delete (`gen/trash`), playlist *recover*, Hooks / Liked
-Hooks, Albums, History, Reuse Prompt, the trim-handle save, Speech, and Sounds.
-A second HAR recorded while clicking only those is the next artifact.
+## What the 2026-11-06/07 live UI capture closed — `[T1]`
+
+A signed-in Chrome walk plus the owner's DevTools HAR (`suno.com4.har`) closed
+the remaining surface list; full bodies are in
+[`ENDPOINT-INVENTORY.md`](ENDPOINT-INVENTORY.md) §4.12.
+
+| Surface above | Now has a `[T1]` route |
+|---|---|
+| Hooks / Liked Hooks | `GET /video/hooks/user_hooks`, `GET /video/hooks/me/liked/v2`, `GET /video/hooks/suggested_clips` |
+| Albums | `POST /unified/feed` with `feed_id:"library_albums"` |
+| History | `GET /profiles/listen-history?limit=20` |
+| Trash restore-vs-permanent-delete | `POST /gen/trash` `{trash,clip_ids}` — restore path 200; permanent delete not clicked |
+| Playlist recover | `POST /playlist/v2/{id}/trash` `{"undo":true}` (round-tripped) |
+| Speech / Sounds | both share `POST /generate/v2-web/` (`metadata.is_speech`, `task:"sound"`) |
+| Trim-handle save | **no standalone route** — the range rides the generation body |
+| Studio pages | `GET /studio/list-projects`, `POST /studio/create-project`, `GET /studio/project/{id}`, `GET /agent/conversation/{id}`, `GET /plugins/catalog`, `GET /plugins/{id}/presets` |
+
+**Still open after this pass, and why:** persona visibility (server-disabled
+for an unused voice), `v2/integrations` with a real MCP connection (needs an
+externally hosted MCP server), `preferences/submit` success shape and
+`project/{id}/clips` `update_type:"remove"` (both need an app-originated call;
+console fetches are 401), and `visual/models` / `suno_chat` bodies (403
+`feature_disabled`).
+

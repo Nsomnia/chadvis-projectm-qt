@@ -21,6 +21,11 @@
 //   suno-master-utility-browser-extension/scratchpad/suno.com_me_persona.har.
 //   Call it "persona HAR". It closes voice verification, the Listen-for-Credits
 //   family, and the cover-art image id space.
+// - 2026-11-06/07 live-browser walk of the /me surface (this file's new block at
+//   the end, marked "2026-11-07 live UI capture"): library tabs, trash, playlist
+//   trash/recover, persona edit, create-mode routes, upload chain, feature-flags
+//   401. Call it "UI-07". Header names wholesale live probes ran through the
+//   signed-in Chrome; request bodies are in the browser's HAR, not in-repo.
 //
 // Evidence tiers:
 // - [T1] observed in one of the real captures listed above.
@@ -171,10 +176,14 @@ constexpr std::string_view SESSION_CATALOG = "/session/"; // [T1] alias for SESS
 //   7. POST /persona/create/ with root_clip_id + vox_audio_id + vocal range
 //      -> persona, which later generation can condition on.
 //
-// `upload_type` values observed: "audio_recording". The `audio_content_types`
-// vocabulary on set_audio_description names the rest: "Song Demo", "Voice",
-// "Sample". Step 2's URL and fields come from step 1 and MUST NOT be
-// constructed (same rule as ENDPOINT-INVENTORY §2.2).
+// `upload_type` values observed: "audio_recording" and "file_upload" (UI-07
+// used the latter for a picked MP3). The `audio_content_types` vocabulary on
+// set_audio_description names the rest: "Song Demo", "Voice", "Sample".
+// `initialize-clip/` answers
+// `{clip_id, rights_clearance_available}` and `false` is a real, observed
+// answer (UI-07: sine probe) — callers must branch on it, not treat it as an
+// error. `upload-finish/` answers an empty object `{}` on 200, so success has
+// no shape to parse and must be inferred from the status alone.
 constexpr std::string_view UPLOADS_AUDIO_INITIALIZE_CLIP = "/uploads/audio/{}/initialize-clip/"; // [T1] POST
 constexpr std::string_view PROCESSED_UPLOAD_STORAGE_HOST = "suno-data-uploads.s3.amazonaws.com";
 constexpr std::string_view CLIP_VOX_STEM = "/clip/{}/vox-stem"; // [T1] POST
@@ -266,10 +275,13 @@ constexpr std::string_view PLAYLIST_V2_COVER_IMAGE = "/playlist/v2/{}/cover-imag
 //     the real mechanism instead: GEN_UPDATE_REACTION_TYPE above, with
 //     `{"reaction":"LIKE"|"DISLIKE"|null}`. A like is a reaction write, not a
 //     like verb. Use that, never an invented toggle.
-//   * CLIP TRASH / RESTORE.  `POST /api/gen/trash` remains a client-bundle
-//     route string that was never probed — [LEAD] on both axes. `POST
-//     /api/clips/delete/` WAS exercised and answered 404. `is_trashed` is a
-//     response field and a feed filter key, not a verb.
+//   * CLIP TRASH / RESTORE.  UI-07 (2026-11-06) exercised `POST /a/api/gen/trash`
+//     live for restore-to-library and got 200, so the route exists; the
+//     {clip_ids, trash:bool} body from the third-party notes stands as
+//     unconfirmed until the HAR body is read. `POST /a/api/clips/delete/` was
+//     exercised earlier and answered 404. `is_trashed` is also a response field
+//     and a feed filter key. The route is a client-side primitive; wire it
+//     only behind capture-grade tests, never as a library delete.
 //   * PLAYLIST REORDER-BY-ID (only `tracks/reorder-by-index` is captured),
 //     `gen/{id}/set_visibility` variants beyond the captured `is_public`
 //     boolean, and the custom-model TRAINING / VOICE-CLONE writes. HAR-11
@@ -552,6 +564,80 @@ constexpr std::string_view LABS_CONFIGS = "/labs/configs"; // [T1] GET
 constexpr std::string_view INTEGRATIONS_V2 = "/v2/integrations"; // [T1] GET
 constexpr std::string_view SUNO_CHAT_ROOMS = "/suno_chat/rooms"; // [T1] POST, 403 gated
 constexpr std::string_view VISUAL_MODELS = "/visual/models"; // [T1] GET, 403 gated
+
+// ── 2026-11-07 live UI capture [T1] ─────────────────────────
+// Signed-in Chrome walk of the /me surface, library tabs, trash, playlists,
+// persona page, create modes, upload chain; request/response bodies confirmed
+// from the owner's 507 MB DevTools HAR (suno.com4.har). Bodies quoted below
+// are the site's own.
+//   GET  /a/api/video/hooks/user_hooks?start_index=0&page_size=10&user_handle=<h>
+//   GET  /a/api/video/hooks/me/liked/v2?start_index=0&page_size=10&user_handle=
+//   GET  /a/api/video/hooks/suggested_clips?page_size=30&start_index=0
+//   GET  /a/api/profiles/listen-history?limit=20
+//   GET  /a/api/clips/trashed_v2?limit=20
+//   GET  /a/api/playlist/me?page=1&show_trashed={false|true}&show_sharelist=false
+//   GET  /a/api/project/me?page=1&sort=max_created_at_last_updated_clip&show_trashed=false&exclude_shared=false
+//   GET  /a/api/lyrics-projects?limit=100&sort=updated_at
+//   POST /a/api/unified/feed  {"feed_id":"library_albums"|"library_playlists",
+//        "cursor":null,"page_size":12,"request_metadata":{"term":"",
+//        "library_scope":"all"}[,"customization":{"include_synthetic":true}]}
+//        -> {feed:{feed_id,feed_title,feed_direct_link,items[],presentation,item_count}}
+//   POST /a/api/unified/homepage/explore  {"cursor":"3"}   -- cursor-paged
+//   POST /a/api/gen/trash  {"trash":false,"clip_ids":[…]} -> {"ids":[…],
+//        "is_trashed":false}   -- restore-to-library; trash:true is the twin
+//   POST /a/api/playlist/v2/{id}/trash  {"undo":false}|{"undo":true} ->
+//        {"success":true,"updated_fields":["is_trashed"],"errors":{}}
+//        Both directions sent live; the playlist round-tripped back to active.
+//   PUT  /a/api/persona/edit-persona/{id}/  {persona_id,name,description,
+//        is_public,persona_type:"vox",user_input_styles,vox_audio_id,
+//        vocal_start_s,vocal_end_s} -> 200
+//   GET  /a/api/persona/get-persona-paginated/{id}/?page=1
+//   POST /a/api/persona/{id}/toggle_love/  (fires on page load with no gesture)
+//   POST /a/api/c/check  {"ctype":"generation"} -> {required:false,captcha_version:2}
+//   POST /a/api/generate/v2-web/  shares one envelope for every create mode:
+//        speech  -> metadata.is_speech=true, backing_music, mv:"chirp-goose"
+//        sounds  -> task:"sound", mv:"chirp-hawk", metadata.sound_configs.user_loop
+//        simple  -> task:"agentic_thinking" + gpt_description_prompt
+//   Studio (multitrack) surface:
+//   GET  /a/api/studio/list-projects?limit=16&name=&archived=false&sort_order=desc
+//   POST /a/api/studio/create-project?title=…&major_version=2   (query, no body)
+//   GET  /a/api/studio/project/{id} -> {state:{tracks[],timing,…},latest_version_id,…}
+//   GET  /a/api/agent/conversation/{project_id}?limit=100&include_internal=true
+//   GET  /a/api/plugins/catalog?include_archived=true
+//   GET  /a/api/plugins/{id}/presets
+//   POST /a/api/prompts/suggestions/contextual  {signature:{has_audio_condition,
+//        attached_song_count,source_genres[],image_count,has_video,has_lyrics},count}
+//        -> {suggestions[],transform,is_genre_conditioned}
+//   Image upload mirror of the audio chain:
+//   POST /a/api/uploads/image/ {"extension":"png"} -> {id,url,fields,is_file_uploaded}
+//   POST /a/api/uploads/image/{id}/upload-finish/ -> {upload_id,moderation_status}
+//   GET  /a/api/statsig/experiment/forked-onboarding -> {onboarding_group,reason}
+// Feature flags: the app never calls https://suno.com/api/feature-flags; browser
+// answers 401 there (gates are statsig — see STATSIG_EXPERIMENT). Authed shape
+// remains unseen.
+// Environment tiers: the bundle picks Datadog env by which base is allowed —
+// `studio-api-prod.suno.com` = prod, `studio-api-staging.suno.com` = staging;
+// the browser surface has moved to suno.com/a/api.
+constexpr std::string_view VIDEO_HOOKS_USER_HOOKS = "/video/hooks/user_hooks"; // [T1] GET
+constexpr std::string_view VIDEO_HOOKS_ME_LIKED = "/video/hooks/me/liked/v2"; // [T1] GET
+constexpr std::string_view VIDEO_HOOKS_SUGGESTED_CLIPS = "/video/hooks/suggested_clips"; // [T1] GET
+constexpr std::string_view PROFILES_LISTEN_HISTORY = "/profiles/listen-history"; // [T1] GET
+constexpr std::string_view CLIPS_TRASHED_V2 = "/clips/trashed_v2"; // [T1] GET
+constexpr std::string_view UNIFIED_HOMEPAGE_EXPLORE = "/unified/homepage/explore"; // [T1] POST
+constexpr std::string_view PERSONA_EDIT = "/persona/edit-persona/{}/"; // [T1] PUT
+constexpr std::string_view PERSONA_GET_PAGINATED = "/persona/get-persona-paginated/{}/"; // [T1] GET
+constexpr std::string_view PERSONA_TOGGLE_LOVE = "/persona/{}/toggle_love/"; // [T1] POST
+constexpr std::string_view GEN_TRASH = "/gen/trash"; // [T1] POST
+constexpr std::string_view STUDIO_LIST_PROJECTS = "/studio/list-projects"; // [T1] GET
+constexpr std::string_view STUDIO_CREATE_PROJECT = "/studio/create-project"; // [T1] POST (query)
+constexpr std::string_view STUDIO_PROJECT_BY_ID = "/studio/project/{}"; // [T1] GET
+constexpr std::string_view AGENT_CONVERSATION = "/agent/conversation/{}"; // [T1] GET
+constexpr std::string_view PLUGINS_CATALOG = "/plugins/catalog"; // [T1] GET
+constexpr std::string_view PLUGINS_PRESETS = "/plugins/{}/presets"; // [T1] GET
+constexpr std::string_view UPLOADS_IMAGE = "/uploads/image/"; // [T1] POST
+constexpr std::string_view UPLOADS_IMAGE_UPLOAD_FINISH = "/uploads/image/{}/upload-finish/"; // [T1] POST
+constexpr std::string_view PROMPTS_SUGGESTIONS_CONTEXTUAL = "/prompts/suggestions/contextual"; // [T1] POST
+constexpr std::string_view STATSIG_FORKED_ONBOARDING = "/statsig/experiment/forked-onboarding"; // [T1] GET
 
 // ── Legacy base (NOT under API_BASE) ───────────────────────
 // `GET https://suno.com/api/feature-flags` answered 401 `{"error":"Unauthorized"}`
