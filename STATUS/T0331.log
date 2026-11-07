@@ -1,0 +1,4 @@
+2026-11-07T00:30:00Z  CLAIM    orchestrator
+2026-11-07T00:30:00Z  CHANGE   build.sh do_ctest: capture ctest output to a temp log, read PIPESTATUS under set +e, classify by report markers. ctest collapses a test's sanitizer exitcode (TSan 66 / ASan-UBSan 67) into its own exit 8; FINDINGS (with report count) is not a red gate, a genuine failure/crash stays red. Clean runs print a PASS verdict.
+2026-11-07T00:30:00Z  VERIFY   bash -n ok; 5 stubbed verdict branches (clean/tsan/asan/genuine-fail/crash) all correct; real ./build.sh --fast --tests --safe -> 16/16 with new PASS line; ./scripts/check-workflows.py ok.
+2026-11-07T05:19:06Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee51879

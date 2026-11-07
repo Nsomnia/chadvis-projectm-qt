@@ -703,6 +703,18 @@ do_ctest() {
     local args=(--test-dir "$BUILD_DIR/tests" --output-on-failure -j "$CTEST_JOBS")
     printf '%sCTEST%s %s at -j%s%s\n' "$CYAN" "$RESET" "$BUILD_DIR/tests" "$CTEST_JOBS" \
         "$( [[ -n "$TEST_FILTER" ]] && printf ', filtered to %s' "$TEST_FILTER" )"
+
+    # T0331: a sanitizer finding is not a test regression. ctest collapses a
+    # test binary's distinctive exitcode (TSAN_OPTIONS exitcode=66, ASAN/UBSAN
+    # exitcode=67) into its own generic exit 8, so the only way to tell a
+    # "FINDINGS" run from a genuinely broken one is the report markers in the
+    # captured output. The CI lanes already classify this way; the local
+    # --tsan/--asan/--ubsan --safe/test runs must not report the known 39 Qt
+    # races as "1 tests failed" under `set -e`, and must not hide a real crash.
+    local log rc
+    log="$(mktemp "${TMPDIR:-/tmp}/chadvis-ctest.XXXXXX")"
+
+    local ctest_args=("${args[@]}")
     case "$ACTION" in
         safe)
             # One alternation, not one -R per name: ctest's -R takes a single
@@ -714,16 +726,52 @@ do_ctest() {
                 [[ -n "$pattern" ]] && pattern+="|"
                 pattern+="^${t}\$"
             done
-            ctest "${args[@]}" -R "^(${pattern})"
+            ctest_args+=(-R "^(${pattern})")
             ;;
         test)
             if [[ -n "$TEST_FILTER" ]]; then
-                ctest "${args[@]}" -R "$TEST_FILTER"
-            else
-                ctest "${args[@]}"
+                ctest_args+=(-R "$TEST_FILTER")
             fi
             ;;
     esac
+
+    set +e
+    ctest "${ctest_args[@]}" 2>&1 | tee "$log"
+    rc=${PIPESTATUS[0]}
+    set -e
+
+    # Only sanitizer profiles produce these markers; a normal build with a
+    # failing test has none and is classified as a genuine failure below.
+    local sanitizer_reports=0
+    if [[ -n "$SANITIZER" ]]; then
+        case "$SANITIZER" in
+            thread)
+                sanitizer_reports=$(grep -c 'WARNING: ThreadSanitizer' "$log" 2>/dev/null || true)
+                ;;
+            address|undefined)
+                sanitizer_reports=$(grep -cE 'ERROR: AddressSanitizer|runtime error:|ERROR: LeakSanitizer' "$log" 2>/dev/null || true)
+                ;;
+        esac
+    fi
+    sanitizer_reports=${sanitizer_reports:-0}
+
+    if [[ "$rc" -eq 0 ]]; then
+        rm -f "$log"
+        printf '%sPASS%s ctest: all entries passed.\n' "$GREEN" "$RESET"
+    elif [[ -n "$SANITIZER" && "$rc" -eq 8 && "$sanitizer_reports" -gt 0 ]]; then
+        # Findings, not a red gate: the build is instrumented and the runtime
+        # was configured to exit 66/67 on a report. ctest turned that into 8.
+        rm -f "$log"
+        printf '%sFINDINGS%s ctest: %s sanitizer report(s) (exit %s -> ctest 8). ' \
+            "$YELLOW" "$RESET" "$sanitizer_reports" \
+            "$( [[ "$SANITIZER" == thread ]] && echo 66 || echo 67 )"
+        printf 'Not a test failure; see the reports above.\n'
+    else
+        rm -f "$log"
+        printf '%sFAIL%s ctest: exit %s, %s sanitizer report(s). ' "$RED" "$RESET" "$rc" "$sanitizer_reports"
+        printf 'A genuine failure is still red.\n' >&2
+        return "$rc"
+    fi
 }
 
 do_run() {
