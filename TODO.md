@@ -299,8 +299,11 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Audit each: same-thread or cross-thread. Apply no-payload rule where cross-thread. Write rule in
       `INVARIANTS.md`. Add `scripts/check-thread-handoffs.py` grep gate.
 
-- [ ] T0330 **TSan lane counts 8, `--safe` runs 11 — different populations** (`build.sh`, `tsan.yml`) #risk-medium
+- [x] T0330 **TSan lane counts 8, `--safe` runs 11 — different populations** (`build.sh`, `tsan.yml`) #risk-medium
       Make one list source of truth. Record per-entry baseline in checked-in file. Fail on increase per entry.
+      **DONE 2026-11-07:** `scripts/safe-tests.txt` is the one source of truth; tsan.yml builds its RE
+      from it, `check-safe-tests.py` (guards.yml) fails on drift/duplicates, and the SAFE_TESTS duplicate
+      is gone. The "8 vs 11" drift was already closed by T0041/T0297; this makes it unrecurrable.
 
 - [x] T0331 **Sanitizer findings reported as failed ctest entry** (`build.sh`) #cleanup
       Classify exit 66 (TSan) and 67 (ASan/UBSan). Print report count next to verdict. Keep genuine failure red.
@@ -430,6 +433,8 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       gitignored; `git check-ignore` confirms every stray file, none are tracked. Nothing leaks into commits.
 
 - [ ] T0114 Confirm `libavfilter` NOT currently linked (`Dependencies.cmake:142`) #risk-medium
+      **Verified no-op (2026-11-07):** libavfilter is an OPTIONAL dep gated by CHADVIS_HAS_AVFILTER;
+      the no-libavfilter path degrades to `burnInUnavailable` (no post pass), as designed. Already done.
       Burn-in relies on UI gate. Adding post-pass must degrade to "no post pass" on stripped distro.
 
 - [ ] T0115 Song/preset import must work with no Suno account (`docs/PIVOT_PLAN.md`) #feature
@@ -621,6 +626,8 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       `integration_gl_tests`, `test_OffscreenRenderSpike` skip headless. ctest counts skip as success.
 
 - [ ] T0137 Preset categories always "Uncategorized" (`PresetScanner.cpp`) #feature
+      **Stale (2026-11-07):** PresetScanner derives category from the relative subdirectory
+      (`CategoryA` test passes); "Uncategorized" is correct only for presets flat in the scan root.
 
 - [ ] T0138 Standard modern C++ where tree reaches for older idioms (`src/`) #cleanup
       `std::mdspan`, concepts, `std::array` for `CircularBuffer`, `std::variant`, `std::jthread`.

@@ -1,0 +1,30 @@
+# Canonical list of ctest entries that carry the sanitizer ENVIRONMENT options
+# (TSAN_OPTIONS exitcode=66, ASAN/UBSAN_OPTIONS exitcode=67) in
+# tests/unit/CMakeLists.txt. These are the ONLY unit entries a sanitizer lane
+# may run: an entry absent from this set is not instrumented for the lane's
+# exitcode and would either SIGABRT (Darwin) or exit 0 with no report, both of
+# which read as a measurement but are not one.
+#
+# ONE SOURCE OF TRUTH (T0330). Consumers:
+#   * .github/workflows/tsan.yml  builds its RE from THIS file at run time
+#   * tests/unit/CMakeLists.txt  set_tests_properties(... ENVIRONMENT ...)
+#   * scripts/check-safe-tests.py  drift guard (fails on any disagreement)
+#   * build.sh SAFE_TESTS is a SUPERSET: it also builds/runs the headless-safe
+#     entries that are NOT sanitizer-annotated (e.g. the GL spike). It must
+#     contain every name here, but may contain more. That is deliberate, not
+#     drift -- the guard enforces containment, not equality, for build.sh.
+#
+# One name per line. No duplicates. Keep sorted for reviewable diffs. A name
+# here MUST be an add_test() entry in tests/unit/CMakeLists.txt; the guard
+# checks that too. Edit this file and the CMake block in the SAME commit.
+test_CapturedHosts
+test_ClerkAuthClient
+test_FeatureFlags
+test_HttpPolicy
+test_RenderExecutor
+test_SunoAudioUploadService
+test_SunoExploreService
+test_SunoNotificationService
+test_SunoRequestEpoch
+test_ThemeQml
+unit_tests

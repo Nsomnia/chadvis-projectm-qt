@@ -33,6 +33,11 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 - **Remote cover art decodes at display size, off the GUI thread.** Every `image_url` Image now
   sets `sourceSize` and `asynchronous`; DiscoverView already did. (T0086)
 
+- **The sanitizer test list has one source of truth.** `scripts/safe-tests.txt` is the canonical
+  11-entry list; the TSan lane builds its regex from it and `check-safe-tests.py` (run by the
+  guards gate) fails on drift, duplicates, or phantom names. A duplicated `SAFE_TESTS` entry is
+  gone. (T0330)
+
 ### Changed
 
 - **Dead `searchText` plumbing is gone from the library page fetch.** The parameter was threaded

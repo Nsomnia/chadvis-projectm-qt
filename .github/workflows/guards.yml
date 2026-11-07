@@ -40,3 +40,9 @@ jobs:
 
       - name: Check workflow files
         run: ./scripts/check-workflows.py
+
+      # T0330: the sanitizer-annotated test list has four consumers. A drift
+      # between them is exactly how a race escapes measurement: an entry left
+      # out of the TSAN_OPTIONS block exits 0 with no report and looks clean.
+      - name: Check sanitizer test population
+        run: ./scripts/check-safe-tests.py

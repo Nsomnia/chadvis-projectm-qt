@@ -42,20 +42,20 @@
 #                      "no races" must never look alike.
 #
 # WHAT THIS LANE COVERS
-#   The regex below is the eight names in the
-#   `if(CHADVIS_SANITIZER) set_tests_properties(...)` block at
-#   tests/unit/CMakeLists.txt:339-350, which is where TSAN_OPTIONS
-#   (abort_on_error=0:exitcode=66:suppressions=cmake/tsan.supp) is applied.
-#   Running the other five here would mean running them WITHOUT those options:
-#   Darwin aborts on the first finding, and on Linux the default exitcode is
-#   66 only by coincidence of halt_on_error, so an unannotated entry would
-#   either SIGABRT or exit 0 and neither outcome is a measurement.
-#   CLOSED (T0041): test_HttpPolicy and test_RenderExecutor were instrumented
-#   but missing from that set_tests_properties block, so they ran here without
-#   exitcode=66 and without the suppression file -- a race in either would
-#   have exited 0 and been counted as a pass. Both are in the block now, and
-#   test_ThemeQml joined them (T0297): it was registered but in no gate at all.
-#   the RE below lists all eleven entries.
+#   The RE below is the canonical list in scripts/safe-tests.txt, which is ALSO
+#   the `if(CHADVIS_SANITIZER) set_tests_properties(... ENVIRONMENT ...)` block
+#   in tests/unit/CMakeLists.txt -- the block that applies TSAN_OPTIONS
+#   (abort_on_error=0:exitcode=66:suppressions=cmake/tsan.supp). Running an
+#   entry absent from that block here would run it WITHOUT those options: on
+#   Darwin it aborts on the first finding, on Linux the default exitcode is
+#   66 only by coincidence of halt_on_error, so an unannotated entry either
+#   SIGABRTs or exits 0 and neither outcome is a measurement. (T0041 closed
+#   the original omission of test_HttpPolicy / test_RenderExecutor; T0297
+#   added test_ThemeQml.)
+#   scripts/check-safe-tests.py (run by guards.yml) fails when this RE, the
+#   CMake block, the canonical file, or build.sh SAFE_TESTS disagree, or when
+#   any name is not a real add_test() entry. That is the one source of truth
+#   (T0330); the old "8 vs 11" population drift cannot come back silently.
 #   Still excluded: test_OffscreenRenderSpike, a GL spike with no business in
 #   a headless sanitizer lane. Recorded rather than hidden.
 #
@@ -180,7 +180,12 @@ jobs:
         continue-on-error: true
         run: |
           set -uo pipefail
-          RE='^(unit_tests|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient|test_CapturedHosts|test_FeatureFlags|test_ThemeQml|test_HttpPolicy|test_RenderExecutor)$'
+          # Single source of truth: scripts/safe-tests.txt (T0330). Strip
+          # comments/blanks and leading whitespace, then join lines with |.
+          # Do NOT tr -d newlines first: paste needs them to separate fields.
+          names=$(sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e '/^$/d' \
+                    scripts/safe-tests.txt | paste -sd '|' -)
+          RE="^(${names})\$"
 
           set +e
           ctest --test-dir "$BUILD_DIR/tests" --output-on-failure \

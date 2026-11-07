@@ -62,7 +62,6 @@ SAFE_TESTS=(
     test_SunoPlaylistService
     test_SunoGenerationService
     test_SunoClipDetailService
-    test_SunoClipDetailService
     test_SunoMcpClient
     test_SunoNotificationService
     test_ClerkAuthClient
