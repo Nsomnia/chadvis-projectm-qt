@@ -226,6 +226,12 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0341 **Clerk failure envelope and `Retry-After` discarded** (`ClerkAuthClient.cpp:571-590,630-668`, `SunoClient.*`, `SunoBridge.cpp:784-804`) #risk-medium #blocks-ui
       Body's `errors[0]` never read. 429's `Retry-After` ignored. `authFailed(reason)` good sentence dies at `SunoClient`.
       Map bounded code set to fixed sentences. Never surface raw `long_message` (can echo identifier).
+      **Partly stale (2026-11-07):** the failure reason already reaches the UI
+      (`errorOccurred` -> SunoBridge::onLibraryFetchFailed -> errorMessage), and
+      `httpFailureReason(status)` already emits fixed sentences only -- no raw
+      `long_message`, no identifier leak. The security half is CLOSED. Remaining
+      enhancements: read `errors[0].code` for a bounded fixed-sentence map, and
+      honor 429 `Retry-After`. Neither is a secret-exposure defect.
 
 - [x] T0342 **`GET /v1/client` refuses envelope with no `last_active_session_id`** (`ClerkAuthClient.cpp:91-190`) #risk-medium (after: T0340)
       One session + no selector → `NoActiveSession` despite usable `jwt`. Web client: `last_active_session_id ?? sessions?.[0]?.id`.
