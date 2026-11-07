@@ -205,8 +205,7 @@ public:
     /// POST /api/feed/v3 (captured contract): cursor-based library page.
     /// nullopt cursor = first page. Truth about exhaustion lands in
     /// nextCursor()/hasMorePages() once the reply parses.
-    void fetchLibraryPage(std::optional<QString> cursor, int limit = 20,
-                          const QString& searchText = {});
+    void fetchLibraryPage(std::optional<QString> cursor, int limit = 20);
     /// Cursor state from the most recent feed reply.
     const QString& nextCursor() const { return nextCursor_; }
     bool hasMorePages() const { return hasMore_; }

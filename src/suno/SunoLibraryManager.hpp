@@ -99,7 +99,6 @@ private:
     int pendingPage_ = 1;
     int pagesLoaded_ = 0; ///< Number of feed pages pulled this sync session
     bool hasMorePages_ = false;
-    QString searchText_; ///< Local filter text; never sent to the feed
     /// T0167: one verdict per refresh attempt. Reset when an attempt starts,
     /// set by settleSync, so a page that trips two failure channels reports once.
     bool syncSettled_ = true;

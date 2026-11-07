@@ -1521,13 +1521,11 @@ void SunoClient::handleNetworkError(QNetworkReply* reply) {
 // API surface
 // ─────────────────────────────────────────────────────────────
 
-void SunoClient::fetchLibraryPage(std::optional<QString> cursor, int limit,
-                                  const QString& searchText) {
+void SunoClient::fetchLibraryPage(std::optional<QString> cursor, int limit) {
     if (!isAuthenticated()) {
         errorOccurred.emitSignal("Not authenticated");
         return;
     }
-    Q_UNUSED(searchText);
 
     // Request body per the CAPTURED /api/feed/v3 contract (T1, Aug 2026):
     // disliked/trashed are STRING "True"/"False"; presence filters are

@@ -125,7 +125,7 @@ void SunoLibraryManager::onCredentialsRestored() {
         return;
     }
 
-    client_->fetchLibraryPage(std::nullopt, kLibraryPageSize, searchText_);
+    client_->fetchLibraryPage(std::nullopt, kLibraryPageSize);
 }
 
 void SunoLibraryManager::requestNextPage() {
@@ -141,7 +141,7 @@ void SunoLibraryManager::requestNextPage() {
 
     isSyncing_ = true;
     emit statusMessage("Fetching more Suno clips...");
-    client_->fetchLibraryPage(client_->nextCursor(), kLibraryPageSize, searchText_);
+    client_->fetchLibraryPage(client_->nextCursor(), kLibraryPageSize);
 }
 
 

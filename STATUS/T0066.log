@@ -1,0 +1,4 @@
+2026-11-07T00:30:00Z  CLAIM    hy4free lane
+2026-11-07T00:30:00Z  CHANGE   src/suno/SunoClient.{hpp,cpp}, SunoLibraryManager.{hpp,cpp}: remove dead searchText param from fetchLibraryPage and the unused searchText_ member. Client-side filtering in SunoBridge untouched. No remote search (T0366).
+2026-11-07T00:30:00Z  VERIFY   ./build.sh --fast --tests --safe -> 16/16; test_SunoClient external caller uses 2 args and stays valid.
+2026-11-07T05:19:06Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee51861
