@@ -367,7 +367,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 
 - [ ] T0087 Icons: two duplicate copies, neither used, three destinations share one glyph (`resources/icons/`) #cleanup
 
-- [ ] T0088 macOS bundle ships no icon (`Info.plist.in`, `TargetSetup.cmake:262-290`) #cleanup
+- [x] T0088 macOS bundle ships no icon (`Info.plist.in`, `TargetSetup.cmake:262-290`) #cleanup
+      **DONE 2026-11-07:** `resources/ChadVis.icns` (reproducible via `scripts/make-app-icon.sh`) copied to
+      `Contents/Resources`; plist sets `CFBundleIconFile`. Verified in built bundle.
 
 - [ ] T0089 `file(DOWNLOAD)` of CPM.cmake at configure into source tree, unverified (`Dependencies.cmake:38-42`) #risk-medium
 
@@ -424,6 +426,8 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       **DONE 2026-11-07:** all clip identifiers and local paths out of durable LOG lines and all reason strings; helpers id-free.
 
 - [ ] T0113 `.gitignore` gaps (`build.log` present, `.DS_Store` files in tests/resources/docs) #risk-medium
+      **Verified no-op (2026-11-07):** `.DS_Store` (line 145) and `build.log` (line 170) are already
+      gitignored; `git check-ignore` confirms every stray file, none are tracked. Nothing leaks into commits.
 
 - [ ] T0114 Confirm `libavfilter` NOT currently linked (`Dependencies.cmake:142`) #risk-medium
       Burn-in relies on UI gate. Adding post-pass must degrade to "no post pass" on stripped distro.

@@ -215,6 +215,17 @@ add_executable(chadvis-projectm-qt src/main.cpp)
 # it here would be a second copy of the same value to keep in sync.
 target_link_libraries(chadvis-projectm-qt PRIVATE project_lib)
 
+# T0088: the macOS bundle ships the app icon. resources/ChadVis.icns is built
+# from resources/icons/chadvis-projectm-qt.svg by scripts/make-app-icon.sh; the
+# checked-in .icns is the artifact so a release build needs no SVG rasteriser.
+# MACOSX_PACKAGE_LOCATION puts it in Contents/Resources, where CFBundleIconFile
+# (in cmake/Info.plist.in) looks for it. Only meaningful under APPLE.
+if(APPLE)
+    target_sources(chadvis-projectm-qt PRIVATE resources/ChadVis.icns)
+    set_source_files_properties(resources/ChadVis.icns PROPERTIES
+        MACOSX_PACKAGE_LOCATION Resources)
+endif()
+
 # ---------------------------------------------------------------------------
 # macOS application bundle
 # ---------------------------------------------------------------------------

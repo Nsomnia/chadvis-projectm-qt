@@ -36,6 +36,10 @@
     <string>ChadVis</string>
     <key>CFBundleDisplayName</key>
     <string>ChadVis</string>
+    <!-- The .icns CMake copies into Contents/Resources (T0088). Named without
+         the extension: LaunchServices appends .icns itself. -->
+    <key>CFBundleIconFile</key>
+    <string>ChadVis</string>
 
     <!-- APPL is what marks the directory as an application rather than a
          document bundle; without it Finder treats it as a plain folder. -->

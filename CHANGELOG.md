@@ -6,6 +6,12 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- **The macOS bundle ships an app icon.** `resources/ChadVis.icns`, generated from the project SVG
+  by `scripts/make-app-icon.sh`, is copied into `Contents/Resources` and named by `CFBundleIconFile`.
+  Verified in the built bundle. (T0088)
+
 ### Fixed
 
 - **Preset discovery now finds `.milk7`, `.milkdrop`, and mixed-case extensions.** Extension
