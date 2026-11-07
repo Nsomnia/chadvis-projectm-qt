@@ -24,17 +24,66 @@ Item {
 
     property bool pressed: sliderMouseArea.pressed
     property bool hovered: sliderMouseArea.containsMouse
+    property string accessibleName: "Slider"
 
     signal moved(real value)
 
     implicitWidth: 200
     implicitHeight: 24
 
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Slider
+    Accessible.name: root.accessibleName
+    Accessible.description: root.accessibleName + ", " + Math.round(root.value)
+    // Screen readers drive a Slider role through these, not through a value
+    // property (Accessible has no `value`). Keep them in lockstep with keys.
+    Accessible.onIncreaseAction: root.stepBy(1)
+    Accessible.onDecreaseAction: root.stepBy(-1)
+
+    // One handler for every key: relying on the specific-vs-generic Keys
+    // dispatch order is fragile, and this keeps every key's behaviour in one
+    // place. event.accepted stops the key reaching a parent control.
+    Keys.onPressed: function (event) {
+        switch (event.key) {
+        case Qt.Key_Left:
+        case Qt.Key_Down:
+            root.stepBy(-1); event.accepted = true; break
+        case Qt.Key_Right:
+        case Qt.Key_Up:
+            root.stepBy(1); event.accepted = true; break
+        case Qt.Key_PageUp:
+            root.stepBy(10); event.accepted = true; break
+        case Qt.Key_PageDown:
+            root.stepBy(-10); event.accepted = true; break
+        case Qt.Key_Home:
+            root.setValue(root.from); event.accepted = true; break
+        case Qt.Key_End:
+            root.setValue(root.to); event.accepted = true; break
+        }
+    }
+
+    /// Keyboard step. The mouse path clamps to [from, to] and emits moved();
+    /// keyboard must do exactly the same so callers see one interaction model.
+    function stepBy(steps) {
+        var step = root.stepSize > 0 ? root.stepSize : 1
+        setValue(root.value + steps * step)
+    }
+
+    function setValue(newValue) {
+        var step = root.stepSize > 0 ? root.stepSize : 0
+        var v = step > 0 ? Math.round(newValue / step) * step : newValue
+        v = Math.max(root.from, Math.min(root.to, v))
+        if (v === root.value)
+            return
+        root.value = v
+        root.moved(root.value)
+    }
+
     // ═══════════════════════════════════════════════════════════
     // CALCULATED VALUES
     // ═══════════════════════════════════════════════════════════
 
-    readonly property real normalizedValue: (value - from) / (to - from)
+    readonly property real normalizedValue: (to - from) === 0 ? 0 : (value - from) / (to - from)
     readonly property real handleWidth: 16
     readonly property real trackHeight: 6
 
