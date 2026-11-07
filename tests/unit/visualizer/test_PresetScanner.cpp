@@ -132,6 +132,40 @@ private slots:
         QVERIFY(found2);
     }
 
+    void testPresetExtensionsIncludeMilkVariantsAndCase() {
+        // Distinct stems, not just distinct extensions: on a case-insensitive
+        // filesystem (the default on macOS) "a.milk" and "a.MILK" are the same
+        // file, so a case-coverage test built on one stem would silently test
+        // nothing. T0165: mixed-case and the .milk7/.milkdrop spellings must all
+        // be discovered, while a non-preset extension stays out.
+        const fs::path extDir(fs::path(tmpDir.path().toStdString()) /
+                              "test_preset_extensions");
+        fs::remove_all(extDir);
+        fs::create_directories(extDir);
+        createFile(extDir / "alpha.milk");
+        createFile(extDir / "beta.MILK");
+        createFile(extDir / "gamma.Milk");
+        createFile(extDir / "delta.milk7");
+        createFile(extDir / "epsilon.milkdrop");
+        createFile(extDir / "zeta.prjm");
+        createFile(extDir / "not_a_preset.txt");
+
+        std::vector<PresetInfo> presets;
+        auto result = PresetScanner::scan(extDir, false, presets, {}, {});
+        QVERIFY(result.isOk());
+        QCOMPARE(presets.size(), 6u);
+
+        std::set<std::string> names;
+        for (const auto& p : presets)
+            names.insert(p.name);
+        for (const char* expected : {"alpha", "beta", "gamma", "delta",
+                                     "epsilon", "zeta"}) {
+            QVERIFY2(names.contains(expected),
+                     qPrintable(QStringLiteral("missing preset '%1'").arg(expected)));
+        }
+        QVERIFY(!names.contains("not_a_preset"));
+    }
+
     void testNameShapesSurviveHoistedAuthorRegex() {
         std::vector<PresetInfo> presets;
         std::set<std::string> favorites;

@@ -34,6 +34,20 @@ fs::path genericBaseDir(QStandardPaths::StandardLocation location,
     return fs::path(base.toStdString()) / "chadvis-projectm-qt";
 }
 
+// projectM presets reach disk with mixed-case extensions (.MILK, .Milk) and in
+// .milk7 / .milkdrop spellings. The extension sets are lowercase, so fold the
+// entry's extension before the lookup. Shared by directoryHoldsPresets() and
+// listFiles() so the two probes cannot drift apart on case handling.
+bool hasExtension(const fs::path& path,
+                  const std::set<std::string>& extensions) {
+    std::string ext = path.extension().string();
+    if (ext.empty())
+        return false;
+    for (auto& c : ext)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return extensions.contains(ext);
+}
+
 // ── Preset directory probe ───────────────────────────────────────────
 // True when `dir` holds a preset file at its top level or exactly one level
 // down. One level is what a real pack looks like (cream-of-the-crop ships one
@@ -45,7 +59,7 @@ bool directoryHoldsPresets(const fs::path& dir) {
         return false;
 
     const auto hasPreset = [](const fs::path& entry) {
-        return presetExtensions.contains(entry.extension().string());
+        return hasExtension(entry, presetExtensions);
     };
 
     for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end;
@@ -296,13 +310,7 @@ std::vector<fs::path> listFiles(const fs::path& dir,
         std::error_code ignore;
         if (!fs::is_regular_file(p, ignore))
             return false;
-
-        std::string ext = p.extension().string();
-        if (ext.empty())
-            return false;
-        for (auto& c : ext)
-            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        return extensions.contains(ext);
+        return hasExtension(p, extensions);
     };
 
     try {

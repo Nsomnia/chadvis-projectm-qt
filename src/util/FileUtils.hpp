@@ -56,7 +56,7 @@ inline const std::set<std::string> videoExtensions = {
 
 // Preset extensions
 inline const std::set<std::string> presetExtensions = {
-    ".milk", ".prjm"
+    ".milk", ".prjm", ".milk7", ".milkdrop"
 };
 
 // Generate unique filename (avoids overwriting)
