@@ -109,6 +109,8 @@ Rectangle {
         Image {
             anchors.fill: parent
             source: root.clipData ? (root.clipData.image_url || "") : ""
+            // Remote art: decode at display size, off the GUI thread.
+            sourceSize: Qt.size(Theme.cardTileMinimum, Theme.cardTileMinimum * 1.22)
             asynchronous: true
             fillMode: Image.PreserveAspectCrop
             opacity: status === Image.Ready ? 1.0 : 0.0

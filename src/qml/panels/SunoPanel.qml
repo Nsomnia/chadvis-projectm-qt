@@ -141,6 +141,7 @@ ColumnLayout {
                         anchors.fill: parent
                         source: modelData.image_url || ""
                         sourceSize: Qt.size(48, 48)
+                        asynchronous: true
                         fillMode: Image.PreserveAspectCrop
                     }
                 }

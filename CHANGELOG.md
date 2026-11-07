@@ -24,6 +24,9 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   now classifies a ctest-exit-8 run carrying ThreadSanitizer (66) or ASan/UBSan (67) reports as
   `FINDINGS` with a report count. A genuine failure or crash stays red. (T0331)
 
+- **Remote cover art decodes at display size, off the GUI thread.** Every `image_url` Image now
+  sets `sourceSize` and `asynchronous`; DiscoverView already did. (T0086)
+
 ### Changed
 
 - **Dead `searchText` plumbing is gone from the library page fetch.** The parameter was threaded

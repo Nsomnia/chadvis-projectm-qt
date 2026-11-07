@@ -92,6 +92,11 @@ Popup {
             Image {
                 anchors.fill: parent
                 source: root.clipData ? (root.clipData.image_url || "") : ""
+                // Remote art: decode at display size, off the GUI thread.
+                // width is Layout-driven; cap it so a very wide sheet does not
+                // decode the full remote image.
+                sourceSize: Qt.size(Math.min(width, 640) || 640, 190)
+                asynchronous: true
                 fillMode: Image.PreserveAspectCrop
                 visible: status === Image.Ready
             }
