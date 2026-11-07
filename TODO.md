@@ -302,8 +302,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0330 **TSan lane counts 8, `--safe` runs 11 — different populations** (`build.sh`, `tsan.yml`) #risk-medium
       Make one list source of truth. Record per-entry baseline in checked-in file. Fail on increase per entry.
 
-- [ ] T0331 **Sanitizer findings reported as failed ctest entry** (`build.sh`) #cleanup
+- [x] T0331 **Sanitizer findings reported as failed ctest entry** (`build.sh`) #cleanup
       Classify exit 66 (TSan) and 67 (ASan/UBSan). Print report count next to verdict. Keep genuine failure red.
+      **DONE 2026-11-07:** `do_ctest` classifies ctest-exit-8 sanitizer findings (66/67) as FINDINGS with report count; genuine failures stay red.
 
 - [ ] T0318 **Saved stream carries no lyrics, no user-settable tags** (`SunoDownloader.cpp:832-900,1085`) #feature #risk-medium
       `lyrics` empty for 2147/2147 clips. 775 carry `aligned_lyrics_json`. MP4 branch writes no `©lyr`.
@@ -316,8 +317,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0051 `QTP0004` deliberately disabled, 58 QML files away from `qt_add_qml_module` (`TargetSetup.cmake:129-134`) #risk-medium
       Enable and fix relative imports, or flatten QML tree. 6.8 can generate per-directory `qmldir`s.
 
-- [ ] T0165 **Preset discovery misses `.milk7`/`.milkdrop`** (`PresetScanner.cpp`) #risk-medium
+- [x] T0165 **Preset discovery misses `.milk7`/`.milkdrop`** (`PresetScanner.cpp`) #risk-medium
       projectM tests `.milk` exact, case-sensitive. `.Milk`/`.MILK`/`.milk7`/`.milkdrop` skipped. No `milkdrop.ini` in v4.
+      **DONE 2026-11-07:** case-insensitive extension match + `.milk7`/`.milkdrop`; shared `hasExtension()`. Test pins discovery.
 
 - [x] T0058 `RatingManager` process-wide mutex-less singleton keyed on preset name (`RatingManager.cpp:9-25`) #blocks-feature
       Same preset name in two banks shares rating. Bare `std::map`, no lock. Fix: inject, key on path, add mutex.
@@ -325,9 +327,14 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 
 - [ ] T0065 `SunoOrchestrator` permanently-failing stub with unreachable members (`SunoOrchestrator.cpp:14-44`) #cleanup
       Both methods only `emit errorOccurred`. Private handlers never called. `client_` written never read.
+      **Not a bug to "fix" (2026-11-07):** the failure is an intentional fail-closed gate —
+      B-Side Chat endpoints are uncaptured (AGENTS.md), so the stub must refuse. `onMessageFinished`/
+      `onHistoryFinished` are real parsers, not dead code; they fire once a route is wired. Keep until
+      a capture exists, then wire. Do not delete the stub to "clean up".
 
-- [ ] T0066 `searchText` threaded three layers, dropped at bottom (`SunoLibraryManager.cpp:106,122`, `SunoClient.cpp:1310`) #cleanup
+- [x] T0066 `searchText` threaded three layers, dropped at bottom (`SunoLibraryManager.cpp:106,122`, `SunoClient.cpp:1310`) #cleanup
       `Q_UNUSED(searchText)`, `setSearchText` has no callers. Real filtering is client-side in `SunoBridge`.
+      **DONE 2026-11-07:** dead `searchText`/`searchText_` removed from `fetchLibraryPage` and manager. Remote search stays T0366.
 
 - [ ] T0072 No `reuseItems` anywhere; nested non-interactive `GridView` in virtualized `ListView` (`src/qml/`) #performance
       `DiscoverView.qml:115-127` materialises every clip of every feed. 16 `layer.enabled` sites.
@@ -337,9 +344,13 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 
 - [ ] T0080 Two writes to bound `value` on `AppSlider` fight each other (`KaraokeSettings.qml:52`, `RecordingPanel.qml:180,264`) #risk-high
       Use `onMoved` not `onValueChanged` per Qt docs.
+      **Stale premise (2026-11-07):** both cited call sites already use `onMoved`. Remaining
+      `onValueChanged` sites are OverlayPanel.qml / AppColorPicker.qml, which bind a display value,
+      not a settings write — no two-way fight. Re-grep before acting; likely closable as no-op.
 
-- [ ] T0081 `AppSlider` keyboard- and screen-reader-inaccessible (`AppSlider.qml`) #risk-high
+- [x] T0081 `AppSlider` keyboard- and screen-reader-inaccessible (`AppSlider.qml`) #risk-high
       No `activeFocusOnTab`, no arrow keys, no `Accessible.*`. Division by zero at `:37` if `from == to`.
+      **DONE 2026-11-07:** div-by-zero guard, keyboard (arrows/Page/Home/End), `Accessible.Slider` with increase/decrease actions. qmllint clean.
 
 - [ ] T0082 34 `Accessible.*` properties across 11 of 58 files; 47 have none (`src/qml/`) #risk-high
 
@@ -407,8 +418,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0108 Muxed subtitle tracks: `libavfilter` + `libass` behind CMake option (`Dependencies.cmake`, `SubtitleBurnIn.cpp`) #feature
       `subtitles=filename=subs.ass:fontsdir=…`. `mov_text` for MP4, `webvtt` for WebM. Local FFmpeg has libass/libfontconfig.
 
-- [ ] T0109 Stop logging clip identifiers (`DownloadQueue.cpp:323,508-703`, `SunoDownloader.cpp:246,409,412`) #security
+- [x] T0109 Stop logging clip identifiers (`DownloadQueue.cpp:323,508-703`, `SunoDownloader.cpp:246,409,412`) #security
       Serializer structurally incapable of emitting token/cookie (preserve). Clip ID is account-linked half of scrub plan.
+      **DONE 2026-11-07:** all clip identifiers and local paths out of durable LOG lines and all reason strings; helpers id-free.
 
 - [ ] T0113 `.gitignore` gaps (`build.log` present, `.DS_Store` files in tests/resources/docs) #risk-medium
 

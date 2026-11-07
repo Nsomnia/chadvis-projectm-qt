@@ -1,10 +1,36 @@
 # Changelog
 
-Current release: **1.1.0** — 2026-09-26
+Current release: **1.2.0** — 2026-11-07
 
 This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Pre-pivot, oversized history is retained as [docs/CHANGELOG_LEGACY.md](docs/CHANGELOG_LEGACY.md). That file predates version normalization in its `2.1.0`/`2.0.0`/`1.1.0`/`1.0.0` sections, but it also opens with a post-normalization `[Unreleased]` block that carries most of the work now published here as 1.1.0 — so the legacy file overlaps this one rather than being purely historical.
 
 ## [Unreleased]
+
+### Fixed
+
+- **Preset discovery now finds `.milk7`, `.milkdrop`, and mixed-case extensions.** Extension
+  matching folds case and shares one `hasExtension()` helper between the directory probe and the
+  file walk, so the two cannot drift. A test pins all the spellings. (T0165)
+
+- **The AppSlider is keyboard- and screen-reader-accessible.** Arrow/Page/Home/End keys move the
+  value through the same `moved()` signal the mouse uses, `from == to` no longer divides by zero,
+  and the control exposes an `Accessible.Slider` role with increase/decrease actions. (T0081)
+
+- **Clip identifiers are out of the durable runtime log.** Every download/downloader log line and
+  every self-inflicted failure reason is now free of clip ids and local paths, so a log attached to
+  an issue cannot leak an account-linked identifier. (T0109)
+
+- **Sanitizer findings no longer look like a red test failure.** `./build.sh --tsan/--asan --safe`
+  now classifies a ctest-exit-8 run carrying ThreadSanitizer (66) or ASan/UBSan (67) reports as
+  `FINDINGS` with a report count. A genuine failure or crash stays red. (T0331)
+
+### Changed
+
+- **Dead `searchText` plumbing is gone from the library page fetch.** The parameter was threaded
+  through three layers and dropped at the bottom; client-side filtering in `SunoBridge` is the real
+  path. Remote search remains T0366. (T0066)
+
+## [1.2.0] — 2026-11-07
 
 ### Added
 
