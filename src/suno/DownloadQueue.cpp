@@ -259,22 +259,19 @@ std::int64_t retryDelayMs(const int attemptZeroBased,
     return hint + jitter(rng);
 }
 
-std::string byteCapReason(const std::string_view clipId, const qint64 limitBytes,
-                          const qint64 seenBytes) {
-    return std::format("{} exceeded the per-item byte cap of {} bytes ({} received)", clipId,
+std::string byteCapReason(const qint64 limitBytes, const qint64 seenBytes) {
+    return std::format("exceeded the per-item byte cap of {} bytes ({} received)",
                        limitBytes, seenBytes);
 }
 
-std::string shortWriteReason(const std::string_view clipId, const qint64 offsetBytes,
-                             const qint64 wantedBytes, const qint64 writtenBytes,
-                             const std::string_view deviceError) {
-    return std::format("{} could not be written: {} of {} bytes at offset {} ({})", clipId,
+std::string shortWriteReason(const qint64 offsetBytes, const qint64 wantedBytes,
+                             const qint64 writtenBytes, const std::string_view deviceError) {
+    return std::format("could not be written: {} of {} bytes at offset {} ({})",
                        writtenBytes, wantedBytes, offsetBytes, deviceError);
 }
 
-std::string shortDownloadReason(const std::string_view clipId, const qint64 receivedBytes,
-                                const qint64 expectedBytes) {
-    return std::format("{} downloaded {} of the {} bytes the server promised", clipId,
+std::string shortDownloadReason(const qint64 receivedBytes, const qint64 expectedBytes) {
+    return std::format("downloaded {} of the {} bytes the server promised",
                        receivedBytes, expectedBytes);
 }
 
@@ -334,7 +331,7 @@ bool DownloadQueue::enqueue(std::string clipId, std::string url,
         return false;
     }
     if (findItem(clipId)) {
-        LOG_WARN("DownloadQueue: duplicate live job for clip {}", clipId);
+        LOG_WARN("DownloadQueue: duplicate live job (already queued)");
         return false;
     }
 
@@ -467,8 +464,7 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
     if (partOpener_) {
         auto injected = partOpener_(pathStr);
         if (!injected) {
-            item.abortReason =
-                    std::format("{} could not open its scratch file at {}", item.clipId, pathStr);
+            item.abortReason = "could not open its scratch file";
             return std::unexpected(PartOpenError::Failed);
         }
         item.ownsPart = true;
@@ -508,11 +504,10 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
         if (!lockCreated(*file)) {            // We hold the only exclusive claim on a path we just created, so a
             // refusal here means a holder arrived in the gap between create and
             // lock. Unlink what we made and report rather than share the file.
-            LOG_WARN("DownloadQueue: lost the race for {} immediately after creating it", pathStr);
+            LOG_WARN("DownloadQueue: lost the race for a scratch file immediately after creating it");
             std::error_code ec;
             fs::remove(path, ec);
-            item.abortReason = std::format("{} lost the race to create its scratch file at {}",
-                                           item.clipId, pathStr);
+            item.abortReason = "lost the race to create its scratch file";
             return std::unexpected(PartOpenError::Failed);
         }
         item.ownsPart = true;
@@ -525,10 +520,8 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
     // symlink rather than not_found and is never mistaken for a crashed run.
     std::error_code ec;
     if (fs::symlink_status(path, ec).type() == fs::file_type::not_found) {
-        LOG_WARN("DownloadQueue: cannot open part file for {} at {}: {}", item.clipId, pathStr,
-                 openError);
-        item.abortReason = std::format("{} could not open its scratch file at {} ({})", item.clipId,
-                                       pathStr, openError);
+        LOG_WARN("DownloadQueue: cannot open part file: {}", openError);
+        item.abortReason = std::format("could not open its scratch file ({})", openError);
         return std::unexpected(PartOpenError::Failed);
     }
 
@@ -540,35 +533,31 @@ std::expected<std::unique_ptr<QIODevice>, PartOpenError> DownloadQueue::openPart
     // So it is reclaimed. Locked, a live writer owns the path and removing it
     // would destroy another run's work: that is a collision, and it is reported.
     if (!claimIfUnlocked(path)) {
-        LOG_WARN("DownloadQueue: {} collides with a live writer at {}", item.clipId, pathStr);
-        item.abortReason =
-                std::format("{} found another download already writing {}", item.clipId, pathStr);
+        LOG_WARN("DownloadQueue: a scratch file collides with a live writer");
+        item.abortReason = "found another download already writing the scratch file";
         return std::unexpected(PartOpenError::Collision);
     }
 
     std::error_code removeEc;
     fs::remove(path, removeEc);
     if (removeEc) {
-        LOG_WARN("DownloadQueue: cannot reclaim stale part for {} at {}: {}", item.clipId, pathStr,
-                 removeEc.message());
-        item.abortReason = std::format("{} found a stale scratch file at {} that could not be "
-                                       "removed ({})",
-                                       item.clipId, pathStr, removeEc.message());
+        LOG_WARN("DownloadQueue: cannot reclaim stale part: {}", removeEc.message());
+        item.abortReason = std::format("found a stale scratch file that could not be removed ({})",
+                                       removeEc.message());
         return std::unexpected(PartOpenError::Failed);
     }
 
     auto reclaimed = openOnce();
     if (!reclaimed || !lockCreated(*reclaimed)) {
-        LOG_WARN("DownloadQueue: cannot reclaim stale part for {} at {}: {}", item.clipId, pathStr,
+        LOG_WARN("DownloadQueue: cannot reclaim stale part: {}",
                  reclaimed ? std::string("could not lock after reclaiming") : openError);
         std::error_code cleanupEc;
         fs::remove(path, cleanupEc);
-        item.abortReason = std::format("{} could not take over the stale scratch file at {}",
-                                       item.clipId, pathStr);
+        item.abortReason = "could not take over the stale scratch file";
         return std::unexpected(PartOpenError::Failed);
     }
 
-    LOG_INFO("DownloadQueue: reclaimed stale part for {} at {}", item.clipId, pathStr);
+    LOG_INFO("DownloadQueue: reclaimed stale part");
     item.ownsPart = true;
     return std::expected<std::unique_ptr<QIODevice>, PartOpenError>{std::move(reclaimed)};
 }
@@ -592,7 +581,7 @@ void DownloadQueue::onData(Item& item) {
     // whose total equals the cap is legal and completes.
     if (maxBytesPerItem_ > 0 && item.bytesReceived + wanted > maxBytesPerItem_) {
         failItem(item, AbortCause::ByteCap,
-                 byteCapReason(item.clipId, maxBytesPerItem_, item.bytesReceived + wanted));
+                 byteCapReason(maxBytesPerItem_, item.bytesReceived + wanted));
         return;
     }
 
@@ -605,7 +594,7 @@ void DownloadQueue::onData(Item& item) {
         // from a real download. Retryable: the scratch file is unlinked and the
         // next attempt starts from byte zero, so a transient full disk recovers.
         failItem(item, AbortCause::ShortWrite,
-                 shortWriteReason(item.clipId, item.bytesReceived, wanted, written,
+                 shortWriteReason(item.bytesReceived, wanted, written,
                                   item.partFile->errorString().toStdString()));
         return;
     }
@@ -643,7 +632,7 @@ void DownloadQueue::onFinished(Item& item, QNetworkReply& reply) {
     // lie this ordering exists to prevent, since the user cancelled nothing.
     if (item.abortCause != AbortCause::None) {
         const bool retryable = item.abortCause == AbortCause::ShortWrite;
-        LOG_WARN("DownloadQueue: {} tore its attempt down: {}", item.clipId, item.abortReason);
+        LOG_WARN("DownloadQueue: a download tore its attempt down: {}", item.abortReason);
         handleFailure(item, &reply, retryable ? FailureKind::Retryable : FailureKind::Permanent);
         return;
     }
@@ -685,7 +674,7 @@ void DownloadQueue::dropPart(Item& item) {
     std::error_code ec;
     fs::remove(partPathFor(item.destPath), ec);
     if (ec) {
-        LOG_WARN("DownloadQueue: could not remove part file for {}: {}", item.clipId, ec.message());
+        LOG_WARN("DownloadQueue: could not remove part file: {}", ec.message());
     }
 }
 
@@ -707,7 +696,7 @@ void DownloadQueue::finalizeSuccess(Item& item, QNetworkReply& reply) {
     }
     if (expectedTotal > 0 && item.bytesReceived < expectedTotal) {
         const std::string reason =
-                shortDownloadReason(item.clipId, item.bytesReceived, expectedTotal);
+                shortDownloadReason(item.bytesReceived, expectedTotal);
         LOG_WARN("DownloadQueue: {}", reason);
         item.abortCause = AbortCause::ShortDownload;
         item.abortReason = reason;
@@ -731,16 +720,16 @@ void DownloadQueue::finalizeSuccess(Item& item, QNetworkReply& reply) {
     std::error_code ec;
     fs::rename(partPathFor(item.destPath), item.destPath, ec); // atomic on POSIX
     if (ec) {
-        LOG_WARN("DownloadQueue: rename failed for {}: {}", item.clipId, ec.message());
-        item.abortReason = std::format("{} downloaded but could not be moved into place ({})",
-                                       item.clipId, ec.message());
+        LOG_WARN("DownloadQueue: rename failed: {}", ec.message());
+        item.abortReason = std::format("downloaded but could not be moved into place ({})",
+                                       ec.message());
         setState(item, DownloadState::FailedPermanent);
         retire(item.clipId);
         return;
     }
 
     item.progressPercent = 100;
-    LOG_INFO("DownloadQueue: completed {} ({} bytes)", item.clipId, item.bytesReceived);
+    LOG_INFO("DownloadQueue: completed a download ({} bytes)", item.bytesReceived);
     setState(item, DownloadState::Completed);
     retire(item.clipId);
 }
@@ -751,7 +740,7 @@ void DownloadQueue::finishCancelled(Item& item, QNetworkReply& reply) {
     reply.deleteLater();
     item.reply.clear();
 
-    LOG_INFO("DownloadQueue: cancelled {}", item.clipId);
+    LOG_INFO("DownloadQueue: cancelled a download");
     setState(item, DownloadState::Cancelled);
     retire(item.clipId);
 }
@@ -784,7 +773,7 @@ void DownloadQueue::handleFailure(Item& item, QNetworkReply* reply, const Failur
             item.reply.clear();
         }
         const std::int64_t delay = retryDelayMs(item.attempts - 1, retryAfter, rng_);
-        LOG_WARN("DownloadQueue: {} failed (attempt {}/{}), retrying in {} ms{}", item.clipId,
+        LOG_WARN("DownloadQueue: a download failed (attempt {}/{}), retrying in {} ms{}",
                  item.attempts, kMaxAttempts, delay,
                  retryAfter.has_value() ? " (Retry-After)" : "");
         // The returned reference is the only owner between the erase and the

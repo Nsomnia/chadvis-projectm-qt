@@ -142,8 +142,8 @@ void SunoDownloader::wireFinalize() {
             Qt::QueuedConnection);
     connect(this, &SunoDownloader::finalizeFailed, this,
             [this](const QString& clipId, const QString& reason) {
-                LOG_ERROR("SunoDownloader: {} could not be finished: {}",
-                          clipId.toStdString(), reason.toStdString());
+                LOG_ERROR("SunoDownloader: a clip could not be finished: {}",
+                          reason.toStdString());
                 emit downloadStateChanged(clipId,
                                           static_cast<int>(DownloadState::FailedPermanent), 0);
             },
@@ -391,8 +391,7 @@ std::expected<DownloadStarted, QString> SunoDownloader::download(const SunoClip&
     const auto format = action == DownloadAction::SaveAndPlay ? vc::SunoDownloadFormat::MP3
                                                              : saveFormat;
     if (format != vc::SunoDownloadFormat::MP3) {
-        LOG_WARN("SunoDownloader: WAV download rejected for clip {}: conversion route is LEAD-only",
-                 clip.id);
+        LOG_WARN("SunoDownloader: WAV download rejected: conversion route is LEAD-only");
         return std::unexpected(
             QStringLiteral("WAV download is unavailable: the conversion route is not "
                            "capture-backed."));
@@ -408,15 +407,15 @@ std::expected<DownloadStarted, QString> SunoDownloader::download(const SunoClip&
     // rather than the streamed asset this client fetches. See
     // downloadProductLock() for the full argument.
     if (const auto lock = downloadProductLock(clip)) {
-        LOG_INFO("SunoDownloader: clip {} is locked in Suno's download product ({}); fetching the "
+        LOG_INFO("SunoDownloader: clip is locked in Suno's download product ({}); fetching the "
                  "streamed media the account can already play",
-                 clip.id, lock->toStdString());
+                 lock->toStdString());
     }
 
     const auto media = selectMedia(clip, format);
     if (!media) {
-        LOG_WARN("SunoDownloader: no usable captured media URL for clip {} (status {})",
-                 clip.id, clip.status);
+        LOG_WARN("SunoDownloader: no usable captured media URL (status {})",
+                 clip.status);
         return std::unexpected(noUsableMediaMessage(clip));
     }
 
@@ -456,8 +455,7 @@ SunoDownloader::finishAlreadyOnDisk(const SunoClip& clip,
             emit downloadStateChanged(QString::fromStdString(clip.id),
                                       static_cast<int>(DownloadState::Completed), 100);
         } else {
-            LOG_WARN("SunoDownloader: {} is on disk but could not be enqueued for playback",
-                     clip.id);
+            LOG_WARN("SunoDownloader: a clip is on disk but could not be enqueued for playback");
         }
         return DownloadStarted{clip.id, action, true};
     }
@@ -653,10 +651,10 @@ void SunoDownloader::handleItemState(const std::string& clipId, DownloadState st
             break;
         }
         case DownloadState::FailedPermanent:
-            LOG_ERROR("SunoDownloader: permanent failure for clip {}", clipId);
+            LOG_ERROR("SunoDownloader: permanent failure for a clip");
             break;
         case DownloadState::FailedRetryable:
-            LOG_WARN("SunoDownloader: retries exhausted for clip {}", clipId);
+            LOG_WARN("SunoDownloader: retries exhausted for a clip");
             break;
         default:
             break;  // Cancelled needs no post-processing
@@ -677,7 +675,7 @@ bool decryptMediaBody(const fs::path& path, const ContentKey& key) {
     {
         CtrStream candidate(key.key, key.counter);
         if (!candidate.valid()) {
-            LOG_ERROR("SunoDownloader: the content key is not usable for {}", path.string());
+            LOG_ERROR("SunoDownloader: the content key is not usable");
             return false;
         }
         stream = std::make_unique<CtrStream>(std::move(candidate));
@@ -695,13 +693,13 @@ bool decryptMediaBody(const fs::path& path, const ContentKey& key) {
     {
         QFile source(QString::fromStdString(path.string()));
         if (!source.open(QIODevice::ReadOnly)) {
-            LOG_ERROR("SunoDownloader: cannot read {} to decrypt it", path.string());
+            LOG_ERROR("SunoDownloader: cannot read the encrypted file to decrypt it");
             return false;
         }
 
         QFile output(QString::fromStdString(target.string()));
         if (!output.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            LOG_ERROR("SunoDownloader: cannot write {}", target.string());
+            LOG_ERROR("SunoDownloader: cannot write the decrypted file");
             return false;
         }
         constexpr qint64 kChunk = 64 * 1024;
@@ -716,7 +714,7 @@ bool decryptMediaBody(const fs::path& path, const ContentKey& key) {
                 head = clear.left(12);
             }
             if (!clear.isEmpty() && output.write(clear) != clear.size()) {
-                LOG_ERROR("SunoDownloader: writing {} failed", target.string());
+                LOG_ERROR("SunoDownloader: writing the decrypted file failed");
                 output.close();
                 std::filesystem::remove(target, ec);
                 return false;
@@ -730,15 +728,14 @@ bool decryptMediaBody(const fs::path& path, const ContentKey& key) {
         const bool mp4 = head.size() >= 8 && head.mid(4, 4) == QByteArrayLiteral("ftyp");
         const bool webm = head.size() >= 4 && head.left(4) == QByteArrayLiteral("\x1a\x45\xdf\xa3");
         if (!mp4 && !webm) {
-            LOG_ERROR("SunoDownloader: the decrypted body of {} is not an audio container",
-                      path.string());
+            LOG_ERROR("SunoDownloader: the decrypted body is not an audio container");
             output.close();
             std::filesystem::remove(target, ec);
             return false;
         }
         const QByteArray tail = stream->finish();
         if (!tail.isEmpty() && output.write(tail) != tail.size()) {
-            LOG_ERROR("SunoDownloader: writing {} failed", target.string());
+            LOG_ERROR("SunoDownloader: writing the decrypted file failed");
             output.close();
             std::filesystem::remove(target, ec);
             return false;
@@ -752,8 +749,8 @@ bool decryptMediaBody(const fs::path& path, const ContentKey& key) {
     ec.clear();
     std::filesystem::rename(target, path, ec);
     if (ec) {
-        LOG_ERROR("SunoDownloader: cannot replace {} with the decrypted body: {}",
-                  path.string(), ec.message());
+        LOG_ERROR("SunoDownloader: cannot replace the file with the decrypted body: {}",
+                  ec.message());
         std::filesystem::remove(target, ec);
         return false;
     }
@@ -782,8 +779,7 @@ void SunoDownloader::fetchContentKey(const std::string& clipId,
     // an entry stays correct across a bearer refresh.
     if (const auto cached = contentKeys_.find(clipId); cached != contentKeys_.end()) {
         if (std::chrono::steady_clock::now() - cached->second.fetchedAt < kContentKeyTtl) {
-            LOG_INFO("SunoDownloader: reusing the content key for clip {} (under an hour old)",
-                     clipId);
+            LOG_INFO("SunoDownloader: reusing a cached content key (under an hour old)");
             finishEncryptedDownload(pending, play, cached->second.key);
             return;
         }
@@ -791,9 +787,8 @@ void SunoDownloader::fetchContentKey(const std::string& clipId,
     }
 
     if (!contentKeyFetcher_) {
-        LOG_ERROR("SunoDownloader: clip {} has an encrypted body and this build has no way to "
-                  "ask for its key",
-                  clipId);
+        LOG_ERROR("SunoDownloader: clip has an encrypted body and this build has no way to "
+                  "ask for its key");
         emit finalizeFailed(QString::fromStdString(clipId),
                             QStringLiteral("This build cannot unlock encrypted playback."));
         return;
@@ -802,8 +797,8 @@ void SunoDownloader::fetchContentKey(const std::string& clipId,
     contentKeyFetcher_(clipId, [this, clipId, pending, play](
                                    std::expected<ContentKey, QString> key) {
         if (!key) {
-            LOG_ERROR("SunoDownloader: no content key for clip {}: {}",
-                      pending.clip.id, key.error().toStdString());
+            LOG_ERROR("SunoDownloader: no content key for clip: {}",
+                      key.error().toStdString());
             emit finalizeFailed(QString::fromStdString(pending.clip.id), key.error());
             return;
         }
@@ -832,7 +827,7 @@ void SunoDownloader::finishEncryptedDownload(PendingDownload pending,
 }
 
 void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
-    LOG_INFO("SunoDownloader: Tagging file {}", path.string());
+    LOG_INFO("SunoDownloader: Tagging file");
 
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
@@ -844,13 +839,12 @@ void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
         // to be a readable MPEG stream. Every write below would be through
         // that null pointer.
         if (!f.isValid()) {
-            LOG_WARN("SunoDownloader: {} is not a readable MPEG file; left untagged",
-                     path.string());
+            LOG_WARN("SunoDownloader: a file is not a readable MPEG file; left untagged");
             return;
         }
         TagLib::ID3v2::Tag* tag = f.ID3v2Tag(true);
         if (!tag) {
-            LOG_WARN("SunoDownloader: no ID3v2 tag available for {}", path.string());
+            LOG_WARN("SunoDownloader: no ID3v2 tag available");
             return;
         }
 
@@ -885,13 +879,12 @@ void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
     } else if (ext == ".m4a" || ext == ".mp4") {
         TagLib::MP4::File f(path.c_str());
         if (!f.isValid()) {
-            LOG_WARN("SunoDownloader: {} is not a readable MP4 file; left untagged",
-                     path.string());
+            LOG_WARN("SunoDownloader: a file is not a readable MP4 file; left untagged");
             return;
         }
         TagLib::MP4::Tag* tag = f.tag();
         if (!tag) {
-            LOG_WARN("SunoDownloader: no MP4 tag available for {}", path.string());
+            LOG_WARN("SunoDownloader: no MP4 tag available");
             return;
         }
 
@@ -918,13 +911,12 @@ void SunoDownloader::tagAudioFile(const fs::path& path, const SunoClip& clip) {
     } else if (ext == ".flac") {
         TagLib::FLAC::File f(path.c_str());
         if (!f.isValid()) {
-            LOG_WARN("SunoDownloader: {} is not a readable FLAC file; left untagged",
-                     path.string());
+            LOG_WARN("SunoDownloader: a file is not a readable FLAC file; left untagged");
             return;
         }
         TagLib::Ogg::XiphComment* tag = f.xiphComment(true);
         if (!tag) {
-            LOG_WARN("SunoDownloader: no XiphComment available for {}", path.string());
+            LOG_WARN("SunoDownloader: no XiphComment available");
             return;
         }
 

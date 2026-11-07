@@ -486,14 +486,17 @@ private slots:
         QCOMPARE(classifySinkWrite(-1, 0), SinkWrite::Failed);
     }
 
-    void selfInflictedFailureMessagesNameTheClipAndTheNumber() {
-        QCOMPARE(byteCapReason("clip-42", 100, 101),
-                 std::string("clip-42 exceeded the per-item byte cap of 100 bytes (101 received)"));
-        QCOMPARE(shortWriteReason("clip-42", 50, 20, 0, "No space left on device"),
-                 std::string("clip-42 could not be written: 0 of 20 bytes at offset 50 "
+    void selfInflictedFailureMessagesAreClipIdFree() {
+        // T0109: these sentences are written verbatim to the durable runtime
+        // log, which gets attached to issues. A clip id is account-linked, so
+        // the wording keeps the numbers and drops the identifier.
+        QCOMPARE(byteCapReason(100, 101),
+                 std::string("exceeded the per-item byte cap of 100 bytes (101 received)"));
+        QCOMPARE(shortWriteReason(50, 20, 0, "No space left on device"),
+                 std::string("could not be written: 0 of 20 bytes at offset 50 "
                              "(No space left on device)"));
-        QCOMPARE(shortDownloadReason("clip-42", 10, 16),
-                 std::string("clip-42 downloaded 10 of the 16 bytes the server promised"));
+        QCOMPARE(shortDownloadReason(10, 16),
+                 std::string("downloaded 10 of the 16 bytes the server promised"));
     }
 
     void aShortWriteNeverBecomesACompletedFile() {

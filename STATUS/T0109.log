@@ -1,0 +1,4 @@
+2026-11-07T00:30:00Z  CLAIM    orchestrator (hy4free lane interrupted by restart; finished directly)
+2026-11-07T00:30:00Z  CHANGE   src/suno/SunoDownloader.cpp, DownloadQueue.cpp, DownloadQueue.hpp: strip clip identifiers and local paths from every durable LOG_* line. Root-cause fix: the three self-inflicted reason helpers and all abortReason sentences are id/path-free (they are logged verbatim at 3 sites). Helpers lose the clipId param; test pins id-free wording.
+2026-11-07T00:30:00Z  VERIFY   ./build.sh --fast --tests --safe -> 16/16; grep confirms no clipId/clip.id/pathStr/.string() remains in any LOG line or reason string.
+2026-11-07T05:19:06Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee51867

@@ -144,17 +144,17 @@ enum class PartOpenError {
 
 /// User-facing wording for the self-inflicted failure reasons. Exported and
 /// pure so the text is asserted by a test instead of only appearing in a log
-/// nobody reads; each names the clip, because "download failed" with no
-/// subject is indistinguishable across a batch of ten.
-[[nodiscard]] std::string byteCapReason(std::string_view clipId, qint64 limitBytes,
-                                        qint64 seenBytes);
-[[nodiscard]] std::string shortWriteReason(std::string_view clipId, qint64 offsetBytes,
-                                           qint64 wantedBytes, qint64 writtenBytes,
+/// nobody reads. Deliberately clip-id-free: these sentences are written to the
+/// durable runtime log (which gets attached to issues), and a clip id is an
+/// account-linked identifier. The item is identified by its state signal, not
+/// by log prose (T0109).
+[[nodiscard]] std::string byteCapReason(qint64 limitBytes, qint64 seenBytes);
+[[nodiscard]] std::string shortWriteReason(qint64 offsetBytes, qint64 wantedBytes,
+                                           qint64 writtenBytes,
                                            std::string_view deviceError);
 /// A 2xx that delivered fewer bytes than the transfer promised. Retryable
 /// wording, not terminal: a truncated connection is a transient condition.
-[[nodiscard]] std::string shortDownloadReason(std::string_view clipId, qint64 receivedBytes,
-                                              qint64 expectedBytes);
+[[nodiscard]] std::string shortDownloadReason(qint64 receivedBytes, qint64 expectedBytes);
 
 /// Injectable seam: unit tests hand back scripted fake replies and never
 /// touch the network. Production uses the single adopted QNetworkAccessManager.
