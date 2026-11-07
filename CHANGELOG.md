@@ -38,6 +38,11 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   guards gate) fails on drift, duplicates, or phantom names. A duplicated `SAFE_TESTS` entry is
   gone. (T0330)
 
+- **A pasted credential is now classified before it is installed.** A bare JWT goes to `setToken`
+  (which finally has a production caller), a Clerk cookie header to `setCookie`, and anything else
+  is refused with a secret-free reason. Previously every pasted value became a cookie header, so a
+  metadata-only string looked like a credential. (T0339)
+
 ### Changed
 
 - **Dead `searchText` plumbing is gone from the library page fetch.** The parameter was threaded

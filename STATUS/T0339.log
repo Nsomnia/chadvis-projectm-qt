@@ -1,0 +1,4 @@
+2026-11-07T02:00:00Z  CLAIM    orchestrator
+2026-11-07T02:00:00Z  CHANGE   src/qml_bridge/SettingsBridge.cpp: commitSunoCredential now classifies the pasted value with classifyStoredCredential. BearerToken -> setToken (previously zero production callers), ClerkCookieHeader -> setCookie, Empty/Unsupported -> refused with a secret-free warning and not applied. Include ClerkAuthClient.hpp.
+2026-11-07T02:00:00Z  VERIFY   ./build.sh --fast --tests (links) and --safe -> 16/16. The three shapes classifyStoredCredential returns are already exhaustively pinned in test_StoredCredentialClassification.cpp; the dispatch is a compile-checked 3-way switch on that enum. No dedicated SettingsBridge unit test (private CRTP ctor; AGENTS.md: no tests for their own sake).
+2026-11-07T05:44:02Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee55652

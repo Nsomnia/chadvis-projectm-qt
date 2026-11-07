@@ -211,9 +211,11 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       submit to the browser rather than faking it. Always `release-buffer` a claimed task that
       will not be finished — abandoning tasks degrades availability.
 
-- [ ] T0339 **Paste path bypasses `classifyStoredCredential`** (`SettingsBridge.cpp:359-391`, `ClerkAuthClient.cpp:323-370`, `SunoClient.cpp:687-717`) #risk-medium
+- [x] T0339 **Paste path bypasses `classifyStoredCredential`** (`SettingsBridge.cpp:359-391`, `ClerkAuthClient.cpp:323-370`, `SunoClient.cpp:687-717`) #risk-medium
       `setToken()` has zero production callers. `__client_uat` accepted as credential but is metadata, not credential.
       Classify at paste boundary: `BearerToken` → `setToken`, `ClerkCookieHeader` → `setCookie`, `Unsupported` → refuse.
+      **DONE 2026-11-07:** paste boundary now classifies; JWT -> setToken (now has a caller), cookie
+      header -> setCookie, Unsupported/Empty -> refused. Metadata-only strings no longer look like credentials.
 
 - [x] T0340 **Minted bearer not bound to session that minted it** (`ClerkAuthClient.cpp:671-684`, `SunoClient.cpp:957-963`) #risk-high #security
       `handleTokensBody` accepts any `{jwt}`, sets `lastObservedSessionId_` without comparing token's `sid`.

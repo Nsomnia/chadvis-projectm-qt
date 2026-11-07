@@ -6,6 +6,7 @@
 #include "core/Logger.hpp"
 #include "suno/SunoClient.hpp"
 #include "suno/auth/AuthHeaders.hpp"
+#include "suno/auth/ClerkAuthClient.hpp"  // classifyStoredCredential (T0339)
 #include "util/Types.hpp"
 
 // QAudioDevice is only forward-declared by QMediaDevices' own includes; the
@@ -386,8 +387,28 @@ void SettingsBridge::commitSunoCredential()
     m_sunoCredentialDirty = false;
     if (m_sunoTokenCache.isEmpty()) {
         m_sunoClient->clearLocalCredentials();
-    } else {
-        m_sunoClient->setCookie(m_sunoTokenCache.toStdString());
+        return;
+    }
+
+    // T0339: classify at the paste boundary. The old path sent EVERY pasted
+    // value to setCookie(), so a bare JWT was installed as a cookie header and
+    // a metadata-only string like "__client_uat=..." (no Clerk session cookie)
+    // looked like a credential. The stored-credential restore path already
+    // classifies; the paste path now agrees with it. The diagnostic is
+    // secret-free (no token/cookie value), so it is safe in the durable log.
+    const auto classification = vc::suno::auth::classifyStoredCredential(m_sunoTokenCache);
+    switch (classification.shape) {
+        case vc::suno::auth::StoredCredentialShape::BearerToken:
+            m_sunoClient->setToken(m_sunoTokenCache.toStdString());
+            break;
+        case vc::suno::auth::StoredCredentialShape::ClerkCookieHeader:
+            m_sunoClient->setCookie(m_sunoTokenCache.toStdString());
+            break;
+        case vc::suno::auth::StoredCredentialShape::Empty:
+        case vc::suno::auth::StoredCredentialShape::Unsupported:
+            LOG_WARN("SettingsBridge: refused pasted credential: {}",
+                     classification.safeDiagnostic.toStdString());
+            break;  // leave the cache for the user to fix; do not apply
     }
 }
 
