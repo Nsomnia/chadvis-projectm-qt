@@ -259,6 +259,84 @@ private slots:
         // into the next case.
         feedReply->succeed(QByteArrayLiteral("{\"clips\":[],\"has_more\":false}"));
     }
+
+    /// T0334: a retryable failure on page 2 must not discard page 1. The
+    /// settled report carries pagesFetched=1, pagesLoaded stays 1, and the
+    /// next request reuses the held cursor (page 2), never page 1.
+    void failedPageIsRetriedNotRestarted()
+    {
+        std::vector<fake_net::FakeReply*> replies;
+        std::vector<QByteArray> requestBodies;
+        const QString storedBearer = fakeBearer();
+        SunoClient client(
+            QStringLiteral("test-device"), nullptr,
+            [storedBearer](CredentialStoreWorker::Request request) {
+                CredentialStoreWorker::Outcome outcome;
+                if (request.operation == CredentialStoreWorker::Operation::Restore) {
+                    outcome.bearer = storedBearer;
+                }
+                return outcome;
+            },
+            [&replies, &requestBodies](const QNetworkRequest& request, const std::string&,
+                                        const QByteArray& body) {
+                requestBodies.push_back(body);
+                auto* reply = new fake_net::FakeReply(request);
+                replies.push_back(reply);
+                return reply;
+            });
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+        SunoLibraryManager manager(&client, database);
+
+        QSignalSpy settled(&manager, &SunoLibraryManager::librarySyncSettled);
+        QSignalSpy fetchFailed(&manager, &SunoLibraryManager::libraryFetchFailed);
+
+        client.setToken(fakeBearer().toStdString());
+        QVERIFY(client.isAuthenticated());
+
+        manager.refreshLibrary(1);
+        QTRY_VERIFY_WITH_TIMEOUT(!replies.empty(), 5000);
+        const auto firstCursor =
+            QJsonDocument::fromJson(requestBodies[0]).object().value(QStringLiteral("cursor"));
+        QVERIFY(firstCursor.isNull());
+
+        replies[0]->succeed(QByteArrayLiteral(
+            R"({"clips":[{"id":"clip-1"},{"id":"clip-2"}],"has_more":true,"next_cursor":"cursor-page-2"})"));
+        QTRY_COMPARE_WITH_TIMEOUT(manager.currentPage(), 1, 5000);
+        QCOMPARE(manager.accumulatedClips().size(), std::size_t(2));
+
+        // The auto-pagination timer (1.1s) requests page 2; fail it with a
+        // retryable transport error.
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 2, 5000);
+        replies[1]->fail(QNetworkReply::TemporaryNetworkFailureError, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(fetchFailed.count(), 1, 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 5000);
+
+        QList<QVariant> failedArgs = settled.first();
+        QCOMPARE(failedArgs.at(0).toBool(), false); // complete
+        QCOMPARE(failedArgs.at(1).toInt(), 1);      // pagesFetched survives
+        QCOMPARE(failedArgs.at(2).toInt(), 2);      // clipCount
+        QCOMPARE(manager.currentPage(), 1);        // page 1 not discarded
+        QCOMPARE(manager.accumulatedClips().size(), std::size_t(2));
+        QVERIFY(manager.hasMorePages());           // still resumable
+
+        manager.requestNextPage();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 3, 5000);
+        const auto resumeCursor =
+            QJsonDocument::fromJson(requestBodies[2]).object().value(QStringLiteral("cursor"));
+        QCOMPARE(resumeCursor.toString(), QStringLiteral("cursor-page-2"));
+        QCOMPARE(manager.currentPage(), 1); // unchanged until page 2 lands
+
+        replies[2]->succeed(QByteArrayLiteral(
+            R"({"clips":[{"id":"clip-3"}],"has_more":false,"next_cursor":""})"));
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 2, 5000);
+        QList<QVariant> doneArgs = settled.last();
+        QCOMPARE(doneArgs.at(0).toBool(), true); // complete
+        QCOMPARE(doneArgs.at(1).toInt(), 2);     // pagesFetched
+        QCOMPARE(doneArgs.at(2).toInt(), 3);     // clipCount
+        QCOMPARE(manager.currentPage(), 2);
+        QCOMPARE(manager.accumulatedClips().size(), std::size_t(3));
+    }
 };
 
 int runTestSunoLibraryManager(int argc, char** argv)

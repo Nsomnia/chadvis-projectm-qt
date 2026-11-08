@@ -42,6 +42,11 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **A library sync that fails mid-run resumes instead of restarting.** A retryable failure after the
+  first page now keeps the already-fetched clips and the held cursor, so the next request retries the
+  failed page. Status messages report clips across pages, and `librarySyncSettled` carries
+  `pagesFetched`. (T0334)
+
 - **Preset discovery now finds `.milk7`, `.milkdrop`, and mixed-case extensions.** Extension
   matching folds case and shares one `hasExtension()` helper between the directory probe and the
   file walk, so the two cannot drift. A test pins all the spellings. (T0165)

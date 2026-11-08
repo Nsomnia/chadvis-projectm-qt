@@ -46,6 +46,9 @@ public:
     void refreshLibrary(int page = 1);
     /// Fetch the next feed page using the client's next_cursor (no-op when
     /// the current page reports exhaustion or a fetch is in flight).
+    /// After a mid-sync failure this retries the failed page: pagesLoaded_
+    /// keeps the successful pages and the request reuses the held cursor
+    /// rather than restarting from page one (T0334).
     void requestNextPage();
     void syncDatabase(bool forceAuth);
 
@@ -62,14 +65,14 @@ signals:
     void authenticationRequired();
     void hasMorePagesChanged();
     void libraryFetchFailed(const QString& reason);
-    /// One sync session ended, and this is the only place that says whether it
+    /// One sync attempt ended, and this is the only place that says whether it
     /// ended COMPLETELY (T0167).
     ///
     /// `libraryUpdated` fires after every page with the accumulated list, so by
     /// the time a sync dies mid-way the UI has already received a partial
     /// library that looks identical to a finished one -- the failure arrives on
     /// a different channel and nothing connects the two. This fires ONCE per
-    /// sync, on every exit path: `complete` true only when the feed itself said
+    /// attempt, on every exit path: `complete` true only when the feed itself said
     /// the cursor was exhausted; false for a transport failure or an
     /// unparseable page, with `reason` carrying which.
     ///
@@ -111,10 +114,13 @@ private:
 
     void onCredentialsRestored();
     void onLibraryFetched(const std::vector<SunoClip>& clips);
-    /// T0167: the single exit from a sync session. Every end -- feed exhausted,
+    /// T0167: the single exit from a sync attempt. Every end -- feed exhausted,
     /// transport failure, unparseable page, lost session -- goes through here,
-    /// so completeness is reported exactly once per sync and never contradicted
-    /// by a second, differing verdict.
+    /// so completeness is reported exactly once per attempt and never
+    /// contradicted by a second, differing verdict. A mid-sync failure does
+    /// not end the session for good: pagesLoaded_ and the held cursor survive,
+    /// and requestNextPage() resumes from the failed page (T0334), reporting
+    /// its own verdict on the resumed leg.
     void settleSync(bool complete, const QString& reason);
 };
 

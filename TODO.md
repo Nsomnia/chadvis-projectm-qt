@@ -68,6 +68,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Page size now 100 (was 20). 2147 clips = 22 round trips. (a) shipped. (b) open — resume not restart.
       (c) open — `{complete, pagesFetched, expectedTotal}` unconsumed, no progress number.
       User's extension corroborated: 100/page, 6752-clip library = ~68 round trips.
+      **(b)+(c) DONE 2026-11-08:** a mid-sync failure keeps `pagesLoaded_` and holds the cursor, so `requestNextPage()` retries the failed page; `librarySyncSettled` now carries `pagesFetched` and status messages state clips across pages. No `expectedTotal` exists in the feed, so none is invented. Regression test `failedPageIsRetriedNotRestarted`. Remaining: real 2k-clip wall-clock measurement.
 
 - [ ] T0193 **User themes need C++ `ThemeCatalog`** (`ThemeCatalog.hpp/.cpp`, `BridgeRegistration.cpp`) #cod-high
       Phase 3. Discover `<configDir>/themes/*.json`, validate (schema, id pattern, 64KiB cap, contrast).

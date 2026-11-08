@@ -140,7 +140,12 @@ void SunoLibraryManager::requestNextPage() {
     }
 
     isSyncing_ = true;
-    emit statusMessage("Fetching more Suno clips...");
+    // Resuming after a mid-sync failure (T0334): re-arm the one-verdict guard
+    // so the resumed leg reports its final verdict once. The clock keeps
+    // running, so elapsed covers the whole session including the retry gap.
+    syncSettled_ = false;
+    emit statusMessage("Fetching more Suno clips (page " +
+                       std::to_string(pagesLoaded_ + 1) + ")...");
     client_->fetchLibraryPage(client_->nextCursor(), kLibraryPageSize);
 }
 
@@ -180,8 +185,12 @@ void SunoLibraryManager::onLibraryFetched(const std::vector<SunoClip>& clips) {
     emit libraryUpdated(accumulatedClips_);
 
     if (hasMorePages_) {
+        // T0334: surface the honest progress number -- pages fetched plus
+        // clips so far. The feed carries no total, so no expectedTotal exists
+        // to divide by; never invent one.
         emit statusMessage("Suno library: " + std::to_string(accumulatedClips_.size()) +
-                           " clips loaded (more available)");
+                           " clips across " + std::to_string(pagesLoaded_) +
+                           " pages (more available)");
         // Auto-page through the entire library (rate-limited). QML infinite
         // scroll remains as a fallback if auto-pagination is interrupted, but
         // the primary path now syncs the full library without manual scrolling.
@@ -191,7 +200,8 @@ void SunoLibraryManager::onLibraryFetched(const std::vector<SunoClip>& clips) {
         LOG_INFO("SunoLibraryManager: Sync complete after {} page(s). Total clips: {}",
                  pagesLoaded_, accumulatedClips_.size());
         emit statusMessage("Suno library sync complete (" +
-                           std::to_string(accumulatedClips_.size()) + " clips)");
+                           std::to_string(accumulatedClips_.size()) + " clips across " +
+                           std::to_string(pagesLoaded_) + " pages)");
         // T0167: the one exit that means what it says. The feed's own cursor
         // said exhausted, every requested page arrived, and nothing failed.
         settleSync(true, QStringLiteral());
@@ -211,9 +221,15 @@ void SunoLibraryManager::settleSync(bool complete, const QString& reason) {
     }
     syncSettled_ = true;
     isSyncing_ = false;
+    // Resume, not restart (T0334): a failure after at least one page, with the
+    // client still holding a next cursor, keeps hasMorePages_ true so
+    // requestNextPage() retries the FAILED page from that cursor. pagesLoaded_
+    // and the accumulated clips already survive this point, so nothing fetched
+    // is discarded. A page-1 failure or an empty cursor has nothing to resume.
+    const bool resumable = !complete && pagesLoaded_ > 0 && !client_->nextCursor().isEmpty();
     const bool hadMore = hasMorePages_;
-    hasMorePages_ = false;
-    if (hadMore) emit hasMorePagesChanged();
+    hasMorePages_ = resumable;
+    if (hadMore != hasMorePages_) emit hasMorePagesChanged();
     if (!complete) {
         emit libraryFetchFailed(reason);
     }
