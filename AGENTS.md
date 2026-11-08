@@ -386,7 +386,7 @@ Prioritize tests for:
 
 Use automated agents, test frameworks, integration tools, mock servers, browser automation, and third-party tools where they materially improve testing.
 
-Test external integrations without consuming real credits or modifying real account data unnecessarily.
+Test external integrations without modifying real account data unnecessarily. Credits are available at 10,000 per month.
 
 Use mocks and fixtures for repeatable regression tests. Reserve live tests for behaviors that cannot reasonably be established otherwise.
 
@@ -614,23 +614,11 @@ The authorized scope includes:
 - Testing undocumented remote functionality.
 - Probing mutation routes when necessary.
 - Writing to the remote service when required by a task.
-- Using a small number of credit-bearing song generations to establish undocumented behavior.
+- Using credit-bearing song generations to establish undocumented behavior.
 
-The user has a Suno Premier subscription and an approximately 10,000-credit monthly allowance. Actual available credits may vary.
+The user has a Suno Premier subscription with 10,000 credits per month. Generation is permitted for legitimate API research and testing. No additional credit approval is required.
 
-**Generation is permitted for legitimate API research and testing.**
-
-Use credit-bearing operations deliberately:
-
-1. Identify a specific unknown behavior.
-2. Choose the smallest useful live experiment.
-3. Perform one representative operation.
-4. Record its result and credit implications.
-5. Decide whether additional testing is genuinely necessary.
-
-Do not run generation loops simply to explore possibilities.
-
-Avoid unnecessary expenditure.
+Prefer one representative operation per unknown behavior, then record its result.
 
 ## Observed evidence
 
@@ -682,7 +670,6 @@ Require explicit owner approval for:
 - Account deletion.
 - Irreversible library or playlist destruction.
 - Destructive bulk operations.
-- Spending a metered download allowance.
 - Other unusually destructive or irreversible account changes.
 
 Fail closed where an incorrect operation could modify the wrong object, overwrite the wrong file, or cause silent partial writes.

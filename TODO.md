@@ -52,7 +52,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       playlists incl. recover/delete, trash restore-vs-permanent, Voices from a recording,
       cover art, Hooks/Albums/Workspaces/History sections, multi-modal v6 create. Surfaces
       only; every route behind them still needs a capture.
-      Stale check 2026-11-07: 165 constants, 38 referenced, 127 with zero call sites. Enrichment reads, generation submit+poll, trash restore already landed. Next verifiable chunks are T0383 reads, T0362 step 1, cover art chain. Cover art POST needs owner approval for cost.
+      Stale check 2026-11-07: 165 constants, 38 referenced, 127 with zero call sites. Enrichment reads, generation submit+poll, trash restore already landed. Next verifiable chunks are T0383 reads, T0362 step 1, cover art chain.
 
 - [ ] T0336 **Adopt moved API base `https://suno.com/a/api`** (`SunoEndpoints.hpp`, `CapturedHosts.cpp`, `SunoClient.cpp`) #risk-high #cod-high
       Old base `studio-api-prod.suno.com` still answers — live alias, not dead.
@@ -757,7 +757,7 @@ a new decision, not a re-read of these.
   recording (see the gitignored route checklist at the repo root). The owner does this;
   the agent sanitises and wires. Manual paste stays as the fallback, not the plan.
 - **Scope → Suno client first, renderer second.** projectM music-video work gets spare
-  time and only within API/credit allowance. The renderer's independence (T0115) stays
+  time. The renderer's independence (T0115) stays
   valuable because it is the half that survives upstream.
 - **projectM pin → unreleased master.** Pinned to `349b7cc` (4.2.0-dev) 2026-10-31 for
   `projectm_set_frame_time()` (offline render) and current fixes; upgradable only by a
