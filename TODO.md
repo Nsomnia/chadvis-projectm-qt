@@ -326,9 +326,13 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `postStatusRefresh`/`postErrorSignal` are `invokeMethod(this, [this,...]{...}, QueuedConnection)`.
       Apply T0327's rule: atomic/mutex slot + parameterless queued call.
 
-- [ ] T0329 **19 `QMetaObject::invokeMethod` sites, no rule** (`src/`) #risk-medium
+- [x] T0329 **19 `QMetaObject::invokeMethod` sites, no rule** (`src/`) #risk-medium
       Audit each: same-thread or cross-thread. Apply no-payload rule where cross-thread. Write rule in
       `INVARIANTS.md`. Add `scripts/check-thread-handoffs.py` grep gate.
+      **DONE 2026-11-08:** 16 code sites audited (3 more were comments); all queued, none captured by
+      reference, so no production change was needed. Rule added to `docs/dev/INVARIANTS.md` with the
+      site inventory. `scripts/check-thread-handoffs.py` gates it (exit 0 on the tree, exit 1 with
+      file:line on a planted `[&x]` queued call) and now runs in `guards.yml`.
 
 - [x] T0330 **TSan lane counts 8, `--safe` runs 11 — different populations** (`build.sh`, `tsan.yml`) #risk-medium
       Make one list source of truth. Record per-entry baseline in checked-in file. Fail on increase per entry.
@@ -395,6 +399,15 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Real defect: text over projectM canvas (`glassBackground` 85% opaque → ~1.3:1).
 
 - [ ] T0084 ~58 raw unthemed QtQuick.Controls where `App*` wrapper exists (`src/qml/`) #cleanup
+
+- [ ] T0436 **`AppSlider.stepSize` defaults to 1 while `Slider` defaults to 0 (continuous)** (`src/qml/components/AppSlider.qml`) #cleanup
+      A raw `Slider` dropped into an `AppSlider` silently loses fractional range unless the caller
+      passes `stepSize: 0` — found converting T0084. Either default the wrapper to 0 or document the
+      divergence at the property. Verify: a test or lint note pins the chosen default.
+
+- [ ] T0437 **`AppSlider.accessibleName` defaults to the literal "Slider"** (`src/qml/components/AppSlider.qml`) #cleanup
+      Three settings sliders are announced unnamed because they never set it. Verify: each call site
+      in `src/qml/panels/settings/` carries a real name, or the wrapper drops the placeholder default.
 
 - [ ] T0085 `TextAccessible` names hardcoded English (`src/qml/`) #cleanup
 

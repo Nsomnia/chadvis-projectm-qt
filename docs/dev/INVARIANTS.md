@@ -79,6 +79,17 @@ another document already owns — it records only *why* the constraints exist.
   [TESTING.md](TESTING.md#the-sanitizer-lanes); work:
   [`TODO.md`](../../TODO.md) T0327–T0331.
 
+- **A cross-thread `QMetaObject::invokeMethod` handoff carries no reference or pointer to a caller-owned object.** It takes every value it needs by capture (copy or move), or the receiver owns the state it touches. A reference capture (`[&...]`) in a queued or default-connection call is forbidden: the lambda can run after the caller's stack frame, and the caller's locals, are gone. A same-thread `Qt::DirectConnection` call is allowed and needs no comment. The gate is `scripts/check-thread-handoffs.py` (T0329).
+  Site inventory at the time of the rule (16 code sites in `src/`, all `Qt::QueuedConnection` — one via the `kCompletionConnectionType` constant, so 16 queued / 0 direct / 0 default):
+  `SunoController.cpp:206`, `Application.cpp:46`, `Application.cpp:53`, `AudioEngine.cpp:300`,
+  `AudioEngine.cpp:309`, `AudioEngine.cpp:623`, `RecordingBridge.cpp:162`, `RecordingBridge.cpp:170`,
+  `RecordingBridge.cpp:178`, `RecordingBridge.cpp:434`, `SunoBridge.cpp:379`, `SunoClient.cpp:283`,
+  `SunoClient.cpp:295`, `SunoClient.cpp:364`, `SunoDownloader.cpp:159`, `PresetManager.cpp:146`.
+  None captures by reference. Three capture `this` by value where the receiver is a different object
+  (`SunoClient.cpp:283`, `SunoClient.cpp:295`, `PresetManager.cpp:146`); the two `SunoClient` sites are
+  guarded by the shared `shuttingDown_` flag (`SunoClient.hpp:150-156`) so the lambda never touches a
+  freed object. Re-audit against the script, not this list, when a site is added or moved.
+
 - **`LyricsSync` is single-writer by design: `QTimer` owns the position.** A seed
   must *snap* (drain pre-sets `smoothedTime_` so the lerp degenerates) or `seek`
   stops being exact and a mid-playback `loadLyrics` ramps from 0 instead of

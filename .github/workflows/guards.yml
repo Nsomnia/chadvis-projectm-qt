@@ -46,3 +46,9 @@ jobs:
       # out of the TSAN_OPTIONS block exits 0 with no report and looks clean.
       - name: Check sanitizer test population
         run: ./scripts/check-safe-tests.py
+
+      # T0329: a cross-thread handoff must carry no reference to a caller-owned
+      # object. The rule lives in docs/dev/INVARIANTS.md; this is the gate that
+      # makes it more than prose.
+      - name: Check cross-thread handoffs
+        run: ./scripts/check-thread-handoffs.py

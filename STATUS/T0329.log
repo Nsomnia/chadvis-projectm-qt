@@ -1,0 +1,1 @@
+2026-11-08T11:50:45Z  VERIFY    scripts/check-thread-handoffs.py => "thread-handoffs OK - 16 invokeMethod site(s)", exit 0; planted queued [&x] call => exit 1 with file:line. Wired into .github/workflows/guards.yml; check-workflows.py ok for all 7 workflows.
