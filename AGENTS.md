@@ -161,6 +161,8 @@ Avoid unnecessary leasing for ordinary single-agent development.
 
 The task system should facilitate development, not become administrative overhead.
 
+Expired `.claim` files must be released by the claimer or swept by `task.sh audit` before a re-claim; never leave an expired claim on disk to block `O_EXCL` re-claim.
+
 ---
 
 # 3. Project Direction and Product Vision
@@ -928,3 +930,13 @@ It should continuously inspect the project, identify useful work, implement it, 
 Git preserves the development history.
 
 **Do not wait for the user to tell you to do the next task. Find it, prioritize it, and do it.**
+
+---
+
+# 18. Subagent model selection
+
+Launch subagents with `kilo/stealth/crouton-alpha` by default.
+
+You may also select free models for bounded lanes: `opencode-go/crouton-alpha-free`, `opencode/crouton-alpha-free`, `openrouter/stealth/crouton-alpha`.
+
+Keep paid provider usage minimal. DeepSeek is the only paid API. Antigravity or other advanced models are available only when explicitly chosen.

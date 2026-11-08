@@ -58,6 +58,7 @@ SAFE_TESTS=(
     unit_tests
     test_SunoModelCatalog
     test_SunoLibrarySectionService
+    test_SunoCoverArtService
     test_SunoPersonaService
     test_SunoAudioUploadService
     test_SunoRequestEpoch

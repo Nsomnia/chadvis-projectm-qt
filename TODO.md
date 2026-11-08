@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-11-06
+updated: 2026-11-08
 ---
 
 # ChadVis backlog
@@ -177,6 +177,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       8. `POST /playlist/v2/{id}/trash` is the undoable trash; it returns per-field outcome,
          so prefer it over the legacy 204 `playlist/trash/` once a verb exists.
       STEP 1 DONE 2026-11-08: `SunoModelCatalog` reads `GET /custom-model/shared`; `generation_config` (`major_version`, `capabilities`, `allowed_condition_combinations`, `max_lengths`) and `items` parse as structured data, no hard-coded mode list. 5xx retry is answered twice in tests. Live GET 200 still open; steps 2-8 remain.
+      STEP 6 SLICE 1 DONE 2026-11-08: `SunoCoverArtService` does `POST /gen/prompt_image/` (`{prompt}` → `{image_url, image_s3_id, upload_id}`). Fixture tests pass; live POST still open.
       Host allowlist is NOT widened by this task: `suno-data-uploads.s3.amazonaws.com` and
       `api.suno.com` need their own `CapturedHosts.cpp` change with evidence, fail-closed.
 
@@ -552,6 +553,101 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
 
 ---
 
+## P2c — recon triage 2026-11-08 (read-only pass, writer-ready)
+
+4 parallel read-only lanes (C++ slop, QML/recorder, docs/backlog, tests/build/Suno) on kilo/stealth/crouton-alpha. T0385 was assigned by hand before recon returned; all ids below are fresh T0386+. Overlaps merged (JSON helper, spike audit). Entries already covered by live tasks cross-reference instead of duplicating. Live claims at insert time: T0358 `[~]`, T0362 `[~]` (steps 1 done, cover-art steps open) — write-sets below intersect `src/suno/` and `src/qml/`; do not start touching those trees until claims are released. Ordered P1 first, then P2/P3. Writer lane: pick smallest verifiable slice, run the verification bar below, record VERIFY in STATUS/<id>.log.
+
+- [ ] T0386 **Scope ASan/UBSan lanes to safe-tests.txt, extend the guard** (`.github/workflows/asan.yml`, `scripts/check-safe-tests.py`, `scripts/safe-tests.txt`) #risk-high
+      ASan runs unfiltered ctest (includes GL suites, no exitcode annotation). Verify: `ctest --test-dir build-asan/tests -N` lists only the 11 safe entries; `check-safe-tests.py` fails when asan.yml is unfiltered.
+- [ ] T0387 **Add the 8 missing Suno service tests to the CI gates** (`.github/workflows/build.yml`, `.github/workflows/windows.yml`) #risk-medium
+      `test_SunoClipDetailService`, `test_SunoCoverArtService`, `test_SunoGenerationService`, `test_SunoLibrarySectionService`, `test_SunoMcpClient`, `test_SunoModelCatalog`, `test_SunoPersonaService`, `test_SunoPlaylistService` never gate CI. Verify: `ctest --test-dir build-fast/tests -N` covers all 20 SAFE_TESTS.
+- [ ] T0388 **Warnings-as-errors + clang-format/tidy CI step** (`cmake/Compiler.cmake`, `.github/workflows/guards.yml`, `.clang-format`, `.clang-tidy`) #risk-medium
+      No `-Werror` and no format/tidy enforcement exists today. Narrows T0093. Verify: `git clang-format --diff main` reported in guards; new warning fails the opt-in job.
+- [ ] T0389 **Pin preset-pack and CPM.cmake downloads by hash** (`cmake/PresetPack.cmake`, `cmake/Dependencies.cmake`) #risk-medium
+      Both use `file(DOWNLOAD …)` with no hash; preset pack tracks a mutable branch. Narrows T0089. Verify: cold configure succeeds offline via the cached path; `grep -rn "file(DOWNLOAD" cmake/` shows URL + hash.
+- [ ] T0390 **Consolidate the remaining FakeReply duplicates** (`tests/unit/suno/`) #cleanup
+      Two local `class FakeReply` remain beside the shared `FakeNetworkReply.hpp`. Narrows T0099. Verify: `grep -rn "class FakeReply" tests/ | wc -l` is 1; `ctest --test-dir build-fast/tests -R "DownloadQueue|RequestEpoch"` green.
+- [ ] T0391 **Shared JSON object-parse helper; fix the 3 unchecked sites** (`src/suno/SunoClient.cpp:1490`, `src/suno/SunoAccountManager.cpp:243,297`, `src/suno/`) #risk-medium
+      86 `fromJson` sites repeat the parse-error boilerplate; 3 never check. Also merge C++-lane opt* scalar unify (ClipParser vs Mango/ModelCatalog/Clerk). Verify: no unchecked `fromJson` remains; `./build.sh --fast --tests --safe` 16/16.
+- [ ] T0392 **DB sync/migration/rollback tests** (`tests/unit/suno/test_SunoDatabase.cpp`) #risk-high #data-loss
+      `sync|transaction|rollback|migration` score zero in a 164-line test. Verify: new cases pass under `./build.sh --fast --tests`.
+- [ ] T0393 **Unify the API base URL** (`src/suno/auth/SunoOAuthLoopback.hpp`, `src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`) #risk-medium
+      OAuth loopback hardcodes `studio-api-prod` 3× while `API_BASE` is `https://suno.com/a/api`. Narrow of T0336. Verify: `grep -rn "studio-api-prod" src/suno/ | grep -v CapturedHosts` is 0.
+- [ ] T0394 **Endpoint dead-constant guard script** (`scripts/check-endpoints.py`, `src/suno/SunoEndpoints.hpp`, `docs/suno_api/ENDPOINT-INVENTORY.md`) #cleanup
+      165 constants, 127 with zero call sites (T0346:55), silently drifting. Verify: `./scripts/check-endpoints.py` reports zero-call-site count and fails on drift vs the inventory.
+- [ ] T0395 **Split VideoRecorderFFmpeg god TU** (`src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/VideoRecorderFFmpeg.hpp`) #cleanup
+      1734 lines mixing encoder, muxing, resampling, subtitle, HW probe. Verify: HW-probe + subtitle-encoder move to separate TUs; recorder lanes green; file under 600 lines.
+- [ ] T0396 **Split the SunoClient credential worker + queue** (`src/suno/SunoClient.cpp`, `src/suno/SunoClient.hpp`) #cleanup (after: T0401)
+      1660 lines. Do not start while T0362 is claimed. Verify: worker in its own TU; credential tests unchanged and green.
+- [ ] T0397 **De-globalize Config behind an injected interface** (`src/core/Config.hpp`, `src/core/Config.cpp`, `src/core/Application.cpp`, `src/audio/AudioEngine.cpp`) #cleanup
+      Two-process-global singletons (`Config`, `Application`) block isolated tests. Verify: tests construct two Configs without global surgery; `CONFIG` macro confined to `main.cpp`.
+- [ ] T0398 **Replace raw new/delete in audio upload** (`src/suno/SunoAudioUploadService.cpp`) #risk-medium
+      `new QFile`/`new QHttpMultiPart` with manual delete; early return leaks. Verify: no manual delete remains; ASan lane clean on the upload failure path.
+- [ ] T0399 **Log the double-catch in tag read** (`src/suno/SunoDownloader.cpp:1006-1013`) #cleanup
+      Two silent catches turn OOM/bad_alloc into "no SUNO_ID". Verify: `catch(std::exception&)` logs at DEBUG; download still succeeds on a malformed tag.
+- [ ] T0400 **Audit OffscreenRenderSpike thread lifetime + production include** (`src/recorder/OffscreenRenderSpike.cpp`, `src/recorder/OffscreenRenderSpike.hpp`, `src/recorder/RenderExecutor.hpp:153`) #risk-high
+      `[&]` std::thread capture + `msleep` poll in shipped code. Verify: spike is deleted (logic absorbed) or test-only with no production include; if shipped, capture is owned and joined before teardown.
+- [ ] T0401 **Guard CredentialStoreWorker enqueue with the shutdown flag** (`src/suno/SunoClient.cpp:364-373`) #risk-high
+      Restore path has the guard (T0032); enqueue does not. Verify: enqueue checks the same flag; shutdown-order test covers `wait()` failure.
+- [ ] T0402 **Move audio/render constants into ConfigData with defaults** (`src/audio/AudioQueue.hpp`, `src/audio/VisualizerAudioTap.cpp`, `src/audio/AudioEngine.hpp`, `src/recorder/RenderExecutor.hpp`, `src/recorder/EncoderSettings.cpp`, `src/core/ConfigData.hpp`, `src/core/ConfigParsers.cpp`) #cleanup (after: T0397)
+      Queue capacity, 48 kHz rate, debounce, quantum, frame cap, max-concurrent are baked in. Verify: each has a TOML key + CLI override + documented default equal to today.
+- [ ] T0403 **Modernize snprintf to std::format** (`src/suno/SunoDownloader.cpp`, `src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/OffscreenRenderSpike.cpp`) #cleanup
+      Verify: zero `snprintf` in scope; output strings byte-identical.
+- [ ] T0404 **Re-check the JThread fallback necessity** (`src/util/JThread.hpp`) #cleanup
+      Hand-rolled jthread facade may be obsolete on current AppleClang. Verify: fallback removed if all supported compilers have jthread, else the comment cites the exact lacking compiler.
+- [ ] T0405 **Decompose the Application coordinator** (`src/core/Application.cpp`, `src/core/Application.hpp`, `src/core/CliUtils.cpp`) #cleanup (after: T0397)
+      CLI parse + config overrides + subsystem wiring in one 846-line file. Verify: `--help`/`--dump-config` output unchanged.
+- [ ] T0406 **Deduplicate the file-path helpers into one module** (`src/qml/`) #cleanup
+      `fileName`/`localFileUrl`/`toLocalPath`/`toLocalFilePath` copied 12× across 7 files. Verify: single implementation; all 9 call sites delegate; URL unit test covers spaces/`#`/`?`/drive letters.
+- [ ] T0407 **Extract a shared StateView (loading/empty/error/retry)** (`src/qml/components/StateView.qml`, `src/qml/views/LibraryView.qml`, `src/qml/views/DiscoverView.qml`, `src/qml/views/NotificationsView.qml`, `src/qml/panels/PresetsPanel.qml`, `src/qml/views/VideoView.qml`, `src/qml/views/CreateView.qml`) #cleanup
+      Tri-state copy-pasted 3×; 5 views/panels blank or silent. Narrow of T0076. Verify: one component owns it; PresetsPanel shows empty; VideoView names a null visualizer window; CreateView shows BusyIndicator.
+- [ ] T0408 **Extract SettingsPageShell; move AccountPage gate-model logic to C++** (`src/qml/settings/`, `AccountPage.qml`, `SunoBridge`) #cleanup
+      7 near-identical Flickable shells; 892-line AccountPage builds 27 gate rows in JS. Verify: one shell used by all `*Page.qml`; gate rows arrive pre-built.
+- [ ] T0409 **LyricsPanel: App* wrappers, accessible search, export errors, loading state** (`src/qml/panels/LyricsPanel.qml`, `LyricsBridge`) #cleanup
+      Raw Controls, emoji search button with no Accessible.name, silent export failures. Verify: no raw `ToolButton`/`TextField`/`RadioButton`/`Dialog`; export failure shown in-panel.
+- [ ] T0410 **Persist the karaoke glow knob and bind VideoView to it** (`KaraokeSettings.qml`, `VideoView.qml`, `SettingsBridge`) #cleanup
+      The toggle is local-only; the live view hardcodes `showGlow: true`. Verify: persisted with NOTIFY, survives restart, toggle visibly changes glow on a real window (headless is not proof).
+- [ ] T0411 **Shortcuts: ship the editor or stop implying editability** (`ShortcutsSettings.qml`, `SettingsBridge`) #cleanup
+      "Coming soon" beside a panel that looks authoritative. Verify: bindings editable and persisted, or the panel is labelled read-only.
+- [ ] T0412 **Move color/time math from Theme.qml JS to a C++ singleton** (`Theme.qml`, `AppColorPicker.qml`, new `ColorUtil`) #cleanup
+      28 JS functions for color science; `#RRGGBBAA` vs `#AARRGGBB` trap documented because it bit before. Verify: C++ unit tests incl byte-order cases; QML delegates.
+- [ ] T0413 **Single save-state model for ClipCard/ClipDetailSheet/LibraryView** (`src/qml/components/`, `LibraryView.qml`) #cleanup
+      Same save-state machine 3×; error sentence re-derived per component. Verify: one store owns per-clip state; icon-only AppButtons have explicit accessible names.
+- [ ] T0414 **OverlayPanel: themed palette + bounds-checked selection** (`OverlayPanel.qml`, `OverlayBridge`) #cleanup
+      Hardcoded 12-color palette; unchecked bridge-array index. Verify: palette from Theme; deleted index degrades safely.
+- [ ] T0415 **Replace raw sizes/fonts with Theme tokens** (`src/qml/`) #cleanup (after: T0084)
+      Raw `font.pixelSize`, `font.family: "Inter, Roboto, sans-serif"`, `width: 420` etc. Verify: no raw font literals outside Theme; overlay follows `karaokeFont`.
+- [ ] T0416 **PresetsPanel: preserve scroll on model change, drop per-star MultiEffect** (`PresetsPanel.qml`, `PresetBridge`) #perf
+      Model rebuild loses scroll; ~250 effect layers per 50-row list. Verify: position preserved across `presetsChanged`; no per-item MultiEffect. Needs a real window for jank.
+- [ ] T0417 **Audit the bridge surface: consolidate visualizer control, prune dead Q_INVOKABLEs** (`src/qml_bridge/`, qml callers) #cleanup
+      Visualizer split across two bridges; SunoBridge has 195 references and apparently uncalled invokables. Verify: every Q_INVOKABLE has a QML or C++ caller or is removed; owning bridge documented.
+- [ ] T0418 **Bound recorder finalize with a timeout + QML progress** (`VideoRecorderCore.cpp`, `RenderExecutor`, `RecordingPanel.qml`) #risk-high (after: T0156, T0157)
+      `stop()` can block forever on a stuck FFmpeg flush; Finalizing has no progress surface. Verify: stop returns past a documented timeout; panel shows finalizing progress. Real encode + stop required; headless is not proof.
+- [ ] T0419 **Audio settings: apply live or mark restart-required in-place** (`AudioSettings.qml`, `SettingsBridge`, `AudioEngine`) #cleanup (after: T0131)
+      Device/rate/buffer only apply on restart, disclosed only in a shared notice. Verify: controls reconfigure the engine, or each carries an inline restart badge.
+- [ ] T0420 **Move QML data-shaping to C++ bridges** (`AccountPage`, `ClipDetailSheet.qml`, `PresetsPanel.qml`, `RecordingPanel.qml`) #cleanup (after: T0412)
+      Gate rows, detail fields, `"__favorites__"` sentinel strings in JS. Verify: typed bridge models; sentinels eliminated; QML presents only.
+- [ ] T0421 **Close the refuted-premise items as no-ops** (`TODO.md`, `STATUS/`) #cleanup
+      T0080, T0113, T0114, T0065, T0137 bodies refute their own premises but stay `[ ]`. Verify: re-grep each, flip to `[-]` with the in-body refutation + date. No code.
+- [ ] T0422 **Release the expired claims sweep** (`STATUS/*.claim`) #cleanup
+      9 expired claims (T0051–T0057, T0182, T0199, T0335, T0336) block `O_EXCL` re-claim; T0358 `[~]` has no claim file. Verify: sweep run, board marks match filesystem claims.
+- [ ] T0423 **Split T0362 steps 2–8 into per-step tasks** (`TODO.md`, `docs/suno_api/`) #feature (after: T0362)
+      8 steps in one 21-line task; step 1 done. Hold until the T0362 claim is released. Verify: one task per step (upload, stem, persona-create, free reads, cover art, voice verification, playlist-trash-v2).
+- [ ] T0424 **Fix the dead after: edge on T0383** (`TODO.md`) #cleanup
+      T0383 `(after: T0267)` — T0267 exists nowhere. Verify: edge dropped or repointed.
+- [ ] T0425 **Index the 5 unlisted suno_api docs in docs/README.md** (`docs/README.md`) #cleanup
+      `MCP.md`, `UI-SURFACE-INVENTORY.md`, `CLIENT-GATE-RECON-2026-11-07.md`, `LOGIN-CAPTURE-FINALIZATION.md`, `TOUCH-TOKENS-SHAPES.md` missing from the hub table; add `docs/backlog/` link. Verify: every file under `docs/suno_api/*.md` appears in the hub.
+- [ ] T0426 **Fix the 2 broken relative links in docs/backlog/T0346.md** (`docs/backlog/T0346.md`) #cleanup
+      `../../suno_api/` → `../suno_api/`. Verify: links resolve from `docs/backlog/`.
+- [ ] T0427 **Fix build.sh --help --qt text** (`build.sh`) #cleanup
+      Help omits `$HOME/Qt`, MacPorts, and the `.qt-stitch`-last rule documented in CHANGELOG. Verify: `--help` order matches the shipped behavior.
+- [ ] T0428 **Re-rank T0011 P0 → P1** (`TODO.md`) #cleanup
+      Verbs enabled 2026-10-30; the UI gap is T0359's scope. Verify: header moved; T0359 owns the UI gap.
+- [ ] T0429 **Normalise #risk-med → #risk-medium; #performance → #perf** (`TODO.md`) #cleanup
+      Grammar lists only the canonical forms. Verify: `grep -c "#risk-med[^i]" TODO.md` is 0.
+
+---
+
 ## P3 — polish and speculative
 
 - [ ] T0360 **Reactive GUI Phase 3: audio-reactive chrome** (`src/qml_bridge/AudioBridge.*`, `src/qml/components/TransportBar.qml`, `src/qml/components/ClipCard.qml`, `src/qml/views/ListenView.qml`, `src/qml/components/VisualizerOverlay.qml`, `src/qml/components/KaraokeMaster.qml`, `src/qml/panels/LyricsPanel.qml`) #feature (after: T0359)
@@ -694,6 +790,14 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
 - [ ] T0316 **Advanced scene designer: scripted music video stagecraft** (`RenderJob.hpp`, `OverlayPanel.qml`, `LyricsExport.cpp`, `SunoDownloader.cpp`) #feature #cod-high
       Scene today: `{presetName, durationSeconds, crossfadeSeconds}`. Extend with typed elements + time script.
       Evaluated by C++ at render time, never QML at draw time. Lyric tag filtering. Anchors: T0242, T0120, T0121, T0108.
+
+- [ ] T0385 **Reorganize `src/` into granular self-explanatory directories** (`src/`) #cleanup
+      Current top-level dirs (`core`, `suno`, `recorder`, `qml_bridge`, etc.) hide contents;
+      a new reader needs to open the tree to know what lives where. Split/index by
+      responsibility (AGENTS.md §4.1) so each directory and file name is self-explanatory
+      at top-level recon. Directories are free; agent confusion is not an acceptable cost.
+      Acceptance: directory inventory with one-line role per dir, moves preserve build
+      (`./build.sh --fast --tests`) and QML/bridge wiring, docs/README index updated.
 
 ---
 
