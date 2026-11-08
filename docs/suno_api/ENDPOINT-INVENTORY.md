@@ -818,10 +818,39 @@ will misparse one of them.
 
 No id, token, cookie or CDN URL from that capture is recorded here.
 
-No reviewed capture establishes server-side search as a `searchText` field on
-`POST /api/feed/v3`. Search claims derived from old prose or client parameters
-remain `[LEAD]`; clients must use local filtering until a direct request/response
-capture proves the remote search contract.
+**Server-side search is `filters.searchText` on `POST /feed/v3` — `[T1]` 2026-11-08.**
+Captured from the signed-in web client by typing in the library search box on
+`/me`, with the request and response observed through the page's own network
+stack (no replay, no token handling outside the browser). The request body was:
+
+```
+{cursor: null|string, limit: number,
+ filters: {disliked: string, trashed: string, fromStudioProject: string,
+           stem: string, stemComplement: string,
+           user: {userId: string},
+           searchText: string}}
+```
+
+and the response is the ordinary feed envelope `{clips, has_more,
+search_request_id}`, where `search_request_id` is present only on a search. A
+typing keystroke issues one such request per debounce; there is no separate
+`/search` route for the library box. `filters.searchText` is therefore the real
+contract, and the earlier `[LEAD]` (and the "local filtering only" note above)
+is superseded for the library search box.
+
+The Explore/search page uses two different routes, also `[T1]` 2026-11-08:
+
+| Method | Path | Request body | Response |
+|---|---|---|---|
+| POST | `/unified/search/suggest` | `{term: string, suggestion_size: number, content_size: number}` | `{feed}` |
+| POST | `/unified/search/omnisearch` | `{term: string, completion_method: string}` | `{feed: {feed_id, feed_title, items}}` |
+
+`suggest` fires per keystroke while typing; `omnisearch` fires on submit and the
+page then shows `/explore?q=…`. The inner shape of `feed.items` was not captured
+before the session expired, so item kinds stay `[LEAD]`. `/api/search`,
+`/search/history`, `/search/users`, `/unified/search/suggest/history` and
+`/unified/search/suggest/history/item` were **not** observed; they remain
+`[LEAD]` in §4.5 of OBSERVED-LEADS and must not be wired.
 
 **Library and playlist mutations were request-only until 2026-11-06.** The rows
 above carry **request** contracts recovered by schema probe (section 5.9), and
@@ -2353,7 +2382,7 @@ no owner.
 | `/api/generate/lyrics-infill` vs `/api/generate/lyrics-infill/` | Both spellings occur in the raw scan. | Both are `[LEAD]`; neither may be rewritten into the other. | **Unresolved `[VERIFY]` at use time** |
 | Orpheus paths/models | Claims range from `/session-history` to orchestrator paths and OpenAI-compatible `/api/v1/...` paths; model names were listed without a direct contract capture. | All are `[LEAD]` or `[VERIFY]`; no supported Orpheus API is canonical. | **Unresolved** |
 | Following-feed pagination | The first-page request/response is captured; no next-page token or cursor was captured. | First page stays `[T1]`; later-page behavior is `[VERIFY]` and must not be synthesized. | **Unresolved `[VERIFY]`** |
-| Server-side library search | No reviewed request contains `searchText`. | Local filtering only. Any remote-search field is a `[LEAD]`. | **Unresolved** |
+| Server-side library search | Older notes said no reviewed request contains `searchText`, so local filtering only. | 2026-11-08 capture shows the library search box sends `filters.searchText` on `POST /feed/v3`; the search page uses `/unified/search/suggest` and `/unified/search/omnisearch`. See §4.5. | **Resolved 2026-11-08** |
 | Route preference across Clerk routes | Both `tokens` and `touch` are captured; neither is proven sufficient alone. | This client resolves it as tokens-first with one touch fallback on protocol/shape failure (2026-10-17); a client must not assume either route is universally sufficient. Universal requiredness remains `[VERIFY]`. | **Resolved for this client; universal requiredness `[VERIFY]`** |
 | Captcha provider behind `POST /api/c/check` | Three incompatible statements coexisted: this row said "not captured", section 3.4 said "resolved to `[LEAD]`: Cloudflare Turnstile v2", and section 5.4 said "deliberately left unstated". The two other captcha surfaces being separately resolved is what invited reading one route's provider as another's. | **Resolved to `[T1]`: Cloudflare Turnstile, version `2`.** The 2026-09-30 recon captured the response body of `POST /api/c/check` — `200` with `{"required": <bool>, "captcha_version": 2}` — and `captcha_version` maps to a provider directly (`1` = hCaptcha, `2` = Turnstile). The bundle constants that previously carried this as `[LEAD]` were corroboration, not the basis. Clerk auth remains Turnstile `[T1]` and the `suno.com` sign-in UI remains hCaptcha `[T1]`; this third route is Turnstile by its own captured response. The captured `required: false` is one account's trust-threshold answer — not universal, and not authorization to automate a challenge. | **Resolved for provider; per-account `required` remains per-account** |
 | Session identifier source | The implementation re-derives the active session id from the access token's `sid` claim instead of selecting `response.last_active_session_id`, which reads as a deviation from the section 3.1 selector rule. | In the 2026-08-25 capture the envelope's `last_active_session_id`, `sessions[0].id`, the `sid` claim, and the `touch` `{sid}` segment are all the same value, which **corroborates** the substitution. That is one capture with a single session, and the instance reports `single_session_mode: true`, so equivalence for a multi-session account is unproved. Select from the envelope; do not assume array position. | **Corroborated single-session; multi-session unproved** |

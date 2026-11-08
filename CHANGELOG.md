@@ -8,6 +8,23 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Library search is real remote search.** Typing in the library box sends `filters.searchText` on
+  `POST /feed/v3`, which the account's web client does; a term change starts a new feed and clearing it
+  returns the unfiltered feed. The Explore search page's suggest and omnisearch routes are wired too.
+  (T0366)
+
+- **The TOS prompt knows when to re-appear.** `SunoAccountManager` reads the acceptance state and needs
+  re-prompting when it is unset, unparseable, or older than the 2025-11-07 terms. It never posts the
+  acceptance itself — that stays an action the user takes in a browser. (T0343)
+
+- **The app can say when your session will die.** The auth envelope's `cookie_expires_at` and session
+  `abandon_at`/`expire_at` are now carried out of `ClerkAuthClient`, and a pure helper turns the
+  earliest one into a re-import sentence when it is within 30 days. Advisory only; nothing is gated.
+  (T0344)
+
+- **A failed QML load now names the file.** `QQmlApplicationEngine::objectCreationFailed` is connected
+  and logs the failing URL, so a load failure stops being the silent "no objects" case. (T0049)
+
 - **Preset search, the category filter and Blacklisted work.** All three were inert: the two controls
   wrote QML-local properties nothing read, and the Blacklisted entry had no branch in the bridge so it
   returned an empty list. The filter now lives in `PresetBridge` and Blacklisted calls

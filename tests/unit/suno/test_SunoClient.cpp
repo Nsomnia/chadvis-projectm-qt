@@ -25,6 +25,7 @@
 #include "FakeNetworkReply.hpp"
 
 #include <QByteArray>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
@@ -76,6 +77,8 @@ private slots:
     void aRateLimitedJsonBodyIsNeverReadAsTheAnswer();
     void aServerErrorOnGetIsRetriedOnce();
     void aServerErrorOnPostIsNotRetried();
+    void aSearchTermIsSentAsFiltersSearchText();
+    void anEmptySearchTermOmitsSearchText();
 };
 
 void TestSunoClient::aForbiddenReplyIsRetryableExactlyLikeUnauthorized() {
@@ -304,6 +307,86 @@ void TestSunoClient::aServerErrorOnPostIsNotRetried() {
     QCOMPARE(replies.size(), std::size_t(1));
     QCOMPARE(errors.size(), std::size_t(1));
     QVERIFY(errors.front().find("temporarily unavailable") != std::string::npos);
+}
+
+void TestSunoClient::aSearchTermIsSentAsFiltersSearchText() {
+    std::vector<FakeReply*> replies;
+    std::vector<QByteArray> requestBodies;
+    auto factory = [&replies, &requestBodies](const QNetworkRequest& request,
+                                              const std::string& method,
+                                              const QByteArray& body) {
+        requestBodies.push_back(body);
+        auto* reply = new FakeReply(request, method);
+        replies.push_back(reply);
+        return reply;
+    };
+    SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+    QSignalSpy restored(&client, &SunoClient::credentialRestoreCompleted);
+    QTRY_COMPARE_WITH_TIMEOUT(restored.count(), 1, 2000);
+    client.setToken(fakeBearer(QStringLiteral("one")).toStdString());
+    QVERIFY(client.isAuthenticated());
+
+    int fedPages = 0;
+    client.libraryFetched.connect([&fedPages](const auto&) { ++fedPages; });
+
+    client.fetchLibraryPage(std::nullopt, 100, QStringLiteral("midnight"));
+    QTRY_VERIFY_WITH_TIMEOUT(replies.size() == 1, 3000);
+    const QJsonObject request = QJsonDocument::fromJson(requestBodies[0]).object();
+    QCOMPARE(request.value(QStringLiteral("limit")).toInt(), 100);
+    QVERIFY(request.value(QStringLiteral("cursor")).isNull());
+    const QJsonObject filters = request.value(QStringLiteral("filters")).toObject();
+    QCOMPARE(filters.value(QStringLiteral("searchText")).toString(),
+             QStringLiteral("midnight"));
+    // The captured filter controls still ride along.
+    QCOMPARE(filters.value(QStringLiteral("disliked")).toString(), QStringLiteral("False"));
+    QCOMPARE(filters.value(QStringLiteral("trashed")).toString(), QStringLiteral("False"));
+
+    const QJsonObject envelope{{QStringLiteral("clips"), QJsonArray{}},
+                               {QStringLiteral("has_more"), false}};
+    replies.front()->succeed(
+        QJsonDocument(envelope).toJson(QJsonDocument::Compact));
+    QTRY_COMPARE_WITH_TIMEOUT(fedPages, 1, 3000);
+}
+
+void TestSunoClient::anEmptySearchTermOmitsSearchText() {
+    std::vector<FakeReply*> replies;
+    std::vector<QByteArray> requestBodies;
+    auto factory = [&replies, &requestBodies](const QNetworkRequest& request,
+                                              const std::string& method,
+                                              const QByteArray& body) {
+        requestBodies.push_back(body);
+        auto* reply = new FakeReply(request, method);
+        replies.push_back(reply);
+        return reply;
+    };
+    SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+    QSignalSpy restored(&client, &SunoClient::credentialRestoreCompleted);
+    QTRY_COMPARE_WITH_TIMEOUT(restored.count(), 1, 2000);
+    client.setToken(fakeBearer(QStringLiteral("one")).toStdString());
+
+    const QJsonObject envelope{{QStringLiteral("clips"), QJsonArray{}},
+                               {QStringLiteral("has_more"), false}};
+    const QByteArray envelopeBytes =
+        QJsonDocument(envelope).toJson(QJsonDocument::Compact);
+
+    client.fetchLibraryPage(std::nullopt, 100);
+    QTRY_VERIFY_WITH_TIMEOUT(replies.size() == 1, 3000);
+    QVERIFY(!QJsonDocument::fromJson(requestBodies[0])
+                 .object()
+                 .value(QStringLiteral("filters"))
+                 .toObject()
+                 .contains(QStringLiteral("searchText")));
+    replies[0]->succeed(envelopeBytes);
+
+    // A whitespace-only term is also unfiltered, not a literal search.
+    client.fetchLibraryPage(std::nullopt, 100, QStringLiteral("   "));
+    QTRY_VERIFY_WITH_TIMEOUT(replies.size() == 2, 5000);
+    QVERIFY(!QJsonDocument::fromJson(requestBodies[1])
+                 .object()
+                 .value(QStringLiteral("filters"))
+                 .toObject()
+                 .contains(QStringLiteral("searchText")));
+    replies[1]->succeed(envelopeBytes);
 }
 
 #include "test_SunoClient.moc"

@@ -50,6 +50,18 @@ public:
     /// keeps the successful pages and the request reuses the held cursor
     /// rather than restarting from page one (T0334).
     void requestNextPage();
+    /// Server-side library search (T0366): the one opt-in remote entry point.
+    /// A non-empty term is sent as filters.searchText on every subsequent
+    /// fetchLibraryPage (first page and every resumed/next page); an empty
+    /// term omits searchText and returns to the unfiltered feed. A term
+    /// change discards the previous accumulation and starts a NEW feed
+    /// (null cursor) instead of appending. If a fetch is in flight, that
+    /// stale page is discarded on arrival and the new feed starts after it;
+    /// the auto-page timer never pages the old cursor under a new term.
+    /// The QML client-side filter (SunoBridge::updateFilteredClips) is
+    /// untouched and still applies on top.
+    void setSearchText(const QString& searchText);
+    const QString& searchText() const { return searchText_; }
     void syncDatabase(bool forceAuth);
 
     // Accessors
@@ -102,6 +114,19 @@ private:
     int pendingPage_ = 1;
     int pagesLoaded_ = 0; ///< Number of feed pages pulled this sync session
     bool hasMorePages_ = false;
+    /// T0366: the active server-side search term. Empty = unfiltered feed.
+    QString searchText_;
+    /// T0366: bumped on every term change so a page issued under a previous
+    /// term can be recognised as stale and discarded instead of appended.
+    quint64 searchGeneration_ = 0;
+    /// Generation of the in-flight page, and whether one is in flight.
+    quint64 fetchGeneration_ = 0;
+    bool fetchInFlight_ = false;
+    /// A term changed mid-sync: after the in-flight page settles, start the
+    /// new term's feed from page one. Set only while isSyncing_ /
+    /// credentialRefreshPending_ is true; the auto-page timer checks it
+    /// before paging the old cursor.
+    bool pendingSearchRestart_ = false;
     /// T0167: one verdict per refresh attempt. Reset when an attempt starts,
     /// set by settleSync, so a page that trips two failure channels reports once.
     bool syncSettled_ = true;
@@ -114,6 +139,10 @@ private:
 
     void onCredentialsRestored();
     void onLibraryFetched(const std::vector<SunoClip>& clips);
+    /// Start the current searchText_'s feed from page one through the
+    /// credential-gated path (same as refreshLibrary(1)). Callers reset the
+    /// accumulation before calling.
+    void beginFreshSearchFeed();
     /// T0167: the single exit from a sync attempt. Every end -- feed exhausted,
     /// transport failure, unparseable page, lost session -- goes through here,
     /// so completeness is reported exactly once per attempt and never

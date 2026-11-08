@@ -148,6 +148,11 @@ constexpr std::string_view UNIFIED_HOMEPAGE = "/unified/homepage";
 // the page may use the longer path; only a preflight was captured, so do not
 // switch this constant without a request/response.
 constexpr std::string_view UNIFIED_EXPLORE = "/unified/explore";
+// Explore/search page routes, [T1] 2026-11-08 (ENDPOINT-INVENTORY §4.5).
+// Capture records request/response field names and types only; no observed
+// value for suggestion_size, content_size, or completion_method.
+constexpr std::string_view SEARCH_SUGGEST = "/unified/search/suggest"; // [T1] POST
+constexpr std::string_view SEARCH_OMNISEARCH = "/unified/search/omnisearch"; // [T1] POST
 constexpr std::string_view SOCIAL_FOLLOWING_FEED = "/social/following-feed";
 constexpr std::string_view NOTIFICATION_V2_READ = "/notification/v2/read";
 constexpr std::string_view UPLOADS_AUDIO = "/uploads/audio/";

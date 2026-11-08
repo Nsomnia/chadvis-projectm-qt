@@ -13,13 +13,16 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QLatin1StringView>
+#include <QLocale>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QStringList>
+#include <QTimeZone>
 #include <QUrl>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <expected>
 #include <optional>
 #include <utility>
@@ -35,11 +38,13 @@ struct EnvelopeParseError {
 struct ParsedEnvelope {
     BearerToken bearer;
     QString sessionId;
+    CredentialExpiry expiry;
 };
 
 struct TokenCandidate {
     QString jwt;
     QString sessionId;
+    QJsonObject session;
 };
 
 QString noActiveSessionReason() {
@@ -177,6 +182,65 @@ EnvelopeParseError malformedResponse() {
     return {AuthFailureKind::MalformedResponse, unexpectedResponseShapeReason()};
 }
 
+/// Upper epoch-millisecond bound that QDateTime can represent (9999-12-31).
+/// A value past this is out of range, not a date to clamp or guess.
+constexpr qint64 kMaxEpochMs = 253402300799999LL;
+
+/// Epoch-milliseconds in JSON as either a number (the GET `/v1/client`
+/// capture) or a string (the `touch` capture: `expire_at`/`abandon_at` are
+/// "epoch-ms strings, not numbers"). Missing, non-numeric, non-integral
+/// strings, non-positive, or out-of-range values are `nullopt` -- a
+/// fabricated date must never justify an advisory and never reject an
+/// otherwise valid credential.
+std::optional<QDateTime> epochMsToDateTime(const QJsonValue& value) {
+    qint64 ms = 0;
+    if (value.isDouble()) {
+        const double number = value.toDouble();
+        if (!std::isfinite(number) || number <= 0.0 ||
+            number > static_cast<double>(kMaxEpochMs)) {
+            return std::nullopt;
+        }
+        ms = static_cast<qint64>(number);
+    } else if (value.isString()) {
+        const QString text = value.toString().trimmed();
+        bool ok = false;
+        const qint64 parsed = text.toLongLong(&ok);
+        if (!ok || parsed <= 0 || parsed > kMaxEpochMs ||
+            text.contains(QLatin1Char('.')) || text.contains(QLatin1Char('e')) ||
+            text.contains(QLatin1Char('E'))) {
+            return std::nullopt;
+        }
+        ms = parsed;
+    } else {
+        return std::nullopt;
+    }
+    QDateTime dateTime = QDateTime::fromMSecsSinceEpoch(ms, QTimeZone::utc());
+    if (!dateTime.isValid()) {
+        return std::nullopt;
+    }
+    return dateTime;
+}
+
+/// `cookie_expires_at` appears at envelope root, inside `response`, or inside
+/// `client` depending on which capture is read (LOGIN-CAPTURE-FINALIZATION.md
+/// vs TOUCH-TOKENS-SHAPES.md). Check all three and keep the earliest valid
+/// value: for an advisory the first death is the only safe date to name.
+std::optional<QDateTime> cookieExpiryFromEnvelope(const QJsonObject& root,
+                                                  const QJsonObject& response,
+                                                  const QJsonObject& client) {
+    std::optional<QDateTime> earliest;
+    for (const QJsonValue value :
+         {root.value(QStringLiteral("cookie_expires_at")),
+          response.value(QStringLiteral("cookie_expires_at")),
+          client.value(QStringLiteral("cookie_expires_at"))}) {
+        const auto dateTime = epochMsToDateTime(value);
+        if (dateTime.has_value() && (!earliest.has_value() || *dateTime < *earliest)) {
+            earliest = *dateTime;
+        }
+    }
+    return earliest;
+}
+
 std::optional<TokenCandidate> tokenFromSessions(const QJsonArray& sessions,
                                                  const QString& activeSessionId) {
     if (activeSessionId.isEmpty()) {
@@ -194,7 +258,7 @@ std::optional<TokenCandidate> tokenFromSessions(const QJsonArray& sessions,
         }
         const QString jwt = session["last_active_token"].toObject()["jwt"].toString();
         if (!jwt.isEmpty()) {
-            return TokenCandidate{jwt, activeSessionId};
+            return TokenCandidate{jwt, activeSessionId, session};
         }
     }
 
@@ -303,7 +367,14 @@ std::expected<ParsedEnvelope, EnvelopeParseError> parseClientEnvelope(const QByt
         return std::unexpected(bearer.error());
     }
 
-    return ParsedEnvelope{*bearer, candidate->sessionId};
+    CredentialExpiry expiry;
+    expiry.cookieExpiresAt = cookieExpiryFromEnvelope(root, response, client);
+    expiry.sessionAbandonAt =
+            epochMsToDateTime(candidate->session.value(QStringLiteral("abandon_at")));
+    expiry.sessionExpiresAt =
+            epochMsToDateTime(candidate->session.value(QStringLiteral("expire_at")));
+
+    return ParsedEnvelope{*bearer, candidate->sessionId, expiry};
 }
 
 /// Parse the tokens route's `{ "jwt": ... }` body. Unlike the envelope
@@ -516,6 +587,28 @@ StoredCredentialClassification classifyStoredCredential(const QString& value) {
             AuthFailureKind::NoActiveSession,
             QStringLiteral("stored credential shape: %1; no active session; %2")
                     .arg(detectedShape, expectedCredentialReason())};
+}
+
+std::optional<QString> reimportAdvisory(const CredentialExpiry& expiry, QDateTime now) {
+    if (!now.isValid()) {
+        now = QDateTime::currentDateTimeUtc();
+    }
+    std::optional<QDateTime> earliest;
+    for (const auto& dateTime :
+         {expiry.cookieExpiresAt, expiry.sessionAbandonAt, expiry.sessionExpiresAt}) {
+        if (dateTime.has_value() && (!earliest.has_value() || *dateTime < *earliest)) {
+            earliest = *dateTime;
+        }
+    }
+    if (!earliest.has_value()) {
+        return std::nullopt;
+    }
+    if (*earliest > now.addDays(30)) {
+        return std::nullopt;
+    }
+    const QString dateText =
+            QLocale(QLocale::English).toString(*earliest, QStringLiteral("d MMMM yyyy"));
+    return QStringLiteral("Re-import your Suno session before %1.").arg(dateText);
 }
 
 // ---------------------------------------------------------------------------
@@ -854,7 +947,11 @@ void ClerkAuthClient::handleEnvelopeBody(const QByteArray& body, const CallConte
         return;
     }
 
+    // Advisory input only: even an advisory-grade envelope must not gate the
+    // request, so this is stored before the bearer is emitted and read later
+    // by whoever surfaces the advisory.
     lastObservedSessionId_ = envelope->sessionId;
+    lastCredentialExpiry_ = envelope->expiry;
     failureKind_ = AuthFailureKind::None;
     emit bearerReady(envelope->bearer);
 }

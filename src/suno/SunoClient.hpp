@@ -205,7 +205,13 @@ public:
     /// POST /api/feed/v3 (captured contract): cursor-based library page.
     /// nullopt cursor = first page. Truth about exhaustion lands in
     /// nextCursor()/hasMorePages() once the reply parses.
-    void fetchLibraryPage(std::optional<QString> cursor, int limit = 20);
+    /// `searchText` is the server-side library search (ENDPOINT-INVENTORY.md
+    /// 4.5, [T1] 2026-11-08): a non-empty term is sent as
+    /// filters.searchText on the feed request; an empty term omits the key
+    /// and returns the unfiltered feed. Opt-in: the default empty value
+    /// preserves the pre-search wire shape exactly.
+    void fetchLibraryPage(std::optional<QString> cursor, int limit = 20,
+                          const QString& searchText = {});
     /// Cursor state from the most recent feed reply.
     const QString& nextCursor() const { return nextCursor_; }
     bool hasMorePages() const { return hasMore_; }

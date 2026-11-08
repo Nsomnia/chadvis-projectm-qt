@@ -1,0 +1,1 @@
+2026-11-08T14:02:41Z  VERIFY    ctest 32/32 incl. test_SunoAccountManagerTos (6 slots). GET-only read, boundary truth table tested, malformed timestamp errs toward re-prompt, transport failure stays unknown.\n

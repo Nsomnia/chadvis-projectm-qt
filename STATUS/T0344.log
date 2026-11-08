@@ -1,0 +1,1 @@
+2026-11-08T14:02:41Z  VERIFY    ctest 32/32 incl. test_ClerkAuthClient (5 new slots). 30-day window on the earliest of cookie_expires_at/abandon_at/expire_at; malformed dates ignored without rejecting the credential. Fixed a Qt6-invalid QDateTime ctor the lane committed.\n

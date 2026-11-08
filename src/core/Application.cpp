@@ -673,6 +673,16 @@ Result<void> Application::init(const AppOptions& opts) {
                              }
                          });
 
+        // T0049: objectCreated above fires on failure too (with a null obj),
+        // so without this a missing singleton registration or any other load
+        // error surfaced as only the generic log line. objectCreationFailed
+        // reports the failing URL; the per-error detail is already emitted on
+        // QQmlEngine::warnings. A null root still returns the error below.
+        QObject::connect(qmlEngine_.get(), &QQmlApplicationEngine::objectCreationFailed, this,
+                         [](const QUrl& failedUrl) {
+                             LOG_ERROR("QML load failed: {}", failedUrl.path().toStdString());
+                         });
+
         qmlEngine_->load(url);
         const QList<QObject*> roots = qmlEngine_->rootObjects();
         if (roots.isEmpty()) {

@@ -4,6 +4,7 @@
 #include "suno/HttpPolicy.hpp"
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QHash>
 #include <QList>
 #include <QNetworkAccessManager>
@@ -64,6 +65,36 @@ struct StoredCredentialClassification {
 [[nodiscard]] StoredCredentialClassification classifyStoredCredential(
         const QString& value);
 
+/// Credential lifetimes the captured Clerk envelope already reports (epoch-
+/// milliseconds in JSON, see `docs/suno_api/LOGIN-CAPTURE-FINALIZATION.md` and
+/// `TOUCH-TOKENS-SHAPES.md`): `cookie_expires_at` at envelope level and
+/// `abandon_at` / `expire_at` on the selected session. Each field is `nullopt`
+/// when the envelope did not yield a trustworthy value for it -- missing,
+/// non-numeric, or out-of-range values never fabricate a date and never reject
+/// an otherwise valid credential. All dates are UTC.
+struct CredentialExpiry {
+    std::optional<QDateTime> cookieExpiresAt;
+    std::optional<QDateTime> sessionAbandonAt;
+    std::optional<QDateTime> sessionExpiresAt;
+};
+
+/// Advisory sentence naming the earliest known credential death, or `nullopt`
+/// when no date is known or the earliest date is far away. Advisory only: this
+/// helper has no caller inside this module and must never gate a request,
+/// block sign-in, or clear credentials.
+///
+/// Threshold: the earliest date warns when it is within 30 days of `now`
+/// (including already past). 30 days is long enough for a user to re-import
+/// from another browser session, yet short enough that a multi-year Clerk
+/// expiry (the captured envelopes carry dates years out) stays silent for
+/// most of its life instead of nagging on every sign-in. A shorter window
+/// would often be discovered only after the credential died; a longer one
+/// would surface on nearly every envelope. An invalid `now` is replaced with
+/// the current UTC time so production callers cannot accidentally silence
+/// the advisory with a default-constructed QDateTime.
+[[nodiscard]] std::optional<QString> reimportAdvisory(const CredentialExpiry& expiry,
+                                                      QDateTime now);
+
 class ClerkAuthClient : public QObject {
     Q_OBJECT
 
@@ -99,6 +130,14 @@ public:
     /// Classification of the most recently completed request. Reset to None
     /// when a request starts and after a successful bearer exchange.
     [[nodiscard]] AuthFailureKind failureKind() const noexcept { return failureKind_; }
+
+    /// Lifetimes carried by the most recently parsed client envelope. Empty
+    /// until a `GET /v1/client` or `touch` envelope succeeds; the tokens route
+    /// returns only `{jwt}` and leaves this untouched. Advisory only -- reading
+    /// it never affects a request.
+    [[nodiscard]] const CredentialExpiry& lastCredentialExpiry() const noexcept {
+        return lastCredentialExpiry_;
+    }
 
 signals:
     void bearerReady(const vc::suno::auth::BearerToken& token);
@@ -169,6 +208,8 @@ private:
     QHash<QNetworkReply*, CallContext> contexts_;
 
     QString lastObservedSessionId_;
+
+    CredentialExpiry lastCredentialExpiry_;
 
     AuthFailureKind failureKind_ = AuthFailureKind::None;
 };

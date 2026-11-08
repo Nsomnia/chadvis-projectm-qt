@@ -6,6 +6,7 @@
 #include "suno/SunoLibraryManager.hpp"
 #include "FakeNetworkReply.hpp"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSemaphore>
@@ -37,6 +38,38 @@ QString fakeBearer()
         {{QStringLiteral("exp"), static_cast<qint64>(4102444800)},
          {QStringLiteral("test"), QStringLiteral("credential-clear")}});
     return header + QLatin1Char('.') + payload + QStringLiteral(".signature");
+}
+
+QByteArray feedEnvelope(
+    std::initializer_list<QString> clipIds, bool hasMore, const QString& nextCursor)
+{
+    QJsonArray clips;
+    for (const QString& id : clipIds) {
+        clips.append(QJsonObject{{QStringLiteral("id"), id}});
+    }
+    const QJsonObject envelope{
+        {QStringLiteral("clips"), clips},
+        {QStringLiteral("has_more"), hasMore},
+        {QStringLiteral("next_cursor"), nextCursor},
+    };
+    return QJsonDocument(envelope).toJson(QJsonDocument::Compact);
+}
+
+QJsonObject feedRequest(const QByteArray& body)
+{
+    return QJsonDocument::fromJson(body).object();
+}
+
+QString feedSearchText(const QByteArray& body)
+{
+    return feedRequest(body).value(QStringLiteral("filters")).toObject().value(
+        QStringLiteral("searchText")).toString();
+}
+
+bool feedHasSearchText(const QByteArray& body)
+{
+    return feedRequest(body).value(QStringLiteral("filters")).toObject().contains(
+        QStringLiteral("searchText"));
 }
 
 }
@@ -336,6 +369,183 @@ private slots:
         QCOMPARE(doneArgs.at(2).toInt(), 3);     // clipCount
         QCOMPARE(manager.currentPage(), 2);
         QCOMPARE(manager.accumulatedClips().size(), std::size_t(3));
+    }
+
+    /// T0366: changing the term starts a NEW feed: the new first page is a
+    /// null cursor carrying the new filters.searchText, and the previous
+    /// page's clips are discarded rather than appended.
+    void aTermChangeStartsANewFeedInsteadOfAppending()
+    {
+        std::vector<fake_net::FakeReply*> replies;
+        std::vector<QByteArray> requestBodies;
+        const QString storedBearer = fakeBearer();
+        SunoClient client(
+            QStringLiteral("test-device"), nullptr,
+            [storedBearer](CredentialStoreWorker::Request request) {
+                CredentialStoreWorker::Outcome outcome;
+                if (request.operation == CredentialStoreWorker::Operation::Restore) {
+                    outcome.bearer = storedBearer;
+                }
+                return outcome;
+            },
+            [&replies, &requestBodies](const QNetworkRequest& request, const std::string&,
+                                        const QByteArray& body) {
+                requestBodies.push_back(body);
+                auto* reply = new fake_net::FakeReply(request);
+                replies.push_back(reply);
+                return reply;
+            });
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+        SunoLibraryManager manager(&client, database);
+
+        client.setToken(fakeBearer().toStdString());
+        QVERIFY(client.isAuthenticated());
+
+        manager.setSearchText(QStringLiteral("first"));
+        QCOMPARE(manager.searchText(), QStringLiteral("first"));
+        QTRY_VERIFY_WITH_TIMEOUT(!replies.empty(), 5000);
+        QVERIFY(feedRequest(requestBodies[0]).value(QStringLiteral("cursor")).isNull());
+        QCOMPARE(feedSearchText(requestBodies[0]), QStringLiteral("first"));
+        replies[0]->succeed(feedEnvelope({QStringLiteral("clip-a1"), QStringLiteral("clip-a2")},
+                                         false, QString()));
+        QTRY_COMPARE_WITH_TIMEOUT(manager.accumulatedClips().size(), std::size_t(2), 5000);
+
+        manager.setSearchText(QStringLiteral("second"));
+        QCOMPARE(manager.searchText(), QStringLiteral("second"));
+        // Discarded immediately, before the new page lands.
+        QCOMPARE(manager.accumulatedClips().size(), std::size_t(0));
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 2, 5000);
+        QVERIFY(feedRequest(requestBodies[1]).value(QStringLiteral("cursor")).isNull());
+        QCOMPARE(feedSearchText(requestBodies[1]), QStringLiteral("second"));
+        replies[1]->succeed(feedEnvelope({QStringLiteral("clip-b1")}, false, QString()));
+        QTRY_COMPARE_WITH_TIMEOUT(manager.accumulatedClips().size(), std::size_t(1), 5000);
+        QCOMPARE(manager.currentPage(), 1);
+        QCOMPARE(QString::fromStdString(manager.accumulatedClips()[0].id),
+                 QStringLiteral("clip-b1"));
+    }
+
+    /// T0366: clearing the term returns to the unfiltered feed: the new
+    /// first page omits filters.searchText entirely and replaces the
+    /// search accumulation.
+    void anEmptyTermReturnsToTheUnfilteredFeed()
+    {
+        std::vector<fake_net::FakeReply*> replies;
+        std::vector<QByteArray> requestBodies;
+        const QString storedBearer = fakeBearer();
+        SunoClient client(
+            QStringLiteral("test-device"), nullptr,
+            [storedBearer](CredentialStoreWorker::Request request) {
+                CredentialStoreWorker::Outcome outcome;
+                if (request.operation == CredentialStoreWorker::Operation::Restore) {
+                    outcome.bearer = storedBearer;
+                }
+                return outcome;
+            },
+            [&replies, &requestBodies](const QNetworkRequest& request, const std::string&,
+                                        const QByteArray& body) {
+                requestBodies.push_back(body);
+                auto* reply = new fake_net::FakeReply(request);
+                replies.push_back(reply);
+                return reply;
+            });
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+        SunoLibraryManager manager(&client, database);
+
+        client.setToken(fakeBearer().toStdString());
+        QVERIFY(client.isAuthenticated());
+
+        manager.setSearchText(QStringLiteral("term"));
+        QTRY_VERIFY_WITH_TIMEOUT(!replies.empty(), 5000);
+        QCOMPARE(feedSearchText(requestBodies[0]), QStringLiteral("term"));
+        replies[0]->succeed(feedEnvelope({QStringLiteral("clip-s1")}, false, QString()));
+        QTRY_COMPARE_WITH_TIMEOUT(manager.accumulatedClips().size(), std::size_t(1), 5000);
+
+        manager.setSearchText(QString());
+        QVERIFY(manager.searchText().isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 2, 5000);
+        QVERIFY(feedRequest(requestBodies[1]).value(QStringLiteral("cursor")).isNull());
+        QVERIFY(!feedHasSearchText(requestBodies[1]));
+        // Still the preserved filter controls, just no search key.
+        QCOMPARE(feedRequest(requestBodies[1])
+                     .value(QStringLiteral("filters"))
+                     .toObject()
+                     .value(QStringLiteral("disliked"))
+                     .toString(),
+                 QStringLiteral("False"));
+        replies[1]->succeed(
+            feedEnvelope({QStringLiteral("clip-u1"), QStringLiteral("clip-u2")}, false,
+                         QString()));
+        QTRY_COMPARE_WITH_TIMEOUT(manager.accumulatedClips().size(), std::size_t(2), 5000);
+        QCOMPARE(QString::fromStdString(manager.accumulatedClips()[0].id),
+                 QStringLiteral("clip-u1"));
+    }
+
+    /// T0366 + T0334: a failed search page resumes with the term intact --
+    /// the retry reuses the held cursor and the same filters.searchText,
+    /// and keeps page one -- instead of restarting from page one.
+    void aFailedSearchPageResumesWithTheTermIntact()
+    {
+        std::vector<fake_net::FakeReply*> replies;
+        std::vector<QByteArray> requestBodies;
+        const QString storedBearer = fakeBearer();
+        SunoClient client(
+            QStringLiteral("test-device"), nullptr,
+            [storedBearer](CredentialStoreWorker::Request request) {
+                CredentialStoreWorker::Outcome outcome;
+                if (request.operation == CredentialStoreWorker::Operation::Restore) {
+                    outcome.bearer = storedBearer;
+                }
+                return outcome;
+            },
+            [&replies, &requestBodies](const QNetworkRequest& request, const std::string&,
+                                        const QByteArray& body) {
+                requestBodies.push_back(body);
+                auto* reply = new fake_net::FakeReply(request);
+                replies.push_back(reply);
+                return reply;
+            });
+        SunoDatabase database;
+        QVERIFY(database.init(":memory:"));
+        SunoLibraryManager manager(&client, database);
+
+        QSignalSpy settled(&manager, &SunoLibraryManager::librarySyncSettled);
+        QSignalSpy fetchFailed(&manager, &SunoLibraryManager::libraryFetchFailed);
+
+        client.setToken(fakeBearer().toStdString());
+        QVERIFY(client.isAuthenticated());
+
+        manager.setSearchText(QStringLiteral("resume-term"));
+        QTRY_VERIFY_WITH_TIMEOUT(!replies.empty(), 5000);
+        QCOMPARE(feedSearchText(requestBodies[0]), QStringLiteral("resume-term"));
+        replies[0]->succeed(feedEnvelope({QStringLiteral("clip-1"), QStringLiteral("clip-2")},
+                                         true, QStringLiteral("cursor-page-2")));
+        QTRY_COMPARE_WITH_TIMEOUT(manager.currentPage(), 1, 5000);
+        QCOMPARE(manager.accumulatedClips().size(), std::size_t(2));
+
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 2, 5000);
+        QCOMPARE(feedRequest(requestBodies[1]).value(QStringLiteral("cursor")).toString(),
+                 QStringLiteral("cursor-page-2"));
+        QCOMPARE(feedSearchText(requestBodies[1]), QStringLiteral("resume-term"));
+        replies[1]->fail(QNetworkReply::TemporaryNetworkFailureError, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(fetchFailed.count(), 1, 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 5000);
+        QVERIFY(manager.hasMorePages());
+        QCOMPARE(manager.currentPage(), 1);
+        QCOMPARE(manager.accumulatedClips().size(), std::size_t(2));
+
+        manager.requestNextPage();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 3, 5000);
+        // Not restarted: same cursor, same term.
+        QCOMPARE(feedRequest(requestBodies[2]).value(QStringLiteral("cursor")).toString(),
+                 QStringLiteral("cursor-page-2"));
+        QCOMPARE(feedSearchText(requestBodies[2]), QStringLiteral("resume-term"));
+        replies[2]->succeed(feedEnvelope({QStringLiteral("clip-3")}, false, QString()));
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 2, 5000);
+        QCOMPARE(manager.currentPage(), 2);
+        QCOMPARE(manager.accumulatedClips().size(), std::size_t(3));
+        QCOMPARE(manager.searchText(), QStringLiteral("resume-term"));
     }
 };
 

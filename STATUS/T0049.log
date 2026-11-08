@@ -1,0 +1,1 @@
+2026-11-08T14:02:41Z  VERIFY    Nothing to run beyond the existing suite (32/32). objectCreationFailed connected in Application.cpp; every C++-injected dependency is a registered singleton, so the Qt6.12 "required" premise does not apply here — the silent half (no URL on failure) was the real defect.\n

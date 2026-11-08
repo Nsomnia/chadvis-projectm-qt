@@ -14,6 +14,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPointer>
+#include <QTimeZone>
 
 namespace vc::suno {
 
@@ -146,7 +147,7 @@ std::optional<SunoBillingInfo> parseBilling(const QJsonObject& root) {
 }
 
 QDateTime tosRepromptCutoff() {
-    return QDateTime(QDate(2025, 11, 7), QTime(8, 0, 0), Qt::UTC);
+    return QDateTime(QDate(2025, 11, 7), QTime(8, 0, 0), QTimeZone::utc());
 }
 
 } // namespace

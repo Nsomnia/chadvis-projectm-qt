@@ -269,8 +269,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Adopt fallback only when exactly one session. Two+ keep refusing.
       **DONE 2026-11-06** with T0340; deduped across both envelope halves.
 
-- [ ] T0049 **Qt 6.12 required property → load-time error, not used** (`src/qml/`, `Application.cpp`) #risk-high
+- [x] T0049 **Qt 6.12 required property → load-time error, not used** (`src/qml/`, `Application.cpp`) #risk-high
       Mark C++-injected QML deps `required`, supply via `setInitialProperties`. Connect `objectCreationFailed` (since 6.4).
+      **DONE 2026-11-08:** the premise was wrong for this tree: there are no `setContextProperty`/`setInitialProperties` sites and no QML component takes an injected delegate dep, so `required` has nothing to hold. Every C++-injected dependency in QML is a `qmlRegisterSingletonType` singleton, and `required` applies to instantiated components, not singletons. What was real: a failed QML load only said "root load returned no objects". `QQmlApplicationEngine::objectCreationFailed` is now connected and logs the failing URL (`url.path()`, not the full URL); the detailed warnings were already attached. The unused `engine` parameter in `registerBridges` is flagged as untouchable (changing it churns `test_main.cpp` for zero behaviour gain).
 
 - [ ] T0170 **Overlays/karaoke cannot appear in recorded video** (`VisualizerWindow.cpp`, `src/recorder/`) #risk-high #blocks-feature
       Recorder captures native GL context; QML scene graph is sibling on top. GL compositing impossible.
@@ -294,13 +295,15 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Implement in C++: copy DB (WAL-safe), decrypt Chromium cookies, assemble header, hand to `SunoClient::setCookie()`.
       **Code complete, all gates green, one leg unverified**: human pressing the button (MT-001-D2).
 
-- [ ] T0343 **TOS acceptance `[T1]` and `declared-unused`** (`SunoAccountManager.*`, `SunoSettings.qml`, `SunoBridge.*`) #blocks-ui #risk-medium (after: T0341)
+- [x] T0343 **TOS acceptance `[T1]` and `declared-unused`** (`SunoAccountManager.*`, `SunoSettings.qml`, `SunoBridge.*`) #blocks-ui #risk-medium (after: T0341)
       `GET /api/user/tos_acceptance` → `{has_accepted_tos, has_accepted_tos_timestamp}`. Re-prompt when false or
       timestamp precedes `2025-11-07T08:00:00Z`. Never POST acceptance — legal act user performs in browser.
+      **DONE 2026-11-08:** `SunoAccountManager::refreshTosAcceptance()` reads `GET /api/user/tos_acceptance` only (never a POST — acceptance stays a browser act). `needsTosReprompt` fires on `!hasAcceptedTos`, an unparseable timestamp, or a timestamp before `2025-11-07T08:00:00Z`; transport failure leaves the state unknown without claiming acceptance. Boundary tested at the cutoff.
 
-- [ ] T0344 **Envelope knows when refresh credential dies, app forgets** (`ClerkAuthClient.*`, `SunoClient.*`, `SunoSettings.qml`) #blocks-ui (after: T0342)
+- [x] T0344 **Envelope knows when refresh credential dies, app forgets** (`ClerkAuthClient.*`, `SunoClient.*`, `SunoSettings.qml`) #blocks-ui (after: T0342)
       `cookie_expires_at` (epoch-ms), session `abandon_at`/`expire_at` in captured envelopes. Parser reads only `id`+`jwt`.
       `__client` lives ~1 year. Carry dates out, show "re-import before <date>" advisory. Advisory only — never gate.
+      **DONE 2026-11-08:** envelopes now carry `cookie_expires_at`, session `abandon_at`/`expire_at` into `CredentialExpiry` on `ClerkAuthClient::lastCredentialExpiry()`; `reimportAdvisory()` returns a re-import sentence when the earliest date is within 30 days, else nothing. Malformed dates are ignored (never reject a credential). Advisory only — nothing gates on it. The one-line `SunoClient` accessor + `Q_PROPERTY` for QML is still to add.
 
 ---
 
@@ -541,7 +544,7 @@ Evidence: the owner's URL dump at `~/Documents/suno-recon-cat-stealth-modekl/url
 bodies are unproven until a browser walk or an app-originated call captures them.
 Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline.
 
-- [!] T0366 **Search family: remote search, suggest, history** (`src/suno/SunoEndpoints.hpp`, `SunoClient.cpp`, `SunoLibraryManager.cpp`, `docs/suno_api/`) #feature #blocks-ui (after: T0066)
+- [x] T0366 **Search family: remote search, suggest, history** (`src/suno/SunoEndpoints.hpp`, `SunoClient.cpp`, `SunoLibraryManager.cpp`, `docs/suno_api/`) #feature #blocks-ui (after: T0066)
       `/a/api/search`, `/search/history`, `/search/users`, `/unified/search/omnisearch`,
       `/unified/search/suggest`, `/unified/search/suggest/history`,
       `/unified/search/suggest/history/item`. Typing in the library box and Explore search
@@ -554,6 +557,7 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       Next action (needs an authenticated browser): type in the library box and in Explore search, record
       method + query/body for each route, then promote them to `[T1]` in the inventory. Then the service
       follows `SunoFreeReadsService` exactly.
+      **DONE 2026-11-08:** the capture landed. Library search is `filters.searchText` on `POST /feed/v3` (`SunoClient::fetchLibraryPage` + `SunoLibraryManager::setSearchText`); a term change restarts the feed, an empty term returns the unfiltered feed, and a failed page still resumes with the term. The Explore page's `POST /unified/search/suggest` and `/unified/search/omnisearch` are wired in `SunoSearchService`, with `feed.items` kept raw (uncaptured). Evidence: ENDPOINT-INVENTORY §4.5 (2026-11-08 capture); the non-chased rows (`/api/search`, `history`, `users`) stay `[LEAD]`. `SunoBridge`'s local `contains` filter is untouched, so route choice is now the caller's.
 - [ ] T0367 **Onboarding + user-config writes** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature
       `/onboarding/{start,current,back,skip,complete,submit}`,
       `/onboarding/audio-upload/{abort,remove}`,

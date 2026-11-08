@@ -11,6 +11,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 #include <QNetworkRequest>
 #include <QTimeZone>
 #include <QUrl>
@@ -127,6 +128,7 @@ struct ParseOutcome {
     BearerToken bearer;
     QString error;
     QString sessionId;
+    CredentialExpiry expiry;
     AuthFailureKind failureKind = AuthFailureKind::None;
 };
 
@@ -147,6 +149,7 @@ ParseOutcome parseBody(const QByteArray& body)
 
     ClerkAuthClientTestAccess::processEnvelope(client, body);
     outcome.sessionId = ClerkAuthClientTestAccess::lastObservedSessionId(client);
+    outcome.expiry = client.lastCredentialExpiry();
     outcome.failureKind = client.failureKind();
     return outcome;
 }
@@ -186,6 +189,36 @@ void verifySuccess(const ParseOutcome& outcome, const QString& marker, qint64 ex
     QCOMPARE(claims->value("test_marker").toString(), marker);
     QCOMPARE(JwtUtils::expiryEpochSecs(*claims), expiry);
     QCOMPARE(outcome.bearer.expiresAt.toTimeZone(QTimeZone::UTC).toSecsSinceEpoch(), expiry);
+}
+
+/// Epoch-milliseconds for a date `days` (and optional `extraSecs`) after
+/// `base`, as the captures carry it: numbers for `cookie_expires_at`,
+/// strings for session `abandon_at` / `expire_at` (TOUCH-TOKENS-SHAPES.md).
+qint64 epochMs(const QDateTime& base, qint64 days, qint64 extraSecs = 0)
+{
+    return (base.addDays(days).addSecs(extraSecs).toSecsSinceEpoch()) * 1000;
+}
+
+QString advisoryTextFor(const QDateTime& dateTime)
+{
+    return QStringLiteral("Re-import your Suno session before %1.")
+            .arg(QLocale(QLocale::English).toString(dateTime, QStringLiteral("d MMMM yyyy")));
+}
+
+/// Session object carrying token plus epoch-ms lifetime values, the touch
+/// capture shape. Malformed values are passed through as-is so the parser
+/// itself decides what is trustworthy.
+QJsonObject sessionWithLifetime(const QString& id, const QString& jwt,
+                                  const QJsonValue& abandonAt, const QJsonValue& expireAt)
+{
+    QJsonObject object{{"last_active_token", token(jwt)}};
+    if (!id.isEmpty())
+    {
+        object["id"] = id;
+    }
+    object["abandon_at"] = abandonAt;
+    object["expire_at"] = expireAt;
+    return object;
 }
 
 } // namespace
@@ -853,6 +886,150 @@ private slots:
         QCOMPARE(client.failureKind(), AuthFailureKind::NoActiveSession);
 
         QCOMPARE(bearers.count(), 0);
+    }
+
+    /// T0344: with all three envelope dates present the advisory names the
+    /// earliest. Session dates use the touch capture's string form;
+    /// `cookie_expires_at` is the numeric form at envelope root.
+    void credentialExpiryEarliestDateWins()
+    {
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        const qint64 jwtExpiry = now.addSecs(3600).toSecsSinceEpoch();
+        const QString jwt = fakeJwt(QStringLiteral("expiry-all"), jwtExpiry);
+
+        const QDateTime cookieDate = now.addDays(60);
+        const QDateTime abandonDate = now.addDays(20);
+        const QDateTime expireDate = now.addDays(10);
+        const QByteArray body = jsonBody({
+            {"response", QJsonObject{
+                             {"last_active_session_id", "sess_expiry"},
+                             {"sessions",
+                              QJsonArray{sessionWithLifetime(
+                                  QStringLiteral("sess_expiry"), jwt,
+                                  QJsonValue(QString::number(epochMs(now, 20))),
+                                  QJsonValue(QString::number(epochMs(now, 10))))}},
+                         }},
+            {"cookie_expires_at", epochMs(now, 60)},
+        });
+
+        const ParseOutcome outcome = parseBody(body);
+        verifySuccess(outcome, QStringLiteral("expiry-all"), jwtExpiry);
+        QVERIFY(outcome.expiry.cookieExpiresAt.has_value());
+        QVERIFY(outcome.expiry.sessionAbandonAt.has_value());
+        QVERIFY(outcome.expiry.sessionExpiresAt.has_value());
+        QCOMPARE(outcome.expiry.cookieExpiresAt->toSecsSinceEpoch(),
+                 cookieDate.toSecsSinceEpoch());
+        QCOMPARE(outcome.expiry.sessionAbandonAt->toSecsSinceEpoch(),
+                 abandonDate.toSecsSinceEpoch());
+        QCOMPARE(outcome.expiry.sessionExpiresAt->toSecsSinceEpoch(),
+                 expireDate.toSecsSinceEpoch());
+
+        const auto advisory = reimportAdvisory(outcome.expiry, now);
+        QVERIFY(advisory.has_value());
+        QCOMPARE(*advisory, advisoryTextFor(expireDate));
+    }
+
+    /// T0344: only the cookie date is present and near, so it is the date the
+    /// advisory names.
+    void credentialExpiryCookieOnly()
+    {
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        const qint64 jwtExpiry = now.addSecs(3600).toSecsSinceEpoch();
+        const QString jwt = fakeJwt(QStringLiteral("expiry-cookie"), jwtExpiry);
+        const QDateTime cookieDate = now.addDays(5);
+        const QByteArray body = jsonBody({
+            {"response", QJsonObject{
+                             {"last_active_session_id", "sess_cookie"},
+                             {"sessions",
+                              QJsonArray{session(QStringLiteral("sess_cookie"), jwt)}},
+                         }},
+            {"cookie_expires_at", epochMs(now, 5)},
+        });
+
+        const ParseOutcome outcome = parseBody(body);
+        verifySuccess(outcome, QStringLiteral("expiry-cookie"), jwtExpiry);
+        QVERIFY(outcome.expiry.cookieExpiresAt.has_value());
+        QVERIFY(!outcome.expiry.sessionAbandonAt.has_value());
+        QVERIFY(!outcome.expiry.sessionExpiresAt.has_value());
+        const auto advisory = reimportAdvisory(outcome.expiry, now);
+        QVERIFY(advisory.has_value());
+        QCOMPARE(*advisory, advisoryTextFor(cookieDate));
+    }
+
+    /// T0344: no dates anywhere in the envelope -- the credential is still
+    /// accepted and there is nothing to advise about.
+    void credentialExpiryAbsent()
+    {
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        const qint64 jwtExpiry = now.addSecs(3600).toSecsSinceEpoch();
+        const QString jwt = fakeJwt(QStringLiteral("expiry-none"), jwtExpiry);
+        const QByteArray body = jsonBody({
+            {"response", QJsonObject{
+                             {"last_active_session_id", "sess_nodate"},
+                             {"sessions",
+                              QJsonArray{session(QStringLiteral("sess_nodate"), jwt)}},
+                         }},
+        });
+
+        const ParseOutcome outcome = parseBody(body);
+        verifySuccess(outcome, QStringLiteral("expiry-none"), jwtExpiry);
+        QVERIFY(!outcome.expiry.cookieExpiresAt.has_value());
+        QVERIFY(!outcome.expiry.sessionAbandonAt.has_value());
+        QVERIFY(!outcome.expiry.sessionExpiresAt.has_value());
+        QVERIFY(!reimportAdvisory(outcome.expiry, now).has_value());
+    }
+
+    /// T0344: malformed dates are ignored, never fabricated and never a
+    /// reason to reject an otherwise valid credential.
+    void credentialExpiryMalformedIsIgnored()
+    {
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        const qint64 jwtExpiry = now.addSecs(3600).toSecsSinceEpoch();
+        const QString jwt = fakeJwt(QStringLiteral("expiry-malformed"), jwtExpiry);
+        const QByteArray body = jsonBody({
+            {"response", QJsonObject{
+                             {"last_active_session_id", "sess_bad_dates"},
+                             {"sessions",
+                              QJsonArray{sessionWithLifetime(
+                                  QStringLiteral("sess_bad_dates"), jwt,
+                                  QJsonValue(QStringLiteral("not-a-date")),
+                                  QJsonValue(QStringLiteral("123.5")))}},
+                         }},
+            {"cookie_expires_at", QJsonValue(QStringLiteral("soon"))},
+        });
+
+        const ParseOutcome outcome = parseBody(body);
+        verifySuccess(outcome, QStringLiteral("expiry-malformed"), jwtExpiry);
+        QVERIFY(!outcome.expiry.cookieExpiresAt.has_value());
+        QVERIFY(!outcome.expiry.sessionAbandonAt.has_value());
+        QVERIFY(!outcome.expiry.sessionExpiresAt.has_value());
+        QVERIFY(!reimportAdvisory(outcome.expiry, now).has_value());
+    }
+
+    /// T0344: the 30-day window boundary on the pure helper with an injected
+    /// `now`: exactly 30 days out warns, one second beyond it does not.
+    void reimportAdvisoryThresholdBoundary()
+    {
+        const QDateTime now = QDateTime(QDate(2026, 3, 3), QTime(12, 0, 0), QTimeZone::utc());
+
+        CredentialExpiry atBoundary;
+        atBoundary.sessionExpiresAt = now.addDays(30);
+        const auto atBoundaryAdvisory = reimportAdvisory(atBoundary, now);
+        QVERIFY(atBoundaryAdvisory.has_value());
+        QCOMPARE(*atBoundaryAdvisory, advisoryTextFor(now.addDays(30)));
+
+        CredentialExpiry beyond;
+        beyond.sessionExpiresAt = now.addDays(30).addSecs(1);
+        QVERIFY(!reimportAdvisory(beyond, now).has_value());
+
+        CredentialExpiry pastDue;
+        pastDue.cookieExpiresAt = now.addDays(-1);
+        const auto pastDueAdvisory = reimportAdvisory(pastDue, now);
+        QVERIFY(pastDueAdvisory.has_value());
+        QCOMPARE(*pastDueAdvisory, advisoryTextFor(now.addDays(-1)));
+
+        CredentialExpiry unknown;
+        QVERIFY(!reimportAdvisory(unknown, now).has_value());
     }
 };
 

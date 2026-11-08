@@ -618,6 +618,24 @@ target_link_libraries(test_SunoFreeReadsService PRIVATE
 
 add_test(NAME test_SunoFreeReadsService COMMAND test_SunoFreeReadsService)
 
+add_executable(test_SunoSearchService
+    suno/test_SunoSearchService.cpp
+)
+
+set_target_properties(test_SunoSearchService PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoSearchService PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    test_support
+    project_lib
+)
+
+add_test(NAME test_SunoSearchService COMMAND test_SunoSearchService)
+
 add_executable(test_SunoAccountManagerTos
     suno/test_SunoAccountManagerTos.cpp
 )

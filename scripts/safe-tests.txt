@@ -28,3 +28,4 @@ test_SunoNotificationService
 test_SunoRequestEpoch
 test_ThemeQml
 unit_tests
+test_ThemeCatalog

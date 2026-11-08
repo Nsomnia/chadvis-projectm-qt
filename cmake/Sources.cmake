@@ -695,3 +695,17 @@ list(APPEND CORE_SOURCES
     src/core/ThemeCatalog.hpp
     src/core/ThemeCatalog.cpp
 )
+
+# ─────────────────────────────────────────────────────────────
+# SEARCH SERVICE (appended 2026-11-08)
+#
+# SunoSearchService wires the two Explore/search page routes captured
+# 2026-11-08 (ENDPOINT-INVENTORY §4.5, [T1]): POST /unified/search/suggest
+# and POST /unified/search/omnisearch. Read-only, no credit spend, no
+# mutations. The uncaptured feed.items shape stays a raw QJsonArray.
+# SUNO_SOURCES for the non-globbing reason recorded above.
+# ─────────────────────────────────────────────────────────────
+list(APPEND SUNO_SOURCES
+    src/suno/SunoSearchService.hpp
+    src/suno/SunoSearchService.cpp
+)

@@ -85,6 +85,59 @@ SunoLibraryManager::~SunoLibraryManager() {
     client_->libraryPageFailed.disconnect(libraryPageFailedConnectionId_);
 }
 
+void SunoLibraryManager::beginFreshSearchFeed() {
+    pendingSearchRestart_ = false;
+    pendingPage_ = 1;
+    syncSettled_ = false;
+    credentialRefreshPending_ = true;
+    client_->reloadStoredCredentials();
+}
+
+void SunoLibraryManager::setSearchText(const QString& searchText) {
+    const QString term = searchText.trimmed();
+    if (term == searchText_) {
+        return;
+    }
+    searchText_ = term;
+    ++searchGeneration_;
+    // A term change never appends: the previous accumulation is discarded
+    // and the new feed starts from a null cursor.
+    accumulatedClips_.clear();
+    pagesLoaded_ = 0;
+    if (credentialRefreshPending_) {
+        // The imminent page-one fetch already picks up the newest term, so
+        // no deferred restart is needed; just retarget it to page one and
+        // block the auto-page timer from paging the old cursor meanwhile.
+        pendingPage_ = 1;
+        const bool hadMore = hasMorePages_;
+        hasMorePages_ = false;
+        if (hadMore != hasMorePages_) {
+            emit hasMorePagesChanged();
+        }
+        return;
+    }
+    if (isSyncing_) {
+        // The in-flight page was issued under the old term. Defer the new
+        // feed until it settles; onLibraryFetched/settleSync discard the
+        // stale result via the generation check and begin the fresh feed.
+        // Block the auto-page timer from paging the old cursor meanwhile.
+        pendingSearchRestart_ = true;
+        pendingPage_ = 1;
+        const bool hadMore = hasMorePages_;
+        hasMorePages_ = false;
+        if (hadMore != hasMorePages_) {
+            emit hasMorePagesChanged();
+        }
+        return;
+    }
+    const bool hadMore = hasMorePages_;
+    hasMorePages_ = false;
+    if (hadMore != hasMorePages_) {
+        emit hasMorePagesChanged();
+    }
+    beginFreshSearchFeed();
+}
+
 void SunoLibraryManager::refreshLibrary(int page) {
     if (isSyncing_ || credentialRefreshPending_) {
         return;
@@ -111,6 +164,9 @@ void SunoLibraryManager::onCredentialsRestored() {
     }
 
     if (page <= 1) {
+        // A deferred restart (if any) is satisfied by this fetch: it carries
+        // the current searchText_ from page one.
+        pendingSearchRestart_ = false;
         accumulatedClips_.clear();
         pagesLoaded_ = 0;
         isSyncing_ = true;
@@ -125,11 +181,19 @@ void SunoLibraryManager::onCredentialsRestored() {
         return;
     }
 
-    client_->fetchLibraryPage(std::nullopt, kLibraryPageSize);
+    fetchGeneration_ = searchGeneration_;
+    fetchInFlight_ = true;
+    client_->fetchLibraryPage(std::nullopt, kLibraryPageSize, searchText_);
 }
 
 void SunoLibraryManager::requestNextPage() {
-    if (isSyncing_ || !hasMorePages_) {
+    if (pendingSearchRestart_) {
+        // The auto-page timer must not page the old term's cursor after a
+        // term change; start the new term's feed from page one instead.
+        beginFreshSearchFeed();
+        return;
+    }
+    if (isSyncing_ || credentialRefreshPending_ || !hasMorePages_) {
         return;
     }
     if (client_->nextCursor().isEmpty()) {
@@ -146,7 +210,9 @@ void SunoLibraryManager::requestNextPage() {
     syncSettled_ = false;
     emit statusMessage("Fetching more Suno clips (page " +
                        std::to_string(pagesLoaded_ + 1) + ")...");
-    client_->fetchLibraryPage(client_->nextCursor(), kLibraryPageSize);
+    fetchGeneration_ = searchGeneration_;
+    fetchInFlight_ = true;
+    client_->fetchLibraryPage(client_->nextCursor(), kLibraryPageSize, searchText_);
 }
 
 
@@ -159,6 +225,18 @@ void SunoLibraryManager::syncDatabase(bool forceAuth) {
 }
 
 void SunoLibraryManager::onLibraryFetched(const std::vector<SunoClip>& clips) {
+    // Stale page: issued under a previous search term (T0366). Discard it
+    // without appending or emitting, and start the new term's feed. This is
+    // what keeps a term change mid-sync from appending old results.
+    if (fetchInFlight_ && fetchGeneration_ != searchGeneration_) {
+        fetchInFlight_ = false;
+        isSyncing_ = false;
+        if (pendingSearchRestart_) {
+            beginFreshSearchFeed();
+        }
+        return;
+    }
+    fetchInFlight_ = false;
     LOG_INFO("SunoLibraryManager: Fetched {} clips", clips.size());
 
     // Accumulate clips for this sync session
@@ -209,6 +287,18 @@ void SunoLibraryManager::onLibraryFetched(const std::vector<SunoClip>& clips) {
 }
 
 void SunoLibraryManager::settleSync(bool complete, const QString& reason) {
+    // Stale failure: the page that failed was issued under a previous term.
+    // Do not attribute its failure to the new term or mark the new term
+    // resumable from the old cursor; discard and start the new feed.
+    if (fetchInFlight_ && fetchGeneration_ != searchGeneration_) {
+        fetchInFlight_ = false;
+        isSyncing_ = false;
+        if (pendingSearchRestart_) {
+            beginFreshSearchFeed();
+        }
+        return;
+    }
+    fetchInFlight_ = false;
     // At most one verdict per refresh attempt: two failure channels can fire
     // for one page (a transport error followed by its parse failure), and a
     // second settle must not double-count or re-report a sync that already

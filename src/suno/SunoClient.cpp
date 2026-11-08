@@ -1521,13 +1521,15 @@ void SunoClient::handleNetworkError(QNetworkReply* reply) {
 // API surface
 // ─────────────────────────────────────────────────────────────
 
-void SunoClient::fetchLibraryPage(std::optional<QString> cursor, int limit) {
+void SunoClient::fetchLibraryPage(std::optional<QString> cursor, int limit,
+                                  const QString& searchText) {
     if (!isAuthenticated()) {
         errorOccurred.emitSignal("Not authenticated");
         return;
     }
 
-    // Request body per the CAPTURED /api/feed/v3 contract (T1, Aug 2026):
+    // Request body per the CAPTURED /api/feed/v3 contract (T1, Aug 2026;
+    // searchText per ENDPOINT-INVENTORY.md 4.5 [T1] 2026-11-08):
     // disliked/trashed are STRING "True"/"False"; presence filters are
     // objects; cursor is null/omitted on the first page.
     QJsonObject fromStudioProject;
@@ -1545,6 +1547,12 @@ void SunoClient::fetchLibraryPage(std::optional<QString> cursor, int limit) {
     filters["stem"] = stem;
     filters["stemComplement"] = QStringLiteral("False");
     filters["workspace"] = workspace;
+    // Server-side library search: only a non-empty trimmed term is sent, so
+    // the unfiltered feed keeps the exact pre-search wire shape (no key).
+    const QString searchTerm = searchText.trimmed();
+    if (!searchTerm.isEmpty()) {
+        filters["searchText"] = searchTerm;
+    }
 
     QJsonObject body;
     body["cursor"] = cursor.has_value() ? QJsonValue(*cursor) : QJsonValue::Null;
