@@ -1,0 +1,2 @@
+2026-11-08T00:45:15Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee69320 pid=69320 ttl=4h expires=2026-11-08T04:45:15Z
+2026-11-08T00:45:15Z  VERIFY    ./build.sh --fast --tests + ctest -R test_SunoPersonaService => Passed 6.96s. Build fix: added test_SunoPersonaService to build.sh SAFE_TESTS. Live GET 200 not yet verified.

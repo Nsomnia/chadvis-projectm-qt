@@ -397,6 +397,23 @@ target_link_libraries(test_SunoClipDetailService PRIVATE
 
 add_test(NAME test_SunoClipDetailService COMMAND test_SunoClipDetailService)
 
+add_executable(test_SunoPersonaService
+    suno/test_SunoPersonaService.cpp
+)
+
+set_target_properties(test_SunoPersonaService PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoPersonaService PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_SunoPersonaService COMMAND test_SunoPersonaService)
+
 add_executable(test_SunoModelCatalog
     suno/test_SunoModelCatalog.cpp
 )

@@ -16,6 +16,10 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   and exposes `generation_config`: version, capabilities, the allowed chaining combinations, and
   the per-field character limits. Items parse alongside it. Nothing hard-codes a mode list. (T0362 step 1)
 
+- **Personas can be read.** A new `SunoPersonaService` does the two idempotent reads: the list and
+  one persona by id. Identity is typed; the rest of each record stays in `raw`. Creating a persona
+  still waits for the upload chain. (T0349 reads)
+
 ### Fixed
 
 - **Preset discovery now finds `.milk7`, `.milkdrop`, and mixed-case extensions.** Extension

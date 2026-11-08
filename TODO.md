@@ -155,6 +155,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `create/` spends credits and needs `rights_clearance_available` honoured, so it comes after
       the upload chain (T0362). Untested twins stay out: `get-loved-personas/`,
       `get-followed-personas/` are still extension-only `[LEAD]`. UI behind `Personas` gate.
+      READS DONE 2026-11-08: `SunoPersonaService` reads `GET /persona/get-personas/` and `GET /persona/get-persona/{id}/`; id/name typed, the rest kept in `raw`. `create/` still open after T0362 upload chain. Live GET 200 still open.
 
 - [~] T0362 **Wire the HAR-11 surfaces: upload → stem → persona, and the free reads** (`src/suno/SunoUploadService.*`, `src/suno/SunoPersonaService.*`, `src/suno/SunoClient.cpp`, `src/qml_bridge/SunoBridge*`) #feature #user-priority
       Endpoint constants + docs landed 2026-11-06 (ENDPOINT-INVENTORY §4.10, §5.14). This is the

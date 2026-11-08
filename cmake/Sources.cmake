@@ -83,6 +83,8 @@ set(SUNO_SOURCES
     src/suno/SunoClipDetailService.cpp
     src/suno/SunoModelCatalog.hpp
     src/suno/SunoModelCatalog.cpp
+    src/suno/SunoPersonaService.hpp
+    src/suno/SunoPersonaService.cpp
     src/suno/SunoGenerationService.hpp
     src/suno/SunoGenerationService.cpp
     src/suno/SunoPlaylistService.hpp
