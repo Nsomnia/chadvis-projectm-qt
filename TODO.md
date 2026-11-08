@@ -463,6 +463,11 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       "Unknown test function". Verify: a check that rebuilds the integration targets before the ctest
       step, or that refuses to run them when the binary is older than the sources.
 
+- [ ] T0450 **Wire `notificationSettled` into QML** (`src/qml_bridge/`, `src/qml/views/NotificationsView.qml`) #feature
+      `SunoNotificationService::notificationSettled` exists (T0375 follow-up) with per-call outcome, but
+      no bridge exposes it, so the UI cannot tell the user which click was refused or rejected. Verify:
+      the bridge surfaces the result; NotificationsView shows the outcome for clear-badge/mark-all-read.
+
 - [x] T0441 **Focus rings for the new keyboard tab stops** (`src/qml/`) #cleanup
       T0082 made the custom-drawn controls (AppColorPicker areas, tiles, chips) reachable by Tab, but none
       of them shows a focus outline, so a sighted keyboard user cannot see where focus is. Verify: a
