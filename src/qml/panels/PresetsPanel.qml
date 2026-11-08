@@ -7,8 +7,10 @@ import "../components"
 
 ColumnLayout {
     id: root
-    property string searchQuery: ""
-    property string selectedCategory: ""
+    // The filter lives in PresetBridge, not here. It was duplicated as two local
+    // properties that nothing read: the search box and the category combo wrote
+    // them, PresetBridge.filteredPresets() never saw them, and the list only
+    // reassigns on presetsChanged — so both controls did nothing at all.
     spacing: Theme.spacingMedium
 
     ColumnLayout {
@@ -20,8 +22,8 @@ ColumnLayout {
             id: searchField
             Layout.fillWidth: true
             placeholderText: "Search presets..."
-            text: root.searchQuery
-            onTextChanged: root.searchQuery = text
+            text: PresetBridge.searchQuery
+            onTextChanged: PresetBridge.searchQuery = text
             background: Rectangle {
                 radius: Theme.radiusSmall; color: Theme.surfaceRaised; border.color: Theme.border; border.width: searchField.activeFocus ? 2 : 1
             }
@@ -33,7 +35,11 @@ ColumnLayout {
             ComboBox {
                 id: categoryCombo; Layout.fillWidth: true; model: ["All", "Favorites", "Blacklisted"].concat(PresetBridge.categories)
                 onActivated: {
-                    var val = model[index]; if (val === "All") root.selectedCategory = ""; else if (val === "Favorites") root.selectedCategory = "__favorites__"; else if (val === "Blacklisted") root.selectedCategory = "__blacklisted__"; else root.selectedCategory = val
+                    var val = model[index]
+                    if (val === "All") PresetBridge.selectedCategory = ""
+                    else if (val === "Favorites") PresetBridge.selectedCategory = "__favorites__"
+                    else if (val === "Blacklisted") PresetBridge.selectedCategory = "__blacklisted__"
+                    else PresetBridge.selectedCategory = val
                 }
                 background: Rectangle { radius: Theme.radiusSmall; color: Theme.surfaceRaised; border.color: Theme.border }
                 contentItem: Text { text: categoryCombo.displayText; color: Theme.textPrimary; font.pixelSize: Theme.fontBody.pixelSize; verticalAlignment: Text.AlignVCenter; leftPadding: Theme.spacingSmall }
@@ -51,6 +57,36 @@ ColumnLayout {
         highlight: Rectangle { color: Theme.accent; opacity: 0.2; radius: Theme.radiusSmall }
         highlightFollowsCurrentItem: true; highlightMoveDuration: 150
         Connections { target: PresetBridge; function onPresetsChanged() { presetList.model = PresetBridge.filteredPresets() } }
+
+        // No presets yet. The library is scanned off-thread at startup and
+        // PresetBridge publishes only the finished list, so an empty result
+        // means either the scan has not landed, the folder has no presets, or
+        // every preset is blacklisted -- there is no exposed scanning flag to
+        // tell them apart. The copy therefore names the folder rather than
+        // claiming a cause, and Rescan is the action in every one of those
+        // cases; presetsChanged repopulates the list on its own.
+        ColumnLayout {
+            anchors.centerIn: parent
+            width: parent.width - Theme.spacingLarge * 2
+            visible: presetList.count === 0
+            spacing: Theme.spacingSmall
+
+            Text {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                text: "No presets found.\nCheck the preset folder in Settings, then rescan."
+                color: Theme.textDisabled
+                font: Theme.fontBody
+            }
+
+            AppButton {
+                text: "Rescan"
+                flat: true
+                Layout.alignment: Qt.AlignHCenter
+                onClicked: PresetBridge.rescan()
+            }
+        }
     }
 
     component PresetDelegate: Rectangle {

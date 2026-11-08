@@ -71,9 +71,10 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       User's extension corroborated: 100/page, 6752-clip library = ~68 round trips.
       **(b)+(c) DONE 2026-11-08:** a mid-sync failure keeps `pagesLoaded_` and holds the cursor, so `requestNextPage()` retries the failed page; `librarySyncSettled` now carries `pagesFetched` and status messages state clips across pages. No `expectedTotal` exists in the feed, so none is invented. Regression test `failedPageIsRetriedNotRestarted`. Remaining: real 2k-clip wall-clock measurement.
 
-- [ ] T0193 **User themes need C++ `ThemeCatalog`** (`ThemeCatalog.hpp/.cpp`, `BridgeRegistration.cpp`) #cod-high
+- [x] T0193 **User themes need C++ `ThemeCatalog`** (`ThemeCatalog.hpp/.cpp`, `BridgeRegistration.cpp`) #cod-high
       Phase 3. Discover `<configDir>/themes/*.json`, validate (schema, id pattern, 64KiB cap, contrast).
       Never name it `Theme` — shadows QML singleton. `Theme.qml` must never parse files itself.
+      **DONE 2026-11-08:** `src/core/ThemeCatalog.*` discovers `<configDir>/themes/*.json`, validates size/id/schemaVersion/required fields/color tokens and WCAG contrast (mirrors `Theme.qml`'s math; no C++ helper existed), and rejects per file without aborting the others. A duplicate id keeps the first and reports the rest. The bridge property is deliberately not added yet — no bridge exposes a theme list, so that is its own slice.
 
 ---
 
@@ -385,8 +386,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0072 No `reuseItems` anywhere; nested non-interactive `GridView` in virtualized `ListView` (`src/qml/`) #perf
       `DiscoverView.qml:115-127` materialises every clip of every feed. 16 `layer.enabled` sites.
 
-- [ ] T0076 Views with no loading/empty/error state (`VideoView.qml`, `PresetsPanel.qml`, `PlaylistPanel.qml`, `TransportBar.qml`) #blocks-ui
+- [x] T0076 Views with no loading/empty/error state (`VideoView.qml`, `PresetsPanel.qml`, `PlaylistPanel.qml`, `TransportBar.qml`) #blocks-ui
       Model on `LibraryView.qml:397-448`, `DiscoverView.qml:207-261`.
+      **DONE 2026-11-08:** `PresetsPanel` shows an empty block (copy names the folder; Rescan acts) and `PlaylistPanel` shows one on an empty queue. `VideoView` and `TransportBar` were checked and left alone: neither has a reachable loading/error state (the visualizer window is created before the engine; `AudioBridge` exposes no loading flag) and `TransportBar` already handles `!hasTrack` and `recordError`. Loading is not expressible for presets — `PresetBridge` publishes only the finished list.
 
 - [-] T0080 Two writes to bound `value` on `AppSlider` fight each other (`KaraokeSettings.qml:52`, `RecordingPanel.qml:180,264`) #risk-high
       Use `onMoved` not `onValueChanged` per Qt docs.
@@ -426,6 +428,18 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       **DONE 2026-11-08:** the fixture uses real checks (`qFatal` on failure) and the chain helper asserts
       `isUploading()` with `service.error()` in the message. `scripts/check-test-asserts.py` forbids
       `Q_ASSERT`/`Q_ASSERT_X` under `tests/` (exit 1 with file:line) and runs in `guards.yml`.
+
+- [x] T0439 **Preset search, category filter and Blacklisted did nothing** (`src/qml/panels/PresetsPanel.qml`, `src/qml_bridge/PresetBridge.cpp`) #risk-medium
+      The search box and category combo wrote two local QML properties (`root.searchQuery`,
+      `root.selectedCategory`) that nothing read; `filteredPresets()` reads the bridge's own fields and the
+      list only reassigns on `presetsChanged`. Separately the combo's `"__blacklisted__"` entry had no
+      branch in `filteredPresets()`, so it fell through to `byCategory("__blacklisted__")` and returned
+      empty. **DONE 2026-11-08:** QML writes the bridge properties directly; the blacklisted branch calls
+      `blacklistedPresets()`. Build clean, `unit_tests` passed.
+
+- [ ] T0440 **Preset empty state shows during the startup scan** (`src/qml/panels/PresetsPanel.qml`, `src/qml_bridge/PresetBridge.*`) #cleanup
+      `PresetBridge` publishes only the finished list, so an empty model cannot be told apart from "still
+      scanning". Verify: a scanning property on the bridge gates the empty block.
 
 - [ ] T0085 `TextAccessible` names hardcoded English (`src/qml/`) #cleanup
 
@@ -527,12 +541,19 @@ Evidence: the owner's URL dump at `~/Documents/suno-recon-cat-stealth-modekl/url
 bodies are unproven until a browser walk or an app-originated call captures them.
 Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline.
 
-- [ ] T0366 **Search family: remote search, suggest, history** (`src/suno/SunoEndpoints.hpp`, `SunoClient.cpp`, `SunoLibraryManager.cpp`, `docs/suno_api/`) #feature #blocks-ui (after: T0066)
+- [!] T0366 **Search family: remote search, suggest, history** (`src/suno/SunoEndpoints.hpp`, `SunoClient.cpp`, `SunoLibraryManager.cpp`, `docs/suno_api/`) #feature #blocks-ui (after: T0066)
       `/a/api/search`, `/search/history`, `/search/users`, `/unified/search/omnisearch`,
       `/unified/search/suggest`, `/unified/search/suggest/history`,
       `/unified/search/suggest/history/item`. Typing in the library box and Explore search
       capture the verbs. T0066 threads `searchText` then drops it — this closes that with the
       real route instead of local filtering.
+      **BLOCKED 2026-11-08 (evidence):** zero of the seven routes appear in ENDPOINT-INVENTORY; six are
+      `GET?`/`Bearer?` rows in OBSERVED-LEADS §4.5 that explicitly say no reviewed capture supports them,
+      and `/unified/search/suggest/history/item` appears in no document. `SunoEndpoints.hpp` has no search
+      constant. Building a read service now would invent routes, so nothing was built.
+      Next action (needs an authenticated browser): type in the library box and in Explore search, record
+      method + query/body for each route, then promote them to `[T1]` in the inventory. Then the service
+      follows `SunoFreeReadsService` exactly.
 - [ ] T0367 **Onboarding + user-config writes** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature
       `/onboarding/{start,current,back,skip,complete,submit}`,
       `/onboarding/audio-upload/{abort,remove}`,

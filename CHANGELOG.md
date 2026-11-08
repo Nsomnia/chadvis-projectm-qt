@@ -8,6 +8,18 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Preset search, the category filter and Blacklisted work.** All three were inert: the two controls
+  wrote QML-local properties nothing read, and the Blacklisted entry had no branch in the bridge so it
+  returned an empty list. The filter now lives in `PresetBridge` and Blacklisted calls
+  `blacklistedPresets()`. (T0439)
+
+- **The preset panel and the queue say when they are empty.** Each shows a short line and a single
+  action instead of a blank panel. (T0076)
+
+- **User theme files are discovered and validated in C++.** `ThemeCatalog` reads
+  `<configDir>/themes/*.json` with a size, id, schema and WCAG-contrast check, rejecting one file
+  without losing the others. The QML side is a later slice. (T0193)
+
 - **The macOS bundle ships an app icon.** `resources/ChadVis.icns`, generated from the project SVG
   by `scripts/make-app-icon.sh`, is copied into `Contents/Resources` and named by `CFBundleIconFile`.
   Verified in the built bundle. (T0088)

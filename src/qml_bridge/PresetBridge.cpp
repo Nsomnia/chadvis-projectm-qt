@@ -187,6 +187,10 @@ QVariantList PresetBridge::filteredPresets() const {
         filtered = s_manager->search(searchQuery_.toStdString());
     } else if (selectedCategory_ == QLatin1String("__favorites__")) {
         filtered = s_manager->favoritePresets();
+    } else if (selectedCategory_ == QLatin1String("__blacklisted__")) {
+        // The combo has offered this entry all along; without the branch the
+        // sentinel fell through to byCategory() and the list came back empty.
+        filtered = s_manager->blacklistedPresets();
     } else if (!selectedCategory_.isEmpty()) {
         filtered = s_manager->byCategory(selectedCategory_.toStdString());
     } else {

@@ -1,0 +1,1 @@
+2026-11-08T13:19:28Z  VERIFY    ./build.sh --fast --tests clean; ctest unit_tests 98.72s passed. Empty states added to PresetsPanel (finds no presets) and PlaylistPanel (empty queue); VideoView and TransportBar untouched with reasons recorded. qmllint: no blocking problems, 1168 vs 1167 baseline (one recorded shadowing class).\n

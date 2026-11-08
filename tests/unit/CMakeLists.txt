@@ -299,6 +299,22 @@ set_tests_properties(test_ThemeQml PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# THEME CATALOG — <configDir>/themes/*.json discovery and validation (T0193).
+# Standalone target rather than a unit_tests member: carries its own main()
+# with a QCoreApplication, following test_ThemeQml's isolation reason.
+add_executable(test_ThemeCatalog
+    core/test_ThemeCatalog.cpp
+)
+set_target_properties(test_ThemeCatalog PROPERTIES
+    AUTOMOC ON
+)
+target_link_libraries(test_ThemeCatalog PRIVATE
+    Qt6::Core
+    Qt6::Test
+    project_lib
+)
+add_test(NAME test_ThemeCatalog COMMAND test_ThemeCatalog)
+
 set_tests_properties(test_RenderExecutor PROPERTIES
     TIMEOUT 180
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
@@ -602,6 +618,24 @@ target_link_libraries(test_SunoFreeReadsService PRIVATE
 
 add_test(NAME test_SunoFreeReadsService COMMAND test_SunoFreeReadsService)
 
+add_executable(test_SunoAccountManagerTos
+    suno/test_SunoAccountManagerTos.cpp
+)
+
+set_target_properties(test_SunoAccountManagerTos PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoAccountManagerTos PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    test_support
+    project_lib
+)
+
+add_test(NAME test_SunoAccountManagerTos COMMAND test_SunoAccountManagerTos)
+
 # Vocal stem extract + poll (T0431). Standalone target: carries its own
 # QTEST_MAIN, for the same deciding reason as test_HttpPolicy above.
 add_executable(test_SunoStemService
@@ -691,6 +725,7 @@ if(CHADVIS_SANITIZER)
         test_CapturedHosts
         test_FeatureFlags
         test_ThemeQml
+        test_ThemeCatalog
         # These two are registered ctest entries and get built by the sanitizer
         # profile like every other target here, but they were missing from this
         # list -- so under --tsan they ran WITHOUT exitcode=66 and without the

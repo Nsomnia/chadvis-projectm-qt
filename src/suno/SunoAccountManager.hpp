@@ -10,12 +10,25 @@
 #include "SunoClient.hpp"
 #include "SunoModels.hpp"
 
+#include <QDateTime>
 #include <QObject>
+#include <QString>
 #include <optional>
 
 class QNetworkReply;
 
 namespace vc::suno {
+
+/// Terms-of-service acceptance state from
+/// `GET /api/user/tos_acceptance` (ENDPOINT-INVENTORY §4.2, [T1] Burp
+/// 2026-08-25). The capture establishes the two field names only; the
+/// timestamp format is unpinned, so the raw server value is kept verbatim
+/// and parsed tolerantly at the decision site instead of being coerced
+/// into a `QDateTime` here.
+struct TosAcceptance {
+    bool hasAcceptedTos = false;
+    QString hasAcceptedTosTimestamp;
+};
 
 class SunoAccountManager : public QObject {
     Q_OBJECT
@@ -28,7 +41,45 @@ public:
     void refreshAll();
     /// Fetch only billing (cheap post-generation refresh).
     void refreshBilling();
+    /// GET-only read of terms acceptance. Acceptance is a legal act the
+    /// user performs in a browser; this client must never POST it, so no
+    /// write path exists here. Unknown until the first successful reply;
+    /// a failed read degrades back to unknown and never claims accepted.
+    void refreshTosAcceptance();
     void clearSnapshots();
+
+    /// The last successful TOS read, or `std::nullopt` when unknown (never
+    /// fetched, signed out, or the last fetch failed).
+    [[nodiscard]] const std::optional<TosAcceptance>& tosAcceptance() const
+    {
+        return tosAcceptance_;
+    }
+    [[nodiscard]] bool hasTosAcceptance() const { return tosAcceptance_.has_value(); }
+    /// False when unknown, so a failed read cannot claim acceptance.
+    [[nodiscard]] bool hasAcceptedTos() const
+    {
+        return tosAcceptance_.has_value() && tosAcceptance_->hasAcceptedTos;
+    }
+    /// Raw server timestamp, or empty when unknown.
+    [[nodiscard]] QString hasAcceptedTosTimestamp() const
+    {
+        return tosAcceptance_.has_value() ? tosAcceptance_->hasAcceptedTosTimestamp : QString{};
+    }
+    /// Staleness predicate for an already-accepted account: false when not
+    /// accepted (the initial prompt is a separate path), true when the
+    /// timestamp precedes `2025-11-07T08:00:00Z`, and true on an
+    /// unparseable timestamp (err toward asking).
+    [[nodiscard]] bool needsTosReprompt() const
+    {
+        if (!tosAcceptance_.has_value()) {
+            return false;
+        }
+        return needsTosReprompt(tosAcceptance_->hasAcceptedTos,
+                                tosAcceptance_->hasAcceptedTosTimestamp);
+    }
+    [[nodiscard]] static bool needsTosReprompt(bool hasAcceptedTos,
+                                               const QString& timestamp);
+    [[nodiscard]] static std::optional<QDateTime> parseTosTimestamp(const QString& timestamp);
 
     // Last-known values; empty/nullopt until the first successful reply.
     [[nodiscard]] const std::optional<SunoUserSummary>& user() const { return user_; }
@@ -86,10 +137,12 @@ signals:
     /// Separate from `accountInfoReady` because the UI needs to re-ask *why* a
     /// surface is unavailable, not merely that the account refreshed.
     void gatesChanged();
+    void tosAcceptanceReady();
 
 private:
     void handleSessionReply(QNetworkReply* reply);
     void handleBillingReply(QNetworkReply* reply);
+    void handleTosReply(QNetworkReply* reply);
 
     SunoClient* client_;
     std::optional<SunoUserSummary> user_;
@@ -99,6 +152,7 @@ private:
     /// `models_` so a failed billing fetch cannot blank a working catalogue.
     QList<SunoModelInfo> billingModels_;
     std::optional<SunoBillingInfo> billing_;
+    std::optional<TosAcceptance> tosAcceptance_;
     GateResolver gates_;
 };
 

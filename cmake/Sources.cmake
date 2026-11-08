@@ -682,3 +682,16 @@ list(APPEND SUNO_SOURCES
     src/suno/SunoVoiceVerificationService.hpp
     src/suno/SunoVoiceVerificationService.cpp
 )
+
+# ─────────────────────────────────────────────────────────────
+# THEME CATALOG (appended 2026-11-08)
+#
+# ThemeCatalog discovers and validates <configDir>/themes/*.json so
+# Theme.qml never parses files itself (T0190). CORE_SOURCES for the
+# non-globbing reason recorded above: TargetSetup.cmake names each
+# set() variable explicitly and does NOT glob.
+# ─────────────────────────────────────────────────────────────
+list(APPEND CORE_SOURCES
+    src/core/ThemeCatalog.hpp
+    src/core/ThemeCatalog.cpp
+)

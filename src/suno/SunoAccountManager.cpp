@@ -7,10 +7,12 @@
 #include <cmath>
 #include <expected>
 
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QPointer>
 
 namespace vc::suno {
@@ -143,6 +145,10 @@ std::optional<SunoBillingInfo> parseBilling(const QJsonObject& root) {
     return info;
 }
 
+QDateTime tosRepromptCutoff() {
+    return QDateTime(QDate(2025, 11, 7), QTime(8, 0, 0), Qt::UTC);
+}
+
 } // namespace
 
 SunoAccountManager::SunoAccountManager(SunoClient* client, QObject* parent)
@@ -185,12 +191,63 @@ void SunoAccountManager::refreshBilling() {
                                          });
 }
 
+void SunoAccountManager::refreshTosAcceptance() {
+    if (!client_ || !client_->isAuthenticated()) {
+        return;
+    }
+
+    QPointer<SunoAccountManager> guard(this);
+    client_->enqueueAuthenticatedRequest(qstr(vc::suno::endpoints::USER_TOS_ACCEPTANCE), "GET", {},
+                                         [guard](QNetworkReply* reply) {
+                                             if (guard) {
+                                                 guard->handleTosReply(reply);
+                                             } else if (reply) {
+                                                 reply->deleteLater();
+                                             }
+                                         });
+}
+
+std::optional<QDateTime> SunoAccountManager::parseTosTimestamp(const QString& timestamp) {
+    const QString trimmed = timestamp.trimmed();
+    if (trimmed.isEmpty()) {
+        return std::nullopt;
+    }
+    for (const Qt::DateFormat format : {Qt::ISODateWithMs, Qt::ISODate}) {
+        const QDateTime parsed = QDateTime::fromString(trimmed, format);
+        if (parsed.isValid()) {
+            return parsed.toUTC();
+        }
+    }
+    for (const QString& pattern :
+         {QStringLiteral("yyyy-MM-ddTHH:mm:ssZ"), QStringLiteral("yyyy-MM-ddTHH:mm:ss.zzzZ")}) {
+        const QDateTime parsed = QDateTime::fromString(trimmed, pattern);
+        if (parsed.isValid()) {
+            return parsed.toUTC();
+        }
+    }
+    return std::nullopt;
+}
+
+bool SunoAccountManager::needsTosReprompt(bool hasAcceptedTos, const QString& timestamp) {
+    // Staleness only: a never-accepted account is the initial prompt, not a
+    // re-prompt, and an unknown read (nullopt) never reaches here.
+    if (!hasAcceptedTos) {
+        return false;
+    }
+    const std::optional<QDateTime> parsed = parseTosTimestamp(timestamp);
+    if (!parsed.has_value()) {
+        return true;
+    }
+    return *parsed < tosRepromptCutoff();
+}
+
 void SunoAccountManager::clearSnapshots() {
     const bool hadSnapshot = user_.has_value() || !models_.isEmpty() || billing_.has_value();
     user_.reset();
     models_.clear();
     billingModels_.clear();
     billing_.reset();
+    tosAcceptance_.reset();
     // Drop the flag map with the account it described. Leaving it behind would
     // keep every gate reading as it did for the signed-out user, so a UI could
     // show a surface as available to an account that no longer exists — and the
@@ -322,6 +379,58 @@ void SunoAccountManager::handleBillingReply(QNetworkReply* reply) {
     // envelope produced one. The catalogue is re-read on `billingInfoReady`,
     // which is the honest signal for "this reply changed account-derived data".
     emit billingInfoReady();
+}
+
+void SunoAccountManager::handleTosReply(QNetworkReply* reply) {
+    const bool authenticated = client_ && client_->isAuthenticated();
+    const QNetworkReply::NetworkError error = reply->error();
+    const QString errorString = reply->errorString();
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+    auto body = client_ ? client_->readTrackedBody(reply)
+                        : std::expected<QByteArray, QString>(std::unexpected(
+                                  QStringLiteral("account manager has no SunoClient to read the "
+                                                 "response with")));
+    reply->deleteLater();
+
+    if (!authenticated) {
+        tosAcceptance_.reset();
+        return;
+    }
+    if (!body) {
+        tosAcceptance_.reset();
+        LOG_WARN("SunoAccountManager: TOS response refused: {}", body.error().toStdString());
+        emit accountError(body.error());
+        return;
+    }
+    if (status < 200 || status >= 300) {
+        tosAcceptance_.reset();
+        const QString message = QStringLiteral("TOS fetch failed (HTTP %1).").arg(status);
+        LOG_WARN("SunoAccountManager: {}", message.toStdString());
+        emit accountError(message);
+        return;
+    }
+    if (error != QNetworkReply::NoError) {
+        tosAcceptance_.reset();
+        LOG_WARN("SunoAccountManager: TOS fetch failed: {}", errorString.toStdString());
+        emit accountError(errorString);
+        return;
+    }
+
+    const QJsonDocument document = QJsonDocument::fromJson(*body);
+    if (!document.isObject()) {
+        tosAcceptance_.reset();
+        LOG_WARN("SunoAccountManager: TOS envelope was not an object");
+        emit accountError(QStringLiteral("TOS envelope was not an object"));
+        return;
+    }
+    const QJsonObject root = document.object();
+    using P = ClipParser;
+    TosAcceptance acceptance;
+    acceptance.hasAcceptedTos = P::optBool(root, "has_accepted_tos", false);
+    acceptance.hasAcceptedTosTimestamp = P::optString(root, "has_accepted_tos_timestamp");
+    tosAcceptance_ = acceptance;
+    emit tosAcceptanceReady();
 }
 
 } // namespace vc::suno

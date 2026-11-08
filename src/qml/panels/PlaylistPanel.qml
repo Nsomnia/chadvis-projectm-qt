@@ -255,6 +255,33 @@ ColumnLayout {
             }
         }
             }
+
+            // An empty queue is the normal first-run state, and Clear All
+            // returns to it. There is no loading path: PlaylistBridge holds
+            // rows in memory and count is 0 only when the queue really is
+            // empty. Drop files anywhere above, or use Add.
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: parent.width - Theme.spacingLarge * 2
+                visible: playlistView.count === 0
+                spacing: Theme.spacingSmall
+
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: "The queue is empty.\nAdd audio files, or drop them here."
+                    color: Theme.textDisabled
+                    font: Theme.fontBody
+                }
+
+                AppButton {
+                    text: "Add files"
+                    flat: true
+                    Layout.alignment: Qt.AlignHCenter
+                    onClicked: fileDialog.open()
+                }
+            }
         }
     }
 
