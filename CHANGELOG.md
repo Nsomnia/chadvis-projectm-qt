@@ -31,6 +31,8 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 - **Hooks can be read.** A new `SunoHooksService` reads the three Hooks GETs. Entries stay raw
   objects in server order. (T0383 hooks)
 
+- **Albums can be read.** A new `SunoAlbumsService` posts `library_albums` to `POST /unified/feed`. Feed title is structured; albums stay raw. (T0383 albums)
+
 - **Client-side gate recon is recorded.** `docs/suno_api/CLIENT-GATE-RECON-2026-11-07.md`
   documents the delivered Turbopack client's Statsig gate plane, the dormant staff-flag
   override surface, and the per-surface (chat, personas, video, Orpheus) evidence
