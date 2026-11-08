@@ -5,6 +5,8 @@
 #include "core/Logger.hpp"
 #include "suno/HttpPolicy.hpp"
 
+#include <QByteArray>
+#include <QDateTime>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -16,6 +18,7 @@
 #include <QNetworkRequest>
 #include <QStringList>
 #include <QUrl>
+#include <algorithm>
 #include <array>
 #include <expected>
 #include <optional>
@@ -57,6 +60,82 @@ QString expiredBearerReason() {
 
 QString undecodableBearerReason() {
     return QStringLiteral("Clerk returned a bearer token that could not be decoded");
+}
+
+/// Bounded Clerk `errors[0].code` map (T0341). Clerk's code space is open and
+/// its sibling `long_message` is written for a human reading the raw response,
+/// so only codes whose meaning this client can state without quoting the body
+/// get a fixed sentence. Everything else keeps the HTTP-status sentence, which
+/// is why this table is the whole allowlist rather than a prefix match.
+struct ClerkErrorCodeSentence {
+    const char* code;
+    const char* sentence;
+};
+
+constexpr std::array<ClerkErrorCodeSentence, 8> kClerkErrorCodeSentences{{
+        {"session_not_found",
+         "Clerk no longer recognises the stored sign-in session; sign in again"},
+        {"client_not_found",
+         "Clerk no longer recognises this client; restart the app and sign in again"},
+        {"resource_not_found",
+         "Clerk could not find the stored sign-in resource; sign in again"},
+        {"form_identifier_not_found",
+         "Clerk does not recognise the stored account identifier; sign in again"},
+        {"form_password_incorrect",
+         "stored credential was rejected by Clerk; sign in again"},
+        {"verification_failed",
+         "Clerk could not verify the stored credential; sign in again"},
+        {"requires_captcha",
+         "Clerk requires an interactive sign-in before it will accept this account"},
+        {"captcha_missing_token",
+         "Clerk requires an interactive sign-in before it will accept this account"},
+}};
+
+/// Sentence for a known `errors[0].code`, or empty when the code is absent,
+/// unknown, or the body is not the Clerk error envelope.
+QString clerkErrorCodeSentence(const QByteArray& body) {
+    if (body.isEmpty()) {
+        return {};
+    }
+    const QJsonDocument doc = QJsonDocument::fromJson(body);
+    if (!doc.isObject()) {
+        return {};
+    }
+    const QJsonArray errors = doc.object().value(QStringLiteral("errors")).toArray();
+    if (errors.isEmpty()) {
+        return {};
+    }
+    const QString code = errors.at(0).toObject().value(QStringLiteral("code")).toString();
+    if (code.isEmpty()) {
+        return {};
+    }
+    for (const ClerkErrorCodeSentence& entry : kClerkErrorCodeSentences) {
+        if (code == QLatin1StringView(entry.code)) {
+            return QString::fromLatin1(entry.sentence);
+        }
+    }
+    return {};
+}
+
+/// A server-supplied wait is a hint, not a promise: cap it so a wedged origin
+/// cannot turn a status line into a sentence about hours, and floor it at one
+/// second so a wait already in the past reads as "now", not "in 0 seconds".
+/// Seconds are shown, not acted on -- this client has no timer that retries a
+/// Clerk exchange.
+constexpr std::int64_t kMaxDisplayedRetryAfterSecs = 86'400;
+
+QString rateLimitedReason(int status, const std::optional<std::int64_t> retryAfterSecs) {
+    if (!retryAfterSecs.has_value()) {
+        return QStringLiteral("Clerk is rate limiting sign-in requests (HTTP %1); try again shortly")
+                .arg(status);
+    }
+    const std::int64_t seconds =
+            std::clamp<std::int64_t>(*retryAfterSecs, 1, kMaxDisplayedRetryAfterSecs);
+    const QString unit = seconds == 1 ? QStringLiteral("second") : QStringLiteral("seconds");
+    return QStringLiteral("Clerk is rate limiting sign-in requests (HTTP %1); try again in %2 %3")
+            .arg(status)
+            .arg(seconds)
+            .arg(unit);
 }
 
 /// T0340: the tokens route names no session in its body, so the only in-body
@@ -635,14 +714,28 @@ QString ClerkAuthClient::httpFailureReason(int status) {
     // to every AuthFailureKind vocabulary map in the tree, which is a wider
     // change than the sentence.
     if (status == 429 || status == 430) {
-        return QStringLiteral("Clerk is rate limiting sign-in requests (HTTP %1); try again shortly")
-                .arg(status);
+        return rateLimitedReason(status, std::nullopt);
     }
     if (status >= 500 && status <= 599) {
         return QStringLiteral("Clerk is temporarily unavailable (HTTP %1); try again shortly")
                 .arg(status);
     }
     return QStringLiteral("Clerk request failed with an unexpected HTTP status");
+}
+
+QString ClerkAuthClient::failureReason(int status, const QByteArray& body,
+                                       const QByteArray& retryAfterHeader) {
+    // A 429's own wait is the most actionable thing the origin said, so it wins
+    // over the code table: "try again in 30 seconds" beats any static sentence.
+    if (status == 429 || status == 430) {
+        return rateLimitedReason(
+                status, http::parseRetryAfter(retryAfterHeader,
+                                              QDateTime::currentSecsSinceEpoch()));
+    }
+    if (const QString mapped = clerkErrorCodeSentence(body); !mapped.isEmpty()) {
+        return mapped;
+    }
+    return httpFailureReason(status);
 }
 
 void ClerkAuthClient::emitFailure(AuthFailureKind kind, const QString& reason) {
@@ -670,6 +763,9 @@ void ClerkAuthClient::emitFailure(AuthFailureKind kind, const QString& reason) {
 void ClerkAuthClient::handleReply(QNetworkReply* reply) {
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const bool ok = reply->error() == QNetworkReply::NoError && status >= 200 && status < 300;
+    // Read before deleteLater(): the header is the origin's own instruction for
+    // when a retry is welcome, and it only exists on the live reply.
+    const QByteArray retryAfterHeader = reply->rawHeader("Retry-After");
 
     // No readAll() anywhere on this path -- an unbounded read of a credential
     // response is exactly the hazard the policy now closes.
@@ -717,7 +813,7 @@ void ClerkAuthClient::handleReply(QNetworkReply* reply) {
         return;
     }
 
-    emitFailure(classifyHttpFailure(status), httpFailureReason(status));
+    emitFailure(classifyHttpFailure(status), failureReason(status, body, retryAfterHeader));
 }
 
 void ClerkAuthClient::handleTokensBody(const QByteArray& body, const CallContext& ctx) {

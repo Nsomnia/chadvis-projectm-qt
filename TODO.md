@@ -52,6 +52,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       playlists incl. recover/delete, trash restore-vs-permanent, Voices from a recording,
       cover art, Hooks/Albums/Workspaces/History sections, multi-modal v6 create. Surfaces
       only; every route behind them still needs a capture.
+      Stale check 2026-11-07: 165 constants, 38 referenced, 127 with zero call sites. Enrichment reads, generation submit+poll, trash restore already landed. Next verifiable chunks are T0383 reads, T0362 step 1, cover art chain. Cover art POST needs owner approval for cost.
 
 - [ ] T0336 **Adopt moved API base `https://suno.com/a/api`** (`SunoEndpoints.hpp`, `CapturedHosts.cpp`, `SunoClient.cpp`) #risk-high #cod-high
       Old base `studio-api-prod.suno.com` still answers — live alias, not dead.
@@ -223,7 +224,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       but don't clear `lastActiveSessionId_`.
       **DONE 2026-11-06:** sid mismatch fails `ProtocolMismatch` (secret-free), absent sid keeps the observed session; 5 new tests in `test_ClerkAuthClient`.
 
-- [ ] T0341 **Clerk failure envelope and `Retry-After` discarded** (`ClerkAuthClient.cpp:571-590,630-668`, `SunoClient.*`, `SunoBridge.cpp:784-804`) #risk-medium #blocks-ui
+- [x] T0341 **Clerk failure envelope and `Retry-After` discarded** (`ClerkAuthClient.cpp:571-590,630-668`, `SunoClient.*`, `SunoBridge.cpp:784-804`) #risk-medium #blocks-ui
       Body's `errors[0]` never read. 429's `Retry-After` ignored. `authFailed(reason)` good sentence dies at `SunoClient`.
       Map bounded code set to fixed sentences. Never surface raw `long_message` (can echo identifier).
       **Partly stale (2026-11-07):** the failure reason already reaches the UI
@@ -232,6 +233,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `long_message`, no identifier leak. The security half is CLOSED. Remaining
       enhancements: read `errors[0].code` for a bounded fixed-sentence map, and
       honor 429 `Retry-After`. Neither is a secret-exposure defect.
+      **DONE 2026-11-08:** `errors[0].code` now maps through one 8-entry fixed-sentence table in `ClerkAuthClient` (`long_message` never read); 429/430 surfaces `Retry-After` seconds on the existing `authFailed` sentence. Verified `./build.sh --fast --tests --safe` 16/16 (incl. `test_ClerkAuthClient`).
 
 - [x] T0342 **`GET /v1/client` refuses envelope with no `last_active_session_id`** (`ClerkAuthClient.cpp:91-190`) #risk-medium (after: T0340)
       One session + no selector → `NoActiveSession` despite usable `jwt`. Web client: `last_active_session_id ?? sessions?.[0]?.id`.

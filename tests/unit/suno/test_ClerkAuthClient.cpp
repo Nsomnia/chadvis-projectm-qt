@@ -57,6 +57,12 @@ public:
     {
         return ClerkAuthClient::httpFailureReason(status);
     }
+
+    static QString failureReason(int status, const QByteArray& body,
+                                 const QByteArray& retryAfterHeader)
+    {
+        return ClerkAuthClient::failureReason(status, body, retryAfterHeader);
+    }
 };
 
 } // namespace vc::suno::auth
@@ -87,6 +93,17 @@ QString fakeJwt(const QString& marker, qint64 expiryEpochSecs, const QString& si
 QByteArray jsonBody(const QJsonObject& object)
 {
     return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
+
+/// Sanitized Clerk failure envelope: `{"errors":[{"code":...,"long_message":...}]}`.
+QByteArray clerkErrorBody(const QString& code, const QString& longMessage = {})
+{
+    QJsonObject error{{"code", code}, {"message", QStringLiteral("raw short message")}};
+    if (!longMessage.isEmpty())
+    {
+        error["long_message"] = longMessage;
+    }
+    return jsonBody({{"errors", QJsonArray{error}}});
 }
 
 QJsonObject token(const QString& jwt)
@@ -521,6 +538,152 @@ private slots:
                  QStringLiteral("Clerk is temporarily unavailable (HTTP 503); try again shortly"));
         QCOMPARE(ClerkAuthClientTestAccess::httpFailureReason(400),
                  QStringLiteral("Clerk request failed with an unexpected HTTP status"));
+    }
+
+    /// T0341: a bounded `errors[0].code` map becomes a fixed sentence. The raw
+    /// `long_message` must never appear in it, because Clerk writes that field
+    /// for a human reading the response and it can quote the caller's own
+    /// identifier back at us.
+    void clerkErrorCodeMapsToFixedSentence_data()
+    {
+        QTest::addColumn<QString>("code");
+        QTest::addColumn<QString>("sentence");
+
+        QTest::newRow("session") << QStringLiteral("session_not_found")
+                                 << QStringLiteral("Clerk no longer recognises the stored "
+                                                   "sign-in session; sign in again");
+        QTest::newRow("client") << QStringLiteral("client_not_found")
+                                << QStringLiteral("Clerk no longer recognises this client; "
+                                                  "restart the app and sign in again");
+        QTest::newRow("resource") << QStringLiteral("resource_not_found")
+                                  << QStringLiteral("Clerk could not find the stored sign-in "
+                                                    "resource; sign in again");
+        QTest::newRow("identifier") << QStringLiteral("form_identifier_not_found")
+                                    << QStringLiteral("Clerk does not recognise the stored "
+                                                      "account identifier; sign in again");
+        QTest::newRow("password") << QStringLiteral("form_password_incorrect")
+                                  << QStringLiteral("stored credential was rejected by Clerk; "
+                                                    "sign in again");
+        QTest::newRow("verification") << QStringLiteral("verification_failed")
+                                      << QStringLiteral("Clerk could not verify the stored "
+                                                        "credential; sign in again");
+        QTest::newRow("captcha-required") << QStringLiteral("requires_captcha")
+                                          << QStringLiteral("Clerk requires an interactive "
+                                                            "sign-in before it will accept this "
+                                                            "account");
+        QTest::newRow("captcha-missing") << QStringLiteral("captcha_missing_token")
+                                         << QStringLiteral("Clerk requires an interactive "
+                                                           "sign-in before it will accept this "
+                                                           "account");
+    }
+
+    void clerkErrorCodeMapsToFixedSentence()
+    {
+        QFETCH(QString, code);
+        QFETCH(QString, sentence);
+
+        const QString longMessageCanary = QStringLiteral("user_CANARY_IDENTIFIER is not allowed");
+        const QByteArray body = clerkErrorBody(code, longMessageCanary);
+        const QString reason = ClerkAuthClientTestAccess::failureReason(404, body, {});
+
+        QCOMPARE(reason, sentence);
+        QVERIFY(!reason.contains(QStringLiteral("user_CANARY_IDENTIFIER")));
+        QVERIFY(!reason.contains(QStringLiteral("raw short message")));
+    }
+
+    /// A code outside the table is not a reason to invent a sentence: the
+    /// status-based sentence stands, and the body stays unpublished.
+    void unknownClerkErrorCodeFallsBackToStatusSentence()
+    {
+        const QByteArray body = clerkErrorBody(QStringLiteral("some_future_code"),
+                                               QStringLiteral("internal detail"));
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(400, body, {}),
+                 QStringLiteral("Clerk request failed with an unexpected HTTP status"));
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(500, body, {}),
+                 QStringLiteral("Clerk is temporarily unavailable (HTTP 500); try again shortly"));
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(401, body, {}),
+                 QStringLiteral("stored credential was rejected by Clerk"));
+    }
+
+    /// Absent, empty, malformed, or codeless envelopes must not turn a failure
+    /// into an empty message.
+    void missingClerkErrorCodeFallsBackToStatusSentence()
+    {
+        const QString expected =
+                QStringLiteral("Clerk request failed with an unexpected HTTP status");
+
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(400, {}, {}), expected);
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(400, QByteArray("not json"), {}),
+                 expected);
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(
+                         400, jsonBody({{"unexpected", true}}), {}),
+                 expected);
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(
+                         400, jsonBody({{"errors", QJsonArray{}}}), {}),
+                 expected);
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(
+                         400, jsonBody({{"errors", QJsonArray{QJsonObject{}}}}), {}),
+                 expected);
+    }
+
+    /// T0341: a 429 says how long the wait is when the origin supplies
+    /// `Retry-After`, and keeps the existing sentence when it does not.
+    void rateLimitRetryAfterIsSurfaced_data()
+    {
+        QTest::addColumn<QByteArray>("header");
+        QTest::addColumn<QString>("sentence");
+
+        const QString shortly =
+                QStringLiteral("Clerk is rate limiting sign-in requests (HTTP 429); try again "
+                               "shortly");
+
+        QTest::newRow("seconds") << QByteArray("42")
+                                 << QStringLiteral("Clerk is rate limiting sign-in requests "
+                                                   "(HTTP 429); try again in 42 seconds");
+        QTest::newRow("singular") << QByteArray("1")
+                                  << QStringLiteral("Clerk is rate limiting sign-in requests "
+                                                    "(HTTP 429); try again in 1 second");
+        QTest::newRow("padded") << QByteArray(" 7 ")
+                                << QStringLiteral("Clerk is rate limiting sign-in requests "
+                                                  "(HTTP 429); try again in 7 seconds");
+        // A zero or an elapsed HTTP-date means "now"; the floor keeps the
+        // sentence from reading "in 0 seconds".
+        QTest::newRow("zero") << QByteArray("0")
+                              << QStringLiteral("Clerk is rate limiting sign-in requests "
+                                                "(HTTP 429); try again in 1 second");
+        QTest::newRow("past-date") << QByteArray("Sun, 06 Nov 1994 08:49:37 GMT")
+                                   << QStringLiteral("Clerk is rate limiting sign-in requests "
+                                                     "(HTTP 429); try again in 1 second");
+        QTest::newRow("capped") << QByteArray("999999")
+                                << QStringLiteral("Clerk is rate limiting sign-in requests "
+                                                  "(HTTP 429); try again in 86400 seconds");
+        QTest::newRow("missing") << QByteArray() << shortly;
+        QTest::newRow("garbage") << QByteArray("soon") << shortly;
+        QTest::newRow("negative") << QByteArray("-5") << shortly;
+        QTest::newRow("fractional") << QByteArray("2.5") << shortly;
+        QTest::newRow("overflow") << QByteArray("9223372036854775808") << shortly;
+    }
+
+    void rateLimitRetryAfterIsSurfaced()
+    {
+        QFETCH(QByteArray, header);
+        QFETCH(QString, sentence);
+
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(429, {}, header), sentence);
+    }
+
+    /// `Retry-After` is the rate limiter's instruction, not a general status
+    /// hint: a 503 with the same header keeps its own sentence, and a mapped
+    /// code still wins over the generic status text.
+    void retryAfterDoesNotLeakIntoOtherStatuses()
+    {
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(503, {}, QByteArray("30")),
+                 QStringLiteral("Clerk is temporarily unavailable (HTTP 503); try again shortly"));
+        QCOMPARE(ClerkAuthClientTestAccess::failureReason(
+                         400, clerkErrorBody(QStringLiteral("session_not_found")),
+                         QByteArray("30")),
+                 QStringLiteral("Clerk no longer recognises the stored sign-in session; sign "
+                                "in again"));
     }
 
     void errorStringsNeverContainSecrets()

@@ -139,6 +139,12 @@ private:
 
     [[nodiscard]] static AuthFailureKind classifyHttpFailure(int status) noexcept;
     [[nodiscard]] static QString httpFailureReason(int status);
+
+    /// Full sentence for a non-2xx Clerk reply (T0341). A 429/430 uses its own
+    /// `Retry-After`; otherwise a bounded `errors[0].code` map applies; anything
+    /// else falls back to httpFailureReason(status). The body is never echoed.
+    [[nodiscard]] static QString failureReason(int status, const QByteArray& body,
+                                               const QByteArray& retryAfterHeader);
     void emitFailure(AuthFailureKind kind, const QString& reason);
 
     /// Abort every in-flight reply; called from the destructor so QNAM never

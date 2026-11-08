@@ -43,6 +43,11 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   is refused with a secret-free reason. Previously every pasted value became a cookie header, so a
   metadata-only string looked like a credential. (T0339)
 
+- **Clerk sign-in failures now name the cause and the wait.** `errors[0].code` maps through one
+  fixed-sentence table, so a known failure reads as a sentence instead of a bare status. The raw
+  `long_message` is never surfaced. HTTP 429 and 430 honor `Retry-After` and say how long to wait.
+  (T0341)
+
 ### Changed
 
 - **Dead `searchText` plumbing is gone from the library page fetch.** The parameter was threaded
