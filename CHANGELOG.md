@@ -20,6 +20,11 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   one persona by id. Identity is typed; the rest of each record stays in `raw`. Creating a persona
   still waits for the upload chain. (T0349 reads)
 
+- **Client-side gate recon is recorded.** `docs/suno_api/CLIENT-GATE-RECON-2026-11-07.md`
+  documents the delivered Turbopack client's Statsig gate plane, the dormant staff-flag
+  override surface, and the per-surface (chat, personas, video, Orpheus) evidence
+  from a browser recon of suno.com `/me`. All findings remain `[LEAD]`; no endpoint contract changes. (T0370)
+
 ### Fixed
 
 - **Preset discovery now finds `.milk7`, `.milkdrop`, and mixed-case extensions.** Extension

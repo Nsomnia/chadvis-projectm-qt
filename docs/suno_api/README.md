@@ -34,6 +34,11 @@
   visible surface list**, derived from a recorded replay (`[LEAD]`: UI evidence
   only, no request data). It answers "does this capability have a button" for
   T0346's families; it never states a method, path, or body.
+- [`CLIENT-GATE-RECON-2026-11-07.md`](CLIENT-GATE-RECON-2026-11-07.md) is the **client-side
+  gate recon record** — the delivered Turbopack client's Statsig gate plane,
+  staff-override surface, and per-surface gate evidence (`[LEAD]`, never
+  promoted into the inventory). It answers "how does the client evaluate
+  gates" for T0370; it never states a method, path, or body.
 - [`OAUTH_REDIRECT_ANALYSIS.md`](OAUTH_REDIRECT_ANALYSIS.md) is the single
   location for the observed Google web flow, the Clerk cookie families, and the
   **native-callback gate**. The intended desktop sign-in path is the system
