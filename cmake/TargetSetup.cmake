@@ -195,13 +195,6 @@ qt_add_qml_module(project_lib
         resources/icons/delete.svg
         resources/icons/random.svg
         resources/icons/blacklist.svg
-        resources/icons/qml/playback.svg
-        resources/icons/qml/playlist.svg
-        resources/icons/qml/presets.svg
-        resources/icons/qml/lyrics.svg
-        resources/icons/qml/suno.svg
-        resources/icons/qml/overlay.svg
-        resources/icons/qml/recording.svg
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ChadVis
     NO_PLUGIN
 )

@@ -1,0 +1,3 @@
+2026-11-08T11:41:57Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee8507 pid=8507 ttl=4h expires=2026-11-08T15:41:57Z
+2026-11-08T11:47:24Z  VERIFY    pruned 7 unreferenced SVGs from resources/icons/qml + their 7 RESOURCES lines in cmake/TargetSetup.cmake; originals parked in .backup_graveyard/resources-icons-qml-20261108T114157Z/. Build 148/148, ctest 26/26 (188.08s).
+2026-11-08T11:47:26Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee9615

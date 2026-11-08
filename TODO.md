@@ -386,7 +386,8 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [x] T0086 Remote art fetched with no `sourceSize`, sometimes not `asynchronous` (`ClipDetailSheet.qml:83-88`, `ClipCard.qml`, `SunoPanel.qml`) #perf
       **DONE 2026-11-07:** all three remote Image loads get sourceSize + asynchronous; DiscoverView already had both.
 
-- [ ] T0087 Icons: two duplicate copies, neither used, three destinations share one glyph (`resources/icons/`) #cleanup
+- [x] T0087 Icons: two duplicate copies, neither used, three destinations share one glyph (`resources/icons/`) #cleanup
+      **DONE 2026-11-08:** `resources/icons/qml/` held 7 SVGs registered in `TargetSetup.cmake` RESOURCES but referenced by zero QML files, including a byte-identical `playback.svg`/`suno.svg` pair. All 7 removed from the resource list and moved to `.backup_graveyard/resources-icons-qml-20261108T114157Z/`. The 18 icons QML actually names stay. Verified: full build 148/148, ctest 26/26.
 
 - [x] T0088 macOS bundle ships no icon (`Info.plist.in`, `TargetSetup.cmake:262-290`) #cleanup
       **DONE 2026-11-07:** `resources/ChadVis.icns` (reproducible via `scripts/make-app-icon.sh`) copied to

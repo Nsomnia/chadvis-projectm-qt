@@ -42,6 +42,10 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **Seven dead icon resources are gone.** `resources/icons/qml/` shipped 7 SVGs in the QML resource
+  set that no QML file referenced, including a byte-identical duplicate pair. The 18 icons QML
+  actually names are untouched. (T0087)
+
 - **Six `snprintf` sites now use `std::format`.** The SRT timestamp, the VAAPI/CUDA device path,
   two GL error strings, and the fixed-precision formatter produce byte-identical output without
   fixed-size buffers. `std::string` plus `c_str()` is used only where an API demands a `char*`. (T0403)
