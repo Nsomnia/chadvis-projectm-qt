@@ -25,6 +25,9 @@ public:
         QString userId;
         QString displayName;
         QString handle;
+        // v3 carries the picture as `avatars[0].image_url` instead of a
+        // `user_profiles` entry; empty when absent (v2 has no avatar source).
+        QString avatarImageUrl;
     };
 
     struct Notification {

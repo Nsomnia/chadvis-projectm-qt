@@ -1,0 +1,1 @@
+2026-11-08T13:10:29Z  VERIFY    ./build.sh --fast --tests clean, ctest 5/5 (SunoAudioUpload 29 slots, SunoStem 10, VoiceVerification 9, PersonaService, NotificationService) after the Q_ASSERT fixture fix.\n

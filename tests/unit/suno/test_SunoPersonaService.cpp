@@ -220,6 +220,133 @@ private slots:
             QCOMPARE(request.second, QStringLiteral("GET"));
         }
     }
+
+    void createSendsTheEvidencedBodyAndKeepsTheReplyVerbatim()
+    {
+        struct SentRequest {
+            QString path;
+            QString method;
+            QByteArray body;
+        };
+        std::vector<SentRequest> sent;
+        std::vector<FakeReply*> replies;
+        auto factory = [&sent, &replies](const QNetworkRequest& request, const std::string& method,
+                                         const QByteArray& data) {
+            sent.push_back({request.url().path(), QString::fromStdString(method), data});
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoPersonaService service(&client);
+        QSignalSpy changed(&service, &SunoPersonaService::changed);
+        QSignalSpy failed(&service, &SunoPersonaService::failed);
+
+        SunoPersonaService::CreatePersonaParams params{
+            QStringLiteral("gen-1"), QStringLiteral("Midnight Alto"), QStringLiteral("warm"),
+            false, QStringLiteral("pc-1"), 13.11, 178.22, QStringLiteral("jazz"),
+            QStringList{QStringLiteral("gen-1")}};
+        service.createPersona(params);
+
+        QTRY_VERIFY_WITH_TIMEOUT(!replies.empty(), 15000);
+        QVERIFY(service.isCreating());
+        QCOMPARE(sent.size(), 1);
+        QVERIFY(sent.front().path.endsWith(QStringLiteral("/persona/create/")));
+        QCOMPARE(sent.front().method, QStringLiteral("POST"));
+
+        // The body is the §5.14 shape, byte-exact: same keys in the same order.
+        // The create response shape is not captured (§5.14 records the request
+        // body only), so this reply is a stand-in pinning that the raw object
+        // is kept verbatim and a 2xx is success.
+        const QJsonObject expectedBody{
+            {QStringLiteral("root_clip_id"), QStringLiteral("gen-1")},
+            {QStringLiteral("name"), QStringLiteral("Midnight Alto")},
+            {QStringLiteral("description"), QStringLiteral("warm")},
+            {QStringLiteral("is_public"), false},
+            {QStringLiteral("persona_type"), QStringLiteral("vox")},
+            {QStringLiteral("vox_audio_id"), QStringLiteral("pc-1")},
+            {QStringLiteral("vocal_start_s"), 13.11},
+            {QStringLiteral("vocal_end_s"), 178.22},
+            {QStringLiteral("user_input_styles"), QStringLiteral("jazz")},
+            {QStringLiteral("clips"), QJsonArray{QStringLiteral("gen-1")}},
+        };
+        const QByteArray expectedBytes =
+                QJsonDocument(expectedBody).toJson(QJsonDocument::Compact);
+        QCOMPARE(sent.front().body, expectedBytes);
+
+        const QJsonObject expectedReply{{QStringLiteral("persona_id"), QStringLiteral("p-new")},
+                                        {QStringLiteral("name"), QStringLiteral("Midnight Alto")}};
+        replies.front()->respond(QJsonDocument(expectedReply).toJson(QJsonDocument::Compact), 200);
+
+        QTRY_VERIFY_WITH_TIMEOUT(changed.count() >= 2, 15000);
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(service.created(), expectedReply);
+        QVERIFY(service.failureReason().isEmpty());
+        QVERIFY(!service.isCreating());
+    }
+
+    void createFailureIsNotRetried()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoPersonaService service(&client);
+        QSignalSpy failed(&service, &SunoPersonaService::failed);
+
+        SunoPersonaService::CreatePersonaParams params{
+            QStringLiteral("gen-1"), {}, {}, false, QStringLiteral("pc-1"), 13.11, 178.22, {},
+            QStringList{QStringLiteral("gen-1")}};
+        service.createPersona(params);
+
+        QTRY_VERIFY_WITH_TIMEOUT(!replies.empty(), 15000);
+        replies.front()->respond(QJsonDocument(QJsonObject{}).toJson(QJsonDocument::Compact), 500);
+
+        // The send opts out of the client's 401/5xx retry, so the first (and
+        // only) reply settles the call: no second reply is ever scripted.
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 15000);
+        QCOMPARE(replies.size(), 1);
+        QVERIFY(service.failureReason().contains(QStringLiteral("500")));
+        QVERIFY(service.created().isEmpty());
+        QVERIFY(!service.isCreating());
+    }
+
+    void createWithNoRootClipOrStemIsRefusedWithoutARequest()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoPersonaService service(&client);
+        QSignalSpy failed(&service, &SunoPersonaService::failed);
+
+        SunoPersonaService::CreatePersonaParams noStem{QStringLiteral("gen-1"), {}, {}, false,
+                                                       {}, 13.11, 178.22, {},
+                                                       QStringList{QStringLiteral("gen-1")}};
+        service.createPersona(noStem);
+        SunoPersonaService::CreatePersonaParams noRootClip{{}, {}, {}, false, QStringLiteral("pc-1"),
+                                                           13.11, 178.22, {},
+                                                           QStringList{QStringLiteral("gen-1")}};
+        service.createPersona(noRootClip);
+
+        QCOMPARE(failed.count(), 2);
+        QVERIFY(replies.empty());
+        QVERIFY(!service.isCreating());
+    }
 };
 
 QTEST_MAIN(TestSunoPersonaService)

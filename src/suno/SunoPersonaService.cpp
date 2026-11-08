@@ -37,9 +37,10 @@ QString personaId(const QJsonObject& object)
     return {};
 }
 
-QString unreadableBody()
+QString unreadableBody(bool create)
 {
-    return QStringLiteral("Couldn't load personas: unreadable response body.");
+    return create ? QStringLiteral("Couldn't create persona: unreadable response body.")
+                  : QStringLiteral("Couldn't load personas: unreadable response body.");
 }
 
 } // namespace
@@ -110,6 +111,45 @@ SunoPersonaService::parseOne(const QJsonValue& root)
     return persona;
 }
 
+QJsonObject SunoPersonaService::buildCreateBody(const CreatePersonaParams& params)
+{
+    // Field order is the captured order in ENDPOINT-INVENTORY §5.14.
+    return QJsonObject{
+        {QStringLiteral("root_clip_id"), params.rootClipId},
+        {QStringLiteral("name"), params.name},
+        {QStringLiteral("description"), params.description},
+        {QStringLiteral("is_public"), params.isPublic},
+        {QStringLiteral("persona_type"), QStringLiteral("vox")},
+        {QStringLiteral("vox_audio_id"), params.voxAudioId},
+        {QStringLiteral("vocal_start_s"), params.vocalStartS},
+        {QStringLiteral("vocal_end_s"), params.vocalEndS},
+        {QStringLiteral("user_input_styles"), params.userInputStyles},
+        {QStringLiteral("clips"), QJsonArray::fromStringList(params.clips)},
+    };
+}
+
+void SunoPersonaService::createPersona(const CreatePersonaParams& params)
+{
+    // No root clip or no processed stem is "nothing to create from", not an
+    // auth failure.
+    if (params.rootClipId.isEmpty() || params.voxAudioId.isEmpty()) {
+        fail(QStringLiteral(
+                "A root clip and a processed vocal stem are required to create a persona."));
+        return;
+    }
+    if (!client_ || !client_->isAuthenticated()) {
+        fail(QStringLiteral("Sign in to Suno first."));
+        return;
+    }
+    state_ = {};
+    state_.creating = true;
+    ++generation_;
+    emit changed();
+
+    const QByteArray body = QJsonDocument(buildCreateBody(params)).toJson(QJsonDocument::Compact);
+    enqueue(Route::Create, qstr(endpoints::PERSONA_CREATE), QStringLiteral("POST"), body);
+}
+
 void SunoPersonaService::loadList()
 {
     if (!client_ || !client_->isAuthenticated()) {
@@ -145,20 +185,25 @@ void SunoPersonaService::loadOne(const QString& personaId)
     enqueue(Route::One, path);
 }
 
-void SunoPersonaService::enqueue(Route route, const QString& path)
+void SunoPersonaService::enqueue(Route route, const QString& path, const QString& method,
+                                 const QByteArray& data)
 {
-    // One request at a time: a second load abandons the first, and a late reply
+    // One request at a time: a second call abandons the first, and a late reply
     // must not overwrite the newer state.
     const quint64 generation = generation_;
     QPointer<SunoPersonaService> guard(this);
     client_->enqueueAuthenticatedRequest(
-            path, "GET", {}, [guard, route, generation](QNetworkReply* reply) {
+            path, method.toStdString(), data, [guard, route, generation](QNetworkReply* reply) {
                 if (!guard) {
                     reply->deleteLater();
                     return;
                 }
                 guard->handleReply(reply, route, generation);
-            });
+            },
+            // A create spends credits: it must never be re-sent, so it opts out
+            // of the client's 401/5xx retry and settles with the reply actually
+            // returned.
+            route != Route::Create);
 }
 
 void SunoPersonaService::handleReply(QNetworkReply* reply, Route route, quint64 generation)
@@ -176,19 +221,28 @@ void SunoPersonaService::handleReply(QNetworkReply* reply, Route route, quint64 
         return;
     }
     if (status < 200 || status >= 300) {
-        fail(QStringLiteral("Couldn't load personas (HTTP %1).").arg(status));
+        fail(route == Route::Create
+                 ? QStringLiteral("Couldn't create persona (HTTP %1).").arg(status)
+                 : QStringLiteral("Couldn't load personas (HTTP %1).").arg(status));
         return;
     }
 
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(*body, &parseError);
     if (parseError.error != QJsonParseError::NoError) {
-        fail(unreadableBody());
+        fail(unreadableBody(route == Route::Create));
         return;
     }
     const QJsonValue root = document.isArray() ? QJsonValue(document.array())
                                                : QJsonValue(document.object());
-    if (route == Route::List) {
+    if (route == Route::Create) {
+        // The create response shape is not captured (ENDPOINT-INVENTORY §5.14
+        // records only the request body): a 2xx settles success and the reply
+        // is kept verbatim; nothing beyond a success indicator and the raw
+        // object is parsed.
+        state_ = {};
+        state_.created = root.isObject() ? root.toObject() : QJsonObject{};
+    } else if (route == Route::List) {
         auto records = parseList(root);
         if (!records) {
             fail(records.error());
@@ -206,6 +260,7 @@ void SunoPersonaService::handleReply(QNetworkReply* reply, Route route, quint64 
         state_.single = std::move(*one);
     }
     state_.loading = false;
+    state_.creating = false;
     emit changed();
 }
 

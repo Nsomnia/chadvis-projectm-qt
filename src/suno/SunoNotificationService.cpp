@@ -65,6 +65,22 @@ QString notificationText(const QJsonValue& value) {
     return text;
 }
 
+/// v3's author picture: `avatars[0].image_url`. Only the first entry is the
+/// author; later entries are other users on the notification. Empty when
+/// `avatars` is absent, not an array, empty, or its first entry is not an
+/// object with an `image_url` -- v2 entries have no avatar source at all.
+QString firstAvatarImageUrl(const QJsonObject& object) {
+    const QJsonValue avatars = object.value(QStringLiteral("avatars"));
+    if (!avatars.isArray() || avatars.toArray().isEmpty()) {
+        return {};
+    }
+    const QJsonValue first = avatars.toArray().at(0);
+    if (!first.isObject()) {
+        return {};
+    }
+    return json::stringValue(first.toObject().value(QStringLiteral("image_url")));
+}
+
 std::optional<SunoNotificationService::Notification> parseNotification(const QJsonValue& value) {
     if (!value.isObject()) {
         return std::nullopt;
@@ -103,6 +119,7 @@ std::optional<SunoNotificationService::Notification> parseNotification(const QJs
             json::stringValue(authorObject.value(QStringLiteral("handle"))),
             json::stringValue(authorObject.value(QStringLiteral("username"))),
     });
+    notification.author.avatarImageUrl = firstAvatarImageUrl(object);
 
     notification.contentType = firstString({
             json::stringValue(object.value(QStringLiteral("content_type"))),

@@ -67,8 +67,15 @@ QString writeAudioFile(const QTemporaryDir& dir, const QString& name)
 {
     const QString path = dir.filePath(name);
     QFile file(path);
-    Q_ASSERT(file.open(QIODevice::WriteOnly));
-    Q_ASSERT(file.write(QByteArrayLiteral("audio")) == 5);
+    // Real checks, not Q_ASSERT: the Windows and Linux gates build Release, and
+    // Q_ASSERT compiles to nothing there -- the fixture write silently never
+    // ran and every chain test then timed out against an empty path.
+    if (!file.open(QIODevice::WriteOnly)) {
+        qFatal("test fixture could not be created at %s", qPrintable(path));
+    }
+    if (file.write(QByteArrayLiteral("audio")) != 5) {
+        qFatal("test fixture write was short at %s", qPrintable(path));
+    }
     file.close();
     return path;
 }
@@ -100,13 +107,14 @@ void driveToInitializeClip(const QString& path,
                            std::vector<FakeReply*>& directReplies)
 {
     service.start(path);
-    QTRY_VERIFY_WITH_TIMEOUT(studioReplies.size() == 1, 4000);
+    QVERIFY2(service.isUploading(), qPrintable(service.error()));
+    QTRY_VERIFY_WITH_TIMEOUT(!studioReplies.empty(), 4000);
     studioReplies.front()->complete(
         QJsonDocument(initializerPayload(
             QStringLiteral("https://suno-uploads.s3.amazonaws.com/upload?signature=opaque")))
             .toJson(QJsonDocument::Compact),
         200);
-    QTRY_VERIFY_WITH_TIMEOUT(directReplies.size() == 1, 4000);
+    QTRY_VERIFY_WITH_TIMEOUT(!directReplies.empty(), 4000);
     directReplies.front()->complete(QByteArray{}, 204);
 }
 

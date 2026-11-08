@@ -655,3 +655,30 @@ list(APPEND SUNO_SOURCES
     src/suno/SunoFreeReadsService.hpp
     src/suno/SunoFreeReadsService.cpp
 )
+
+# ─────────────────────────────────────────────────────────────
+# VOCAL STEM SERVICE (appended 2026-11-08)
+#
+# SunoStemService wires POST /clip/{id}/vox-stem (submit over a
+# caller-selected range) and GET /processed_clip/{id} (poll until
+# vocal_audio_url appears). Read-ish stem extraction; the range is
+# validated locally and an unobserved status degrades to Unknown.
+# SUNO_SOURCES for the non-globbing reason recorded above.
+# ─────────────────────────────────────────────────────────────
+list(APPEND SUNO_SOURCES
+    src/suno/SunoStemService.hpp
+    src/suno/SunoStemService.cpp
+)
+
+# ─────────────────────────────────────────────────────────────
+# VOICE VERIFICATION SERVICE (appended 2026-11-08)
+#
+# SunoVoiceVerificationService wires the persona voice chain:
+# GET /voice-verification/phrase/, POST /processed_clip/voice-vox-stem
+# (upload id), POST /voice-verification/, GET /voice-verification/{id}.
+# SUNO_SOURCES for the non-globbing reason recorded above.
+# ─────────────────────────────────────────────────────────────
+list(APPEND SUNO_SOURCES
+    src/suno/SunoVoiceVerificationService.hpp
+    src/suno/SunoVoiceVerificationService.cpp
+)

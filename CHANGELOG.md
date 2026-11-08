@@ -42,6 +42,19 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **Vocal stems and personas are wired.** A selected range can be submitted for stem extraction, polled
+  until the audio is ready, and turned into a persona: `SunoStemService` and the create half of
+  `SunoPersonaService`. A range is never auto-detected (no such route exists) and an unobserved status
+  never settles as finished. (T0431, T0432)
+
+- **The voice-verification chain exists, with its id kinds in the type system.** Phrase, stem,
+  verification and poll are four steps; the stem route takes an upload id where its sibling takes a clip
+  id, so `UploadId` and `VerificationId` are distinct types that do not convert. (T0435)
+
+- **Notification captions and avatars come from the v3 shape.** The list now reads `/notification/v3`,
+  concatenating `text[].text` and taking `avatars[0].image_url`; the unread badge and its mutations stay
+  on v2, which still owns them. (T0335)
+
 - **Cover art can be applied to a playlist.** The cover-image mutation sent a flat body the server
   rejects; it now sends the evidenced nested `{"cover_source":{"id","type":"generated"}}` form.
   Verified against a 404 shape and the exact request bytes. (T0434)

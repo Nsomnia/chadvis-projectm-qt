@@ -602,6 +602,46 @@ target_link_libraries(test_SunoFreeReadsService PRIVATE
 
 add_test(NAME test_SunoFreeReadsService COMMAND test_SunoFreeReadsService)
 
+# Vocal stem extract + poll (T0431). Standalone target: carries its own
+# QTEST_MAIN, for the same deciding reason as test_HttpPolicy above.
+add_executable(test_SunoStemService
+    suno/test_SunoStemService.cpp
+)
+
+set_target_properties(test_SunoStemService PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoStemService PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    test_support
+    project_lib
+)
+
+add_test(NAME test_SunoStemService COMMAND test_SunoStemService)
+
+# Voice verification chain (T0435). Standalone target: carries its own
+# QTEST_MAIN, for the same deciding reason as test_HttpPolicy above.
+add_executable(test_SunoVoiceVerificationService
+    suno/test_SunoVoiceVerificationService.cpp
+)
+
+set_target_properties(test_SunoVoiceVerificationService PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoVoiceVerificationService PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    test_support
+    project_lib
+)
+
+add_test(NAME test_SunoVoiceVerificationService COMMAND test_SunoVoiceVerificationService)
+
 add_executable(test_ClerkAuthClient
     suno/test_ClerkAuthClient.cpp
 )

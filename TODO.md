@@ -60,9 +60,10 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `page_size` on `unified/library` ignored (20/50/100 same). `/feed/v3` honours `limit` to 100.
       `GET /playlist/{id}/?page=N` verified: flat body, `playlist_clips[]`, 1-based, no `has_more`.
 
-- [ ] T0335 **Notification client on v2, browser moved to v3** (`SunoNotificationService.cpp`, `SunoEndpoints.hpp`, `CapturedHosts.cpp`) #risk-medium #blocks-ui
+- [x] T0335 **Notification client on v2, browser moved to v3** (`SunoNotificationService.cpp`, `SunoEndpoints.hpp`, `CapturedHosts.cpp`) #risk-medium #blocks-ui
       v2 still answers 200. v3 shape differs: `text[].text` concatenated, `avatars[0].image_url`.
       Badge stays v2 (no v3 badge route). List v3, counter+mutations v2. T0067 poll fires every 60s.
+      **DONE 2026-11-08:** the list fetch is on `/notification/v3` with `text[].text` concatenated in order and `avatars[0].image_url` parsed into `Author::avatarImageUrl`; the badge count and read/unread mutations stay on v2. Missing `text[]`/`avatars[]` degrade to empty caption/avatar, never a placeholder. No v3 badge route invented (there is none).
 
 - [ ] T0334 **First library sync: ~3.4s/page, 6 min spinner for 2k clips** (`SunoLibraryManager.cpp`) #risk-high #perf
       Page size now 100 (was 20). 2147 clips = 22 round trips. (a) shipped. (b) open — resume not restart.
@@ -173,15 +174,17 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Verify: fixture test for each leg + one live 2xx, no credits.
       **DONE 2026-11-08:** `initialize-clip` leg wired (reserve -> S3 -> initialize-clip -> finish); `rights_clearance_available:false` fails with a decision error unless the caller explicitly opts in via `setProceedWithoutRightsClearance(true)`. 3 static + 4 chain fixture tests; `clipId()` kept. Also fixed the test binary's missing `QCoreApplication`. Host allowlist untouched (needs its own evidence change).
 
-- [ ] T0431 **Vocal stem extraction and poll** (`src/suno/`) #feature (after: T0430)
+- [x] T0431 **Vocal stem extraction and poll** (`src/suno/`) #feature (after: T0430)
       `POST /clip/{id}/vox-stem` `{vocal_start_s, vocal_end_s}` → `{id: processed-clip, status}`;
       poll `GET /processed_clip/{id}` until `vocal_audio_url`. Range comes from the user's selection;
       no auto-detect route exists. Verify: fixture tests for submit and each observed status.
+      **DONE 2026-11-08:** `SunoStemService` — `submit(clipId, vocalStartS, vocalEndS)` posts exactly `{vocal_start_s, vocal_end_s}` and returns the processed-clip id; `poll(processedClipId)` reads `GET /processed_clip/{id}`. Only `submitted`/`complete` are mapped (the first from the twin route's capture); anything else degrades to `Unknown` with the raw object. Invalid range fails before any request. 10 fixture tests.
 
-- [ ] T0432 **Persona create from a stem** (`src/suno/SunoPersonaService.*`) #feature (after: T0431)
+- [x] T0432 **Persona create from a stem** (`src/suno/SunoPersonaService.*`) #feature (after: T0431)
       `POST /persona/create/` with `root_clip_id`, `vox_audio_id`, range, `persona_type:"vox"`, `clips[]`.
       Spends credits. Reads already shipped (T0349). Verify: fixture test for the body; one live create
       against a scratch persona, then record the response keys.
+      **DONE 2026-11-08:** `createPersona(CreatePersonaParams)` sends the captured ten-key body with `persona_type:"vox"` fixed; refuses empty root-clip/vox-audio ids without a request. The create RESPONSE shape is not in the inventory, so a 2xx settles success and the reply is kept verbatim in `created()` — no field invented. Still needs one live create against a scratch persona (spends credits).
 
 - [x] T0433 **Free reads bundle** (`src/suno/`, `src/qml_bridge/`) #feature (after: T0362)
       `GET /clip/{id}`, `GET /project/{id}/pinned-clips`, `GET /cms/cover-art-suggestions`,
@@ -195,11 +198,12 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Verify: fixture test for the body; one live apply on a scratch playlist, then revert.
       **DONE 2026-11-08:** the apply verb already existed but sent a flat body the server rejects; it now sends the evidenced nested `{"cover_source":{"id","type":"generated"}}`. 6 new test slots incl. byte-exact body assertion and 404 `cover_source_not_found` -> `Rejected`.
 
-- [ ] T0435 **Voice verification chain** (`src/suno/`) #feature (after: T0431)
+- [x] T0435 **Voice verification chain** (`src/suno/`) #feature (after: T0431)
       `GET /voice-verification/phrase/` → `POST /processed_clip/voice-vox-stem` (upload id, not clip id)
       → `POST /voice-verification/` → poll `GET /voice-verification/{id}`. This is what makes a voice
       persona usable. Verify: fixture tests; the two stem routes take different id kinds and must not
       be interchangeable.
+      **DONE 2026-11-08:** `SunoVoiceVerificationService` with the full chain (phrase → stem → verification → poll). The two stem routes take different id kinds and that is now a compile-time boundary: `UploadId` and `VerificationId` are distinct strong types with no conversion between them. 9 fixture tests.
 
 - [x] T0363 **`POST /gen/{id}/set_audio_description` + upload TOS flags are unmodelled** (`src/suno/SunoLibraryMutations.*`) #feature #risk-medium
       HAR-11 shows the site sends `{"gemini_description_accepted":true,"audio_content_types":
@@ -413,6 +417,15 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Three settings sliders are announced unnamed because they never set it. Verify: each call site
       in `src/qml/panels/settings/` carries a real name, or the wrapper drops the placeholder default.
       **DONE 2026-11-08:** `accessibleName` defaults to `""` (unnamed, as a native Qt control with no name is); description guards the leading comma. Real names at call sites remain follow-up work.
+
+- [x] T0438 **`Q_ASSERT` in tests is dead in Release builds** (`tests/`, `.github/workflows/guards.yml`) #risk-medium
+      Windows and Linux gates configure Release; Qt6 defines `QT_NO_DEBUG` for every non-Debug config, so
+      `Q_ASSERT` compiles out. `test_SunoAudioUploadService`'s fixture write was guarded that way: the file
+      was never created, four new chain tests timed out against a missing path, and the process died on an
+      empty reply vector with no output (one full Windows cycle to find).
+      **DONE 2026-11-08:** the fixture uses real checks (`qFatal` on failure) and the chain helper asserts
+      `isUploading()` with `service.error()` in the message. `scripts/check-test-asserts.py` forbids
+      `Q_ASSERT`/`Q_ASSERT_X` under `tests/` (exit 1 with file:line) and runs in `guards.yml`.
 
 - [ ] T0085 `TextAccessible` names hardcoded English (`src/qml/`) #cleanup
 
