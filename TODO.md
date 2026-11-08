@@ -214,6 +214,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       owner's browser handoff completes. So build the read side + a queue view, and hand the
       submit to the browser rather than faking it. Always `release-buffer` a claimed task that
       will not be finished — abandoning tasks degrades availability.
+      READS DONE 2026-11-08: `SunoPreferencesService` reads `summary`, `tasks`, `rewards`, `stats`, `profile`, `leaderboard` as raw objects. Submit stays browser handoff. Live GET 200 still open.
 
 - [x] T0339 **Paste path bypasses `classifyStoredCredential`** (`SettingsBridge.cpp:359-391`, `ClerkAuthClient.cpp:323-370`, `SunoClient.cpp:687-717`) #risk-medium
       `setToken()` has zero production callers. `__client_uat` accepted as credential but is metadata, not credential.

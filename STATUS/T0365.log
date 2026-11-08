@@ -1,0 +1,2 @@
+2026-11-08T02:09:10Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee87047 pid=87047 ttl=4h expires=2026-11-08T06:09:10Z
+2026-11-08T02:32:09Z  VERIFY    ./build.sh --fast --tests + ctest -R test_SunoPreferencesService => Passed 11.92s. Rewrote fixtures to QJsonDocument to fix moc-empty. Live GET 200 still open.

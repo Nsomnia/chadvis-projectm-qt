@@ -61,6 +61,7 @@ SAFE_TESTS=(
     test_SunoCoverArtService
     test_SunoHooksService
     test_SunoAlbumsService
+    test_SunoPreferencesService
     test_SunoPersonaService
     test_SunoAudioUploadService
     test_SunoRequestEpoch

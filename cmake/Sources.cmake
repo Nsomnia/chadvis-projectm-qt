@@ -91,6 +91,8 @@ set(SUNO_SOURCES
     src/suno/SunoHooksService.cpp
     src/suno/SunoAlbumsService.hpp
     src/suno/SunoAlbumsService.cpp
+    src/suno/SunoPreferencesService.hpp
+    src/suno/SunoPreferencesService.cpp
     src/suno/SunoPersonaService.hpp
     src/suno/SunoPersonaService.cpp
     src/suno/SunoGenerationService.hpp
