@@ -465,6 +465,23 @@ target_link_libraries(test_SunoCoverArtService PRIVATE
 
 add_test(NAME test_SunoCoverArtService COMMAND test_SunoCoverArtService)
 
+add_executable(test_SunoHooksService
+    suno/test_SunoHooksService.cpp
+)
+
+set_target_properties(test_SunoHooksService PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoHooksService PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_SunoHooksService COMMAND test_SunoHooksService)
+
 add_executable(test_SunoOAuthLoopback
     suno/test_SunoOAuthLoopback.cpp
 )

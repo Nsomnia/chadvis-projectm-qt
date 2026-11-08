@@ -87,6 +87,8 @@ set(SUNO_SOURCES
     src/suno/SunoLibrarySectionService.cpp
     src/suno/SunoCoverArtService.hpp
     src/suno/SunoCoverArtService.cpp
+    src/suno/SunoHooksService.hpp
+    src/suno/SunoHooksService.cpp
     src/suno/SunoPersonaService.hpp
     src/suno/SunoPersonaService.cpp
     src/suno/SunoGenerationService.hpp

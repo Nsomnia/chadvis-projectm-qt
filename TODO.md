@@ -546,6 +546,7 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       (`VIDEO_HOOKS_*`, `PROFILES_LISTEN_HISTORY`, `UNIFIED_FEED`); shapes for
       history/trashed now in §4.12; no read service exists yet.
       READS DONE 2026-11-08: `SunoLibrarySectionService` reads `GET /clips/trashed_v2` (`{clips:[...]}`) and `GET /profiles/listen-history` (`{history:[{content:...}]}`) as raw objects. Hooks/Albums still open. Live GET 200 still open.
+      HOOKS DONE 2026-11-08: `SunoHooksService` reads the three Hooks GETs as raw objects. Albums still open.
 - [ ] T0384 **Feature-flags authed shape** (`docs/suno_api/`) #cleanup
       The app never calls `/api/feature-flags`; the browser 401s (Bearer-only). Capture only
       through an app-originated call (bookmarklet/extension holding the app's own header), never
