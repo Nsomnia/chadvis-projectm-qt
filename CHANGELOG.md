@@ -20,6 +20,10 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   one persona by id. Identity is typed; the rest of each record stays in `raw`. Creating a persona
   still waits for the upload chain. (T0349 reads)
 
+- **Trash and History can be read.** A new `SunoLibrarySectionService` reads `GET /clips/trashed_v2`
+  and `GET /profiles/listen-history`. Every entry stays the server's own object, so unseen fields
+  survive. (T0383 reads)
+
 - **Client-side gate recon is recorded.** `docs/suno_api/CLIENT-GATE-RECON-2026-11-07.md`
   documents the delivered Turbopack client's Statsig gate plane, the dormant staff-flag
   override surface, and the per-surface (chat, personas, video, Orpheus) evidence
