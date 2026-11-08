@@ -12,6 +12,10 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   by `scripts/make-app-icon.sh`, is copied into `Contents/Resources` and named by `CFBundleIconFile`.
   Verified in the built bundle. (T0088)
 
+- **The model catalogue is readable.** A new `SunoModelCatalog` reads `GET /custom-model/shared`
+  and exposes `generation_config`: version, capabilities, the allowed chaining combinations, and
+  the per-field character limits. Items parse alongside it. Nothing hard-codes a mode list. (T0362 step 1)
+
 ### Fixed
 
 - **Preset discovery now finds `.milk7`, `.milkdrop`, and mixed-case extensions.** Extension

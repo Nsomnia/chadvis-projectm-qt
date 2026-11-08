@@ -56,6 +56,7 @@ RESET=$'\033[0m'
 # which should print nothing.
 SAFE_TESTS=(
     unit_tests
+    test_SunoModelCatalog
     test_SunoAudioUploadService
     test_SunoRequestEpoch
     test_SunoExploreService

@@ -397,6 +397,23 @@ target_link_libraries(test_SunoClipDetailService PRIVATE
 
 add_test(NAME test_SunoClipDetailService COMMAND test_SunoClipDetailService)
 
+add_executable(test_SunoModelCatalog
+    suno/test_SunoModelCatalog.cpp
+)
+
+set_target_properties(test_SunoModelCatalog PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoModelCatalog PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    project_lib
+)
+
+add_test(NAME test_SunoModelCatalog COMMAND test_SunoModelCatalog)
+
 add_executable(test_SunoOAuthLoopback
     suno/test_SunoOAuthLoopback.cpp
 )

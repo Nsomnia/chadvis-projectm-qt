@@ -156,7 +156,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       the upload chain (T0362). Untested twins stay out: `get-loved-personas/`,
       `get-followed-personas/` are still extension-only `[LEAD]`. UI behind `Personas` gate.
 
-- [ ] T0362 **Wire the HAR-11 surfaces: upload → stem → persona, and the free reads** (`src/suno/SunoUploadService.*`, `src/suno/SunoPersonaService.*`, `src/suno/SunoClient.cpp`, `src/qml_bridge/SunoBridge*`) #feature #user-priority
+- [~] T0362 **Wire the HAR-11 surfaces: upload → stem → persona, and the free reads** (`src/suno/SunoUploadService.*`, `src/suno/SunoPersonaService.*`, `src/suno/SunoClient.cpp`, `src/qml_bridge/SunoBridge*`) #feature #user-priority
       Endpoint constants + docs landed 2026-11-06 (ENDPOINT-INVENTORY §4.10, §5.14). This is the
       wiring half, in dependency order, each step independently verifiable:
       1. `GET /custom-model/shared` → per-model `capabilities` + `allowed_condition_combinations`
@@ -175,6 +175,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
          `GET /voice-verification/{id}`. This is what makes a voice persona usable.
       8. `POST /playlist/v2/{id}/trash` is the undoable trash; it returns per-field outcome,
          so prefer it over the legacy 204 `playlist/trash/` once a verb exists.
+      STEP 1 DONE 2026-11-08: `SunoModelCatalog` reads `GET /custom-model/shared`; `generation_config` (`major_version`, `capabilities`, `allowed_condition_combinations`, `max_lengths`) and `items` parse as structured data, no hard-coded mode list. 5xx retry is answered twice in tests. Live GET 200 still open; steps 2-8 remain.
       Host allowlist is NOT widened by this task: `suno-data-uploads.s3.amazonaws.com` and
       `api.suno.com` need their own `CapturedHosts.cpp` change with evidence, fail-closed.
 
