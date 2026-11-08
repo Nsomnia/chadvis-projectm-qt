@@ -1,0 +1,1 @@
+2026-11-08T12:21:41Z  VERIFY    ./build.sh --fast --tests clean, ctest 26/26 passed (179.66s) after consolidating 10 suites onto tests/support/FakeNetworkReply.hpp + test_support INTERFACE lib. Added complete() (one-shot, no readyRead) for tracked replies; RequestEpoch switched to it; succeed() stays streaming for the downloader.

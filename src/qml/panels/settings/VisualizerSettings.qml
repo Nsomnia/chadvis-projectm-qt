@@ -130,8 +130,11 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         Text { text: "Beat Sensitivity"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
-        Slider {
+        AppSlider {
             from: 0.1; to: 3.0
+            // AppSlider defaults to stepSize 1; the raw Slider it replaces was
+            // continuous, and beat sensitivity needs the fractional range.
+            stepSize: 0
             value: SettingsBridge.visualizerBeatSensitivity
             onMoved: SettingsBridge.visualizerBeatSensitivity = value
             Layout.preferredWidth: 150

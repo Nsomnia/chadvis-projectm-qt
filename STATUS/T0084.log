@@ -1,0 +1,1 @@
+2026-11-08T12:21:41Z  VERIFY    ./build.sh --fast --tests clean, ctest 26/26; Slider->AppSlider with stepSize:0 preserves fractional range. Visual parity inferred (24px vs platform implicit height), not measured.

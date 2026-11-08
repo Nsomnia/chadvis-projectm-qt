@@ -2,6 +2,7 @@
 
 #include "suno/SunoAlbumsService.hpp"
 #include "suno/SunoClient.hpp"
+#include "FakeNetworkReply.hpp"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -15,65 +16,10 @@
 #include <vector>
 
 using namespace vc::suno;
+using fake_net::FakeReply;
 
 namespace {
 
-/// Same scripted seam the sibling suno suites use: nothing touches the network.
-class ScriptedReply final : public QNetworkReply
-{
-public:
-    ScriptedReply(const QNetworkRequest& request, const std::string& method)
-    {
-        setRequest(request);
-        setUrl(request.url());
-        setOperation(method == "POST" ? QNetworkAccessManager::PostOperation
-                                      : QNetworkAccessManager::GetOperation);
-        setOpenMode(ReadOnly | Unbuffered);
-    }
-
-    void abort() override
-    {
-        if (finished_) {
-            return;
-        }
-        finished_ = true;
-        setError(QNetworkReply::OperationCanceledError, QStringLiteral("aborted"));
-        emit finished();
-    }
-
-    qint64 bytesAvailable() const override
-    {
-        return payload_.size() - offset_ + QNetworkReply::bytesAvailable();
-    }
-
-    qint64 readData(char* data, qint64 maxSize) override
-    {
-        if (offset_ >= payload_.size()) {
-            return 0;
-        }
-        const qint64 count = qMin(maxSize, static_cast<qint64>(payload_.size()) - offset_);
-        std::memcpy(data, payload_.constData() + offset_, static_cast<std::size_t>(count));
-        offset_ += count;
-        return count;
-    }
-
-    void respond(QByteArray body, int status)
-    {
-        if (finished_) {
-            return;
-        }
-        payload_ = std::move(body);
-        offset_ = 0;
-        setAttribute(QNetworkRequest::HttpStatusCodeAttribute, status);
-        finished_ = true;
-        emit finished();
-    }
-
-private:
-    QByteArray payload_;
-    qint64 offset_ = 0;
-    bool finished_ = false;
-};
 
 /// A JWT that decodes and carries a future `exp`, so setToken accepts it.
 QString fakeBearer()
@@ -117,10 +63,10 @@ QByteArray albumsBody()
     })");
 }
 
-ScriptedReply* findReply(const std::vector<QPointer<ScriptedReply>>& replies,
+FakeReply* findReply(const std::vector<QPointer<FakeReply>>& replies,
                          const QString& suffix)
 {
-    for (QPointer<ScriptedReply> reply : replies) {
+    for (QPointer<FakeReply> reply : replies) {
         if (reply.isNull()) {
             continue;
         }
@@ -205,13 +151,13 @@ private slots:
 
     void aNonJsonBodyDegradesToEmptyWithAReason()
     {
-        std::vector<QPointer<ScriptedReply>> replies;
+        std::vector<QPointer<FakeReply>> replies;
         QByteArray sentPayload;
         auto factory = [&replies, &sentPayload](const QNetworkRequest& request,
                                                  const std::string& method,
                                                  const QByteArray& payload) {
             sentPayload = payload;
-            auto* reply = new ScriptedReply(request, method);
+            auto* reply = new FakeReply(request, method);
             replies.push_back(reply);
             return reply;
         };
@@ -232,7 +178,7 @@ private slots:
         QVERIFY(sentDocument.isObject());
         QCOMPARE(sentDocument.object(), SunoAlbumsService::requestBody());
 
-        ScriptedReply* reply = findReply(replies, QStringLiteral("/unified/feed"));
+        FakeReply* reply = findReply(replies, QStringLiteral("/unified/feed"));
         QVERIFY(reply != nullptr);
         reply->respond(QByteArrayLiteral("not json"), 200);
 
@@ -246,10 +192,10 @@ private slots:
 
     void anHttpErrorAfterRetryDegradesToEmptyWithAReason()
     {
-        std::vector<QPointer<ScriptedReply>> replies;
+        std::vector<QPointer<FakeReply>> replies;
         auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
                                   const QByteArray&) {
-            auto* reply = new ScriptedReply(request, method);
+            auto* reply = new FakeReply(request, method);
             replies.push_back(reply);
             return reply;
         };
@@ -261,14 +207,14 @@ private slots:
 
         service.loadAlbums();
         QTRY_VERIFY_WITH_TIMEOUT(!replies.empty(), 15000);
-        ScriptedReply* first = findReply(replies, QStringLiteral("/unified/feed"));
+        FakeReply* first = findReply(replies, QStringLiteral("/unified/feed"));
         QVERIFY(first != nullptr);
         first->respond(QByteArrayLiteral("{}"), 500);
 
         // 5xx is transient: SunoClient re-sends once after its backoff floor, so
         // only the second reply's status reaches the service.
         QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 2, 15000);
-        ScriptedReply* second = nullptr;
+        FakeReply* second = nullptr;
         QTRY_VERIFY_WITH_TIMEOUT((second = findReply(replies, QStringLiteral("/unified/feed")))
                                  != nullptr,
                                  15000);
@@ -284,10 +230,10 @@ private slots:
     // first execution. Analysis (and any fixture correction) happens after it.
     void successfulLoadFillsAlbums()
     {
-        std::vector<QPointer<ScriptedReply>> replies;
+        std::vector<QPointer<FakeReply>> replies;
         auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
                                   const QByteArray&) {
-            auto* reply = new ScriptedReply(request, method);
+            auto* reply = new FakeReply(request, method);
             replies.push_back(reply);
             return reply;
         };
@@ -299,7 +245,7 @@ private slots:
 
         service.loadAlbums();
 
-        ScriptedReply* reply = nullptr;
+        FakeReply* reply = nullptr;
         QTRY_VERIFY_WITH_TIMEOUT((reply = findReply(replies, QStringLiteral("/unified/feed")))
                                  != nullptr,
                                  15000);

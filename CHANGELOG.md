@@ -42,6 +42,14 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **Test network fakes are one implementation.** Ten unit suites shared a copy of the same
+  scriptable `QNetworkReply` stand-in. They now share `tests/support/FakeNetworkReply.hpp` through a
+  `test_support` interface library, so a new suite cannot grow a fourteenth variant. (T0099)
+
+- **A theme changed outside the Appearance panel now repaints.** `main.qml` watches
+  `SettingsBridge.themeNameChanged` and re-runs the idempotent `applyTheme()`, so a config reload or a
+  settings-window save no longer waits for the next launch. (T0197)
+
 - **Seven dead icon resources are gone.** `resources/icons/qml/` shipped 7 SVGs in the QML resource
   set that no QML file referenced, including a byte-identical duplicate pair. The 18 icons QML
   actually names are untouched. (T0087)

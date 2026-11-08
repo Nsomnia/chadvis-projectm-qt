@@ -580,6 +580,21 @@ ApplicationWindow {
         }
     }
 
+    // T0197. applyTheme() ran once at completion, so a theme written by any path
+    // other than the Appearance panel -- a config reload, this window's own
+    // save, a future import -- left the running shell on the previous palette
+    // until the next launch. applyTheme() is idempotent and cheap: it resolves
+    // the id and repaints every token, so re-running it on the notify signal is
+    // the whole fix. A session override still wins, because applyTheme() reads
+    // sessionTheme first.
+    Connections {
+        target: SettingsBridge
+
+        function onThemeNameChanged() {
+            mainWindow.applyTheme()
+        }
+    }
+
     Shortcut {
         sequence: SettingsBridge.keyboardPlayPause
         enabled: !settingsWindow.visible

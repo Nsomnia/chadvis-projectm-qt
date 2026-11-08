@@ -3,12 +3,24 @@
 //
 // Nothing here touches the network: the queue's injectable ReplyFactory seam
 // (src/suno/DownloadQueue.hpp:76) hands one of these back instead of asking a
-// QNetworkAccessManager, and the test calls succeed()/fail()/openStream()
-// directly. DownloadQueue's own suite grew the first copy of this; it has not
-// been migrated yet, so there are two implementations in the tree — see
-// TODO.md. New suites should include this header rather than grow a third.
+// QNetworkAccessManager, and the tests call succeed()/fail()/openStream()/
+// respond() directly. This is the one implementation: every suno suite that
+// needs a fake reply includes this header (via the test_support INTERFACE
+// library) instead of defining a private copy.
 //
-// Header-only and inline: it is test scaffolding, not library code.
+// Header-only and inline: it is test scaffolding, not library code. The class
+// deliberately carries no Q_OBJECT macro — QNetworkReply supplies the moc
+// machinery, and a Q_OBJECT in an unnamed namespace can defeat moc and link
+// with an undefined vtable.
+//
+// The suite-facing drivers are the union of what the former copies offered:
+//   * succeed()/fail()/openStream() — the DownloadQueue seam shape.
+//   * respond(body, status, retryAfter) — the SunoClient factory shape: a
+//     guarded single-shot completion that leaves error() as NoError, so the
+//     status alone drives the client's classification.
+//   * ctor(request, method) — POST-aware: SunoClient chooses the operation,
+//     so a fake that always reports GetOperation misrepresents POST retries.
+//   * wasAborted() — the RequestEpoch abort probe.
 
 #pragma once
 
@@ -19,6 +31,7 @@
 #include <QString>
 
 #include <cstring>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -35,9 +48,20 @@ public:
         setOpenMode(ReadOnly | Unbuffered);
     }
 
+    /// POST-aware: `method == "POST"` reports PostOperation, anything else
+    /// reports GetOperation.
+    FakeReply(const QNetworkRequest& request, const std::string& method) {
+        setRequest(request);
+        setUrl(request.url());
+        setOperation(method == "POST" ? QNetworkAccessManager::PostOperation
+                                      : QNetworkAccessManager::GetOperation);
+        setOpenMode(ReadOnly | Unbuffered);
+    }
+
     void abort() override {
         if (finishing_) return;
         finishing_ = true;
+        aborted_ = true;
         setError(QNetworkReply::OperationCanceledError, QStringLiteral("aborted"));
         emit finished();
     }
@@ -57,8 +81,26 @@ public:
     // ── test drivers ──
 
     /// Complete successfully: deliver everything, then finish.
+    ///
+    /// Streaming, like the real QNAM: `readyRead` fires before `finished`, which
+    /// is what a consumer that writes bytes as they arrive needs (the downloader
+    /// suite pipes its payload to a file). A suite whose reply is tracked by
+    /// `SunoClient` cannot use this and then read the reply itself — the armed
+    /// BodyReader drains it on `readyRead`. Use complete() there.
     void succeed(QByteArray body, int httpStatus = 200) {
         openStream(body, httpStatus);
+        finishing_ = true;
+        emit finished();
+    }
+
+    /// Complete in one shot: the payload is present for a final drain, but no
+    /// `readyRead` fires, so a reply tracked by `SunoClient` is not drained
+    /// before the test's own callback can read it (T0099: test_SunoRequestEpoch
+    /// reads the body from inside its callback).
+    void complete(QByteArray body, int httpStatus = 200) {
+        setHeaders(httpStatus);
+        payload_ = std::move(body);
+        offset_ = 0;
         finishing_ = true;
         emit finished();
     }
@@ -81,6 +123,23 @@ public:
         emit downloadProgress(payload_.size(), payload_.size());
     }
 
+    /// Complete with a status and an optional body. `error()` is deliberately
+    /// left as NoError: that is the shape the SunoClient retry/classification
+    /// logic branches on. Guarded: a second call after completion is a no-op.
+    void respond(QByteArray body, int status, const QByteArray& retryAfter = {}) {
+        if (finishing_) return;
+        payload_ = std::move(body);
+        offset_ = 0;
+        setAttribute(QNetworkRequest::HttpStatusCodeAttribute, status);
+        if (!retryAfter.isEmpty()) {
+            setRawHeader("Retry-After", retryAfter);
+        }
+        finishing_ = true;
+        emit finished();
+    }
+
+    [[nodiscard]] bool wasAborted() const { return aborted_; }
+
 private:
     void setHeaders(int httpStatus) {
         setOpenMode(ReadOnly | Unbuffered);
@@ -92,6 +151,7 @@ private:
     QByteArray payload_;
     qint64 offset_ = 0;
     bool finishing_ = false;
+    bool aborted_ = false;
 };
 
 /// Hands back a FakeReply per request and keeps every request and reply so a

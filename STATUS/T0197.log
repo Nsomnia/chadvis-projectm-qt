@@ -1,2 +1,3 @@
 2026-10-15T07:22:25Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee7167 pid=7167 ttl=4h expires=2026-10-15T11:22:25Z
 2026-10-15T08:58:44Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee15027
+2026-11-08T12:21:41Z  VERIFY    ./build.sh --fast --tests clean, ctest 26/26; theme now reapplies on themeNameChanged via a SettingsBridge Connections block in main.qml.

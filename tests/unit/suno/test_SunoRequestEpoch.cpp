@@ -2,6 +2,7 @@
 
 #include "suno/SunoAudioUploadService.hpp"
 #include "suno/SunoClient.hpp"
+#include "FakeNetworkReply.hpp"
 
 #include <QCoreApplication>
 #include <QFile>
@@ -18,70 +19,8 @@
 #include <vector>
 
 using namespace vc::suno;
+using fake_net::FakeReply;
 
-class FakeReply final : public QNetworkReply
-{
-public:
-    explicit FakeReply(const QNetworkRequest& request, const std::string& method)
-    {
-        setRequest(request);
-        setUrl(request.url());
-        setOperation(method == "POST" ? QNetworkAccessManager::PostOperation
-                                      : QNetworkAccessManager::GetOperation);
-        setOpenMode(ReadOnly | Unbuffered);
-    }
-
-    void abort() override
-    {
-        if (finished_)
-        {
-            return;
-        }
-        aborted_ = true;
-        finished_ = true;
-        setError(QNetworkReply::OperationCanceledError, QStringLiteral("aborted"));
-        emit finished();
-    }
-
-    qint64 bytesAvailable() const override
-    {
-        return payload_.size() - offset_ + QNetworkReply::bytesAvailable();
-    }
-
-    qint64 readData(char* data, qint64 maxSize) override
-    {
-        if (offset_ >= payload_.size())
-        {
-            return 0;
-        }
-        const qint64 count = qMin(maxSize, static_cast<qint64>(payload_.size()) - offset_);
-        std::memcpy(data, payload_.constData() + offset_, static_cast<std::size_t>(count));
-        offset_ += count;
-        return count;
-    }
-
-    void succeed(QByteArray body, int status)
-    {
-        if (finished_)
-        {
-            return;
-        }
-        payload_ = std::move(body);
-        offset_ = 0;
-        setAttribute(QNetworkRequest::HttpStatusCodeAttribute, status);
-        finished_ = true;
-        emit finished();
-    }
-
-    [[nodiscard]] bool wasAborted() const
-    { return aborted_; }
-
-private:
-    QByteArray payload_;
-    qint64 offset_ = 0;
-    bool finished_ = false;
-    bool aborted_ = false;
-};
 
 static QString fakeBearer(const QString& marker)
 {
@@ -268,7 +207,7 @@ private slots:
             });
         release.release();
         QTRY_VERIFY_WITH_TIMEOUT(replies.size() == 1, 3000);
-        replies.front()->succeed(QByteArrayLiteral("{}"), 200);
+        replies.front()->complete(QByteArrayLiteral("{}"), 200);
         QTRY_COMPARE_WITH_TIMEOUT(callbackCount, 1, 1000);
     }
 
@@ -297,7 +236,7 @@ private slots:
                 reply->deleteLater();
             });
         QTRY_VERIFY_WITH_TIMEOUT(replies.size() == 1, 2500);
-        replies.front()->succeed(QByteArrayLiteral("{}"), 200);
+        replies.front()->complete(QByteArrayLiteral("{}"), 200);
         QTRY_COMPARE_WITH_TIMEOUT(callbackCount, 1, 1000);
         QCOMPARE(callbackBody, QByteArrayLiteral("{}"));
 
@@ -306,7 +245,7 @@ private slots:
             [&callbackCount](QNetworkReply*) { ++callbackCount; });
         QTRY_VERIFY_WITH_TIMEOUT(replies.size() == 2, 2500);
         QSignalSpy needsReauth(&client, &SunoClient::needsReauth);
-        replies.back()->succeed(QByteArrayLiteral("unauthorized"), 401);
+        replies.back()->complete(QByteArrayLiteral("unauthorized"), 401);
         QTRY_COMPARE_WITH_TIMEOUT(needsReauth.count(), 1, 1000);
         QCOMPARE(callbackCount, 1);
         QCOMPARE(client.authState(), vc::suno::auth::AuthState::NeedsReauth);
@@ -335,7 +274,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(replies.size() == 1, 2500);
 
         QSignalSpy needsReauth(&client, &SunoClient::needsReauth);
-        replies.front()->succeed(QByteArrayLiteral("unauthorized"), 401);
+        replies.front()->complete(QByteArrayLiteral("unauthorized"), 401);
         QTRY_COMPARE_WITH_TIMEOUT(needsReauth.count(), 1, 1000);
         QCOMPARE(replies.size(), std::size_t(1));
         QCOMPARE(callbackCount, 0);
@@ -375,7 +314,7 @@ private slots:
         QSignalSpy failed(&service, &SunoAudioUploadService::failed);
         service.start(path);
         QTRY_VERIFY_WITH_TIMEOUT(studioReplies.size() == 1, 2500);
-        studioReplies.front()->succeed(
+        studioReplies.front()->complete(
             QJsonDocument(initializerPayload()).toJson(QJsonDocument::Compact), 200);
         QTRY_VERIFY_WITH_TIMEOUT(directReplies.size() == 1, 1000);
         QPointer<FakeReply> direct(directReplies.front());
@@ -420,7 +359,7 @@ private slots:
         QSignalSpy failed(&service, &SunoAudioUploadService::failed);
         service.start(path);
         QTRY_VERIFY_WITH_TIMEOUT(studioReplies.size() == 1, 2500);
-        studioReplies.front()->succeed(
+        studioReplies.front()->complete(
             QJsonDocument(initializerPayload()).toJson(QJsonDocument::Compact), 200);
         QTRY_VERIFY_WITH_TIMEOUT(directReplies.size() == 1, 1000);
         QVERIFY(service.isUploading());

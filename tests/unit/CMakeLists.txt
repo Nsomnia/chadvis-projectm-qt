@@ -1,3 +1,9 @@
+# Shared test scaffolding (T0099): the one fake-network-reply implementation.
+# Header-only, so INTERFACE; the app target never links it.
+add_library(test_support INTERFACE)
+target_include_directories(test_support INTERFACE ${CMAKE_SOURCE_DIR}/tests/support)
+target_link_libraries(test_support INTERFACE Qt6::Core Qt6::Network)
+
 add_executable(unit_tests
     test_main.cpp
     core/test_Logger.cpp
@@ -64,6 +70,7 @@ endif()
 target_link_libraries(unit_tests PRIVATE
     Qt6::Core
     Qt6::Test
+    test_support
     project_lib
 )
 
@@ -326,6 +333,7 @@ target_link_libraries(test_SunoRequestEpoch PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    test_support
     project_lib
 )
 
@@ -409,6 +417,7 @@ target_link_libraries(test_SunoPersonaService PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    test_support
     project_lib
 )
 
@@ -426,6 +435,7 @@ target_link_libraries(test_SunoModelCatalog PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    test_support
     project_lib
 )
 
@@ -443,6 +453,7 @@ target_link_libraries(test_SunoLibrarySectionService PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    test_support
     project_lib
 )
 
@@ -460,6 +471,7 @@ target_link_libraries(test_SunoCoverArtService PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    test_support
     project_lib
 )
 
@@ -477,6 +489,7 @@ target_link_libraries(test_SunoHooksService PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    test_support
     project_lib
 )
 
@@ -494,6 +507,7 @@ target_link_libraries(test_SunoAlbumsService PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    test_support
     project_lib
 )
 
@@ -511,6 +525,7 @@ target_link_libraries(test_SunoPreferencesService PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    test_support
     project_lib
 )
 
@@ -562,6 +577,7 @@ target_link_libraries(test_SunoNotificationService PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    test_support
     project_lib
 )
 

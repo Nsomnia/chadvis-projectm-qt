@@ -2,6 +2,7 @@
 
 #include "suno/SunoClient.hpp"
 #include "suno/SunoNotificationService.hpp"
+#include "FakeNetworkReply.hpp"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -19,60 +20,10 @@
 #include <vector>
 
 using namespace vc::suno;
+using fake_net::FakeReply;
 
 namespace {
 
-/// Minimal reply the client's factory can hand back. Same seam test_SunoClient
-/// uses; the duplication is T0099's problem, not this suite's.
-class ScriptedReply final : public QNetworkReply {
-public:
-    ScriptedReply(const QNetworkRequest& request, const std::string& method) {
-        setRequest(request);
-        setUrl(request.url());
-        setOperation(method == "POST" ? QNetworkAccessManager::PostOperation
-                                      : QNetworkAccessManager::GetOperation);
-        setOpenMode(ReadOnly | Unbuffered);
-    }
-
-    void abort() override {
-        if (finished_) {
-            return;
-        }
-        finished_ = true;
-        setError(QNetworkReply::OperationCanceledError, QStringLiteral("aborted"));
-        emit finished();
-    }
-
-    qint64 bytesAvailable() const override {
-        return payload_.size() - offset_ + QNetworkReply::bytesAvailable();
-    }
-
-    qint64 readData(char* data, qint64 maxSize) override {
-        if (offset_ >= payload_.size()) {
-            return 0;
-        }
-        const qint64 count = qMin(maxSize, static_cast<qint64>(payload_.size()) - offset_);
-        std::memcpy(data, payload_.constData() + offset_, static_cast<std::size_t>(count));
-        offset_ += count;
-        return count;
-    }
-
-    void respond(QByteArray body, int status) {
-        if (finished_) {
-            return;
-        }
-        payload_ = std::move(body);
-        offset_ = 0;
-        setAttribute(QNetworkRequest::HttpStatusCodeAttribute, status);
-        finished_ = true;
-        emit finished();
-    }
-
-private:
-    QByteArray payload_;
-    qint64 offset_ = 0;
-    bool finished_ = false;
-};
 
 /// A JWT that decodes and carries a future `exp`, so setToken accepts it.
 QString fakeBearer() {
@@ -237,10 +188,10 @@ private slots:
     // both pending slots -- one 404 and a fully successful list was discarded.
     void aBadgeFailureDoesNotDiscardTheList()
     {
-        std::vector<ScriptedReply*> replies;
+        std::vector<FakeReply*> replies;
         auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
                                   const QByteArray&) {
-            auto* reply = new ScriptedReply(request, method);
+            auto* reply = new FakeReply(request, method);
             replies.push_back(reply);
             return reply;
         };
@@ -257,7 +208,7 @@ private slots:
         // 2 s event on a loaded CI runner: measured 2.1 s on ubuntu-24.04/gcc.
         // The timeout is a bound on the test, not a claim about the client.
         QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 2, 15000);
-        for (ScriptedReply* reply : replies) {
+        for (FakeReply* reply : replies) {
             if (reply->url().path().contains(QStringLiteral("badge-count"))) {
                 reply->respond(QByteArrayLiteral("{}"), 404);
             } else {
@@ -279,10 +230,10 @@ private slots:
     // unchanged page would rebuild the list under the user's scroll position.
     void anUnchangedListIsAppliedOnce()
     {
-        std::vector<ScriptedReply*> replies;
+        std::vector<FakeReply*> replies;
         auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
                                   const QByteArray&) {
-            auto* reply = new ScriptedReply(request, method);
+            auto* reply = new FakeReply(request, method);
             replies.push_back(reply);
             return reply;
         };
@@ -313,7 +264,7 @@ private slots:
         int listRequests = 0;
         auto factory = [&listRequests](const QNetworkRequest& request, const std::string& method,
                                        const QByteArray&) {
-            auto* reply = new ScriptedReply(request, method);
+            auto* reply = new FakeReply(request, method);
             if (request.url().path().contains(QStringLiteral("notification/v2"))) {
                 ++listRequests;
                 // Answer it, or the service stays "loading" after the first poll

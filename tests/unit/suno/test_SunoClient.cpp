@@ -22,6 +22,7 @@
 
 #include "suno/DownloadQueue.hpp"
 #include "suno/SunoClient.hpp"
+#include "FakeNetworkReply.hpp"
 
 #include <QByteArray>
 #include <QJsonDocument>
@@ -36,66 +37,13 @@
 #include <vector>
 
 using namespace vc::suno;
+using fake_net::FakeReply;
 
 namespace {
 
 /// What the body reader sees for a 429 that carries valid JSON.
 const char* const kJsonErrorBody = R"({"detail":"rate limited","clips":[]})";
 
-class ScriptedReply final : public QNetworkReply {
-public:
-    ScriptedReply(const QNetworkRequest& request, const std::string& method) {
-        setRequest(request);
-        setUrl(request.url());
-        setOperation(method == "POST" ? QNetworkAccessManager::PostOperation
-                                      : QNetworkAccessManager::GetOperation);
-        setOpenMode(ReadOnly | Unbuffered);
-    }
-
-    void abort() override {
-        if (finished_) {
-            return;
-        }
-        finished_ = true;
-        setError(QNetworkReply::OperationCanceledError, QStringLiteral("aborted"));
-        emit finished();
-    }
-
-    qint64 bytesAvailable() const override {
-        return payload_.size() - offset_ + QNetworkReply::bytesAvailable();
-    }
-
-    qint64 readData(char* data, qint64 maxSize) override {
-        if (offset_ >= payload_.size()) {
-            return 0;
-        }
-        const qint64 count = qMin(maxSize, static_cast<qint64>(payload_.size()) - offset_);
-        std::memcpy(data, payload_.constData() + offset_, static_cast<std::size_t>(count));
-        offset_ += count;
-        return count;
-    }
-
-    /// Complete with a status and an optional body. `error()` is deliberately
-    /// left as NoError: that is the shape that used to be parsed as success.
-    void respond(QByteArray body, int status, const QByteArray& retryAfter = {}) {
-        if (finished_) {
-            return;
-        }
-        payload_ = std::move(body);
-        offset_ = 0;
-        setAttribute(QNetworkRequest::HttpStatusCodeAttribute, status);
-        if (!retryAfter.isEmpty()) {
-            setRawHeader("Retry-After", retryAfter);
-        }
-        finished_ = true;
-        emit finished();
-    }
-
-private:
-    QByteArray payload_;
-    qint64 offset_ = 0;
-    bool finished_ = false;
-};
 
 /// A JWT that decodes and carries a future `exp`, so setToken accepts it.
 QString fakeBearer(const QString& marker) {
@@ -153,10 +101,10 @@ void TestSunoClient::aForbiddenReplyWithoutARefreshableCredentialTearsDown() {
     // to reach the teardown path rather than being retried forever. This is the
     // other half of the widened status set: a 403 is refreshable *when* there
     // is a refreshable credential.
-    std::vector<ScriptedReply*> replies;
+    std::vector<FakeReply*> replies;
     auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
                               const QByteArray&) {
-        auto* reply = new ScriptedReply(request, method);
+        auto* reply = new FakeReply(request, method);
         replies.push_back(reply);
         return reply;
     };
@@ -204,10 +152,10 @@ void TestSunoClient::retryAfterIsParsedAndClamped() {
 }
 
 void TestSunoClient::aRateLimitedReplyRetriesAfterTheRetryAfterSeconds() {
-    std::vector<ScriptedReply*> replies;
+    std::vector<FakeReply*> replies;
     auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
                               const QByteArray&) {
-        auto* reply = new ScriptedReply(request, method);
+        auto* reply = new FakeReply(request, method);
         replies.push_back(reply);
         return reply;
     };
@@ -235,10 +183,10 @@ void TestSunoClient::aRateLimitedReplyRetriesAfterTheRetryAfterSeconds() {
 }
 
 void TestSunoClient::aRateLimitedReplyRetriesAfterAnHttpDate() {
-    std::vector<ScriptedReply*> replies;
+    std::vector<FakeReply*> replies;
     auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
                               const QByteArray&) {
-        auto* reply = new ScriptedReply(request, method);
+        auto* reply = new FakeReply(request, method);
         replies.push_back(reply);
         return reply;
     };
@@ -264,10 +212,10 @@ void TestSunoClient::aRateLimitedReplyRetriesAfterAnHttpDate() {
 void TestSunoClient::aRateLimitedJsonBodyIsNeverReadAsTheAnswer() {
     // The defect T0216 names: the body is valid JSON, so every route handler
     // parsed it and reported an empty result rather than a rate limit.
-    std::vector<ScriptedReply*> replies;
+    std::vector<FakeReply*> replies;
     auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
                               const QByteArray&) {
-        auto* reply = new ScriptedReply(request, method);
+        auto* reply = new FakeReply(request, method);
         replies.push_back(reply);
         return reply;
     };
@@ -300,10 +248,10 @@ void TestSunoClient::aRateLimitedJsonBodyIsNeverReadAsTheAnswer() {
 }
 
 void TestSunoClient::aServerErrorOnGetIsRetriedOnce() {
-    std::vector<ScriptedReply*> replies;
+    std::vector<FakeReply*> replies;
     auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
                               const QByteArray&) {
-        auto* reply = new ScriptedReply(request, method);
+        auto* reply = new FakeReply(request, method);
         replies.push_back(reply);
         return reply;
     };
@@ -328,10 +276,10 @@ void TestSunoClient::aServerErrorOnGetIsRetriedOnce() {
 void TestSunoClient::aServerErrorOnPostIsNotRetried() {
     // A mutation passes retryOnUnauthorized=false, and that single flag is the
     // idempotency boundary: a 5xx must not double a non-idempotent POST.
-    std::vector<ScriptedReply*> replies;
+    std::vector<FakeReply*> replies;
     auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
                               const QByteArray&) {
-        auto* reply = new ScriptedReply(request, method);
+        auto* reply = new FakeReply(request, method);
         replies.push_back(reply);
         return reply;
     };

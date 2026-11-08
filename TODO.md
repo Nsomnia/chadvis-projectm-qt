@@ -432,8 +432,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0097 `unit_tests` one binary, one `QCoreApplication`, 31 suites sequential (`test_main.cpp:38,41-72`) #risk-medium
       Crash/hang in suite 30 loses suites 1–29.
 
-- [ ] T0099 Four duplicate reply fakes, no fake `QNetworkAccessManager` (`tests/unit/suno/`) #risk-high
+- [x] T0099 Four duplicate reply fakes, no fake `QNetworkAccessManager` (`tests/unit/suno/`) #risk-high
       New suite without injected factory makes real DNS lookup. Consolidate to `tests/support/` INTERFACE lib.
+      **DONE 2026-11-08:** one `tests/support/FakeNetworkReply.hpp` + `test_support` INTERFACE lib; 10 suites migrated, zero `class ScriptedReply` left, old suno header deleted. `succeed()` streams, `complete()` is the one-shot form a tracked reply needs.
 
 - [ ] T0100 `SunoLibraryMutations` 26KB write-path logic, zero tests (`src/suno/`) #risk-high #data-loss
       Also untested: `SunoDatabase`, `SunoBridge`, `SunoController`, `ClipResolver`, `PresetPersistence`,
@@ -491,8 +492,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 
 - [ ] T0116 Render-job model and queue exists, no producer (`Bridge.hpp:59-68`, `SunoWorkspace.hpp`) #feature
 
-- [ ] T0197 Nothing re-applies theme when `ui().theme` changes outside Appearance panel (`main.qml`) #risk-medium
+- [x] T0197 Nothing re-applies theme when `ui().theme` changes outside Appearance panel (`main.qml`) #risk-medium
       `applyTheme()` runs once in `Component.onCompleted`. Fix: `Connections` on `themeNameChanged` unless session override active.
+      **DONE 2026-11-08:** `Connections { target: SettingsBridge; onThemeNameChanged }` in `main.qml` re-runs the idempotent `applyTheme()`; a session override still wins.
 
 - [ ] T0338 **Windows vcpkg ports unpinned, CI reproducibility zero** (`windows.yml:130-160`) #risk-medium
       No `vcpkg.json`. Add manifest with `builtin-baseline` commit. Delete explicit list.
