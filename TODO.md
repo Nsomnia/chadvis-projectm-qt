@@ -159,29 +159,44 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `get-followed-personas/` are still extension-only `[LEAD]`. UI behind `Personas` gate.
       READS DONE 2026-11-08: `SunoPersonaService` reads `GET /persona/get-personas/` and `GET /persona/get-persona/{id}/`; id/name typed, the rest kept in `raw`. `create/` still open after T0362 upload chain. Live GET 200 still open.
 
-- [~] T0362 **Wire the HAR-11 surfaces: upload → stem → persona, and the free reads** (`src/suno/SunoUploadService.*`, `src/suno/SunoPersonaService.*`, `src/suno/SunoClient.cpp`, `src/qml_bridge/SunoBridge*`) #feature #user-priority
-      Endpoint constants + docs landed 2026-11-06 (ENDPOINT-INVENTORY §4.10, §5.14). This is the
-      wiring half, in dependency order, each step independently verifiable:
-      1. `GET /custom-model/shared` → per-model `capabilities` + `allowed_condition_combinations`
-         (the authoritative cover/mashup/upload_extend matrix; nothing may hard-code a mode list).
-      2. Upload chain: `POST /uploads/audio/` → signed S3 POST → `initialize-clip/` →
-         `upload-finish/`. Honour `rights_clearance_available`.
-      3. `POST /clip/{id}/vox-stem` → poll `GET /processed_clip/{id}` → `vocal_audio_url`.
-      4. `POST /persona/create/` from that stem (T0349's write half).
-      5. Free reads: `GET /clip/{id}`, `GET /project/{id}/pinned-clips`, `GET /cms/cover-art-suggestions`,
-         `POST /realtime/token` (Ably credential), `GET /challenge/progress`.
-      6. Cover art: `POST /gen/prompt_image/` (synchronous, returns the `image_s3_id` that
-         `playlist/v2/{id}/cover-image` needs), or the batched `video_gen/image/generate` +
-         `cost/image` + `poll_batches`.
-      7. Voice verification (persona HAR, §5.15): `GET /voice-verification/phrase/` ->
-         `processed_clip/voice-vox-stem` -> `POST /voice-verification/` -> poll
-         `GET /voice-verification/{id}`. This is what makes a voice persona usable.
-      8. `POST /playlist/v2/{id}/trash` is the undoable trash; it returns per-field outcome,
-         so prefer it over the legacy 204 `playlist/trash/` once a verb exists.
-      STEP 1 DONE 2026-11-08: `SunoModelCatalog` reads `GET /custom-model/shared`; `generation_config` (`major_version`, `capabilities`, `allowed_condition_combinations`, `max_lengths`) and `items` parse as structured data, no hard-coded mode list. 5xx retry is answered twice in tests. Live GET 200 still open; steps 2-8 remain.
-      STEP 6 SLICE 1 DONE 2026-11-08: `SunoCoverArtService` does `POST /gen/prompt_image/` (`{prompt}` → `{image_url, image_s3_id, upload_id}`). Fixture tests pass; live POST still open.
+- [x] T0362 **Wire the HAR-11 surfaces: upload → stem → persona, and the free reads** (`src/suno/`, `src/qml_bridge/`) #feature #user-priority
+      Umbrella task, split 2026-11-08 into T0430-T0435 so each step is independently claimable.
+      Shipped inside this epic before the split: step 1 `SunoModelCatalog` (`GET /custom-model/shared`)
+      and step 6 slice 1 `SunoCoverArtService` (`POST /gen/prompt_image/`).
       Host allowlist is NOT widened by this task: `suno-data-uploads.s3.amazonaws.com` and
       `api.suno.com` need their own `CapturedHosts.cpp` change with evidence, fail-closed.
+
+- [ ] T0430 **Upload chain: reserve → S3 → initialize-clip → finish** (`src/suno/SunoAudioUploadService.*`, `SunoClient.cpp`) #feature (after: T0362)
+      `POST /uploads/audio/` → signed S3 POST → `POST /uploads/audio/{id}/initialize-clip/` → `POST /uploads/audio/{id}/upload-finish/`.
+      `rights_clearance_available:false` must ask, never guess. Mostly present in `SunoAudioUploadService`;
+      open work is the initialize-clip leg and its response discipline.
+      Verify: fixture test for each leg + one live 2xx, no credits.
+
+- [ ] T0431 **Vocal stem extraction and poll** (`src/suno/`) #feature (after: T0430)
+      `POST /clip/{id}/vox-stem` `{vocal_start_s, vocal_end_s}` → `{id: processed-clip, status}`;
+      poll `GET /processed_clip/{id}` until `vocal_audio_url`. Range comes from the user's selection;
+      no auto-detect route exists. Verify: fixture tests for submit and each observed status.
+
+- [ ] T0432 **Persona create from a stem** (`src/suno/SunoPersonaService.*`) #feature (after: T0431)
+      `POST /persona/create/` with `root_clip_id`, `vox_audio_id`, range, `persona_type:"vox"`, `clips[]`.
+      Spends credits. Reads already shipped (T0349). Verify: fixture test for the body; one live create
+      against a scratch persona, then record the response keys.
+
+- [ ] T0433 **Free reads bundle** (`src/suno/`, `src/qml_bridge/`) #feature (after: T0362)
+      `GET /clip/{id}`, `GET /project/{id}/pinned-clips`, `GET /cms/cover-art-suggestions`,
+      `POST /realtime/token` (Ably credential), `GET /challenge/progress`. All read-only, no credits.
+      Verify: one read service with fixture tests per route.
+
+- [ ] T0434 **Cover art apply: playlist cover from a generated image id** (`src/suno/SunoLibraryMutations.*`) #feature (after: T0362)
+      Generation half shipped (`SunoCoverArtService`). Open: feed `image_s3_id` into
+      `POST /playlist/v2/{id}/cover-image` `{cover_source:{id,type:"generated"}}` and surface per-field outcome.
+      Verify: fixture test for the body; one live apply on a scratch playlist, then revert.
+
+- [ ] T0435 **Voice verification chain** (`src/suno/`) #feature (after: T0431)
+      `GET /voice-verification/phrase/` → `POST /processed_clip/voice-vox-stem` (upload id, not clip id)
+      → `POST /voice-verification/` → poll `GET /voice-verification/{id}`. This is what makes a voice
+      persona usable. Verify: fixture tests; the two stem routes take different id kinds and must not
+      be interchangeable.
 
 - [x] T0363 **`POST /gen/{id}/set_audio_description` + upload TOS flags are unmodelled** (`src/suno/SunoLibraryMutations.*`) #feature #risk-medium
       HAR-11 shows the site sends `{"gemini_description_accepted":true,"audio_content_types":
@@ -644,8 +659,9 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
 - [x] T0422 **Release the expired claims sweep** (`STATUS/*.claim`) #cleanup
       9 expired claims (T0051–T0057, T0182, T0199, T0335, T0336) block `O_EXCL` re-claim; T0358 `[~]` has no claim file. Verify: sweep run, board marks match filesystem claims.
       **DONE 2026-11-08:** all 11 expired `.claim` files released; `STATUS/*.claim` is empty and `task.sh peers` reports no stale rows.
-- [ ] T0423 **Split T0362 steps 2–8 into per-step tasks** (`TODO.md`, `docs/suno_api/`) #feature (after: T0362)
-      8 steps in one 21-line task; step 1 done. Hold until the T0362 claim is released. Verify: one task per step (upload, stem, persona-create, free reads, cover art, voice verification, playlist-trash-v2).
+- [x] T0423 **Split T0362 steps 2–8 into per-step tasks** (`TODO.md`, `docs/suno_api/`) #feature
+      8 steps in one 21-line task; step 1 done.
+      **DONE 2026-11-08:** split into T0430 (upload chain), T0431 (stem + poll), T0432 (persona create), T0433 (free reads), T0434 (cover apply), T0435 (voice verification). T0362 is now a closed umbrella. Playlist-v2 trash was already covered by T0383.
 - [x] T0424 **Fix the dead after: edge on T0383** (`TODO.md`) #cleanup
       T0383 `(after: T0267)` — T0267 exists nowhere. Verify: edge dropped or repointed.
       **DONE 2026-11-08:** edge dropped; T0383 has no unmet dependency (its mutation half shipped 2026-11-07 and its reads 2026-11-08).
