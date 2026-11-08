@@ -8,6 +8,10 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Keyboard users can see where focus is.** The custom-drawn controls that got a tab stop in the
+  accessibility sweep (colour picker, clip tile, account chip) now draw a keyboard-only focus ring
+  matching `AppButton`'s, in the same tokens and without changing layout. (T0441, T0442)
+
 - **Recordings end with their last frame.** The renderer's one-frame pipeline now drains the pending
   frame when recording stops, so a recording is no longer one frame short at the tail. (T0443)
 

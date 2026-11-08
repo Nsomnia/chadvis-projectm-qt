@@ -165,11 +165,39 @@ std::optional<SunoNotificationService::Notification> parseNotification(const QJs
     return notification;
 }
 
+/// The verdict for a failed reply: a 4xx the server answered is Rejected,
+/// anything else Failed. A 2xx reaches here only via a transport or body
+/// failure, so it is Failed rather than Accepted.
+[[nodiscard]] SunoNotificationService::NotificationOutcome outcomeForFailure(
+        int httpStatus) noexcept
+{
+    return SunoNotificationService::outcomeForStatus(httpStatus) ==
+                   SunoNotificationService::NotificationOutcome::Rejected
+            ? SunoNotificationService::NotificationOutcome::Rejected
+            : SunoNotificationService::NotificationOutcome::Failed;
+}
+
 } // namespace
+
+SunoNotificationService::NotificationOutcome
+SunoNotificationService::outcomeForStatus(const int httpStatus) noexcept
+{
+    if (httpStatus >= 200 && httpStatus < 300) {
+        return NotificationOutcome::Accepted;
+    }
+    if (httpStatus >= 400 && httpStatus < 500) {
+        return NotificationOutcome::Rejected;
+    }
+    // 0 is the absence of an HTTP answer and 5xx is one this client treats as
+    // retryable. The sentence differs; the verdict does not.
+    return NotificationOutcome::Failed;
+}
 
 SunoNotificationService::SunoNotificationService(SunoClient* client, QObject* parent,
                                                  int pollIntervalMs)
     : QObject(parent), client_(client) {
+    qRegisterMetaType<SunoNotificationService::NotificationResult>(
+            "vc::suno::SunoNotificationService::NotificationResult");
     if (pollIntervalMs > 0) {
         pollTimer_ = new QTimer(this);
         pollTimer_->setInterval(pollIntervalMs);
@@ -191,13 +219,16 @@ SunoNotificationService::SunoNotificationService(SunoClient* client, QObject* pa
                 return;
             }
             if (refreshLoading_) {
-                failRefresh(QStringLiteral("Not authenticated"));
+                failRefresh(QStringLiteral("Not authenticated"),
+                            NotificationOutcome::Failed, 0);
             }
             if (markLoading_) {
-                failMarkRead(QStringLiteral("Not authenticated"));
+                failMarkRead(QStringLiteral("Not authenticated"),
+                             NotificationOutcome::Failed, 0);
             }
             if (clearLoading_) {
-                failClearBadge(QStringLiteral("Not authenticated"));
+                failClearBadge(QStringLiteral("Not authenticated"),
+                               NotificationOutcome::Failed, 0);
             }
         });
     }
@@ -244,12 +275,16 @@ void SunoNotificationService::refresh() {
         return;
     }
     if (!client_ || !client_->isAuthenticated()) {
-        failRefresh(QStringLiteral("Not authenticated"));
+        failRefresh(QStringLiteral("Not authenticated"), NotificationOutcome::Refused, 0);
         return;
     }
 
     setError({});
     ++refreshGeneration_;
+    refreshHasFailure_ = false;
+    refreshFailureOutcome_ = NotificationOutcome::Accepted;
+    refreshFailureStatus_ = 0;
+    refreshFailureReason_.clear();
     refreshPending_ = 2;
     refreshLoading_ = true;
     setLoading(true);
@@ -305,29 +340,32 @@ void SunoNotificationService::handleRefreshReply(QNetworkReply* reply, ReplyKind
     // "Notification response returned invalid JSON".
     if (!client_) {
         reply->deleteLater();
-        failRefresh(QStringLiteral("Notifications has no SunoClient to read the response with"));
+        failRefresh(QStringLiteral("Notifications has no SunoClient to read the response with"),
+                    NotificationOutcome::Failed, status);
         return;
     }
     auto body = client_->readTrackedBody(reply);
     reply->deleteLater();
 
     if (!body) {
-        failRefresh(body.error());
+        failRefresh(body.error(), NotificationOutcome::Failed, status);
         return;
     }
     if (!error.isEmpty()) {
-        failRefresh(error);
+        failRefresh(error, outcomeForFailure(status), status);
         return;
     }
     if (status < 200 || status >= 300) {
-        failRefresh(QStringLiteral("Notification request failed"));
+        failRefresh(QStringLiteral("Notification request failed"),
+                    outcomeForFailure(status), status);
         return;
     }
 
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(*body, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        failRefresh(QStringLiteral("Notification response returned invalid JSON"));
+        failRefresh(QStringLiteral("Notification response returned invalid JSON"),
+                    NotificationOutcome::Failed, status);
         return;
     }
 
@@ -338,7 +376,7 @@ void SunoNotificationService::handleRefreshReply(QNetworkReply* reply, ReplyKind
     if (kind == ReplyKind::List) {
         auto parsed = parseResponse(document.object());
         if (!parsed) {
-            failRefresh(parsed.error());
+            failRefresh(parsed.error(), NotificationOutcome::Failed, status);
             return;
         }
         if (*body != lastListBody_) {
@@ -349,7 +387,7 @@ void SunoNotificationService::handleRefreshReply(QNetworkReply* reply, ReplyKind
     } else {
         auto parsed = parseBadgeCount(document.object());
         if (!parsed) {
-            failRefresh(parsed.error());
+            failRefresh(parsed.error(), NotificationOutcome::Failed, status);
             return;
         }
         const int nextUnreadCount = static_cast<int>(*parsed);
@@ -365,6 +403,12 @@ void SunoNotificationService::handleRefreshReply(QNetworkReply* reply, ReplyKind
     if (refreshPending_ == 0) {
         refreshLoading_ = false;
         setLoading(markLoading_ || clearLoading_);
+        if (refreshHasFailure_) {
+            settle(NotificationVerb::Refresh, refreshFailureOutcome_,
+                   refreshFailureStatus_, refreshFailureReason_);
+        } else {
+            settle(NotificationVerb::Refresh, NotificationOutcome::Accepted, status, {});
+        }
     }
 }
 
@@ -373,7 +417,7 @@ void SunoNotificationService::markAllRead() {
         return;
     }
     if (!client_ || !client_->isAuthenticated()) {
-        failMarkRead(QStringLiteral("Not authenticated"));
+        failMarkRead(QStringLiteral("Not authenticated"), NotificationOutcome::Refused, 0);
         return;
     }
 
@@ -417,18 +461,20 @@ void SunoNotificationService::handleMarkReadReply(QNetworkReply* reply, quint64 
     // breach diagnosis, the transport error only says the reply was cancelled.
     if (!client_) {
         reply->deleteLater();
-        failMarkRead(QStringLiteral("Notifications has no SunoClient to read the response with"));
+        failMarkRead(QStringLiteral("Notifications has no SunoClient to read the response with"),
+                     NotificationOutcome::Failed, status);
         return;
     }
     auto body = client_->readTrackedBody(reply);
     reply->deleteLater();
 
     if (!body) {
-        failMarkRead(body.error());
+        failMarkRead(body.error(), NotificationOutcome::Failed, status);
         return;
     }
     if (!error.isEmpty() || status < 200 || status >= 300) {
-        failMarkRead(error.isEmpty() ? QStringLiteral("Mark all read failed") : error);
+        failMarkRead(error.isEmpty() ? QStringLiteral("Mark all read failed") : error,
+                     outcomeForFailure(status), status);
         return;
     }
 
@@ -449,6 +495,7 @@ void SunoNotificationService::handleMarkReadReply(QNetworkReply* reply, quint64 
     }
     emit notificationsChanged();
     emit markAllReadCompleted();
+    settle(NotificationVerb::MarkAllRead, NotificationOutcome::Accepted, status, {});
     refresh();
 }
 
@@ -457,7 +504,7 @@ void SunoNotificationService::clearBadge() {
         return;
     }
     if (!client_ || !client_->isAuthenticated()) {
-        failClearBadge(QStringLiteral("Not authenticated"));
+        failClearBadge(QStringLiteral("Not authenticated"), NotificationOutcome::Refused, 0);
         return;
     }
 
@@ -504,18 +551,20 @@ void SunoNotificationService::handleClearBadgeReply(QNetworkReply* reply, quint6
     // diagnosis, the transport error only says the reply was cancelled.
     if (!client_) {
         reply->deleteLater();
-        failClearBadge(QStringLiteral("Notifications has no SunoClient to read the response with"));
+        failClearBadge(QStringLiteral("Notifications has no SunoClient to read the response with"),
+                       NotificationOutcome::Failed, status);
         return;
     }
     auto body = client_->readTrackedBody(reply);
     reply->deleteLater();
 
     if (!body) {
-        failClearBadge(body.error());
+        failClearBadge(body.error(), NotificationOutcome::Failed, status);
         return;
     }
     if (!error.isEmpty() || status < 200 || status >= 300) {
-        failClearBadge(error.isEmpty() ? QStringLiteral("Clear badge failed") : error);
+        failClearBadge(error.isEmpty() ? QStringLiteral("Clear badge failed") : error,
+                       outcomeForFailure(status), status);
         return;
     }
 
@@ -530,6 +579,7 @@ void SunoNotificationService::handleClearBadgeReply(QNetworkReply* reply, quint6
         emit unreadCountChanged();
     }
     emit badgeCleared();
+    settle(NotificationVerb::ClearBadge, NotificationOutcome::Accepted, status, {});
     refresh();
 }
 
@@ -557,34 +607,68 @@ void SunoNotificationService::setError(const QString& message) {
     emit errorChanged(error_);
 }
 
-void SunoNotificationService::failRefresh(const QString& message) {
+void SunoNotificationService::failRefresh(const QString& message,
+                                          const NotificationOutcome outcome,
+                                          const int httpStatus)
+{
     // One half failing must not cancel the other. This used to bump the
     // generation, which invalidated the sibling reply still in flight, and then
     // clear both pending slots -- so a badge 404 discarded the list that had
     // already arrived, and a list failure did the same to a good count (T0067).
     // Loading ends when the outstanding replies are done, not when one errors.
+    // The settled result ends with the last failure, mirroring error().
+    refreshHasFailure_ = true;
+    refreshFailureOutcome_ = outcome;
+    refreshFailureStatus_ = httpStatus;
+    refreshFailureReason_ = message;
     if (refreshPending_ > 0) {
         --refreshPending_;
     }
-    if (refreshPending_ == 0) {
+    const bool done = (refreshPending_ == 0);
+    if (done) {
         refreshLoading_ = false;
         setLoading(markLoading_ || clearLoading_);
     }
     setError(message);
+    if (done) {
+        settle(NotificationVerb::Refresh, refreshFailureOutcome_, refreshFailureStatus_,
+               refreshFailureReason_);
+    }
 }
 
-void SunoNotificationService::failMarkRead(const QString& message) {
+void SunoNotificationService::failMarkRead(const QString& message,
+                                           const NotificationOutcome outcome,
+                                           const int httpStatus)
+{
     ++markGeneration_;
     markLoading_ = false;
     setLoading(refreshLoading_ || clearLoading_);
     setError(message);
+    settle(NotificationVerb::MarkAllRead, outcome, httpStatus, message);
 }
 
-void SunoNotificationService::failClearBadge(const QString& message) {
+void SunoNotificationService::failClearBadge(const QString& message,
+                                             const NotificationOutcome outcome,
+                                             const int httpStatus)
+{
     ++clearGeneration_;
     clearLoading_ = false;
     setLoading(refreshLoading_ || markLoading_);
     setError(message);
+    settle(NotificationVerb::ClearBadge, outcome, httpStatus, message);
+}
+
+void SunoNotificationService::settle(const NotificationVerb verb,
+                                     const NotificationOutcome outcome,
+                                     const int httpStatus, const QString& reason)
+{
+    NotificationResult result;
+    result.verb = verb;
+    result.subjectId = {};
+    result.outcome = outcome;
+    result.httpStatus = httpStatus;
+    result.reason = reason;
+    emit notificationSettled(result);
 }
 
 } // namespace vc::suno

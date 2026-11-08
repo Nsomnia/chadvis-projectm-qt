@@ -19,6 +19,9 @@ Rectangle {
 
     readonly property bool hasAccount: SunoBridge.userName !== ""
 
+    /// True for keyboard focus; Item has no focusReason, so click clears it.
+    property bool keyboardFocused: true
+
     implicitWidth: chipRow.implicitWidth + Theme.spacingMedium * 2
     implicitHeight: 28
     radius: Theme.radiusRound
@@ -100,12 +103,26 @@ Rectangle {
     Keys.onReturnPressed: root.navigateRequested()
     Keys.onSpacePressed: root.navigateRequested()
 
+    onActiveFocusChanged: if (!activeFocus) keyboardFocused = true
+
+    // Focus ring for keyboard focus only; an overlay, so no geometry shifts.
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -Theme.spacingTiny
+        radius: Theme.radiusRound
+        color: Theme.withAlpha(Theme.background, 0)
+        border.width: 2
+        border.color: Theme.borderFocus
+        visible: root.activeFocus && root.keyboardFocused
+    }
+
     MouseArea {
         id: chipMouse
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: {
+            root.keyboardFocused = false
             root.forceActiveFocus()
             root.navigateRequested()
         }

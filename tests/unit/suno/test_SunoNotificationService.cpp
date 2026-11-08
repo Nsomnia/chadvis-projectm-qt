@@ -641,15 +641,479 @@ private slots:
         }
         QTRY_VERIFY_WITH_TIMEOUT(!service.isLoading(), 15000);
     }
+
+    // The status-only verdict mirrors SunoLibraryMutations::outcomeForStatus:
+    // a 204 with no body is a success, 4xx is the server's answer, 0 and 5xx
+    // are not.
+    void outcomeForStatusMatchesMutationVocabulary()
+    {
+        QCOMPARE(SunoNotificationService::outcomeForStatus(204),
+                 SunoNotificationService::NotificationOutcome::Accepted);
+        QCOMPARE(SunoNotificationService::outcomeForStatus(200),
+                 SunoNotificationService::NotificationOutcome::Accepted);
+        QCOMPARE(SunoNotificationService::outcomeForStatus(201),
+                 SunoNotificationService::NotificationOutcome::Accepted);
+        QCOMPARE(SunoNotificationService::outcomeForStatus(400),
+                 SunoNotificationService::NotificationOutcome::Rejected);
+        QCOMPARE(SunoNotificationService::outcomeForStatus(422),
+                 SunoNotificationService::NotificationOutcome::Rejected);
+        QCOMPARE(SunoNotificationService::outcomeForStatus(500),
+                 SunoNotificationService::NotificationOutcome::Failed);
+        QCOMPARE(SunoNotificationService::outcomeForStatus(0),
+                 SunoNotificationService::NotificationOutcome::Failed);
+        QCOMPARE(QString::fromLatin1(toString(
+                     SunoNotificationService::NotificationVerb::MarkAllRead)),
+                 QStringLiteral("mark-all-read"));
+        QCOMPARE(QString::fromLatin1(toString(
+                     SunoNotificationService::NotificationOutcome::Accepted)),
+                 QStringLiteral("accepted"));
+    }
+
+    void markAllReadSuccessSettlesAccepted()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy completed(&service, &SunoNotificationService::markAllReadCompleted);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.markAllRead();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 1, 15000);
+        QVERIFY(replies.front()->url().path().contains(QStringLiteral("notification/v2/read")));
+        QCOMPARE(static_cast<int>(replies.front()->operation()),
+                 static_cast<int>(QNetworkAccessManager::PostOperation));
+
+        replies.front()->respond(QByteArray{}, 204);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 15000);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::MarkAllRead);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Accepted);
+        QCOMPARE(result.httpStatus, 204);
+        QVERIFY(result.reason.isEmpty());
+        QVERIFY(result.subjectId.isEmpty());
+        QCOMPARE(completed.count(), 1);
+        QVERIFY(service.error().isEmpty());
+        QCOMPARE(service.unreadCount(), 0);
+
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 3, 15000);
+        const QJsonObject listRoot{
+            {QStringLiteral("notified_at"), QStringLiteral("2026-10-24T03:08:00.000Z")},
+            {QStringLiteral("notifications"), QJsonArray{}},
+        };
+        const QByteArray listBody = QJsonDocument(listRoot).toJson(QJsonDocument::Compact);
+        const QJsonObject badgeRoot{{QStringLiteral("badge_count"), 0}};
+        const QByteArray badgeBody = QJsonDocument(badgeRoot).toJson(QJsonDocument::Compact);
+        for (std::size_t i = 1; i < replies.size(); ++i) {
+            if (replies[i]->url().path().contains(QStringLiteral("notification/v3"))) {
+                replies[i]->respond(listBody, 200);
+            } else if (replies[i]->url().path().contains(QStringLiteral("badge-count"))) {
+                replies[i]->respond(badgeBody, 200);
+            }
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(!service.isLoading(), 15000);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 2, 15000);
+        const auto refreshed = settled.at(1).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(refreshed.verb, SunoNotificationService::NotificationVerb::Refresh);
+        QCOMPARE(refreshed.outcome, SunoNotificationService::NotificationOutcome::Accepted);
+    }
+
+    void markAllReadNotFoundRejects()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy completed(&service, &SunoNotificationService::markAllReadCompleted);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.markAllRead();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 1, 15000);
+        const QJsonObject failure{{QStringLiteral("detail"), QStringLiteral("Not found")}};
+        replies.front()->respond(QJsonDocument(failure).toJson(QJsonDocument::Compact), 404);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 15000);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::MarkAllRead);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Rejected);
+        QCOMPARE(result.httpStatus, 404);
+        QCOMPARE(result.reason, service.error());
+        QVERIFY(!result.reason.isEmpty());
+        QCOMPARE(completed.count(), 0);
+        QTest::qWait(100);
+        QCOMPARE(replies.size(), std::size_t{1});
+        QVERIFY(!service.isLoading());
+    }
+
+    void markAllReadRefusesWhenSignedOut()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy completed(&service, &SunoNotificationService::markAllReadCompleted);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.markAllRead();
+        QTest::qWait(100);
+        QCOMPARE(replies.size(), std::size_t{0});
+        QCOMPARE(settled.count(), 1);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::MarkAllRead);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Refused);
+        QCOMPARE(result.httpStatus, 0);
+        QCOMPARE(result.reason, QStringLiteral("Not authenticated"));
+        QCOMPARE(result.reason, service.error());
+        QCOMPARE(completed.count(), 0);
+        QVERIFY(!service.isLoading());
+    }
+
+    void markAllReadServerErrorSettlesFailedWithoutRetry()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy completed(&service, &SunoNotificationService::markAllReadCompleted);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.markAllRead();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 1, 15000);
+        const QJsonObject failure{{QStringLiteral("detail"), QStringLiteral("Server error")}};
+        replies.front()->respond(QJsonDocument(failure).toJson(QJsonDocument::Compact), 500);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 15000);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::MarkAllRead);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Failed);
+        QCOMPARE(result.httpStatus, 500);
+        QCOMPARE(result.reason, service.error());
+        QVERIFY(!result.reason.isEmpty());
+        QCOMPARE(completed.count(), 0);
+        QTest::qWait(100);
+        QCOMPARE(replies.size(), std::size_t{1});
+        QVERIFY(!service.isLoading());
+    }
+
+    void clearBadgeSuccessSettlesAccepted()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy cleared(&service, &SunoNotificationService::badgeCleared);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.clearBadge();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 1, 15000);
+        replies.front()->respond(QByteArray{}, 204);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 15000);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::ClearBadge);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Accepted);
+        QCOMPARE(result.httpStatus, 204);
+        QVERIFY(result.reason.isEmpty());
+        QCOMPARE(cleared.count(), 1);
+        QVERIFY(service.error().isEmpty());
+        QCOMPARE(service.unreadCount(), 0);
+
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 3, 15000);
+        const QJsonObject listRoot{
+            {QStringLiteral("notified_at"), QStringLiteral("2026-10-24T03:08:00.000Z")},
+            {QStringLiteral("notifications"), QJsonArray{}},
+        };
+        const QByteArray listBody = QJsonDocument(listRoot).toJson(QJsonDocument::Compact);
+        const QJsonObject badgeRoot{{QStringLiteral("badge_count"), 0}};
+        const QByteArray badgeBody = QJsonDocument(badgeRoot).toJson(QJsonDocument::Compact);
+        for (std::size_t i = 1; i < replies.size(); ++i) {
+            if (replies[i]->url().path().contains(QStringLiteral("notification/v3"))) {
+                replies[i]->respond(listBody, 200);
+            } else if (replies[i]->url().path().contains(QStringLiteral("badge-count"))) {
+                replies[i]->respond(badgeBody, 200);
+            }
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(!service.isLoading(), 15000);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 2, 15000);
+        const auto refreshed = settled.at(1).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(refreshed.verb, SunoNotificationService::NotificationVerb::Refresh);
+        QCOMPARE(refreshed.outcome, SunoNotificationService::NotificationOutcome::Accepted);
+    }
+
+    void clearBadgeNotFoundRejectsWithSettled()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy cleared(&service, &SunoNotificationService::badgeCleared);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.clearBadge();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 1, 15000);
+        const QJsonObject failure{{QStringLiteral("detail"), QStringLiteral("Not found")}};
+        replies.front()->respond(QJsonDocument(failure).toJson(QJsonDocument::Compact), 404);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 15000);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::ClearBadge);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Rejected);
+        QCOMPARE(result.httpStatus, 404);
+        QCOMPARE(result.reason, service.error());
+        QVERIFY(!result.reason.isEmpty());
+        QCOMPARE(cleared.count(), 0);
+        QTest::qWait(100);
+        QCOMPARE(replies.size(), std::size_t{1});
+        QVERIFY(!service.isLoading());
+    }
+
+    void clearBadgeRefusesWithSettled()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy cleared(&service, &SunoNotificationService::badgeCleared);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.clearBadge();
+        QTest::qWait(100);
+        QCOMPARE(replies.size(), std::size_t{0});
+        QCOMPARE(settled.count(), 1);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::ClearBadge);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Refused);
+        QCOMPARE(result.httpStatus, 0);
+        QCOMPARE(result.reason, QStringLiteral("Not authenticated"));
+        QCOMPARE(result.reason, service.error());
+        QCOMPARE(cleared.count(), 0);
+        QVERIFY(!service.isLoading());
+    }
+
+    void clearBadgeServerErrorSettlesFailedWithoutRetry()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy cleared(&service, &SunoNotificationService::badgeCleared);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.clearBadge();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 1, 15000);
+        const QJsonObject failure{{QStringLiteral("detail"), QStringLiteral("Server error")}};
+        replies.front()->respond(QJsonDocument(failure).toJson(QJsonDocument::Compact), 500);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 15000);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::ClearBadge);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Failed);
+        QCOMPARE(result.httpStatus, 500);
+        QCOMPARE(result.reason, service.error());
+        QVERIFY(!result.reason.isEmpty());
+        QCOMPARE(cleared.count(), 0);
+        QTest::qWait(100);
+        QCOMPARE(replies.size(), std::size_t{1});
+        QVERIFY(!service.isLoading());
+    }
+
+    void refreshSuccessSettlesAccepted()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy changed(&service, &SunoNotificationService::notificationsChanged);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 2, 15000);
+        const QJsonObject listRoot{
+            {QStringLiteral("notified_at"), QStringLiteral("2026-10-24T03:08:00.000Z")},
+            {QStringLiteral("notifications"), QJsonArray{
+                                               QJsonObject{
+                                                   {QStringLiteral("id"), QStringLiteral("v3-1")},
+                                                   {QStringLiteral("notification_type"), QStringLiteral("follow")},
+                                                   {QStringLiteral("text"), QJsonArray{
+                                                                          QJsonObject{{QStringLiteral("text"), QStringLiteral("Ada")}},
+                                                                          QJsonObject{{QStringLiteral("text"), QStringLiteral(" followed you")}},
+                                                                      }},
+                                               },
+                                           }},
+        };
+        const QByteArray listBody = QJsonDocument(listRoot).toJson(QJsonDocument::Compact);
+        const QJsonObject badgeRoot{{QStringLiteral("badge_count"), 3}};
+        const QByteArray badgeBody = QJsonDocument(badgeRoot).toJson(QJsonDocument::Compact);
+        for (FakeReply* reply : replies) {
+            if (reply->url().path().contains(QStringLiteral("notification/v3"))) {
+                reply->respond(listBody, 200);
+            } else if (reply->url().path().contains(QStringLiteral("badge-count"))) {
+                reply->respond(badgeBody, 200);
+            }
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 15000);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::Refresh);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Accepted);
+        QCOMPARE(result.httpStatus, 200);
+        QVERIFY(result.reason.isEmpty());
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(service.unreadCount(), 3);
+        QVERIFY(service.error().isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(!service.isLoading(), 15000);
+    }
+
+    void refreshRejectionSettlesRejected()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy changed(&service, &SunoNotificationService::notificationsChanged);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 2, 15000);
+        const QJsonObject listRoot{
+            {QStringLiteral("notified_at"), QStringLiteral("2026-10-24T03:08:00.000Z")},
+            {QStringLiteral("notifications"), QJsonArray{
+                                               QJsonObject{
+                                                   {QStringLiteral("id"), QStringLiteral("v3-1")},
+                                                   {QStringLiteral("notification_type"), QStringLiteral("follow")},
+                                                   {QStringLiteral("text"), QJsonArray{
+                                                                          QJsonObject{{QStringLiteral("text"), QStringLiteral("Ada")}},
+                                                                          QJsonObject{{QStringLiteral("text"), QStringLiteral(" followed you")}},
+                                                                      }},
+                                               },
+                                           }},
+        };
+        const QByteArray listBody = QJsonDocument(listRoot).toJson(QJsonDocument::Compact);
+        const QJsonObject failure{{QStringLiteral("detail"), QStringLiteral("Not found")}};
+        const QByteArray failureBody = QJsonDocument(failure).toJson(QJsonDocument::Compact);
+        for (FakeReply* reply : replies) {
+            if (reply->url().path().contains(QStringLiteral("notification/v3"))) {
+                reply->respond(listBody, 200);
+            } else if (reply->url().path().contains(QStringLiteral("badge-count"))) {
+                reply->respond(failureBody, 404);
+            }
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 15000);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::Refresh);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Rejected);
+        QCOMPARE(result.httpStatus, 404);
+        QCOMPARE(result.reason, service.error());
+        QVERIFY(!result.reason.isEmpty());
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(service.notifications().size(), 1);
+        QVERIFY(!service.error().isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(!service.isLoading(), 15000);
+    }
+
+    void refreshRefusesWhenSignedOut()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy settled(&service, &SunoNotificationService::notificationSettled);
+
+        service.refresh();
+        QTest::qWait(100);
+        QCOMPARE(replies.size(), std::size_t{0});
+        QCOMPARE(settled.count(), 1);
+        const auto result = settled.at(0).at(0).value<
+                SunoNotificationService::NotificationResult>();
+        QCOMPARE(result.verb, SunoNotificationService::NotificationVerb::Refresh);
+        QCOMPARE(result.outcome, SunoNotificationService::NotificationOutcome::Refused);
+        QCOMPARE(result.httpStatus, 0);
+        QCOMPARE(result.reason, QStringLiteral("Not authenticated"));
+        QCOMPARE(result.reason, service.error());
+        QVERIFY(!service.isLoading());
+    }
 };
 
 #include "test_SunoNotificationService.moc"
 
-int main(int argc, char** argv)
-{
-    // The parse cases need no event loop; the delivery and polling cases do --
-    // replies arrive through signals and the poll timer needs a dispatcher.
-    QCoreApplication app(argc, argv);
-    TestSunoNotificationService test;
-    return QTest::qExec(&test, argc, argv);
-}
+QTEST_MAIN(TestSunoNotificationService)

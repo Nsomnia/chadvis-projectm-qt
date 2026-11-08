@@ -1,0 +1,1 @@
+2026-11-08T18:41:06Z  VERIFY    ctest 33/33 passed (352.59s). All 5 icon-only AppButtons named Accessible.name (2 tooltips added where the file uses them). grep: 3 icon hits vs 2 Accessible.name in PlaylistPanel (the 3rd has visible text); PresetsPanel 3/3.\n

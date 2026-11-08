@@ -70,6 +70,9 @@ ColumnLayout {
             implicitHeight: 28
             radius: Theme.radiusSmall
             onClicked: PlaylistBridge.toggleShuffle()
+            Accessible.name: "Toggle shuffle"
+            ToolTip.visible: hovered
+            ToolTip.text: "Toggle shuffle"
         }
 
         AppButton {
@@ -91,6 +94,9 @@ ColumnLayout {
             implicitHeight: 28
             radius: Theme.radiusSmall
             onClicked: root.requestClearAll()
+            Accessible.name: "Clear playlist"
+            ToolTip.visible: hovered
+            ToolTip.text: "Clear playlist"
         }
 
         Item { Layout.fillWidth: true }

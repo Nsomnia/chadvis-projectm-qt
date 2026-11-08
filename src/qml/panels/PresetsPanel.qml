@@ -44,7 +44,7 @@ ColumnLayout {
                 background: Rectangle { radius: Theme.radiusSmall; color: Theme.surfaceRaised; border.color: Theme.border }
                 contentItem: Text { text: categoryCombo.displayText; color: Theme.textPrimary; font.pixelSize: Theme.fontBody.pixelSize; verticalAlignment: Text.AlignVCenter; leftPadding: Theme.spacingSmall }
             }
-            AppButton { icon: "qrc:/qt/qml/ChadVis/resources/icons/random.svg"; implicitWidth: 44; implicitHeight: 44; onClicked: PresetBridge.selectRandom() }
+            AppButton { icon: "qrc:/qt/qml/ChadVis/resources/icons/random.svg"; implicitWidth: 44; implicitHeight: 44; onClicked: PresetBridge.selectRandom(); Accessible.name: "Select a random preset" }
         }
     }
 
@@ -163,8 +163,8 @@ ColumnLayout {
         }
                 }
             }
-            AppButton { icon: delegate.isFavorite ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : "qrc:/qt/qml/ChadVis/resources/icons/star-outline.svg"; implicitWidth: 36; implicitHeight: 36; highlighted: delegate.isFavorite; onClicked: delegate.favoriteToggled() }
-            AppButton { icon: delegate.isBlacklisted ? "qrc:/qt/qml/ChadVis/resources/icons/blacklist.svg" : "qrc:/qt/qml/ChadVis/resources/icons/random.svg"; implicitWidth: 36; implicitHeight: 36; onClicked: delegate.blacklistToggled() }
+            AppButton { icon: delegate.isFavorite ? "qrc:/qt/qml/ChadVis/resources/icons/star-filled.svg" : "qrc:/qt/qml/ChadVis/resources/icons/star-outline.svg"; implicitWidth: 36; implicitHeight: 36; highlighted: delegate.isFavorite; onClicked: delegate.favoriteToggled(); Accessible.name: delegate.isFavorite ? "Remove preset from favorites" : "Add preset to favorites" }
+            AppButton { icon: delegate.isBlacklisted ? "qrc:/qt/qml/ChadVis/resources/icons/blacklist.svg" : "qrc:/qt/qml/ChadVis/resources/icons/random.svg"; implicitWidth: 36; implicitHeight: 36; onClicked: delegate.blacklistToggled(); Accessible.name: delegate.isBlacklisted ? "Remove preset from blacklist" : "Add preset to blacklist" }
         }
     }
 }

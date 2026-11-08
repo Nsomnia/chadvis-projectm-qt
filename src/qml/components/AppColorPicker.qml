@@ -146,12 +146,24 @@ Item {
             }
         }
 
+        // Focus ring for keyboard focus only; an overlay, so no geometry shifts.
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -Theme.spacingTiny
+            radius: Theme.radiusSmall + Theme.spacingTiny
+            color: Theme.withAlpha(Theme.background, 0)
+            border.width: 2
+            border.color: Theme.borderFocus
+            visible: swatch.activeFocus && swatch.keyboardFocused
+        }
+
         MouseArea {
             id: swatchMouse
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
+                swatch.keyboardFocused = false
                 swatch.forceActiveFocus()
                 picker.open()
             }
@@ -161,6 +173,9 @@ Item {
         // a coloured Rectangle with a MouseArea and nothing a reader or the
         // keyboard could reach.
         activeFocusOnTab: true
+        /// True for keyboard focus; Item has no focusReason, so click clears it.
+        property bool keyboardFocused: true
+        onActiveFocusChanged: if (!activeFocus) keyboardFocused = true
         Accessible.role: Accessible.Button
         Accessible.name: root.accessibleName.length > 0
             ? root.accessibleName + ", " + Theme.toRgbaHex(root.value)
@@ -254,7 +269,20 @@ Item {
                     border.width: 2
                 }
 
+                // Focus ring for keyboard focus only; inset, because svArea is
+                // clipped, so an outer ring would be cut off.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radiusSmall
+                    color: Theme.withAlpha(Theme.background, 0)
+                    border.width: 2
+                    border.color: Theme.borderFocus
+                    visible: svArea.activeFocus && svArea.keyboardFocused
+                }
+
                 activeFocusOnTab: true
+                /// Keyboard gate: nothing takes item focus by mouse, so activeFocus means Tab.
+                property bool keyboardFocused: true
                 Accessible.role: Accessible.Slider
                 Accessible.name: "Saturation and brightness"
                 Accessible.onIncreaseAction: root.nudgeSatVal(0.01, 0)
@@ -319,7 +347,20 @@ Item {
                     border.width: 3
                 }
 
+                // Focus ring for keyboard focus only; inset, because the strip
+                // is clipped, so an outer ring would be cut off.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radiusSmall
+                    color: Theme.withAlpha(Theme.background, 0)
+                    border.width: 2
+                    border.color: Theme.borderFocus
+                    visible: hueStrip.activeFocus && hueStrip.keyboardFocused
+                }
+
                 activeFocusOnTab: true
+                /// Keyboard gate: nothing takes item focus by mouse, so activeFocus means Tab.
+                property bool keyboardFocused: true
                 Accessible.role: Accessible.Slider
                 Accessible.name: "Hue"
                 Accessible.onIncreaseAction: root.nudgeHue(0.01)
@@ -413,7 +454,20 @@ Item {
                     border.width: 3
                 }
 
+                // Focus ring for keyboard focus only; inset, because the strip
+                // is clipped, so an outer ring would be cut off.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radiusSmall
+                    color: Theme.withAlpha(Theme.background, 0)
+                    border.width: 2
+                    border.color: Theme.borderFocus
+                    visible: alphaStrip.activeFocus && alphaStrip.keyboardFocused
+                }
+
                 activeFocusOnTab: true
+                /// Keyboard gate: nothing takes item focus by mouse, so activeFocus means Tab.
+                property bool keyboardFocused: true
                 Accessible.role: Accessible.Slider
                 Accessible.name: "Opacity"
                 Accessible.onIncreaseAction: root.nudgeAlpha(0.01)

@@ -15,6 +15,9 @@ Rectangle {
     readonly property bool canSave: canPlay
     readonly property bool isHovered: cardMouse.containsMouse
 
+    /// Keyboard gate: nothing takes item focus by mouse, so activeFocus means Tab.
+    property bool keyboardFocused: true
+
     // ── Save / selection state ────────────────────────
     // Supplied by the view rather than kept here. A GridView recycles its
     // delegates, so a card that remembered "already on disk" in its own
@@ -320,6 +323,17 @@ Rectangle {
             root.selectionToggled(root.clipData)
         else
             root.opened(root.clipData)
+    }
+
+    // Keyboard-only focus ring: an overlay, so focus never moves the card.
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -Theme.spacingTiny
+        radius: Theme.radiusLarge + Theme.spacingTiny
+        color: Theme.withAlpha(Theme.background, 0)
+        border.width: 2
+        border.color: Theme.borderFocus
+        visible: root.activeFocus && root.keyboardFocused
     }
 
     // ── Selection marker ─────────────────────────

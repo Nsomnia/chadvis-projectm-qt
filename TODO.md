@@ -463,15 +463,17 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       "Unknown test function". Verify: a check that rebuilds the integration targets before the ctest
       step, or that refuses to run them when the binary is older than the sources.
 
-- [ ] T0441 **Focus rings for the new keyboard tab stops** (`src/qml/`) #cleanup
+- [x] T0441 **Focus rings for the new keyboard tab stops** (`src/qml/`) #cleanup
       T0082 made the custom-drawn controls (AppColorPicker areas, tiles, chips) reachable by Tab, but none
       of them shows a focus outline, so a sighted keyboard user cannot see where focus is. Verify: a
       visible focus indicator on every `activeFocusOnTab` custom-drawn control.
+      **DONE 2026-11-08:** keyboard-only focus rings now appear on the seven custom-drawn tab stops (AppColorPicker swatch + saturation/brightness, hue and alpha strips, ClipCard tile, AccountChip pill): 2px `Theme.borderFocus` outline matching `AppButton`'s precedent, no geometry change. One constraint worth knowing: `focusReason`/`visualFocus` exist only on `Control`, so the plain-`Rectangle` roots cannot read them; each carries a small `keyboardFocused` flag that clears when a mouse click takes focus and resets on focus loss, reproducing `visualFocus` exactly (Tab/Backtab → ring, mouse → none). Hover was already ring-free. Wrapped Qt controls (`SettingSpinRow`'s SpinBox, the card's save `AppButton`) were not given a second ring.
 
-- [ ] T0442 **Five unnamed icon-only buttons in PresetsPanel/PlaylistPanel** (`src/qml/panels/`) #cleanup
+- [x] T0442 **Five unnamed icon-only buttons in PresetsPanel/PlaylistPanel** (`src/qml/panels/`) #cleanup
       T0082's lane was scoped off these two files (another lane owned them), so every icon-only
       `AppButton` elsewhere is now named but theirs are not. Verify: grep the two files for an icon-only
       `AppButton` without a name returns nothing.
+      **DONE 2026-11-08:** all five icon-only `AppButton`s (shuffle, clear, random, favorite-star, blacklist) got a state-aware `Accessible.name`, e.g. "Add preset to favorites" / "Remove preset from favorites". `AppButton` already provides tab focus and Enter/Space, so no new keyboard handlers were needed; `ToolTip` added where the file already uses them. Non-icon `AppButton`s with visible text already inherit their name from the text.
 
 - [ ] T0085 `TextAccessible` names hardcoded English (`src/qml/`) #cleanup
 

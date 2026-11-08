@@ -1,0 +1,1 @@
+2026-11-08T18:41:06Z  VERIFY    ctest 33/33. 7 keyboard focus rings added to the 3 custom-drawn controls (AppColorPicker swatch+3 strips, ClipCard root, AccountChip root). Qt has no focusReason on Rectangle (Item); per-control keyboardFocused flag replicates visualFocus; hover-free. qmlformat parsed.\n
