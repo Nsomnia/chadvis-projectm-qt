@@ -115,7 +115,7 @@ ${BOLD}Tuning${RESET}
   ${GREEN}--ctest-jobs N${RESET}  parallel ctest entries (default: same as --jobs; the suites are idle ~84% of the time)
   ${GREEN}--nice N${RESET}         nice level for every child (default ${NICE_LEVEL}, ${YELLOW}0 disables${RESET})
   ${GREEN}--no-ccache${RESET}      do not use ccache even if installed
-  ${GREEN}--qt PATH${RESET}        Qt6 prefix (else \$CHADVIS_QT_PATH, then Homebrew prefixes)
+  ${GREEN}--qt PATH${RESET}        Qt6 prefix (else \$CHADVIS_QT_PATH, then \$HOME/Qt, MacPorts, Homebrew/distro, .qt-stitch last)
   ${GREEN}--budget${RESET}         print the resource budget and exit; builds nothing
 
   ${YELLOW}Environment${RESET}: CHADVIS_CPU_PERCENT, CHADVIS_MEM_PERCENT, CHADVIS_PER_JOB_MIB,

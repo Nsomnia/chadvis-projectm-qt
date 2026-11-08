@@ -42,6 +42,10 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **Six `snprintf` sites now use `std::format`.** The SRT timestamp, the VAAPI/CUDA device path,
+  two GL error strings, and the fixed-precision formatter produce byte-identical output without
+  fixed-size buffers. `std::string` plus `c_str()` is used only where an API demands a `char*`. (T0403)
+
 - **A library sync that fails mid-run resumes instead of restarting.** A retryable failure after the
   first page now keeps the already-fetched clips and the held cursor, so the next request retries the
   failed page. Status messages report clips across pages, and `librarySyncSettled` carries

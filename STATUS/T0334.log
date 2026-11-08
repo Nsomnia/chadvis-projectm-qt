@@ -9,3 +9,4 @@
 2026-10-25T00:40:00Z  NOT-VERIFIED  The end-to-end wall clock against a live account: 22 pages assumes ~3.4 s/page still holds at 100 clips per page (bigger bodies, same 1 Hz limiter). Also unverified: whether the DB write of a 100-clip page is still fast enough on the GUI thread -- saveClips runs synchronously in onLibraryFetched.
 2026-11-08T02:32:30Z  CLAIM    agent=Dereks-MacBook-Air.local/derekvanee91800 pid=91800 ttl=4h expires=2026-11-08T06:32:30Z
 2026-11-08T02:43:53Z  VERIFY    ./build.sh --fast --tests + ctest -R unit_tests => Passed 89.40s. New case failedPageIsRetriedNotRestarted observed in run logs: page 1 (2 clips) -> page 2 transport fail -> resume cursor page 2 -> 1 clip -> complete, 2 pages, 3 clips. Real 2k-clip wall clock still open.
+2026-11-08T11:29:14Z  RELEASE  agent=Dereks-MacBook-Air.local/derekvanee2155

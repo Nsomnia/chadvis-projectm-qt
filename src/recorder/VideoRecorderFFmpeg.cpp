@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <limits>
 #include <string>
 #include <vector>
@@ -1669,16 +1670,16 @@ Result<void> VideoRecorderFFmpeg::initHWDevice(const EncoderSettings& settings) 
   }
 
   AVBufferRef* devCtx = nullptr;
-  char devPath[64] = {0};
+  std::string devPath;
 
   if (devType == AV_HWDEVICE_TYPE_VAAPI) {
-    snprintf(devPath, sizeof(devPath), "/dev/dri/renderD%d", 128 + settings.video.hwDevice);
+    devPath = std::format("/dev/dri/renderD{}", 128 + settings.video.hwDevice);
   } else if (devType == AV_HWDEVICE_TYPE_CUDA) {
-    snprintf(devPath, sizeof(devPath), "%d", settings.video.hwDevice);
+    devPath = std::format("{}", settings.video.hwDevice);
   }
 
   int ret = av_hwdevice_ctx_create(&devCtx, devType,
-    devPath[0] ? devPath : nullptr, nullptr, 0);
+    devPath.empty() ? nullptr : devPath.c_str(), nullptr, 0);
 
   if (ret < 0) {
     return Result<void>::err(std::string("Failed to create ") + devName +

@@ -1,0 +1,1 @@
+2026-11-08T11:40:43Z  VERIFY    ./build.sh --help --qt now names $HOME/Qt, MacPorts, Homebrew/distro and .qt-stitch-last, matching build.sh:252-258.

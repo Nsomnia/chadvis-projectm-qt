@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <numeric>
 #include <span>
 #include <thread>
@@ -531,9 +532,9 @@ const char* toString(u32 glError) noexcept {
         default:
             break;
     }
-    static thread_local char unknown[48];
-    std::snprintf(unknown, sizeof(unknown), "GL_UNKNOWN_ERROR(0x%x)", glError);
-    return unknown;
+    static thread_local std::string unknown;
+    unknown = std::format("GL_UNKNOWN_ERROR(0x{:x})", glError);
+    return unknown.c_str();
 }
 
 const char* toStringFramebufferStatus(u32 status) noexcept {
@@ -559,9 +560,9 @@ const char* toStringFramebufferStatus(u32 status) noexcept {
         default:
             break;
     }
-    static thread_local char unknown[48];
-    std::snprintf(unknown, sizeof(unknown), "GL_FRAMEBUFFER_UNKNOWN(0x%x)", status);
-    return unknown;
+    static thread_local std::string unknown;
+    unknown = std::format("GL_FRAMEBUFFER_UNKNOWN(0x{:x})", status);
+    return unknown.c_str();
 }
 
 usize residentSetBytes() noexcept {
@@ -960,9 +961,7 @@ runOffscreenRenderProbe(const OffscreenProbeConfig& config) {
 
 std::vector<std::string> offscreenProbeLines(const OffscreenProbeReport& report) {
     const auto fixed = [](double value, int precision) {
-        char buffer[64];
-        std::snprintf(buffer, sizeof(buffer), "%.*f", precision, value);
-        return std::string(buffer);
+        return std::format("{:.{}f}", value, precision);
     };
     return {
             "platform: " + report.platform,

@@ -74,16 +74,17 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Phase 3. Discover `<configDir>/themes/*.json`, validate (schema, id pattern, 64KiB cap, contrast).
       Never name it `Theme` — shadows QML singleton. `Theme.qml` must never parse files itself.
 
+---
+
+## P1 — correctness, robustness, debt that will bite
+
 - [ ] T0011 **11-route mutation surface runtime-unreachable** (`SunoLibraryMutations.hpp:493`, `.cpp:394-397`) #risk-high
       **Enabled 2026-10-30.** `setEnabled(true)` at service construction. Gates in `kGatesImplementedByThisBuild`.
       Verbs reachable, `mutationsAvailable` honest. QML still doesn't connect the 4 signals — UI gap.
       `everyGatePermits()` is single predicate. `gateFor()` maps verbs to gates.
       Response shapes captured §5.13 (reaction, remix, visibility, playlist CRUD). Wire format no longer blocker.
       Next step: control per verb, not another gate.
-
----
-
-## P1 — correctness, robustness, debt that will bite
+      **Re-ranked P0 -> P1 2026-11-08:** verbs are enabled and reachable; what remains is the QML surface, which T0359 owns.
 
 - [?] T0356 **Suno OAuth 2.0 loopback flow — in-app sign-in** (`src/suno/auth/`, `docs/suno_api/`) #feature #blocks-ui
       `POST /api/v2/external/oauth/register/` → 201 with `client_id`. Loopback on arbitrary port accepted.
@@ -343,28 +344,30 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Same preset name in two banks shares rating. Bare `std::map`, no lock. Fix: inject, key on path, add mutex.
       **DONE 2026-11-06:** keyed on path + mutex (singleton kept; DI is T0131). `PresetBridge::migrateNameKeyedRatings` moves old name-keyed stars onto path keys once; path keys win.
 
-- [ ] T0065 `SunoOrchestrator` permanently-failing stub with unreachable members (`SunoOrchestrator.cpp:14-44`) #cleanup
+- [-] T0065 `SunoOrchestrator` permanently-failing stub with unreachable members (`SunoOrchestrator.cpp:14-44`) #cleanup
       Both methods only `emit errorOccurred`. Private handlers never called. `client_` written never read.
       **Not a bug to "fix" (2026-11-07):** the failure is an intentional fail-closed gate —
       B-Side Chat endpoints are uncaptured (AGENTS.md), so the stub must refuse. `onMessageFinished`/
       `onHistoryFinished` are real parsers, not dead code; they fire once a route is wired. Keep until
       a capture exists, then wire. Do not delete the stub to "clean up".
+      **CLOSED 2026-11-08:** re-grep confirms both handlers are real parsers and the stub is the intended fail-closed gate; nothing to change until a capture exists.
 
 - [x] T0066 `searchText` threaded three layers, dropped at bottom (`SunoLibraryManager.cpp:106,122`, `SunoClient.cpp:1310`) #cleanup
       `Q_UNUSED(searchText)`, `setSearchText` has no callers. Real filtering is client-side in `SunoBridge`.
       **DONE 2026-11-07:** dead `searchText`/`searchText_` removed from `fetchLibraryPage` and manager. Remote search stays T0366.
 
-- [ ] T0072 No `reuseItems` anywhere; nested non-interactive `GridView` in virtualized `ListView` (`src/qml/`) #performance
+- [ ] T0072 No `reuseItems` anywhere; nested non-interactive `GridView` in virtualized `ListView` (`src/qml/`) #perf
       `DiscoverView.qml:115-127` materialises every clip of every feed. 16 `layer.enabled` sites.
 
 - [ ] T0076 Views with no loading/empty/error state (`VideoView.qml`, `PresetsPanel.qml`, `PlaylistPanel.qml`, `TransportBar.qml`) #blocks-ui
       Model on `LibraryView.qml:397-448`, `DiscoverView.qml:207-261`.
 
-- [ ] T0080 Two writes to bound `value` on `AppSlider` fight each other (`KaraokeSettings.qml:52`, `RecordingPanel.qml:180,264`) #risk-high
+- [-] T0080 Two writes to bound `value` on `AppSlider` fight each other (`KaraokeSettings.qml:52`, `RecordingPanel.qml:180,264`) #risk-high
       Use `onMoved` not `onValueChanged` per Qt docs.
       **Stale premise (2026-11-07):** both cited call sites already use `onMoved`. Remaining
       `onValueChanged` sites are OverlayPanel.qml / AppColorPicker.qml, which bind a display value,
       not a settings write — no two-way fight. Re-grep before acting; likely closable as no-op.
+      **CLOSED 2026-11-08:** `KaraokeSettings.qml` no longer exists; the remaining cited site (`RecordingPanel.qml:180`) uses `onMoved`. No two-way write exists.
 
 - [x] T0081 `AppSlider` keyboard- and screen-reader-inaccessible (`AppSlider.qml`) #risk-high
       No `activeFocusOnTab`, no arrow keys, no `Accessible.*`. Division by zero at `:37` if `from == to`.
@@ -380,7 +383,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 
 - [ ] T0085 `TextAccessible` names hardcoded English (`src/qml/`) #cleanup
 
-- [x] T0086 Remote art fetched with no `sourceSize`, sometimes not `asynchronous` (`ClipDetailSheet.qml:83-88`, `ClipCard.qml`, `SunoPanel.qml`) #performance
+- [x] T0086 Remote art fetched with no `sourceSize`, sometimes not `asynchronous` (`ClipDetailSheet.qml:83-88`, `ClipCard.qml`, `SunoPanel.qml`) #perf
       **DONE 2026-11-07:** all three remote Image loads get sourceSize + asynchronous; DiscoverView already had both.
 
 - [ ] T0087 Icons: two duplicate copies, neither used, three destinations share one glyph (`resources/icons/`) #cleanup
@@ -443,21 +446,23 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Serializer structurally incapable of emitting token/cookie (preserve). Clip ID is account-linked half of scrub plan.
       **DONE 2026-11-07:** all clip identifiers and local paths out of durable LOG lines and all reason strings; helpers id-free.
 
-- [ ] T0113 `.gitignore` gaps (`build.log` present, `.DS_Store` files in tests/resources/docs) #risk-medium
+- [-] T0113 `.gitignore` gaps (`build.log` present, `.DS_Store` files in tests/resources/docs) #risk-medium
       **Verified no-op (2026-11-07):** `.DS_Store` (line 145) and `build.log` (line 170) are already
       gitignored; `git check-ignore` confirms every stray file, none are tracked. Nothing leaks into commits.
+      **CLOSED 2026-11-08:** `git check-ignore build.log .DS_Store` resolves both; re-verified, still a no-op.
 
-- [ ] T0114 Confirm `libavfilter` NOT currently linked (`Dependencies.cmake:142`) #risk-medium
+- [-] T0114 Confirm `libavfilter` NOT currently linked (`Dependencies.cmake:142`) #risk-medium
       **Verified no-op (2026-11-07):** libavfilter is an OPTIONAL dep gated by CHADVIS_HAS_AVFILTER;
       the no-libavfilter path degrades to `burnInUnavailable` (no post pass), as designed. Already done.
       Burn-in relies on UI gate. Adding post-pass must degrade to "no post pass" on stripped distro.
+      **CLOSED 2026-11-08:** `cmake/Dependencies.cmake` still gates libavfilter behind `CHADVIS_HAS_AVFILTER`; the degradation path is the design.
 
 - [ ] T0115 Song/preset import must work with no Suno account (`docs/PIVOT_PLAN.md`) #feature
       Local-file path = cheapest insurance against upstream disappearing. Prerequisite for batch rendering.
 
 - [ ] T0116 Render-job model and queue exists, no producer (`Bridge.hpp:59-68`, `SunoWorkspace.hpp`) #feature
 
-- [ ] T0197 Nothing re-applies theme when `ui().theme` changes outside Appearance panel (`main.qml`) #risk-med
+- [ ] T0197 Nothing re-applies theme when `ui().theme` changes outside Appearance panel (`main.qml`) #risk-medium
       `applyTheme()` runs once in `Component.onCompleted`. Fix: `Connections` on `themeNameChanged` unless session override active.
 
 - [ ] T0338 **Windows vcpkg ports unpinned, CI reproducibility zero** (`windows.yml:130-160`) #risk-medium
@@ -595,8 +600,9 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       Restore path has the guard (T0032); enqueue does not. Verify: enqueue checks the same flag; shutdown-order test covers `wait()` failure.
 - [ ] T0402 **Move audio/render constants into ConfigData with defaults** (`src/audio/AudioQueue.hpp`, `src/audio/VisualizerAudioTap.cpp`, `src/audio/AudioEngine.hpp`, `src/recorder/RenderExecutor.hpp`, `src/recorder/EncoderSettings.cpp`, `src/core/ConfigData.hpp`, `src/core/ConfigParsers.cpp`) #cleanup (after: T0397)
       Queue capacity, 48 kHz rate, debounce, quantum, frame cap, max-concurrent are baked in. Verify: each has a TOML key + CLI override + documented default equal to today.
-- [ ] T0403 **Modernize snprintf to std::format** (`src/suno/SunoDownloader.cpp`, `src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/OffscreenRenderSpike.cpp`) #cleanup
+- [x] T0403 **Modernize snprintf to std::format** (`src/suno/SunoDownloader.cpp`, `src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/OffscreenRenderSpike.cpp`) #cleanup
       Verify: zero `snprintf` in scope; output strings byte-identical.
+      **DONE 2026-11-08:** 6 sites moved to `std::format` (`{:02d}`/`{:03d}`/`{:x}`/`{:.{}f}`); full build 499/499, ctest 26/26.
 - [ ] T0404 **Re-check the JThread fallback necessity** (`src/util/JThread.hpp`) #cleanup
       Hand-rolled jthread facade may be obsolete on current AppleClang. Verify: fallback removed if all supported compilers have jthread, else the comment cites the exact lacking compiler.
 - [ ] T0405 **Decompose the Application coordinator** (`src/core/Application.cpp`, `src/core/Application.hpp`, `src/core/CliUtils.cpp`) #cleanup (after: T0397)
@@ -631,24 +637,33 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       Device/rate/buffer only apply on restart, disclosed only in a shared notice. Verify: controls reconfigure the engine, or each carries an inline restart badge.
 - [ ] T0420 **Move QML data-shaping to C++ bridges** (`AccountPage`, `ClipDetailSheet.qml`, `PresetsPanel.qml`, `RecordingPanel.qml`) #cleanup (after: T0412)
       Gate rows, detail fields, `"__favorites__"` sentinel strings in JS. Verify: typed bridge models; sentinels eliminated; QML presents only.
-- [ ] T0421 **Close the refuted-premise items as no-ops** (`TODO.md`, `STATUS/`) #cleanup
+- [x] T0421 **Close the refuted-premise items as no-ops** (`TODO.md`, `STATUS/`) #cleanup
       T0080, T0113, T0114, T0065, T0137 bodies refute their own premises but stay `[ ]`. Verify: re-grep each, flip to `[-]` with the in-body refutation + date. No code.
-- [ ] T0422 **Release the expired claims sweep** (`STATUS/*.claim`) #cleanup
+      **DONE 2026-11-08:** all five flipped to `[-]` with a dated CLOSED line; each premise re-grepped first.
+- [x] T0422 **Release the expired claims sweep** (`STATUS/*.claim`) #cleanup
       9 expired claims (T0051–T0057, T0182, T0199, T0335, T0336) block `O_EXCL` re-claim; T0358 `[~]` has no claim file. Verify: sweep run, board marks match filesystem claims.
+      **DONE 2026-11-08:** all 11 expired `.claim` files released; `STATUS/*.claim` is empty and `task.sh peers` reports no stale rows.
 - [ ] T0423 **Split T0362 steps 2–8 into per-step tasks** (`TODO.md`, `docs/suno_api/`) #feature (after: T0362)
       8 steps in one 21-line task; step 1 done. Hold until the T0362 claim is released. Verify: one task per step (upload, stem, persona-create, free reads, cover art, voice verification, playlist-trash-v2).
-- [ ] T0424 **Fix the dead after: edge on T0383** (`TODO.md`) #cleanup
+- [x] T0424 **Fix the dead after: edge on T0383** (`TODO.md`) #cleanup
       T0383 `(after: T0267)` — T0267 exists nowhere. Verify: edge dropped or repointed.
-- [ ] T0425 **Index the 5 unlisted suno_api docs in docs/README.md** (`docs/README.md`) #cleanup
-      `MCP.md`, `UI-SURFACE-INVENTORY.md`, `CLIENT-GATE-RECON-2026-11-07.md`, `LOGIN-CAPTURE-FINALIZATION.md`, `TOUCH-TOKENS-SHAPES.md` missing from the hub table; add `docs/backlog/` link. Verify: every file under `docs/suno_api/*.md` appears in the hub.
-- [ ] T0426 **Fix the 2 broken relative links in docs/backlog/T0346.md** (`docs/backlog/T0346.md`) #cleanup
-      `../../suno_api/` → `../suno_api/`. Verify: links resolve from `docs/backlog/`.
-- [ ] T0427 **Fix build.sh --help --qt text** (`build.sh`) #cleanup
-      Help omits `$HOME/Qt`, MacPorts, and the `.qt-stitch`-last rule documented in CHANGELOG. Verify: `--help` order matches the shipped behavior.
-- [ ] T0428 **Re-rank T0011 P0 → P1** (`TODO.md`) #cleanup
-      Verbs enabled 2026-10-30; the UI gap is T0359's scope. Verify: header moved; T0359 owns the UI gap.
-- [ ] T0429 **Normalise #risk-med → #risk-medium; #performance → #perf** (`TODO.md`) #cleanup
-      Grammar lists only the canonical forms. Verify: `grep -c "#risk-med[^i]" TODO.md` is 0.
+      **DONE 2026-11-08:** edge dropped; T0383 has no unmet dependency (its mutation half shipped 2026-11-07 and its reads 2026-11-08).
+- [x] T0425 **Index the 5 unlisted suno_api docs in docs/README.md** (`docs/README.md`) #cleanup
+      `MCP.md`, `UI-SURFACE-INVENTORY.md`, `CLIENT-GATE-RECON-2026-11-07.md`, `LOGIN-CAPTURE-FINALIZATION.md`, `TOUCH-TOKENS-SHAPES.md` missing from the hub table.
+      **DONE 2026-11-08:** all five added as table rows between OAuth redirect analysis and Evidence provenance; every link resolves from `docs/`.
+- [x] T0426 **Fix the 2 broken relative links in docs/backlog/T0346.md** (`docs/backlog/T0346.md`) #cleanup
+      `../../suno_api/` → `../suno_api/`.
+      **DONE 2026-11-08:** lines 8 and 23 fixed; both targets confirmed present under `docs/suno_api/`.
+- [x] T0427 **Fix build.sh --help --qt text** (`build.sh`) #cleanup
+      Help omits `$HOME/Qt`, MacPorts, and the `.qt-stitch`-last rule documented in CHANGELOG.
+      **DONE 2026-11-08:** help now reads `--qt PATH  Qt6 prefix (else $CHADVIS_QT_PATH, then $HOME/Qt, MacPorts, Homebrew/distro, .qt-stitch last)`, matching the resolution order in the script.
+- [x] T0428 **Re-rank T0011 P0 → P1** (`TODO.md`) #cleanup
+      Verbs enabled 2026-10-30; the UI gap is T0359's scope.
+      **DONE 2026-11-08:** T0011 block moved under P1 with a dated re-rank line; T0359 still owns the UI gap.
+- [x] T0429 **Normalise `#risk-med` → `#risk-medium`; `#performance` → `#perf`** (`TODO.md`) #cleanup
+      Grammar lists only the canonical forms.
+      **DONE 2026-11-08:** `perl -i -pe 's/#risk-med(?!ium)/#risk-medium/g; s/#performance\b/#perf/g' TODO.md`
+      leaves 0 matches for either non-canonical tag; `task.sh audit` clean.
 
 ---
 
@@ -738,9 +753,10 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
 - [ ] T0136 GPU CI lane or honest "no GL coverage" badge (`.github/workflows/`) #risk-high
       `integration_gl_tests`, `test_OffscreenRenderSpike` skip headless. ctest counts skip as success.
 
-- [ ] T0137 Preset categories always "Uncategorized" (`PresetScanner.cpp`) #feature
+- [-] T0137 Preset categories always "Uncategorized" (`PresetScanner.cpp`) #feature
       **Stale (2026-11-07):** PresetScanner derives category from the relative subdirectory
       (`CategoryA` test passes); "Uncategorized" is correct only for presets flat in the scan root.
+      **CLOSED 2026-11-08:** `PresetScanner.cpp:33-35` sets the category from the relative subdirectory; the fallback fires only for a flat root.
 
 - [ ] T0138 Standard modern C++ where tree reaches for older idioms (`src/`) #cleanup
       `std::mdspan`, concepts, `std::array` for `CircularBuffer`, `std::variant`, `std::jthread`.
@@ -755,14 +771,14 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
 
 - [ ] T0299 **Linux ships only TGZ/ZIP — no .deb/.rpm/AppImage/Flatpak** (`Install.cmake:43`) #feature
 
-- [ ] T0300 **Nothing measures coverage** (`.github/workflows/`, `CMakeLists.txt`) #risk-med
+- [ ] T0300 **Nothing measures coverage** (`.github/workflows/`, `CMakeLists.txt`) #risk-medium
 
 - [ ] T0301 **No static-analysis, SBOM, or dependency-vulnerability lane** (`.github/workflows/`) #security
 
 - [ ] T0305 **Four overlapping C++ skills, unclear provenance** (`.opencode/skills/`) #cleanup
       `c-cpp-profi`, `modern-cpp`, `cpp-coding-standards`, `cpp-pro` all cover modern C++. Consolidate.
 
-- [ ] T0309 **Browser-cookie import macOS-only in code, platform-blind in UI** (`BrowserCookieImport.cpp:223-260`) #risk-med
+- [ ] T0309 **Browser-cookie import macOS-only in code, platform-blind in UI** (`BrowserCookieImport.cpp:223-260`) #risk-medium
       `deriveChromiumKey`/`decryptChromiumValue` `#ifdef Q_OS_MACOS` only. Implement DPAPI (Windows), libsecret (Linux),
       or gate affordance by platform.
 

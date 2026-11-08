@@ -48,6 +48,11 @@ routes** — it states which single file owns which kind of fact.
 | [Observed leads](suno_api/OBSERVED-LEADS.md) | **Non-contractual** | Every `[LEAD]`/`[VERIFY]` route, plus client flag names. Research only — never a stable contract, never an implementation source. |
 | [Third-party implementations](suno_api/THIRD-PARTY-IMPLEMENTATIONS.md) | **Non-contractual** | What other clients claim the API is. Always `[LEAD]`; can neither promote nor demote a row, and never an allowlist source. |
 | [OAuth redirect analysis](suno_api/OAUTH_REDIRECT_ANALYSIS.md) | **Native-callback gate** | The captured Google/Facebook web flow and the intended `127.0.0.1` loopback sign-in path. |
+| [Client gate recon](suno_api/CLIENT-GATE-RECON-2026-11-07.md) | **Non-contractual** | Point-in-time scan of delivered `/me` client code and cached client-side feature gates and Statsig evaluations, `[LEAD]`. |
+| [Login capture finalization](suno_api/LOGIN-CAPTURE-FINALIZATION.md) | **Auth working record** | What the current Suno login captures provide and whether the client has enough to reach a wire-ready authentication path. |
+| [Suno MCP](suno_api/MCP.md) | **Official-server observation** | The official MCP server at `https://api.suno.com/mcp`, its auth chain and scopes, from unauthenticated observations. |
+| [Touch tokens shapes](suno_api/TOUCH-TOKENS-SHAPES.md) | **Auth response shapes** | Recorded response shapes for the bearer-minting `tokens` route and the keep-alive `touch` route, recorded 2026-10-16. |
+| [UI surface inventory](suno_api/UI-SURFACE-INVENTORY.md) | **Non-contractual** | What the web client's own UI surfaces expose, from a recorded session — `[LEAD]` only, not an endpoint catalogue. |
 | [Evidence provenance](suno_api/raw/README.md) | **Provenance only** | Capture dates, SHA-256 hashes, and the rules for handling evidence. |
 
 Raw network captures are **not** committed. See

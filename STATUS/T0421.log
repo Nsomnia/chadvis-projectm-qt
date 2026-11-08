@@ -1,0 +1,2 @@
+2026-11-08T11:40:43Z  CHANGE    flipped T0065/T0080/T0113/T0114/T0137 to [-] with dated CLOSED evidence after re-grepping each premise.
+2026-11-08T11:40:43Z  VERIFY    re-grep: SunoOrchestrator handlers are real parsers; KaraokeSettings.qml gone and RecordingPanel.qml:180 uses onMoved; git check-ignore resolves build.log and .DS_Store; libavfilter still behind CHADVIS_HAS_AVFILTER; PresetScanner.cpp:33-35 derives category from the subdirectory.

@@ -1,0 +1,1 @@
+2026-11-08T11:40:43Z  CHANGE    dropped the dead (after: T0267) edge from T0383; T0267 exists nowhere and T0383 half-shipped twice (mutations 2026-11-07, reads 2026-11-08). task.sh audit passes.

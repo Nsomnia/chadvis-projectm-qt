@@ -15,6 +15,7 @@
 #include <QJsonDocument>
 #include <QNetworkAccessManager>
 #include <QUrl>
+#include <format>
 #include <fstream>
 #include <algorithm>
 #include <cctype>
@@ -1083,9 +1084,7 @@ void SunoDownloader::saveLyricsSidecar(const std::string& clipId,
         const int sec = totalSec % 60;
         const int min = (totalSec / 60) % 60;
         const int hr = totalSec / 3600;
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%02d:%02d:%02d,%03d", hr, min, sec, ms);
-        return std::string(buf);
+        return std::format("{:02d}:{:02d}:{:02d},{:03d}", hr, min, sec, ms);
     };
 
     int index = 1;
