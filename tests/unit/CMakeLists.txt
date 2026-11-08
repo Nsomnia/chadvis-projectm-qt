@@ -27,6 +27,7 @@ add_executable(unit_tests
     visualizer/test_PresetManager.cpp
     visualizer/test_PresetPersistence.cpp
     visualizer/test_RatingManager.cpp
+    visualizer/test_VisualizerRendererCapture.cpp
     suno/test_AuthModule.cpp
     suno/test_StoredCredentialClassification.cpp
     suno/test_BrowserCookieImport.cpp

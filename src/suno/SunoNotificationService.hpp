@@ -63,6 +63,7 @@ public:
 
     void refresh();
     void markAllRead();
+    void clearBadge();
 
     [[nodiscard]] const QList<Notification>& notifications() const { return notifications_; }
     [[nodiscard]] int unreadCount() const { return unreadCount_; }
@@ -75,6 +76,7 @@ signals:
     void loadingChanged();
     void errorChanged(const QString& message);
     void markAllReadCompleted();
+    void badgeCleared();
 
 private:
     enum class ReplyKind {
@@ -84,12 +86,15 @@ private:
 
     void enqueueRefresh();
     void enqueueMarkAllRead(const QDateTime& before);
+    void enqueueClearBadge();
     void handleRefreshReply(QNetworkReply* reply, ReplyKind kind, quint64 generation);
     void handleMarkReadReply(QNetworkReply* reply, quint64 generation);
+    void handleClearBadgeReply(QNetworkReply* reply, quint64 generation);
     void setLoading(bool loading);
     void setError(const QString& message);
     void failRefresh(const QString& message);
     void failMarkRead(const QString& message);
+    void failClearBadge(const QString& message);
     QString requestError(QNetworkReply* reply, const QString& fallback) const;
 
     SunoClient* client_{nullptr};
@@ -98,6 +103,7 @@ private:
     QString error_;
     quint64 refreshGeneration_{0};
     quint64 markGeneration_{0};
+    quint64 clearGeneration_{0};
     int refreshPending_{0};
     /// The last list body that was applied, so a poll that returns the same page
     /// does not re-emit notificationsChanged and rebuild the list under the
@@ -106,6 +112,7 @@ private:
     QTimer* pollTimer_{nullptr};
     bool refreshLoading_{false};
     bool markLoading_{false};
+    bool clearLoading_{false};
     bool loading_{false};
 };
 

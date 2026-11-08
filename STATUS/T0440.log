@@ -1,0 +1,1 @@
+2026-11-08T15:23:37Z  VERIFY    Two defects fixed by the orchestrator: (1) init() fixture now wipes the shared QTemporaryDir before creating presets (recursive scan had counted a previous slot temp dir preset -> count 5 vs 4); (2) integration_tests was stale -- it is deliberately absent from SAFE_TESTS, so --tests never rebuilt it; rebuilt explicitly and the new GL slot passes.\n

@@ -47,6 +47,9 @@ void PresetBridge::attachManager() {
     auto* self = this;
     s_manager->presetChanged.connect([self](const vc::PresetInfo* p) { self->onPresetChanged(p); });
     s_manager->listChanged.connect([self]() { self->onListChanged(); });
+    // A failed scan never publishes a generation, so without this the panel
+    // would show its scanning placeholder forever for a scan that already ended.
+    s_manager->scanFailed.connect([self](const std::string& /*message*/) { self->onScanFailed(); });
 
     // A manager that was already scanned before the bridge existed (tests, a
     // synchronous startup scan) has its list waiting here; otherwise the first
@@ -119,6 +122,11 @@ int PresetBridge::currentIndex() const {
 
 int PresetBridge::presetCount() const {
     return s_manager ? static_cast<int>(s_manager->count()) : 0;
+}
+
+bool PresetBridge::scanning() const {
+    // No manager, or no scan ever requested: nothing can be in flight.
+    return s_manager ? s_manager->scanInFlight() : false;
 }
 
 QString PresetBridge::searchQuery() const { return searchQuery_; }
@@ -227,6 +235,9 @@ void PresetBridge::rescan() {
     // cannot queue a pile of walks or multiply the QVariantList rebuilds that
     // presetsChanged triggers.
     s_manager->rescanAsync();
+    // A queued scan is in flight now, before the finished list lands: fold the
+    // flag so the panel shows the scanning placeholder, not the empty one.
+    emit scanningChanged();
 }
 
 QString PresetBridge::folder() const {
@@ -250,6 +261,7 @@ void PresetBridge::setFolder(const QString& path) {
         // Re-picking the current folder means "scan it again", which is what the
         // Rescan button does -- no config write, no auto-save churn.
         s_manager->rescanAsync();
+        emit scanningChanged();
         return;
     }
 
@@ -260,6 +272,7 @@ void PresetBridge::setFolder(const QString& path) {
     }
     emit folderChanged();
     s_manager->scanAsync(dir, true);
+    emit scanningChanged();
 }
 
 void PresetBridge::onPresetChanged(const vc::PresetInfo* preset) {
@@ -269,7 +282,16 @@ void PresetBridge::onPresetChanged(const vc::PresetInfo* preset) {
 
 void PresetBridge::onListChanged() {
     migrateRatingsOnFirstList();
+    // The in-flight scan landed (or a follow-up is already queued, in which
+    // case the live flag still reads true): fold the flag, then the list.
+    emit scanningChanged();
     emit presetsChanged();
+}
+
+void PresetBridge::onScanFailed() {
+    // The scan ended without a list. The previous generation is untouched, so
+    // only the flag folds -- the panel's empty block must come back.
+    emit scanningChanged();
 }
 QVariantMap PresetBridge::presetToVariant(const vc::PresetInfo& info, int fullListIndex) const {
     QVariantMap map;

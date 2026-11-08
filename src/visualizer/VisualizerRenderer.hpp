@@ -77,6 +77,32 @@ public:
     void stopRecording();
     bool isRecording() const { return recording_; }
 
+    /// What `captureAsync` hands to the encoder on one call. Kept a pure
+    /// decision so the frame-0 path is testable without a GL context: the
+    /// first rendered frame used to reach no emit at all, because the map
+    /// block was gated on a flag that started false (T0171).
+    enum class CaptureEmit : u8 {
+        /// Complete this call's own readback inline and emit it now: the first
+        /// call since setup, when nothing is pending in the sibling buffer.
+        InlineOwnFrame = 0,
+        /// Emit the sibling buffer's completed readback. The pipelined steady
+        /// state: one frame of latency hides the readback behind the next
+        /// render.
+        EmitPendingFrame = 1,
+        /// Emit nothing: this call's readback becomes the next call's pending
+        /// frame, seating the pipeline once.
+        EmitNothing = 2,
+    };
+
+    /// Which buffer `captureAsync` emits for the state setupPBOs left
+    /// behind. The first frame after setup must emit, or its recording
+    /// starts a frame late (or empty, if stop comes before a second render).
+    [[nodiscard]] static constexpr CaptureEmit
+    captureEmit(bool firstCapture, bool hasPendingFrame) noexcept {
+        if (firstCapture) return CaptureEmit::InlineOwnFrame;
+        return hasPendingFrame ? CaptureEmit::EmitPendingFrame : CaptureEmit::EmitNothing;
+    }
+
     // ProjectM access
     pm::Bridge& projectM() { return projectM_; }
     const pm::Bridge& projectM() const { return projectM_; }
@@ -90,6 +116,9 @@ private:
     void destroyPBOs();
     void captureDefaultFramebuffer(u32 width, u32 height);
     void captureAsync(GLuint readFramebuffer);
+    /// Map the PBO at `index` and hand it to the encoder as one captured
+    /// frame, stamped with the capture time of the frame it holds.
+    void emitPboFrame(u32 index, u32 size, i64 timestampUs);
 
     pm::Bridge projectM_;
     // Readback scaling target only, created lazily when the recording
@@ -115,7 +144,24 @@ private:
     u32 recordHeight_{1080};
     GLuint pbos_[2]{0, 0};
     u32 pboIndex_{0};
+    /// True when both PBOs were created AND allocated in setupPBOs. Derived
+    /// from the init outcome and set only there; the capture path reads it
+    /// and never assigns it. It used to be initialised false and flipped to
+    /// true by the first captureAsync, which is also what gated the emit --
+    /// so the first frame's map was skipped by construction (T0171).
     bool pboAvailable_{false};
+    /// True until the first captureAsync after setup: that call completes
+    /// its own readback inline so frame 0 reaches the encoder from the render
+    /// that produced it, not from a second render that may never come.
+    bool pboFirstCapture_{true};
+    /// A completed readback sits in the sibling buffer, waiting for the next
+    /// call to map and emit it. False after the inline first frame (its
+    /// readback was consumed in its own call) and after setup.
+    bool pboHasPendingFrame_{false};
+    /// Capture time (microseconds) of the pending readback above, so its
+    /// emitted frame is stamped with its content's time, not its emit time.
+    /// Behavior-neutral in steady state: the anchor moves by the same tick.
+    i64 pboPendingTimestampUs_{0};
 
     AudioQueue* audioQueue_{nullptr};
     // The rate the caller actually drives render() at. Feeds the per-frame

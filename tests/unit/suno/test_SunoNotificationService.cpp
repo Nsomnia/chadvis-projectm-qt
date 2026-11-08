@@ -493,6 +493,154 @@ private slots:
         // four turned the rate limiter's pacing into part of the assertion.
         QTRY_VERIFY_WITH_TIMEOUT(listRequests >= 1, 15000);
     }
+
+    // T0375: clear-badge success is a 204 with an empty body, so the reply
+    // parses nothing. A 2xx settles Accepted, zeroes the counter, and
+    // re-reads the surface.
+    void clearBadgeSuccessClearsBadge()
+    {
+        std::vector<FakeReply*> replies;
+        std::vector<QByteArray> bodies;
+        auto factory = [&replies, &bodies](const QNetworkRequest& request, const std::string& method,
+                                          const QByteArray& data) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            bodies.push_back(data);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy cleared(&service, &SunoNotificationService::badgeCleared);
+
+        service.clearBadge();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 1, 15000);
+        QVERIFY(replies.front()->url().path().contains(QStringLiteral("notification/v2/clear-badge")));
+        QCOMPARE(static_cast<int>(replies.front()->operation()),
+                 static_cast<int>(QNetworkAccessManager::PostOperation));
+        // No request fields captured: the client sends the empty object.
+        QCOMPARE(QJsonDocument::fromJson(bodies.front()).object(), QJsonObject{});
+
+        replies.front()->respond(QByteArray{}, 204);
+        QTRY_COMPARE_WITH_TIMEOUT(cleared.count(), 1, 15000);
+        QVERIFY(service.error().isEmpty());
+        QCOMPARE(service.unreadCount(), 0);
+
+        // A settled clear re-reads the surface; drain that pair so the
+        // test does not leave the service loading.
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 3, 15000);
+        const QJsonObject listRoot{
+            {QStringLiteral("notified_at"), QStringLiteral("2026-10-24T03:08:00.000Z")},
+            {QStringLiteral("notifications"), QJsonArray{}},
+        };
+        const QByteArray listBody = QJsonDocument(listRoot).toJson(QJsonDocument::Compact);
+        const QJsonObject badgeRoot{{QStringLiteral("badge_count"), 0}};
+        const QByteArray badgeBody = QJsonDocument(badgeRoot).toJson(QJsonDocument::Compact);
+        for (std::size_t i = 1; i < replies.size(); ++i) {
+            if (replies[i]->url().path().contains(QStringLiteral("notification/v3"))) {
+                replies[i]->respond(listBody, 200);
+            } else if (replies[i]->url().path().contains(QStringLiteral("badge-count"))) {
+                replies[i]->respond(badgeBody, 200);
+            }
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(!service.isLoading(), 15000);
+    }
+
+    // A 404 settles Rejected: the error is reported and no second request
+    // is scripted because mutations pass retryOnUnauthorized=false.
+    void clearBadgeNotFoundRejects()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy cleared(&service, &SunoNotificationService::badgeCleared);
+
+        service.clearBadge();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 1, 15000);
+        const QJsonObject failure{{QStringLiteral("detail"), QStringLiteral("Not found")}};
+        replies.front()->respond(QJsonDocument(failure).toJson(QJsonDocument::Compact), 404);
+        QTRY_VERIFY_WITH_TIMEOUT(!service.error().isEmpty(), 15000);
+        QCOMPARE(cleared.count(), 0);
+        QTest::qWait(100);
+        QCOMPARE(replies.size(), std::size_t{1});
+        QVERIFY(!service.isLoading());
+    }
+
+    // Clear-badge takes no arguments, so the Refused case is the
+    // no-auth case: nothing is sent and the error names the cause.
+    void clearBadgeRefusesWhenSignedOut()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        // No token: signed out.
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy cleared(&service, &SunoNotificationService::badgeCleared);
+
+        service.clearBadge();
+        QTest::qWait(100);
+        QCOMPARE(replies.size(), std::size_t{0});
+        QVERIFY(!service.error().isEmpty());
+        QCOMPARE(cleared.count(), 0);
+        QVERIFY(!service.isLoading());
+    }
+
+    // A 2xx parses nothing, so a malformed success body still settles
+    // Accepted rather than reporting the server's accepted clear as a
+    // failure.
+    void clearBadgeAcceptsMalformedSuccessBody()
+    {
+        std::vector<FakeReply*> replies;
+        auto factory = [&replies](const QNetworkRequest& request, const std::string& method,
+                                  const QByteArray&) {
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        SunoNotificationService service(&client, nullptr, 0);
+        QSignalSpy cleared(&service, &SunoNotificationService::badgeCleared);
+
+        service.clearBadge();
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 1, 15000);
+        replies.front()->respond(QByteArray("not json"), 204);
+        QTRY_COMPARE_WITH_TIMEOUT(cleared.count(), 1, 15000);
+        QVERIFY(service.error().isEmpty());
+
+        QTRY_VERIFY_WITH_TIMEOUT(replies.size() >= 3, 15000);
+        const QJsonObject listRoot{
+            {QStringLiteral("notified_at"), QStringLiteral("2026-10-24T03:08:00.000Z")},
+            {QStringLiteral("notifications"), QJsonArray{}},
+        };
+        const QByteArray listBody = QJsonDocument(listRoot).toJson(QJsonDocument::Compact);
+        const QJsonObject badgeRoot{{QStringLiteral("badge_count"), 0}};
+        const QByteArray badgeBody = QJsonDocument(badgeRoot).toJson(QJsonDocument::Compact);
+        for (std::size_t i = 1; i < replies.size(); ++i) {
+            if (replies[i]->url().path().contains(QStringLiteral("notification/v3"))) {
+                replies[i]->respond(listBody, 200);
+            } else if (replies[i]->url().path().contains(QStringLiteral("badge-count"))) {
+                replies[i]->respond(badgeBody, 200);
+            }
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(!service.isLoading(), 15000);
+    }
 };
 
 #include "test_SunoNotificationService.moc"

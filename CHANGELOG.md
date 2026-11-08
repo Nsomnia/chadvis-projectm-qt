@@ -8,6 +8,18 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Recordings now start with frame zero.** The first rendered frame used to wait for the second render
+  before being emitted, and a one-render recording lost it entirely. The recorder flag is now derived
+  from buffer initialisation and the first capture completes inline; future recordings carry the frame
+  they actually rendered first. (T0171)
+
+- **The preset panel knows when it is scanning.** `PresetBridge.scanning` tracks the manager's scan in
+  flight, and the empty copy only appears when the library is genuinely empty, not while the startup
+  scan is still running. (T0440)
+
+- **Notification badges can be cleared.** `POST /notification/v2/clear-badge` is wired, zeroing the
+  unread count on the 204 and refreshing the list. (T0375)
+
 - **The interface has accessible names and keyboard paths.** `Accessible.*` went from 39 lines in 13
   files to 150 in 31: the account pill (previously mouse-only), the colour picker, transport controls,
   list delegates, spin rows. No layout, size, or visible copy changed. (T0082)

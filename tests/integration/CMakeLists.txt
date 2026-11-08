@@ -40,6 +40,7 @@ add_test(NAME integration_gl_tests
         rendererRecordingPathDeliversPixels
         renderingRestoresTheCallersGlState
         capturedFramesAreFlippedIntoTopDownRows
+        firstRenderEmitsAFrame
         recordingAtADifferentResolutionIsScaled
         encodedFileContainsTheVisualizerPicture
         liveWindowCapturesFrames

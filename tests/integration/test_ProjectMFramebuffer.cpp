@@ -235,8 +235,8 @@ public:
     VisualizerRenderer& renderer() { return renderer_; }
 
     // Records the first emitted frame and returns it, rendering up to
-    // `maxFrames` times. The PBO pipeline emits the previous frame's readback,
-    // so one render is never enough.
+    // `maxFrames` times. The first frame is emitted by its own render
+    // (T0171); the loop bound only guards an unexposed or failed capture.
     std::vector<u8> captureFirstFrame(u32 width, u32 height, u32 maxFrames = 6) {
         std::vector<u8> captured;
         renderer_.frameCaptured.connect([&](std::vector<u8> pixels, u32, u32, i64) {
@@ -570,6 +570,36 @@ private slots:
                  "captured rows are the raw bottom-up readback, i.e. upside down");
         QCOMPARE(row(captured, kFrameSize, 0), row(rawFirstFrame, kFrameSize, kFrameSize - 1));
         QCOMPARE(row(captured, kFrameSize, kFrameSize - 1), row(rawFirstFrame, kFrameSize, 0));
+    }
+
+    // T0171 frame-0 half: the FIRST rendered frame must reach the encoder
+    // from its own render call. Before the fix the PBO map was gated on
+    // pboAvailable_, which setupPBOs hardcoded false and the first capture
+    // only flipped to true after skipping its emit, so one render produced
+    // no frame at all and the head of every recording was a frame late.
+    void firstRenderEmitsAFrame() {
+        GlContextFixture fixture;
+        if (!fixture.isValid()) QSKIP(fixture.invalidReason().constData());
+
+        RendererHarness harness(fixture, kFrameSize);
+        QVERIFY(harness.isInitialized());
+
+        u32 emitted = 0;
+        std::vector<u8> captured;
+        harness.renderer().frameCaptured.connect([&](std::vector<u8> pixels, u32, u32, i64) {
+            ++emitted;
+            if (captured.empty()) captured = std::move(pixels);
+        });
+        harness.renderer().setRecordingSize(kFrameSize, kFrameSize);
+        harness.renderer().startRecording();
+        harness.renderer().render(0, 0, kFrameSize, kFrameSize, true);
+        fixture.gl().glFinish();
+
+        QCOMPARE(emitted, 1u);
+        QCOMPARE(captured.size(), static_cast<usize>(kFrameSize) * kFrameSize * 4);
+        QVERIFY2(nonZeroBytes(captured) > 0,
+                 "frame 0 was emitted but holds no picture");
+        harness.renderer().stopRecording();
     }
 
     // The product-level claim, end to end: a real encoded file with a real

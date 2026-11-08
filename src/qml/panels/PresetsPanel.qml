@@ -61,14 +61,15 @@ ColumnLayout {
         // No presets yet. The library is scanned off-thread at startup and
         // PresetBridge publishes only the finished list, so an empty result
         // means either the scan has not landed, the folder has no presets, or
-        // every preset is blacklisted -- there is no exposed scanning flag to
-        // tell them apart. The copy therefore names the folder rather than
-        // claiming a cause, and Rescan is the action in every one of those
-        // cases; presetsChanged repopulates the list on its own.
+        // every preset is blacklisted. PresetBridge.scanning tells them apart:
+        // while it is set the busy placeholder shows, and the empty copy below
+        // only appears once the scan has landed (or failed). Rescan is the
+        // action in every one of those cases; presetsChanged repopulates the
+        // list on its own.
         ColumnLayout {
             anchors.centerIn: parent
             width: parent.width - Theme.spacingLarge * 2
-            visible: presetList.count === 0
+            visible: PresetBridge.presets.length === 0 && !PresetBridge.scanning
             spacing: Theme.spacingSmall
 
             Text {
@@ -85,6 +86,23 @@ ColumnLayout {
                 flat: true
                 Layout.alignment: Qt.AlignHCenter
                 onClicked: PresetBridge.rescan()
+            }
+        }
+
+        ColumnLayout {
+            anchors.centerIn: parent
+            visible: PresetBridge.presets.length === 0 && PresetBridge.scanning
+            spacing: Theme.spacingSmall
+
+            BusyIndicator {
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            Text {
+                text: "Loading presets…"
+                color: Theme.textSecondary
+                font: Theme.fontCaption
+                Layout.alignment: Qt.AlignHCenter
             }
         }
     }

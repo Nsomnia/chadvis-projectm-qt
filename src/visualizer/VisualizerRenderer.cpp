@@ -155,6 +155,9 @@ void VisualizerRenderer::abandonGlObjects() {
     pbos_[0] = pbos_[1] = 0;
     pboIndex_ = 0;
     pboAvailable_ = false;
+    pboFirstCapture_ = true;
+    pboHasPendingFrame_ = false;
+    pboPendingTimestampUs_ = 0;
     captureTarget_.abandon();
     projectM_.abandon();
     abandoned_ = true;
@@ -246,6 +249,9 @@ void VisualizerRenderer::renderFrame(u32 x, u32 y, u32 w, u32 h) {
 
 void VisualizerRenderer::setupPBOs() {
     destroyPBOs();
+    // Drain errors from before this call so the check below sees only ours.
+    while (glGetError() != GL_NO_ERROR) {
+    }
     glGenBuffers(2, pbos_);
     u32 size = recordWidth_ * recordHeight_ * 4;
     for (int i = 0; i < 2; ++i) {
@@ -254,7 +260,16 @@ void VisualizerRenderer::setupPBOs() {
     }
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
     pboIndex_ = 0;
-    pboAvailable_ = false;
+    pboFirstCapture_ = true;
+    pboHasPendingFrame_ = false;
+    pboPendingTimestampUs_ = 0;
+    // Derived from the actual init outcome, not an initial value: both names
+    // were handed back and the allocation raised no error. captureAsync
+    // reads the PBOs only when this is true; the capture path never sets it.
+    pboAvailable_ = pbos_[0] != 0 && pbos_[1] != 0 && glGetError() == GL_NO_ERROR;
+    if (!pboAvailable_) {
+        LOG_ERROR("VisualizerRenderer: PBO init failed; recording captures nothing");
+    }
 }
 
 void VisualizerRenderer::destroyPBOs() {
@@ -285,33 +300,72 @@ void VisualizerRenderer::captureDefaultFramebuffer(u32 width, u32 height) {
     captureAsync(source);
 }
 
+void VisualizerRenderer::emitPboFrame(u32 index, u32 size, i64 timestampUs) {
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[index]);
+    auto* ptr = static_cast<u8*>(glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY));
+    if (!ptr) return;
+    std::vector<u8> buffer(ptr, ptr + size);
+    glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+    // glReadPixels hands back rows from the bottom of the framebuffer
+    // up; the encoder uploads them as-is, so the picture would land in
+    // the file upside down without this.
+    FrameGrabber::flipImage(buffer, recordWidth_, recordHeight_);
+    frameCaptured.emitSignal(std::move(buffer), recordWidth_, recordHeight_, timestampUs);
+}
+
 void VisualizerRenderer::captureAsync(GLuint readFramebuffer) {
     const u32 nextIndex = (pboIndex_ + 1) % 2;
     const u32 size = recordWidth_ * recordHeight_ * 4;
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
+    if (!pboAvailable_) {
+        // Buffer init failed (setupPBOs already logged it). Issuing
+        // glReadPixels into no buffer would read through a null pointer, so
+        // the frame is skipped instead: the recording is empty, not a crash.
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        return;
+    }
+
     glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[pboIndex_]);
     glReadPixels(0, 0, recordWidth_, recordHeight_, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    if (pboAvailable_) {
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos_[nextIndex]);
-        auto* ptr = static_cast<u8*>(glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY));
-        if (ptr) {
-            std::vector<u8> buffer(ptr, ptr + size);
-            glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-            // glReadPixels hands back rows from the bottom of the framebuffer
-            // up; the encoder uploads them as-is, so the picture would land in
-            // the file upside down without this.
-            FrameGrabber::flipImage(buffer, recordWidth_, recordHeight_);
-            frameCaptured.emitSignal(std::move(buffer), recordWidth_, recordHeight_,
-                                     std::chrono::duration_cast<std::chrono::microseconds>(
-                                             std::chrono::steady_clock::now().time_since_epoch())
-                                             .count());
+    const i64 readbackUs =
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count();
+
+    switch (captureEmit(pboFirstCapture_, pboHasPendingFrame_)) {
+        case CaptureEmit::InlineOwnFrame: {
+            // The first frame since setup: nothing is pending in the sibling,
+            // so this frame's pixels cannot be emitted from there. Complete
+            // the readback inline -- one sync, once per recording -- and emit
+            // it now, instead of holding frame 0 back a render (or losing it
+            // entirely when the recording stops before a second one).
+            glFinish();
+            emitPboFrame(pboIndex_, size, readbackUs);
+            pboFirstCapture_ = false;
+            pboHasPendingFrame_ = false;
+            break;
+        }
+        case CaptureEmit::EmitPendingFrame: {
+            // Pipelined steady state: the sibling holds the frame whose
+            // readback completed while this one was rendering.
+            emitPboFrame(nextIndex, size, pboPendingTimestampUs_);
+            pboPendingTimestampUs_ = readbackUs;
+            break;
+        }
+        case CaptureEmit::EmitNothing: {
+            // The second call seeds the pipeline: its readback becomes the
+            // next call's pending frame. One call holds a frame back, then
+            // every call emits exactly one.
+            pboHasPendingFrame_ = true;
+            pboPendingTimestampUs_ = readbackUs;
+            break;
         }
     }
+
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     pboIndex_ = nextIndex;
-    pboAvailable_ = true;
 }
 
 void VisualizerRenderer::setRecordingSize(u32 width, u32 height) {

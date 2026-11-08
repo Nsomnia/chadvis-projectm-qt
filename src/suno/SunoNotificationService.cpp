@@ -177,7 +177,8 @@ SunoNotificationService::SunoNotificationService(SunoClient* client, QObject* pa
         // report "Not authenticated" every interval, which is a timer talking,
         // not a user action, and the sign-out path already reports once.
         connect(pollTimer_, &QTimer::timeout, this, [this]() {
-            if (!client_ || !client_->isAuthenticated() || loading_ || markLoading_) {
+            if (!client_ || !client_->isAuthenticated() || loading_ || markLoading_ ||
+                clearLoading_) {
                 return;
             }
             refresh();
@@ -194,6 +195,9 @@ SunoNotificationService::SunoNotificationService(SunoClient* client, QObject* pa
             }
             if (markLoading_) {
                 failMarkRead(QStringLiteral("Not authenticated"));
+            }
+            if (clearLoading_) {
+                failClearBadge(QStringLiteral("Not authenticated"));
             }
         });
     }
@@ -360,7 +364,7 @@ void SunoNotificationService::handleRefreshReply(QNetworkReply* reply, ReplyKind
     }
     if (refreshPending_ == 0) {
         refreshLoading_ = false;
-        setLoading(markLoading_);
+        setLoading(markLoading_ || clearLoading_);
     }
 }
 
@@ -435,7 +439,7 @@ void SunoNotificationService::handleMarkReadReply(QNetworkReply* reply, quint64 
     // left every notification unread. SunoLibraryMutations::handleReply
     // treats a 2xx the same way — parse nothing.
     markLoading_ = false;
-    setLoading(refreshLoading_);
+    setLoading(refreshLoading_ || clearLoading_);
     for (auto& notification : notifications_) {
         notification.read = true;
     }
@@ -445,6 +449,87 @@ void SunoNotificationService::handleMarkReadReply(QNetworkReply* reply, quint64 
     }
     emit notificationsChanged();
     emit markAllReadCompleted();
+    refresh();
+}
+
+void SunoNotificationService::clearBadge() {
+    if (loading_) {
+        return;
+    }
+    if (!client_ || !client_->isAuthenticated()) {
+        failClearBadge(QStringLiteral("Not authenticated"));
+        return;
+    }
+
+    setError({});
+    ++clearGeneration_;
+    clearLoading_ = true;
+    setLoading(true);
+    enqueueClearBadge();
+}
+
+void SunoNotificationService::enqueueClearBadge() {
+    const quint64 generation = clearGeneration_;
+    // No request fields captured: POST with an empty 204 response
+    // (ENDPOINT-INVENTORY Appendix A). The empty object is the neutral
+    // payload; inventing a field would be unproved.
+    const QByteArray payload =
+            QJsonDocument(QJsonObject{}).toJson(QJsonDocument::Compact);
+    QPointer<SunoNotificationService> guard(this);
+    client_->enqueueAuthenticatedRequest(
+            qstr(endpoints::NOTIFICATION_V2_CLEAR_BADGE), "POST", payload,
+            [guard, generation](QNetworkReply* reply) {
+                if (guard) {
+                    guard->handleClearBadgeReply(reply, generation);
+                } else if (reply) {
+                    reply->deleteLater();
+                }
+            },
+            false);
+}
+
+void SunoNotificationService::handleClearBadgeReply(QNetworkReply* reply, quint64 generation) {
+    if (!reply) {
+        return;
+    }
+    if (generation != clearGeneration_) {
+        reply->deleteLater();
+        return;
+    }
+
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QString error = requestError(reply, QStringLiteral("Clear badge failed"));
+
+    // Same ordering as handleMarkReadReply: the body carries the breach
+    // diagnosis, the transport error only says the reply was cancelled.
+    if (!client_) {
+        reply->deleteLater();
+        failClearBadge(QStringLiteral("Notifications has no SunoClient to read the response with"));
+        return;
+    }
+    auto body = client_->readTrackedBody(reply);
+    reply->deleteLater();
+
+    if (!body) {
+        failClearBadge(body.error());
+        return;
+    }
+    if (!error.isEmpty() || status < 200 || status >= 300) {
+        failClearBadge(error.isEmpty() ? QStringLiteral("Clear badge failed") : error);
+        return;
+    }
+
+    // A 2xx is accepted without parsing: the capture is an empty 204, and
+    // the shape of any 2xx body is unverified. Like mark-all-read, this
+    // zeroes the counter but does NOT mark notifications read: clearing
+    // the badge and marking read are distinct v2 verbs.
+    clearLoading_ = false;
+    setLoading(refreshLoading_ || markLoading_);
+    if (unreadCount_ != 0) {
+        unreadCount_ = 0;
+        emit unreadCountChanged();
+    }
+    emit badgeCleared();
     refresh();
 }
 
@@ -483,7 +568,7 @@ void SunoNotificationService::failRefresh(const QString& message) {
     }
     if (refreshPending_ == 0) {
         refreshLoading_ = false;
-        setLoading(markLoading_);
+        setLoading(markLoading_ || clearLoading_);
     }
     setError(message);
 }
@@ -491,7 +576,14 @@ void SunoNotificationService::failRefresh(const QString& message) {
 void SunoNotificationService::failMarkRead(const QString& message) {
     ++markGeneration_;
     markLoading_ = false;
-    setLoading(refreshLoading_);
+    setLoading(refreshLoading_ || clearLoading_);
+    setError(message);
+}
+
+void SunoNotificationService::failClearBadge(const QString& message) {
+    ++clearGeneration_;
+    clearLoading_ = false;
+    setLoading(refreshLoading_ || markLoading_);
     setError(message);
 }
 

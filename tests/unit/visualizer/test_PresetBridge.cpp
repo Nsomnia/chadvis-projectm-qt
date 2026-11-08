@@ -1,4 +1,5 @@
 #include <QTemporaryDir>
+#include <QSignalSpy>
 #include <QtTest>
 
 #include <filesystem>
@@ -49,6 +50,8 @@ private slots:
     void nameKeyedRatingsMigrateToPathKeys();
     void refusingANonDirectoryKeepsTheCurrentLibrary();
     void choosingAFolderRecordsItAsThePresetPath();
+    void scanningIsTrueWhileAScanIsInFlightAndFalseAfterItLands();
+    void scanningFoldsToFalseAfterAFailedScan();
 
 private:
     QTemporaryDir dir_;
@@ -60,6 +63,14 @@ private:
 void TestPresetBridge::init() {
     presetPathBefore_ = Config::instance().visualizer().presetPath;
     const fs::path root = dir_.path().toStdString();
+    // The temp dir outlives one slot and a previous slot may have planted a
+    // subdirectory in it (choosingAFolderRecordsItAsThePresetPath creates
+    // "chosen/"); the recursive scan below would pick its preset up and this
+    // count would be 5, not 4. Clear the whole dir first so every slot starts
+    // from the same fixtures.
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    fs::create_directories(root);
     createPreset(root, "alpha");
     createPreset(root, "bravo");
     createPreset(root, "charlie");
@@ -247,6 +258,52 @@ void TestPresetBridge::choosingAFolderRecordsItAsThePresetPath() {
     // still fails on a hang), which is also what keeps cleanup() from destroying
     // the manager while its worker is mid-walk.
     QTRY_COMPARE_WITH_TIMEOUT(static_cast<int>(manager_->count()), 1, 5000);
+}
+
+void TestPresetBridge::scanningIsTrueWhileAScanIsInFlightAndFalseAfterItLands() {
+    // T0440's contract: the panel gates its empty copy on scanning, so the flag
+    // must read true from the rescan request until the finished list lands --
+    // and the NOTIFY must fire on both edges, or QML shows a stale value.
+    QVERIFY(!bridge_->scanning());
+
+    QSignalSpy spy(bridge_.get(), &qml_bridge::PresetBridge::scanningChanged);
+    QVERIFY(spy.isValid());
+
+    bridge_->rescan();
+
+    // No event loop has run, so the in-flight flags the hand-off clears are
+    // still set: scanning reads true, and rescan() already notified. The
+    // settled list has not changed yet.
+    QVERIFY(bridge_->scanning());
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(static_cast<int>(manager_->count()), 4);
+
+    // The landed list folds the flag back to false.
+    QTRY_COMPARE_WITH_TIMEOUT(bridge_->scanning(), false, 5000);
+    QCOMPARE(static_cast<int>(manager_->count()), 4);
+    QVERIFY(spy.count() >= 2);
+}
+
+void TestPresetBridge::scanningFoldsToFalseAfterAFailedScan() {
+    // A failed scan publishes no generation, so listChanged never fires to fold
+    // the flag; scanFailed is the only edge that can. Without it the panel
+    // would show its scanning placeholder forever.
+    QVERIFY(!bridge_->scanning());
+
+    QSignalSpy spy(bridge_.get(), &qml_bridge::PresetBridge::scanningChanged);
+    QVERIFY(spy.isValid());
+
+    // The bridge refuses to scan a non-directory, so the failing request goes
+    // through the manager -- the same shape the scanner suite uses for a bad
+    // async path.
+    QVERIFY(manager_->scanAsync(fs::path(dir_.path().toStdString()) / "no_such_preset_dir",
+                                true));
+    QVERIFY(bridge_->scanning());
+
+    QTRY_COMPARE_WITH_TIMEOUT(bridge_->scanning(), false, 5000);
+    QVERIFY(spy.count() >= 1);
+    // The working library survived the failed walk.
+    QCOMPARE(static_cast<int>(manager_->count()), 4);
 }
 
 #include "test_PresetBridge.moc"

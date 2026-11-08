@@ -39,6 +39,10 @@ class PresetBridge : public QObject,
     Q_PROPERTY(QVariantMap currentPreset READ currentPreset NOTIFY currentPresetChanged)
     Q_PROPERTY(int currentIndex READ currentIndex NOTIFY currentPresetChanged)
     Q_PROPERTY(int presetCount READ presetCount NOTIFY presetsChanged)
+    // True while a preset scan is in flight on the manager's worker. The
+    // backing state is PresetManager::scanInFlight(); the bridge folds it to
+    // false on listChanged (the scan landed) and scanFailed (it did not).
+    Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
     Q_PROPERTY(QString selectedCategory READ selectedCategory WRITE setSelectedCategory NOTIFY
                        selectedCategoryChanged)
@@ -58,6 +62,7 @@ public:
     QVariantMap currentPreset() const;
     int currentIndex() const;
     int presetCount() const;
+    bool scanning() const;
     QString searchQuery() const;
     QString selectedCategory() const;
     QString folder() const;
@@ -81,6 +86,7 @@ public slots:
 
 signals:
     void presetsChanged();
+    void scanningChanged();
     void currentPresetChanged();
     void searchQueryChanged();
     void selectedCategoryChanged();
@@ -89,6 +95,7 @@ signals:
 private slots:
     void onPresetChanged(const vc::PresetInfo* preset);
     void onListChanged();
+    void onScanFailed();
 
 private:
     /// Binds this bridge to the registered manager: it becomes the scan-result

@@ -277,9 +277,10 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Recorder captures native GL context; QML scene graph is sibling on top. GL compositing impossible.
       FFmpeg post-pass (T0108/T0114) is mandatory, not optional.
 
-- [ ] T0171 **First captured frame discarded, `pixelFormat` decorative** (`src/recorder/`) #risk-high
+- [x] T0171 **First captured frame discarded, `pixelFormat` decorative** (`src/recorder/`) #risk-high
       PBO readback gates on `pboAvailable_`, frame 0 never reaches encoder. Pixel-format half shipped.
       Frame-0 half open — needs GL. `avPixelFormatFor()` maps enum, `validate()` refuses wrong combos.
+      **DONE 2026-11-08:** the gate was in the renderer, not the recorder (`src/visualizer/VisualizerRenderer`), which is why this stayed open. `setupPBOs()` hard-coded `pboAvailable_ = false` and only flipped it at the end of the first capture — after the emit was skipped — so frame 0 was emitted by the second render, never by its own. Now the flag is derived from buffer-init outcome (no writer left in the capture path), the first capture completes inline so frame 0 is emitted by its own render, and later captures keep the one-frame pipeline. PBO readback genuinely cannot run headless (the offscreen spike uses plain `glReadPixels`, and a drawable-less framebuffer-0 readback is zeros/errors by its own sentinel measurements), so the headless proof is a unit assertion on the pure entry-condition decision `captureEmit(first, pending)` plus the real GL slot `firstRenderEmitsAFrame` (fails on old code: needs two renders). Adjacent, unfixed: the last frame of a recording is still not drained at stopRecording — one frame short at the tail.
 
 - [ ] T0173 **projectM broken-preset retry: premise needs GL evidence** (`Bridge.cpp:48`) #risk-medium
       Inspection says premise wrong. projectM has two callback slots: `requested` (overwritten) and `failed` (untouched).
@@ -442,9 +443,22 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       empty. **DONE 2026-11-08:** QML writes the bridge properties directly; the blacklisted branch calls
       `blacklistedPresets()`. Build clean, `unit_tests` passed.
 
-- [ ] T0440 **Preset empty state shows during the startup scan** (`src/qml/panels/PresetsPanel.qml`, `src/qml_bridge/PresetBridge.*`) #cleanup
+- [x] T0440 **Preset empty state shows during the startup scan** (`src/qml/panels/PresetsPanel.qml`, `src/qml_bridge/PresetBridge.*`) #cleanup
       `PresetBridge` publishes only the finished list, so an empty model cannot be told apart from "still
       scanning". Verify: a scanning property on the bridge gates the empty block.
+      **DONE 2026-11-08:** `Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)` on `PresetBridge`, backed live by `PresetManager::scanInFlight()` (no new manager state needed). `rescan()`/`setFolder()` fold it true immediately; `onListChanged` and `onScanFailed` fold it false. The panel gates its empty copy on `!scanning` and shows a busy placeholder while scanning. Two bridge tests: true in flight + false on land, and false on a failed scan.
+
+- [ ] T0443 **Drain the last rendered frame at stopRecording** (`src/visualizer/VisualizerRenderer.*`, `src/recorder/`) #cleanup
+      T0171's frame-0 fix left the tail: the final render's PBO readback is never drained when recording
+      stops, so a recording ends one frame short. Verify: a GL slot that renders a known frame last,
+      stops recording, and asserts that frame is in the output.
+
+- [ ] T0444 **`integration_tests` is outside the `--tests` build list, so it goes stale silently** (`build.sh`, `docs/dev/TESTING.md`, `AGENTS.md`) #risk-medium
+      `integration_tests`/`integration_gl_tests` are deliberately not in `SAFE_TESTS`, but nothing builds
+      them: they only get rebuilt by a full build. T0171's new GL slot landed in a binary that
+      `--fast --tests` never relinked, so ctest ran it against the old binary and reported
+      "Unknown test function". Verify: a check that rebuilds the integration targets before the ctest
+      step, or that refuses to run them when the binary is older than the sources.
 
 - [ ] T0441 **Focus rings for the new keyboard tab stops** (`src/qml/`) #cleanup
       T0082 made the custom-drawn controls (AppColorPicker areas, tiles, chips) reachable by Tab, but none
@@ -603,9 +617,10 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       `/recommend/hide-creator`, `/share/{event,attribute}`, `/song_copy/send-song`,
       `/report_v2/refund_prompt/clicked`, `/image_insights/analyze`,
       `/instrument/describe-doodle`. Follow/block need a scratch second account; reads only.
-- [ ] T0375 **Notifications: clear-badge + read variants** (`src/suno/SunoEndpoints.hpp`, `SunoNotificationService.cpp`) #feature
+- [x] T0375 **Notifications: clear-badge + read variants** (`src/suno/SunoEndpoints.hpp`, `SunoNotificationService.cpp`) #feature
       `/notification/v2/clear-badge`, `/notification/v2/read` (constant exists,
       `NOTIFICATION_V2_READ`). Click mark-all-read and the badge in the UI; pin status + body.
+      **DONE 2026-11-08:** `clearBadge()` added mirroring `markAllRead()` — `POST /notification/v2/clear-badge` with an empty object, 2xx settles Accepted (no response parsing; the capture is an empty 204), `badgeCleared()` zeroes the unread count and triggers a refresh without marking notifications read. 4 fixture tests (success, 404 rejection, signed-out refusal, malformed 204 body). Badge stays on v2, list stays v3, existing mutations untouched. One gap: the service has no `MutationResult` type, so outcomes surface via signals only — a follow-up if the bridge needs per-call results.
 - [ ] T0376 **Studio multitrack save/render** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature
       `/studio/save-project`, `/studio/render-state`, `/studio/render-state-multitrack`, plus the
       captured `GET /studio/project/{id}`. Create a scratch project, add one clip, save; capture
