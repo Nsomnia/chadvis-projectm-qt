@@ -42,6 +42,23 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **Cover art can be applied to a playlist.** The cover-image mutation sent a flat body the server
+  rejects; it now sends the evidenced nested `{"cover_source":{"id","type":"generated"}}` form.
+  Verified against a 404 shape and the exact request bytes. (T0434)
+
+- **Five free read routes are wired.** `SunoFreeReadsService` covers `GET /clip/{id}`,
+  `/project/{id}/pinned-clips`, `/cms/cover-art-suggestions`, `POST /realtime/token`, and
+  `/challenge/progress`. Uncaptured response shapes stay as raw server objects. (T0433)
+
+- **The upload chain now completes its third leg.** `POST /uploads/audio/{id}/initialize-clip/`
+  sits between the S3 upload and finish. `rights_clearance_available:false` fails with a decision
+  error unless the caller explicitly opts in; it is never guessed. (T0430)
+
+- **`AppSlider` no longer lies about its defaults.** `stepSize` stays 1 (three call sites depend
+  on it, and Qt's continuous 0 would make seeks fractional) and is now documented as a deliberate
+  divergence from Qt's `Slider`; `accessibleName` no longer defaults to the literal `"Slider"`,
+  so an unnamed slider announces role and value only. (T0436, T0437)
+
 - **Test network fakes are one implementation.** Ten unit suites shared a copy of the same
   scriptable `QNetworkReply` stand-in. They now share `tests/support/FakeNetworkReply.hpp` through a
   `test_support` interface library, so a new suite cannot grow a fourteenth variant. (T0099)

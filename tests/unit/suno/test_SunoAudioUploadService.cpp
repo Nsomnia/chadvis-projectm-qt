@@ -1,14 +1,21 @@
 #include <QtTest>
 
 #include "suno/SunoAudioUploadService.hpp"
+#include "suno/SunoClient.hpp"
+#include "FakeNetworkReply.hpp"
 
 #include <QFile>
+#include <QHttpMultiPart>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QPointer>
 #include <QTemporaryDir>
+#include <vector>
 
 using namespace vc::suno;
+using fake_net::FakeReply;
 
 namespace {
 
@@ -26,6 +33,81 @@ QJsonObject initializerPayload(const QString& url)
              {QStringLiteral("signature"), QStringLiteral("signature-123")},
          }},
     };
+}
+
+QJsonObject initializeClipPayload(bool available)
+{
+    return {
+        {QStringLiteral("clip_id"), QStringLiteral("clip-456")},
+        {QStringLiteral("rights_clearance_available"), available},
+    };
+}
+
+static QString fakeBearer(const QString& marker)
+{
+    const auto encode = [](const QJsonObject& object) {
+        return QString::fromLatin1(QJsonDocument(object)
+                                      .toJson(QJsonDocument::Compact)
+                                      .toBase64(QByteArray::Base64UrlEncoding |
+                                                 QByteArray::OmitTrailingEquals));
+    };
+    const QString header = encode({{QStringLiteral("alg"), QStringLiteral("NONE")},
+                                   {QStringLiteral("typ"), QStringLiteral("JWT")}});
+    const QString payload = encode({{QStringLiteral("exp"), static_cast<qint64>(4102444800)},
+                                    {QStringLiteral("test"), marker}});
+    return header + QLatin1Char('.') + payload + QStringLiteral(".signature");
+}
+
+static CredentialStoreWorker::Backend emptyBackend()
+{
+    return [](CredentialStoreWorker::Request) { return CredentialStoreWorker::Outcome{}; };
+}
+
+QString writeAudioFile(const QTemporaryDir& dir, const QString& name)
+{
+    const QString path = dir.filePath(name);
+    QFile file(path);
+    Q_ASSERT(file.open(QIODevice::WriteOnly));
+    Q_ASSERT(file.write(QByteArrayLiteral("audio")) == 5);
+    file.close();
+    return path;
+}
+
+/// The SunoClient ReplyFactory seam: records every request, body and reply so
+/// a chain test can route each leg of the upload in order.
+SunoClient::ReplyFactory recordingFactory(std::vector<FakeReply*>& replies,
+                                          std::vector<QNetworkRequest>& requests,
+                                          std::vector<QByteArray>& bodies)
+{
+    return [&replies, &requests, &bodies](const QNetworkRequest& request,
+                                          const std::string& method,
+                                          const QByteArray& body) -> QNetworkReply* {
+        requests.push_back(request);
+        bodies.push_back(body);
+        auto* reply = new FakeReply(request, method);
+        replies.push_back(reply);
+        return reply;
+    };
+}
+
+/// Drives a started upload through reserve and the direct S3 POST, so the next
+/// studio reply is the `initialize-clip` one. Bodies of studio requests are
+/// recorded alongside their replies. `path` is a real audio file, given so the
+/// temporary dir that owns it outlives this call.
+void driveToInitializeClip(const QString& path,
+                           SunoAudioUploadService& service,
+                           std::vector<FakeReply*>& studioReplies,
+                           std::vector<FakeReply*>& directReplies)
+{
+    service.start(path);
+    QTRY_VERIFY_WITH_TIMEOUT(studioReplies.size() == 1, 4000);
+    studioReplies.front()->complete(
+        QJsonDocument(initializerPayload(
+            QStringLiteral("https://suno-uploads.s3.amazonaws.com/upload?signature=opaque")))
+            .toJson(QJsonDocument::Compact),
+        200);
+    QTRY_VERIFY_WITH_TIMEOUT(directReplies.size() == 1, 4000);
+    directReplies.front()->complete(QByteArray{}, 204);
 }
 
 }
@@ -264,12 +346,231 @@ private slots:
         QVERIFY(!SunoAudioUploadService::isSupportedAudioPath(QStringLiteral("/tmp/song.txt")));
         QVERIFY(!SunoAudioUploadService::isSupportedAudioPath(QStringLiteral("/tmp/song")));
     }
+
+    void initializeClipContractIsExact()
+    {
+        const QJsonObject body = SunoAudioUploadService::initializeClipBody();
+        QCOMPARE(body.size(), 1);
+        QCOMPARE(body.value(QStringLiteral("user_reviewed_tags")).toBool(), true);
+    }
+
+    void parsesInitializeClipResponses()
+    {
+        auto available = SunoAudioUploadService::parseInitializeClipResponse(
+            QJsonDocument(initializeClipPayload(true)).toJson(QJsonDocument::Compact));
+        QVERIFY(available.has_value());
+        QCOMPARE(available->clipId, QStringLiteral("clip-456"));
+        QVERIFY(available->rightsClearanceAvailable);
+        QCOMPARE(available->raw.value(QStringLiteral("clip_id")).toString(),
+                 QStringLiteral("clip-456"));
+        QCOMPARE(available->raw.value(QStringLiteral("rights_clearance_available")).toBool(),
+                 true);
+
+        auto unavailable = SunoAudioUploadService::parseInitializeClipResponse(
+            QJsonDocument(initializeClipPayload(false)).toJson(QJsonDocument::Compact));
+        QVERIFY(unavailable.has_value());
+        QVERIFY(!unavailable->rightsClearanceAvailable);
+    }
+
+    void rejectsMalformedInitializeClipResponses()
+    {
+        const auto missingRights = SunoAudioUploadService::parseInitializeClipResponse(
+            QJsonDocument(QJsonObject{
+                {QStringLiteral("clip_id"), QStringLiteral("clip-456")},
+            })
+                .toJson(QJsonDocument::Compact));
+        QVERIFY(!missingRights.has_value());
+
+        const auto emptyClip = SunoAudioUploadService::parseInitializeClipResponse(
+            QJsonDocument(QJsonObject{
+                {QStringLiteral("clip_id"), QStringLiteral("")},
+                {QStringLiteral("rights_clearance_available"), true},
+            })
+                .toJson(QJsonDocument::Compact));
+        QVERIFY(!emptyClip.has_value());
+
+        const auto nonBoolRights = SunoAudioUploadService::parseInitializeClipResponse(
+            QJsonDocument(QJsonObject{
+                {QStringLiteral("clip_id"), QStringLiteral("clip-456")},
+                {QStringLiteral("rights_clearance_available"), QStringLiteral("true")},
+            })
+                .toJson(QJsonDocument::Compact));
+        QVERIFY(!nonBoolRights.has_value());
+
+        const auto notJson = SunoAudioUploadService::parseInitializeClipResponse(
+            QByteArrayLiteral("nope"));
+        QVERIFY(!notJson.has_value());
+    }
+
+    void initializeClipSuccessProceedsToFinish()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = writeAudioFile(directory, QStringLiteral("take.m4a"));
+
+        std::vector<FakeReply*> studioReplies;
+        std::vector<QNetworkRequest> studioRequests;
+        std::vector<QByteArray> studioBodies;
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(),
+                          recordingFactory(studioReplies, studioRequests, studioBodies));
+        QSignalSpy restored(&client, &SunoClient::credentialRestoreCompleted);
+        QTRY_COMPARE_WITH_TIMEOUT(restored.count(), 1, 2000);
+        client.setToken(fakeBearer(QStringLiteral("one")).toStdString());
+
+        std::vector<FakeReply*> directReplies;
+        auto directFactory = [&directReplies](const QNetworkRequest& request,
+                                               QHttpMultiPart*) {
+            auto* reply = new FakeReply(request, "POST");
+            directReplies.push_back(reply);
+            return reply;
+        };
+        SunoAudioUploadService service(&client, nullptr, nullptr, directFactory);
+        QSignalSpy completed(&service, &SunoAudioUploadService::completed);
+        QSignalSpy failed(&service, &SunoAudioUploadService::failed);
+
+        driveToInitializeClip(path, service, studioReplies, directReplies);
+        QTRY_VERIFY_WITH_TIMEOUT(studioReplies.size() == 2, 4000);
+        QVERIFY(studioRequests.at(1).url().path().endsWith(
+            QStringLiteral("/uploads/audio/upload-123/initialize-clip/")));
+        QCOMPARE(studioBodies.at(1),
+                 QJsonDocument(SunoAudioUploadService::initializeClipBody())
+                     .toJson(QJsonDocument::Compact));
+
+        studioReplies.at(1)->complete(
+            QJsonDocument(initializeClipPayload(true)).toJson(QJsonDocument::Compact), 200);
+        QTRY_VERIFY_WITH_TIMEOUT(studioReplies.size() == 3, 4000);
+        QVERIFY(studioRequests.at(2).url().path().endsWith(
+            QStringLiteral("/uploads/audio/upload-123/upload-finish/")));
+
+        studioReplies.at(2)->complete(QByteArrayLiteral("{}"), 200);
+        QTRY_COMPARE_WITH_TIMEOUT(completed.count(), 1, 4000);
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(service.clipId(), QStringLiteral("clip-456"));
+        QVERIFY(!service.isUploading());
+    }
+
+    void initializeClipWithoutRightsClearanceFailsWithoutExplicitDecision()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = writeAudioFile(directory, QStringLiteral("take.m4a"));
+
+        std::vector<FakeReply*> studioReplies;
+        std::vector<QNetworkRequest> studioRequests;
+        std::vector<QByteArray> studioBodies;
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(),
+                          recordingFactory(studioReplies, studioRequests, studioBodies));
+        QSignalSpy restored(&client, &SunoClient::credentialRestoreCompleted);
+        QTRY_COMPARE_WITH_TIMEOUT(restored.count(), 1, 2000);
+        client.setToken(fakeBearer(QStringLiteral("one")).toStdString());
+
+        std::vector<FakeReply*> directReplies;
+        auto directFactory = [&directReplies](const QNetworkRequest& request,
+                                               QHttpMultiPart*) {
+            auto* reply = new FakeReply(request, "POST");
+            directReplies.push_back(reply);
+            return reply;
+        };
+        SunoAudioUploadService service(&client, nullptr, nullptr, directFactory);
+        QSignalSpy completed(&service, &SunoAudioUploadService::completed);
+        QSignalSpy failed(&service, &SunoAudioUploadService::failed);
+        // No setProceedWithoutRightsClearance(true): the default is the safe
+        // answer and must fail the upload rather than auto-accept it.
+
+        driveToInitializeClip(path, service, studioReplies, directReplies);
+        QTRY_VERIFY_WITH_TIMEOUT(studioReplies.size() == 2, 4000);
+
+        studioReplies.at(1)->complete(
+            QJsonDocument(initializeClipPayload(false)).toJson(QJsonDocument::Compact), 200);
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 4000);
+        QVERIFY(service.error().contains(QStringLiteral("Rights clearance")));
+        // The chain stops here: no finish request, no completion.
+        QTRY_VERIFY_WITH_TIMEOUT(!service.isUploading(), 1000);
+        QCOMPARE(completed.count(), 0);
+        QCOMPARE(studioReplies.size(), std::size_t{2});
+    }
+
+    void initializeClipWithoutRightsClearanceProceedsWithExplicitDecision()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = writeAudioFile(directory, QStringLiteral("take.m4a"));
+
+        std::vector<FakeReply*> studioReplies;
+        std::vector<QNetworkRequest> studioRequests;
+        std::vector<QByteArray> studioBodies;
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(),
+                          recordingFactory(studioReplies, studioRequests, studioBodies));
+        QSignalSpy restored(&client, &SunoClient::credentialRestoreCompleted);
+        QTRY_COMPARE_WITH_TIMEOUT(restored.count(), 1, 2000);
+        client.setToken(fakeBearer(QStringLiteral("one")).toStdString());
+
+        std::vector<FakeReply*> directReplies;
+        auto directFactory = [&directReplies](const QNetworkRequest& request,
+                                               QHttpMultiPart*) {
+            auto* reply = new FakeReply(request, "POST");
+            directReplies.push_back(reply);
+            return reply;
+        };
+        SunoAudioUploadService service(&client, nullptr, nullptr, directFactory);
+        service.setProceedWithoutRightsClearance(true);
+        QSignalSpy completed(&service, &SunoAudioUploadService::completed);
+        QSignalSpy failed(&service, &SunoAudioUploadService::failed);
+
+        driveToInitializeClip(path, service, studioReplies, directReplies);
+        QTRY_VERIFY_WITH_TIMEOUT(studioReplies.size() == 2, 4000);
+
+        studioReplies.at(1)->complete(
+            QJsonDocument(initializeClipPayload(false)).toJson(QJsonDocument::Compact), 200);
+        QTRY_VERIFY_WITH_TIMEOUT(studioReplies.size() == 3, 4000);
+        studioReplies.at(2)->complete(QByteArrayLiteral("{}"), 200);
+        QTRY_COMPARE_WITH_TIMEOUT(completed.count(), 1, 4000);
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(service.clipId(), QStringLiteral("clip-456"));
+    }
+
+    void initializeClipFailureStopsBeforeFinish()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = writeAudioFile(directory, QStringLiteral("take.m4a"));
+
+        std::vector<FakeReply*> studioReplies;
+        std::vector<QNetworkRequest> studioRequests;
+        std::vector<QByteArray> studioBodies;
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(),
+                          recordingFactory(studioReplies, studioRequests, studioBodies));
+        QSignalSpy restored(&client, &SunoClient::credentialRestoreCompleted);
+        QTRY_COMPARE_WITH_TIMEOUT(restored.count(), 1, 2000);
+        client.setToken(fakeBearer(QStringLiteral("one")).toStdString());
+
+        std::vector<FakeReply*> directReplies;
+        auto directFactory = [&directReplies](const QNetworkRequest& request,
+                                               QHttpMultiPart*) {
+            auto* reply = new FakeReply(request, "POST");
+            directReplies.push_back(reply);
+            return reply;
+        };
+        SunoAudioUploadService service(&client, nullptr, nullptr, directFactory);
+        QSignalSpy failed(&service, &SunoAudioUploadService::failed);
+
+        driveToInitializeClip(path, service, studioReplies, directReplies);
+        QTRY_VERIFY_WITH_TIMEOUT(studioReplies.size() == 2, 4000);
+
+        // 400, not 5xx: this chain passes retryOnUnauthorized=false, so no
+        // SunoClient retry is in play and a single reply settles it.
+        studioReplies.at(1)->complete(QByteArrayLiteral("{}"), 400);
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 4000);
+        QVERIFY(service.error().contains(QStringLiteral("clip creation failed")));
+        QCOMPARE(studioReplies.size(), std::size_t{2});
+    }
 };
 
 #include "test_SunoAudioUploadService.moc"
 
 int main(int argc, char** argv)
 {
+    QCoreApplication app(argc, argv);
     TestSunoAudioUploadService test;
     return QTest::qExec(&test, argc, argv);
 }

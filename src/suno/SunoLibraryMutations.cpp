@@ -18,8 +18,8 @@ namespace {
 
 /// The one constant from §5.9 that is an ENUM with more than one member, and
 /// therefore the only vocabulary this file is allowed to validate against.
-/// `playlist/v2/{id}/cover-image`'s `type` has a single member and is checked
-/// inline at the call site.
+/// `playlist/v2/{id}/cover-image`'s `cover_source.type` is sent as the single
+/// member `generated` and is spelled inline in `playlistCoverImageBody`.
 [[nodiscard]] constexpr bool isCapturedUpdateType(const PlaylistUpdateType type) noexcept
 {
     switch (type) {
@@ -246,10 +246,12 @@ bool SunoLibraryMutations::gatePermits(const MutationVerb verb, QString& reasonO
 }
 
 // ── Request bodies ───────────────────────────────────────────────────────────
-// Every one is a flat top-level object. §1.5: a nested body fails validation
-// where the flat one reaches the handler, despite the server's error naming a
-// nested `loc` chain — so these must never be wrapped, and must never be
-// reconstructed by walking that error.
+// Every one is a flat top-level object except `playlistCoverImageBody`. §1.5: a
+// nested body fails validation where the flat one reaches the handler, despite
+// the server's error naming a nested `loc` chain — so these must never be
+// wrapped, and must never be reconstructed by walking that error. The one
+// exception is cover-image, whose evidenced body (§5.15) IS nested: its id and
+// type ride under `cover_source`.
 
 QJsonObject SunoLibraryMutations::visibilityBody(const bool isPublic)
 {
@@ -351,11 +353,13 @@ QJsonObject SunoLibraryMutations::playlistTrashBody(const bool undo)
 
 QJsonObject SunoLibraryMutations::playlistCoverImageBody(const QString& imageId)
 {
+    // §5.15: {"cover_source": {"id": <image_s3_id>, "type": "generated"}}.
+    // The one nested body in this file (see the "flat" note above).
+    QJsonObject coverSource;
+    coverSource.insert(QStringLiteral("id"), imageId);
+    coverSource.insert(QStringLiteral("type"), QStringLiteral("generated"));
     QJsonObject body;
-    body.insert(QStringLiteral("id"), imageId);
-    // The only captured single-member enum in §5.9. Spelled here rather than
-    // parameterised, because `generated` is the whole member list.
-    body.insert(QStringLiteral("type"), QStringLiteral("generated"));
+    body.insert(QStringLiteral("cover_source"), coverSource);
     return body;
 }
 

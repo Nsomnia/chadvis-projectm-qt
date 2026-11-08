@@ -36,6 +36,13 @@ public:
         QMap<QString, QString> fields;
     };
 
+    struct InitializeClipResponse
+    {
+        QString clipId;
+        bool rightsClearanceAvailable{false};
+        QJsonObject raw;
+    };
+
     explicit SunoAudioUploadService(SunoClient* client,
                                    QNetworkAccessManager* directNetworkManager,
                                    QObject* parent = nullptr,
@@ -44,14 +51,27 @@ public:
 
     [[nodiscard]] static QJsonObject initializeBody();
     [[nodiscard]] static QJsonObject finishBody(const QString& uploadFilename);
+    [[nodiscard]] static QJsonObject initializeClipBody();
     [[nodiscard]] static std::expected<InitializeResponse, QString>
     parseInitializeResponse(const QByteArray& payload);
+    [[nodiscard]] static std::expected<InitializeClipResponse, QString>
+    parseInitializeClipResponse(const QByteArray& payload);
     [[nodiscard]] static bool isSupportedTemporaryUrl(const QUrl& url);
     [[nodiscard]] static std::expected<QNetworkRequest, QString>
     directRequest(const QUrl& url);
     [[nodiscard]] static bool isSupportedAudioPath(const QString& path);
 
     void start(const QString& localFilePath);
+
+    /// Explicit caller decision for the `initialize-clip` gate
+    /// (`rights_clearance_available`). The default is `false`, meaning an
+    /// upload whose rights clearance is unavailable fails instead of being
+    /// silently accepted. A caller that wants the upload to continue anyway
+    /// must opt in before `start()`; nothing here guesses or auto-accepts.
+    void setProceedWithoutRightsClearance(bool proceed);
+    [[nodiscard]] bool proceedWithoutRightsClearance() const
+    { return proceedWithoutRightsClearance_; }
+    [[nodiscard]] QString clipId() const { return clipId_; }
 
     /// T0035: refuse to start an upload larger than this. 500 MiB. Suno's own
     /// limit is not documented anywhere in this tree, so this is a bound on what
@@ -87,6 +107,8 @@ private:
     void handleInitializeReply(QNetworkReply* reply, quint64 generation);
     void startDirectUpload(quint64 generation);
     void handleDirectReply(QNetworkReply* reply, quint64 generation);
+    void startInitializeClip(quint64 generation);
+    void handleInitializeClipReply(QNetworkReply* reply, quint64 generation);
     void startFinish(quint64 generation);
     void handleFinishReply(QNetworkReply* reply, quint64 generation);
     void cancelForAuthLoss();
@@ -112,6 +134,8 @@ private:
     QString filePath_;
     QString fileName_;
     QString uploadId_;
+    QString clipId_;
+    bool proceedWithoutRightsClearance_{false};
     /// T0035: direct-upload attempts already spent on the current file. Reset by
     /// `start()`, so a retry never compounds with a previous upload's attempts.
     int directAttempts_{0};

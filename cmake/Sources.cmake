@@ -641,3 +641,17 @@ list(APPEND SUNO_SOURCES
     src/suno/SunoLibraryMutations.hpp
     src/suno/SunoLibraryMutations.cpp
 )
+
+# ─────────────────────────────────────────────────────────────
+# FREE READS BUNDLE (appended 2026-11-08)
+#
+# SunoFreeReadsService wires five read-only, unmetered routes that existed
+# only as constants: GET /clip/{id}, GET /project/{id}/pinned-clips,
+# GET /cms/cover-art-suggestions, POST /realtime/token (Ably credential),
+# GET /challenge/progress. Read-only, no credit spend, no mutations.
+# SUNO_SOURCES for the non-globbing reason recorded above.
+# ─────────────────────────────────────────────────────────────
+list(APPEND SUNO_SOURCES
+    src/suno/SunoFreeReadsService.hpp
+    src/suno/SunoFreeReadsService.cpp
+)

@@ -166,11 +166,12 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Host allowlist is NOT widened by this task: `suno-data-uploads.s3.amazonaws.com` and
       `api.suno.com` need their own `CapturedHosts.cpp` change with evidence, fail-closed.
 
-- [ ] T0430 **Upload chain: reserve → S3 → initialize-clip → finish** (`src/suno/SunoAudioUploadService.*`, `SunoClient.cpp`) #feature (after: T0362)
+- [x] T0430 **Upload chain: reserve → S3 → initialize-clip → finish** (`src/suno/SunoAudioUploadService.*`, `SunoClient.cpp`) #feature (after: T0362)
       `POST /uploads/audio/` → signed S3 POST → `POST /uploads/audio/{id}/initialize-clip/` → `POST /uploads/audio/{id}/upload-finish/`.
       `rights_clearance_available:false` must ask, never guess. Mostly present in `SunoAudioUploadService`;
       open work is the initialize-clip leg and its response discipline.
       Verify: fixture test for each leg + one live 2xx, no credits.
+      **DONE 2026-11-08:** `initialize-clip` leg wired (reserve -> S3 -> initialize-clip -> finish); `rights_clearance_available:false` fails with a decision error unless the caller explicitly opts in via `setProceedWithoutRightsClearance(true)`. 3 static + 4 chain fixture tests; `clipId()` kept. Also fixed the test binary's missing `QCoreApplication`. Host allowlist untouched (needs its own evidence change).
 
 - [ ] T0431 **Vocal stem extraction and poll** (`src/suno/`) #feature (after: T0430)
       `POST /clip/{id}/vox-stem` `{vocal_start_s, vocal_end_s}` → `{id: processed-clip, status}`;
@@ -182,15 +183,17 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Spends credits. Reads already shipped (T0349). Verify: fixture test for the body; one live create
       against a scratch persona, then record the response keys.
 
-- [ ] T0433 **Free reads bundle** (`src/suno/`, `src/qml_bridge/`) #feature (after: T0362)
+- [x] T0433 **Free reads bundle** (`src/suno/`, `src/qml_bridge/`) #feature (after: T0362)
       `GET /clip/{id}`, `GET /project/{id}/pinned-clips`, `GET /cms/cover-art-suggestions`,
       `POST /realtime/token` (Ably credential), `GET /challenge/progress`. All read-only, no credits.
       Verify: one read service with fixture tests per route.
+      **DONE 2026-11-08:** `SunoFreeReadsService` ships all five reads (`fetchClip`, `fetchPinnedClips`, `fetchCoverArtSuggestions`, `fetchRealtimeToken`, `fetchChallengeProgress`); 16 fixture tests; uncaptured shapes kept raw. All five endpoint constants already existed.
 
-- [ ] T0434 **Cover art apply: playlist cover from a generated image id** (`src/suno/SunoLibraryMutations.*`) #feature (after: T0362)
+- [x] T0434 **Cover art apply: playlist cover from a generated image id** (`src/suno/SunoLibraryMutations.*`) #feature (after: T0362)
       Generation half shipped (`SunoCoverArtService`). Open: feed `image_s3_id` into
       `POST /playlist/v2/{id}/cover-image` `{cover_source:{id,type:"generated"}}` and surface per-field outcome.
       Verify: fixture test for the body; one live apply on a scratch playlist, then revert.
+      **DONE 2026-11-08:** the apply verb already existed but sent a flat body the server rejects; it now sends the evidenced nested `{"cover_source":{"id","type":"generated"}}`. 6 new test slots incl. byte-exact body assertion and 404 `cover_source_not_found` -> `Rejected`.
 
 - [ ] T0435 **Voice verification chain** (`src/suno/`) #feature (after: T0431)
       `GET /voice-verification/phrase/` → `POST /processed_clip/voice-vox-stem` (upload id, not clip id)
@@ -400,14 +403,16 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 
 - [ ] T0084 ~58 raw unthemed QtQuick.Controls where `App*` wrapper exists (`src/qml/`) #cleanup
 
-- [ ] T0436 **`AppSlider.stepSize` defaults to 1 while `Slider` defaults to 0 (continuous)** (`src/qml/components/AppSlider.qml`) #cleanup
+- [x] T0436 **`AppSlider.stepSize` defaults to 1 while `Slider` defaults to 0 (continuous)** (`src/qml/components/AppSlider.qml`) #cleanup
       A raw `Slider` dropped into an `AppSlider` silently loses fractional range unless the caller
       passes `stepSize: 0` — found converting T0084. Either default the wrapper to 0 or document the
       divergence at the property. Verify: a test or lint note pins the chosen default.
+      **DONE 2026-11-08:** default kept at 1 (TransportBar/RecordingPanel depend on it — switching to Qt's 0 would make seeks/volumes fractional) and the divergence is now documented at the property and file header; fractional controls must still set stepSize explicitly.
 
-- [ ] T0437 **`AppSlider.accessibleName` defaults to the literal "Slider"** (`src/qml/components/AppSlider.qml`) #cleanup
+- [x] T0437 **`AppSlider.accessibleName` defaults to the literal "Slider"** (`src/qml/components/AppSlider.qml`) #cleanup
       Three settings sliders are announced unnamed because they never set it. Verify: each call site
       in `src/qml/panels/settings/` carries a real name, or the wrapper drops the placeholder default.
+      **DONE 2026-11-08:** `accessibleName` defaults to `""` (unnamed, as a native Qt control with no name is); description guards the leading comma. Real names at call sites remain follow-up work.
 
 - [ ] T0085 `TextAccessible` names hardcoded English (`src/qml/`) #cleanup
 

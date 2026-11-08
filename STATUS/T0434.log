@@ -1,0 +1,1 @@
+2026-11-08T12:51:23Z  VERIFY    ./build.sh --fast --tests clean, ctest 27/27. Found+fixed production bug: cover-image mutation sent a flat body the server rejects; now sends {cover_source:{id,type}}. 6 new test slots.\n

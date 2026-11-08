@@ -1,0 +1,1 @@
+2026-11-08T12:51:23Z  VERIFY    ./build.sh --fast --tests clean, ctest 27/27 passed (242.14s): 16 new SunoFreeReadsService tests, full registration (Sources.cmake, unit CMakeLists, SAFE_TESTS). All 5 endpoint constants pre-existed — none added.\n

@@ -316,6 +316,7 @@ target_link_libraries(test_SunoAudioUploadService PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    test_support
     project_lib
 )
 
@@ -582,6 +583,24 @@ target_link_libraries(test_SunoNotificationService PRIVATE
 )
 
 add_test(NAME test_SunoNotificationService COMMAND test_SunoNotificationService)
+
+add_executable(test_SunoFreeReadsService
+    suno/test_SunoFreeReadsService.cpp
+)
+
+set_target_properties(test_SunoFreeReadsService PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoFreeReadsService PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    test_support
+    project_lib
+)
+
+add_test(NAME test_SunoFreeReadsService COMMAND test_SunoFreeReadsService)
 
 add_executable(test_ClerkAuthClient
     suno/test_ClerkAuthClient.cpp

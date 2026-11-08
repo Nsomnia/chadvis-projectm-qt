@@ -233,10 +233,11 @@ struct MutationResult {
 };
 
 /// The one enum in §5.9 whose COMPLETE member list was captured, so it is the
-/// one enum in this file that may be validated against. `type` on
-/// `playlist/v2/{id}/cover-image` is the other, and it has a single member,
-/// `generated`; it is checked inline at the call site rather than given an enum
-/// because a one-value enum is more ceremony than the fact deserves.
+/// one enum in this file that may be validated against. `cover_source.type` on
+/// `playlist/v2/{id}/cover-image` is always sent as `generated` (the image-id
+/// space this client can produce, §5.15) and is spelled inline in the body
+/// builder rather than given an enum, because a one-value enum is more
+/// ceremony than the fact deserves.
 enum class PlaylistUpdateType {
     Add,
     Remove,
@@ -472,12 +473,14 @@ public:
     /// derived as `!trashed`.
     [[nodiscard]] bool setPlaylistTrashed(const QString& playlistId, bool trashed);
 
-    /// POST /api/playlist/v2/{id}/cover-image — body `id: string`, and
-    /// `type: ENUM {generated}`.
+    /// POST /api/playlist/v2/{id}/cover-image — body
+    /// `{"cover_source": {"id": <image_s3_id>, "type": "generated"}}` (§5.15).
     ///
-    /// `type` is the second captured enum and the only single-member one, so it
-    /// is validated: anything else is refused locally with the captured member
-    /// named, rather than sent to earn an opaque 422.
+    /// The id is an *image* id (`image_<uuid>`), the `image_s3_id` that
+    /// `SunoCoverArtService` generates — passing a clip id earns a 404
+    /// `cover_source_not_found`. No success body has been captured for this
+    /// route, so like every other verb a 2xx settles `Accepted` and parses
+    /// nothing; a non-2xx settles `Rejected` with the reply's string `detail`.
     [[nodiscard]] bool setPlaylistCoverImage(const QString& playlistId,
                                              const QString& imageId);
 
@@ -519,7 +522,9 @@ public:
     // wrapper — because §1.5 records that a nested body fails validation where
     // the flat one reaches the handler, even though the server's own error
     // message reports a `loc` chain implying nesting. That error is a renamed
-    // projection and must never be walked to build a payload.
+    // projection and must never be walked to build a payload. The single
+    // exception is `playlistCoverImageBody`, nested under `cover_source` per
+    // §5.15's captured body.
 
     [[nodiscard]] static QJsonObject visibilityBody(bool isPublic);
     [[nodiscard]] static QJsonObject remixPermissionBody(bool canRemix);

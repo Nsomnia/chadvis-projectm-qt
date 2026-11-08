@@ -1,0 +1,1 @@
+2026-11-08T12:51:23Z  VERIFY    ./build.sh --fast --tests clean, ctest 27/27. 3 static + 4 chain fixture tests. Also fixed the binary: test_SunoAudioUploadService main never created a QCoreApplication, so QTRY waiters spun on nothing (4 tests failed); added it.\n

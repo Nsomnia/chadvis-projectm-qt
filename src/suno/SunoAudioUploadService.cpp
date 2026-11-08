@@ -113,6 +113,13 @@ QJsonObject SunoAudioUploadService::finishBody(const QString& uploadFilename)
     return body;
 }
 
+QJsonObject SunoAudioUploadService::initializeClipBody()
+{
+    QJsonObject body;
+    body[QStringLiteral("user_reviewed_tags")] = true;
+    return body;
+}
+
 std::expected<SunoAudioUploadService::InitializeResponse, QString>
 SunoAudioUploadService::parseInitializeResponse(const QByteArray& payload)
 {
@@ -153,6 +160,29 @@ SunoAudioUploadService::parseInitializeResponse(const QByteArray& payload)
             return std::unexpected(QStringLiteral("Audio upload initialization response is missing a required upload field."));
         }
     }
+    return response;
+}
+
+std::expected<SunoAudioUploadService::InitializeClipResponse, QString>
+SunoAudioUploadService::parseInitializeClipResponse(const QByteArray& payload)
+{
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(payload, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        return std::unexpected(QStringLiteral("Audio upload clip initialization returned invalid JSON."));
+    }
+
+    const QJsonObject root = document.object();
+    const QJsonValue clipIdValue = root.value(QStringLiteral("clip_id"));
+    const QJsonValue rightsValue = root.value(QStringLiteral("rights_clearance_available"));
+    if (!clipIdValue.isString() || clipIdValue.toString().isEmpty() || !rightsValue.isBool()) {
+        return std::unexpected(QStringLiteral("Audio upload clip initialization response is incomplete."));
+    }
+
+    InitializeClipResponse response;
+    response.clipId = clipIdValue.toString();
+    response.rightsClearanceAvailable = rightsValue.toBool();
+    response.raw = root;
     return response;
 }
 
@@ -202,6 +232,11 @@ bool SunoAudioUploadService::isSupportedAudioPath(const QString& path)
     return !suffix.isEmpty() && supportedAudioSuffixes().contains(suffix);
 }
 
+void SunoAudioUploadService::setProceedWithoutRightsClearance(bool proceed)
+{
+    proceedWithoutRightsClearance_ = proceed;
+}
+
 void SunoAudioUploadService::start(const QString& localFilePath)
 {
     if (uploading_) {
@@ -241,6 +276,7 @@ void SunoAudioUploadService::start(const QString& localFilePath)
     filePath_ = localFilePath;
     fileName_ = fileInfo.fileName();
     uploadId_.clear();
+    clipId_.clear();
     ticket_.reset();
     // T0035: attempt budget is per-upload, never per-service-lifetime, so a
     // retried upload that exhausts it does not also disable retrying the next one.
@@ -456,6 +492,80 @@ void SunoAudioUploadService::handleDirectReply(QNetworkReply* reply, quint64 gen
     }
 
     setProgress(100);
+    setStatus(QStringLiteral("Creating clip from audio upload."));
+    startInitializeClip(generation);
+}
+
+void SunoAudioUploadService::startInitializeClip(quint64 generation)
+{
+    if (uploadId_.isEmpty() || generation != generation_) {
+        fail(QStringLiteral("Audio upload clip creation could not start."));
+        return;
+    }
+    if (uploadId_.contains(QChar('/')) || uploadId_.contains(QChar('?')) ||
+        uploadId_.contains(QChar('#'))) {
+        fail(QStringLiteral("Audio upload clip creation could not start."));
+        return;
+    }
+
+    QString endpoint = qstr(endpoints::UPLOADS_AUDIO_INITIALIZE_CLIP);
+    endpoint.replace(QStringLiteral("{}"), uploadId_);
+    QPointer<SunoAudioUploadService> guard(this);
+    client_->enqueueAuthenticatedRequest(
+            endpoint,
+            "POST",
+            QJsonDocument(initializeClipBody()).toJson(QJsonDocument::Compact),
+            [guard, generation](QNetworkReply* reply) {
+                if (guard) {
+                    guard->handleInitializeClipReply(reply, generation);
+                } else if (reply) {
+                    reply->deleteLater();
+                }
+            },
+            false);
+}
+
+void SunoAudioUploadService::handleInitializeClipReply(QNetworkReply* reply, quint64 generation)
+{
+    if (!reply) {
+        return;
+    }
+    if (generation != generation_ || !uploading_) {
+        reply->deleteLater();
+        return;
+    }
+
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    auto body = client_ ? client_->readTrackedBody(reply)
+                        : std::expected<QByteArray, QString>{
+                              std::unexpected(QStringLiteral(
+                                  "No client, so no bounded response body is "
+                                  "available for this request"))};
+    if (!body) {
+        reply->deleteLater();
+        fail(body.error());
+        return;
+    }
+    const QByteArray payload = std::move(*body);
+    reply->deleteLater();
+    if (status < 200 || status >= 300) {
+        fail(QStringLiteral("Audio upload clip creation failed."));
+        return;
+    }
+
+    auto parsed = parseInitializeClipResponse(payload);
+    if (!parsed) {
+        fail(parsed.error());
+        return;
+    }
+    clipId_ = parsed->clipId;
+    if (!parsed->rightsClearanceAvailable && !proceedWithoutRightsClearance_) {
+        fail(QStringLiteral(
+                 "Rights clearance is not available for this upload. Decide "
+                 "whether to proceed without it before retrying."));
+        return;
+    }
+
     setStatus(QStringLiteral("Finalizing audio upload."));
     startFinish(generation);
 }
@@ -549,6 +659,7 @@ void SunoAudioUploadService::fail(const QString& message)
     filePath_.clear();
     fileName_.clear();
     uploadId_.clear();
+    clipId_.clear();
     setUploading(false);
     setProgress(0);
     setStatus(QStringLiteral("Audio upload failed."));
@@ -562,6 +673,8 @@ void SunoAudioUploadService::finish()
     filePath_.clear();
     fileName_.clear();
     uploadId_.clear();
+    // clipId_ is deliberately kept: it is the initialize-clip link to the
+    // clip, and it is the one output of this upload that outlives completion.
     setUploading(false);
     setProgress(100);
     setStatus(QStringLiteral("Audio upload complete."));

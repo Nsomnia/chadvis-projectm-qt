@@ -71,6 +71,7 @@ SAFE_TESTS=(
     test_SunoClipDetailService
     test_SunoMcpClient
     test_SunoNotificationService
+    test_SunoFreeReadsService
     test_ClerkAuthClient
     test_HttpPolicy
     test_RenderExecutor

@@ -8,6 +8,18 @@
  * - Hover and press effects
  * - Optional tick marks
  *
+ * Default divergence from Qt (deliberate): the raw QtQuick.Controls Slider
+ * defaults stepSize to 0 (continuous), but this wrapper defaults stepSize to
+ * 1, so mouse, keyboard and screen-reader steps quantize to whole units
+ * unless the caller opts out. Any fractional or continuous control MUST set
+ * stepSize explicitly (0 for continuous, or the desired fraction); an integer
+ * control may rely on the default 1. See stepSize below.
+ *
+ * Accessibility: accessibleName defaults to "" (unnamed). A slider that is
+ * not given a real accessibleName is announced only by its role and value,
+ * exactly as a native Qt control with no accessibleName is. Every slider
+ * that has a visible label should set accessibleName to that label.
+ *
  * @version 1.0.0
  */
 
@@ -20,11 +32,18 @@ Item {
     property real from: 0
     property real to: 100
     property real value: 0
+    /// Step size for mouse, keyboard and screen-reader movement.
+    /// WARNING: this defaults to 1, not to Qt Slider's 0 (continuous).
+    /// Fractional/continuous controls must set this explicitly (e.g. 0 or
+    /// 0.01); otherwise values silently quantize to whole units.
     property real stepSize: 1
 
     property bool pressed: sliderMouseArea.pressed
     property bool hovered: sliderMouseArea.containsMouse
-    property string accessibleName: "Slider"
+    /// Screen-reader name. Defaults to "" (unnamed, as a native Qt control
+    /// with no accessibleName is); callers with a visible label must set a
+    /// real name here.
+    property string accessibleName: ""
 
     signal moved(real value)
 
@@ -34,7 +53,9 @@ Item {
     activeFocusOnTab: true
     Accessible.role: Accessible.Slider
     Accessible.name: root.accessibleName
-    Accessible.description: root.accessibleName + ", " + Math.round(root.value)
+    Accessible.description: root.accessibleName.length > 0
+        ? root.accessibleName + ", " + Math.round(root.value)
+        : "" + Math.round(root.value)
     // Screen readers drive a Slider role through these, not through a value
     // property (Accessible has no `value`). Keep them in lockstep with keys.
     Accessible.onIncreaseAction: root.stepBy(1)
