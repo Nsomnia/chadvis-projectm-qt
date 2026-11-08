@@ -295,6 +295,33 @@ Rectangle {
         }
     }
 
+    // The whole tile is clickable, and before this it was clickable only by
+    // mouse: no role, no name, no focus. Enter and Space do what a click on the
+    // tile body does -- toggle in selection mode, otherwise open the details.
+    // Playing stays on the hover play disc and on the sheet's Play button, so a
+    // reader is never left guessing which of the two Enter chose.
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: {
+        const title = root.clipData ? (root.clipData.title || "Untitled clip") : "Clip"
+        if (root.selectionMode)
+            return (root.selected ? "Deselect " : "Select ") + title
+        return root.canPlay ? "Play or open " + title : "Open " + title
+    }
+    Accessible.onPressAction: root.activate()
+
+    Keys.onReturnPressed: root.activate()
+    Keys.onSpacePressed: root.activate()
+
+    function activate() {
+        if (!root.clipData)
+            return
+        if (root.selectionMode)
+            root.selectionToggled(root.clipData)
+        else
+            root.opened(root.clipData)
+    }
+
     // ── Selection marker ─────────────────────────
     // Occupies the save button's corner (top-right) and only exists while
     // selecting, so the two never overlap and a card in selection mode has one

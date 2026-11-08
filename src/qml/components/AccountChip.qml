@@ -87,12 +87,28 @@ Rectangle {
         }
     }
 
+    // The pill opens Settings, so it is a button for a reader and for the
+    // keyboard. Without this it was a Rectangle with a MouseArea: invisible to
+    // both.
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: root.hasAccount
+        ? "Suno account: " + SunoBridge.userName
+        : "Open Suno account settings"
+    Accessible.onPressAction: root.navigateRequested()
+
+    Keys.onReturnPressed: root.navigateRequested()
+    Keys.onSpacePressed: root.navigateRequested()
+
     MouseArea {
         id: chipMouse
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.navigateRequested()
+        onClicked: {
+            root.forceActiveFocus()
+            root.navigateRequested()
+        }
     }
 
     signal navigateRequested()

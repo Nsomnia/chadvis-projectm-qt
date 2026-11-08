@@ -67,6 +67,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 110
                 placeholderText: "Describe the song, or paste lyrics with [Verse] / [Chorus] tags"
+                Accessible.name: "Song prompt or lyrics"
                 wrapMode: TextEdit.Wrap
                 font: Theme.fontBody
             }
@@ -79,6 +80,7 @@ Item {
                     id: tagsField
                     Layout.fillWidth: true
                     placeholderText: "Tags — pop, warm synths, 120 bpm"
+                    Accessible.name: "Style tags"
                     font: Theme.fontBody
                 }
 
@@ -87,6 +89,7 @@ Item {
                     Layout.preferredWidth: 180
                     text: "chirp-v3-5"
                     placeholderText: "model"
+                    Accessible.name: "Model name"
                     font: Theme.fontBody
                 }
             }
@@ -103,6 +106,7 @@ Item {
                 AppSwitch {
                     id: instrumentalSwitch
                     checked: false
+                    Accessible.name: "Instrumental"
                 }
 
                 Item { Layout.fillWidth: true }

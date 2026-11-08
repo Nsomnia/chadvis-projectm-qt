@@ -84,6 +84,7 @@ Flickable {
                     AppSwitch {
                         checked: SettingsBridge.karaokeEnabled
                         onToggled: SettingsBridge.karaokeEnabled = checked
+                        Accessible.name: "Caption track"
                     }
                 }
             }

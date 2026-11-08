@@ -74,6 +74,7 @@ SAFE_TESTS=(
     test_SunoFreeReadsService
     test_SunoSearchService
     test_SunoAccountManagerTos
+    test_SunoAccountManagerOnboarding
     test_SunoStemService
     test_SunoVoiceVerificationService
     test_ClerkAuthClient

@@ -50,6 +50,10 @@ RowLayout {
         stepSize: root.stepSize
         value: root.value
         onValueModified: root.valueMoved(value)
+        // The row's visible label is a sibling Text, so the box carried no name
+        // of its own: a reader announced a bare number with no idea what it
+        // adjusted.
+        Accessible.name: root.label
         background: Rectangle {
             color: Theme.surfaceRaised
             radius: Theme.radiusSmall

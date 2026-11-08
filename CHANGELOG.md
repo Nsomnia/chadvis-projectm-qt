@@ -8,6 +8,17 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **The interface has accessible names and keyboard paths.** `Accessible.*` went from 39 lines in 13
+  files to 150 in 31: the account pill (previously mouse-only), the colour picker, transport controls,
+  list delegates, spin rows. No layout, size, or visible copy changed. (T0082)
+
+- **The long lists pool their delegates.** Six views (library clips, explore feed, notifications, lyrics,
+  Suno library) recycle delegates via `reuseItems: true`, so scrolling a big library no longer rebuilds
+  every card. (T0072)
+
+- **Onboarding state is read.** `SunoAccountManager` can now ask whether the account's onboarding is
+  current, read-only. (T0367)
+
 - **Library search is real remote search.** Typing in the library box sends `filters.searchText` on
   `POST /feed/v3`, which the account's web client does; a term change starts a new feed and clearing it
   returns the unfiltered feed. The Explore search page's suggest and omnisearch routes are wired too.

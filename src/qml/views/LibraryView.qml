@@ -173,6 +173,7 @@ Item {
                 id: searchField
                 Layout.preferredWidth: 280
                 placeholderText: "Search titles & styles…"
+                Accessible.name: "Search your library by title or style"
                 color: Theme.textPrimary
                 font: Theme.fontBody
                 text: root.query
@@ -202,6 +203,11 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: searchField.text = ""
                     }
+
+                    // A bare glyph with no word beside it, so it needs a spoken
+                    // name that says what it does.
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Clear the search"
                 }
             }
 
@@ -241,6 +247,7 @@ Item {
                 ToolTip.text: "Refresh library"
                 ToolTip.delay: 400
                 onClicked: SunoBridge.refreshLibrary(1)
+                Accessible.name: "Refresh library"
             }
         }
 
@@ -320,6 +327,9 @@ Item {
                 anchors.fill: parent
                 anchors.margins: Theme.spacingLarge
                 clip: true
+                reuseItems: true
+                Accessible.role: Accessible.List
+                Accessible.name: "Suno clips"
 
                 // A playlist is a lens, so there is one grid and one model swap.
                 model: SunoBridge.openPlaylistId !== ""

@@ -76,6 +76,7 @@ Item {
                 ToolTip.text: "Refresh notifications"
                 ToolTip.delay: 400
                 onClicked: SunoBridge.refreshNotifications()
+                Accessible.name: "Refresh notifications"
             }
 
             AppButton {
@@ -101,8 +102,11 @@ Item {
             id: notificationList
             anchors.fill: parent
             clip: true
+            reuseItems: true
             model: SunoBridge.notifications
             boundsBehavior: Flickable.StopAtBounds
+            Accessible.role: Accessible.List
+            Accessible.name: "Notifications"
             spacing: Theme.spacingSmall
 
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }

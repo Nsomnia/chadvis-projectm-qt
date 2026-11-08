@@ -654,6 +654,24 @@ target_link_libraries(test_SunoAccountManagerTos PRIVATE
 
 add_test(NAME test_SunoAccountManagerTos COMMAND test_SunoAccountManagerTos)
 
+add_executable(test_SunoAccountManagerOnboarding
+    suno/test_SunoAccountManagerOnboarding.cpp
+)
+
+set_target_properties(test_SunoAccountManagerOnboarding PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(test_SunoAccountManagerOnboarding PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Test
+    test_support
+    project_lib
+)
+
+add_test(NAME test_SunoAccountManagerOnboarding COMMAND test_SunoAccountManagerOnboarding)
+
 # Vocal stem extract + poll (T0431). Standalone target: carries its own
 # QTEST_MAIN, for the same deciding reason as test_HttpPolicy above.
 add_executable(test_SunoStemService

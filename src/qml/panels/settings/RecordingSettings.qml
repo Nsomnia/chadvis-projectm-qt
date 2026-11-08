@@ -22,6 +22,7 @@ ColumnLayout {
         Text { text: "Video Resolution"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
         AppComboBox {
             id: resolutionCombo
+            Accessible.name: "Video resolution"
             model: ["720p", "1080p", "1440p", "4K"]
             currentIndex: {
                 var w = SettingsBridge.recorderWidth
@@ -71,6 +72,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Text { text: "Encoder Preset"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
         AppComboBox {
+            Accessible.name: "Encoder preset"
             model: ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]
             currentIndex: model.indexOf(SettingsBridge.recorderPreset)
             onActivated: SettingsBridge.recorderPreset = currentText
@@ -82,6 +84,7 @@ ColumnLayout {
         Text { text: "Audio Codec"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
         AppComboBox {
             id: audioCodecCombo
+            Accessible.name: "Audio codec"
             model: ["aac", "opus", "mp3", "flac"]
             currentIndex: model.indexOf(SettingsBridge.recorderAudioCodec)
             onActivated: SettingsBridge.recorderAudioCodec = currentText

@@ -69,6 +69,7 @@ Rectangle {
                 implicitWidth: 36
                 implicitHeight: 36
                 onClicked: AudioBridge.previous()
+                Accessible.name: "Previous track"
             }
 
             AppButton {
@@ -78,6 +79,7 @@ Rectangle {
                 implicitWidth: 44
                 implicitHeight: 44
                 onClicked: AudioBridge.togglePlayPause()
+                Accessible.name: AudioBridge.isPlaying ? "Pause" : "Play"
             }
 
             AppButton {
@@ -86,6 +88,7 @@ Rectangle {
                 implicitWidth: 36
                 implicitHeight: 36
                 onClicked: AudioBridge.stop()
+                Accessible.name: "Stop playback"
             }
 
             AppButton {
@@ -94,6 +97,7 @@ Rectangle {
                 implicitWidth: 36
                 implicitHeight: 36
                 onClicked: AudioBridge.next()
+                Accessible.name: "Next track"
             }
         }
 
@@ -118,6 +122,7 @@ Rectangle {
                 to: AudioBridge.duration || 1
                 value: AudioBridge.position
                 onMoved: AudioBridge.seek(value)
+                accessibleName: "Playback position"
             }
 
             RowLayout {
@@ -170,6 +175,7 @@ Rectangle {
                 implicitWidth: 32
                 implicitHeight: 32
                 onClicked: AudioBridge.setVolume(AudioBridge.volume > 0 ? 0 : 0.5)
+                Accessible.name: AudioBridge.volume > 0 ? "Mute audio" : "Unmute audio"
             }
 
             AppSlider {
@@ -179,6 +185,7 @@ Rectangle {
                 to: 100
                 value: AudioBridge.volume * 100
                 onMoved: AudioBridge.setVolume(value / 100)
+                accessibleName: "Volume"
             }
         }
 
@@ -231,6 +238,9 @@ Rectangle {
                               ? "Stop and write the file"
                               : "Record the visualizer and the playing audio"
                 ToolTip.delay: 300
+                Accessible.name: RecordingBridge.isRecording
+                                 ? "Stop recording"
+                                 : "Record the visualizer and the playing audio"
                 onClicked: {
                     if (RecordingBridge.isRecording)
                         RecordingBridge.stopRecording()
@@ -249,6 +259,7 @@ Rectangle {
             ToolTip.visible: hovered
             ToolTip.text: "Open audio file…"
             ToolTip.delay: 400
+            Accessible.name: "Open an audio file to play"
             onClicked: fileDialog.open()
         }
     }

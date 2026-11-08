@@ -63,6 +63,7 @@ ColumnLayout {
             // FIX: was inverted (`!isRecording`) — active recording now
             // shows the emphasized/highlighted state.
             highlighted: RecordingBridge.isRecording
+            Accessible.name: RecordingBridge.isRecording ? "Stop recording" : "Start recording"
             onClicked: {
                 if (RecordingBridge.isRecording) {
                     RecordingBridge.stopRecording()
@@ -161,6 +162,7 @@ ColumnLayout {
             }
             onActivated: RecordingBridge.videoCodec = currentText
             contentFont: Theme.fontBody
+            Accessible.name: "Video codec"
         }
 
         Label {
@@ -174,6 +176,7 @@ ColumnLayout {
             AppSlider {
                 id: qualitySlider
                 Layout.fillWidth: true
+                accessibleName: "Recording quality"
                 from: 0
                 to: 51
                 value: SettingsBridge.recorderCrf
@@ -201,6 +204,7 @@ ColumnLayout {
                 id: outputPathField
                 Layout.fillWidth: true
                 placeholderText: "Auto-generated if empty"
+                Accessible.name: "Recording output path"
                 color: Theme.textPrimary
                 font: Theme.fontBody
                 padding: Theme.spacingSmall
@@ -211,6 +215,7 @@ ColumnLayout {
                 implicitWidth: 32
                 implicitHeight: 32
                 onClicked: fileDialog.open()
+                Accessible.name: "Choose where to save the recording"
             }
         }
     }

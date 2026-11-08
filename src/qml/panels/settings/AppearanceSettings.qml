@@ -62,6 +62,7 @@ ColumnLayout {
         AppComboBox {
             id: themeCombo
             Layout.fillWidth: true
+            Accessible.name: "Theme"
             // The model is plain strings; currentIndex tracks the applied theme,
             // not the last clicked one, so a preview that is cancelled snaps the
             // combo back. -1 is a real state here: it means "none of these",
@@ -108,6 +109,7 @@ ColumnLayout {
             AppColorPicker {
                 id: accentPicker
                 Layout.preferredWidth: Theme.inputHeight
+                accessibleName: "Accent colour"
                 value: Theme.accent
                 onPicked: (c) => Theme.applyAccent(c)
             }
@@ -115,6 +117,7 @@ ColumnLayout {
             AppTextField {
                 id: accentHex
                 Layout.fillWidth: true
+                Accessible.name: "Accent colour hex value"
                 text: Theme.toRgbaHex(Theme.accent)
                 onEditingFinished: {
                     const wanted = text.trim().toUpperCase()
@@ -138,6 +141,7 @@ ColumnLayout {
             AppColorPicker {
                 id: backgroundPicker
                 Layout.preferredWidth: Theme.inputHeight
+                accessibleName: "Background colour"
                 value: Theme.background
                 onPicked: (c) => Theme.applyBackground(c)
             }
@@ -145,6 +149,7 @@ ColumnLayout {
             AppTextField {
                 id: backgroundHex
                 Layout.fillWidth: true
+                Accessible.name: "Background colour hex value"
                 text: Theme.toRgbaHex(Theme.background)
                 onEditingFinished: {
                     const wanted = text.trim().toUpperCase()

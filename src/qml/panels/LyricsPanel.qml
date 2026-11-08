@@ -32,11 +32,14 @@ ColumnLayout {
             ToolButton {
                 text: "\u{1F50D}"
                 onClicked: root.showSearch = !root.showSearch
+                // A magnifier glyph with no word beside it.
+                Accessible.name: root.showSearch ? "Hide lyric search" : "Search lyrics"
             }
 
             ToolButton {
                 text: "SRT"
                 onClicked: exportDialog.open()
+                Accessible.name: "Export lyrics as a subtitle file"
             }
         }
     }
@@ -47,6 +50,7 @@ ColumnLayout {
         Layout.margins: Theme.spacingSmall
         visible: root.showSearch && LyricsBridge.hasLyrics
         placeholderText: "Search lyrics..."
+        Accessible.name: "Search lyrics"
         text: root.searchQuery
         onTextChanged: {
             root.searchQuery = text
@@ -65,6 +69,9 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
+        Accessible.role: Accessible.List
+        Accessible.name: "Lyric lines"
+        reuseItems: true
 
         model: root.searchQuery.length > 0 ? LyricsBridge.searchResults : LyricsBridge.lines
         delegate: LyricsLineDelegate {
@@ -126,17 +133,20 @@ ColumnLayout {
                 id: srtRadio
                 text: "SRT (Subtitles)"
                 checked: true
+                Accessible.name: "SRT subtitles"
             }
 
             RadioButton {
                 id: lrcRadio
                 text: "LRC (Lyrics)"
+                Accessible.name: "LRC lyrics"
             }
 
             TextField {
                 id: pathField
                 Layout.fillWidth: true
                 placeholderText: "Output path..."
+                Accessible.name: "Export file path"
                 text: "lyrics." + (srtRadio.checked ? "srt" : "lrc")
             }
         }
@@ -211,5 +221,21 @@ ColumnLayout {
             hoverEnabled: true
             onClicked: delegate.clicked()
         }
+
+        // A line is a seek target, so it is a button: named by the sentence it
+        // carries, reachable by Tab, activated by Enter or Space. Before this it
+        // existed only for a mouse.
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: {
+            const text = modelData ? modelData.text : ""
+            const label = text !== "" ? text : "Instrumental line"
+            return delegate.isCurrentLine ? "Current line: " + label
+                                          : "Play from line: " + label
+        }
+        Accessible.onPressAction: delegate.clicked()
+
+        Keys.onReturnPressed: delegate.clicked()
+        Keys.onSpacePressed: delegate.clicked()
     }
 }

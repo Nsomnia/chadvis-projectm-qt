@@ -30,6 +30,7 @@ ColumnLayout {
         AppSwitch {
             checked: root.showGlow
             onToggled: root.showGlow = checked
+            Accessible.name: "Glow effects"
         }
     }
 
@@ -45,6 +46,7 @@ ColumnLayout {
 
         AppSlider {
             Layout.fillWidth: true
+            accessibleName: "Vertical alignment"
             from: 0.1
             to: 0.9
             stepSize: 0.01

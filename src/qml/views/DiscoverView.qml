@@ -70,6 +70,7 @@ Item {
                 ToolTip.text: "Refresh Explore"
                 ToolTip.delay: 400
                 onClicked: SunoBridge.refreshDiscover()
+                Accessible.name: "Refresh Explore"
             }
         }
 
@@ -84,8 +85,11 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+            reuseItems: true
             model: SunoBridge.discover
             boundsBehavior: Flickable.StopAtBounds
+            Accessible.role: Accessible.List
+            Accessible.name: "Explore feeds"
 
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
@@ -118,8 +122,11 @@ Item {
                         Layout.preferredHeight: rows * cellHeight
                         visible: count > 0
                         interactive: false
+                        reuseItems: true
                         boundsBehavior: Flickable.StopAtBounds
                         model: feedDelegate.feedClips
+                        Accessible.role: Accessible.List
+                        Accessible.name: "Clips in " + feedDelegate.modelData.label
 
                         readonly property int columns: Math.max(1, Math.floor(width / Theme.cardTileMinimum))
                         readonly property int rows: Math.ceil(count / columns)

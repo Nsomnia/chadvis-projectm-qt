@@ -25,6 +25,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Text { text: "Sample Rate"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
         AppComboBox {
+            Accessible.name: "Sample rate"
             model: [22050, 44100, 48000, 96000]
             currentIndex: {
                 var rates = [22050, 44100, 48000, 96000]
@@ -46,6 +47,7 @@ ColumnLayout {
         Text { text: "Audio Device"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
         AppComboBox {
             Layout.preferredWidth: 220
+            Accessible.name: "Audio device"
             model: SettingsBridge.audioDevices
             enabled: SettingsBridge.audioDevicesAvailable
             currentIndex: {

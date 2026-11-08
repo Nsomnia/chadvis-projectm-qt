@@ -28,6 +28,12 @@ Item {
     /// The colour this picker currently shows.
     property color value: "#00bcd4"
 
+    /// Screen-reader name for the swatch that opens the picker ("Accent
+    /// colour", "Background colour"). The swatch is icon-only by nature -- it
+    /// shows a colour, not a word -- so a caller with a visible label must set
+    /// this, exactly as AppSlider requires.
+    property string accessibleName: ""
+
     /// Emitted continuously while the user interacts, in `color` form.
     signal picked(color c)
 
@@ -85,6 +91,29 @@ Item {
         root.picked(root.working)
     }
 
+    // Keyboard adjustment for the three strips below. Each mirrors its drag
+    // handler exactly -- same clamping, same `picked()` emission -- so a key and
+    // a drag are one interaction model, the way AppSlider's keyboard path is.
+    function nudgeHue(delta) {
+        root.working = Qt.hsva(Math.max(0, Math.min(1, root.workingHue + delta)),
+                               root.workingSat, root.workingVal, root.workingAlpha)
+        root.emitWorking()
+    }
+
+    function nudgeAlpha(delta) {
+        root.working = Qt.hsva(root.workingHue, root.workingSat, root.workingVal,
+                               Math.max(0, Math.min(1, root.workingAlpha + delta)))
+        root.emitWorking()
+    }
+
+    function nudgeSatVal(dSat, dVal) {
+        root.working = Qt.hsva(root.workingHue,
+                               Math.max(0, Math.min(1, root.workingSat + dSat)),
+                               Math.max(0, Math.min(1, root.workingVal + dVal)),
+                               root.workingAlpha)
+        root.emitWorking()
+    }
+
     // ═══════════════════════════════════════════════════════════
     // SWATCH
     // ═══════════════════════════════════════════════════════════
@@ -122,8 +151,24 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: picker.open()
+            onClicked: {
+                swatch.forceActiveFocus()
+                picker.open()
+            }
         }
+
+        // The swatch is the only way into the picker, and it was mouse-only:
+        // a coloured Rectangle with a MouseArea and nothing a reader or the
+        // keyboard could reach.
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: root.accessibleName.length > 0
+            ? root.accessibleName + ", " + Theme.toRgbaHex(root.value)
+            : "Colour " + Theme.toRgbaHex(root.value)
+        Accessible.onPressAction: picker.open()
+
+        Keys.onReturnPressed: picker.open()
+        Keys.onSpacePressed: picker.open()
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -209,6 +254,21 @@ Item {
                     border.width: 2
                 }
 
+                activeFocusOnTab: true
+                Accessible.role: Accessible.Slider
+                Accessible.name: "Saturation and brightness"
+                Accessible.onIncreaseAction: root.nudgeSatVal(0.01, 0)
+                Accessible.onDecreaseAction: root.nudgeSatVal(-0.01, 0)
+
+                Keys.onPressed: function (event) {
+                    switch (event.key) {
+                    case Qt.Key_Left: root.nudgeSatVal(-0.01, 0); event.accepted = true; break
+                    case Qt.Key_Right: root.nudgeSatVal(0.01, 0); event.accepted = true; break
+                    case Qt.Key_Down: root.nudgeSatVal(0, -0.01); event.accepted = true; break
+                    case Qt.Key_Up: root.nudgeSatVal(0, 0.01); event.accepted = true; break
+                    }
+                }
+
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.CrossCursor
@@ -257,6 +317,21 @@ Item {
                     color: "transparent"
                     border.color: "#FFFFFFFF"
                     border.width: 3
+                }
+
+                activeFocusOnTab: true
+                Accessible.role: Accessible.Slider
+                Accessible.name: "Hue"
+                Accessible.onIncreaseAction: root.nudgeHue(0.01)
+                Accessible.onDecreaseAction: root.nudgeHue(-0.01)
+
+                Keys.onPressed: function (event) {
+                    switch (event.key) {
+                    case Qt.Key_Left:
+                    case Qt.Key_Down: root.nudgeHue(-0.01); event.accepted = true; break
+                    case Qt.Key_Right:
+                    case Qt.Key_Up: root.nudgeHue(0.01); event.accepted = true; break
+                    }
                 }
 
                 MouseArea {
@@ -336,6 +411,21 @@ Item {
                     color: "transparent"
                     border.color: "#FFFFFFFF"
                     border.width: 3
+                }
+
+                activeFocusOnTab: true
+                Accessible.role: Accessible.Slider
+                Accessible.name: "Opacity"
+                Accessible.onIncreaseAction: root.nudgeAlpha(0.01)
+                Accessible.onDecreaseAction: root.nudgeAlpha(-0.01)
+
+                Keys.onPressed: function (event) {
+                    switch (event.key) {
+                    case Qt.Key_Left:
+                    case Qt.Key_Down: root.nudgeAlpha(-0.01); event.accepted = true; break
+                    case Qt.Key_Right:
+                    case Qt.Key_Up: root.nudgeAlpha(0.01); event.accepted = true; break
+                    }
                 }
 
                 MouseArea {

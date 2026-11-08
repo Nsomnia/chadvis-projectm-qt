@@ -120,6 +120,7 @@ Popup {
                 anchors.right: parent.right
                 anchors.margins: Theme.spacingSmall
                 onClicked: root.close()
+                Accessible.name: "Close clip details"
             }
 
             ColumnLayout {

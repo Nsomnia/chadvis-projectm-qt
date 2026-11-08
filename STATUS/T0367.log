@@ -1,0 +1,1 @@
+2026-11-08T14:24:42Z  VERIFY    ctest 33/33 incl. new test_SunoAccountManagerOnboarding (3 slots). Read-only GET /onboarding/current; failure keeps state unknown. Also added the test to build.sh SAFE_TESTS (the lane missed it).\n

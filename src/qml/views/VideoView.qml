@@ -101,6 +101,7 @@ Item {
         ToolTip.visible: hovered
         ToolTip.text: "Open video tools"
         ToolTip.delay: 350
+        Accessible.name: "Open video tools"
 
         Behavior on opacity {
             NumberAnimation { duration: Theme.durationFast }
@@ -181,6 +182,7 @@ Item {
                         onClicked: root.dockOpen = false
                         ToolTip.visible: hovered
                         ToolTip.text: "Hide video tools"
+                        Accessible.name: "Hide video tools"
                     }
                 }
             }

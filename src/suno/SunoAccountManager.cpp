@@ -208,6 +208,22 @@ void SunoAccountManager::refreshTosAcceptance() {
                                          });
 }
 
+void SunoAccountManager::refreshOnboardingCurrent() {
+    if (!client_ || !client_->isAuthenticated()) {
+        return;
+    }
+
+    QPointer<SunoAccountManager> guard(this);
+    client_->enqueueAuthenticatedRequest(qstr(vc::suno::endpoints::ONBOARDING_CURRENT), "GET", {},
+                                         [guard](QNetworkReply* reply) {
+                                             if (guard) {
+                                                 guard->handleOnboardingReply(reply);
+                                             } else if (reply) {
+                                                 reply->deleteLater();
+                                             }
+                                         });
+}
+
 std::optional<QDateTime> SunoAccountManager::parseTosTimestamp(const QString& timestamp) {
     const QString trimmed = timestamp.trimmed();
     if (trimmed.isEmpty()) {
@@ -243,12 +259,14 @@ bool SunoAccountManager::needsTosReprompt(bool hasAcceptedTos, const QString& ti
 }
 
 void SunoAccountManager::clearSnapshots() {
-    const bool hadSnapshot = user_.has_value() || !models_.isEmpty() || billing_.has_value();
+    const bool hadSnapshot = user_.has_value() || !models_.isEmpty() || billing_.has_value()
+                             || tosAcceptance_.has_value() || onboardingState_.has_value();
     user_.reset();
     models_.clear();
     billingModels_.clear();
     billing_.reset();
     tosAcceptance_.reset();
+    onboardingState_.reset();
     // Drop the flag map with the account it described. Leaving it behind would
     // keep every gate reading as it did for the signed-out user, so a UI could
     // show a surface as available to an account that no longer exists — and the
@@ -432,6 +450,54 @@ void SunoAccountManager::handleTosReply(QNetworkReply* reply) {
     acceptance.hasAcceptedTosTimestamp = P::optString(root, "has_accepted_tos_timestamp");
     tosAcceptance_ = acceptance;
     emit tosAcceptanceReady();
+}
+
+void SunoAccountManager::handleOnboardingReply(QNetworkReply* reply) {
+    const bool authenticated = client_ && client_->isAuthenticated();
+    const QNetworkReply::NetworkError error = reply->error();
+    const QString errorString = reply->errorString();
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+    auto body = client_ ? client_->readTrackedBody(reply)
+                        : std::expected<QByteArray, QString>(std::unexpected(
+                                  QStringLiteral("account manager has no SunoClient to read the "
+                                                 "response with")));
+    reply->deleteLater();
+
+    if (!authenticated) {
+        onboardingState_.reset();
+        return;
+    }
+    if (!body) {
+        onboardingState_.reset();
+        LOG_WARN("SunoAccountManager: onboarding response refused: {}", body.error().toStdString());
+        emit accountError(body.error());
+        return;
+    }
+    if (status < 200 || status >= 300) {
+        onboardingState_.reset();
+        const QString message = QStringLiteral("Onboarding fetch failed (HTTP %1).").arg(status);
+        LOG_WARN("SunoAccountManager: {}", message.toStdString());
+        emit accountError(message);
+        return;
+    }
+    if (error != QNetworkReply::NoError) {
+        onboardingState_.reset();
+        LOG_WARN("SunoAccountManager: onboarding fetch failed: {}", errorString.toStdString());
+        emit accountError(errorString);
+        return;
+    }
+
+    const QJsonDocument document = QJsonDocument::fromJson(*body);
+    if (!document.isObject()) {
+        onboardingState_.reset();
+        LOG_WARN("SunoAccountManager: onboarding envelope was not an object");
+        emit accountError(QStringLiteral("onboarding envelope was not an object"));
+        return;
+    }
+    // No field names are pinned by the capture: keep the raw object verbatim.
+    onboardingState_ = OnboardingState{document.object()};
+    emit onboardingCurrentReady();
 }
 
 } // namespace vc::suno

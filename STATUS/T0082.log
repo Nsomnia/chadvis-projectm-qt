@@ -1,0 +1,1 @@
+2026-11-08T14:24:42Z  VERIFY    ctest 33/33 includes integration_tests, so all edited QML loads. Accessible.* 39 lines in 13 files -> 150 lines in 31 files; 23 files changed; no layout/size/visible-string change. No focus rings (filed as follow-up).\n

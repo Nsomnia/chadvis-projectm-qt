@@ -58,6 +58,9 @@ ColumnLayout {
             text: SettingsBridge.sunoToken
             onTextEdited: SettingsBridge.sunoToken = text
             placeholderText: "Cookie: __client…=…; __client_uat…=…"
+            // The visible caption above the field is a sibling Text, so the
+            // field itself carried no name.
+            Accessible.name: "Complete Cookie request header"
             color: Theme.textPrimary
             font: Theme.fontBody
             wrapMode: Text.WrapAnywhere

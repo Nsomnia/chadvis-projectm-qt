@@ -1,0 +1,1 @@
+2026-11-08T14:24:42Z  VERIFY    ./build.sh --fast --tests clean, ctest 33/33 passed (322.91s). reuseItems:true added to 6 views on 5 files (Library, Discover list + nested grid, Notifications, Lyrics, SunoPanel); two short lists skipped.\n

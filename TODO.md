@@ -386,8 +386,9 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `Q_UNUSED(searchText)`, `setSearchText` has no callers. Real filtering is client-side in `SunoBridge`.
       **DONE 2026-11-07:** dead `searchText`/`searchText_` removed from `fetchLibraryPage` and manager. Remote search stays T0366.
 
-- [ ] T0072 No `reuseItems` anywhere; nested non-interactive `GridView` in virtualized `ListView` (`src/qml/`) #perf
+- [x] T0072 No `reuseItems` anywhere; nested non-interactive `GridView` in virtualized `ListView` (`src/qml/`) #perf
       `DiscoverView.qml:115-127` materialises every clip of every feed. 16 `layer.enabled` sites.
+      **DONE 2026-11-08:** `reuseItems: true` added to six views on five files (LibraryView clip grid, DiscoverView feed list + its nested clip grid, NotificationsView, LyricsPanel, SunoPanel). The nested grid in DiscoverView is genuinely two-dimensional (columns derived from width and card minimum), so it was kept rather than replaced with a single-column container. Two short lists (OverlayPanel, PlaylistStrip) were skipped as pooling gains nothing. No position, delegate or binding changed; no reuseItems existed anywhere before.
 
 - [x] T0076 Views with no loading/empty/error state (`VideoView.qml`, `PresetsPanel.qml`, `PlaylistPanel.qml`, `TransportBar.qml`) #blocks-ui
       Model on `LibraryView.qml:397-448`, `DiscoverView.qml:207-261`.
@@ -404,7 +405,8 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       No `activeFocusOnTab`, no arrow keys, no `Accessible.*`. Division by zero at `:37` if `from == to`.
       **DONE 2026-11-07:** div-by-zero guard, keyboard (arrows/Page/Home/End), `Accessible.Slider` with increase/decrease actions. qmllint clean.
 
-- [ ] T0082 34 `Accessible.*` properties across 11 of 58 files; 47 have none (`src/qml/`) #risk-high
+- [x] T0082 34 `Accessible.*` properties across 11 of 58 files; 47 have none (`src/qml/`) #risk-high
+      **DONE 2026-11-08:** `Accessible.*` went from 39 lines in 13 files to 150 lines in 31 files. AccountChip (was mouse-only) is now a named, keyboard-operable pill; the color picker strips and swatches got names and arrow-key control; every icon-only AppButton outside PresetsPanel/PlaylistPanel is named; sliders got `accessibleName`; Actor	row and delegate tab stops were added without any visible change. Delegating to the wrapper properties (SettingSpinRow, AppSlider) means one edit fixes many call sites. `PlaylistPanel` and `PresetsPanel` are excluded (another lane owned them) and still hold five unnamed icon-only buttons.
 
 - [ ] T0083 Contrast failures real but not where old claim said (`Theme.qml`) #cleanup
       `textDisabled` 1.95–2.77:1, `recording` 3.07:1, `textSecondary` 3.46:1, `error` 3.60:1.
@@ -443,6 +445,16 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0440 **Preset empty state shows during the startup scan** (`src/qml/panels/PresetsPanel.qml`, `src/qml_bridge/PresetBridge.*`) #cleanup
       `PresetBridge` publishes only the finished list, so an empty model cannot be told apart from "still
       scanning". Verify: a scanning property on the bridge gates the empty block.
+
+- [ ] T0441 **Focus rings for the new keyboard tab stops** (`src/qml/`) #cleanup
+      T0082 made the custom-drawn controls (AppColorPicker areas, tiles, chips) reachable by Tab, but none
+      of them shows a focus outline, so a sighted keyboard user cannot see where focus is. Verify: a
+      visible focus indicator on every `activeFocusOnTab` custom-drawn control.
+
+- [ ] T0442 **Five unnamed icon-only buttons in PresetsPanel/PlaylistPanel** (`src/qml/panels/`) #cleanup
+      T0082's lane was scoped off these two files (another lane owned them), so every icon-only
+      `AppButton` elsewhere is now named but theirs are not. Verify: grep the two files for an icon-only
+      `AppButton` without a name returns nothing.
 
 - [ ] T0085 `TextAccessible` names hardcoded English (`src/qml/`) #cleanup
 
@@ -558,11 +570,12 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       method + query/body for each route, then promote them to `[T1]` in the inventory. Then the service
       follows `SunoFreeReadsService` exactly.
       **DONE 2026-11-08:** the capture landed. Library search is `filters.searchText` on `POST /feed/v3` (`SunoClient::fetchLibraryPage` + `SunoLibraryManager::setSearchText`); a term change restarts the feed, an empty term returns the unfiltered feed, and a failed page still resumes with the term. The Explore page's `POST /unified/search/suggest` and `/unified/search/omnisearch` are wired in `SunoSearchService`, with `feed.items` kept raw (uncaptured). Evidence: ENDPOINT-INVENTORY §4.5 (2026-11-08 capture); the non-chased rows (`/api/search`, `history`, `users`) stay `[LEAD]`. `SunoBridge`'s local `contains` filter is untouched, so route choice is now the caller's.
-- [ ] T0367 **Onboarding + user-config writes** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature
+- [x] T0367 **Onboarding + user-config writes** (`src/suno/SunoEndpoints.hpp`, `docs/suno_api/`) #feature
       `/onboarding/{start,current,back,skip,complete,submit}`,
       `/onboarding/audio-upload/{abort,remove}`,
       `/user/{me,update_user_config,reset_onboarding,vip_program_acceptance}`. `reset_onboarding`
       is reversible on the owner account; wire `GET /onboarding/current` only.
+      **DONE 2026-11-08 (reads slice):** `GET /onboarding/current` is `[T1]` and now read in `SunoAccountManager` as a raw envelope; every write verb (`start`/`back`/`skip`/`complete`/`submit`, `audio-upload/{abort,remove}`) stays unwritten for its own ticket. `audio-upload/abort` and `/remove` are mutually destructive with the upload chain's status route, so they need that design first.
 - [ ] T0368 **Queue: `/queue/inject`, `/queue/start` + queue view** (`src/suno/`, `src/qml/`) #feature (after: T0321)
       Playbar Queue is a first-class site surface with no ChadVis counterpart. Capture both
       bodies from the playbar queue affordance; local queue UI is the second half.

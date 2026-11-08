@@ -11,6 +11,7 @@
 #include "SunoModels.hpp"
 
 #include <QDateTime>
+#include <QJsonObject>
 #include <QObject>
 #include <QString>
 #include <optional>
@@ -30,6 +31,16 @@ struct TosAcceptance {
     QString hasAcceptedTosTimestamp;
 };
 
+/// Current onboarding state from
+/// `GET /api/onboarding/current` (ENDPOINT-INVENTORY §4.2, [T1] Burp
+/// 2026-08-25). No response field names/types are pinned by the capture
+/// beyond the route itself, so the raw object is kept verbatim rather than
+/// inventing typed fields. Named distinctly from TosAcceptance: this is
+/// onboarding progress, not legal acceptance.
+struct OnboardingState {
+    QJsonObject raw;
+};
+
 class SunoAccountManager : public QObject {
     Q_OBJECT
 
@@ -46,6 +57,11 @@ public:
     /// write path exists here. Unknown until the first successful reply;
     /// a failed read degrades back to unknown and never claims accepted.
     void refreshTosAcceptance();
+    /// GET-only read of the current onboarding state. This client does not
+    /// POST any onboarding write (start/back/skip/complete/submit); this
+    /// slice wires the read only. Unknown until the first successful reply;
+    /// a failed read degrades back to unknown and never claims a state.
+    void refreshOnboardingCurrent();
     void clearSnapshots();
 
     /// The last successful TOS read, or `std::nullopt` when unknown (never
@@ -76,6 +92,18 @@ public:
         }
         return needsTosReprompt(tosAcceptance_->hasAcceptedTos,
                                 tosAcceptance_->hasAcceptedTosTimestamp);
+    }
+    /// The last successful onboarding read, or `std::nullopt` when unknown
+    /// (never fetched, signed out, or the last fetch failed).
+    [[nodiscard]] const std::optional<OnboardingState>& onboardingState() const
+    {
+        return onboardingState_;
+    }
+    [[nodiscard]] bool hasOnboardingState() const { return onboardingState_.has_value(); }
+    /// Raw server object, or an empty QJsonObject when unknown.
+    [[nodiscard]] QJsonObject onboardingRaw() const
+    {
+        return onboardingState_.has_value() ? onboardingState_->raw : QJsonObject{};
     }
     [[nodiscard]] static bool needsTosReprompt(bool hasAcceptedTos,
                                                const QString& timestamp);
@@ -138,11 +166,13 @@ signals:
     /// surface is unavailable, not merely that the account refreshed.
     void gatesChanged();
     void tosAcceptanceReady();
+    void onboardingCurrentReady();
 
 private:
     void handleSessionReply(QNetworkReply* reply);
     void handleBillingReply(QNetworkReply* reply);
     void handleTosReply(QNetworkReply* reply);
+    void handleOnboardingReply(QNetworkReply* reply);
 
     SunoClient* client_;
     std::optional<SunoUserSummary> user_;
@@ -153,6 +183,7 @@ private:
     QList<SunoModelInfo> billingModels_;
     std::optional<SunoBillingInfo> billing_;
     std::optional<TosAcceptance> tosAcceptance_;
+    std::optional<OnboardingState> onboardingState_;
     GateResolver gates_;
 };
 

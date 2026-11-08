@@ -18,6 +18,7 @@ ColumnLayout {
         id: promptInput
         Layout.fillWidth: true
         placeholderText: "Describe your vibe..."
+        Accessible.name: "Song prompt"
     }
 
     RowLayout {
@@ -27,6 +28,7 @@ ColumnLayout {
             id: styleInput
             Layout.fillWidth: true
             placeholderText: "Style/Tags..."
+            Accessible.name: "Style and tags"
         }
 
         AppComboBox {
@@ -35,6 +37,7 @@ ColumnLayout {
             model: SunoBridge.models
             textRole: "name"
             valueRole: "external_key"
+            Accessible.name: "Suno model"
             enabled: SunoBridge.isAuthenticated && count > 0
         }
     }
@@ -106,6 +109,7 @@ ColumnLayout {
         AppTextField {
             id: searchBar
             placeholderText: "Search library..."
+            Accessible.name: "Search your library"
             Layout.preferredWidth: 170
             font: Theme.fontCaption
             color: Theme.textPrimary
@@ -122,7 +126,10 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
+        reuseItems: true
         model: SunoBridge.clips
+        Accessible.role: Accessible.List
+        Accessible.name: "Your Suno library"
 
         delegate: ItemDelegate {
             Layout.fillWidth: true

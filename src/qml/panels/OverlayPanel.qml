@@ -31,6 +31,7 @@ ColumnLayout {
             ToolButton {
                 text: "+"
                 onClicked: addOverlayDialog.open()
+                Accessible.name: "Add a text overlay"
             }
         }
     }
@@ -42,6 +43,8 @@ ColumnLayout {
         clip: true
 
         model: OverlayBridge.overlays
+        Accessible.role: Accessible.List
+        Accessible.name: "Text overlays"
         delegate: OverlayDelegate {
             width: overlayList.width
             isSelected: index === root.selectedOverlay
@@ -82,6 +85,7 @@ ColumnLayout {
                 id: textInput
                 Layout.fillWidth: true
                 placeholderText: "Overlay text..."
+                Accessible.name: "Overlay text"
                 text: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].text : ""
                 onTextChanged: {
                     if (root.selectedOverlay >= 0 && activeFocus) {
@@ -104,6 +108,7 @@ ColumnLayout {
                 Slider {
                     id: xSlider
                     Layout.fillWidth: true
+                    Accessible.name: "Horizontal position"
                     from: 0
                     to: 100
                     value: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].x * 100 : 0
@@ -129,6 +134,7 @@ ColumnLayout {
                 SpinBox {
                     from: 12
                     to: 72
+                    Accessible.name: "Font size"
                     value: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].fontSize : 24
                     onValueChanged: {
                         if (root.selectedOverlay >= 0 && activeFocus) {
@@ -141,6 +147,7 @@ ColumnLayout {
 
                 CheckBox {
                     text: "Bold"
+                    Accessible.name: "Bold"
                     checked: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].bold : false
                     onCheckedChanged: {
                         if (root.selectedOverlay >= 0) {
@@ -168,9 +175,22 @@ ColumnLayout {
                     color: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].color : "#FFFFFF"
                     border.color: Theme.border
 
+                    // A colour swatch that opens a dialog: a button, and the
+                    // only way in was the mouse.
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Overlay colour"
+                    Accessible.onPressAction: colorDialog.open()
+
+                    Keys.onReturnPressed: colorDialog.open()
+                    Keys.onSpacePressed: colorDialog.open()
+
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: colorDialog.open()
+                        onClicked: {
+                            parent.forceActiveFocus()
+                            colorDialog.open()
+                        }
                     }
                 }
 
@@ -181,6 +201,7 @@ ColumnLayout {
 
                 Slider {
                     Layout.fillWidth: true
+                    Accessible.name: "Opacity"
                     from: 0
                     to: 100
                     value: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].opacity * 100 : 100
@@ -197,6 +218,7 @@ ColumnLayout {
             ComboBox {
                 id: animationCombo
                 Layout.fillWidth: true
+                Accessible.name: "Animation"
                 model: ["None", "Fade Pulse", "Scroll Left", "Scroll Right", "Bounce"]
                 currentIndex: root.selectedOverlay >= 0 ? OverlayBridge.overlays[root.selectedOverlay].animation : 0
                 onActivated: {
@@ -229,6 +251,7 @@ ColumnLayout {
                 id: newOverlayText
                 Layout.fillWidth: true
                 placeholderText: "Enter text..."
+                Accessible.name: "New overlay text"
             }
         }
 
@@ -258,16 +281,26 @@ ColumnLayout {
                     color: modelData
                     border.color: Theme.border
 
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Use colour " + modelData
+                    Accessible.onPressAction: pickColour()
+
+                    Keys.onReturnPressed: pickColour()
+                    Keys.onSpacePressed: pickColour()
+
+                    function pickColour() {
+                        if (root.selectedOverlay >= 0) {
+                            let overlay = OverlayBridge.overlays[root.selectedOverlay]
+                            overlay.color = modelData
+                            OverlayBridge.updateOverlay(root.selectedOverlay, overlay)
+                        }
+                        colorDialog.close()
+                    }
+
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: {
-                            if (root.selectedOverlay >= 0) {
-                                let overlay = OverlayBridge.overlays[root.selectedOverlay]
-                                overlay.color = modelData
-                                OverlayBridge.updateOverlay(root.selectedOverlay, overlay)
-                            }
-                            colorDialog.close()
-                        }
+                        onClicked: parent.pickColour()
                     }
                 }
             }
@@ -297,6 +330,17 @@ ColumnLayout {
             onClicked: delegate.selectClicked()
         }
 
+        // The row is the selection target, so it is a button named by the overlay
+        // it edits, reachable without a mouse.
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: "Edit overlay: "
+                         + (modelData && modelData.text ? modelData.text : "untitled overlay")
+        Accessible.onPressAction: delegate.selectClicked()
+
+        Keys.onReturnPressed: delegate.selectClicked()
+        Keys.onSpacePressed: delegate.selectClicked()
+
         RowLayout {
             anchors.fill: parent
             anchors.margins: Theme.spacingSmall
@@ -315,6 +359,8 @@ ColumnLayout {
 		implicitWidth: 36
 		implicitHeight: 36
 		onClicked: delegate.deleteClicked()
+		Accessible.name: "Delete overlay: "
+		                 + (modelData && modelData.text ? modelData.text : "untitled overlay")
 	}
         }
 

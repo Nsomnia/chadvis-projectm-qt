@@ -323,6 +323,7 @@ constexpr std::string_view USER_GET_SESSION_ID = "/user/get_user_session_id/"; /
 constexpr std::string_view USER_METADATA = "/user/metadata"; // [T1] GET
 constexpr std::string_view PROFILES_INFO = "/profiles/{}/info"; // [T1] GET
 constexpr std::string_view PROFILES_PINNED_CLIPS = "/profiles/pinned-clips"; // [T1] GET
+constexpr std::string_view ONBOARDING_CURRENT = "/onboarding/current"; // [T1] GET
 
 // ── Studio API: Projects ───────────────────────────────────
 // T1: feed-v3-library-listing.md + browser HAR 2026-09-23.

@@ -95,6 +95,8 @@ Item {
                 spacing: Theme.spacingSmall
                 clip: true
                 model: SunoBridge.playlists
+                Accessible.role: Accessible.List
+                Accessible.name: "Playlists"
 
                 delegate: Rectangle {
                     required property var modelData
@@ -126,6 +128,18 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: SunoBridge.openPlaylist(modelData.id)
                     }
+
+                    // A playlist chip is a button, so a reader gets its name and a
+                    // keyboard user can open it without a mouse.
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Open playlist "
+                                     + ((modelData.name && modelData.name !== "")
+                                        ? modelData.name : "Untitled playlist")
+                    Accessible.onPressAction: SunoBridge.openPlaylist(modelData.id)
+
+                    Keys.onReturnPressed: SunoBridge.openPlaylist(modelData.id)
+                    Keys.onSpacePressed: SunoBridge.openPlaylist(modelData.id)
                 }
             }
 
