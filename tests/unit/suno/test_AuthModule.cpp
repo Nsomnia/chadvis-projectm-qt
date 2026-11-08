@@ -489,7 +489,7 @@ private slots:
                 QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"), "POST",
                 QByteArrayLiteral("{}"));
 
-        QNetworkRequest request(QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/feed/")));
+        QNetworkRequest request(QUrl(QStringLiteral("https://suno.com/a/api/feed/")));
         headers.apply(request);
 
         QCOMPARE(request.rawHeader("Authorization"), QByteArray("Bearer jwt-value"));
@@ -508,7 +508,7 @@ private slots:
     void authHeadersGetOmitsJsonContentType() {
         const StudioApiHeaders headers = makeStudioApiHeaders(
                 QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"), "GET", {});
-        QNetworkRequest request(QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/session/")));
+        QNetworkRequest request(QUrl(QStringLiteral("https://suno.com/a/api/session/")));
         request.setRawHeader("Content-Type", QByteArray("application/json"));
         headers.apply(request);
 
@@ -520,7 +520,7 @@ private slots:
     void authHeadersEmptyPostOmitsContentType() {
         const StudioApiHeaders headers = makeStudioApiHeaders(
                 QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"), "POST", {});
-        QNetworkRequest request(QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/action")));
+        QNetworkRequest request(QUrl(QStringLiteral("https://suno.com/a/api/action")));
         request.setRawHeader("Content-Type", QByteArray("application/json"));
         headers.apply(request);
 
@@ -530,7 +530,7 @@ private slots:
     void authHeadersWithoutBearerFailClosed() {
         const StudioApiHeaders headers =
                 makeStudioApiHeaders({}, QStringLiteral("uuid-1234"), "GET", {});
-        QNetworkRequest request(QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/session/")));
+        QNetworkRequest request(QUrl(QStringLiteral("https://suno.com/a/api/session/")));
         request.setRawHeader("Authorization", QByteArray("Bearer stale"));
         headers.apply(request);
 
@@ -542,7 +542,7 @@ private slots:
                 QStringLiteral("jwt-value"), QStringLiteral("uuid-1234"), "POST",
                 QByteArrayLiteral("{}"));
         QNetworkRequest request(
-                QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/feed/v3")));
+                QUrl(QStringLiteral("https://suno.com/a/api/feed/v3")));
         headers.apply(request);
         QVERIFY(request.rawHeader("Browser-Token").isEmpty());
     }

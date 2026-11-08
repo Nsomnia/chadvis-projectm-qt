@@ -80,14 +80,16 @@ public:
     /// What `captureAsync` hands to the encoder on one call. Kept a pure
     /// decision so the frame-0 path is testable without a GL context: the
     /// first rendered frame used to reach no emit at all, because the map
-    /// block was gated on a flag that started false (T0171).
+    /// block was gated on a flag that started false (T0171). The pipelined
+    /// tail is drained by `stopRecording` (T0443), not by a further render.
     enum class CaptureEmit : u8 {
         /// Complete this call's own readback inline and emit it now: the first
         /// call since setup, when nothing is pending in the sibling buffer.
         InlineOwnFrame = 0,
         /// Emit the sibling buffer's completed readback. The pipelined steady
         /// state: one frame of latency hides the readback behind the next
-        /// render.
+        /// render. The frame this leaves pending is the tail `stopRecording`
+        /// drains so the recording is not one frame short.
         EmitPendingFrame = 1,
         /// Emit nothing: this call's readback becomes the next call's pending
         /// frame, seating the pipeline once.
@@ -119,6 +121,11 @@ private:
     /// Map the PBO at `index` and hand it to the encoder as one captured
     /// frame, stamped with the capture time of the frame it holds.
     void emitPboFrame(u32 index, u32 size, i64 timestampUs);
+    /// Emit the pending sibling readback, if any, through `emitPboFrame` at
+    /// its own capture timestamp, and clear it. Called only by
+    /// `stopRecording`, before the PBOs are destroyed (T0443). A stop with
+    /// no pending frame is a no-op: no extra frame, no null readback.
+    void drainPendingFrame();
 
     pm::Bridge projectM_;
     // Readback scaling target only, created lazily when the recording
@@ -155,7 +162,8 @@ private:
     /// that produced it, not from a second render that may never come.
     bool pboFirstCapture_{true};
     /// A completed readback sits in the sibling buffer, waiting for the next
-    /// call to map and emit it. False after the inline first frame (its
+    /// call to map and emit it, or for `stopRecording` to drain it as the
+    /// recording tail (T0443). False after the inline first frame (its
     /// readback was consumed in its own call) and after setup.
     bool pboHasPendingFrame_{false};
     /// Capture time (microseconds) of the pending readback above, so its

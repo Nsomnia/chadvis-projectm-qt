@@ -151,7 +151,11 @@ void VisualizerRenderer::abandonGlObjects() {
     // Order matters only for clarity: each abandon is independent and none
     // issues a GL call. destroyPBOs() is skipped -- it would glDeleteBuffers
     // under whatever context (if any) happens to be current -- so the PBO
-    // names are zeroed here and the buffers leak.
+    // names are zeroed here and the buffers leak. The pending readback is
+    // dropped, not drained (T0443): draining needs glFinish + glMapBuffer,
+    // and this path exists precisely because there is no context that is
+    // safe to issue them under. stopRecording is the drain path; this is
+    // not the same path and keeps its zero-GL invariant.
     pbos_[0] = pbos_[1] = 0;
     pboIndex_ = 0;
     pboAvailable_ = false;
@@ -404,7 +408,24 @@ void VisualizerRenderer::startRecording() {
     setupPBOs();
 }
 
+void VisualizerRenderer::drainPendingFrame() {
+    if (!pboHasPendingFrame_ || !pboAvailable_) return;
+    // The pending readback was issued by the last render and has had one
+    // render of latency, but at stop there is no next render: sync before
+    // the map, the same glFinish the inline-first-frame path does.
+    glFinish();
+    const u32 pendingIndex = (pboIndex_ + 1) % 2;
+    emitPboFrame(pendingIndex, recordWidth_ * recordHeight_ * 4, pboPendingTimestampUs_);
+    pboHasPendingFrame_ = false;
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+}
+
 void VisualizerRenderer::stopRecording() {
+    // Drain before destroyPBOs: the pending bytes live in the PBOs, and
+    // emitting after they are deleted would map a dead name. No-op when
+    // nothing is pending (in particular after a one-frame recording, whose
+    // frame the inline path already emitted).
+    drainPendingFrame();
     recording_ = false;
     destroyPBOs();
     captureTarget_.destroy();

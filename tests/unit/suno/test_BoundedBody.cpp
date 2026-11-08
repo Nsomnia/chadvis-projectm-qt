@@ -1211,7 +1211,7 @@ private slots:
         // gets if it wires its own QNetworkAccessManager and hands the reply over.
         auto foreign = std::make_unique<PumpingReply>(
                 QNetworkRequest{QUrl(QStringLiteral(
-                        "https://studio-api-prod.suno.com/api/session/"))},
+                        "https://suno.com/a/api/session/"))},
                 std::string{"GET"}, lyricsBody());
         const auto untracked = client.readTrackedBody(foreign.get());
         QVERIFY(!untracked.has_value());

@@ -8,6 +8,13 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Recordings end with their last frame.** The renderer's one-frame pipeline now drains the pending
+  frame when recording stops, so a recording is no longer one frame short at the tail. (T0443)
+
+- **Test fixtures use the real API base.** Generic header/timeout/foreign-reply fixture URLs moved
+  from `studio-api-prod.suno.com` to `https://suno.com/a/api`; production already ran on the new base.
+  (T0336)
+
 - **Recordings now start with frame zero.** The first rendered frame used to wait for the second render
   before being emitted, and a one-render recording lost it entirely. The recorder flag is now derived
   from buffer initialisation and the first capture completes inline; future recordings carry the frame

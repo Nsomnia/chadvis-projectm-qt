@@ -54,11 +54,12 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       only; every route behind them still needs a capture.
       Stale check 2026-11-07: 165 constants, 38 referenced, 127 with zero call sites. Enrichment reads, generation submit+poll, trash restore already landed. Next verifiable chunks are T0383 reads, T0362 step 1, cover art chain.
 
-- [ ] T0336 **Adopt moved API base `https://suno.com/a/api`** (`SunoEndpoints.hpp`, `CapturedHosts.cpp`, `SunoClient.cpp`) #risk-high #cod-high
+- [x] T0336 **Adopt moved API base `https://suno.com/a/api`** (`SunoEndpoints.hpp`, `CapturedHosts.cpp`, `SunoClient.cpp`) #risk-high #cod-high
       Old base `studio-api-prod.suno.com` still answers — live alias, not dead.
       `route-probe.mjs` got byte-identical 200s on both. Migration = hygiene, not fix.
       `page_size` on `unified/library` ignored (20/50/100 same). `/feed/v3` honours `limit` to 100.
       `GET /playlist/{id}/?page=N` verified: flat body, `playlist_clips[]`, 1-based, no `has_more`.
+      **DONE 2026-11-08:** production already runs on `https://suno.com/a/api` (`API_BASE` was adopted, `[T1]`, with the route-probe note) — the only stale base was ten generic test fixtures (header/timeout/foreign-reply bodies), now on the new base with identical route/assertion shapes. `CapturedHosts` keeps both hosts: `studio-api-prod.suno.com` is a live alias (byte-identical 200s via route-probe) and `suno.com` is the captured new base. The OAuth issuer URLs (`studio-api-prod.suno.com/api/v2/external/oauth/*`) were deliberately left — a different API tree (MCP.md, 2026-10-31) that this task must not move without a probe; that is T0393's scope.
 
 - [x] T0335 **Notification client on v2, browser moved to v3** (`SunoNotificationService.cpp`, `SunoEndpoints.hpp`, `CapturedHosts.cpp`) #risk-medium #blocks-ui
       v2 still answers 200. v3 shape differs: `text[].text` concatenated, `avatars[0].image_url`.
@@ -329,10 +330,11 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `mold` is ELF-only. `ld64.lld` tested: 245s vs 228s — slower on this box. `CCACHE_SLOPPINESS=pch_defines,time_macros`
       set automatically. Linker swap not worth it here.
 
-- [ ] T0327 **Credential-store handoff is captured lambda across threads** (`SunoClient.cpp:267-335`) #risk-high
+- [!] T0327 **Credential-store handoff is captured lambda across threads** (`SunoClient.cpp:267-335`) #risk-high
       TSan sees write+read with no edge 206 times. Handoff correct today but suppression is wrong — real race
       indistinguishable. Fix: parameterless queued call with mutex-guarded slot. Target: zero reports on
       `TestSunoRequestEpoch` and `TestBoundedBody`.
+      **ANALYZED 2026-11-08, blocked on reproduction (not on a design choice). Verdict: a benign TSan false positive, not a real race.** The three reports are the closure's own capture storage, not project state: `QCallableObject`'s constructor writes the functor on the posting thread, and `impl()` reads it on the receiving thread (`qobjectdefs_impl.h:548`). The happens-before edge is `QCoreApplication::postEvent`'s event-queue mutex inside libQt6Core, which has zero `__tsan_*` symbols, so TSan cannot see it. `restoreInFlight_`, `restoreDiscarded_`, `restoreGeneration_`, `restoreCompletions_` are not part of the race (same thread by construction, and `kCompletionConnectionType` is pinned queued). `cmake/tsan.supp` is deliberately empty and its own rule forbids an un-reproduced entry, so the drafted `race_top:qobjectdefs_impl.h` entry (fallback `race:QCallableObject`) is not added. Next action: one `--tsan` lane run over `test_SunoRequestEpoch` + `test_BoundedBody`, capture the symbolized report, confirm the substring, then add the entry and amend `INVARIANTS.md:64-81` (which currently requires tsan.supp to stay empty) in the same commit.
 
 - [ ] T0328 **T0154's two new posts joined same TSan class** (`AudioEngine.cpp`) #risk-medium
       `postStatusRefresh`/`postErrorSignal` are `invokeMethod(this, [this,...]{...}, QueuedConnection)`.
@@ -448,10 +450,11 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       scanning". Verify: a scanning property on the bridge gates the empty block.
       **DONE 2026-11-08:** `Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)` on `PresetBridge`, backed live by `PresetManager::scanInFlight()` (no new manager state needed). `rescan()`/`setFolder()` fold it true immediately; `onListChanged` and `onScanFailed` fold it false. The panel gates its empty copy on `!scanning` and shows a busy placeholder while scanning. Two bridge tests: true in flight + false on land, and false on a failed scan.
 
-- [ ] T0443 **Drain the last rendered frame at stopRecording** (`src/visualizer/VisualizerRenderer.*`, `src/recorder/`) #cleanup
+- [x] T0443 **Drain the last rendered frame at stopRecording** (`src/visualizer/VisualizerRenderer.*`, `src/recorder/`) #cleanup
       T0171's frame-0 fix left the tail: the final render's PBO readback is never drained when recording
       stops, so a recording ends one frame short. Verify: a GL slot that renders a known frame last,
       stops recording, and asserts that frame is in the output.
+      **DONE 2026-11-08:** `drainPendingFrame()` emits the pending tail frame at its readback timestamp through the shared `emitPboFrame` path; `stopRecording()` calls it before destroying the PBOs, and a stop with nothing pending is a no-op. The renderer destructor deliberately does not drain under a failing context (T0026), so a window destroyed mid-recording still loses its tail frame there. GL slot `stopRecordingDrainsTheLastFrame` (A,B,C → 2 emitted before stop, 3 after) proves it; `firstRenderEmitsAFrame` now also asserts no extra frame when nothing is pending.
 
 - [ ] T0444 **`integration_tests` is outside the `--tests` build list, so it goes stale silently** (`build.sh`, `docs/dev/TESTING.md`, `AGENTS.md`) #risk-medium
       `integration_tests`/`integration_gl_tests` are deliberately not in `SAFE_TESTS`, but nothing builds

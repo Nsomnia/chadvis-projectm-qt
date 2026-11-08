@@ -447,9 +447,9 @@ private slots:
     // Orientation, decided by comparison rather than by what a preset happens
     // to draw. glReadPixels returns the bottom row first; the encoder uploads
     // rows as they arrive, so a missing flip writes the file upside down and a
-    // double flip flips it back. The first render is captured while the second
-    // one is the frame projectM puts in the framebuffer, so the raw readback
-    // taken between them is exactly the picture the emitted frame came from.
+    // double flip flips it back. Since T0171 the first render emits inline,
+    // so the raw readback taken between the first and second renders is
+    // exactly the picture the emitted frame came from.
     /// projectM does not preserve the caller's GL state, and upstream declined
     /// to fix it (PR #981 closed unmerged), so the renderer must. Every value
     /// here is one the renderer or projectM really changes: the renderer sets
@@ -576,7 +576,9 @@ private slots:
     // from its own render call. Before the fix the PBO map was gated on
     // pboAvailable_, which setupPBOs hardcoded false and the first capture
     // only flipped to true after skipping its emit, so one render produced
-    // no frame at all and the head of every recording was a frame late.
+    // no frame at all and the head of every recording was a frame late. The
+    // tail of the same one-frame pipeline is T0443's slot below: a single
+    // render leaves nothing pending, so stop must add no second frame.
     void firstRenderEmitsAFrame() {
         GlContextFixture fixture;
         if (!fixture.isValid()) QSKIP(fixture.invalidReason().constData());
@@ -600,6 +602,41 @@ private slots:
         QVERIFY2(nonZeroBytes(captured) > 0,
                  "frame 0 was emitted but holds no picture");
         harness.renderer().stopRecording();
+        QCOMPARE(emitted, 1u);
+    }
+
+    // T0443 tail half: the pipelined last frame must reach the encoder from
+    // stopRecording, not from a further render. Three renders emit two frames
+    // by the steady state (frame 0 inline, frame 1 emitted by render 2);
+    // render 3's readback sits pending until stop drains it. Fails on the
+    // pre-T0443 code: the recording came out one frame short at the tail.
+    void stopRecordingDrainsTheLastFrame() {
+        GlContextFixture fixture;
+        if (!fixture.isValid()) QSKIP(fixture.invalidReason().constData());
+
+        RendererHarness harness(fixture, kFrameSize);
+        QVERIFY(harness.isInitialized());
+
+        u32 emitted = 0;
+        std::vector<u8> lastEmitted;
+        harness.renderer().frameCaptured.connect([&](std::vector<u8> pixels, u32, u32, i64) {
+            ++emitted;
+            lastEmitted = std::move(pixels);
+        });
+        harness.renderer().setRecordingSize(kFrameSize, kFrameSize);
+        harness.renderer().startRecording();
+        for (u32 frame = 0; frame < 3; ++frame) {
+            harness.renderer().render(0, 0, kFrameSize, kFrameSize, true);
+            fixture.gl().glFinish();
+        }
+
+        QCOMPARE(emitted, 2u);
+        harness.renderer().stopRecording();
+
+        QCOMPARE(emitted, 3u);
+        QCOMPARE(lastEmitted.size(), static_cast<usize>(kFrameSize) * kFrameSize * 4);
+        QVERIFY2(nonZeroBytes(lastEmitted) > 0,
+                 "the drained last frame holds no picture");
     }
 
     // The product-level claim, end to end: a real encoded file with a real

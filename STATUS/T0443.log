@@ -1,0 +1,1 @@
+2026-11-08T15:42:38Z  VERIFY    ctest 33/33 passed (375.99s). T0171 next-step landed: stopRecordingDrainsTheLastFrame GL slot (renders A,B,C -> 2 emitted before stop, 3 after). integration_tests rebuilt explicitly (not in --tests list).\n

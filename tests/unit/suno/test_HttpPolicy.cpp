@@ -81,7 +81,7 @@ private slots:
         // nobody configured waits forever. If a future Qt ever changes this
         // default, this assertion is the one that notices.
         const QNetworkRequest pristine{
-                QStringLiteral("https://studio-api-prod.suno.com/api/session/")};
+                QStringLiteral("https://suno.com/a/api/session/")};
         QCOMPARE(pristine.transferTimeout(), 0);
         QCOMPARE(pristine.transferTimeoutAsDuration().count(),
                  std::chrono::milliseconds::rep{0});
@@ -101,7 +101,7 @@ private slots:
         QFETCH(int, requestClass);
         const auto cls = static_cast<RequestClass>(requestClass);
 
-        QNetworkRequest request{QUrl(QStringLiteral("https://studio-api-prod.suno.com/api/feed/v3/"))};
+        QNetworkRequest request{QUrl(QStringLiteral("https://suno.com/a/api/feed/v3/"))};
         applyRequestPolicy(request, cls);
 
         // Both accessors, exactly. This is the test that stops the attribute
@@ -129,7 +129,7 @@ private slots:
         // widening this function into "the whole policy" cannot quietly start
         // setting a redirect mode whose verification lives somewhere else.
         QNetworkRequest request{
-                QStringLiteral("https://studio-api-prod.suno.com/api/session/")};
+                QStringLiteral("https://suno.com/a/api/session/")};
 
         // Measured, and the reason this asserts "unset" rather than a policy: a
         // fresh QNetworkRequest has NO RedirectPolicyAttribute at all, so
@@ -146,7 +146,7 @@ private slots:
         // And on a request that already carries the fail-closed policy -- the
         // shape every call site in the tree actually has -- it is left as found,
         // rather than reset to Qt's own default.
-        QNetworkRequest manual{QStringLiteral("https://studio-api-prod.suno.com/api/session/")};
+        QNetworkRequest manual{QStringLiteral("https://suno.com/a/api/session/")};
         manual.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                             QNetworkRequest::ManualRedirectPolicy);
         applyRequestPolicy(manual, RequestClass::JsonApi);

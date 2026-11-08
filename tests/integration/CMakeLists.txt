@@ -41,6 +41,7 @@ add_test(NAME integration_gl_tests
         renderingRestoresTheCallersGlState
         capturedFramesAreFlippedIntoTopDownRows
         firstRenderEmitsAFrame
+        stopRecordingDrainsTheLastFrame
         recordingAtADifferentResolutionIsScaled
         encodedFileContainsTheVisualizerPicture
         liveWindowCapturesFrames
