@@ -1,0 +1,5 @@
+2026-11-09T05:35:00Z  VERIFY  build=fast-green tests=33/33 ctest
+RenderVerdict.{hpp,cpp} carries verdict vocabulary out of the spike.
+OffscreenRenderSpike.cpp removed from RECORDER_SOURCES (test-only).
+App binary: 0 refs to runOffscreenRenderProbe. [&] thread + msleep
+poll now exist only in the test target.

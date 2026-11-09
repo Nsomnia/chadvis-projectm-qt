@@ -1004,10 +1004,13 @@ std::optional<std::string> SunoDownloader::embeddedSunoId(const fs::path& path) 
             return std::string(value.to8Bit());
         }
         return std::nullopt;
-    } catch (const std::exception&) {
+    } catch (const std::exception& e) {
         // A malformed tag is not an error worth failing a download over: the
         // file is simply not identifiable, which resolveDestPath treats the
-        // same way it treats a file with no id at all.
+        // same way it treats a file with no id at all. Log at DEBUG so an
+        // OOM/bad_alloc (a std::exception) is not silently indistinguishable
+        // from a malformed tag.
+        LOG_DEBUG("SunoDownloader: failed to read SUNO_ID tag: {}", e.what());
         return std::nullopt;
     } catch (...) {
         return std::nullopt;

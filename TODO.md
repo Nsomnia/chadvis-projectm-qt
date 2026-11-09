@@ -751,10 +751,10 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       Two-process-global singletons (`Config`, `Application`) block isolated tests. Verify: tests construct two Configs without global surgery; `CONFIG` macro confined to `main.cpp`.
 - [ ] T0398 **Replace raw new/delete in audio upload** (`src/suno/SunoAudioUploadService.cpp`) #risk-medium
       `new QFile`/`new QHttpMultiPart` with manual delete; early return leaks. Verify: no manual delete remains; ASan lane clean on the upload failure path.
-- [ ] T0399 **Log the double-catch in tag read** (`src/suno/SunoDownloader.cpp:1006-1013`) #cleanup
-      Two silent catches turn OOM/bad_alloc into "no SUNO_ID". Verify: `catch(std::exception&)` logs at DEBUG; download still succeeds on a malformed tag.
-- [ ] T0400 **Audit OffscreenRenderSpike thread lifetime + production include** (`src/recorder/OffscreenRenderSpike.cpp`, `src/recorder/OffscreenRenderSpike.hpp`, `src/recorder/RenderExecutor.hpp:153`) #risk-high
-      `[&]` std::thread capture + `msleep` poll in shipped code. Verify: spike is deleted (logic absorbed) or test-only with no production include; if shipped, capture is owned and joined before teardown.
+- [x] T0399 **Log the double-catch in tag read** (`src/suno/SunoDownloader.cpp:1006-1013`) #cleanup
+      Done 2026-11-09: `catch(std::exception& e)` logs at DEBUG before `nullopt`, so OOM/bad_alloc is visible; success/malformed-tag behavior unchanged. unit_tests linked + full run green.
+- [x] T0400 **Audit OffscreenRenderSpike thread lifetime + production include** (`src/recorder/OffscreenRenderSpike.cpp`, `src/recorder/OffscreenRenderSpike.hpp`, `src/recorder/RenderExecutor.hpp:153`) #risk-high
+      Done 2026-11-09: verdict vocabulary (RenderThreadVerdict/toString/offscreenVerdictMaxConcurrency) absorbed into RenderVerdict.{hpp,cpp}; probe sources removed from RECORDER_SOURCES (test-only now, compiled only by test_OffscreenRenderSpike). App binary: 0 refs to runOffscreenRenderProbe. Verify: full build 380/380, ctest 33/33.
 - [x] T0401 **Guard CredentialStoreWorker enqueue with the shutdown flag** (`src/suno/SunoClient.cpp:364-373`) #risk-high
       Guard landed 2026-11-08: enqueue's queued lambda now captures the shared shuttingDown_ copy and early-returns, mirroring requestRestore. New `storeEnqueuesOnWorkerThread` covers the store/remove path.
       Verify: enqueue checks the same flag; shutdown-order test covers `wait()` failure.

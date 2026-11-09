@@ -191,8 +191,12 @@ add_test(NAME test_FeatureFlags COMMAND test_FeatureFlags)
 # GUI stack) while unit_tests' main() is a QCoreApplication, so it must be a
 # standalone target rather than a unit_tests member -- the same reason
 # test_HttpPolicy is separate.
+# T0400: the probe sources are compiled here only (no longer in project_lib),
+# so production ships no probing code; the verdict types live in
+# RenderVerdict, which project_lib still carries.
 add_executable(test_OffscreenRenderSpike
     recorder/test_OffscreenRenderSpike.cpp
+    ${CMAKE_SOURCE_DIR}/src/recorder/OffscreenRenderSpike.cpp
 )
 
 set_target_properties(test_OffscreenRenderSpike PROPERTIES

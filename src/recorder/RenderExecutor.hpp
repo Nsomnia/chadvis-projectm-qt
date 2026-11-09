@@ -150,7 +150,7 @@
  * progress it cannot deliver.
  */
 
-#include "recorder/OffscreenRenderSpike.hpp"
+#include "recorder/RenderVerdict.hpp"
 #include "recorder/RenderJob.hpp"
 #include "recorder/RenderQueue.hpp"
 #include "util/Types.hpp"

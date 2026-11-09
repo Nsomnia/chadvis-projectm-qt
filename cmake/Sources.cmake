@@ -475,9 +475,12 @@ list(APPEND RECORDER_SOURCES
 # measurement nobody can reproduce is a comment. RECORDER_SOURCES for the usual
 # non-globbing reason.
 # ─────────────────────────────────────────────────────────────
+# (T0400) The probe itself is now test-only: no production target compiles
+# OffscreenRenderSpike.cpp. What shipped the app used to carry ~1000 lines of
+# GL probing; only the vocabulary types (RenderVerdict) remain.
 list(APPEND RECORDER_SOURCES
-    src/recorder/OffscreenRenderSpike.hpp
-    src/recorder/OffscreenRenderSpike.cpp
+    src/recorder/RenderVerdict.hpp
+    src/recorder/RenderVerdict.cpp
 )
 
 # ─────────────────────────────────────────────────────────────
