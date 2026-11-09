@@ -465,6 +465,19 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       step, or that refuses to run them when the binary is older than the sources.
       **DONE 2026-11-08:** `scripts/check-integration-fresh.py` fails when the `integration_tests` binary is older than `tests/integration/` sources and prints the rebuild command; it also fails if `integration_tests` ever appears in build.sh's SAFE_TESTS. Wired into `.github/workflows/guards.yml`; `AGENTS.md` §7 and `docs/dev/TESTING.md` name the check and the rebuild command. The everyday `--tests` loop is unchanged (one Python check, milliseconds).
 
+- [ ] T0451 **Drain QML incubation in `aboutToQuit`** (`src/core/Application.cpp`) #cleanup
+      The production counterpart of T0180's test fix: if the app quits during the first event-loop
+      turns, the engine can be destroyed with objects still being created. The probe proposed a drain
+      in `aboutToQuit` before member teardown (engine before audio, matching `Application.hpp:136-138`).
+
+- [ ] T0452 **qmlcachegen (Qt 6.12) segfaults on member access on a QVariantMap** (`docs/dev/`, `TODO.md`) #risk-medium
+      Reading `.outcome` off a `QVariantMap` returned by a Q_PROPERTY (`SunoBridge.lastSettle || {}`)
+      made `qmlcachegen` exit 139 (SIGSEGV) during AOT generation; removing the member access made the
+      same file compile. Bisected 2026-11-08: `.outcome` access crashes, `|| {}` alone does not, plain
+      expressions and object-literal returns are fine. Workaround in place: the settle sentence is
+      computed in C++. Verify: keep any QML free of member access on map-typed properties, or track the
+      Qt fix and revert.
+
 - [x] T0450 **Wire `notificationSettled` into QML** (`src/qml_bridge/`, `src/qml/views/NotificationsView.qml`) #feature
       `SunoNotificationService::notificationSettled` exists (T0375 follow-up) with per-call outcome, but
       no bridge exposes it, so the UI cannot tell the user which click was refused or rejected. Verify:
