@@ -127,6 +127,10 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **Headless CI can now run `test_SunoNotificationService`.** Its `QTEST_MAIN` needs a `QGuiApplication`, which aborts without a display on Ubuntu runners; the test now runs with `QT_QPA_PLATFORM=offscreen`.
+
+- **The module-split link failures are fixed** (the six-module split's archive pull order on Linux CI): `project_bridges` and the aggregator order their archives so moc symbols resolve, and the feature frameworks (`Security`, `Qt6::DBus`) once again reach the final link. `scripts/lint-qml.sh` now calls `project_bridges_qmllint`.
+
 - **Vocal stems and personas are wired.** A selected range can be submitted for stem extraction, polled
   until the audio is ready, and turned into a persona: `SunoStemService` and the create half of
   `SunoPersonaService`. A range is never auto-detected (no such route exists) and an unobserved status
