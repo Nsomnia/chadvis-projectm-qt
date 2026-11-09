@@ -133,7 +133,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       exists in the agent VM, so desktop `./build.sh --fast --tests` + a real run remain the
       verification gate before any Phase 0/1 code is claimed complete.
 
-- [ ] T0359 **Reactive GUI Phase 2: GUI for the 11 wired Suno mutations + generation + notifications** (`src/qml/components/ClipDetailSheet.qml`, `src/qml/components/ClipCard.qml`, `src/qml/components/PlaylistStrip.qml`, `src/qml/views/LibraryView.qml`, `src/qml/views/CreateView.qml`, `src/qml/views/NotificationsView.qml`, `src/qml/components/NavRail.qml`) #feature #blocks-ui (after: T0358)
+- [~] T0359 **Reactive GUI Phase 2: GUI for the 11 wired Suno mutations + generation + notifications** (`src/qml/components/ClipDetailSheet.qml`, `src/qml/components/ClipCard.qml`, `src/qml/components/PlaylistStrip.qml`, `src/qml/views/LibraryView.qml`, `src/qml/views/CreateView.qml`, `src/qml/views/NotificationsView.qml`, `src/qml/components/NavRail.qml`) #feature #blocks-ui (after: T0358)
       Plan: [`docs/dev/REACTIVE-GUI-PLAN.md`](docs/dev/REACTIVE-GUI-PLAN.md) §6.1–§6.4. The 11
       verbs in `SunoMutationsSection` have zero QML callers today (T0011's UI gap): add a
       mutation section + overflow menu to `ClipDetailSheet`, a context-menu entry on `ClipCard`,
@@ -143,6 +143,8 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       rail + mark-all-read feedback. Optimistic UI forbidden for mutations except playlist
       reorder with a specified revert. Optional in this phase, only if prioritised: §1.4
       one-method surfaces (like/unlike, playlist create, playlist trash) + T0348 doc fixes.
+      **Part 1 done 2026-11-08:** `ClipMutationsSection.qml` (+ `ClipActionMenu.qml`) in `ClipDetailSheet`, both registered in `Sources.cmake`. Live-verified consumption states the card is recycling-safe (settle note resets on `clipData` change, so a recycled card never carries another clip's note). Gate honesty is per-gate (library/sharing/playlists rows in `SunoBridge.gateStatuses`, absent row = denied → fail-closed), state changes only on `accepted` (no optimistic flips), and the section renders `mutationsUnavailableReason` verbatim when nothing permits. `SunoBridge` now also forwards `is_public` into the clip-variant map (the feed field existed, was dropped before QML). Two defects found at integration time and fixed by the orchestrator: (1) `ClipMutationsSection` without `import QtQuick.Controls` failed to load (`ToolTip.visible` = "Non-existent attached object"), (2) four per-row `shakeAnim` ids collided ("id is not unique") leaving the whole LibraryView chain unavailable. Reorder (`reorderPlaylistTracks`) needs a C++ index follow-up since `playlistClips` carries no relative index. Part 2 (Toast, NavRail, CreateView, LibraryView) remains.
+
 
 - [x] T0348 **`SunoEndpoints.hpp` "deliberately ABSENT" list stale for 4 routes** (`SunoLibraryMutations.*`) #feature #risk-medium
       Constants + absent-list **done 2026-11-06**: §5.13 bodies landed in `SunoEndpoints.hpp`

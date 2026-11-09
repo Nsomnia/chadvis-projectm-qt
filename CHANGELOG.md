@@ -8,6 +8,11 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Clip actions are in the UI now.** The detail sheet carries an "Actions" section for the wired
+  Suno mutations: visibility, remix permission, share link, playlist name/description, adding or
+  removing this clip, track edits, and playlist cover, each control only presented when its own gate
+  allows and changing state only when the server accepts. (T0359 part 1)
+
 - **Notification outcomes reach the user.** A refused or rejected clear-badge, mark-read or refresh
   now shows a short fixed sentence in the header rather than silently doing nothing; an accepted settle
   changes nothing. (T0450)

@@ -1,7 +1,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QQmlApplicationEngine>
-#include <QQmlIncubatorController>
+#include <QQmlIncubationController>
 #include <QQuickWindow>
 #include <QTimer>
 #include <QUrl>
@@ -266,8 +266,8 @@ private slots:
         // GUI loop. Drain by the exact readiness condition rather than an
         // arbitrary wait; a platform where show() blocks never reaches here
         // with the watchdog already hiding the window.
-        while (QQmlIncubatorController* ctrl = engine.incubationController()) {
-            if (ctrl->isReady())
+        while (QQmlIncubationController* ctrl = engine.incubationController()) {
+            if (ctrl->incubatingObjectCount() == 0)
                 break;
             QTest::qWait(50);
         }

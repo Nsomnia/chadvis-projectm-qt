@@ -32,6 +32,39 @@ Rectangle {
     property string savedPath: ""
     property string saveErrorText: ""
 
+    // Mutation result for THIS clip, from the overflow menu's
+    // single-shot verbs. Reset whenever the delegate is recycled
+    // onto another clip: a note that survives recycling would
+    // narrate the wrong clip's outcome.
+    property string mutationNote: ""
+    property bool mutationNoteIsError: false
+
+    onClipDataChanged: {
+        mutationNote = ""
+        mutationNoteIsError = false
+    }
+
+    Connections {
+        target: SunoBridge
+        ignoreUnknownSignals: true
+
+        function onClipMutationSettled(subjectId, verb, outcome, reason) {
+            if (!root.clipData || subjectId !== root.clipData.id)
+                return
+            if (outcome === "accepted") {
+                root.mutationNote = "Change accepted — refreshing the library"
+                root.mutationNoteIsError = false
+            } else {
+                root.mutationNote = reason.length > 0 ? reason : "That change was not saved."
+                root.mutationNoteIsError = true
+            }
+        }
+
+        function onLibraryRefreshRecommended() {
+            SunoBridge.refreshLibrary(1)
+        }
+    }
+
     property bool selectionMode: false
     property bool selected: false
 
@@ -271,6 +304,19 @@ Rectangle {
             elide: Text.ElideRight
             wrapMode: Text.NoWrap
         }
+
+        // Mutation result for this clip (see ClipActionMenu):
+        // one elided line, like the save text above it; the full
+        // sentence lives in the sheet's Actions section.
+        Text {
+            Layout.fillWidth: true
+            visible: root.mutationNote.length > 0
+            text: root.mutationNote
+            color: root.mutationNoteIsError ? Theme.error : Theme.success
+            font: Theme.fontTiny
+            elide: Text.ElideRight
+            wrapMode: Text.NoWrap
+        }
     }
 
     MouseArea {
@@ -423,6 +469,40 @@ Rectangle {
             return dir.length > 0 ? "Save to " + dir : "Save to your music folder"
         }
         onClicked: root.saveRequested(root.clipData ? root.clipData.id : "")
+    }
+
+    // ── Overflow actions ─────────────────────────
+    // Bottom-right of the cover: the one corner free of the play
+    // disc (centre), save (top-right) and selection marker
+    // (top-right, selection only). Opens ClipActionMenu, whose
+    // "Details & actions…" entry lands in the same sheet the
+    // card's tile opens.
+    AppButton {
+        id: overflowButton
+        anchors.bottom: artClipper.bottom
+        anchors.right: artClipper.right
+        anchors.margins: Theme.spacingSmall
+        implicitWidth: 28
+        implicitHeight: 28
+        buttonRadius: Theme.radiusSmall
+        flat: false
+        visible: !!root.clipData && !root.selectionMode
+        text: "⋯"
+        enabled: !!root.clipData
+        onClicked: actionMenu.popup(overflowButton, 0, overflowButton.height)
+        Accessible.name: {
+            const title = root.clipData ? (root.clipData.title || "this clip") : "this clip"
+            return "More actions for " + title
+        }
+        ToolTip.visible: hovered
+        ToolTip.delay: 400
+        ToolTip.text: "Details & actions"
+    }
+
+    ClipActionMenu {
+        id: actionMenu
+        clipData: root.clipData
+        onOpenSheet: function(clip) { root.opened(clip) }
     }
 }
 

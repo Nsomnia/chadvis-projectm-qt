@@ -117,6 +117,7 @@ QVariantMap toDiscoverClip(const vc::suno::SunoClip& clip) {
             QString::fromStdString(clip.display_name.empty() ? clip.handle : clip.display_name);
     result[QStringLiteral("created_at")] = QString::fromStdString(clip.created_at);
     result[QStringLiteral("duration")] = QString::fromStdString(clip.metadata.duration);
+    result[QStringLiteral("is_public")] = clip.is_public;
     return result;
 }
 
@@ -790,6 +791,9 @@ void SunoBridge::onLibraryUpdated() {
                         .value_or(QString());
         map["model_name"] = QString::fromStdString(clip.model_name);
         map["major_model_version"] = QString::fromStdString(clip.major_model_version);
+        // Visibility as the feed reports it, so the mutation surface
+        // can seed its toggle from fact instead of guessing.
+        map["is_public"] = clip.is_public;
         map["created_at"] = QString::fromStdString(clip.created_at);
         map["play_count"] = static_cast<int>(clip.play_count);
         map["duration"] = QString::fromStdString(clip.metadata.duration);

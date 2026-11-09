@@ -299,6 +299,20 @@ Popup {
                     color: Theme.textSecondary
                     font: Theme.fontBody
                 }
+
+                // ── Clip & playlist mutations (§6.2) ────────
+                // The sheet's own expandable section; the clip's
+                // visibility is seeded from the feed field the
+                // bridge exposes, and the playlist context is the
+                // open playlist, passed through, never guessed.
+                ClipMutationsSection {
+                    Layout.fillWidth: true
+                    clipId: root.clipData ? root.clipData.id : ""
+                    clipTitle: root.clipData ? (root.clipData.title || "Untitled") : ""
+                    playlistId: SunoBridge.openPlaylistId
+                    seedVisibility: root.clipData && root.clipData.is_public !== undefined
+                                    ? (root.clipData.is_public === true ? 1 : 0) : -1
+                }
             }
         }
 
