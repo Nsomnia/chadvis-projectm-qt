@@ -215,6 +215,31 @@ private slots:
         QVERIFY(duplicateReused);
         QCOMPARE(backendCalls.load(), 1);
     }
+
+    // T0401: enqueue (store/remove) carries the same shutdown-flag guard as
+    // requestRestore. A store queued before shutdown runs the backend once;
+    // the flag is shared_ptr state that survives the worker's teardown, so
+    // the lambda can never read freed members.
+    void storeEnqueuesOnWorkerThread() {
+        QObject guiReceiver;
+        const QThread* constructingThread = QThread::currentThread();
+        std::atomic_int backendCalls{0};
+        std::atomic_bool backendOnGuiThread{false};
+        CredentialStoreWorker worker(
+                &guiReceiver,
+                [&](CredentialStoreWorker::Request request) {
+                    backendOnGuiThread.store(
+                            QThread::currentThread() == constructingThread);
+                    backendCalls.fetch_add(1);
+                    return CredentialStoreWorker::Outcome{};
+                });
+
+        worker.store(QStringLiteral("k"), QStringLiteral("v"));
+        worker.remove(QStringLiteral("k"));
+
+        QTRY_VERIFY_WITH_TIMEOUT(backendCalls.load() == 2, kWaitMs);
+        QVERIFY(!backendOnGuiThread.load());
+    }
 };
 
 int runTestCredentialRestoreWorker(int argc, char** argv) {

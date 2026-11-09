@@ -755,8 +755,10 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       Two silent catches turn OOM/bad_alloc into "no SUNO_ID". Verify: `catch(std::exception&)` logs at DEBUG; download still succeeds on a malformed tag.
 - [ ] T0400 **Audit OffscreenRenderSpike thread lifetime + production include** (`src/recorder/OffscreenRenderSpike.cpp`, `src/recorder/OffscreenRenderSpike.hpp`, `src/recorder/RenderExecutor.hpp:153`) #risk-high
       `[&]` std::thread capture + `msleep` poll in shipped code. Verify: spike is deleted (logic absorbed) or test-only with no production include; if shipped, capture is owned and joined before teardown.
-- [ ] T0401 **Guard CredentialStoreWorker enqueue with the shutdown flag** (`src/suno/SunoClient.cpp:364-373`) #risk-high
-      Restore path has the guard (T0032); enqueue does not. Verify: enqueue checks the same flag; shutdown-order test covers `wait()` failure.
+- [x] T0401 **Guard CredentialStoreWorker enqueue with the shutdown flag** (`src/suno/SunoClient.cpp:364-373`) #risk-high
+      Guard landed 2026-11-08: enqueue's queued lambda now captures the shared shuttingDown_ copy and early-returns, mirroring requestRestore. New `storeEnqueuesOnWorkerThread` covers the store/remove path.
+      Verify: enqueue checks the same flag; shutdown-order test covers `wait()` failure.
+      **DONE:** ctest 33/33.
 - [ ] T0402 **Move audio/render constants into ConfigData with defaults** (`src/audio/AudioQueue.hpp`, `src/audio/VisualizerAudioTap.cpp`, `src/audio/AudioEngine.hpp`, `src/recorder/RenderExecutor.hpp`, `src/recorder/EncoderSettings.cpp`, `src/core/ConfigData.hpp`, `src/core/ConfigParsers.cpp`) #cleanup (after: T0397)
       Queue capacity, 48 kHz rate, debounce, quantum, frame cap, max-concurrent are baked in. Verify: each has a TOML key + CLI override + documented default equal to today.
 - [x] T0403 **Modernize snprintf to std::format** (`src/suno/SunoDownloader.cpp`, `src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/OffscreenRenderSpike.cpp`) #cleanup

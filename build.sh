@@ -705,9 +705,9 @@ do_build() {
     printf '%sBUILD%s %s (%s jobs%s%s)\n' "$CYAN" "$RESET" "$BUILD_DIR" "$JOBS" \
         "$( [[ "$WANT_TESTS_ONLY" -eq 1 ]] && printf ', tests only' )" \
         "$( [[ ${#EXPLICIT_TARGETS[@]} -gt 0 ]] && printf ', targets: %s' "${EXPLICIT_TARGETS[*]}" )"
-    printf '%sBUDGET%s %s of %s logical cores (%s physical), %s MiB available of %s total, %s MiB/job, bound: %s%s\n' \
+    printf '%sBUDGET%s %s of %s logical cores (%s physical), %s MiB available of %s total (memory informational), bound: %s%s\n' \
         "$YELLOW" "$RESET" "$JOBS" "$BUDGET_LOGICAL" "$BUDGET_PHYS" "$BUDGET_AVAIL_MIB" \
-        "${BUDGET_TOTAL_MIB:-?}" "$PER_JOB_MIB" "$BUDGET_BINDER" \
+        "${BUDGET_TOTAL_MIB:-?}" "$BUDGET_BINDER" \
         "$( [[ "$JOBS_EXPLICIT" -eq 1 ]] && printf ' (--jobs override)' )"
     if [[ "$BUDGET_BINDER" == "memory-starved" ]]; then
         warn "only $(( BUDGET_AVAIL_MIB * MEM_PERCENT / 100 )) MiB of the ${BUDGET_AVAIL_MIB} MiB available is budgeted at ${MEM_PERCENT}% -- close other apps, or this build will page."
@@ -815,12 +815,12 @@ case "$ACTION" in
         printf '  physical cores        %s   (logical: %s)\n' "$BUDGET_PHYS" "$BUDGET_LOGICAL"
         printf '  memory                %s MiB available of %s MiB total\n' \
             "$BUDGET_AVAIL_MIB" "${BUDGET_TOTAL_MIB:-?}"
-        printf '  fractions             cpu %s%%, memory %s%%, %s MiB per job\n' \
-            "$CPU_PERCENT" "$MEM_PERCENT" "$PER_JOB_MIB"
+        printf '  fractions             cpu %s%% (memory informational)\n' \
+            "$CPU_PERCENT"
         printf '  cpu allows            %s jobs (%s%% of %s logical cores)%s\n' \
             "$BUDGET_JOBS_CPU" "$CPU_PERCENT" "$BUDGET_LOGICAL" \
             "$( [[ "$BUDGET_JOBS_CPU" -eq "$BUDGET_PHYS" ]] && printf ' (floored at the physical core count)' )"
-        printf '  memory allows         %s jobs (%s MiB budgeted)\n' \
+        printf '  memory would allow    %s jobs (%s MiB budgeted, informational, not enforced)\n' \
             "$BUDGET_JOBS_MEM" "$BUDGET_USABLE_MIB"
         printf '  chosen                %s jobs, bound by %s\n' "$JOBS" "$BUDGET_BINDER"
         printf '  ctest                 %s entries at -j%s\n' "$BUILD_DIR/tests" "$CTEST_JOBS"

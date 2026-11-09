@@ -1,0 +1,3 @@
+2026-11-09T05:20:00Z  VERIFY  build=fast-green tests=33/33 ctest
+enqueue() now captures the shared shuttingDown_ copy and early-returns,
+mirroring requestRestore (T0401). storeEnqueuesOnWorkerThread added.

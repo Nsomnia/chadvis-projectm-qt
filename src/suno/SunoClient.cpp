@@ -363,7 +363,14 @@ void CredentialStoreWorker::discardPendingRestore() {
 void CredentialStoreWorker::enqueue(Request request) {
     const bool queued = QMetaObject::invokeMethod(
             worker_,
-            [backend = backend_, request = std::move(request)]() mutable {
+            [backend = backend_, request = std::move(request),
+             shutdown = shuttingDown_]() mutable {
+                // T0401: mirror the restore-path guard. If the destructor's
+                // join failed, this lambda outlives *this; the flag copy is
+                // the only safe way to observe shutdown here.
+                if (shutdown->load(std::memory_order_acquire)) {
+                    return;
+                }
                 (void)backend(request);
             },
             Qt::QueuedConnection);
