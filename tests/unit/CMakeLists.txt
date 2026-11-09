@@ -601,6 +601,11 @@ target_link_libraries(test_SunoNotificationService PRIVATE
 
 add_test(NAME test_SunoNotificationService COMMAND test_SunoNotificationService)
 
+# QTEST_MAIN pulls QGuiApplication; headless CI lanes have no display.
+set_tests_properties(test_SunoNotificationService PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 add_executable(test_SunoFreeReadsService
     suno/test_SunoFreeReadsService.cpp
 )
