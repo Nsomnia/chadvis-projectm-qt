@@ -590,6 +590,29 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0338 **Windows vcpkg ports unpinned, CI reproducibility zero** (`windows.yml:130-160`) #risk-medium
       No `vcpkg.json`. Add manifest with `builtin-baseline` commit. Delete explicit list.
 
+- [ ] T0453 **Split `project_lib` (80 MB, 48 `Q_OBJECT`) into ~7 module libs** (`TargetSetup.cmake`) #perf
+      Own moc/PCH per module; tests link their module. Verify: `ninja -t deps` mocs per TU < 15; `--tests` relinks < 31 binaries.
+      Detail: [`docs/dev/BUILD-SPEED.md`](docs/dev/BUILD-SPEED.md).
+
+- [ ] T0454 **PCH defeats ccache (1,603 `could_not_use_precompiled_header`)** (`build.sh`, `src/pch.hpp`) #perf
+      Extend `CCACHE_SLOPPINESS`, set `CCACHE_NOHASHDIR=1`, raise `max_size`, add `<variant>`/`<source_location>` to PCH.
+      Verify: uncacheable < 5% on next full `--tests`.
+
+- [ ] T0455 **Top-5 header fan-out (900 TUs)** (`Types.hpp`, `Result.hpp`, `SunoClient.hpp`, `SunoEndpoints.hpp`) #perf
+      Split `<filesystem>`/`<span>` out, forward-declare, split endpoints per service. Verify: `ninja -t deps` top header < 100.
+
+- [ ] T0456 **Version bump rebuilds ~350 TUs (`CHADVIS_VERSION` PUBLIC)** (`TargetSetup.cmake`, `Application.cpp`, `CliUtils.cpp`) #perf
+      Emit `BuildConfig.hpp` by `configure_file`. Verify: touch `version.txt` rebuilds < 5 TUs.
+
+- [ ] T0457 **Cache sharing: remote storage, 2013 MBA as cache server only** (`build.sh`, CI) #perf
+      ccache `remote-storage` (S3/GCS/Redis) or sccache Redis on 2013 MBA. No `distcc`/`icecc` (toolchain parity).
+      Detail: [`docs/dev/BUILD-SPEED.md`](docs/dev/BUILD-SPEED.md).
+
+- [ ] T0458 **QML qmlcache (59 TUs) + unity build in fast loop** (`TargetSetup.cmake`, `CMakeLists.txt`) #perf
+      Interpreted QML in `CHADVIS_FAST_ITERATION`; `CMAKE_UNITY_BUILD` batch 8 after T0454. Verify: `--tests` cold wall < 50% baseline.
+
+- [ ] T0459 **CI ccache key ignores `src/` (`build.yml:241`)** (`.github/workflows/build.yml`) #perf
+      Include `src/`+`tests/` in cache hash. Verify: source-only change hits cache.
 ---
 
 ## P2b — endpoint coverage from urls.txt (1058 unique URLs) + UI-07 follow-ups
