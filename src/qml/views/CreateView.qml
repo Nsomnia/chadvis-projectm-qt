@@ -221,6 +221,33 @@ Item {
         }
     }
 
+    onVisibleChanged: {
+        if (!visible)
+            createToast.clear()
+    }
+
+    Connections {
+        target: SunoBridge
+        ignoreUnknownSignals: true
+
+        // Generation ready (plan §6.3): fixed sentence + an action
+        // that opens the Library. Errors reuse the bridge's strings
+        // verbatim — the same sentences the inline lines show.
+        function onGenerationClipsReady(clips) {
+            createToast.show("Song ready — open in Library", false, "Open Library")
+        }
+
+        function onGenerationErrorChanged() {
+            if (SunoBridge.generationError.length > 0)
+                createToast.show(SunoBridge.generationError, true)
+        }
+
+        function onAudioUploadErrorChanged() {
+            if (SunoBridge.audioUploadError.length > 0)
+                createToast.show(SunoBridge.audioUploadError, true)
+        }
+    }
+
     FileDialog {
         id: audioFileDialog
         title: "Upload Audio to Suno"
@@ -229,6 +256,21 @@ Item {
         onAccepted: {
             if (selectedFile)
                 SunoBridge.uploadAudio(toLocalFilePath(selectedFile))
+        }
+    }
+
+    // Same overlay contract as the library toast: bottom-centre, never
+    // pushes layout, clears when the route changes.
+    Toast {
+        id: createToast
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: Theme.spacingLarge
+        z: 10
+
+        onActionClicked: {
+            if (typeof mainWindow !== "undefined" && mainWindow.navigate)
+                mainWindow.navigate("library")
         }
     }
 }

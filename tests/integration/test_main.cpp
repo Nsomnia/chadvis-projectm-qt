@@ -8,6 +8,7 @@
 #include <QtTest>
 
 #include "audio/AudioEngine.hpp"
+#include "core/Application.hpp"
 #include "core/Config.hpp"
 #include "qml_bridge/BridgeRegistration.hpp"
 
@@ -279,6 +280,62 @@ private slots:
             QVERIFY2(false, qPrintable(
                 QStringLiteral("navigate(\"settings\") reported: %1").arg(error)));
         }
+    }
+
+    /// T0451. Production drain for T0180's defect class: the app can quit
+    /// during the first event-loop turns, and the engine would then be
+    /// destroyed with objects still being created. This drives the exact
+    /// production helper aboutToQuit() now calls, against a test engine that
+    /// reproduces the quit-during-incubation scenario: load, navigate to
+    /// Settings (the lazy Popup/Dialog + delegate incubation that held ~77
+    /// objects pending in T0180), and destroy without pumping. The slot
+    /// contains no qWait/QTRY: the assertion is the production drain itself,
+    /// not a wait-for-it sleep, and the >0 precondition keeps the test from
+    /// passing vacuously. The second engine/process instance the task
+    /// suggested is unnecessary: the drain is a static seam callable on a
+    /// stack engine (the same reason parseArgsFrom exists), and the
+    /// integration suite already builds its own QGuiApplication + engine.
+    void earlyQuitDrainsIncubationViaProductionHelper()
+    {
+        // Null engine is a no-op (headless quit): must not crash or hang.
+        vc::Application::drainQmlIncubation(nullptr);
+
+        vc::AudioEngine audio;
+        QQmlApplicationEngine engine;
+
+        auto* window = loadShell(audio, engine);
+        QVERIFY(window);
+        auto* settings = findSettingsWindow(window);
+        QVERIFY2(settings, "main.qml declares no QQuickWindow named "
+                           "\"settingsWindow\"; the Settings surface is gone");
+        QVERIFY(!settings->isVisible());
+
+        // Navigate exactly like the nav rail does. No event loop runs after
+        // this: the next thing that could pump is the drain itself.
+        const bool invoked = QMetaObject::invokeMethod(
+            window, "navigate", Q_ARG(QVariant, QStringLiteral("settings")));
+        QVERIFY(invoked);
+
+        auto* ctrl = engine.incubationController();
+        QVERIFY(ctrl);
+        // The scenario must be real: unpumped lazy creation leaves objects
+        // pending. On platforms where creation completes synchronously during
+        // navigate (a zero count), the drain below is still the correct call
+        // but proves nothing here, so skip honestly rather than pass vacuously
+        // or fail for an environmental reason.
+        if (ctrl->incubatingObjectCount() == 0)
+            QSKIP("platform completed QML creation synchronously; nothing pending to drain");
+
+        // The production drain: bounded GUI-thread pumping until
+        // incubatingObjectCount() == 0. Engine scope exit then destroys the
+        // engine with zero pending, so no engine-destruction diagnostic (the
+        // condition Qt warns on iff count > 0) can fire.
+        vc::Application::drainQmlIncubation(&engine);
+
+        QCOMPARE(ctrl->incubatingObjectCount(), 0);
+
+        settings->hide();
+        window->hide();
     }
 
     /// T0074. A QML Shortcut is processed before a Dialog's own Esc handling,

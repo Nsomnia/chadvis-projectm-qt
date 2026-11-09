@@ -467,10 +467,12 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       step, or that refuses to run them when the binary is older than the sources.
       **DONE 2026-11-08:** `scripts/check-integration-fresh.py` fails when the `integration_tests` binary is older than `tests/integration/` sources and prints the rebuild command; it also fails if `integration_tests` ever appears in build.sh's SAFE_TESTS. Wired into `.github/workflows/guards.yml`; `AGENTS.md` §7 and `docs/dev/TESTING.md` name the check and the rebuild command. The everyday `--tests` loop is unchanged (one Python check, milliseconds).
 
-- [ ] T0451 **Drain QML incubation in `aboutToQuit`** (`src/core/Application.cpp`) #cleanup
+- [~] T0451 **Drain QML incubation in `aboutToQuit`** (`src/core/Application.cpp`) #cleanup
       The production counterpart of T0180's test fix: if the app quits during the first event-loop
       turns, the engine can be destroyed with objects still being created. The probe proposed a drain
       in `aboutToQuit` before member teardown (engine before audio, matching `Application.hpp:136-138`).
+      **Done 2026-11-09:** `Application::aboutToQuit` drains incubation on the GUI thread first via the static seam `Application::drainQmlIncubation(QQmlApplicationEngine*)`: null-engine no-op, then bounded `processEvents(ExcludeUserInputEvents, 50)` chunks until `incubatingObjectCount() == 0` with a 5s deadline (logs and continues). Engine-before-audio order preserved. Qt 6.12 readiness is `incubatingObjectCount() == 0` (there is no `isReady()`, and the header is `QQmlIncubationController`, i.e. with an "ation"). The integration slot `earlyQuitDrainsIncubationViaProductionHelper` covers the null no-op (always meaningful) but SKIPs with an honest reason on platforms where navigate completes creation synchronously — the >0 precondition cannot be reproduced there, and the drain call itself is the same production path.
+
 
 - [ ] T0452 **qmlcachegen (Qt 6.12) segfaults on member access on a QVariantMap** (`docs/dev/`, `TODO.md`) #risk-medium
       Reading `.outcome` off a `QVariantMap` returned by a Q_PROPERTY (`SunoBridge.lastSettle || {}`)

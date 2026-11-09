@@ -99,6 +99,15 @@ public:
     /// mid-test-binary).
     static Result<AppOptions> parseArgsFrom(int argc, const char* const argv[]);
 
+    /// Drain seam (T0451): the same bounded GUI-thread drain aboutToQuit()
+    /// runs before member teardown, exposed statically so tests can drive it
+    /// against a test engine without constructing an Application (whose
+    /// destructor tears down the global logger mid-test-binary, same reason
+    /// as parseArgsFrom above). Null engine or no pending incubation is a
+    /// no-op; on the deadline cap it logs and returns so a pathological queue
+    /// cannot hang exit.
+    static void drainQmlIncubation(QQmlApplicationEngine* engine);
+
     // Initialize and run
     Result<void> init(const AppOptions& opts);
     int exec();

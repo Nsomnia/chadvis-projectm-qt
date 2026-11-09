@@ -124,6 +124,40 @@ Item {
         selectionMode = false
     }
 
+    // Fixed toast sentence for a mutation settle, mirroring
+    // ClipMutationsSection.onSettled word for word: plain words on
+    // success, the bridge's reason verbatim on failure, never an HTTP
+    // status or a verb enum. Direction-dependent verbs (visibility,
+    // remix toggles) use the sheet's direction-free "Updated." here
+    // because the grid host never saw what was requested; the sheet
+    // names the direction, this toast does not guess it.
+    function settleSentence(verb, outcome, reason) {
+        if (outcome !== "accepted")
+            return reason.length > 0 ? reason : "That change was not saved."
+        switch (verb) {
+        case "share-link":
+            return "Share link accepted, but this build does not show the link."
+        case "update-feedback-state":
+            return "Feedback sent."
+        case "playlist-set-metadata":
+            return "Playlist details saved."
+        case "playlist-tracks-add":
+        case "playlist-update-clips":
+            return "Added to the playlist."
+        case "playlist-tracks-remove":
+            return "Removed from the playlist."
+        case "playlist-cover-image":
+            return "Cover image set."
+        default:
+            return "Updated."
+        }
+    }
+
+    onVisibleChanged: {
+        if (!visible)
+            libraryToast.clear()
+    }
+
     // QML's url value type has no toLocalFile(), so the reverse is built by
     // hand: normalize separators and percent-encode. Naive "file://" + path
     // concatenation corrupts spaces and '#'/'?', and a Windows drive path needs
@@ -605,6 +639,23 @@ Item {
 
     Connections {
         target: SunoBridge
+        ignoreUnknownSignals: true
+
+        // Mutation outcomes from the grid's single-shot verbs (the
+        // sheet's own settle line in ClipMutationsSection covers sheet
+        // verbs; this toast is what the grid needs when the sheet is
+        // closed). Sentences mirror that section word for word:
+        // plain words, verbatim reason on failure, never a status code
+        // or a verb enum. At most one toast is visible and at most one
+        // is queued (Toast.qml replaces the older queued message).
+        function onClipMutationSettled(clipId, verb, outcome, reason) {
+            libraryToast.show(root.settleSentence(verb, outcome, reason), outcome !== "accepted")
+        }
+
+        function onPlaylistMutationSettled(playlistId, verb, outcome, reason) {
+            libraryToast.show(root.settleSentence(verb, outcome, reason), outcome !== "accepted")
+        }
+
         // The per-clip result channel. Fires once per clip of a batch and
         // carries the path actually written, which is the only confirmation
         // that names a file rather than describing an event.
@@ -642,6 +693,18 @@ Item {
     Component.onCompleted: {
         if (!SunoBridge.loading && SunoBridge.clips.length === 0)
             SunoBridge.refreshLibrary(1)
+    }
+
+    // Mutation-settle toast (T0359). Overlays the grid at the bottom,
+    // never pushes content, and clears when the route changes (the
+    // visible handler above). z above the footer so the sentence is
+    // never hidden behind it.
+    Toast {
+        id: libraryToast
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: Theme.spacingLarge
+        z: 10
     }
 
     // There is deliberately no loading watchdog here. SunoBridge owns one, and

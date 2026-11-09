@@ -8,6 +8,15 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Quitting during the first frames is now safe.** `Application::aboutToQuit` drains QML component
+  creation (bounded at five seconds) before tearing down, so the engine can no longer be destroyed
+  with objects still being created. (T0451)
+
+- **Mutations announce themselves where the user is looking.** A trash-free toast overlays the library
+  grid for mutation settles, `CreateView` shows song-ready and upload/load failures with an Open
+  Library action, and `NavRail` carries the live unread badge. Same fixed sentences everywhere.
+  (T0359 part 2)
+
 - **Clip actions are in the UI now.** The detail sheet carries an "Actions" section for the wired
   Suno mutations: visibility, remix permission, share link, playlist name/description, adding or
   removing this clip, track edits, and playlist cover, each control only presented when its own gate

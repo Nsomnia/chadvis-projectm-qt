@@ -18,10 +18,15 @@
 #include "visualizer/RatingManager.hpp"
 #include "visualizer/VisualizerWindow.hpp"
 
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QEventLoop>
 #include <QQmlEngine>
+#include <QQmlIncubationController>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
+#include <QThread>
 #include <QtQuickControls2/QQuickStyle>
 #include <cerrno>
 #include <charconv>
@@ -747,8 +752,63 @@ int Application::exec() {
     return qapp_->exec();
 }
 
+void Application::drainQmlIncubation(QQmlApplicationEngine* engine) {
+    if (!engine) {
+        return;
+    }
+    QQmlIncubationController* ctrl = engine->incubationController();
+    if (!ctrl) {
+        return;
+    }
+    if (ctrl->incubatingObjectCount() == 0) {
+        return;
+    }
+    const int initial = ctrl->incubatingObjectCount();
+    LOG_INFO("Draining {} pending QML incubating objects before shutdown", initial);
+    // T0451: production counterpart of T0180's test drain. If the app quit
+    // during the first event-loop turns, the engine would otherwise be
+    // destroyed with objects still being created (ListView/Repeater
+    // delegates, StackLayout children, Popup/Dialog content), which warns
+    // and under ASan aborted. Qt 6.12 readiness is incubatingObjectCount()
+    // == 0; there is no isReady(). The loop pumps the GUI event loop in
+    // bounded 50ms chunks. The 5s deadline is the defensive cap: T0180
+    // drained ~77 objects well under a second, so 5s leaves an order of
+    // magnitude headroom for a slow machine while guaranteeing a
+    // pathological incubator can never hang exit. On the cap, log and
+    // continue with the destruction.
+    const qint64 deadline = QDateTime::currentMSecsSinceEpoch() + 5000;
+    while (ctrl->incubatingObjectCount() > 0) {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now >= deadline) {
+            LOG_WARN("QML incubation drain hit its 5s cap with {} objects still "
+                     "pending; destroying the engine anyway",
+                     ctrl->incubatingObjectCount());
+            break;
+        }
+        QCoreApplication::processEvents(
+            QEventLoop::ExcludeUserInputEvents,
+            static_cast<int>(qMin<qint64>(50, deadline - now)));
+        // Pacing only: processEvents() returns at once when no event is
+        // pending, so without this the loop would spin at full CPU for the
+        // whole deadline. The count check is the exit condition, not a wait.
+        if (ctrl->incubatingObjectCount() > 0) {
+            QThread::msleep(1);
+        }
+    }
+    if (ctrl->incubatingObjectCount() == 0) {
+        LOG_DEBUG("QML incubation drained");
+    }
+}
+
 void Application::aboutToQuit() {
     LOG_INFO("Shutting down...");
+
+    // T0451: drain first, engine still alive. aboutToQuit runs before
+    // ~Application() resets qmlEngine_ (which stays ahead of audioEngine_ per
+    // the member-order comment in Application.hpp), so draining here is the
+    // one place the engine exists to drain. Headless quits have no engine:
+    // drainQmlIncubation(null) is a no-op and nothing else changes.
+    drainQmlIncubation(qmlEngine_.get());
 
     // Stop both recording halves before finalizing the encoder.
     if (visualizerWindow_) {

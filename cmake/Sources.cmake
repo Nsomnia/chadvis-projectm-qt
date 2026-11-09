@@ -258,6 +258,7 @@ set(QML_SOURCES
     src/qml/components/ClipDetailSheet.qml
     src/qml/components/ClipMutationsSection.qml
     src/qml/components/ClipActionMenu.qml
+    src/qml/components/Toast.qml
     src/qml/components/PlaylistStrip.qml
     src/qml/views/LibraryView.qml
     src/qml/views/DiscoverView.qml

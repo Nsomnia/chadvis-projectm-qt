@@ -12,8 +12,35 @@ Rectangle {
     property string activeView: "library"
     property bool expanded: true
 
+    // The notifications badge and the library entry, filled by the
+    // repeater delegates' onCompleted. The badge pops on an unread
+    // increase (§6.4); the library entry nudges once when a generation
+    // lands (§6.3). Both are badge/entry-local animations — no bridge
+    // state lives on the rail.
+    property var libraryNudge: null
+    property var notifPop: null
+    property int previousUnreadCount: 0
+
     signal navigate(string viewId)
     signal expandToggled()
+
+    Component.onCompleted: previousUnreadCount = SunoBridge.unreadCount
+
+    Connections {
+        target: SunoBridge
+        ignoreUnknownSignals: true
+
+        function onUnreadCountChanged() {
+            if (SunoBridge.unreadCount > root.previousUnreadCount && root.notifPop)
+                root.notifPop()
+            root.previousUnreadCount = SunoBridge.unreadCount
+        }
+
+        function onGenerationClipsReady(clips) {
+            if (root.libraryNudge)
+                root.libraryNudge()
+        }
+    }
 
     readonly property var entries: [
         { id: "library",  label: "Library",  icon: iconUrl("playlist") },
@@ -113,6 +140,29 @@ Rectangle {
                     readonly property bool isActive: root.activeView === navEntry.modelData.id
                     readonly property bool isHovered: entryMouse.containsMouse || activeFocus
 
+                    // Shared with the connections above: a one-time
+                    // nudge (x 0 → 4 → 0, 180 ms) on a transform so the
+                    // rail's layout is never touched.
+                    function nudge() { nudgeAnim.restart() }
+
+                    transform: Translate { id: navNudge }
+
+                    SequentialAnimation {
+                        id: nudgeAnim
+                        NumberAnimation { target: navNudge; property: "x"; to: 4; duration: 90; easing.type: Easing.OutCubic }
+                        NumberAnimation { target: navNudge; property: "x"; to: 0; duration: 90; easing.type: Easing.OutCubic }
+                    }
+
+                    Component.onCompleted: {
+                        // Connection targets are plain functions on the
+                        // rail root: the delegate's own closures, so it
+                        // can animate its own badge/entry.
+                        if (modelData.id === "library")
+                            root.libraryNudge = navEntry.nudge
+                        if (modelData.id === "notifications")
+                            root.notifPop = unreadBadgeItem.pop
+                    }
+
                     Layout.fillWidth: true
                     Layout.leftMargin: Theme.spacingSmall
                     Layout.rightMargin: Theme.spacingSmall
@@ -188,6 +238,46 @@ Rectangle {
                             Behavior on opacity {
                                 NumberAnimation { duration: Theme.durationFast }
                             }
+                        }
+                    }
+
+                    // Unread badge (plan §6.4): accent pill, count text,
+                    // faded out on zero (not a snap) and popped once per
+                    // increase through notifPop above.
+                    Rectangle {
+                        id: unreadBadgeItem
+
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.topMargin: 4
+                        anchors.rightMargin: 6
+                        implicitWidth: Math.max(18, unreadCountText.implicitWidth + 10)
+                        implicitHeight: 18
+                        radius: 9
+                        color: Theme.accent
+                        // Stays mounted while the fade-out runs.
+                        visible: SunoBridge.unreadCount > 0 || opacity > 0.01
+                        opacity: SunoBridge.unreadCount > 0 ? 1.0 : 0.0
+                        transformOrigin: Item.Center
+
+                        Behavior on opacity {
+                            NumberAnimation { duration: Theme.durationFast }
+                        }
+
+                        Text {
+                            id: unreadCountText
+                            anchors.centerIn: parent
+                            text: SunoBridge.unreadCount
+                            color: Theme.textOnAccent
+                            font: Theme.fontTiny
+                        }
+
+                        function pop() { popAnim.restart() }
+
+                        SequentialAnimation {
+                            id: popAnim
+                            NumberAnimation { target: unreadBadgeItem; property: "scale"; to: 1.35; duration: Theme.durationFast; easing.type: Easing.OutBack }
+                            NumberAnimation { target: unreadBadgeItem; property: "scale"; to: 1.0; duration: Theme.durationFast; easing.type: Easing.OutCubic }
                         }
                     }
 
