@@ -103,6 +103,15 @@ Eleven standalone targets build as their own executables and register with CTest
 
 Both entries run the **same** `integration_tests` binary, built from `tests/integration/CMakeLists.txt:1-4` with two sources: `test_main.cpp` and `test_ProjectMFramebuffer.cpp`. They differ only in environment and in which test functions are selected. When a test function is named on the command line, the runner runs **only** the GL suite (`tests/integration/test_main.cpp:55-58`) — replaying those names against the QML class would fail the run with "Function not found".
 
+**`--tests` never rebuilds this binary.** `build.sh` deliberately excludes it from the `--tests` target list (the GL/audio lanes skip headless, so `--safe` is never evidence for them), so after any edit under `tests/integration/` the binary on disk is older than your sources and a green run proves nothing about your change. Rebuild it explicitly and check freshness in one command each:
+
+```bash
+./build.sh --target integration_tests          # rebuild one target, no full build
+./scripts/check-integration-fresh.py           # fails with the rebuild command when stale
+```
+
+`check-integration-fresh.py` is the gate for this trap: it compares every existing profile build's `integration_tests` binary against `tests/integration/` sources and exits 1 naming the stale source and the copy-pasteable rebuild. CI runs it in `guards.yml`. A full `./build.sh` also rebuilds it, but do not pay for that on the everyday loop.
+
 #### `integration_tests` — offscreen QML startup and render
 
 CTest registers it with `QT_QPA_PLATFORM=offscreen` (`tests/integration/CMakeLists.txt:31-34`), so it needs no display. `tests/integration/test_main.cpp` is a **real test case**, not an empty harness: `mainQmlLoadsAndRenders()` (`tests/integration/test_main.cpp:18-43`)

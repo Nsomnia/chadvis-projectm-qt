@@ -287,9 +287,10 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       Inspection says premise wrong. projectM has two callback slots: `requested` (overwritten) and `failed` (untouched).
       Retry lives in `failed` handler. Do not "fix" on current evidence. Needs real window + corrupt `.milk`.
 
-- [ ] T0180 **ASan: `settingsWindowOpensOnNavigate` throws at teardown** (`test_main.cpp:70-126`, `integration/CMakeLists.txt:33`) #risk-high
+- [x] T0180 **ASan: `settingsWindowOpensOnNavigate` throws at teardown** (`test_main.cpp:70-126`, `integration/CMakeLists.txt:33`) #risk-high
       Not in `SAFE_TESTS`. Engine destroyed while async component creation pending. Mutex error separate.
       Pre-existing, not T0047 theme work. Do not "fix" by making test wait — find what's still being created.
+      **DONE 2026-11-08 (test half):** verdict A — a test-lifecycle bug, not an app race. The slot never pumped the GUI thread's event loop, so `QQmlApplicationEngine` left ~77 incubated objects (ListView/Repeater delegates, StackLayout children, Popup/Dialog content) pending at destruction — the "QML components still being created at engine destruction" abort. The drain is by `QQmlIncubatorController::isReady()`, not an arbitrary wait. The other half of the original report (a destroyed `std::mutex` at static teardown) matched the RatingManager static already retired by T0058; any remaining abort after this drain implicates `Config::mutex_` and needs a fresh `--asan` lane to confirm. Production hardening (drain in `aboutToQuit`) is filed separately as T0451.
 
 - [?] T0199 **"Sign in with Google" opens browser, extracts nothing** (`src/suno/auth/`) #blocks-ui #risk-high #cod-high
       Clerk flow delivers code to `auth.suno.com`, never 127.0.0.1. Fix: harvest browser cookie store.
@@ -456,17 +457,19 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       stops recording, and asserts that frame is in the output.
       **DONE 2026-11-08:** `drainPendingFrame()` emits the pending tail frame at its readback timestamp through the shared `emitPboFrame` path; `stopRecording()` calls it before destroying the PBOs, and a stop with nothing pending is a no-op. The renderer destructor deliberately does not drain under a failing context (T0026), so a window destroyed mid-recording still loses its tail frame there. GL slot `stopRecordingDrainsTheLastFrame` (A,B,C → 2 emitted before stop, 3 after) proves it; `firstRenderEmitsAFrame` now also asserts no extra frame when nothing is pending.
 
-- [ ] T0444 **`integration_tests` is outside the `--tests` build list, so it goes stale silently** (`build.sh`, `docs/dev/TESTING.md`, `AGENTS.md`) #risk-medium
+- [x] T0444 **`integration_tests` is outside the `--tests` build list, so it goes stale silently** (`build.sh`, `docs/dev/TESTING.md`, `AGENTS.md`) #risk-medium
       `integration_tests`/`integration_gl_tests` are deliberately not in `SAFE_TESTS`, but nothing builds
       them: they only get rebuilt by a full build. T0171's new GL slot landed in a binary that
       `--fast --tests` never relinked, so ctest ran it against the old binary and reported
       "Unknown test function". Verify: a check that rebuilds the integration targets before the ctest
       step, or that refuses to run them when the binary is older than the sources.
+      **DONE 2026-11-08:** `scripts/check-integration-fresh.py` fails when the `integration_tests` binary is older than `tests/integration/` sources and prints the rebuild command; it also fails if `integration_tests` ever appears in build.sh's SAFE_TESTS. Wired into `.github/workflows/guards.yml`; `AGENTS.md` §7 and `docs/dev/TESTING.md` name the check and the rebuild command. The everyday `--tests` loop is unchanged (one Python check, milliseconds).
 
-- [ ] T0450 **Wire `notificationSettled` into QML** (`src/qml_bridge/`, `src/qml/views/NotificationsView.qml`) #feature
+- [x] T0450 **Wire `notificationSettled` into QML** (`src/qml_bridge/`, `src/qml/views/NotificationsView.qml`) #feature
       `SunoNotificationService::notificationSettled` exists (T0375 follow-up) with per-call outcome, but
       no bridge exposes it, so the UI cannot tell the user which click was refused or rejected. Verify:
       the bridge surfaces the result; NotificationsView shows the outcome for clear-badge/mark-all-read.
+      **DONE 2026-11-08:** `SunoBridge.lastSettle` (verb/outcome/reason) plus a C++ `settleMessage` — the outcome sentence lives in C++ because QML's member access on a QVariantMap crashed qmlcachegen (see below). The NotificationsView header subtitle is the only visible change: failures of mark-all-read, clear-badge or refresh show their fixed sentence in error colour; an accepted settle changes nothing.
 
 - [x] T0441 **Focus rings for the new keyboard tab stops** (`src/qml/`) #cleanup
       T0082 made the custom-drawn controls (AppColorPicker areas, tiles, chips) reachable by Tab, but none

@@ -58,3 +58,10 @@ jobs:
       # broke four Windows chain tests with no message.
       - name: Check tests for Q_ASSERT
         run: ./scripts/check-test-asserts.py
+
+      # T0444: integration_tests is deliberately outside the --tests build
+      # list, so it can go stale silently (T0171's new GL slot landed in a
+      # binary that was never rebuilt). Locally this compares binary vs
+      # source mtimes; in CI there is no build dir yet, so it passes.
+      - name: Check integration binary freshness
+        run: ./scripts/check-integration-fresh.py

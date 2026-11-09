@@ -13,6 +13,11 @@ Item {
 
     signal navigateRequested(string viewId)
 
+    // The settle sentence is computed in C++, not here: reading a member
+    // (`.outcome`) off a QVariantMap crashed qmlcachegen at AOT (Qt 6.12),
+    // while a plain Q_PROPERTY read does not.
+    property string settleMessage: SunoBridge.settleMessage
+
     function ensureLoaded() {
         if (visible && !requested && !SunoBridge.notificationsLoading) {
             requested = true
@@ -43,12 +48,16 @@ Item {
                 }
 
                 Text {
-                    text: SunoBridge.notificationsError.length > 0
-                          ? SunoBridge.notificationsError
-                          : SunoBridge.unreadCount > 0
-                            ? SunoBridge.unreadCount + " unread"
-                            : SunoBridge.notifications.length + " notifications"
-                    color: SunoBridge.notificationsError.length > 0 ? Theme.error : Theme.textSecondary
+                    text: root.settleMessage.length > 0
+                          ? root.settleMessage
+                          : SunoBridge.notificationsError.length > 0
+                            ? SunoBridge.notificationsError
+                            : SunoBridge.unreadCount > 0
+                              ? SunoBridge.unreadCount + " unread"
+                              : SunoBridge.notifications.length + " notifications"
+                    color: root.settleMessage.length > 0
+                           || SunoBridge.notificationsError.length > 0
+                           ? Theme.error : Theme.textSecondary
                     font: Theme.fontCaption
                 }
             }

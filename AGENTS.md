@@ -426,6 +426,7 @@ Important build realities:
 - A green CI run is not proof of working OpenGL, audio, recording, or long-duration stability.
 - Run `./build.sh --budget` before diagnosing resource-related build failures.
 - `build.sh` intentionally limits local resource utilization.
+- `integration_tests` is deliberately outside the `--tests` build list, so `--tests` never rebuilds it. Before trusting an integration result, run `./scripts/check-integration-fresh.py` (one command; it fails with the rebuild command when the binary is older than `tests/integration/` sources). Rebuild it with `./build.sh --target integration_tests` (or `cmake --build <dir> --target integration_tests` for a non-default profile).
 
 Use ThreadSanitizer for applicable recorder/session/threading changes and AddressSanitizer for applicable memory/resource work. Use UndefinedBehaviorSanitizer where it provides value.
 

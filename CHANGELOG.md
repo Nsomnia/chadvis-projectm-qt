@@ -8,6 +8,14 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Notification outcomes reach the user.** A refused or rejected clear-badge, mark-read or refresh
+  now shows a short fixed sentence in the header rather than silently doing nothing; an accepted settle
+  changes nothing. (T0450)
+
+- **The settings-window test no longer aborts under ASan.** It now drains in-flight QML component
+  creation by `QQmlIncubatorController::isReady()` before the engine goes out of scope, instead of
+  returning immediately and destroying the engine with objects still being created. (T0180)
+
 - **Keyboard users can see where focus is.** The custom-drawn controls that got a tab stop in the
   accessibility sweep (colour picker, clip tile, account chip) now draw a keyboard-only focus ring
   matching `AppButton`'s, in the same tokens and without changing layout. (T0441, T0442)

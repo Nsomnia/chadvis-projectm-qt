@@ -1,6 +1,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QQmlApplicationEngine>
+#include <QQmlIncubatorController>
 #include <QQuickWindow>
 #include <QTimer>
 #include <QUrl>
@@ -257,6 +258,19 @@ private slots:
 
         settings->hide();
         QVERIFY(!settings->isVisible());
+
+        // Engine destruction warns (and once aborted under ASan) while the
+        // incubator still has objects pending: creation is lazy for
+        // delegates, StackLayout children and Popup/Dialog content, and
+        // this slot is the only one that never waits, so nothing pumped the
+        // GUI loop. Drain by the exact readiness condition rather than an
+        // arbitrary wait; a platform where show() blocks never reaches here
+        // with the watchdog already hiding the window.
+        while (QQmlIncubatorController* ctrl = engine.incubationController()) {
+            if (ctrl->isReady())
+                break;
+            QTest::qWait(50);
+        }
 
         // The throwing form was `settingsWindowApi["open"]()`, reached through a
         // var-typed property: QWindow has no open(), so the TypeError aborted

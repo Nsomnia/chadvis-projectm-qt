@@ -1173,6 +1173,46 @@ void SunoBridge::onNotificationsErrorChanged(const QString& reason) {
     setNotificationsError(reason);
 }
 
+void SunoBridge::onNotificationSettled(
+        const vc::suno::SunoNotificationService::NotificationResult& result)
+{
+    // Only the three QML-safe fields cross over: never the HTTP status.
+    QVariantMap settle;
+    settle[QStringLiteral("verb")] = QString::fromLatin1(vc::suno::toString(result.verb));
+    settle[QStringLiteral("outcome")] =
+            QString::fromLatin1(vc::suno::toString(result.outcome));
+    settle[QStringLiteral("reason")] = result.reason;
+    if (lastSettle_ == settle) {
+        return;
+    }
+    lastSettle_ = settle;
+    emit lastSettleChanged();
+}
+
+QString SunoBridge::settleMessage() const
+{
+    // Fixed sentences only: the service's reason (a server sentence) and the
+    // verb name are never rendered.
+    if (lastSettle_.isEmpty()) {
+        return {};
+    }
+    const QString outcome = lastSettle_.value(QStringLiteral("outcome")).toString();
+    if (outcome.isEmpty() || outcome == QStringLiteral("accepted")) {
+        return {};
+    }
+    const QString verb = lastSettle_.value(QStringLiteral("verb")).toString();
+    if (verb == QStringLiteral("mark-all-read")) {
+        return QStringLiteral("Couldn't mark notifications as read. Please try again.");
+    }
+    if (verb == QStringLiteral("clear-badge")) {
+        return QStringLiteral("Couldn't clear the notification badge. Please try again.");
+    }
+    if (verb == QStringLiteral("refresh")) {
+        return QStringLiteral("Couldn't load notifications. Please try again.");
+    }
+    return QStringLiteral("Notifications couldn't be updated. Please try again.");
+}
+
 void SunoBridge::updateModelCatalog() {
     QVariantList catalog;
     if (s_controller && s_controller->accountManager()) {
@@ -1295,6 +1335,8 @@ void SunoBridge::ensureNotificationService() {
             &SunoBridge::onNotificationsLoadingChanged);
     connect(notificationService_, &vc::suno::SunoNotificationService::errorChanged, this,
             &SunoBridge::onNotificationsErrorChanged);
+    connect(notificationService_, &vc::suno::SunoNotificationService::notificationSettled, this,
+            &SunoBridge::onNotificationSettled);
 }
 
 void SunoBridge::destroyNotificationService() {
@@ -1314,6 +1356,10 @@ void SunoBridge::destroyNotificationService() {
     if (notificationsLoading_) {
         notificationsLoading_ = false;
         emit notificationsLoadingChanged();
+    }
+    if (!lastSettle_.isEmpty()) {
+        lastSettle_.clear();
+        emit lastSettleChanged();
     }
     setNotificationsError({});
 }

@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <memory>
 #include "QmlSingletonBridge.hpp"
+#include "suno/SunoNotificationService.hpp"
 
 namespace vc {
 namespace suno {
@@ -109,6 +110,16 @@ class SunoBridge : public QObject,
     Q_PROPERTY(
             bool notificationsLoading READ notificationsLoading NOTIFY notificationsLoadingChanged)
     Q_PROPERTY(QString notificationsError READ notificationsError NOTIFY notificationsErrorChanged)
+    /// The outcome of the last settled notification verb (`verb`, `outcome`,
+    /// `reason`), from `SunoNotificationService::notificationSettled`. Empty
+    /// until a verb settles. QML maps it to a fixed sentence; consumers must
+    /// not render `reason` or `verb` verbatim.
+    Q_PROPERTY(QVariantMap lastSettle READ lastSettle NOTIFY lastSettleChanged)
+    /// Fixed user-facing sentence for the last settle, computed in C++ (empty
+    /// when the settle was accepted or nothing has settled yet). Computed
+    /// here rather than in QML: reading a member off a QVariantMap crashed
+    /// qmlcachegen during AOT compilation (Qt 6.12).
+    Q_PROPERTY(QString settleMessage READ settleMessage NOTIFY lastSettleChanged)
 
     // ── Playlists (read side) ─────────────────────────────────────────────
     // The list of the account's playlists, and the clips of the one the user
@@ -189,6 +200,8 @@ public:
     int unreadCount() const;
     bool notificationsLoading() const;
     QString notificationsError() const;
+    QVariantMap lastSettle() const { return lastSettle_; }
+    [[nodiscard]] QString settleMessage() const;
     QVariantList playlists() const;
     bool playlistsLoading() const;
     QString playlistsError() const;
@@ -330,6 +343,7 @@ signals:
     void unreadCountChanged();
     void notificationsLoadingChanged();
     void notificationsErrorChanged();
+    void lastSettleChanged();
     void playlistsChanged();
     void playlistsLoadingChanged();
     void playlistsErrorChanged();
@@ -412,6 +426,7 @@ private slots:
     void onUnreadCountChanged();
     void onNotificationsLoadingChanged();
     void onNotificationsErrorChanged(const QString& reason);
+    void onNotificationSettled(const vc::suno::SunoNotificationService::NotificationResult& result);
 
 private:
     void wireControllerSignals();
@@ -468,6 +483,7 @@ private:
     QString errorMessage_;
     QString discoverError_;
     QString notificationsError_;
+    QVariantMap lastSettle_;
     vc::suno::SunoExploreService* exploreService_{nullptr};
     vc::suno::SunoNotificationService* notificationService_{nullptr};
     vc::suno::SunoPlaylistService* playlistService_{nullptr};
