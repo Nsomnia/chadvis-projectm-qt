@@ -4,6 +4,7 @@
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
+#include <QSqlRecord>
 #include <QTemporaryDir>
 
 using namespace vc::suno;
@@ -46,6 +47,41 @@ QString pragmaText(QSqlDatabase& db, const char* statement) {
     return query.value(0).toString();
 }
 
+/// Install a BEFORE INSERT trigger that aborts inserts of one clip id, so a
+/// multi-clip sync fails mid-batch the way a bad payload would. The trigger
+/// only faults the statement; the batch's own rollback owns atomicity.
+bool failInsertsOf(const QString& path, const char* triggerName, const char* clipId) {
+    auto probe = openProbe(path);
+    QSqlQuery query(probe);
+    return query.exec(QStringLiteral("CREATE TRIGGER %1 BEFORE INSERT ON clips "
+                                     "WHEN NEW.id = '%2' "
+                                     "BEGIN SELECT RAISE(ABORT, 'forced sync failure'); END")
+                              .arg(triggerName, clipId));
+}
+
+/// Build a pre-migration database file: the old minimal clips schema at
+/// user_version 0 with one row. SunoDatabase::init must upgrade it in place;
+/// the row is the evidence nothing was dropped.
+bool createLegacyDatabase(const QString& path) {
+    constexpr auto kLegacyConnection = "suno_db_test_legacy";
+    if (QSqlDatabase::contains(kLegacyConnection)) {
+        QSqlDatabase::removeDatabase(kLegacyConnection);
+    }
+    auto db = QSqlDatabase::addDatabase("QSQLITE", kLegacyConnection);
+    db.setDatabaseName(path);
+    if (!db.open()) return false;
+    QSqlQuery query(db);
+    const bool ok = query.exec("CREATE TABLE clips (id TEXT PRIMARY KEY, title TEXT, "
+                               "created_at TEXT, duration TEXT)")
+                 && query.exec("INSERT INTO clips (id, title, created_at, duration) "
+                               "VALUES ('legacy1', 'Legacy Song', "
+                               "'2026-01-01T00:00:00Z', '65.0')");
+    db.close();
+    db = QSqlDatabase();
+    QSqlDatabase::removeDatabase(kLegacyConnection);
+    return ok;
+}
+
 } // namespace
 
 // SunoDatabase had zero tests (T0100's largest untested class). These pin the
@@ -62,6 +98,10 @@ private slots:
     void theRegistrationDiesWithTheObject();
     void uninitializedOperationsAreRefused();
     void clipsRoundTripAndSearch();
+    void syncUpsertRoundTripsTitleTagsAndArtworkFields();
+    void failedSyncRollsBackWithoutPartialRows();
+    void failedTransactionPreservesExistingData();
+    void migrationUpgradesSchemaWithoutDroppingRows();
 };
 
 void TestSunoDatabase::initEnablesWalSetsBusyTimeoutAndCreatesTheIndex() {
@@ -154,6 +194,113 @@ void TestSunoDatabase::clipsRoundTripAndSearch() {
     QVERIFY(!db.hasLyrics("newer"));
     QVERIFY2(db.getAlignedLyrics("older").value() == "{\"lines\":[]}",
              "aligned lyrics did not round-trip");
+}
+
+void TestSunoDatabase::syncUpsertRoundTripsTitleTagsAndArtworkFields() {
+    QTemporaryDir dir;
+    SunoDatabase db;
+    QVERIFY(db.init(dir.filePath("sync.db").toStdString()).isOk());
+
+    // First sync inserts the clip with its original fields.
+    SunoClip first = makeClip("sync1", "Rough Mix", "2026-09-03T10:00:00Z");
+    first.metadata.tags = "draft, drums";
+    first.image_url = "https://cdn.example/art-small.png";
+    first.image_large_url = "https://cdn.example/art-large.png";
+    QVERIFY(db.saveClips({first}).isOk());
+
+    // A re-sync of the same id must update in place, not duplicate a row.
+    SunoClip synced = makeClip("sync1", "Final Mix", "2026-09-03T10:00:00Z");
+    synced.metadata.tags = "mastered, synthwave";
+    synced.image_url = "https://cdn.example/art-small-v2.png";
+    synced.image_large_url = "https://cdn.example/art-large-v2.png";
+    QVERIFY(db.saveClips({synced}).isOk());
+
+    auto stored = db.getClip("sync1");
+    QVERIFY(stored.isOk());
+    QVERIFY(stored.value().has_value());
+    const SunoClip& roundTripped = stored.value().value();
+    QVERIFY2(roundTripped.title == "Final Mix", "the sync did not update the title");
+    QVERIFY2(roundTripped.metadata.tags == "mastered, synthwave",
+             "the sync did not update the tags");
+    QVERIFY2(roundTripped.image_url == "https://cdn.example/art-small-v2.png",
+             "the sync did not update the artwork");
+    QVERIFY2(roundTripped.image_large_url == "https://cdn.example/art-large-v2.png",
+             "the sync did not update the large artwork");
+    QCOMPARE(db.getAllClips().value().size(), std::size_t{1});
+}
+
+void TestSunoDatabase::failedSyncRollsBackWithoutPartialRows() {
+    QTemporaryDir dir;
+    SunoDatabase db;
+    QVERIFY(db.init(dir.filePath("rollback.db").toStdString()).isOk());
+    QVERIFY(failInsertsOf(dir.filePath("rollback.db"), "poison_rollback", "poison1"));
+
+    const auto failed = db.saveClips({
+        makeClip("good1", "Good Song", "2026-09-04T10:00:00Z"),
+        makeClip("poison1", "Poison Song", "2026-09-04T11:00:00Z"),
+    });
+    QVERIFY2(failed.isErr(), "the poisoned batch returned success");
+
+    QCOMPARE(db.getAllClips().value().size(), std::size_t{0});
+    auto missing = db.getClip("good1");
+    QVERIFY(missing.isOk());
+    QVERIFY2(!missing.value().has_value(),
+             "the pre-failure insert survived the rollback");
+}
+
+void TestSunoDatabase::failedTransactionPreservesExistingData() {
+    QTemporaryDir dir;
+    SunoDatabase db;
+    QVERIFY(db.init(dir.filePath("preserve.db").toStdString()).isOk());
+    QVERIFY(db.saveClip(makeClip("anchor", "Original", "2026-09-05T10:00:00Z")).isOk());
+    QVERIFY(failInsertsOf(dir.filePath("preserve.db"), "poison_preserve", "poison2"));
+
+    SunoClip clobber = makeClip("anchor", "Overwritten", "2026-09-05T10:00:00Z");
+    clobber.metadata.tags = "clobbered";
+    const auto failed = db.saveClips({
+        clobber,
+        makeClip("poison2", "Poison Song", "2026-09-05T11:00:00Z"),
+        makeClip("aftermath", "Trailing Song", "2026-09-05T12:00:00Z"),
+    });
+    QVERIFY2(failed.isErr(), "the batch with the poisoned clip returned success");
+
+    auto stored = db.getClip("anchor");
+    QVERIFY(stored.isOk());
+    QVERIFY(stored.value().has_value());
+    QVERIFY2(stored.value().value().title == "Original",
+             "the rollback leaked the in-batch update");
+    QVERIFY2(stored.value().value().metadata.tags == "electronic, chill",
+             "the rollback leaked the in-batch tag update");
+    QCOMPARE(db.getAllClips().value().size(), std::size_t{1});
+}
+
+void TestSunoDatabase::migrationUpgradesSchemaWithoutDroppingRows() {
+    QTemporaryDir dir;
+    const QString path = dir.filePath("legacy.db");
+    QVERIFY2(createLegacyDatabase(path), "legacy fixture failed");
+
+    SunoDatabase db;
+    QVERIFY2(db.init(path.toStdString()).isOk(), "init must migrate the legacy file");
+
+    auto stored = db.getClip("legacy1");
+    QVERIFY(stored.isOk());
+    QVERIFY2(stored.value().has_value(), "the legacy row vanished during migration");
+    QVERIFY2(stored.value().value().title == "Legacy Song",
+             "the legacy title did not survive migration");
+    QVERIFY2(stored.value().value().metadata.duration == "01:05",
+             "the x.x duration was not converted to mm:ss");
+
+    {
+        auto probe = openProbe(path);
+        QCOMPARE(pragmaText(probe, "PRAGMA user_version"), QStringLiteral("3"));
+        const QSqlRecord record = probe.record(QStringLiteral("clips"));
+        QVERIFY2(record.indexOf(QStringLiteral("image_large_url")) != -1,
+                 "the v1 backfill did not add image_large_url");
+        QVERIFY2(record.indexOf(QStringLiteral("play_count")) != -1,
+                 "the v2 backfill did not add play_count");
+        QVERIFY2(record.indexOf(QStringLiteral("media_urls")) != -1,
+                 "the v3 backfill did not add media_urls");
+    }
 }
 
 #include "test_SunoDatabase.moc"

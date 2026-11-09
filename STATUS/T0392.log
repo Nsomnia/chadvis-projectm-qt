@@ -1,0 +1,5 @@
+2026-11-09T05:50:00Z  VERIFY  build=fast-green ctest=33/33 full-run
+Tests added: syncUpsertRoundTripsTitleTagsAndArtworkFields,
+failedSyncRollsBackWithoutPartialRows,
+failedTransactionPreservesExistingData,
+migrationUpgradesSchemaWithoutDroppingRows.

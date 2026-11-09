@@ -108,6 +108,21 @@ if(NOT PROJECTM_FOUND)
             # Upstream spells it ENABLE_SYSTEM_GLM.
             "ENABLE_SYSTEM_GLM ON"
     )
+    # Vendored upstream C files inherit ChadVis's directory-global warning set
+    # (Compiler.cmake:85) and spam first-party build logs with -Wstrict-prototypes
+    # and friends (-Wextra/-Wpedantic children). Silence only those five on the
+    # eval target; upstream code is not ours to maintain. The target name is
+    # upstream-internal: the guard makes a future rename a no-op (warnings
+    # return, configure never fails).
+    if(TARGET projectM_eval AND NOT MSVC)
+        target_compile_options(projectM_eval PRIVATE
+            -Wno-strict-prototypes
+            -Wno-newline-eof
+            -Wno-gnu-zero-variadic-macro-arguments
+            -Wno-sign-compare
+            -Wno-unused-but-set-variable
+        )
+    endif()
 
     if(TARGET libprojectM::projectM AND TARGET libprojectM::playlist)
         set(PROJECTM_LINK_TARGETS libprojectM::projectM libprojectM::playlist)
