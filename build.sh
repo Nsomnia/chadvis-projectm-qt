@@ -417,19 +417,15 @@ compute_resource_budget() {
     BUDGET_JOBS_MEM=$(( BUDGET_USABLE_MIB / PER_JOB_MIB ))
     if [[ "$BUDGET_JOBS_MEM" -lt 1 ]]; then BUDGET_JOBS_MEM=1; fi
 
+    # Owner 2026-11-08: per-job memory budget dropped. Jobs = CPU\% of logical
+    # cores (floored at physical); memory available is reported, not enforced.
+    # The machine swaps before this matters on a 306 MiB worst TU.
     BUDGET_JOBS="$BUDGET_JOBS_CPU"
     BUDGET_BINDER="cpu"
-    if [[ "$BUDGET_JOBS_MEM" -lt "$BUDGET_JOBS_CPU" ]]; then
-        BUDGET_JOBS="$BUDGET_JOBS_MEM"
-        BUDGET_BINDER="memory"
-    fi
     BUDGET_PHYS="$phys"
     BUDGET_LOGICAL="$logical"
     BUDGET_TOTAL_MIB="$total"
     BUDGET_AVAIL_MIB="$avail"
-    if [[ "$BUDGET_AVAIL_MIB" -gt 0 && "$BUDGET_JOBS_MEM" -le 1 ]]; then
-        BUDGET_BINDER="memory-starved"
-    fi
 }
 
 compute_resource_budget
