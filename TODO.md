@@ -104,7 +104,8 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       127.0.0.1:0 `/callback` → token exchange), wired to Settings → Account ("Sign in with Suno
       (official OAuth)"); token set stored under credential key `suno/mcp`, deliberately NOT
       `suno/default`. 9 unit tests (RFC 7636 vector, authorize-URL parameters, callback parser,
-      query decoding, state/emptiness). **Not verified live**: a browser run and the token exchange
+      query decoding, state/emptiness). **Locally verified 2026-11-09** (`test_SunoOAuthLoopback`
+      1/1 ctest). **Not verified live**: a browser run and the token exchange
       itself — MT-level.
 
 - [ ] T0357 **Suno MCP Beta: chat surface in ChadVis** (`src/suno/`, `docs/suno_api/MCP.md`) #feature
