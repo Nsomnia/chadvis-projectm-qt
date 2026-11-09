@@ -4,6 +4,7 @@
  */
 
 #include "CliUtils.hpp"
+#include "BuildConfig.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>

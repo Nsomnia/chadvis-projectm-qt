@@ -15,6 +15,7 @@
 // a link failure. The macro in cmake/TargetSetup.cmake is the only gate.
 
 #include "SubtitleBurnIn.hpp"
+#include "BuildConfig.hpp"
 
 #include <algorithm>
 #include <cstdint>

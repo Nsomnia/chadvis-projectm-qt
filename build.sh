@@ -473,7 +473,17 @@ fi
 # change made every TU a permanent ccache miss, which is the opposite of what a
 # PCH is for. Set only when the user has not expressed a preference.
 if [[ -n "$ccache_bin" && -z "${CCACHE_SLOPPINESS:-}" ]]; then
-    export CCACHE_SLOPPINESS="pch_defines,time_macros"
+    export CCACHE_SLOPPINESS="pch_defines,time_macros,include_file_ctime,include_file_mtime,modules"
+fi
+# PCH is per-build-dir; without NOHASHDIR an identical source in another profile
+# is a different cache key for the same PCH object. Default 20 GiB: this tree's
+# working set grew past the 5 GiB default (0.8 GiB used 2026-11-08, hits still
+# growing) and evictions cost a full 350-TU reparse.
+if [[ -n "$ccache_bin" && -z "${CCACHE_NOHASHDIR:-}" ]]; then
+    export CCACHE_NOHASHDIR=1
+fi
+if [[ -n "$ccache_bin" && -z "${CCACHE_MAXSIZE:-}" ]]; then
+    export CCACHE_MAXSIZE=20GiB
 fi
 
 # Nice the whole build rather than asking the user to remember to. The child

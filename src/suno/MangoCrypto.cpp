@@ -4,6 +4,7 @@
  */
 
 #include "suno/MangoCrypto.hpp"
+#include "BuildConfig.hpp"
 
 #include <algorithm>
 #include <cstring>

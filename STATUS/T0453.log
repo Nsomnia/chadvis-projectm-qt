@@ -1,0 +1,6 @@
+2026-11-08T23:31:00Z  VERIFY  build=fast-450/450 tests=33/33 ctest
+project_lib split into 6 STATIC module libs (qt_add_qml_module needs STATIC);
+project_lib is an INTERFACE aggregator. QML module on project_bridges.
+Feature defines scoped: keychain->suno, soxr->recorder, presets->core.
+Moc split into 6 TUs; largest compile now suno ~17.5s / bridges ~15.6s
+(previous monolith project_lib moc TU 21.2s).

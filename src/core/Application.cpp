@@ -1,5 +1,6 @@
 
 #include "Application.hpp"
+#include "BuildConfig.hpp"
 #include "CliArg.hpp"
 #include "CliUtils.hpp"
 #include "Config.hpp"

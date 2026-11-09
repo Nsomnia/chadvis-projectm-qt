@@ -1,6 +1,7 @@
 #include "RecordingBridge.hpp"
 #include <QString>
 #include <utility>
+#include "BuildConfig.hpp"
 #include "core/Config.hpp"
 #include "core/Logger.hpp"
 #include "lyrics/LyricsData.hpp"

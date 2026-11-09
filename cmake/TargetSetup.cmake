@@ -100,59 +100,91 @@ endif()
 # Static library with all application code
 # ---------------------------------------------------------------------------
 
-add_library(project_lib STATIC
-    ${UTIL_SOURCES}
-    ${CORE_SOURCES}
-    ${AUDIO_SOURCES}
-    ${VISUALIZER_SOURCES}
-    ${SUNO_SOURCES}
-    ${SUNO_AUTH_SOURCES}
-    ${RECORDER_SOURCES}
-    ${LYRICS_SOURCES}
-    ${CHADVIS_POSTPROCESS_SOURCES}
-    ${UI_SOURCES}
-    ${QML_BRIDGE_SOURCES}
-    resources/chadvis-projectm-qt.qrc
+# Module libraries: one object library per domain (T0453). The old single
+# project_lib meant a `Q_OBJECT` header edit rebuilt a 48-entry moc TU and
+# every edit relinked all 31 test binaries through one 80 MB archive. Each
+# module now has its own moc/PCH/link closure; project_lib is an INTERFACE
+# aggregator so consumers (executable, test lanes) link exactly as before.
+#   project_core       UTIL + CORE (config, version, file utils)
+#   project_audio      AUDIO (engine, queue, analysis)
+#   project_visualizer VISUALIZER (projectM bridge, render, presets)
+#   project_suno       SUNO + SUNO_AUTH (API client, keychain)
+#   project_recorder   RECORDER + LYRICS + POSTPROCESS (ffmpeg, burn-in)
+#   project_bridges    QML_BRIDGE + UI (QML-exposed C++ types)
+set(_chadvis_modules
+    project_core:UTIL_SOURCES,CORE_SOURCES
+    project_audio:AUDIO_SOURCES
+    project_visualizer:VISUALIZER_SOURCES
+    project_suno:SUNO_SOURCES,SUNO_AUTH_SOURCES
+    project_recorder:RECORDER_SOURCES,LYRICS_SOURCES,CHADVIS_POSTPROCESS_SOURCES
+    project_bridges:QML_BRIDGE_SOURCES,UI_SOURCES
 )
-
-set_target_properties(project_lib PROPERTIES
-    AUTOMOC ON
-    AUTORCC ON
-    AUTOUIC ON
-)
-
-target_include_directories(project_lib PUBLIC ${COMMON_INCLUDES})
-target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
+# BuildConfig generated include dir must be on every module (they read it).
+set(_chadvis_generated "${CMAKE_BINARY_DIR}/generated")
+foreach(_chadvis_mod_spec IN LISTS _chadvis_modules)
+    string(REPLACE ":" ";" _chadvis_parts "${_chadvis_mod_spec}")
+    list(GET _chadvis_parts 0 _chadvis_mod)
+    list(SUBLIST _chadvis_parts 1 -1 _chadvis_varlist)
+    if(_chadvis_varlist)
+        string(REPLACE "," ";" _chadvis_vars "${_chadvis_varlist}")
+    else()
+        set(_chadvis_vars "")
+    endif()
+    set(_chadvis_srcs "")
+    foreach(_chadvis_var IN LISTS _chadvis_vars)
+        list(APPEND _chadvis_srcs ${${_chadvis_var}})
+    endforeach()
+    add_library(${_chadvis_mod} STATIC ${_chadvis_srcs})
+    # Bridges must stay STATIC for qt_add_qml_module (OBJECT unsupported);
+    # every module is STATIC for uniformity and archive-based incremental link.
+    set_target_properties(${_chadvis_mod} PROPERTIES AUTOMOC ON AUTORCC ON AUTOUIC ON)
+    target_include_directories(${_chadvis_mod} PUBLIC ${COMMON_INCLUDES} ${_chadvis_generated})
+    target_link_libraries(${_chadvis_mod} PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
+    if(NOT CHADVIS_NO_PCH)
+        target_precompile_headers(${_chadvis_mod} PRIVATE ${CMAKE_SOURCE_DIR}/src/pch.hpp)
+    endif()
+endforeach()
+# The app-icon qrc rides with core; every consumer already links core.
+target_sources(project_core PRIVATE resources/chadvis-projectm-qt.qrc)
+add_library(project_lib INTERFACE)
+target_link_libraries(project_lib INTERFACE
+    project_core project_audio project_visualizer project_suno project_recorder project_bridges)
 
 # Compile-time only: src/pch.hpp carries the Qt/std headers every TU re-parses.
 # Measured on the reference box (2 physical cores), the parse of those headers is
 # the bulk of a TU's wall clock, and ~350 TUs pay it independently. Nothing here
 # changes what a TU means -- the header holds includes and nothing else.
 # Opt out with -DCHADVIS_NO_PCH=ON when bisecting a build oddity.
-option(CHADVIS_NO_PCH "Build without the shared precompiled header" OFF)
-if(NOT CHADVIS_NO_PCH)
-    target_precompile_headers(project_lib PRIVATE ${CMAKE_SOURCE_DIR}/src/pch.hpp)
-endif()
+# (The option itself is declared in the module loop above; the PCH is applied
+# per module there.)
 
-# The version is a build-time fact: version.txt at the repo root is validated
-# into PROJECT_VERSION by the root CMakeLists. PUBLIC so every consumer of
-# project_lib (the executable, the test lanes) reports the identical value;
-# the user config is deliberately never consulted for it.
-target_compile_definitions(project_lib PUBLIC CHADVIS_VERSION="${PROJECT_VERSION}")
-
-# PUBLIC so the test lanes, which link project_lib, see the same answer the
-# library was built with. A test that quietly compiled the burn-in assertions
-# against a build that has no burn-in would be the exact silent-no-op this
-# feature is supposed to avoid.
+# Build-time facts (version, avfilter, AES availability) used to be PUBLIC
+# compile definitions, which stamped the version string onto every TU's
+# command line: bumping version.txt invalidated ~350 translation units at
+# once. The generated BuildConfig.hpp carries the same values through an
+# include directory instead, so only the handful of files that include it
+# rebuild. PUBLIC because consumers of project_lib (the executable, the test
+# lanes) must see the identical answers the library was built with.
 if(CHADVIS_HAS_AVFILTER)
-    target_compile_definitions(project_lib PUBLIC CHADVIS_HAS_AVFILTER=1)
+    set(_chadvis_has_avfilter_int 1)
+else()
+    set(_chadvis_has_avfilter_int 0)
 endif()
-
-# Same reasoning for the encrypted-playback crypto: PUBLIC so the test lanes
-# compile their assertions against the same answer the library was built with.
 if(CHADVIS_HAVE_AVAES_INIT)
-    target_compile_definitions(project_lib PUBLIC CHADVIS_HAVE_AVAES_INIT=1)
+    set(_chadvis_have_avaes_int 1)
+else()
+    set(_chadvis_have_avaes_int 0)
 endif()
+set(CHADVIS_HAS_AVFILTER_INT "${_chadvis_has_avfilter_int}")
+set(CHADVIS_HAVE_AVAES_INT "${_chadvis_have_avaes_int}")
+configure_file(
+    "${CMAKE_SOURCE_DIR}/src/core/BuildConfig.hpp.in"
+    "${CMAKE_BINARY_DIR}/generated/BuildConfig.hpp"
+    @ONLY)
+target_include_directories(project_lib INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>)
+unset(_chadvis_has_avfilter_int)
+unset(_chadvis_have_avaes_int)
 
 # ─────────────────────────────────────────────────────────────
 # QML MODULE - Modern UI components
@@ -172,7 +204,7 @@ set_source_files_properties(src/qml/styles/Theme.qml PROPERTIES QT_QML_SINGLETON
 # ChadVis module, so QML reaches them by name with no import path change.
 set_source_files_properties(src/qml/styles/ThemeDefinitions.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_qml_module(project_lib
+qt_add_qml_module(project_bridges
     URI ChadVis
     VERSION 1.0
     QML_FILES ${QML_SOURCES}
@@ -1276,8 +1308,10 @@ option(CHADVIS_NO_KEYCHAIN
 
 if(APPLE AND NOT CHADVIS_NO_KEYCHAIN)
     find_library(SECURITY_FRAMEWORK Security REQUIRED)
-    target_link_libraries(project_lib PUBLIC ${SECURITY_FRAMEWORK})
-    target_compile_definitions(project_lib PUBLIC CHADVIS_HAS_KEYCHAIN)
+    # CredentialStore lives in project_suno; the define only needs to be on its
+    # own translation units (INTERFACE project_lib links it into consumers).
+    target_link_libraries(project_suno PUBLIC ${SECURITY_FRAMEWORK})
+    target_compile_definitions(project_suno PUBLIC CHADVIS_HAS_KEYCHAIN)
 endif()
 
 # Windows and Linux get a real backend instead of a plaintext file. Without
@@ -1290,15 +1324,15 @@ endif()
 # CredentialStore.cpp dispatch with no platform #ifdef of its own, and it is
 # why the file is listed unconditionally in cmake/Sources.cmake.
 if(WIN32 AND NOT CHADVIS_NO_KEYCHAIN)
-    target_compile_definitions(project_lib PUBLIC CHADVIS_HAS_WIN32_CREDENTIALS)
+    target_compile_definitions(project_suno PUBLIC CHADVIS_HAS_WIN32_CREDENTIALS)
 endif()
 
 if(UNIX AND NOT APPLE AND NOT CHADVIS_NO_KEYCHAIN)
     # QtDBus, not libsecret: libsecret spins a GMainContext in a Qt app whose
     # entire event model is Qt's, and every caller here is already on
     # CredentialStoreWorker. The API actually needed is five methods.
-    target_link_libraries(project_lib PUBLIC Qt6::DBus)
-    target_compile_definitions(project_lib PUBLIC CHADVIS_HAS_SECRET_SERVICE)
+    target_link_libraries(project_suno PUBLIC Qt6::DBus)
+    target_compile_definitions(project_suno PUBLIC CHADVIS_HAS_SECRET_SERVICE)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -1345,5 +1379,5 @@ if(NOT CHADVIS_USE_SOXR_ENGINE)
     message(STATUS
         "Resampler: soxr disabled by CHADVIS_USE_SOXR_ENGINE=0 -- libswresample's "
         "own resampler only, which is the A/B baseline")
-    target_compile_definitions(project_lib PUBLIC CHADVIS_USE_SOXR_ENGINE=0)
+    target_compile_definitions(project_recorder PUBLIC CHADVIS_USE_SOXR_ENGINE=0)
 endif()

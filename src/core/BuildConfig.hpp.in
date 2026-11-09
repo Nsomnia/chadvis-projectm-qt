@@ -1,0 +1,15 @@
+// BuildConfig.hpp.in -- generated into the build tree by cmake/TargetSetup.cmake.
+//
+// The version and feature answers used to be PUBLIC compile definitions, which
+// put the version string on every TU's command line: bumping version.txt
+// invalidated ~350 translation units at once. This header carries the same
+// values; only the few files that read them include it, so a version bump
+// rebuilds those files alone. The include directory is PUBLIC so every
+// consumer of project_lib sees the identical answers the library was built
+// with (the old reason the defines were PUBLIC at all).
+
+#pragma once
+
+#define CHADVIS_VERSION "@PROJECT_VERSION@"
+#define CHADVIS_HAS_AVFILTER @CHADVIS_HAS_AVFILTER_INT@
+#define CHADVIS_HAVE_AVAES_INIT @CHADVIS_HAVE_AVAES_INT@

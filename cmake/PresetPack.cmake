@@ -78,9 +78,9 @@ set(CHADVIS_BUNDLED_PRESET_DIR "${_chadvis_preset_root}" CACHE INTERNAL
 message(STATUS "Preset pack: ${CHADVIS_BUNDLED_PRESET_DIR}")
 
 # The build tree is where a dev binary runs from, so the definition is what makes
-# a `./build.sh --fast` app find the same pack the installed one carries. PUBLIC
-# only because project_lib is the target every translation unit links through.
-target_compile_definitions(project_lib PRIVATE
+# a `./build.sh --fast` app find the same pack the installed one carries. Only
+# FileUtils.cpp (project_core) reads it, so it lands there.
+target_compile_definitions(project_core PRIVATE
     CHADVIS_BUNDLED_PRESET_DIR="${CHADVIS_BUNDLED_PRESET_DIR}")
 
 # Everything below ships the pack: Linux/Windows read it from share/, macOS from
