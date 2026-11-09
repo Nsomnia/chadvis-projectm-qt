@@ -134,9 +134,16 @@ foreach(_chadvis_mod_spec IN LISTS _chadvis_modules)
     foreach(_chadvis_var IN LISTS _chadvis_vars)
         list(APPEND _chadvis_srcs ${${_chadvis_var}})
     endforeach()
-    add_library(${_chadvis_mod} STATIC ${_chadvis_srcs})
-    # Bridges must stay STATIC for qt_add_qml_module (OBJECT unsupported);
-    # every module is STATIC for uniformity and archive-based incremental link.
+    # Only project_bridges must stay STATIC (qt_add_qml_module rejects
+    # OBJECT). The other five stay OBJECT so their moc TUs are always
+    # linked: as STATIC archives, the linker could drop a moc member whose
+    # signals are first referenced from Bridges, which is exactly the
+    # undefined-reference failure the Linux CI lanes hit (2026-11-09).
+    if(_chadvis_mod STREQUAL "project_bridges")
+        add_library(${_chadvis_mod} STATIC ${_chadvis_srcs})
+    else()
+        add_library(${_chadvis_mod} OBJECT ${_chadvis_srcs})
+    endif()
     set_target_properties(${_chadvis_mod} PROPERTIES AUTOMOC ON AUTORCC ON AUTOUIC ON)
     target_include_directories(${_chadvis_mod} PUBLIC ${COMMON_INCLUDES} ${_chadvis_generated})
     target_link_libraries(${_chadvis_mod} PUBLIC ${COMMON_LIBS} ${CPM_LIBS})
@@ -146,9 +153,16 @@ foreach(_chadvis_mod_spec IN LISTS _chadvis_modules)
 endforeach()
 # The app-icon qrc rides with core; every consumer already links core.
 target_sources(project_core PRIVATE resources/chadvis-projectm-qt.qrc)
-add_library(project_lib INTERFACE)
-target_link_libraries(project_lib INTERFACE
-    project_core project_audio project_visualizer project_suno project_recorder project_bridges)
+# STATIC aggregator: consumers get the OBJECT modules' objects (an
+# INTERFACE aggregator silently drops them from the link line) plus the
+# Bridges archive. Its PUBLIC link set mirrors what the modules declare, so
+# frameworks/defines reach consumers; objects themselves come only from
+# the TARGET_OBJECTS list above.
+add_library(project_lib STATIC $<TARGET_OBJECTS:project_core> $<TARGET_OBJECTS:project_audio>
+    $<TARGET_OBJECTS:project_visualizer> $<TARGET_OBJECTS:project_suno>
+    $<TARGET_OBJECTS:project_recorder>)
+target_include_directories(project_lib PUBLIC ${COMMON_INCLUDES} ${_chadvis_generated})
+target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS} project_bridges)
 
 # Compile-time only: src/pch.hpp carries the Qt/std headers every TU re-parses.
 # Measured on the reference box (2 physical cores), the parse of those headers is
@@ -1308,10 +1322,12 @@ option(CHADVIS_NO_KEYCHAIN
 
 if(APPLE AND NOT CHADVIS_NO_KEYCHAIN)
     find_library(SECURITY_FRAMEWORK Security REQUIRED)
-    # CredentialStore lives in project_suno; the define only needs to be on its
-    # own translation units (INTERFACE project_lib links it into consumers).
-    target_link_libraries(project_suno PUBLIC ${SECURITY_FRAMEWORK})
+    # CredentialStore lives in project_suno, so the define only needs to be on
+    # its own translation units. The framework itself must also reach the
+    # final link: the aggregator (project_lib) aggregates objects, not
+    # interface link libraries, so link it there too.
     target_compile_definitions(project_suno PUBLIC CHADVIS_HAS_KEYCHAIN)
+    target_link_libraries(project_lib PUBLIC ${SECURITY_FRAMEWORK})
 endif()
 
 # Windows and Linux get a real backend instead of a plaintext file. Without

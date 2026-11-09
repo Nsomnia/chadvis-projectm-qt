@@ -14,7 +14,7 @@
 #
 # Exit status is non-zero on a blocking problem, so this works as a gate.
 #
-# HOW IT RESOLVES THINGS: it runs the build's own `project_lib_qmllint` target
+# HOW IT RESOLVES THINGS: it runs the build's own `project_bridges_qmllint` target
 # rather than invoking qmllint directly. That is deliberate and load-bearing.
 # Invoked by hand, qmllint cannot resolve this tree: `main.qml` uses relative
 # local imports (`import "views"`) which need the source layout, while
@@ -64,7 +64,7 @@ fi
 # version of this script treated any RC > 1 as "qmllint could not run" and
 # printed "no findings", which is how a script meant to catch defects reported
 # clean on the exact commit that introduced one.
-RAW="$(ninja -C "$BUILD_DIR" project_lib_qmllint 2>&1)"
+RAW="$(ninja -C "$BUILD_DIR" project_bridges_qmllint 2>&1)"
 RC=${PIPESTATUS[0]}
 
 # The only genuine tool failure is one that produced no warning lines at all.
