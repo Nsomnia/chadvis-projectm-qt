@@ -153,16 +153,15 @@ foreach(_chadvis_mod_spec IN LISTS _chadvis_modules)
 endforeach()
 # The app-icon qrc rides with core; every consumer already links core.
 target_sources(project_core PRIVATE resources/chadvis-projectm-qt.qrc)
-# STATIC aggregator: consumers get the OBJECT modules' objects (an
-# INTERFACE aggregator silently drops them from the link line) plus the
-# Bridges archive. Its PUBLIC link set mirrors what the modules declare, so
-# frameworks/defines reach consumers; objects themselves come only from
-# the TARGET_OBJECTS list above.
+# Bridges must precede the aggregator on the link line: Bridges objects
+# reference Suno/services, so a Bridges-first order lets one pass resolve
+# them (GNU ld does not rescan a previous archive; Darwin ld does, which is
+# why the mac lane passed and Ubuntu failed).
 add_library(project_lib STATIC $<TARGET_OBJECTS:project_core> $<TARGET_OBJECTS:project_audio>
     $<TARGET_OBJECTS:project_visualizer> $<TARGET_OBJECTS:project_suno>
     $<TARGET_OBJECTS:project_recorder>)
-target_include_directories(project_lib PUBLIC ${COMMON_INCLUDES} ${_chadvis_generated})
-target_link_libraries(project_lib PUBLIC ${COMMON_LIBS} ${CPM_LIBS} project_bridges)
+target_link_libraries(project_lib PUBLIC project_bridges)
+target_link_libraries(project_bridges PUBLIC project_lib)
 
 # Compile-time only: src/pch.hpp carries the Qt/std headers every TU re-parses.
 # Measured on the reference box (2 physical cores), the parse of those headers is
@@ -1349,6 +1348,10 @@ if(UNIX AND NOT APPLE AND NOT CHADVIS_NO_KEYCHAIN)
     # CredentialStoreWorker. The API actually needed is five methods.
     target_link_libraries(project_suno PUBLIC Qt6::DBus)
     target_compile_definitions(project_suno PUBLIC CHADVIS_HAS_SECRET_SERVICE)
+    # Same aggregation gap as Security: OBJECT/interface links do not reach
+    # the final link through TARGET_OBJECTS aggregation, so carry DBus on
+    # the aggregator for the Linux lanes (2026-11-09 CI failure).
+    target_link_libraries(project_lib PUBLIC Qt6::DBus)
 endif()
 
 # ---------------------------------------------------------------------------
