@@ -1,10 +1,12 @@
 # Changelog
 
-Current release: **1.2.0** — 2026-11-07
+Current release: **1.3.0** — 2026-11-10
 
 This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Pre-pivot, oversized history is retained as [docs/CHANGELOG_LEGACY.md](docs/CHANGELOG_LEGACY.md). That file predates version normalization in its `2.1.0`/`2.0.0`/`1.1.0`/`1.0.0` sections, but it also opens with a post-normalization `[Unreleased]` block that carries most of the work now published here as 1.1.0 — so the legacy file overlaps this one rather than being purely historical.
 
 ## [Unreleased]
+
+## [1.3.0] — 2026-11-10
 
 ### Added
 
