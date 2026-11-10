@@ -8,6 +8,8 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Clip trash and playlist trash are reachable from the UI.** The two captured trash verbs (move a clip to trash / restore, trash / recover a playlist) now have bridge invokables, a stateful detail-sheet control with accepted-state readback, and a card-menu entry. Gated by the same gates as every other mutation and disabled while a mutation is busy. (T0011)
+
 - **Quitting during the first frames is now safe.** `Application::aboutToQuit` drains QML component
   creation (bounded at five seconds) before tearing down, so the engine can no longer be destroyed
   with objects still being created. (T0451)

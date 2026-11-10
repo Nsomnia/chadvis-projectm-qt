@@ -6,14 +6,16 @@ import ChadVis
 /**
  * The mutation section of ClipDetailSheet (REACTIVE-GUI-PLAN §6.2).
  *
- * The 11 SunoLibraryMutations verbs, grouped "Clip actions" vs
+ * The SunoLibraryMutations verbs, grouped "Clip actions" vs
  * "Playlist actions", each control presented only when its owning
  * gate (gateFor()) permits it:
  *   Library gate  — set-visibility, toggle-remix-permission,
- *                   toggle-show-remixes, update-feedback-state
+ *                   toggle-show-remixes, update-feedback-state,
+ *                   clip-trash-restore
  *   Sharing gate  — share-link
  *   Playlists gate— set-metadata, update-clips, tracks-add,
- *                   tracks-remove, reorder, cover-image
+ *                   tracks-remove, reorder, cover-image,
+ *                   playlist-trash-v2
  * A verb whose gate denies is ABSENT, never disabled-with-a-mystery.
  * When nothing at all is permitted, mutationsUnavailableReason is
  * shown verbatim instead of an invented sentence.
@@ -59,6 +61,9 @@ Item {
     property int acceptedVisibility: -1
     property int acceptedRemix: -1
     property int acceptedShow: -1
+    // Accepted trash state, sheet lifetime. Reset per clip / playlist.
+    property int acceptedTrashed: -1
+    property int acceptedPlaylistTrashed: -1
     // The verb string awaiting its settle ("set-visibility", ...).
     property string pendingVerb: ""
     // verb -> value we last asked for, read back at settle so the
@@ -73,6 +78,8 @@ Item {
         acceptedVisibility = -1
         acceptedRemix = -1
         acceptedShow = -1
+        acceptedTrashed = -1
+        acceptedPlaylistTrashed = -1
         pendingVerb = ""
         lastMessage = ""
         lastIsError = false
@@ -126,6 +133,10 @@ Item {
                 acceptedRemix = requested[verb] === true ? 1 : 0
             if (verb === "toggle-show-remixes")
                 acceptedShow = requested[verb] === true ? 1 : 0
+            if (verb === "clip-trash-restore")
+                acceptedTrashed = requested[verb] === true ? 1 : 0
+            if (verb === "playlist-trash-v2")
+                acceptedPlaylistTrashed = requested[verb] === true ? 1 : 0
             if (verb === "set-visibility")
                 showMessage(requested[verb] === true ? "Made public." : "Made private.", false)
             else if (verb === "toggle-remix-permission")
@@ -144,6 +155,10 @@ Item {
                 showMessage("Removed from the playlist.", false)
             else if (verb === "playlist-cover-image")
                 showMessage("Cover image set.", false)
+            else if (verb === "clip-trash-restore")
+                showMessage(requested[verb] === true ? "Moved to trash." : "Restored.", false)
+            else if (verb === "playlist-trash-v2")
+                showMessage(requested[verb] === true ? "Playlist moved to trash." : "Playlist restored.", false)
             else
                 showMessage("Updated.", false)
             if (verb.indexOf("playlist-") === 0)
@@ -175,6 +190,8 @@ Item {
         case "playlist-tracks-remove": return tracksRow
         case "playlist-update-clips": return updateRow
         case "playlist-cover-image": return coverRow
+        case "clip-trash-restore": return trashRow
+        case "playlist-trash-v2": return playlistTrashRow
         }
         return null
     }
@@ -395,6 +412,25 @@ Item {
                 onActionA: root.ask("share-link", "clip",
                                      function() { SunoBridge.shareClip(root.clipId, "clip") })
                 onActionB: {}
+            }
+
+            MutationRow {
+                id: trashRow
+                visible: root.libraryAvailable
+                verbKey: "clip-trash-restore"
+                title: "Trash"
+                stateText: root.stateWord(root.acceptedTrashed) === "unknown"
+                           ? "Trash state unknown"
+                           : root.acceptedTrashed === 1 ? "In trash" : "Not trashed"
+                labelA: "Move to trash"
+                labelB: "Restore"
+                confirmedA: root.acceptedTrashed === 1
+                confirmedB: root.acceptedTrashed === 0
+                enabled: root.libraryAvailable
+                onActionA: root.ask("clip-trash-restore", true,
+                                     function() { SunoBridge.setClipTrashed([root.clipId], true) })
+                onActionB: root.ask("clip-trash-restore", false,
+                                     function() { SunoBridge.setClipTrashed([root.clipId], false) })
             }
 
             // Feedback: the capture proves feedback_reason is a
@@ -654,6 +690,25 @@ Item {
                     NumberAnimation { target: coverRow; property: "rotation"; to: -2; duration: 70; easing.type: Easing.InOutQuad }
                     NumberAnimation { target: coverRow; property: "rotation"; to: 0; duration: 70; easing.type: Easing.InOutQuad }
                 }
+            }
+
+            MutationRow {
+                id: playlistTrashRow
+                visible: root.playlistContext && root.playlistsAvailable
+                verbKey: "playlist-trash-v2"
+                title: "Playlist trash"
+                stateText: root.stateWord(root.acceptedPlaylistTrashed) === "unknown"
+                           ? "Trash state unknown"
+                           : root.acceptedPlaylistTrashed === 1 ? "In trash" : "Not trashed"
+                labelA: "Move playlist to trash"
+                labelB: "Restore playlist"
+                confirmedA: root.acceptedPlaylistTrashed === 1
+                confirmedB: root.acceptedPlaylistTrashed === 0
+                enabled: root.playlistContext && root.playlistsAvailable
+                onActionA: root.ask("playlist-trash-v2", true,
+                                     function() { SunoBridge.setPlaylistTrashed(root.playlistId, true) })
+                onActionB: root.ask("playlist-trash-v2", false,
+                                     function() { SunoBridge.setPlaylistTrashed(root.playlistId, false) })
             }
         }
     }

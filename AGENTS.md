@@ -936,8 +936,8 @@ Git preserves the development history.
 
 # 18. Subagent model selection
 
-Launch subagents with `kilo/stealth/crouton-alpha` by default.
+Launch subagents with `codebuddy/hy4free` (variant `high`) by default.
 
-You may also select free models for bounded lanes: `opencode-go/crouton-alpha-free`, `opencode/crouton-alpha-free`, `openrouter/stealth/crouton-alpha`.
+All agents and subagents in `~/.config/opencode/oh-my-opencode-slim.jsonc` use `codebuddy/hy4free` (`high`); do not override with a different provider or model unless the user asks.
 
 Keep paid provider usage minimal. DeepSeek is the only paid API. Antigravity or other advanced models are available only when explicitly chosen.

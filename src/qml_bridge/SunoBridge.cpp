@@ -1524,6 +1524,18 @@ void SunoBridge::setPlaylistCoverImage(const QString& playlistId, const QString&
     }
 }
 
+void SunoBridge::setClipTrashed(const QStringList& clipIds, const bool trashed) {
+    if (mutations_) {
+        mutations_->setClipTrashed(clipIds, trashed);
+    }
+}
+
+void SunoBridge::setPlaylistTrashed(const QString& playlistId, const bool trashed) {
+    if (mutations_) {
+        mutations_->setPlaylistTrashed(playlistId, trashed);
+    }
+}
+
 
 // ── Playlists (read side) ─────────────────────────────────────────────────────
 

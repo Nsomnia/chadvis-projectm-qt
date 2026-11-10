@@ -260,10 +260,12 @@ public slots:
     // forwarders: no body is assembled here, so there is exactly one owner of
     // the wire format.
     //
-    // **There are deliberately no like/unlike and no trash/restore invokables.**
+    // **There are deliberately no like/unlike invokables.**
     // No captured request contract exists for either — see the header of
     // SunoLibraryMutations.hpp and the named-absence block in
     // SunoEndpoints.hpp. Adding one would require inventing a route.
+    // Trash/restore IS captured (UI-07 [T1]: GEN_TRASH + PLAYLIST_V2_TRASH)
+    // and is exposed below like every other verb.
     //
     // Every one of these is a no-op that settles as `refused` while
     // `mutationsAvailable` is false, and each says why. Note that none of them
@@ -298,6 +300,12 @@ public slots:
     Q_INVOKABLE void reorderPlaylistTracks(const QString& playlistId,
                                            const QVariantList& positions);
     Q_INVOKABLE void setPlaylistCoverImage(const QString& playlistId, const QString& imageId);
+    /// POST /api/gen/trash — UI-07 [T1] (ClipTrashRestore). Batch: one call,
+    /// one settled result (subject = first clip id). `trashed` false restores.
+    Q_INVOKABLE void setClipTrashed(const QStringList& clipIds, bool trashed);
+    /// POST /api/playlist/v2/{id}/trash — UI-07 [T1] (PlaylistTrashV2).
+    /// `trashed` false recovers. Preferred over the legacy 204 trash route.
+    Q_INVOKABLE void setPlaylistTrashed(const QString& playlistId, bool trashed);
 
 signals:
     void loadingChanged();

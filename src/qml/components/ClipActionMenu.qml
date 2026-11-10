@@ -10,7 +10,7 @@ import ChadVis
  * Entry points:
  *   - "Details & actions…" opens the clip's ClipDetailSheet, where
  *     ClipMutationsSection carries the full stateful verbs.
- *   - The single-shot verbs below (visibility, share) call the same
+ *   - The single-shot verbs below (visibility, share, trash) call the same
  *     bridge invokables and report their settle on the card's own
  *     note line (ClipCard.mutationNote), filtered by clip id, so a
  *     card only ever narrates its own clip. Everything that needs
@@ -63,5 +63,16 @@ Menu {
         text: "Get share link"
         enabled: root.sharingAvailable && !!root.clipData && !SunoBridge.mutationsBusy
         onTriggered: SunoBridge.shareClip(root.clipData.id, "clip")
+    }
+
+    MenuSeparator {
+        visible: root.libraryAvailable
+    }
+
+    MenuItem {
+        visible: root.libraryAvailable
+        text: "Move to trash"
+        enabled: root.libraryAvailable && !!root.clipData && !SunoBridge.mutationsBusy
+        onTriggered: SunoBridge.setClipTrashed([root.clipData.id], true)
     }
 }

@@ -81,13 +81,17 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 
 ## P1 — correctness, robustness, debt that will bite
 
-- [ ] T0011 **11-route mutation surface runtime-unreachable** (`SunoLibraryMutations.hpp:493`, `.cpp:394-397`) #risk-high
+- [x] T0011 **11-route mutation surface runtime-unreachable** (`SunoLibraryMutations.hpp:493`, `.cpp:394-397`) #risk-high
       **Enabled 2026-10-30.** `setEnabled(true)` at service construction. Gates in `kGatesImplementedByThisBuild`.
-      Verbs reachable, `mutationsAvailable` honest. QML still doesn't connect the 4 signals — UI gap.
+      Verbs reachable, `mutationsAvailable` honest.
       `everyGatePermits()` is single predicate. `gateFor()` maps verbs to gates.
       Response shapes captured §5.13 (reaction, remix, visibility, playlist CRUD). Wire format no longer blocker.
-      Next step: control per verb, not another gate.
       **Re-ranked P0 -> P1 2026-11-08:** verbs are enabled and reachable; what remains is the QML surface, which T0359 owns.
+      **DONE 2026-11-10:** the 4 signals are connected and ALL 13 verbs have a per-verb control. The 2 trash
+      verbs (clip-trash-restore, playlist-trash-v2 — UI-07 [T1]) had service + section methods but no bridge
+      invokable/QML control: added `setClipTrashed`/`setPlaylistTrashed` forwarders, a Trash/Playlist-trash
+      MutationRow with accepted-state readback + per-subject settled handlers, and a "Move to trash" card-menu
+      entry. Verified: full build 385/385, ctest 33/33, lint-qml clean (1374 baseline unchanged).
 
 - [?] T0356 **Suno OAuth 2.0 loopback flow — in-app sign-in** (`src/suno/auth/`, `docs/suno_api/`) #feature #blocks-ui
       `POST /api/v2/external/oauth/register/` → 201 with `client_id`. Loopback on arbitrary port accepted.
