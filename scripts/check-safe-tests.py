@@ -5,6 +5,7 @@ Fails when the canonical list (scripts/safe-tests.txt) disagrees with any of:
   * the set_tests_properties(... ENVIRONMENT ...) block in tests/unit/CMakeLists.txt
   * the RE regex in .github/workflows/tsan.yml
   * the scoped -R in BOTH .github/workflows/asan.yml ctest lanes (T0386)
+  * the three hard-gate -R alternations (build/windows/release) agree (T0387)
   * the add_test() entries it names (every canonical name must be a real test)
   * build.sh SAFE_TESTS (must CONTAIN every canonical name; a superset is fine)
 
@@ -21,6 +22,11 @@ CANON = ROOT / "scripts" / "safe-tests.txt"
 CMAKE = ROOT / "tests" / "unit" / "CMakeLists.txt"
 TSAN = ROOT / ".github" / "workflows" / "tsan.yml"
 ASAN = ROOT / ".github" / "workflows" / "asan.yml"
+GATE_WORKFLOWS = (
+    ROOT / ".github" / "workflows" / "build.yml",
+    ROOT / ".github" / "workflows" / "windows.yml",
+    ROOT / ".github" / "workflows" / "release.yml",
+)
 BUILDSH = ROOT / "build.sh"
 
 
@@ -79,6 +85,23 @@ def asan_sources_canonical(names: list[str]) -> bool:
     return workflow_sources_canonical(ASAN, names, expected_ctest=2)
 
 
+def gate_regexes_agree() -> bool:
+    """T0387: the three hard-gate workflows each carry a hand-written headless
+    -R alternation. They must be identical (same population) or a test gates on
+    one platform and silently does not on another. Extract the alternation from
+    each -R '^(...)$' and compare as sets.
+    """
+    rx = re.compile(r"-R\s+'?\^\(([^']*?)\)\$'?")
+    found: list[frozenset] = []
+    for path in GATE_WORKFLOWS:
+        text = path.read_text(encoding="utf-8")
+        m = rx.search(text)
+        if not m:
+            return False
+        found.append(frozenset(m.group(1).split("|")))
+    return len(found) == len(GATE_WORKFLOWS) and all(s == found[0] for s in found)
+
+
 def build_safe() -> list[str]:
     text = BUILDSH.read_text(encoding="utf-8")
     m = re.search(r"SAFE_TESTS=\((.*?)\n\)", text, re.S)
@@ -128,6 +151,10 @@ def main() -> int:
         fail("asan.yml does not scope BOTH ctest lanes (ASan + UBSan) to the "
              "safe-tests-derived -R RE (T0386): an unfiltered sanitizer ctest "
              "measures a population nobody classified")
+    if not gate_regexes_agree():
+        fail("build.yml / windows.yml / release.yml headless gate -R regexes "
+             "disagree (T0387): a test gates on one platform but not another, "
+             "or a -R alternation is missing")
 
     safe = build_safe()
     missing_in_safe = [n for n in names if n not in safe]

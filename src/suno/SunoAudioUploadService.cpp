@@ -17,11 +17,20 @@
 #include <QStringList>
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 namespace vc::suno {
 
 namespace {
+
+struct DeleteLater
+{
+    void operator()(QObject* object) const noexcept
+    {
+        object->deleteLater();
+    }
+};
 
 QStringList requiredFieldNames()
 {
@@ -53,6 +62,8 @@ QString multipartDisposition(const QString& name, const QString& filename = {})
     }
     return value;
 }
+
+using DeferredMultiPart = std::unique_ptr<QHttpMultiPart, DeleteLater>;
 
 }
 
@@ -370,14 +381,18 @@ void SunoAudioUploadService::startDirectUpload(quint64 generation)
         return;
     }
 
-    QFile* file = new QFile(filePath_);
+    // Both objects outlive this function: the upload device must stay open until
+    // the reply finishes, and QHttpMultiPart owns its QObject-parented parts.
+    // unique_ptr owns them until QNetworkReply takes over via setParent; a
+    // multipart already handed to post() is only safe to deleteLater(), since a
+    // live reply may still be reading its device.
+    auto file = std::make_unique<QFile>(filePath_);
     if (!file->open(QIODevice::ReadOnly)) {
-        delete file;
         fail(QStringLiteral("The selected audio file could not be read."));
         return;
     }
 
-    auto* multipart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+    DeferredMultiPart multipart(new QHttpMultiPart(QHttpMultiPart::FormDataType));
     for (auto it = ticket_->fields.constBegin(); it != ticket_->fields.constEnd(); ++it) {
         QHttpPart fieldPart;
         fieldPart.setHeader(QNetworkRequest::ContentDispositionHeader,
@@ -404,30 +419,29 @@ void SunoAudioUploadService::startDirectUpload(quint64 generation)
                        ticketContentType.isEmpty()
                            ? QStringLiteral("audio/mp4")
                            : ticketContentType);
-    filePart.setBodyDevice(file);
+    filePart.setBodyDevice(file.get());
     multipart->append(filePart);
-    file->setParent(multipart);
+    file->setParent(multipart.get());
+    file.release();
 
     auto request = directRequest(ticket_->url);
     if (!request) {
-        multipart->deleteLater();
         fail(request.error());
         return;
     }
     QNetworkReply* reply = directReplyFactory_
-                                   ? directReplyFactory_(*request, multipart)
-                                   : directNetworkManager_->post(*request, multipart);
+                                   ? directReplyFactory_(*request, multipart.get())
+                                   : directNetworkManager_->post(*request, multipart.get());
     if (!reply) {
-        multipart->deleteLater();
         fail(QStringLiteral("The audio upload could not be started."));
         return;
     }
     if (generation != generation_ || !uploading_) {
         reply->deleteLater();
-        multipart->deleteLater();
         return;
     }
     multipart->setParent(reply);
+    multipart.release();
     directReply_ = reply;
 
     QPointer<SunoAudioUploadService> guard(this);

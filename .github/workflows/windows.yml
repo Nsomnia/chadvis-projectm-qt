@@ -235,14 +235,14 @@ jobs:
           }
           Write-Host "All 11 gating entries discovered; ctest reports $total."
 
-      # Same 11 entries build.yml gates on. The three runtime-environment
+      # Same 19 entries build.yml gates on. The three runtime-environment
       # entries are deliberately absent: no GPU, no meaningful GL driver, and
       # AudioEngine with no output device. Nothing here would be signal.
-      - name: Run the headless gate (11 entries)
+      - name: Run the headless gate (19 entries)
         run: |
           ctest --test-dir $env:BUILD_DIR/tests --output-on-failure `
             --parallel $env:NUMBER_OF_PROCESSORS `
-            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
+            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient|test_SunoClipDetailService|test_SunoCoverArtService|test_SunoGenerationService|test_SunoLibrarySectionService|test_SunoMcpClient|test_SunoModelCatalog|test_SunoPersonaService|test_SunoPlaylistService)$'
 
       - name: Report the credential backend this build selected
         # The one question this platform can uniquely answer. `CHADVIS_HAS_KEYCHAIN`

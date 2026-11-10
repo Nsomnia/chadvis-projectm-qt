@@ -5,17 +5,17 @@
 # need no hardware still pass? Ubuntu x {gcc, clang} plus macOS 14.
 #
 # WHY THIS DOES NOT CALL ./build.sh
-#   build.sh has no CI mode, and its --tests action is an ALLOW-LIST of twelve
-#   targets (SAFE_TESTS, build.sh:57-70) that exists to make the local edit loop
+#   build.sh has no CI mode, and its --tests action is an ALLOW-LIST of the
+#   SAFE_TESTS targets (build.sh:57-88) that exists to make the local edit loop
 #   fast. Two of its consequences make it wrong here:
-#     * it builds and runs 12 of the 14 ctest entries. Only the two integration
-#       entries are outside it, so CI built on it would never compile or run
-#       them;
+#     * it builds and runs only the headless-safe unit entries; the two
+#       integration entries are outside it, so CI built on it would never
+#       compile or run them;
 #     * --clean / --rebuild move the build directory into .backup_graveyard/
 #       (AGENTS.md §4), which is a local tidiness behaviour, not a CI one.
 #   So the CMake command line is spelled out here instead, and the cost of that
-#   duplication is accepted deliberately: it is the only way to run all 13
-#   entries. If build.sh ever grows a --ci flag, delete this comment and the
+#   duplication is accepted deliberately: it is the only way to run every
+#   entry. If build.sh ever grows a --ci flag, delete this comment and the
 #   command lines with it.
 #
 # TWO DEPENDENCY PATHS ON PURPOSE
@@ -362,11 +362,11 @@ jobs:
 
           echo "All 14 expected entries discovered; ctest reports $TOTAL."
 
-      - name: Run the headless gate (11 entries)
+      - name: Run the headless gate (19 entries)
         run: |
           ctest --test-dir "$BUILD_DIR/tests" --output-on-failure \
             --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)" \
-            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient)$'
+            -R '^(unit_tests|test_HttpPolicy|test_CapturedHosts|test_FeatureFlags|test_RenderExecutor|test_ThemeQml|test_SunoAudioUploadService|test_SunoRequestEpoch|test_SunoExploreService|test_SunoNotificationService|test_ClerkAuthClient|test_SunoClipDetailService|test_SunoCoverArtService|test_SunoGenerationService|test_SunoLibrarySectionService|test_SunoMcpClient|test_SunoModelCatalog|test_SunoPersonaService|test_SunoPlaylistService)$'
 
       # ---------------------------------------------------------------------
       # Runtime-environment entries: reported, not gating.

@@ -1,0 +1,4 @@
+2026-11-10T00:00:00Z  VERIFY  ./scripts/check-safe-tests.py exit 0; check-workflows.py all ok
+8 Suno service tests added to build.yml/windows.yml/release.yml gate -R (19 entries).
+All 8 verified headless-safe (QTEST_MAIN, no GL/QGui) and passing 8/8 locally.
+gate_regexes_agree() regression control: passes healthy, fails on drift.

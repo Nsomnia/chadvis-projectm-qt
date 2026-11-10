@@ -1,0 +1,5 @@
+2026-11-10T00:00:00Z  VERIFY  test_SunoAudioUploadService 29/29
+test_SunoRequestEpoch 11/11; unit_tests exit 0.
+RAII: QFile + QHttpMultiPart unique_ptr; deleteLater deleter preserves
+post()-early-return semantics; setParent+release transfers ownership.
+No manual delete/deleteLater on either object remains.
