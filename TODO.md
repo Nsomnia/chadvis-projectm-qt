@@ -774,8 +774,12 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       Guard landed 2026-11-08: enqueue's queued lambda now captures the shared shuttingDown_ copy and early-returns, mirroring requestRestore. New `storeEnqueuesOnWorkerThread` covers the store/remove path.
       Verify: enqueue checks the same flag; shutdown-order test covers `wait()` failure.
       **DONE:** ctest 33/33.
-- [ ] T0402 **Move audio/render constants into ConfigData with defaults** (`src/audio/AudioQueue.hpp`, `src/audio/VisualizerAudioTap.cpp`, `src/audio/AudioEngine.hpp`, `src/recorder/RenderExecutor.hpp`, `src/recorder/EncoderSettings.cpp`, `src/core/ConfigData.hpp`, `src/core/ConfigParsers.cpp`) #cleanup (after: T0397)
-      Queue capacity, 48 kHz rate, debounce, quantum, frame cap, max-concurrent are baked in. Verify: each has a TOML key + CLI override + documented default equal to today.
+- [ ] T0402 **Expose audio/render tuning constants as TOML keys** (`src/core/ConfigData.hpp`, `src/core/ConfigParsers.cpp`, `src/audio/AudioQueue.hpp`, `src/audio/VisualizerAudioTap.*`, `src/audio/AudioEngine.*`, `src/recorder/RenderExecutor.*`) #cleanup (after: T0397)
+      Verify: each constant has a TOML key + documented default equal to today.
+      **Recon 2026-11-10 — premise partly stale.** The constants are NOT unnamed magic numbers: they are already named `inline constexpr` or live in `RenderExecutor::Config` (which `setConfig()` already applies). Real remaining work is (a) TOML/plumbing + (b) construction-time injection. Split:
+      - (a) UNBLOCKED, small: add one field to `RecordingConfig` (`ConfigData.hpp:119-130`) + an `X("quantum_frames", quantumFrames, U32)` row in `CHADVIS_RECORDING_FIELDS` (`ConfigParsers.cpp:120-127`) + clamp in `parseRecording`. Pure ConfigData/ConfigParsers, zero T0397 dependency, pinned by the existing `roundTripPreservesEveryField` test. Establishes the pattern for the rest.
+      - (b) BLOCKED on T0397: `AudioQueue` capacity (:27 36000), `VisualizerAudioTap` rate/chunk/lead/realign (:13,14, hpp:66,69,72), `AudioEngine` debounce (:159 500) — these are needed at construction time and the only route today is the global `Config::instance()`, exactly what T0397 removes. Do NOT touch them before T0397.
+      - NOT config (leave): `AUDIO_FRAME_SAMPLES` (:23 8, cache-line geometry), AudioFrame ctor 48000/2 (:36,182 structural), `EncoderSettings.cpp` named preset factories. ConfigData would break layout/tests.
 - [x] T0403 **Modernize snprintf to std::format** (`src/suno/SunoDownloader.cpp`, `src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/OffscreenRenderSpike.cpp`) #cleanup
       Verify: zero `snprintf` in scope; output strings byte-identical.
       **DONE 2026-11-08:** 6 sites moved to `std::format` (`{:02d}`/`{:03d}`/`{:x}`/`{:.{}f}`); full build 499/499, ctest 26/26.
