@@ -744,6 +744,7 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       Two local `class FakeReply` remain beside the shared `FakeNetworkReply.hpp`. Narrows T0099. Verify: `grep -rn "class FakeReply" tests/ | wc -l` is 1; `ctest --test-dir build-fast/tests -R "DownloadQueue|RequestEpoch"` green.
 - [ ] T0391 **Shared JSON object-parse helper; fix the 3 unchecked sites** (`src/suno/SunoClient.cpp:1490`, `src/suno/SunoAccountManager.cpp:243,297`, `src/suno/`) #risk-medium
       86 `fromJson` sites repeat the parse-error boilerplate; 3 never check. Also merge C++-lane opt* scalar unify (ClipParser vs Mango/ModelCatalog/Clerk). Verify: no unchecked `fromJson` remains; `./build.sh --fast --tests --safe` 16/16.
+      **PARTIAL 2026-11-10:** the 3 unchecked sites now check `QJsonParseError` and fail via each file's existing error channel (SunoClient `handleJsonReply`; AccountManager `handleSessionReply`/`handleBillingReply`). unit_tests green, `test_SunoAccountManagerTos`/`Onboarding` green. **Still open:** shared-helper extraction across the remaining ~83 sites + opt* scalar unify.
 - [x] T0392 **DB sync/migration/rollback tests** (`tests/unit/suno/test_SunoDatabase.cpp`) #risk-high #data-loss
       Done 2026-11-09: 4 cases — upsert round-trip (title/tags/artwork), failed sync rolls back with no partial
       rows, failed transaction preserves existing data, legacy-schema migration keeps rows (duration "65.0"→"01:05", user_version 3).

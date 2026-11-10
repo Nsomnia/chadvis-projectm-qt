@@ -1494,7 +1494,15 @@ void SunoClient::handleJsonReply(QNetworkReply* reply,
         reply->deleteLater();
         return;
     }
-    const QJsonDocument document = QJsonDocument::fromJson(*body);
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(*body, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        const std::string err = "Malformed JSON response";
+        LOG_ERROR("SunoClient: {}", err);
+        errorOccurred.emitSignal(err);
+        reply->deleteLater();
+        return;
+    }
     reply->deleteLater();
     handler(document);
 }

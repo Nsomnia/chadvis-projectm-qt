@@ -316,7 +316,13 @@ void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
         return;
     }
 
-    const QJsonObject root = QJsonDocument::fromJson(*body).object();
+    QJsonParseError parseError{};
+    const QJsonObject root = QJsonDocument::fromJson(*body, &parseError).object();
+    if (parseError.error != QJsonParseError::NoError) {
+        LOG_WARN("SunoAccountManager: session envelope was not valid JSON");
+        emit accountError(QStringLiteral("session envelope was not valid JSON"));
+        return;
+    }
 
     // Capture the gating plane BEFORE the user parse, and unconditionally.
     //
@@ -370,7 +376,13 @@ void SunoAccountManager::handleBillingReply(QNetworkReply* reply) {
         return;
     }
 
-    const QJsonObject root = QJsonDocument::fromJson(*body).object();
+    QJsonParseError parseError{};
+    const QJsonObject root = QJsonDocument::fromJson(*body, &parseError).object();
+    if (parseError.error != QJsonParseError::NoError) {
+        LOG_WARN("SunoAccountManager: billing envelope was not valid JSON");
+        emit accountError(QStringLiteral("billing envelope was not valid JSON"));
+        return;
+    }
 
     // The model catalogue lives here, not in `/api/session/`. Measured against
     // the captured bodies, the session `models` array is EMPTY in every capture
