@@ -13,7 +13,10 @@
 #include <QTimer>
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <string>
+#include <vector>
 
 /// Held only for its audioOutputsChanged() signal; see setupDeviceWatchers().
 /// Forward-declared in the global namespace, where Qt declares it.
@@ -150,6 +153,10 @@ private slots:
     /// fallback only: the tap is cleared as soon as the media backend proves it
     /// delivers QAudioBufferOutput buffers, which is the supported path.
     void onVizTapTick();
+    /// Drains postErrorSignal()'s mutex-guarded queue and emits errorSignal() on
+    /// this object's thread. Parameterless so the cross-thread handoff carries
+    /// no captured payload (T0328).
+    void emitPendingErrors();
 
 private:
     /// Quiescent period after the last playlist mutation before the session M3U
@@ -261,6 +268,14 @@ private:
 
     /// The rendered status line. GUI thread only -- see refreshOutputStatus().
     QString outputStatus_;
+
+    /// postErrorSignal()'s payload, written on the audio callback thread and
+    /// drained by emitPendingErrors() on this object's thread. A queued call
+    /// carries no payload, so the strings wait here under a mutex instead of in
+    /// a captured functor (T0328).
+    std::mutex pendingErrorMutex_;
+    std::vector<std::string> pendingErrors_;
+
     std::atomic<u64> oversizedBufferCount_{0};
     std::atomic<u64> formatErrorCount_{0};
     /// Set on a conversion failure, cleared by the next success that converts

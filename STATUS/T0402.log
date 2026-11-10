@@ -1,0 +1,9 @@
+2026-11-10T18:45:00Z  VERIFY  build=unit_tests-linked(ninja 257/257, exit 0) ctest="unit_tests 1/1 Passed 140.68s, exit 0" (TestConfigLoader roundTripPreservesEveryField + recordingEncoderSubTablesAreWrittenAndNotCollapsed both PASS; the second initially failed at recording->size()==11 until its exact top-level count and contains() list were updated for the new key)
+T0402(a): `[recording] quantum_frames` is a real TOML key.
+RecordingConfig::quantumFrames{8} (matches kDefaultQuantumFrames in RenderExecutor.hpp),
+X("quantum_frames", quantumFrames, U32) in CHADVIS_RECORDING_FIELDS (parse + serialize),
+clamped 1-32 at the end of parseRecording's field expansion, declared in config/default.toml,
+documented with a "not yet consumed" disclosure in docs/user/CONFIG.md, and pinned by
+populate()/verifyPopulated() plus the exact [recording] key count in TestConfigLoader.
+No consumer yet: RenderExecutor::setConfig() has no production caller, so construction-time
+injection is (b), blocked on T0397 (global Config singleton).

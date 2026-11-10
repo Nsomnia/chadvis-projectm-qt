@@ -125,6 +125,20 @@ struct RecordingConfig {
     fs::path outputDirectory;
     std::string defaultFilename{"chadvis-projectm-qt_{date}_{time}"};
     std::string container{"mp4"};
+    // Written to `[recording] quantum_frames`. Frames one render job gets per
+    // interleave turn. 8 matches `kDefaultQuantumFrames` in
+    // src/recorder/RenderExecutor.hpp (~250 ms at the measured 31.4 ms/frame,
+    // which is what bounds cancel latency), and 1 is the live-visualizer value.
+    //
+    // The literal is deliberately duplicated rather than including the recorder
+    // header from core: ConfigData is a leaf, and one number in two places is a
+    // smaller cost than inverting the layering. If the executor default moves,
+    // move this with it -- `TestConfigLoader` pins the two together.
+    //
+    // Parsed, round-tripped and clamped today; nothing reads it yet. Injecting
+    // it into RenderExecutor::Config at construction is T0402(b), blocked on
+    // T0397 because the only route to it is the global Config singleton.
+    u32 quantumFrames{8};
     VideoEncoderConfig video;
     AudioEncoderConfig audio;
 };

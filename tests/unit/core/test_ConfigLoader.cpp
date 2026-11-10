@@ -172,6 +172,7 @@ void populate(Config& c, int seed) {
     rec.outputDirectory = fs::path("/tmp/rec-" + tag);
     rec.defaultFilename = "clip-" + tag;
     rec.container = "mkv";
+    rec.quantumFrames = 3u;
     rec.video.codec = "libx265";
     rec.video.crf = 30u;
     rec.video.preset = "slow";
@@ -279,6 +280,7 @@ void verifyPopulated(const Config& c, const std::string& tag) {
     QCOMPARE(c.recording().outputDirectory.string(), "/tmp/rec-" + tag);
     QCOMPARE(c.recording().defaultFilename, "clip-" + tag);
     QCOMPARE(c.recording().container, std::string("mkv"));
+    QCOMPARE(c.recording().quantumFrames, 3u);
     QCOMPARE(c.recording().video.codec, std::string("libx265"));
     QCOMPARE(c.recording().video.crf, 30u);
     QCOMPARE(c.recording().video.preset, std::string("slow"));
@@ -451,9 +453,12 @@ private slots:
             QVERIFY2(!recording->contains(key), key);
         }
 
-        // The eight keys that DO belong at the top level are untouched, with
+        // The nine keys that DO belong at the top level are untouched, with
         // exact counts, so the check above cannot pass by emptying the table.
-        QCOMPARE(recording->size(), std::size_t{10});  // 8 plain + video + audio
+        // 9 plain + video + audio. The count is deliberately exact: adding a
+        // key to CHADVIS_RECORDING_FIELDS without declaring it here is how a
+        // serializer drop went unnoticed before (T0402 added quantum_frames).
+        QCOMPARE(recording->size(), std::size_t{11});  // 9 plain + video + audio
         QVERIFY(recording->contains("enabled"));
         QVERIFY(recording->contains("auto_record"));
         QVERIFY(recording->contains("record_entire_song"));
@@ -461,6 +466,7 @@ private slots:
         QVERIFY(recording->contains("stop_at_track_end"));
         QVERIFY(recording->contains("default_filename"));
         QVERIFY(recording->contains("container"));
+        QVERIFY(recording->contains("quantum_frames"));
         QVERIFY(recording->contains("output_directory"));
     }
 

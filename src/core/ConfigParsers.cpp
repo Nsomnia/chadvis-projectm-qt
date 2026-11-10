@@ -124,7 +124,8 @@ std::string portablePath(const fs::path& path) {
     X("restart_track_on_record", restartTrackOnRecord, BOOL)                                       \
     X("stop_at_track_end", stopAtTrackEnd, BOOL)                                                   \
     X("default_filename", defaultFilename, STR)                                                    \
-    X("container", container, STR)
+    X("container", container, STR)                                                                 \
+    X("quantum_frames", quantumFrames, U32)
 
 // gop_size and b_frames were absent from this table for the life of the project,
 // which meant ConfigParsers::serialize -- which rebuilds the whole root table
@@ -388,6 +389,13 @@ void ConfigParsers::parseRecording(const toml::table& tbl, RecordingConfig& cfg)
         auto& obj = cfg;
         CHADVIS_RECORDING_FIELDS(VC_PARSE_FIELD)
     }
+
+    // T0402(a). "Frames per interleave turn": 1 is the live-visualizer value and
+    // 8 the render default, so 0 is a typo rather than an intention, and an
+    // unbounded value would hold a job turn for minutes -- at the measured
+    // 31.4 ms/frame, 32 frames is one second of cancel latency. Clamped here
+    // rather than at the executor so a hand-edited config cannot reach it.
+    cfg.quantumFrames = std::clamp(cfg.quantumFrames, 1u, 32u);
 
     // T0210: single default. The struct default is empty; loadDefault()'s
     // resolveFirstRunPaths sets <dataDir>/recordings for fresh installs, and

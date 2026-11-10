@@ -297,7 +297,9 @@ void AudioEngine::postStatusRefresh() {
     // not. Building it on the audio callback thread would assign a QString there
     // while the GUI thread reads it, which is a torn multi-word read rather than
     // a stale value (T0154).
-    QMetaObject::invokeMethod(this, [this] { refreshOutputStatus(); },
+    // T0328: parameterless queued call; observedSinkRate_ is the atomic payload,
+    // so no functor or capture crosses the thread boundary.
+    QMetaObject::invokeMethod(this, &AudioEngine::refreshOutputStatus,
                               Qt::QueuedConnection);
 }
 
@@ -306,11 +308,26 @@ void AudioEngine::postErrorSignal(std::string message) {
     // posted to this object's thread -- so a fault found on the sink callback
     // thread reaches SettingsBridge on the GUI thread without a QML singleton
     // being written from an audio thread (T0155).
-    QMetaObject::invokeMethod(this,
-                              [this, message = std::move(message)] {
-                                  emit errorSignal(message);
-                              },
+    // T0328: the payload waits in a mutex-guarded member instead of a capture;
+    // the queued call is parameterless and emitPendingErrors() drains it.
+    {
+        std::lock_guard lock(pendingErrorMutex_);
+        pendingErrors_.push_back(std::move(message));
+    }
+    QMetaObject::invokeMethod(this, &AudioEngine::emitPendingErrors,
                               Qt::QueuedConnection);
+}
+
+void AudioEngine::emitPendingErrors() {
+    std::vector<std::string> messages;
+    {
+        std::lock_guard lock(pendingErrorMutex_);
+        messages.swap(pendingErrors_);
+    }
+    // Emit outside the lock: a subscriber may re-enter (INVARIANTS.md, Playlist rule).
+    for (const auto& message : messages) {
+        emit errorSignal(message);
+    }
 }
 
 void AudioEngine::refreshOutputStatus() {

@@ -1,0 +1,10 @@
+2026-11-10T18:45:00Z  VERIFY  build=unit_tests-linked(ninja 257/257, exit 0) ctest="unit_tests 1/1 Passed 140.68s, exit 0" guards="check-thread-handoffs/check-safe-tests/check-endpoints/check-test-asserts/check-workflows all exit 0"
+T0328: AudioEngine's two cross-thread posts are parameterless queued calls.
+postStatusRefresh -> invokeMethod(this, &AudioEngine::refreshOutputStatus, QueuedConnection);
+payload is observedSinkRate_ (already atomic). postErrorSignal pushes the sentence onto a
+mutex-guarded pendingErrors_ vector and posts invokeMethod(this, &AudioEngine::emitPendingErrors,
+QueuedConnection); the new private slot swaps the vector out under the lock and emits
+errorSignal() outside it (subscribers may re-enter, INVARIANTS.md Playlist rule).
+Signal count/thread unchanged: one emit per posted message, on the engine's thread.
+reportConversionFailure's by-value lambda is left alone (its payload is POD + a literal and it
+was audited clean under T0329); converting it needs its own mutex-guarded queue.

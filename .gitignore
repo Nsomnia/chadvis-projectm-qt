@@ -180,3 +180,7 @@ SUNO-HAR-CAPTURE-ROUTE-CHECKLIST-DO-NOT-COMMIT-LOCAL-ONLY.txt
 # CPM source cache (shared across build profiles)
 .cpm-cache/
 .atlas/
+
+# Local vector-DB scratch from a qdrant MCP server run in the repo root (not project data).
+/.qdrant-initialized
+/storage/

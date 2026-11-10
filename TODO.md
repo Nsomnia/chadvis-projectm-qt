@@ -343,9 +343,16 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `TestSunoRequestEpoch` and `TestBoundedBody`.
       **ANALYZED 2026-11-08, blocked on reproduction (not on a design choice). Verdict: a benign TSan false positive, not a real race.** The three reports are the closure's own capture storage, not project state: `QCallableObject`'s constructor writes the functor on the posting thread, and `impl()` reads it on the receiving thread (`qobjectdefs_impl.h:548`). The happens-before edge is `QCoreApplication::postEvent`'s event-queue mutex inside libQt6Core, which has zero `__tsan_*` symbols, so TSan cannot see it. `restoreInFlight_`, `restoreDiscarded_`, `restoreGeneration_`, `restoreCompletions_` are not part of the race (same thread by construction, and `kCompletionConnectionType` is pinned queued). `cmake/tsan.supp` is deliberately empty and its own rule forbids an un-reproduced entry, so the drafted `race_top:qobjectdefs_impl.h` entry (fallback `race:QCallableObject`) is not added. Next action: one `--tsan` lane run over `test_SunoRequestEpoch` + `test_BoundedBody`, capture the symbolized report, confirm the substring, then add the entry and amend `INVARIANTS.md:64-81` (which currently requires tsan.supp to stay empty) in the same commit.
 
-- [ ] T0328 **T0154's two new posts joined same TSan class** (`AudioEngine.cpp`) #risk-medium
+- [x] T0328 **T0154's two new posts joined same TSan class** (`AudioEngine.cpp`) #risk-medium
       `postStatusRefresh`/`postErrorSignal` are `invokeMethod(this, [this,...]{...}, QueuedConnection)`.
       Apply T0327's rule: atomic/mutex slot + parameterless queued call.
+      **DONE 2026-11-10:** both posts are parameterless `invokeMethod(this, &AudioEngine::..., QueuedConnection)`
+      calls. Status needs no payload beyond `observedSinkRate_`, already atomic. Errors are pushed onto a
+      mutex-guarded `pendingErrors_` vector and drained by the new private slot `emitPendingErrors()`,
+      which emits outside the lock (a subscriber may re-enter). Behaviour is unchanged: one signal per
+      posted message, same thread. Qt 6's PMF overload wraps a member pointer rather than a capture, so
+      no mutable functor storage crosses the boundary. `reportConversionFailure`'s lambda keeps its
+      by-value capture — same treatment is T0328's sibling and would need a second mutex-guarded queue.
 
 - [x] T0329 **19 `QMetaObject::invokeMethod` sites, no rule** (`src/`) #risk-medium
       Audit each: same-thread or cross-thread. Apply no-payload rule where cross-thread. Write rule in
@@ -780,6 +787,7 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       Verify: each constant has a TOML key + documented default equal to today.
       **Recon 2026-11-10 — premise partly stale.** The constants are NOT unnamed magic numbers: they are already named `inline constexpr` or live in `RenderExecutor::Config` (which `setConfig()` already applies). Real remaining work is (a) TOML/plumbing + (b) construction-time injection. Split:
       - (a) UNBLOCKED, small: add one field to `RecordingConfig` (`ConfigData.hpp:119-130`) + an `X("quantum_frames", quantumFrames, U32)` row in `CHADVIS_RECORDING_FIELDS` (`ConfigParsers.cpp:120-127`) + clamp in `parseRecording`. Pure ConfigData/ConfigParsers, zero T0397 dependency, pinned by the existing `roundTripPreservesEveryField` test. Establishes the pattern for the rest.
+      **DONE 2026-11-10 (a):** `RecordingConfig::quantumFrames` (default 8, the executor's `kDefaultQuantumFrames`), a `quantum_frames` row in `CHADVIS_RECORDING_FIELDS`, a 1–32 clamp at the end of the recording-field expansion in `parseRecording`, the key in `config/default.toml`, a row + "not yet consumed" disclosure in `docs/user/CONFIG.md`, and the field in `populate`/`verifyPopulated` so the round-trip test fails if the key is ever dropped. Nothing reads it yet: `RenderExecutor::setConfig()` has no production caller, which is (b).
       - (b) BLOCKED on T0397: `AudioQueue` capacity (:27 36000), `VisualizerAudioTap` rate/chunk/lead/realign (:13,14, hpp:66,69,72), `AudioEngine` debounce (:159 500) — these are needed at construction time and the only route today is the global `Config::instance()`, exactly what T0397 removes. Do NOT touch them before T0397.
       - NOT config (leave): `AUDIO_FRAME_SAMPLES` (:23 8, cache-line geometry), AudioFrame ctor 48000/2 (:36,182 structural), `EncoderSettings.cpp` named preset factories. ConfigData would break layout/tests.
 - [x] T0403 **Modernize snprintf to std::format** (`src/suno/SunoDownloader.cpp`, `src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/OffscreenRenderSpike.cpp`) #cleanup

@@ -195,6 +195,7 @@ portable spelling and is written as the absolute path it is.
 | `stop_at_track_end` | bool | `false` | Stop exactly at track end |
 | `default_filename` | string | `'chadvis-projectm-qt_{date}_{time}'` | Filename template; `{date}` and `{time}` are substituted |
 | `container` | string | `'mp4'` | Output container |
+| `quantum_frames` | integer | `8` | Frames one render job gets per interleave turn, clamped 1–32. `1` is the live-visualizer value and `8` the render default; the upper bound is cancel latency (one second of frames at the measured 31.4 ms/frame). **Parsed and round-tripped, not yet consumed:** `RenderExecutor` takes this only through `setConfig()`, which nothing in production calls yet — injecting it at construction is T0402(b), blocked on T0397 |
 | `output_directory` | path | `'<dataDir>/recordings'` | Single default (T0210): parser fallback and first-run resolution agree; the template declares it empty, which means this default |
 
 ### `[recording.video]` (nested)

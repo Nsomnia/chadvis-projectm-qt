@@ -8,6 +8,11 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **`[recording] quantum_frames` is a real configuration key.** Frames one render job gets per
+  interleave turn (clamped 1–32; `1` is the live-visualizer value, `8` the render default) is now
+  parsed, serialised and round-trip-pinned instead of being only a compile-time constant. Nothing
+  reads it at construction yet, and the documentation says so. (T0402)
+
 - **Clip trash and playlist trash are reachable from the UI.** The two captured trash verbs (move a clip to trash / restore, trash / recover a playlist) now have bridge invokables, a stateful detail-sheet control with accepted-state readback, and a card-menu entry. Gated by the same gates as every other mutation and disabled while a mutation is busy. (T0011)
 
 - **Quitting during the first frames is now safe.** `Application::aboutToQuit` drains QML component
@@ -128,6 +133,12 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   from a browser recon of suno.com `/me`. All findings remain `[LEAD]`; no endpoint contract changes. (T0370)
 
 ### Fixed
+
+- **Audio status and fault reports no longer cross threads inside a captured functor.** Both handoffs
+  from the sink callback thread are now parameterless queued calls: the observed sample rate was
+  already an atomic, and error sentences wait in a mutex-guarded queue that a new private slot drains
+  and emits from the engine's own thread. Same signals, same thread, one less instrumented capture for
+  the sanitizer lanes to read. (T0328)
 
 - **Headless CI can now run `test_SunoNotificationService`.** Its `QTEST_MAIN` needs a `QGuiApplication`, which aborts without a display on Ubuntu runners; the test now runs with `QT_QPA_PLATFORM=offscreen`.
 

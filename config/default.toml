@@ -30,6 +30,10 @@ enabled = true
 record_entire_song = false
 restart_track_on_record = false
 stop_at_track_end = false
+# Frames one render job gets per interleave turn, clamped 1-32. 1 is the
+# live-visualizer value; 8 is the render default. Parsed and round-tripped only
+# so far -- see docs/user/CONFIG.md (T0402).
+quantum_frames = 8
 # T0210: empty means the default, <dataDir>/recordings, which is the same path
 # a fresh install resolves. Declared because the key is always serialized.
 output_directory = ''
