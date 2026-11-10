@@ -3,6 +3,7 @@
 #include <QtTest>
 
 #include "suno/DownloadQueue.hpp"
+#include "FakeNetworkReply.hpp"
 
 #include <QDateTime>
 #include <QFile>
@@ -21,117 +22,11 @@
 #endif
 
 using namespace vc::suno;
+using fake_net::FakeReply;
 
 namespace fs = std::filesystem;
 
 namespace {
-
-/// Scriptable QNetworkReply stand-in. Tests drive it directly (succeed/fail);
-/// no packets ever leave the machine.
-class FakeReply : public QNetworkReply {
-public:
-    explicit FakeReply(const QNetworkRequest& request) {
-        setRequest(request);
-        setUrl(request.url());
-        setOperation(QNetworkAccessManager::GetOperation);
-        setOpenMode(ReadOnly | Unbuffered);
-    }
-
-    void abort() override {
-        if (finishing_) return;
-        finishing_ = true;
-        setError(QNetworkReply::OperationCanceledError, QStringLiteral("aborted"));
-        emit finished();
-    }
-
-    qint64 bytesAvailable() const override {
-        return (payload_.size() - offset_) + QNetworkReply::bytesAvailable();
-    }
-
-    qint64 readData(char* data, qint64 maxLen) override {
-        if (offset_ >= payload_.size()) return 0;
-        const qint64 n = qMin(maxLen, static_cast<qint64>(payload_.size()) - offset_);
-        std::memcpy(data, payload_.constData() + offset_, static_cast<size_t>(n));
-        offset_ += n;
-        return n;
-    }
-
-    // ── test drivers ──
-    void succeed(QByteArray body, int httpStatus = 200, bool acceptRanges = false) {
-        openStream(std::move(body), acceptRanges, httpStatus);
-        finishing_ = true;
-        emit finished();
-    }
-
-    /// 2xx whose progress total promises more than the body delivers -- the
-    /// truncated-transfer shape. No transport error is set: this is exactly
-    /// how a connection that dies mid-body can look to the queue.
-    void succeedShort(QByteArray body, qint64 promisedTotal, int httpStatus = 200) {
-        setHeaders(httpStatus, false);
-        payload_ = std::move(body);
-        offset_ = 0;
-        if (!payload_.isEmpty()) emit readyRead();
-        emit downloadProgress(payload_.size(), promisedTotal);
-        finishing_ = true;
-        emit finished();
-    }
-
-    /// 2xx with no total ever reported: no progress signal, no
-    /// Content-Length. The short-body guard must not fail this shape.
-    void succeedUnknownLength(QByteArray body, int httpStatus = 200) {
-        setHeaders(httpStatus, false);
-        payload_ = std::move(body);
-        offset_ = 0;
-        if (!payload_.isEmpty()) emit readyRead();
-        finishing_ = true;
-        emit finished();
-    }
-
-    void fail(QNetworkReply::NetworkError err, int httpStatus = 0, bool acceptRanges = false,
-              QByteArray body = {}) {
-        setHeaders(httpStatus, acceptRanges);
-        setError(err, QStringLiteral("scripted failure"));
-        payload_ = std::move(body);
-        offset_ = 0;
-        if (!payload_.isEmpty()) emit readyRead();
-        finishing_ = true;
-        emit finished();
-    }
-
-    /// Fail with an explicit Retry-After, so the hint path is reachable.
-    void failWithRetryAfter(QNetworkReply::NetworkError err, int httpStatus, QByteArray hint) {
-        setHeaders(httpStatus, false);
-        setRawHeader("Retry-After", hint);
-        setError(err, QStringLiteral("scripted failure"));
-        payload_.clear();
-        offset_ = 0;
-        finishing_ = true;
-        emit finished();
-    }
-
-    /// Deliver bytes mid-stream and keep the reply open (caller may then
-    /// fail() it or trigger abort() via queue cancellation).
-    void openStream(QByteArray prefix, bool acceptRanges = false, int httpStatus = 200) {
-        setHeaders(httpStatus, acceptRanges);
-        payload_ = std::move(prefix);
-        offset_ = 0;
-        if (!payload_.isEmpty()) emit readyRead();
-        emit downloadProgress(payload_.size(), payload_.size());
-    }
-
-private:
-    void setHeaders(int httpStatus, bool acceptRanges) {
-        setOpenMode(ReadOnly | Unbuffered);
-        if (httpStatus > 0) {
-            setAttribute(QNetworkRequest::HttpStatusCodeAttribute, httpStatus);
-        }
-        if (acceptRanges) setRawHeader("Accept-Ranges", "bytes");
-    }
-
-    QByteArray payload_;
-    qint64 offset_ = 0;
-    bool finishing_ = false;
-};
 
 /// Reply factory capturing every request and handing back paired fake replies.
 struct FakeServer {

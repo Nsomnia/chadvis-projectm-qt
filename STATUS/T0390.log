@@ -1,0 +1,3 @@
+2026-11-10T00:00:00Z  VERIFY  grep "class FakeReply" | wc -l = 1
+cmake --build build-fast --target unit_tests exit 0; ctest 33/33.
+Shared FakeNetworkReply.hpp gained 4 drivers; test_DownloadQueue uses fake_net::FakeReply.

@@ -740,7 +740,8 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       No `-Werror` and no format/tidy enforcement exists today. Narrows T0093. Verify: `git clang-format --diff main` reported in guards; new warning fails the opt-in job.
 - [ ] T0389 **Pin preset-pack and CPM.cmake downloads by hash** (`cmake/PresetPack.cmake`, `cmake/Dependencies.cmake`) #risk-medium
       Both use `file(DOWNLOAD …)` with no hash; preset pack tracks a mutable branch. Narrows T0089. Verify: cold configure succeeds offline via the cached path; `grep -rn "file(DOWNLOAD" cmake/` shows URL + hash.
-- [ ] T0390 **Consolidate the remaining FakeReply duplicates** (`tests/unit/suno/`) #cleanup
+- [x] T0390 **Consolidate the remaining FakeReply duplicates** (`tests/unit/suno/`) #cleanup
+      Done 2026-11-10: removed the duplicate local `class FakeReply` from `test_DownloadQueue.cpp` (now `using fake_net::FakeReply`). The shared `tests/support/FakeNetworkReply.hpp` gained the 4 drivers the local class had (`succeedShort`, `succeedUnknownLength`, `failWithRetryAfter`, `openStream` overload). `grep "class FakeReply" | wc -l` = 1; unit_tests + ctest 33/33 green.
       Two local `class FakeReply` remain beside the shared `FakeNetworkReply.hpp`. Narrows T0099. Verify: `grep -rn "class FakeReply" tests/ | wc -l` is 1; `ctest --test-dir build-fast/tests -R "DownloadQueue|RequestEpoch"` green.
 - [ ] T0391 **Shared JSON object-parse helper; fix the 3 unchecked sites** (`src/suno/SunoClient.cpp:1490`, `src/suno/SunoAccountManager.cpp:243,297`, `src/suno/`) #risk-medium
       86 `fromJson` sites repeat the parse-error boilerplate; 3 never check. Also merge C++-lane opt* scalar unify (ClipParser vs Mango/ModelCatalog/Clerk). Verify: no unchecked `fromJson` remains; `./build.sh --fast --tests --safe` 16/16.

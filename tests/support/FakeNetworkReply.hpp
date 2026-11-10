@@ -93,6 +93,30 @@ public:
         emit finished();
     }
 
+    /// 2xx whose progress total promises more than the body delivers: the
+    /// truncated-transfer shape. No transport error is set, exactly like a
+    /// connection that dies mid-body.
+    void succeedShort(QByteArray body, qint64 promisedTotal, int httpStatus = 200) {
+        setHeaders(httpStatus);
+        payload_ = std::move(body);
+        offset_ = 0;
+        if (!payload_.isEmpty()) emit readyRead();
+        emit downloadProgress(payload_.size(), promisedTotal);
+        finishing_ = true;
+        emit finished();
+    }
+
+    /// 2xx with no total ever reported: no progress signal and no
+    /// Content-Length, so the short-body guard must not fail the transfer.
+    void succeedUnknownLength(QByteArray body, int httpStatus = 200) {
+        setHeaders(httpStatus);
+        payload_ = std::move(body);
+        offset_ = 0;
+        if (!payload_.isEmpty()) emit readyRead();
+        finishing_ = true;
+        emit finished();
+    }
+
     /// Complete in one shot: the payload is present for a final drain, but no
     /// `readyRead` fires, so a reply tracked by `SunoClient` is not drained
     /// before the test's own callback can read it (T0099: test_SunoRequestEpoch
@@ -113,10 +137,33 @@ public:
         emit finished();
     }
 
+    /// Fail with an explicit Retry-After, so the queue's hint path is reachable.
+    void failWithRetryAfter(QNetworkReply::NetworkError err, int httpStatus,
+                            QByteArray hint) {
+        setHeaders(httpStatus);
+        setRawHeader("Retry-After", hint);
+        setError(err, QStringLiteral("scripted failure"));
+        payload_.clear();
+        offset_ = 0;
+        finishing_ = true;
+        emit finished();
+    }
+
     /// Deliver bytes and stay open, so the caller can then fail() the reply or
     /// trigger abort() through the queue's cancel path.
     void openStream(QByteArray prefix, int httpStatus = 200) {
         setHeaders(httpStatus);
+        payload_ = std::move(prefix);
+        offset_ = 0;
+        if (!payload_.isEmpty()) emit readyRead();
+        emit downloadProgress(payload_.size(), payload_.size());
+    }
+
+    /// Streaming variant that advertises Accept-Ranges when acceptRanges is set:
+    /// the DownloadQueue retry path must still omit a Range header.
+    void openStream(QByteArray prefix, bool acceptRanges, int httpStatus = 200) {
+        setHeaders(httpStatus);
+        if (acceptRanges) setRawHeader("Accept-Ranges", "bytes");
         payload_ = std::move(prefix);
         offset_ = 0;
         if (!payload_.isEmpty()) emit readyRead();
