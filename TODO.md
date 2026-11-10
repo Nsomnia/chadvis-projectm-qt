@@ -749,8 +749,9 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       **DONE:** ctest 33/33; full thorough suites run to completion, including TestSunoDatabase -> 0.
 - [-] T0393 **Unify the API base URL** (`src/suno/auth/SunoOAuthLoopback.hpp`, `src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`) #risk-medium
       **DROPPED as invalid 2026-11-10** (recon): the 3 "hardcoded occurrences" are the RFC 8414 OAuth issuer of the MCP authorization server (`https://studio-api-prod.suno.com/api/v2/external/oauth/*`), a DIFFERENT API tree from `API_BASE` (`https://suno.com/a/api`). Joining them invents an uncaptured route. T0336 (DONE, TODO.md:62) already recorded this decision deliberately. `CapturedHosts.cpp:68` `kStudioProd` must stay (live alias + allowlist + static asserts). No code change; must not proceed without a fresh capture.
-- [ ] T0394 **Endpoint dead-constant guard script** (`scripts/check-endpoints.py`, `src/suno/SunoEndpoints.hpp`, `docs/suno_api/ENDPOINT-INVENTORY.md`) #cleanup
-      165 constants, 127 with zero call sites (T0346:55), silently drifting. Verify: `./scripts/check-endpoints.py` reports zero-call-site count and fails on drift vs the inventory.
+- [x] T0394 **Endpoint dead-constant guard script** (`scripts/check-endpoints.py`, `src/suno/SunoEndpoints.hpp`, `docs/suno_api/ENDPOINT-INVENTORY.md`) #cleanup
+      Done 2026-11-10: `scripts/check-endpoints.py` extracts all 169 `endpoints::` constants, reports zero-call-site names, and pins the count via `--baseline` (so a new unused route fails CI without gating existing debt). Wired into `guards.yml`.
+      Measured at HEAD: 72 referenced, **97 dead** (TODO's "127" was a stale/different count). Verify: `./scripts/check-endpoints.py --baseline 97` exit 0; drift simulation `--baseline 96` exit 1.
 - [ ] T0395 **Split VideoRecorderFFmpeg god TU** (`src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/VideoRecorderFFmpeg.hpp`) #cleanup
       1734 lines mixing encoder, muxing, resampling, subtitle, HW probe. Verify: HW-probe + subtitle-encoder move to separate TUs; recorder lanes green; file under 600 lines.
 - [ ] T0396 **Split the SunoClient credential worker + queue** (`src/suno/SunoClient.cpp`, `src/suno/SunoClient.hpp`) #cleanup (after: T0401)

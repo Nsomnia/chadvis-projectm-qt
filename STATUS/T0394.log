@@ -1,0 +1,3 @@
+2026-11-10T00:00:00Z  VERIFY  ./scripts/check-endpoints.py --baseline 97 exit 0
+169 constants, 72 referenced, 97 dead. Drift sim --baseline 96 -> exit 1.
+Guard wired into .github/workflows/guards.yml.

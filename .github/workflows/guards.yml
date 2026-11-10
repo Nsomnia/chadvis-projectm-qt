@@ -55,6 +55,12 @@ jobs:
           ./scripts/check-thread-handoffs.py --self-test
           ./scripts/check-thread-handoffs.py
 
+      # T0394: SunoEndpoints has a large, known dead-constant set (T0346).
+      # Pin the count so a NEW unused route (or one newly wired without
+      # refreshing the baseline) is caught, without gating on old debt.
+      - name: Check endpoint constants for drift
+        run: ./scripts/check-endpoints.py --baseline 97
+
       # T0438: Release builds define QT_NO_DEBUG, so a Q_ASSERT in a test stops
       # doing its work as well as its checking. A fixture write guarded that way
       # broke four Windows chain tests with no message.
