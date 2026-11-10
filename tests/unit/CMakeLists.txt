@@ -587,6 +587,24 @@ target_link_libraries(test_SunoMcpClient PRIVATE
 
 add_test(NAME test_SunoMcpClient COMMAND test_SunoMcpClient)
 
+# T0387: these 8 now gate CI (build/windows/release). QTEST_MAIN pulls a
+# QGuiApplication, which aborts on headless Linux with "no Qt platform
+# plugin" (seen on the Ubuntu gcc + clang lanes). macOS has a WindowServer so
+# they pass there; offscreen makes the Linux gate honest. Same fix as
+# test_SunoNotificationService above. None of these 8 is sanitizer-annotated,
+# so there is no ENVIRONMENT collision with the TSAN_OPTIONS block below.
+set_tests_properties(
+    test_SunoPlaylistService
+    test_SunoGenerationService
+    test_SunoClipDetailService
+    test_SunoPersonaService
+    test_SunoModelCatalog
+    test_SunoLibrarySectionService
+    test_SunoCoverArtService
+    test_SunoMcpClient
+    PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 add_executable(test_SunoNotificationService
     suno/test_SunoNotificationService.cpp
 )
