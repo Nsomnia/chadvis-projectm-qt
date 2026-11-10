@@ -30,16 +30,32 @@ def is_comment_line(line: str) -> bool:
 
 
 def call_segment(text: str, start: int) -> str:
-    """Text of one invokeMethod(...) call, via balanced-paren matching."""
+    """Text of one invokeMethod(...) call, via balanced-paren matching.
+
+    Line and block comments are opaque: a stray apostrophe in a comment
+    (e.g. "destructor's") is NOT the start of a char literal. Without this,
+    in_char stays true across the comment, the closing ')' of the call is
+    swallowed, and the segment runs to end of file — so an unrelated [&]
+    lambda in a later function is misattributed to this call (T0401
+    regression, guards run 42766397363).
+    """
     open_paren = text.find("(", start)
     if open_paren < 0:
         return text[start:start + 500]
     depth = 0
-    in_str = in_char = False
+    in_str = in_char = in_line_comment = in_block_comment = False
     i = open_paren
     while i < len(text):
         c = text[i]
-        if in_str:
+        nxt = text[i + 1] if i + 1 < len(text) else ""
+        if in_line_comment:
+            if c == "\n":
+                in_line_comment = False
+        elif in_block_comment:
+            if c == "*" and nxt == "/":
+                in_block_comment = False
+                i += 1
+        elif in_str:
             if c == "\\":
                 i += 1
             elif c == '"':
@@ -49,6 +65,12 @@ def call_segment(text: str, start: int) -> str:
                 i += 1
             elif c == "'":
                 in_char = False
+        elif c == "/" and nxt == "/":
+            in_line_comment = True
+            i += 1
+        elif c == "/" and nxt == "*":
+            in_block_comment = True
+            i += 1
         elif c == '"':
             in_str = True
         elif c == "'":
@@ -77,11 +99,43 @@ def iter_calls(root: Path):
             yield path, lineno, call_segment(text, m.start())
 
 
+def self_test() -> int:
+    """Pin the two properties that guards run 42766397363 broke.
+
+    (1) a real [& queued handoff is still detected;
+    (2) an apostrophe inside a comment (e.g. "destructor's") must not make
+        call_segment() swallow code after the call — otherwise an unrelated
+        [&] lambda in a later function is misattributed to this call.
+    """
+    sample = (
+        "void f(QObject* w){\n"
+        "  QMetaObject::invokeMethod(w, [&]() {\n"
+        "    // destructor's comment has an apostrophe\n"
+        "    doThing();\n"
+        "  }, Qt::QueuedConnection);\n"
+        "}\n"
+        "void later() { int markerAfterCall = 1; }\n"
+    )
+    seg = call_segment(sample, sample.find(INVOKE))
+    if not REF_CAPTURE.search(seg):
+        print("self-test FAIL: real [& handoff no longer detected", file=sys.stderr)
+        return 1
+    if "markerAfterCall" in seg:
+        print("self-test FAIL: comment apostrophe swallowed trailing code", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", default="src",
                     help="directory to scan (default: src, relative to repo root)")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run the parser regression checks and exit")
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     repo = Path(__file__).resolve().parent.parent
     src = Path(args.root)

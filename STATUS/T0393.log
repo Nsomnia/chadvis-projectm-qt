@@ -1,0 +1,6 @@
+2026-11-10T00:00:00Z  CHANGE  recon verdict — no code change
+The 3 studio-api-prod URLs in SunoOAuthLoopback.hpp are the RFC 8414 OAuth
+issuer for the MCP authorization server (api.suno.com/mcp), a different API
+tree from API_BASE (https://suno.com/a/api). Joining them invents an uncaptured
+route. CapturedHosts.cpp kStudioProd must stay (live alias + allowlist +
+static asserts). T0336 already recorded this decision. Dropped as invalid.

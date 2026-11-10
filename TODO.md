@@ -59,7 +59,7 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `route-probe.mjs` got byte-identical 200s on both. Migration = hygiene, not fix.
       `page_size` on `unified/library` ignored (20/50/100 same). `/feed/v3` honours `limit` to 100.
       `GET /playlist/{id}/?page=N` verified: flat body, `playlist_clips[]`, 1-based, no `has_more`.
-      **DONE 2026-11-08:** production already runs on `https://suno.com/a/api` (`API_BASE` was adopted, `[T1]`, with the route-probe note) — the only stale base was ten generic test fixtures (header/timeout/foreign-reply bodies), now on the new base with identical route/assertion shapes. `CapturedHosts` keeps both hosts: `studio-api-prod.suno.com` is a live alias (byte-identical 200s via route-probe) and `suno.com` is the captured new base. The OAuth issuer URLs (`studio-api-prod.suno.com/api/v2/external/oauth/*`) were deliberately left — a different API tree (MCP.md, 2026-10-31) that this task must not move without a probe; that is T0393's scope.
+      **DONE 2026-11-08:** production already runs on `https://suno.com/a/api` (`API_BASE` was adopted, `[T1]`, with the route-probe note) — the only stale base was ten generic test fixtures (header/timeout/foreign-reply bodies), now on the new base with identical route/assertion shapes. `CapturedHosts` keeps both hosts: `studio-api-prod.suno.com` is a live alias (byte-identical 200s via route-probe) and `suno.com` is the captured new base. The OAuth issuer URLs (`studio-api-prod.suno.com/api/v2/external/oauth/*`) were deliberately left — a different API tree (MCP.md, 2026-10-31); T0393 proposed moving them and was dropped as invalid 2026-11-10 after recon confirmed no capture exists for the joined route.
 
 - [x] T0335 **Notification client on v2, browser moved to v3** (`SunoNotificationService.cpp`, `SunoEndpoints.hpp`, `CapturedHosts.cpp`) #risk-medium #blocks-ui
       v2 still answers 200. v3 shape differs: `text[].text` concatenated, `avatars[0].image_url`.
@@ -747,8 +747,8 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
       rows, failed transaction preserves existing data, legacy-schema migration keeps rows (duration "65.0"→"01:05", user_version 3).
       Verify: new cases pass under `./build.sh --fast --tests`.
       **DONE:** ctest 33/33; full thorough suites run to completion, including TestSunoDatabase -> 0.
-- [ ] T0393 **Unify the API base URL** (`src/suno/auth/SunoOAuthLoopback.hpp`, `src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`) #risk-medium
-      OAuth loopback hardcodes `studio-api-prod` 3× while `API_BASE` is `https://suno.com/a/api`. Narrow of T0336. Verify: `grep -rn "studio-api-prod" src/suno/ | grep -v CapturedHosts` is 0.
+- [-] T0393 **Unify the API base URL** (`src/suno/auth/SunoOAuthLoopback.hpp`, `src/suno/SunoEndpoints.hpp`, `src/suno/CapturedHosts.cpp`) #risk-medium
+      **DROPPED as invalid 2026-11-10** (recon): the 3 "hardcoded occurrences" are the RFC 8414 OAuth issuer of the MCP authorization server (`https://studio-api-prod.suno.com/api/v2/external/oauth/*`), a DIFFERENT API tree from `API_BASE` (`https://suno.com/a/api`). Joining them invents an uncaptured route. T0336 (DONE, TODO.md:62) already recorded this decision deliberately. `CapturedHosts.cpp:68` `kStudioProd` must stay (live alias + allowlist + static asserts). No code change; must not proceed without a fresh capture.
 - [ ] T0394 **Endpoint dead-constant guard script** (`scripts/check-endpoints.py`, `src/suno/SunoEndpoints.hpp`, `docs/suno_api/ENDPOINT-INVENTORY.md`) #cleanup
       165 constants, 127 with zero call sites (T0346:55), silently drifting. Verify: `./scripts/check-endpoints.py` reports zero-call-site count and fails on drift vs the inventory.
 - [ ] T0395 **Split VideoRecorderFFmpeg god TU** (`src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/VideoRecorderFFmpeg.hpp`) #cleanup
@@ -772,8 +772,10 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
 - [x] T0403 **Modernize snprintf to std::format** (`src/suno/SunoDownloader.cpp`, `src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/OffscreenRenderSpike.cpp`) #cleanup
       Verify: zero `snprintf` in scope; output strings byte-identical.
       **DONE 2026-11-08:** 6 sites moved to `std::format` (`{:02d}`/`{:03d}`/`{:x}`/`{:.{}f}`); full build 499/499, ctest 26/26.
-- [ ] T0404 **Re-check the JThread fallback necessity** (`src/util/JThread.hpp`) #cleanup
-      Hand-rolled jthread facade may be obsolete on current AppleClang. Verify: fallback removed if all supported compilers have jthread, else the comment cites the exact lacking compiler.
+- [x] T0404 **Re-check the JThread fallback necessity** (`src/util/JThread.hpp`) #cleanup
+      Verified 2026-11-10 (compile probe, AppleClang 16 / libc++ 180100): `__cpp_lib_jthread` is NOT defined; `std::jthread`/`std::stop_token` are compiled out by `_LIBCPP_HAS_NO_EXPERIMENTAL_STOP_TOKEN` (gated behind `_LIBCPP_ENABLE_EXPERIMENTAL`). The fallback at JThread.hpp:42 is what compiles — removing it breaks 8 TUs. Keep it.
+      Verify: fallback removed if all supported compilers have jthread, else the comment cites the exact lacking compiler.
+      **DONE:** comment corrected to name AppleClang 16 / libc++ 180100 + the experimental gate.
 - [ ] T0405 **Decompose the Application coordinator** (`src/core/Application.cpp`, `src/core/Application.hpp`, `src/core/CliUtils.cpp`) #cleanup (after: T0397)
       CLI parse + config overrides + subsystem wiring in one 846-line file. Verify: `--help`/`--dump-config` output unchanged.
 - [ ] T0406 **Deduplicate the file-path helpers into one module** (`src/qml/`) #cleanup

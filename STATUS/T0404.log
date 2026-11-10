@@ -1,0 +1,4 @@
+2026-11-10T00:00:00Z  CHANGE  compile probe, AppleClang 16 / libc++ 180100
+__cpp_lib_jthread NOT defined; std::jthread/std::stop_token gated behind
+_LIBCPP_HAS_NO_EXPERIMENTAL_STOP_TOKEN. Fallback at JThread.hpp:42 is required
+(8 TUs). Kept; comment + Compiler.cmake note corrected to cite the exact gate.

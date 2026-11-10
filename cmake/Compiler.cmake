@@ -1,8 +1,11 @@
 # Compiler.cmake - C++23 requirement, toolchain floor, warnings and optimization flags.
 #
-# The codebase relies on C++23 facilities (std::jthread, std::print,
-# std::expected, std::ranges, ...). Older toolchains fail deep inside
-# standard headers with confusing errors, so we reject them up front.
+# The codebase relies on C++23 facilities (std::print, std::expected,
+# std::ranges, ...). jthread/stop_token are reached through the vc::JThread
+# facade (src/util/JThread.hpp), not std::jthread directly: Apple's libc++
+# still gates those two types behind an experimental flag. Older toolchains
+# fail deep inside standard headers with confusing errors, so we reject them
+# up front.
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

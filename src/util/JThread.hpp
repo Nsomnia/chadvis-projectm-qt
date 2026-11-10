@@ -5,7 +5,14 @@
  * Provides vc::JThread / vc::StopToken. On toolchains with full C++20
  * thread support these are aliases of the standard types; otherwise a
  * minimal, behavior-compatible implementation backs them with std::thread
- * plus an atomic stop flag (AppleClang's libc++ still ships neither type).
+ * plus an atomic stop flag.
+ *
+ * Measured 2026-11-10 on the reference box (AppleClang 16 / libc++ 180100):
+ * __cpp_lib_jthread is NOT defined. Apple's libc++ ships <jthread> but gates
+ * the class behind _LIBCPP_HAS_NO_EXPERIMENTAL_STOP_TOKEN (it needs
+ * _LIBCPP_ENABLE_EXPERIMENTAL, which would require a rebuilt libc++). So the
+ * fallback branch below is the one that compiles here, and 8 TUs depend on it.
+ * The codebase uses vc::JThread, never std::jthread directly.
  *
  * Covered API surface (exactly what this project uses):
  *   - Construction with any callable, optionally accepting a stop token as

@@ -51,7 +51,9 @@ jobs:
       # object. The rule lives in docs/dev/INVARIANTS.md; this is the gate that
       # makes it more than prose.
       - name: Check cross-thread handoffs
-        run: ./scripts/check-thread-handoffs.py
+        run: |
+          ./scripts/check-thread-handoffs.py --self-test
+          ./scripts/check-thread-handoffs.py
 
       # T0438: Release builds define QT_NO_DEBUG, so a Q_ASSERT in a test stops
       # doing its work as well as its checking. A fixture write guarded that way
