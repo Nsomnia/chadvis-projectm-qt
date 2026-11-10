@@ -1,0 +1,4 @@
+2026-11-10T00:00:00Z  VERIFY  ./scripts/check-safe-tests.py exit 0 (12 entries)
+./scripts/check-workflows.py all 7 ok.
+asan.yml: both ctest lanes now derive -R RE from safe-tests.txt (mirrors tsan.yml).
+Regression control: guard FAILS when one -R "$RE" is removed; passes healthy.

@@ -145,10 +145,17 @@ jobs:
           UBSAN_OPTIONS: 'print_stacktrace=1:halt_on_error=0:exitcode=67'
         run: |
           set -uo pipefail
+          # Single source of truth: scripts/safe-tests.txt (T0386, mirrors
+          # tsan.yml). Unfiltered ctest here used to include the GL/runtime
+          # suites and every unannotated Suno test, so the lane measured a
+          # population nobody had classified. Strip comments/blanks, join with |.
+          names=$(sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e '/^$/d' \
+                    scripts/safe-tests.txt | paste -sd '|' -)
+          RE="^(${names})\$"
           set +e
           ctest --test-dir build-asan/tests --output-on-failure \
             --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)" \
-            2>&1 | tee asan-run.log
+            -R "$RE" 2>&1 | tee asan-run.log
           rc="${PIPESTATUS[0]}"
           set -e
 
@@ -283,10 +290,15 @@ jobs:
           UBSAN_OPTIONS: 'print_stacktrace=1:halt_on_error=0:exitcode=68'
         run: |
           set -uo pipefail
+          # Single source of truth: scripts/safe-tests.txt (T0386, mirrors
+          # tsan.yml). Scoped to the sanitizer-annotated entries only.
+          names=$(sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e '/^$/d' \
+                    scripts/safe-tests.txt | paste -sd '|' -)
+          RE="^(${names})\$"
           set +e
           ctest --test-dir build-ubsan/tests --output-on-failure \
             --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)" \
-            2>&1 | tee ubsan-run.log
+            -R "$RE" 2>&1 | tee ubsan-run.log
           rc="${PIPESTATUS[0]}"
           set -e
 

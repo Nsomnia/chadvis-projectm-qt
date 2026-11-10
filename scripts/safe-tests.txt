@@ -7,6 +7,8 @@
 #
 # ONE SOURCE OF TRUTH (T0330). Consumers:
 #   * .github/workflows/tsan.yml  builds its RE from THIS file at run time
+#   * .github/workflows/asan.yml  BOTH ctest lanes (ASan + UBSan) build their
+#     RE from THIS file at run time (T0386); no unfiltered sanitizer ctest
 #   * tests/unit/CMakeLists.txt  set_tests_properties(... ENVIRONMENT ...)
 #   * scripts/check-safe-tests.py  drift guard (fails on any disagreement)
 #   * build.sh SAFE_TESTS is a SUPERSET: it also builds/runs the headless-safe

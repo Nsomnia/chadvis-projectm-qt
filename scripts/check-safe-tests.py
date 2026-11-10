@@ -4,6 +4,7 @@
 Fails when the canonical list (scripts/safe-tests.txt) disagrees with any of:
   * the set_tests_properties(... ENVIRONMENT ...) block in tests/unit/CMakeLists.txt
   * the RE regex in .github/workflows/tsan.yml
+  * the scoped -R in BOTH .github/workflows/asan.yml ctest lanes (T0386)
   * the add_test() entries it names (every canonical name must be a real test)
   * build.sh SAFE_TESTS (must CONTAIN every canonical name; a superset is fine)
 
@@ -19,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CANON = ROOT / "scripts" / "safe-tests.txt"
 CMAKE = ROOT / "tests" / "unit" / "CMakeLists.txt"
 TSAN = ROOT / ".github" / "workflows" / "tsan.yml"
+ASAN = ROOT / ".github" / "workflows" / "asan.yml"
 BUILDSH = ROOT / "build.sh"
 
 
@@ -47,19 +49,34 @@ def cmake_annotated() -> list[str]:
     return list(dict.fromkeys(names))
 
 
-def tsan_sources_canonical(names: list[str]) -> bool:
-    """tsan.yml must BUILD its RE from scripts/safe-tests.txt, not hard-code a copy,
-    and the sed pipeline it uses must actually produce a working alternation."""
-    text = TSAN.read_text(encoding="utf-8")
+def workflow_sources_canonical(path: Path, names: list[str], expected_ctest: int) -> bool:
+    """A sanitizer workflow must BUILD its RE from scripts/safe-tests.txt and
+    pass -R "$RE" to every ctest run (no unfiltered ctest), not hard-code a copy.
+    """
+    text = path.read_text(encoding="utf-8")
     if "scripts/safe-tests.txt" not in text or not re.search(r"RE=.*\$\{?names", text):
         return False
-    # Reproduce the run-time generation (strip comments/blanks/indent, join with |)
-    # and confirm every canonical name matches and a non-member does not.
+    # Every ctest COMMAND in the file must carry -R "$RE". Match only real
+    # command lines (ctest --test-dir), not the word "ctest" in comments/echo —
+    # otherwise prose inflates the count and the guard can never pass.
+    n_ctest = len(re.findall(r"^\s*ctest\s+--test-dir", text, re.M))
+    n_filtered = len(re.findall(r'-R\s+"?\$RE"?', text))
+    if n_ctest < expected_ctest or n_filtered < n_ctest:
+        return False
     generated = "|".join(names)
     rx = re.compile(r"^(" + generated + r")$")
     if not all(rx.match(n) for n in names):
         return False
     return rx.match("test_DefinitelyNotInTheList") is None
+
+
+def tsan_sources_canonical(names: list[str]) -> bool:
+    return workflow_sources_canonical(TSAN, names, expected_ctest=1)
+
+
+def asan_sources_canonical(names: list[str]) -> bool:
+    # asan.yml drives TWO lanes (ASan + UBSan), each its own ctest run.
+    return workflow_sources_canonical(ASAN, names, expected_ctest=2)
 
 
 def build_safe() -> list[str]:
@@ -107,6 +124,10 @@ def main() -> int:
     if not tsan_sources_canonical(names):
         fail("tsan.yml does not build a working RE from scripts/safe-tests.txt "
              "(a hard-coded or broken RE would be an unchecked second copy)")
+    if not asan_sources_canonical(names):
+        fail("asan.yml does not scope BOTH ctest lanes (ASan + UBSan) to the "
+             "safe-tests-derived -R RE (T0386): an unfiltered sanitizer ctest "
+             "measures a population nobody classified")
 
     safe = build_safe()
     missing_in_safe = [n for n in names if n not in safe]
