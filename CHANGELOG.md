@@ -220,6 +220,8 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Changed
 
+- **Incremental builds are much cheaper.** `project_lib` was one 80 MB archive with a single 48-entry moc translation unit; it is now six per-domain modules, so a `Q_OBJECT` header edit rebuilds one small moc TU instead of all 48 and a version bump no longer restamps every compile command (build facts moved into generated `BuildConfig.hpp`). `build.sh` no longer caps jobs by a per-job memory guess (jobs are CPU-bound; memory is reported, not enforced), ccache now tolerates the shared PCH, and vendored projectM C warnings are silenced at the source target instead of flooding local logs. Measurements and rationale: `docs/dev/BUILD-SPEED.md`. (T0453–T0459)
+
 - **Dead `searchText` plumbing is gone from the library page fetch.** The parameter was threaded
   through three layers and dropped at the bottom; client-side filtering in `SunoBridge` is the real
   path. Remote search remains T0366. (T0066)
