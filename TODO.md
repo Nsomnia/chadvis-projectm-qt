@@ -737,6 +737,17 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
 
 > **Session checkpoint 2026-11-10 (HEAD 50f346d, all 5 CI gates green, clean tree).** Landed this session: build-speed chain (T0453–T0459, module split + BuildConfig + ccache/PCH + budget), T0354 refuted, T0401/T0399/T0400/T0392/T0404/T0393/T0394/T0386/T0387(+offscreen follow-up)/T0391(partial)/T0398/T0390/T0011. Guard fixes: `check-thread-handoffs.py` apostrophe-in-comment bug, `check-endpoints.py` new drift guard, `check-safe-tests.py` extended for ASan scope + gate-regex agreement — all with regression self-tests. Subagent model now `codebuddy/hy4free` (`high`); pass `model:` explicitly on every subagent call (the built-in default still points at the dead `kilo/stealth/crouton-alpha`). Ongoing at compaction: T0328 (AudioEngine handoff refactor) + T0389 (hash-pin feasibility recon) lanes in flight. Next verifiable slices: T0402(a) unblocked ConfigData `quantum_frames` round-trip; T0407 shared StateView (QML, needs a designer); T0391 shared-helper remainder. Big P0/P1 items (T0346/T0357/T0170/T0365) need live captures or GL runtime evidence — not automatable. T0452 needs the upstream Qt qmlcachegen fix (a regex guard would false-positive on `var`-aliased maps); leave as prose.
 
+> **Session checkpoint 2026-11-10 (HEAD ae9b067, release v1.3.0 published with all three platform assets).**
+Landed: T0328 (AudioEngine's two cross-thread posts are parameterless queued calls onto private slots;
+errors drain from a mutex-guarded queue, emitted outside the lock) and T0402(a) (`[recording] quantum_frames`
+is a parsed/serialised/clamped TOML key with a "no consumer yet" disclosure; construction-time injection is (b),
+blocked on T0397). Verified locally with unit_tests only (`ctest -R '^unit_tests$'` 1/1 Passed, 140.7 s) plus the
+five guard scripts, deliberately avoiding another cold full rebuild on this box. Release v1.3.0 dispatched through
+`./scripts/release.sh --tag v1.3.0` after build+windows gates went green at a2adcb4; assets are the Darwin dmg,
+Linux tar.gz and Windows zip. Changelog rotated, so `[Unreleased]` is empty and the release gate now refuses an
+unwritten release. Next verifiable slices: T0391 shared-helper remainder, T0407 shared StateView, T0417 bridge
+Q_INVOKABLE audit, T0406 path-helper dedupe; T0358/T0359 QML lanes still need a real window for motion evidence.
+
 4 parallel read-only lanes (C++ slop, QML/recorder, docs/backlog, tests/build/Suno) on kilo/stealth/crouton-alpha. T0385 was assigned by hand before recon returned; all ids below are fresh T0386+. Overlaps merged (JSON helper, spike audit). Entries already covered by live tasks cross-reference instead of duplicating. Live claims at insert time: T0358 `[~]`, T0362 `[~]` (steps 1 done, cover-art steps open) — write-sets below intersect `src/suno/` and `src/qml/`; do not start touching those trees until claims are released. Ordered P1 first, then P2/P3. Writer lane: pick smallest verifiable slice, run the verification bar below, record VERIFY in STATUS/<id>.log.
 
 - [x] T0386 **Scope ASan/UBSan lanes to safe-tests.txt, extend the guard** (`.github/workflows/asan.yml`, `scripts/check-safe-tests.py`, `scripts/safe-tests.txt`) #risk-high
