@@ -36,15 +36,34 @@ if(NOT CHADVIS_BUNDLE_PRESETS)
     return()
 endif()
 
+# The pack used to be fetched from the mutable `master` branch, so configure
+# results were not reproducible: the same commit of this repo could ship a
+# different preset set a week later (T0389). Pin to an immutable commit and
+# verify the archive bytes. GitHub's codeload zip for a fixed commit is stable;
+# the SHA-256 below is measured from two independent downloads on 2026-11-11.
+set(_chadvis_preset_ref "0180df21f5e0bd39b9060cc5de420ed2f1f9e509")
 set(_chadvis_preset_url
-    "https://codeload.github.com/projectM-visualizer/presets-cream-of-the-crop/zip/refs/heads/master")
-set(_chadvis_preset_root "${CMAKE_BINARY_DIR}/_deps/presets-cream-of-the-crop-master")
+    "https://codeload.github.com/projectM-visualizer/presets-cream-of-the-crop/zip/${_chadvis_preset_ref}")
+set(_chadvis_preset_sha256
+    "5600f974497d8f73295393fbdf866895ceb89efe82892f5e2d019358b2659202")
 set(_chadvis_preset_zip "${CMAKE_BINARY_DIR}/_deps/presets-cream-of-the-crop.zip")
 
-# One probe, not a re-download: a pack that is already extracted is the normal
-# case on every configure after the first, and re-fetching 15 MB per configure
-# would make the fast loop depend on the network.
-if(NOT EXISTS "${_chadvis_preset_root}/LICENSE.md")
+# A pack already extracted by a PREVIOUS configure is the normal case and must
+# never force a re-download -- re-fetching ~33 MB per configure would make the
+# fast loop depend on the network. The extracted directory name changed when the
+# pin moved off the mutable `master` branch, so accept ANY complete prior tree
+# (its LICENSE.md is the completeness marker) instead of insisting on one name.
+set(_chadvis_preset_root "")
+file(GLOB _chadvis_preset_licenses
+    "${CMAKE_BINARY_DIR}/_deps/presets-cream-of-the-crop-*/LICENSE.md")
+if(_chadvis_preset_licenses)
+    list(SORT _chadvis_preset_licenses)
+    list(GET _chadvis_preset_licenses 0 _chadvis_preset_license)
+    get_filename_component(_chadvis_preset_root
+        "${_chadvis_preset_license}" DIRECTORY)
+endif()
+
+if(NOT _chadvis_preset_root)
     message(STATUS "Preset pack: fetching ${_chadvis_preset_url}")
     file(DOWNLOAD "${_chadvis_preset_url}" "${_chadvis_preset_zip}"
         STATUS _chadvis_preset_status
@@ -62,12 +81,31 @@ if(NOT EXISTS "${_chadvis_preset_root}/LICENSE.md")
         return()
     endif()
 
+    # Hash-check before trusting the bytes. EXPECTED_HASH on file(DOWNLOAD) is
+    # deliberately NOT used: a mismatch there is a hard CMake error on some
+    # versions, which would violate rule 1 (offline / altered mirror must stay
+    # non-fatal). This keeps the failure a warning + idle-preset fallback.
+    file(SHA256 "${_chadvis_preset_zip}" _chadvis_preset_actual)
+    if(NOT _chadvis_preset_actual STREQUAL _chadvis_preset_sha256)
+        message(WARNING
+            "Preset pack: SHA-256 mismatch (expected ${_chadvis_preset_sha256}, "
+            "got ${_chadvis_preset_actual}). The archive was altered, truncated "
+            "or replaced upstream; refusing it. The build continues and the "
+            "visualizer will show only projectM's idle preset. Re-run configure "
+            "with network access, or -DCHADVIS_BUNDLE_PRESETS=OFF to silence this.")
+        file(REMOVE "${_chadvis_preset_zip}")
+        return()
+    endif()
+
     file(ARCHIVE_EXTRACT INPUT "${_chadvis_preset_zip}" DESTINATION "${CMAKE_BINARY_DIR}/_deps")
     file(REMOVE "${_chadvis_preset_zip}")
 
+    set(_chadvis_preset_root
+        "${CMAKE_BINARY_DIR}/_deps/presets-cream-of-the-crop-${_chadvis_preset_ref}")
     if(NOT EXISTS "${_chadvis_preset_root}/LICENSE.md")
         message(WARNING
-            "Preset pack: the archive did not contain a presets-cream-of-the-crop-master tree; "
+            "Preset pack: the archive did not contain the expected "
+            "presets-cream-of-the-crop-${_chadvis_preset_ref} tree; "
             "the visualizer will show only projectM's idle preset.")
         return()
     endif()

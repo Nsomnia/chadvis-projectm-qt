@@ -1,0 +1,15 @@
+2026-11-11T00:00:00Z  VERIFY  app-build=205/205 app --version=1.3.0 unit_tests="TestVersion 9/9, status 0" ctest=33/33
+T0460: version.txt is a configure dependency, so a version bump can no longer
+leave the binary reporting the previous version.
+- Discovered during the T0089/T0389 verification build: version.txt was 1.3.0
+  (release a2adcb4) but build-fast had been configured at 1.2.0. file(READ) does
+  not register the file as a configure dependency, so CMake never re-ran and
+  the generated BuildConfig.hpp kept 1.2.0. Three TestVersion cases failed:
+  bannerReportsVersionTxt, binaryReportsVersionTxt, qmlBridgeReportsVersionTxt.
+- Fix: set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS version.txt)
+  before file(READ) in CMakeLists.txt. A bump now re-runs configure on the next
+  build and regenerates BuildConfig.hpp; because that header is included by only
+  a handful of TUs (not a PUBLIC compile definition), the rebuild stays small.
+- Verified end-to-end: reconfigure -> banner and QML bridge cases pass; rebuilt
+  the app target (205/205) -> `chadvis-projectm-qt --version` prints 1.3.0;
+  unit_tests all suites status 0 (TestVersion 9/9); ctest 33/33.

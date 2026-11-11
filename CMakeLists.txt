@@ -12,6 +12,16 @@ cmake_minimum_required(VERSION 3.20)
 #   cmake/TargetSetup.cmake  project_lib static library, QML module, executable
 #   cmake/Install.cmake      install rules and CPack configuration
 
+# file(READ) does not register the file as a configure dependency, so without
+# this a bump of version.txt never re-runs configure: BuildConfig.hpp keeps the
+# old version and the binary/banner/QML all report a stale number until someone
+# deletes the build directory by hand (measured 2026-11-11: version.txt 1.3.0,
+# build-fast still stamping 1.2.0 into three TestVersion failures). Declaring
+# the dependency makes CMake reconfigure on the next build, regenerate
+# BuildConfig.hpp, and rebuild only the handful of TUs that include it -- no
+# full rebuild, and the version can never silently drift again.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/version.txt")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/version.txt" CHADVIS_VERSION)
 string(STRIP "${CHADVIS_VERSION}" CHADVIS_VERSION)
 if(NOT CHADVIS_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")

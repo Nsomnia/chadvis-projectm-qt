@@ -6,6 +6,26 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Fixed
+
+- **Bumping `version.txt` no longer leaves the app reporting the old version.** `version.txt`
+  is now a CMake configure dependency, so a release bump re-runs configure and regenerates
+  `BuildConfig.hpp` on the next build; the binary, `--version` banner and QML always agree with
+  the file, and only the handful of translation units that include that header rebuild. Previously
+  a build directory configured before a bump kept stamping the previous version until it was
+  deleted by hand (measured: `version.txt` 1.3.0 vs a binary reporting 1.2.0). (T0460)
+
+### Security
+
+- **Configure-time downloads are pinned and verified.** `CPM.cmake` v0.40.0 is vendored,
+  byte-identical to the upstream release asset, and its SHA-256 is checked on every configure;
+  the fallback download is TLS-verified and hash-pinned and now lands in the build directory
+  instead of overwriting a tracked source file. The projectM preset pack is pinned to an immutable
+  commit instead of the mutable `master` branch and its archive is SHA-256 checked before
+  extraction — a mismatch warns and falls back to the idle preset rather than failing the build.
+  Reconfigures reuse an already-extracted pack, so the fast build loop stays offline-capable.
+  (T0089, T0389)
+
 ## [1.3.0] — 2026-11-10
 
 ### Added

@@ -105,14 +105,61 @@ if(NOT OPENGL_FOUND)
 endif()
 
 # ---------------------------------------------------------------------------
-# CPM.cmake bootstrap (downloaded at configure time, cached locally)
+# CPM.cmake bootstrap (vendored + hash-verified; fetched only as a fallback)
 # ---------------------------------------------------------------------------
+# CPM.cmake v0.40.0 is vendored, tracked by git, and byte-identical to the
+# upstream release asset (verified 2026-11-11). The normal path therefore never
+# touches the network and a cold/offline configure works. The old fallback had
+# three problems (T0089, T0389): it did `file(DOWNLOAD)` straight INTO the
+# source tree (overwriting a tracked file), with no TLS verification, no status
+# check and no hash -- a 404, captive portal or MITM left a truncated CPM.cmake
+# that the next configure silently trusted -- and nothing ever checked the
+# bytes of the vendored copy either.
+#
+# Now: the file we are about to include is SHA-256 checked on EVERY configure.
+# A source export that lacks the vendored file downloads into the BUILD tree
+# (never the source tree), TLS-verified and pinned to the same hash.
+set(_chadvis_cpm_sha256
+    "7b354f3a5976c4626c876850c93944e52c83ec59a159ae5de5be7983f0e17a2a")
+set(_chadvis_cpm_vendored "${CMAKE_SOURCE_DIR}/cmake/CPM.cmake")
 
-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/CPM.cmake")
+if(EXISTS "${_chadvis_cpm_vendored}")
+    set(_chadvis_cpm_file "${_chadvis_cpm_vendored}")
+else()
+    set(_chadvis_cpm_file "${CMAKE_BINARY_DIR}/_deps/CPM.cmake")
     file(DOWNLOAD
-         https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.0/CPM.cmake
-         ${CMAKE_SOURCE_DIR}/cmake/CPM.cmake)
+         "https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.0/CPM.cmake"
+         "${_chadvis_cpm_file}"
+         EXPECTED_HASH "SHA256=${_chadvis_cpm_sha256}"
+         TLS_VERIFY ON
+         STATUS _chadvis_cpm_status
+         TIMEOUT 60)
+    list(GET _chadvis_cpm_status 0 _chadvis_cpm_code)
+    list(GET _chadvis_cpm_status 1 _chadvis_cpm_text)
+    if(NOT _chadvis_cpm_code EQUAL 0)
+        file(REMOVE "${_chadvis_cpm_file}")
+        message(FATAL_ERROR
+            "CPM.cmake v0.40.0 could not be fetched (${_chadvis_cpm_code} "
+            "${_chadvis_cpm_text}). Restore cmake/CPM.cmake from git or check "
+            "the network; the build will not continue with an unverified CPM.")
+    endif()
 endif()
+
+# Hash whichever copy we are about to include. A truncated or tampered vendored
+# file fails here with a clear message instead of producing a confusing error
+# halfway through the first CPMAddPackage().
+file(SHA256 "${_chadvis_cpm_file}" _chadvis_cpm_actual)
+if(NOT _chadvis_cpm_actual STREQUAL _chadvis_cpm_sha256)
+    message(FATAL_ERROR
+        "CPM.cmake SHA-256 mismatch: expected ${_chadvis_cpm_sha256}, got "
+        "${_chadvis_cpm_actual}. Restore the vendored v0.40.0 file from git "
+        "(cmake/CPM.cmake); do not build against an altered CPM.")
+endif()
+unset(_chadvis_cpm_actual)
+unset(_chadvis_cpm_status)
+unset(_chadvis_cpm_code)
+unset(_chadvis_cpm_text)
+include("${_chadvis_cpm_file}")
 
 # One shared source cache for every build profile (owner decision 2026-10-31,
 # closes half of T0090). CPM's own default is OFF, which re-clones each source
@@ -128,7 +175,6 @@ if(NOT DEFINED ENV{CPM_SOURCE_CACHE}
     set(CPM_SOURCE_CACHE "${CMAKE_SOURCE_DIR}/.cpm-cache" CACHE PATH
         "Shared CPM source checkout cache (default: <source>/.cpm-cache)" FORCE)
 endif()
-include(${CMAKE_SOURCE_DIR}/cmake/CPM.cmake)
 
 # ---------------------------------------------------------------------------
 # Header-only / small libraries: system first, CPM fallback

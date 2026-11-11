@@ -1,0 +1,14 @@
+2026-11-11T00:00:00Z  VERIFY  cold-configure=EXIT0 reconfigure=0-fetch-lines fallback="cmake -P file(DOWNLOAD EXPECTED_HASH TLS_VERIFY)" full-build=375/375 ctest=33/33
+T0089: CPM.cmake v0.40.0 bootstrap no longer downloads into the source tree and is
+no longer unverified.
+- Vendored cmake/CPM.cmake is tracked by git and byte-identical to the upstream
+  v0.40.0 release asset (curl'd and cmp'd), SHA-256
+  7b354f3a5976c4626c876850c93944e52c83ec59a159ae5de5be7983f0e17a2a.
+- file(SHA256) checks that hash on EVERY configure; a mismatch is FATAL_ERROR.
+- Source export lacking the vendored file downloads into ${CMAKE_BINARY_DIR}/_deps
+  (never ${CMAKE_SOURCE_DIR}/cmake), with EXPECTED_HASH, TLS_VERIFY ON, TIMEOUT,
+  and a STATUS check that removes the partial file and FATAL_ERRORs on failure.
+- Cold configure (build-verify, fresh dir) EXIT 0; second configure had 0
+  "Preset pack: fetching" lines proving the offline/cached path.
+- The fallback download mechanism was exercised directly with a `cmake -P`
+  script using the same URL/hash/status code: EXIT 0, bytes verified.

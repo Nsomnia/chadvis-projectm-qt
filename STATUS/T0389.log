@@ -1,0 +1,21 @@
+2026-11-11T00:00:00Z  VERIFY  cold-configure=EXIT0 hash-match reconfigure=0-fetch-lines wrong-hash=warn+fallback(EXIT0,restored) full-build=375/375 ctest=33/33
+T0389: both configure-time downloads are hash-pinned and the preset pack is
+immutable.
+- CPM.cmake: see STATUS/T0089.log. Pinned to upstream v0.40.0 SHA-256 and
+  verified on every configure.
+- PresetPack.cmake: URL pinned to commit 0180df21f5e0bd39b9060cc5de420ed2f1f9e509
+  instead of the mutable refs/heads/master. Archive SHA-256
+  5600f974497d8f73295393fbdf866895ceb89efe82892f5e2d019358b2659202, measured
+  from TWO independent downloads (byte-identical). The zip's top-level dir is
+  presets-cream-of-the-crop-<sha>.
+- The file(SHA256) check is done manually (not EXPECTED_HASH on file(DOWNLOAD))
+  so a mismatch stays a WARNING + idle-preset fallback, preserving rule 1
+  (offline is not a build failure). Negative test: hash replaced with zeros in
+  a temp copy -> "SHA-256 mismatch" warning, EXIT 0, no extraction; file
+  restored byte-for-byte.
+- An already-extracted pack is found via a LICENSE.md glob under any
+  presets-cream-of-the-crop-* dir, so a reconfigure never re-downloads even
+  though the dir name changed from -master to -<sha>. Verified: second
+  configure emitted 0 fetch lines in a fresh build dir; build-fast reused its
+  existing -master tree with no network.
+- grep -rn "file(DOWNLOAD" cmake/ shows both URLs plus the pinned hash.

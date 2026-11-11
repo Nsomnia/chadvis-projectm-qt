@@ -523,7 +523,22 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       **DONE 2026-11-07:** `resources/ChadVis.icns` (reproducible via `scripts/make-app-icon.sh`) copied to
       `Contents/Resources`; plist sets `CFBundleIconFile`. Verified in built bundle.
 
-- [ ] T0089 `file(DOWNLOAD)` of CPM.cmake at configure into source tree, unverified (`Dependencies.cmake:38-42`) #risk-medium
+- [x] T0089 `file(DOWNLOAD)` of CPM.cmake at configure into source tree, unverified #risk-medium
+      **DONE 2026-11-11:** the fallback no longer writes into the source tree (it downloads into
+      the build dir) and is TLS-verified, `EXPECTED_HASH`-pinned to upstream v0.40.0's SHA-256
+      and status-checked with FATAL_ERROR on failure. The vendored, git-tracked `cmake/CPM.cmake`
+      is byte-identical to upstream and its hash is checked on EVERY configure, so a truncated or
+      tampered copy fails loudly. Cold configure is offline-capable; the fallback download
+      mechanism was exercised directly via `cmake -P`. The old `Dependencies.cmake:38-42` line
+      reference was stale — the bootstrap now lives at ~107. STATUS/T0089.log.
+
+- [x] T0460 **Bumping `version.txt` never re-runs configure** (`CMakeLists.txt`) #risk-medium
+      Discovered 2026-11-11: `file(READ version.txt)` is not a configure dependency, so after the
+      1.3.0 bump build-fast still stamped 1.2.0 into `BuildConfig.hpp` and 3 `TestVersion` cases
+      failed (binary/banner/QML all reported the old version). **DONE 2026-11-11:** `version.txt`
+      is a `CMAKE_CONFIGURE_DEPENDS` input, so a bump re-runs configure and regenerates the header
+      on the next build; only the header's few consumers rebuild. Verified: reconfigure → app
+      `--version` = 1.3.0, `unit_tests` TestVersion 9/9, ctest 33/33. STATUS/T0460.log.
 
 - [ ] T0090 Nine of fifteen deps unpinned, two bypass system-first (`Dependencies.cmake`) #risk-medium
       CPM tags pinned to commit SHAs (not mutable tags). Conan rejected — CPM+vcpkg.json closes same gaps.
@@ -759,8 +774,18 @@ Q_INVOKABLE audit, T0406 path-helper dedupe; T0358/T0359 QML lanes still need a 
       Verify: `ctest --test-dir build-fast/tests -N` covers all 20 SAFE_TESTS.
 - [ ] T0388 **Warnings-as-errors + clang-format/tidy CI step** (`cmake/Compiler.cmake`, `.github/workflows/guards.yml`, `.clang-format`, `.clang-tidy`) #risk-medium
       No `-Werror` and no format/tidy enforcement exists today. Narrows T0093. Verify: `git clang-format --diff main` reported in guards; new warning fails the opt-in job.
-- [ ] T0389 **Pin preset-pack and CPM.cmake downloads by hash** (`cmake/PresetPack.cmake`, `cmake/Dependencies.cmake`) #risk-medium
+- [x] T0389 **Pin preset-pack and CPM.cmake downloads by hash** (`cmake/PresetPack.cmake`, `cmake/Dependencies.cmake`) #risk-medium
       Both use `file(DOWNLOAD …)` with no hash; preset pack tracks a mutable branch. Narrows T0089. Verify: cold configure succeeds offline via the cached path; `grep -rn "file(DOWNLOAD" cmake/` shows URL + hash.
+      **DONE 2026-11-11:** CPM.cmake pinned to upstream v0.40.0 SHA-256 (`7b354f3a…`, the
+      vendored copy is byte-identical) and checked on every configure. Preset pack URL pinned to
+      immutable commit `0180df21…` (was `refs/heads/master`) with SHA-256 verification of the
+      downloaded zip; a mismatch/failed download warns and falls back to the idle preset (never
+      fatal, preserving PresetPack rule 1). Reconfigures reuse any already-extracted pack via a
+      LICENSE.md glob, so the fast loop needs no network even though the extracted dir name
+      changed with the pin. Verified: cold configure EXIT 0 (fetch + hash + extract), reconfigure
+      has 0 fetch lines, wrong-hash simulation warns + falls back with EXIT 0 (restored), fallback
+      download via `cmake -P`, `grep` shows both URLs + hash, full build 375/375. Docs:
+      `docs/dev/DEPENDENCIES.md`. STATUS/T0389.log.
 - [x] T0390 **Consolidate the remaining FakeReply duplicates** (`tests/unit/suno/`) #cleanup
       Done 2026-11-10: removed the duplicate local `class FakeReply` from `test_DownloadQueue.cpp` (now `using fake_net::FakeReply`). The shared `tests/support/FakeNetworkReply.hpp` gained the 4 drivers the local class had (`succeedShort`, `succeedUnknownLength`, `failWithRetryAfter`, `openStream` overload). `grep "class FakeReply" | wc -l` = 1; unit_tests + ctest 33/33 green.
       Two local `class FakeReply` remain beside the shared `FakeNetworkReply.hpp`. Narrows T0099. Verify: `grep -rn "class FakeReply" tests/ | wc -l` is 1; `ctest --test-dir build-fast/tests -R "DownloadQueue|RequestEpoch"` green.

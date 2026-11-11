@@ -39,6 +39,25 @@ lists the probe order.
   default pack, and it removes any preset on an author's request. This repository does not
   vendor them; the build fetches them from upstream, which keeps the licence claim where it
   belongs.
+- **Immutable pin.** The URL is a fixed commit (`0180df21…`), not the mutable `master` branch,
+  and the downloaded archive is checked against a pinned SHA-256 before extraction (T0389). A
+  mismatch or a failed download warns and falls back to the idle preset; it never fails the
+  build. Reconfigures reuse any already-extracted pack, so the fast loop never needs the network.
+
+## Configure-time integrity
+
+Two downloads happen at configure time and both are pinned (T0089, T0389):
+
+- **CPM.cmake v0.40.0** is vendored in `cmake/` and tracked by git. Its SHA-256
+  (`7b354f3a…`) is verified on *every* configure, so a truncated or altered copy fails with a
+  clear message. A source export that lacks it downloads into the **build** directory (never
+  the source tree), TLS-verified and `EXPECTED_HASH`-pinned to the same hash. A cold configure
+  needs no network on the normal path.
+- **The preset pack** is pinned to an immutable commit and hash-checked as described above.
+
+`version.txt` is a `CMAKE_CONFIGURE_DEPENDS` input: bumping the version re-runs configure and
+regenerates `BuildConfig.hpp` on the next build, so the binary, banner and QML always report the
+current version and only the handful of TUs that include that header rebuild.
 
 ## Why not Conan
 
