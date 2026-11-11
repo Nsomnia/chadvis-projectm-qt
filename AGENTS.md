@@ -936,8 +936,8 @@ Git preserves the development history.
 
 # 18. Subagent model selection
 
-Launch subagents with `codebuddy/hy4free` (variant `high`) by default.
+Launch subagents with `workbuddy/hy4free` (variant `high`) by default.
 
-All agents and subagents in `~/.config/opencode/oh-my-opencode-slim.jsonc` use `codebuddy/hy4free` (`high`); do not override with a different provider or model unless the user asks.
+All agents and subagents in `~/.config/opencode/oh-my-opencode-slim.jsonc` use `workbuddy/hy4free` (`high`); do not override with a different provider or model unless the user asks. Pass `model:` explicitly on every subagent call — the built-in default no longer resolves to this provider.
 
 Keep paid provider usage minimal. DeepSeek is the only paid API. Antigravity or other advanced models are available only when explicitly chosen.
