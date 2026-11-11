@@ -1,0 +1,43 @@
+2026-11-11T00:00:00Z  VERIFY  fast-build=374/374 unit_tests="TestAudioEngine 0 (4/4 slots)" ctest=33/33 concurrency="2000 callbacks x 128 reconfigs, no crash"
+T0326: AudioEngine's conversion scratch buffer is no longer resized under the
+sink callback thread's std::span.
+
+Root cause: scratchBuffer_ was a std::vector<f32> resized by applyAudioConfig()
+on the GUI thread (init + settings changes), while processAudioBuffer() on the
+sink callback thread held std::span<f32>(scratchBuffer_.data(), .size()) across
+pcm::convertInterleaved() and the AudioChunk handed to audioQueue_.pushAll().
+A grow reallocated the vector, invalidating data()/the span: use-after-free.
+
+Fix (chosen over the suggested double-buffer/atomic-pointer-swap, which needs
+reclamation, and over "refuse conversion while reconfiguring", which still races
+between the flag check and the resize):
+  - scratchBuffer_.resize(pcm::kMaxInterleavedSamples) exactly ONCE in init(),
+    never again. 16384 f32 = 64 KiB, stable address for the object's lifetime.
+  - std::atomic<usize> scratchWindow_ is the only thing applyAudioConfig changes
+    (release store); conversionWindow() clamps it into [4096, 16384] <= capacity.
+  - The callback loads the window (acquire) and spans exactly that many samples.
+    interleavedWindow() reads the atomic instead of vector::size().
+  - chunk.samples still uses scratchBuffer_.data(), now permanently valid;
+    convertInterleaved refuses anything larger than the active window, so the
+    count can never exceed the fixed capacity.
+No lock on the audio callback; no allocation per callback; no UAF by construction.
+
+Verification:
+  - `windowTracksConfigWithoutWideningTheConversionBuffer`: a 16384-interleaved-
+    sample buffer fits a 16384 window (0 faults) and is dropped as oversized once
+    the window is narrowed to 4096 (1 fault) -- proves spare capacity did not
+    silently widen the exposed destination.
+  - `reconfigureDuringCallbacksDoesNotCorruptTheConversionBuffer`: 2000
+    submitAudioBuffer() calls on a worker thread concurrent with 128 alternating
+    applyAudioConfig() calls on the main thread; no crash, engine still converts
+    cleanly afterwards. Isolated run ~2.6s.
+  - Both functions confirmed present in the generated test_AudioEngine.moc and
+    each selected individually via Qt Test's function selector (AudioEngine -> 0).
+  - ./build.sh --fast --tests 374/374; unit_tests all suites status 0;
+    ctest --test-dir build-fast/tests -j4 33/33.
+  - ThreadSanitizer NOT run: build-tsan has zero cached objects and no cache on
+    this 2018 MacBook Air; a cold -fsanitize=thread build is a full recompile,
+    which the user explicitly wants avoided. The structural elimination of the
+    shared mutable buffer plus the concurrency regression test are the applied
+    verification. Revisit on CI where a sanitizer lane is warm.
+Rule recorded in docs/dev/INVARIANTS.md (Buffers and lifetime).

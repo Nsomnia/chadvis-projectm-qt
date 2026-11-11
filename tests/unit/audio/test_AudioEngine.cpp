@@ -142,6 +142,82 @@ private slots:
         QTRY_VERIFY(sawRecovery.load());
         QCOMPARE(errorCount.load(), 2);
     }
+
+    /// T0326. The conversion window must still follow applyAudioConfig even
+    /// though scratchBuffer_ is now allocated once at the maximum and never
+    /// resized. A buffer that fits a wide window must be refused once that
+    /// window is narrowed -- proving the spare capacity did not silently widen
+    /// the std::span the callback converts into.
+    void windowTracksConfigWithoutWideningTheConversionBuffer() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        EngineFixture fixture(dir);
+        QVERIFY(fixture.expectsInitOk);
+        AudioEngine& engine = fixture.engine;
+
+        AudioConfig wide;
+        wide.bufferSize = static_cast<u32>(pcm::kMaxInterleavedSamples);
+        AudioConfig narrow;
+        narrow.bufferSize = static_cast<u32>(pcm::kMinInterleavedSamples);
+
+        // 8192 stereo Int16 frames = 16384 interleaved samples: exactly the
+        // maximum window, four times the minimum one.
+        const QAudioBuffer mid = makeBuffer(44100, 8192);
+
+        QVERIFY(engine.applyAudioConfig(wide).isOk());
+        QCOMPARE(engine.interleavedWindow(), usize{pcm::kMaxInterleavedSamples});
+        std::thread accept([&] { engine.submitAudioBuffer(mid); });
+        accept.join();
+        QCOMPARE(engine.oversizedBufferCount(), u64{0});
+        QCOMPARE(engine.formatErrorCount(), u64{0});
+
+        QVERIFY(engine.applyAudioConfig(narrow).isOk());
+        QCOMPARE(engine.interleavedWindow(), usize{pcm::kMinInterleavedSamples});
+        std::thread drop([&] { engine.submitAudioBuffer(mid); });
+        drop.join();
+        QCOMPARE(engine.oversizedBufferCount(), u64{1});
+    }
+
+    /// T0326 stress. Reconfiguring on the GUI thread used to resize the vector
+    /// under a std::span held by the sink callback thread (use-after-free). Now
+    /// only an atomic window is published, so overlapping the two is safe by
+    /// construction. The old code reallocates on the first grow from the
+    /// default 4096 window to the 16384 one, exactly where this drives it.
+    void reconfigureDuringCallbacksDoesNotCorruptTheConversionBuffer() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        EngineFixture fixture(dir);
+        QVERIFY(fixture.expectsInitOk);
+        AudioEngine& engine = fixture.engine;
+
+        const QAudioBuffer buffer = makeBuffer(44100, 256);  // fits any window
+        AudioConfig wide;
+        wide.bufferSize = static_cast<u32>(pcm::kMaxInterleavedSamples);
+        AudioConfig narrow;
+        narrow.bufferSize = static_cast<u32>(pcm::kMinInterleavedSamples);
+
+        std::atomic<bool> go{false};
+        std::thread worker([&] {
+            while (!go.load(std::memory_order_acquire)) {
+            }
+            for (int i = 0; i < 2000; ++i) {
+                engine.submitAudioBuffer(buffer);
+            }
+        });
+        go.store(true, std::memory_order_release);
+        for (int i = 0; i < 128; ++i) {
+            QVERIFY(engine.applyAudioConfig((i & 1) ? wide : narrow).isOk());
+        }
+        worker.join();
+
+        // Counters reset on reconfigure, so the honest post-storm assertion is
+        // a final wide config + one buffer with no fault of either kind.
+        QVERIFY(engine.applyAudioConfig(wide).isOk());
+        std::thread final([&] { engine.submitAudioBuffer(buffer); });
+        final.join();
+        QCOMPARE(engine.oversizedBufferCount(), u64{0});
+        QCOMPARE(engine.formatErrorCount(), u64{0});
+    }
 };
 
 #include "test_AudioEngine.moc"

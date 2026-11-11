@@ -107,11 +107,17 @@ Result<void> AudioEngine::init(std::optional<AudioConfig> config) {
 
     setupDeviceWatchers();
 
-    // Sized before applyAudioConfig(), which can fail on an unresolvable device
+    // Allocated ONCE at the maximum conversion window and never resized
+    // (T0326): the sink callback takes a std::span into this buffer on its own
+    // thread, so its address must be stable for the engine's whole lifetime.
+    // Only the active window (scratchWindow_) follows the config. The window is
+    // seeded before applyAudioConfig(), which can fail on an unresolvable device
     // and return early. Without this the window would stay zero-length, every
     // callback would be refused as oversized, and a bad device name would take
     // playback down with it instead of merely being ignored.
-    scratchBuffer_.resize(pcm::conversionWindow(requested.bufferSize));
+    scratchBuffer_.resize(pcm::kMaxInterleavedSamples);
+    scratchWindow_.store(pcm::conversionWindow(requested.bufferSize),
+                         std::memory_order_relaxed);
 
     if (auto applied = applyAudioConfig(requested); !applied) {
         // Not fatal. A saved device name whose device has been unplugged is the
@@ -173,7 +179,11 @@ Result<void> AudioEngine::applyAudioConfig(const AudioConfig& config) {
     // would drop audio; the clamp is reported in the status line so the UI never
     // claims a value the engine is not using.
     const usize window = pcm::conversionWindow(config.bufferSize);
-    scratchBuffer_.resize(window);
+    // Deliberately NO resize here (T0326): scratchBuffer_ is allocated once at
+    // the maximum and its address must never change under a callback thread's
+    // std::span. Publishing the smaller active window is all that is needed --
+    // conversionWindow() already clamps it into the buffer's capacity.
+    scratchWindow_.store(window, std::memory_order_release);
 
     // Assigned before setDevice(): setDevice emits deviceChanged synchronously,
     // which lands in onOutputDeviceChanged and rebuilds the status. With this
@@ -584,7 +594,13 @@ void AudioEngine::processAudioBuffer(const QAudioBuffer& buffer) {
     // consumer queues -- stale audio, no log, no signal, no UI.
     const std::span<const std::byte> source(buffer.constData<std::byte>(),
                                             static_cast<usize>(buffer.byteCount()));
-    const std::span<f32> destination(scratchBuffer_.data(), scratchBuffer_.size());
+    // The sink callback loads the active window once and spans exactly that
+    // many samples of the (never-resized) scratch buffer. scratchBuffer_ is
+    // allocated at the maximum, so this pointer stays valid even if
+    // applyAudioConfig publishes a new window from the GUI thread mid-callback
+    // (T0326).
+    const usize window = scratchWindow_.load(std::memory_order_acquire);
+    const std::span<f32> destination(scratchBuffer_.data(), window);
 
     auto converted = pcm::convertInterleaved(source, destination, format.sampleFormat());
     if (!converted) {

@@ -8,6 +8,14 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **Reconfiguring audio output can no longer corrupt the audio callback.** The
+  PCM conversion scratch buffer is now allocated once at the maximum window and
+  never resized; only an atomic window size follows the configured buffer size.
+  Previously a settings change on the GUI thread could reallocate the buffer
+  while the sink's callback thread held a `std::span` into it — a use-after-free.
+  Two regression tests cover the window tracking and concurrent reconfiguration.
+  (T0326)
+
 - **Bumping `version.txt` no longer leaves the app reporting the old version.** `version.txt`
   is now a CMake configure dependency, so a release bump re-runs configure and regenerates
   `BuildConfig.hpp` on the next build; the binary, `--version` banner and QML always agree with

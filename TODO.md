@@ -376,9 +376,25 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `lyrics` empty for 2147/2147 clips. 775 carry `aligned_lyrics_json`. MP4 branch writes no `©lyr`.
       Fix: write `©lyr` from `clip.metadata.lyrics` or DB aligned-lyrics. Fill sidecar. No tag override exists yet.
 
-- [ ] T0326 **`AudioEngine::processAudioBuffer` reads `scratchBuffer_` while `applyAudioConfig` may resize** (`AudioEngine.cpp`, `.hpp`) #risk-high
+- [x] T0326 **`AudioEngine::processAudioBuffer` reads `scratchBuffer_` while `applyAudioConfig` may resize** (`AudioEngine.cpp`, `.hpp`) #risk-high
       Use-after-free, not stale read. Fix: double-buffer with atomic pointer swap, or refuse conversion while reconfiguring.
       Not reproducible (darwin backend delivers no buffers, T0322).
+      **DONE 2026-11-11:** chose a third, simpler option that removes the shared
+      mutable buffer entirely: `scratchBuffer_` is allocated ONCE at
+      `pcm::kMaxInterleavedSamples` (16384 f32 / 64 KiB) and never resized, so its
+      address is stable for the engine's life; an atomic `scratchWindow_` (the
+      active sample count, clamped by `conversionWindow()` into that capacity) is
+      all `applyAudioConfig` changes. The callback loads the window with acquire
+      and spans exactly that many samples. No lock on the audio callback, no
+      reclamation/hazard-pointer complexity, and the UAF is gone by construction.
+      Regression tests `windowTracksConfigWithoutWideningTheConversionBuffer`
+      (a 16384-sample buffer fits a wide window, is dropped when narrowed) and
+      `reconfigureDuringCallbacksDoesNotCorruptTheConversionBuffer` (2000 worker
+      callbacks concurrent with 128 reconfigs) both pass; full build 374/374,
+      ctest 33/33. Rule recorded in `docs/dev/INVARIANTS.md`. TSan was not run:
+      build-tsan has no warm objects here and a cold `-fsanitize=thread` rebuild
+      is a full compile on this constrained box; the structural fix + concurrency
+      test are the applied verification. STATUS/T0326.log.
 
 - [ ] T0051 `QTP0004` deliberately disabled, 58 QML files away from `qt_add_qml_module` (`TargetSetup.cmake:129-134`) #risk-medium
       Enable and fix relative imports, or flatten QML tree. 6.8 can generate per-directory `qmldir`s.

@@ -70,8 +70,12 @@ public:
     [[nodiscard]] const AudioConfig& audioConfig() const { return audioConfig_; }
 
     /// Interleaved sample count the engine will convert per callback. Equals
-    /// pcm::conversionWindow(audioConfig().bufferSize).
-    [[nodiscard]] usize interleavedWindow() const { return scratchBuffer_.size(); }
+    /// pcm::conversionWindow(audioConfig().bufferSize). Atomic: written by
+    /// applyAudioConfig on the GUI thread and read by the sink callback thread
+    /// and by the status text.
+    [[nodiscard]] usize interleavedWindow() const {
+        return scratchWindow_.load(std::memory_order_acquire);
+    }
 
     /// Callbacks dropped for exceeding interleavedWindow(). Was an
     /// unmonitored silent `return` before. Written by the audio callback
@@ -251,7 +255,18 @@ private:
     /// edit preserves a paused transport. Consumed by the first
     /// onPlaylistCurrentChanged after it is set.
     bool autoAdvance_{false};
+    /// Conversion destination, allocated ONCE at the maximum window
+    /// (pcm::kMaxInterleavedSamples) and never resized. processAudioBuffer()
+    /// runs on the sink's callback thread and takes a std::span into this
+    /// buffer, so a resize() from applyAudioConfig() on the GUI thread used to
+    /// reallocate it under that span -- a use-after-free (T0326). The spare
+    /// capacity is what makes the address stable for the engine's lifetime;
+    /// only scratchWindow_ changes with the configuration.
     std::vector<f32> scratchBuffer_;
+    /// Samples of scratchBuffer_ the callback exposes this turn. Written by
+    /// applyAudioConfig (release), read by the callback (acquire). Always
+    /// <= scratchBuffer_.size(), which is the conversion hard ceiling.
+    std::atomic<usize> scratchWindow_{0};
 
     AudioConfig audioConfig_{};
 

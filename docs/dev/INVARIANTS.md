@@ -161,6 +161,18 @@ another document already owns — it records only *why* the constraints exist.
   the whole class of bug that used to segfault a read.
 - **A test-side copy of a shared rule is how two copies drift.** When a rule
   changes, grep the tests for the rule, not just for the symbol.
+- **`AudioEngine::scratchBuffer_` is allocated once at the maximum conversion
+  window and never resized (T0326).** The sink's audio-buffer callback runs on
+  its own thread and takes a `std::span` into this vector; `applyAudioConfig()`
+  runs on the GUI thread and used to `resize()` it, reallocating the buffer
+  *under* that span -- a use-after-free, not a stale read. The vector is now
+  sized to `pcm::kMaxInterleavedSamples` (16384 f32, 64 KiB) for the engine's
+  whole life; only an atomic `scratchWindow_` (the active sample count) changes
+  with the config, and `conversionWindow()` clamps it into that capacity. The
+  callback loads the window once and spans exactly that many samples. Do not
+  reintroduce a resize here. `windowTracksConfigWithoutWideningTheConversionBuffer`
+  and `reconfigureDuringCallbacksDoesNotCorruptTheConversionBuffer` are the
+  regression guards.
 
 ## Preset scanning
 
