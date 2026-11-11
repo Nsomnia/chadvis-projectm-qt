@@ -583,6 +583,17 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0100 `SunoLibraryMutations` 26KB write-path logic, zero tests (`src/suno/`) #risk-high #data-loss
       Also untested: `SunoDatabase`, `SunoBridge`, `SunoController`, `ClipResolver`, `PresetPersistence`,
       `RatingManager`, `CliUtils`, every QML bridge. Entire UI has zero tests.
+      **PARTIAL 2026-11-11 (premise partly stale):** `test_SunoLibraryMutations.cpp`
+      is now a comprehensive suite (body builders, endpoint templates, verb names,
+      outcome classification, gate refusals, and cover-image wire success/404/500),
+      added incrementally by T0011/T0348/T0363/T0434 -- so "zero tests" no longer
+      holds for the write-path logic, and `SunoDatabase` gained tests via T0392.
+      Added here: `clipTrashWireSendsFlatBodyToCollectionRoute`, the first generic
+      enabled-mutation wire test (flat `clipTrashBody` really sent, `/gen/trash`
+      collection route invents no id, 204 -> Accepted, no parse). VERIFY in
+      STATUS/T0100.log. **Still open:** the "every QML bridge / entire UI has zero
+      tests" half -- QML has no test harness and needs a real window/designer, so it
+      is not automatable headlessly (see P2c session checkpoint).
 
 - [ ] T0102 FFmpeg: `AVFormatContextDeleter` crash fixed; two residuals (`FFmpegUtils.hpp`) #risk-medium
       (a) `hwFramesCtx_`/`hwDeviceCtx_` survive `cleanup()`, never freed. (b) Return `AVERROR_EXIT` from

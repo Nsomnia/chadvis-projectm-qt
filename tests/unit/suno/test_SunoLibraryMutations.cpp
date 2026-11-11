@@ -97,6 +97,17 @@ FakeReply* findCoverReply(const std::vector<QPointer<FakeReply>>& replies)
     return nullptr;
 }
 
+FakeReply* findTrashReply(const std::vector<QPointer<FakeReply>>& replies)
+{
+    for (QPointer<FakeReply> reply : replies) {
+        if (!reply.isNull() &&
+            reply->url().path().endsWith(QStringLiteral("/gen/trash"))) {
+            return reply;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
 class TestSunoLibraryMutations : public QObject {
@@ -478,6 +489,58 @@ private slots:
         QVERIFY(result.reason.contains(QStringLiteral("500")));
         // Exactly one cover-image request was ever sent.
         QCOMPARE(replies.size(), std::size_t{1});
+    }
+
+    // ── T0100: generic mutation wire path (batch clip trash) ───────────────
+    // The body builder and the disabled refusals are pinned above, but the
+    // enabled path was only ever exercised through the cover-image verb. This
+    // closes that gap: the flat body that actually leaves on the wire equals
+    // clipTrashBody(), the collection route invents no id segment, and a 204
+    // (no body) settles Accepted with no parse.
+    void clipTrashWireSendsFlatBodyToCollectionRoute() {
+        std::vector<QPointer<FakeReply>> replies;
+        std::vector<QByteArray> bodies;
+        auto factory = [&replies, &bodies](const QNetworkRequest& request,
+                                           const std::string& method,
+                                           const QByteArray& data) {
+            if (request.url().path().endsWith(QStringLiteral("/gen/trash"))) {
+                bodies.push_back(data);
+            }
+            auto* reply = new FakeReply(request, method);
+            replies.push_back(reply);
+            return reply;
+        };
+        SunoClient client(QStringLiteral("test-device"), nullptr, emptyBackend(), factory);
+        client.setToken(fakeBearer().toStdString());
+
+        GateResolver resolver = maximallyPermissiveResolver();
+        SunoLibraryMutations service(&client);
+        service.setGateResolver(&resolver);
+        QVERIFY2(service.setEnabled(true), qPrintable(service.unavailableReason()));
+        QSignalSpy settled(&service, &SunoLibraryMutations::mutationSettled);
+
+        const QStringList ids{QStringLiteral("clip-1"), QStringLiteral("clip-2")};
+        QVERIFY(service.setClipsTrashed(ids, true));
+        FakeReply* reply = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((reply = findTrashReply(replies)) != nullptr, 15000);
+        QCOMPARE(static_cast<int>(reply->operation()),
+                 static_cast<int>(QNetworkAccessManager::PostOperation));
+        QVERIFY(!bodies.empty());
+        // The wire carries the flat builder output, not a nested `spec` variant.
+        QCOMPARE(QJsonDocument::fromJson(bodies.front()).object(),
+                 SunoLibraryMutations::clipTrashBody(ids, true));
+        // Collection route: no per-clip id may be invented in the path.
+        QVERIFY(reply->url().path().endsWith(QStringLiteral("/gen/trash")));
+        QVERIFY(!reply->url().path().contains(QStringLiteral("clip-1")));
+
+        // A 204 has no body; the success discipline accepts and parses nothing.
+        reply->respond(QByteArrayLiteral("{}"), 204);
+        QTRY_COMPARE_WITH_TIMEOUT(settled.count(), 1, 15000);
+        const auto result = settled.at(0).at(0).value<MutationResult>();
+        QCOMPARE(result.verb, MutationVerb::ClipTrashRestore);
+        QCOMPARE(result.outcome, MutationOutcome::Accepted);
+        QCOMPARE(result.httpStatus, 204);
+        QVERIFY(result.reason.isEmpty());
     }
 };
 

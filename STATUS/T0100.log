@@ -1,0 +1,27 @@
+2026-11-11T00:00:00Z  VERIFY  ./build.sh --fast --tests => 374/374 edges, EXIT 0; ctest --test-dir build-fast/tests --output-on-failure -j4 => 33/33 (100%), 0 failed; targeted unit_tests clipTrashWireSendsFlatBodyToCollectionRoute => [suite] TestSunoLibraryMutations -> 0
+T0100 "SunoLibraryMutations 26KB write-path logic, zero tests" is PARTIAL, not
+closed. A focused slice landed today; the broad UI/QML test gap remains open.
+
+Discovery (grep 2026-11-11): the "zero tests" premise is partly STALE.
+tests/unit/suno/test_SunoLibraryMutations.cpp is already a comprehensive suite
+(body builders, endpoint templates, verb names, outcomeForStatus, gate refusals,
+and cover-image wire success/404-rejection/500-no-retry), added incrementally by
+T0011/T0348/T0363/T0434. SunoDatabase gained sync/migration/rollback tests via
+T0392. So the write-path logic is no longer untested.
+
+What landed in this session (test-only change, 1 TU recompiled):
+  - tests/unit/suno/test_SunoLibraryMutations.cpp: new
+    clipTrashWireSendsFlatBodyToCollectionRoute() plus a findTrashReply helper.
+    It is the first enabled-mutation wire test for a GENERIC verb (the cover-image
+    tests exercised the same dispatch but only for that one verb). It pins that
+    the flat clipTrashBody actually leaves on the wire, that the /gen/trash
+    collection route invents no per-clip id segment, that the operation is POST,
+    and that a 204 with no body settles Accepted with no parsed field and an
+    empty reason. This is the data-loss write-path regression coverage the item's
+    #risk-high #data-loss tag asks for, not a test-count filler.
+
+Still open (kept [ ] on purpose): "every QML bridge / entire UI has zero tests".
+There is no QML test harness in the tree; exercising QML needs a real window and
+a designer, so it cannot be verified headlessly here and is not automatable in
+this environment. Do NOT flip this item to [x] until that half is addressed.
+No source behaviour changed, so no CHANGELOG entry.
