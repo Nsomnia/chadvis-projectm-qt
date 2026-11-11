@@ -1,0 +1,17 @@
+2026-11-11T00:00:00Z  CHANGE  comment-only guard added; no behavior change
+T0105 "Do not migrate av_hwdevice_ctx_create" is a standing DECISION, not
+outstanding work. It was sitting in the backlog as [ ] with no source guard.
+
+The rationale is now an inline comment at the call site in
+src/recorder/VideoRecorderFFmpeg.cpp (initHWDeviceContext, ~:1681):
+  - av_hwdevice_ctx_create() is current, NOT deprecated.
+  - It both allocates AVHWDeviceContext AND opens the concrete device
+    (VAAPI /dev/dri/renderD*, CUDA ordinal, D3D11VA, QSV).
+  - av_hwdevice_ctx_alloc() only allocates an EMPTY context; with no device
+    bound, av_hwdevice_ctx_init() cannot succeed, so a "migration" would make
+    every hardware encode silently fall back or fail.
+  - There is no drop-in replacement; nothing to migrate to.
+
+Verification: comment-only. The single translation unit was recompiled
+(ninja object target) to confirm the source still builds; no relink or test
+run is needed for a comment. Nothing else in the tree changed.

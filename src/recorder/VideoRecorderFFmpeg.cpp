@@ -1678,6 +1678,12 @@ Result<void> VideoRecorderFFmpeg::initHWDevice(const EncoderSettings& settings) 
     devPath = std::format("{}", settings.video.hwDevice);
   }
 
+  // Do NOT "modernize" this to av_hwdevice_ctx_alloc() (T0105).
+  // av_hwdevice_ctx_create() is current -- not deprecated -- and it is the call
+  // that actually OPENS the device (VAAPI render node, CUDA ordinal, D3D11/QSV
+  // device). av_hwdevice_ctx_alloc() only allocates an empty AVHWDeviceContext;
+  // with no device bound, av_hwdevice_ctx_init() cannot succeed and every HW
+  // encode falls back or errors. There is no drop-in replacement to migrate to.
   int ret = av_hwdevice_ctx_create(&devCtx, devType,
     devPath.empty() ? nullptr : devPath.c_str(), nullptr, 0);
 
