@@ -556,8 +556,19 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       on the next build; only the header's few consumers rebuild. Verified: reconfigure → app
       `--version` = 1.3.0, `unit_tests` TestVersion 9/9, ctest 33/33. STATUS/T0460.log.
 
-- [ ] T0090 Nine of fifteen deps unpinned, two bypass system-first (`Dependencies.cmake`) #risk-medium
+- [x] T0090 Nine of fifteen deps unpinned, two bypass system-first (`Dependencies.cmake`) #risk-medium
       CPM tags pinned to commit SHAs (not mutable tags). Conan rejected — CPM+vcpkg.json closes same gaps.
+      **CLOSED 2026-11-11 (premise stale):** all four CPM deps (fmt, spdlog,
+      toml++, readerwriterqueue) use `GIT_TAG` with full 40-char commit SHAs, not
+      mutable tags; pffft (one of the two "system-first bypassers") was removed
+      2026-10-04, leaving only readerwriterqueue, which is header-only with no
+      system package; `CPM_SOURCE_CACHE` is shared across profiles. The remaining
+      "unpinned" inputs are host system packages resolved by find_package/
+      pkg-config with version floors (Qt >= 6.8) — not commit-pinnable and not a
+      CPM/Conan concern. Verified by grep of `cmake/Dependencies.cmake`. The
+      reproducibility work that remains is the SBOM/vulnerability lane (T0301),
+      not this item. `docs/dev/DEPENDENCIES.md`'s "Why not Conan" section updated
+      to match. STATUS/T0090.log.
 
 - [ ] T0093 No warnings-as-errors, clang-format/clang-tidy enforced nowhere (`Compiler.cmake:80-83`, `.github/`) #risk-medium
       Add non-blocking `git clang-format --diff main` report step.
@@ -765,6 +776,13 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
 ---
 
 ## P2c — recon triage 2026-11-08 (read-only pass, writer-ready)
+
+> **Session checkpoint 2026-11-11 (HEAD f59971c, two commits, fast build 374/374 + ctest 33/33 green).**
+> Landed, fully verified locally, no live/account/GL evidence needed:
+> - `4d3624b` **configure-time integrity** — CPM.cmake v0.40.0 vendored + SHA-256-verified every configure; fallback download moved out of the source tree, TLS/hash/status-checked (T0089). Preset pack pinned to immutable commit `0180df21…` with hash-verified archive and a non-fatal idle-preset fallback (T0389). `version.txt` is now a configure dependency, so a release bump can no longer leave the binary/banner/QML reporting the old version — this also fixed 3 pre-existing `TestVersion` failures (T0460, discovered here).
+> - `f59971c` **audio UAF fix** — the PCM conversion scratch buffer is allocated once at the max window and never resized; only an atomic window size follows config, so the GUI thread can no longer reallocate it under the sink callback's `std::span` (T0326). Two new regression tests, one a 2000-callback/128-reconfigure concurrency stress.
+> - T0090 closed as a stale premise (all CPM deps pinned to SHAs, pffft gone, source cache shared); `docs/dev/DEPENDENCIES.md` "Why not Conan" corrected to match.
+> **For the owner to take stock of:** (1) ThreadSanitizer was NOT run for T0326 — `build-tsan` has no warm objects and a cold `-fsanitize=thread` build is a full recompile on this box; the fix is structural (no shared mutable buffer) plus a concurrency test, but a CI TSan lane would be the belt-and-braces check. (2) Release-worthy `[Unreleased]` now has 3 Fixed/Security entries; run `./scripts/release.sh --dry-run` when a release is wanted. (3) Still not automatable here: the big P0/P1 Suno features (T0346/T0357/T0170/T0365) need authenticated captures or GL runtime evidence, and QML-heavy refactors (T0407/T0408/T0412…) need a real window/designer. (4) Nothing was pushed — `origin/main` is still at `adc5b88`; push when you want these shared. (5) `AGENTS.md` carries an **unrelated uncommitted edit** (§18 subagent model renamed `codebuddy/hy4free` → `workbuddy/hy4free`, timestamped before this session's work) that I did not make and deliberately excluded from all three commits; left for you to commit or revert.
 
 > **Session checkpoint 2026-11-10 (HEAD 50f346d, all 5 CI gates green, clean tree).** Landed this session: build-speed chain (T0453–T0459, module split + BuildConfig + ccache/PCH + budget), T0354 refuted, T0401/T0399/T0400/T0392/T0404/T0393/T0394/T0386/T0387(+offscreen follow-up)/T0391(partial)/T0398/T0390/T0011. Guard fixes: `check-thread-handoffs.py` apostrophe-in-comment bug, `check-endpoints.py` new drift guard, `check-safe-tests.py` extended for ASan scope + gate-regex agreement — all with regression self-tests. Subagent model now `codebuddy/hy4free` (`high`); pass `model:` explicitly on every subagent call (the built-in default still points at the dead `kilo/stealth/crouton-alpha`). Ongoing at compaction: T0328 (AudioEngine handoff refactor) + T0389 (hash-pin feasibility recon) lanes in flight. Next verifiable slices: T0402(a) unblocked ConfigData `quantum_frames` round-trip; T0407 shared StateView (QML, needs a designer); T0391 shared-helper remainder. Big P0/P1 items (T0346/T0357/T0170/T0365) need live captures or GL runtime evidence — not automatable. T0452 needs the upstream Qt qmlcachegen fix (a regex guard would false-positive on `var`-aliased maps); leave as prose.
 

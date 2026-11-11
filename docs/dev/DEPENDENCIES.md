@@ -65,10 +65,13 @@ Conan 2 is a good tool and this project is the kind of project it is good at —
 **third** dependency path beside two that already work, and the gaps it is usually proposed to
 close are already tracked:
 
-- **Pinning.** Nine of fifteen dependencies are unpinned (T0090) and the Windows lane has no
-  `vcpkg.json` (T0091). Conan fixes both by replacing CPM and vcpkg, not by adding to them: a
-  half-migrated tree is worse than an unpinned one, because two graphs then disagree about the
-  same library.
+- **Pinning.** Every CPM dependency is pinned to the commit its tag names, not
+  to a mutable tag, and `CPM_SOURCE_CACHE` is shared across build profiles
+  (T0090, closed 2026-11-11). The remaining inputs are host system packages
+  found by `find_package`/pkg-config with version floors (Qt >= 6.8); those are
+  not commit-pinnable and are not what CPM or Conan would replace. The Windows
+  lane's `vcpkg.json` is present (T0091, done). Conan would replace two working
+  paths, not add a guarantee they lack.
 - **Qt.** A Conan Qt recipe either builds from source against this old Intel macOS, or needs a
   binary package that does not exist for Qt 6.12 there. Qt stays a system kit.
 - **projectM.** The pin lives in `cmake/FindProjectM4.cmake` and is a deliberate policy decision
@@ -81,13 +84,15 @@ close are already tracked:
   `ENABLE_SYSTEM_GLM ON`. Reverting is one line back to `4967dc003…` (v4.1.8), which built
   cleanly on this box. Verified: full `--fast --tests` build + `unit_tests` all suites 0 on the
   master pin.
-- **CPM source cache.** `CPM_SOURCE_CACHE` now defaults to `<source>/.cpm-cache` instead of
-  OFF (same owner decision, closing half of T0090): one checkout shared by every build profile
-  rather than a fresh clone per build directory. `CPM_SOURCE_CACHE` in the environment or the
-  cache overrides it.
-- **Reproducibility, the real benefit,** is a CI property here. The honest cheap fix is to pin
-  the CPM tags to commit SHAs and check in a manifest the release lane can read (T0090, T0091,
-  T0301 — SBOM), which is hours of work rather than a cross-platform packaging migration.
+- **CPM source cache.** `CPM_SOURCE_CACHE` defaults to `<source>/.cpm-cache`
+  instead of OFF (owner decision 2026-10-31, closing half of T0090): one
+  checkout shared by every build profile rather than a fresh clone per build
+  directory. `CPM_SOURCE_CACHE` in the environment or the cache overrides it.
+- **Reproducibility, the real benefit,** is a CI property here. The cheap fix is
+  already applied: CPM tags pinned to commit SHAs, a hash-verified CPM bootstrap
+  and a hash-pinned preset pack (T0089, T0389), and a `vcpkg.json` on Windows.
+  What remains is an SBOM / dependency-vulnerability lane (T0301), which is
+  independent of the package-manager choice rather than an argument for Conan.
 
 **Reopen this decision only if** the tree needs a dependency no supplier above can provide on
 two of the three platforms, or if CI reproducibility becomes a release blocker that pinning CPM

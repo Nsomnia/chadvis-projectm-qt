@@ -1,5 +1,44 @@
-T0090 — partial (still [ ])
-NOTE 2026-10-23 pinned fmt 11.0.2, spdlog v1.14.1, toml++ v3.4.0, readerwriterqueue v1.0.6 and projectM v4.1.6 to the commits their tags name (git ls-remote --tags, tag commit hashes recorded in cmake/Dependencies.cmake and cmake/FindProjectM4.cmake)
-NOTE 2026-10-23 no configure or build run: Qt is being moved from Homebrew to MacPorts, so a build dir would reconfigure against a half-migrated kit. A tag->commit swap is the same object graph, which is why this half could be done without a build; it is still unverified on this machine.
-OPEN readerwriterqueue has no system-first probe; CPM_SOURCE_CACHE defaults OFF, so projectM is re-cloned per fresh build dir
-REJECTED vcpkg manifest mode for now: a builtin-baseline older than the runner's vcpkg clone can fail at install time on the one lane that ships Windows binaries, and macOS/Linux keep system Qt + pkg-config. Reasoning in docs/dev/DEPENDENCIES.md
+2026-11-11T00:00:00Z  CHANGE  premise-stale-closed; documentation + backlog only (no build needed)
+T0090 "Nine of fifteen deps unpinned, two bypass system-first" is now CLOSED.
+
+Evidence from cmake/Dependencies.cmake (grep 2026-11-11):
+  - All four CPMAddPackage calls pin GIT_TAG to full 40-char commit SHAs:
+      fmt               0c9fce2ffefecfdce794e1859584e25877b7b592
+      spdlog            27cb4c76708608465c413f6d0e6b8d99a4d84302
+      tomlplusplus      30172438cee64926dc41fdd9c11fb3ba5b2ba9de
+      readerwriterqueue 8e7627d18c2108aca178888d88514179899a044f
+    None tracks a mutable tag. (The 2026-10-23 tag->commit swap below is now
+    also build-verified: the hash-pinned CPM bootstrap cold-configured with
+    EXIT 0 today, STATUS/T0089.log.)
+  - pffft, one of the two dependencies that bypassed the system-first
+    find_package-then-CPM-fallback policy, was removed 2026-10-04. Only
+    readerwriterqueue remains an unconditional CPMAddPackage; it is header-only
+    with no system package to prefer, so a system-first probe would be vacuous.
+  - The other historical OPEN item, "CPM_SOURCE_CACHE defaults OFF", is FIXED:
+    it now defaults to <source>/.cpm-cache, shared across all build profiles.
+  - The remaining "unpinned" inputs are host system packages (Qt6, OpenGL,
+    TagLib, glm, FFmpeg's five components, libavfilter, projectM) found by
+    find_package / pkg-config, with a 6.8 version floor on Qt. A system
+    package's version is whatever the host ships; it is not commit-pinnable and
+    is not something CPM or Conan would replace.
+
+So every actionable half of the task ("pin CPM tags", "stop bypassing
+system-first", "share the cache") is done. docs/dev/DEPENDENCIES.md's
+"Why not Conan" section still claimed nine unpinned deps and a missing
+vcpkg.json (T0091, long done); corrected in the same commit. Genuinely
+remaining reproducibility work is tracked separately: T0301 (SBOM /
+dependency-vulnerability lane), T0338 (Windows vcpkg port pinning).
+
+--- Historical notes (kept) ---
+NOTE 2026-10-23 pinned fmt 11.0.2, spdlog v1.14.1, toml++ v3.4.0,
+     readerwriterqueue v1.0.6 and projectM v4.1.6 to the commits their tags
+     name (git ls-remote --tags, tag commit hashes recorded in
+     cmake/Dependencies.cmake and cmake/FindProjectM4.cmake)
+NOTE 2026-10-23 no configure or build run: Qt is being moved from Homebrew to
+     MacPorts, so a build dir would reconfigure against a half-migrated kit.
+     A tag->commit swap is the same object graph; superseded by today's
+     cold-configure verification.
+REJECTED vcpkg manifest mode for now: a builtin-baseline older than the
+     runner's vcpkg clone can fail at install time on the one lane that ships
+     Windows binaries, and macOS/Linux keep system Qt + pkg-config. Reasoning
+     in docs/dev/DEPENDENCIES.md.
