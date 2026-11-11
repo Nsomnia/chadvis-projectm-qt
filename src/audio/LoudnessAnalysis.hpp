@@ -100,6 +100,29 @@
  * the only way a test can assert that gating *happened* rather than accidentally
  * arriving at the right number.
  *
+ * @section Momentary and short-term maxima (EBU Tech 3341)
+ * EBU R128 reports four numbers: integrated (I), momentary (M), short-term (S)
+ * and LRA. I and LRA are already here; M and S are the ungated *maxima* over the
+ * same 400 ms / 100 ms block grid I gates:
+ *
+ *   - M is the loudest single 400 ms block (`kBlockSeconds`).
+ *   - S is the loudest 3 s window (`kShortTermSeconds`), a sliding mean of 30
+ *     consecutive block mean-squares.
+ *
+ * Both are explicitly UNGATED. That is the whole point of reporting them next to
+ * I: gating is what makes I an average of the *programme*, and a peak-hold is
+ * what catches a single shout a gate would discard. Digital silence cannot drag
+ * a maximum down the way it drags `ungatedLufs` -- a silent block has z == 0 and
+ * is simply skipped, and any window containing silence is not the loudest one.
+ * R128 compliance uses "maximum momentary" / "maximum short-term", which is what
+ * these two fields are. A live meter that needs the full time series would
+ * consume the (private) block distribution directly rather than a static result.
+ *
+ * Surround weighting is deliberately absent and is NOT a gap to close here:
+ * `kMaxChannels` is 2, `AudioFrame` is stereo-only, and no producer in the tree
+ * can hand this analyser a 5.1 signal (see `LoudnessError::UnsupportedChannelCount`).
+ * BS.1770 Table 3's surround coefficients would be unreachable dead code.
+ *
  * @section True peak: 4x oversampled, and why not the sample peak
  * BS.1770-4 Annex 2 defines true peak as the maximum of the signal in the
  * *continuous* time domain and requires an over-sampling filter. This implements the
@@ -395,6 +418,19 @@ struct LoudnessAnalysis {
     /// right number.
     f64 ungatedLufs{0.0};
 
+    /// EBU Tech 3341 maximum momentary loudness: the loudest single 400 ms
+    /// block, UNGATED. A peak-hold, so programme silence cannot pull it down the
+    /// way it pulls down the ungated *mean*. On a steady signal M, S and the
+    /// gated integrated figure converge.
+    f64 maxMomentaryLufs{0.0};
+
+    /// EBU Tech 3341 maximum short-term loudness: the loudest 3 s sliding
+    /// window, UNGATED (`kShortTermSeconds / kStepSeconds` = 30 consecutive
+    /// 400 ms blocks on the 100 ms grid). Also a peak-hold, and never greater
+    /// than `maxMomentaryLufs`: a 3 s mean cannot exceed the single loudest
+    /// block inside it.
+    f64 maxShortTermLufs{0.0};
+
     /// Loudness range, EBU Tech 3342 s5: the 95th minus the 10th percentile of the
     /// absolutely-gated block loudness values. 0.0 for a steady signal.
     ///
@@ -448,11 +484,16 @@ public:
     static constexpr f64 kMaxSampleRate = 384000.0;
     static constexpr u32 kMaxChannels = 2;
 
-    /// BS.1770's measurement interval. Normative.
+    /// BS.1770's measurement interval. Normative. Also the EBU Tech 3341
+    /// momentary (M) window.
     static constexpr f64 kBlockSeconds = 0.400;
     /// Block stride. 75% overlap, which resolves transients a 400 ms stride steps
     /// straight over.
     static constexpr f64 kStepSeconds = 0.100;
+    /// EBU Tech 3341 short-term (S) measurement interval. Where M reuses the
+    /// normative 400 ms `kBlockSeconds`, S is a 3 s window. Both are reported as
+    /// ungated maxima; see `LoudnessAnalysis`.
+    static constexpr f64 kShortTermSeconds = 3.000;
     /// BS.1770 eq. (7): the absolute gate.
     static constexpr f64 kAbsoluteGateLufs = -70.0;
     /// BS.1770 eq. (6): the relative gate sits this far below the absolutely-gated

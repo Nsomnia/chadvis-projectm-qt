@@ -613,9 +613,20 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       an empty context that `av_hwdevice_ctx_init` cannot initialize. No behavior
       change; comment-only. STATUS/T0105.log.
 
-- [ ] T0106 Loudness: momentary/short-term unimplemented, surround weighting absent (`LoudnessAnalysis.hpp:452-465`) #risk-medium
+- [x] T0106 Loudness: momentary/short-term unimplemented, surround weighting absent (`LoudnessAnalysis.hpp`, `LoudnessAnalysis.cpp`, `tests/unit/audio/test_LoudnessAnalysis.cpp`) #risk-medium
       Integrated path verified correct (BS.1770-4). `kChannelWeight=1.0` wrong for 5.1 (should be ×1.41).
       M/S loudness doesn't exist — feature gap, not bug.
+      **DONE 2026-11-11:** `LoudnessAnalysis` now reports `maxMomentaryLufs` (loudest
+      ungated 400 ms block) and `maxShortTermLufs` (loudest ungated 3 s sliding window),
+      both EBU Tech 3341 peak-holds over the existing block grid, plus the
+      `kShortTermSeconds` constant and a file-level doc section. New test
+      `momentaryAndShortTermMaximaAreUngatedPeakHolds` pins them to the analytic
+      -19.993304 LUFS steady-tone oracle and proves (tone+silence) that they exceed the
+      ungated mean by the gating margin. Surround weighting is NOT a gap: `kMaxChannels`
+      is 2, `AudioFrame` is stereo-only, and no producer can feed 5.1 here, so Table 3
+      coefficients would be unreachable dead code — now documented in the header. Library
+      level only (the analyser has no production consumer yet), so no UI/CHANGELOG user
+      behaviour changes. VERIFY in STATUS/T0106.log.
 
 - [ ] T0107 `AV_VERSION_INT` untyped `int`, no `uint32_t` overload (`cmake/`, `src/`) #risk-medium
       Use `pkg_check_modules` at configure, extract `AV_VERSION_MAJOR`/`MINOR` at runtime. Never parse `av_version_info()`.

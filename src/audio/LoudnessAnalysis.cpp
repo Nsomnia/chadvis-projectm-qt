@@ -565,12 +565,47 @@ std::expected<LoudnessAnalysis, LoudnessError> LoudnessAnalyser::result() {
     // not the integrated figure.
     std::sort(absoluteLevels.begin(), absoluteLevels.end());
 
+    // EBU Tech 3341 momentary (M) and short-term (S) maxima, both UNGATED
+    // peak-holds over the same 400 ms / 100 ms block grid that I gates. M is the
+    // loudest single block; S is the loudest 3 s window (kShortTermSeconds /
+    // kStepSeconds = 30 consecutive block mean-squares). Digital silence has
+    // z == 0 and is skipped by the same `> 0` guard the ungated mean uses, and a
+    // window containing silence simply is not the loudest one -- which is why a
+    // maximum, unlike an average, is not dragged down by quiet passages. The
+    // success path guarantees at least one block above -70 LUFS, so both maxima
+    // are set to finite values by construction (no defensive fallback needed).
+    f64 maxMomentaryLufs = -std::numeric_limits<f64>::infinity();
+    f64 maxShortTermLufs = -std::numeric_limits<f64>::infinity();
+    const usize shortTermBlocks = static_cast<usize>(
+            LoudnessAnalyser::kShortTermSeconds / LoudnessAnalyser::kStepSeconds);
+    f64 shortTermWindowSum = 0.0;
+    for (usize j = 0; j < impl.blockMeanSquares.size(); ++j) {
+        const f64 meanSquare = impl.blockMeanSquares[j];
+        if (meanSquare > 0.0) {
+            maxMomentaryLufs = std::max(maxMomentaryLufs, blockLoudness(meanSquare));
+        }
+        // Sliding sum of the last `shortTermBlocks` mean-squares. Subtract the
+        // block leaving the window once it is full; before that the window ramps
+        // in from the start of the signal (j+1 blocks).
+        shortTermWindowSum += meanSquare;
+        if (j >= shortTermBlocks) {
+            shortTermWindowSum -= impl.blockMeanSquares[j - shortTermBlocks];
+        }
+        const usize windowLength = std::min(j + 1, shortTermBlocks);
+        const f64 windowMean = shortTermWindowSum / static_cast<f64>(windowLength);
+        if (windowMean > 0.0) {
+            maxShortTermLufs = std::max(maxShortTermLufs, blockLoudness(windowMean));
+        }
+    }
+
     LoudnessAnalysis analysis;
     analysis.integratedLufs =
             blockLoudness(gatedTotal / static_cast<f64>(gatedCount));
     analysis.ungatedLufs =
             ungatedCount > 0 ? blockLoudness(ungatedTotal / static_cast<f64>(ungatedCount))
                              : 0.0;
+    analysis.maxMomentaryLufs = maxMomentaryLufs;
+    analysis.maxShortTermLufs = maxShortTermLufs;
     analysis.loudnessRangeLowLufs = percentile(absoluteLevels, 0.10);
     analysis.loudnessRangeHighLufs = percentile(absoluteLevels, 0.95);
     analysis.loudnessRangeLu =

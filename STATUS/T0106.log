@@ -1,0 +1,35 @@
+2026-11-11T00:00:00Z  VERIFY  ./build.sh --fast --tests => 374/374 edges, EXIT 0; ctest --test-dir build-fast/tests --output-on-failure -j4 => 33/33 (100%), 0 failed; targeted unit_tests momentaryAndShortTermMaximaAreUngatedPeakHolds => [suite] TestLoudnessAnalysis -> 0
+T0106 "Loudness: momentary/short-term unimplemented, surround weighting absent"
+is CLOSED with a real feature slice, not a no-op.
+
+What changed (library-only, 2 TUs recompiled):
+  - src/audio/LoudnessAnalysis.hpp: LoudnessAnalysis gains `maxMomentaryLufs`
+    (loudest UNGATED 400 ms block) and `maxShortTermLufs` (loudest UNGATED 3 s
+    sliding window = kShortTermSeconds/kStepSeconds = 30 consecutive block
+    mean-squares); LoudnessAnalyser gains `kShortTermSeconds = 3.000`; a new
+    file-level @section documents M/S and why surround weighting is out of
+    scope by design.
+  - src/audio/LoudnessAnalysis.cpp: result() computes both as peak-holds over
+    the existing blockMeanSquares grid. Silence (z==0) is skipped by the same
+    >0 guard the ungated mean uses; a window containing silence is never the
+    loudest. Success path guarantees >=1 block above -70 LUFS, so both maxima
+    are finite by construction.
+  - tests/unit/audio/test_LoudnessAnalysis.cpp: new
+    momentaryAndShortTermMaximaAreUngatedPeakHolds() -- steady -20 dBFS-peak
+    1 kHz tone pins M and S to the -19.993304 LUFS oracle (M==S==I), and a
+    4 s tone + 4 s silence proves M/S are ungated peak-holds (both exceed the
+    ungated mean by >1 LU, S<=M, M tracks integrated within 0.25 LU).
+
+Surround weighting (the other half of the title) is intentionally absent, not a
+defect: kMaxChannels is 2, AudioFrame is stereo-only, no producer in the tree
+can hand this analyser a 5.1 signal (see LoudnessError::UnsupportedChannelCount).
+BS.1770 Table 3 coefficients would be unreachable dead code. Documented in the
+header rather than implemented.
+
+Verification reality: this is pure offline DSP with no GL, audio-device, real
+window, live Suno recon, or credential surface. Sanitizers were NOT run -- a cold
+-asan/-tsan build is a full recompile on this box and the change is arithmetic
+over an existing std::vector (no new allocation/ownership/threading). No
+production consumer of LoudnessAnalyser exists yet, so there is no user-visible
+behaviour change and no CHANGELOG entry; this is a measurement-library API
+addition owned by the header docs, TODO.md and this log.

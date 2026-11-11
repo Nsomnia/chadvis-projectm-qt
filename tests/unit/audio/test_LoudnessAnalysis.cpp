@@ -393,6 +393,62 @@ private slots:
                                     .arg(withSilence.loudnessRangeLu, 0, 'f', 6)));
     }
 
+    // EBU Tech 3341 M/S maxima. Two cases with disjoint jobs: a steady tone
+    // (M, S and the gated I all converge to the analytic K-weighted figure) and
+    // a tone followed by silence (M/S are ungated peak-holds, so they stay at
+    // the loud part while the ungated *mean* is averaged down).
+    void momentaryAndShortTermMaximaAreUngatedPeakHolds() {
+        // (1) Steady tone: every 400 ms block spans exactly 400 periods of a
+        // 1 kHz sine, so all blocks carry the same energy. M (loudest single
+        // block), S (loudest 3 s window) and I (gated mean) must all equal the
+        // pinned -19.993304 LUFS within the file's noise tolerance.
+        const std::vector<f32> steadyMono = sineFrames(kMinus20DbfsPeakAmplitude, 4.0);
+        const LoudnessAnalysis steady = measure(interleave({steadyMono, steadyMono}), 2);
+        QVERIFY2(std::abs(steady.maxMomentaryLufs - kExpectedMinus20Lufs) < kLufsTolerance,
+                 qPrintable(QString("steady tone M read %1 LUFS, expected %2")
+                                    .arg(steady.maxMomentaryLufs, 0, 'f', 9)
+                                    .arg(kExpectedMinus20Lufs, 0, 'f', 9)));
+        QVERIFY2(std::abs(steady.maxShortTermLufs - kExpectedMinus20Lufs) < kLufsTolerance,
+                 qPrintable(QString("steady tone S read %1 LUFS, expected %2")
+                                    .arg(steady.maxShortTermLufs, 0, 'f', 9)
+                                    .arg(kExpectedMinus20Lufs, 0, 'f', 9)));
+        QVERIFY2(std::abs(steady.maxMomentaryLufs - steady.integratedLufs) < kLufsTolerance,
+                 "M and I must converge on a steady signal");
+
+        // (2) 4 s of tone then 4 s of digital silence, concatenated in time and
+        // duplicated to both channels (the interleave trap documented in the
+        // gating test). The ungated mean is pulled down by the quiet decay-tail
+        // blocks, but a maximum is not: M stays at the loudest tone block and S
+        // at the loudest fully-in-tone 3 s window, both above the ungated mean.
+        const std::vector<f32> toneFrames = sineFrames(0.5, 4.0);
+        std::vector<f32> toneThenSilenceMono(toneFrames.size() * 2, 0.0f);
+        std::copy(toneFrames.begin(), toneFrames.end(), toneThenSilenceMono.begin());
+        const LoudnessAnalysis dynamic =
+                measure(interleave({toneThenSilenceMono, toneThenSilenceMono}), 2);
+
+        QVERIFY2(std::isfinite(dynamic.maxMomentaryLufs) &&
+                         std::isfinite(dynamic.maxShortTermLufs),
+                 "M/S must be finite on a signal with a valid integrated figure");
+        // The discriminating assertion: an ungated peak-hold exceeds the ungated
+        // *average* by the gating margin (~1.46 LU here). A gated or averaged
+        // implementation would land at or below the mean and fail this.
+        QVERIFY2(dynamic.maxMomentaryLufs > dynamic.ungatedLufs + 1.0,
+                 qPrintable(QString("M %1 did not exceed ungated mean %2")
+                                    .arg(dynamic.maxMomentaryLufs, 0, 'f', 6)
+                                    .arg(dynamic.ungatedLufs, 0, 'f', 6)));
+        QVERIFY2(dynamic.maxShortTermLufs > dynamic.ungatedLufs + 1.0,
+                 qPrintable(QString("S %1 did not exceed ungated mean %2")
+                                    .arg(dynamic.maxShortTermLufs, 0, 'f', 6)
+                                    .arg(dynamic.ungatedLufs, 0, 'f', 6)));
+        // A 3 s mean cannot exceed the single loudest 400 ms block inside it.
+        QVERIFY2(dynamic.maxShortTermLufs <= dynamic.maxMomentaryLufs + kLufsTolerance,
+                 "short-term mean exceeded the momentary peak");
+        // Both maxima describe the loud tone portion, so they sit near the gated
+        // integrated figure (within the 0.25 LU the filter decay tail allows).
+        QVERIFY2(std::abs(dynamic.maxMomentaryLufs - dynamic.integratedLufs) < 0.25,
+                 "M should track the integrated tone loudness, not the quiet tail");
+    }
+
     // Zero decibels must be a bitwise no-op, and a real gain must produce exactly the
     // expected samples. QCOMPARE on floats uses qFuzzyCompare and would accept a
     // 1-ULP difference, which is precisely the failure this codebase has been bitten
