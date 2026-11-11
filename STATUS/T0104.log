@@ -1,0 +1,17 @@
+2026-11-11T00:00:00Z  CHANGE  premise-stale-closed; documentation + backlog only (no build needed)
+T0104 "FFmpeg: swr_alloc_set_opts -> swr_alloc_set_opts2; av_init_packet ->
+av_packet_alloc" is CLOSED as already-done, matching T0101's "already migrated"
+precedent. No source change was made.
+
+Evidence (grep over src/, tests/, cmake/ on 2026-11-11):
+  - `swr_alloc_set_opts` (the legacy, deprecated form) : ZERO occurrences.
+  - `av_init_packet` (the deprecated stack-packet init) : ZERO occurrences.
+  - `swr_alloc_set_opts2` : AudioFileDecoder.cpp:190, VideoRecorderFFmpeg.cpp:1163.
+  - `av_packet_alloc` : AudioFileDecoder.cpp:523, VideoRecorderFFmpeg.cpp:328
+    and :1439, SubtitleBurnIn.cpp:494 (all freed through AVPacketDeleter /
+    AVPacketPtr RAII, see FFmpegUtils.hpp).
+
+Both migrations described by the item are already in the tree; the modern APIs
+are the only ones used. Verification here is the grep itself, not a build -- a
+docs-only closure changes no translation unit. No user-visible behaviour change,
+so no CHANGELOG entry.

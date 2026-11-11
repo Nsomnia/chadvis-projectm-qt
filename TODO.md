@@ -601,7 +601,15 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 - [ ] T0159 **`retireSlot` holds `JobSlot&` across call that re-enters `jobRunner`** (`RenderExecutor.cpp:844-854`) #risk-medium
       `slots_.push_back` may realloc, stale `slot`/`index`. Fix: erase slot before reporting failure.
 
-- [ ] T0104 FFmpeg: `swr_alloc_set_opts` → `swr_alloc_set_opts2`; `av_init_packet` → `av_packet_alloc` (`src/recorder/`) #risk-high
+- [x] T0104 FFmpeg: `swr_alloc_set_opts` → `swr_alloc_set_opts2`; `av_init_packet` → `av_packet_alloc` (`src/recorder/`) #risk-high
+      **CLOSED 2026-11-11 (premise stale, already migrated):** whole-tree grep
+      (`src/`, `tests/`, `cmake/`) finds zero `swr_alloc_set_opts` (legacy) and zero
+      `av_init_packet`. `swr_alloc_set_opts2` is in use at `AudioFileDecoder.cpp:190`
+      and `VideoRecorderFFmpeg.cpp:1163`; `av_packet_alloc` at `AudioFileDecoder.cpp:523`,
+      `VideoRecorderFFmpeg.cpp:328,1439` and `SubtitleBurnIn.cpp:494`. Both migrations
+      already happened (cf. T0101, closed on the same basis 2026-11, and the FFmpeg 9
+      `AVFrame::channels` -> `ch_layout` work). No code change; documentation + backlog
+      only. CHANGE in STATUS/T0104.log.
 
 - [x] T0105 **Do not** "migrate" `av_hwdevice_ctx_create` (`VideoRecorderFFmpeg.cpp`) #risk-high
       Current, not deprecated. `av_hwdevice_ctx_alloc` is NOT a replacement — doesn't open device.
