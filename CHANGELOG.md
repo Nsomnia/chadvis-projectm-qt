@@ -8,6 +8,13 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **The `placebo` encoder preset is now selectable, and presets cannot drift between C++ and the UI.**
+  The four hand-written preset lists (name, config parser, render-job parser, Settings combo)
+  are replaced by one canonical table in `EncoderSettings.hpp`; the Settings combo previously
+  omitted `placebo` even though C++ accepted it. A round-trip test pins all ten values and a
+  drift guard reads the real QML model, so a future list edit that drops or reorders a slug
+  fails the build. (T0124)
+
 - **A software recording after a hardware-accelerated one no longer inherits dead HW state.**
   `cleanup()` now releases the hardware frame, frames context and device context (in
   dependency order) on the reusable encoder object. Previously they survived teardown,

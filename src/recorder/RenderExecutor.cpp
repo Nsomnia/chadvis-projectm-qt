@@ -81,19 +81,6 @@ constexpr i64 kMicrosecondsPerSecond = 1'000'000;
     return Container::MP4;
 }
 
-[[nodiscard]] EncoderPreset encoderPresetFromSlug(std::string_view slug) noexcept {
-    if (slug == "ultrafast") return EncoderPreset::Ultrafast;
-    if (slug == "superfast") return EncoderPreset::Superfast;
-    if (slug == "veryfast") return EncoderPreset::Veryfast;
-    if (slug == "faster") return EncoderPreset::Faster;
-    if (slug == "fast") return EncoderPreset::Fast;
-    if (slug == "slow") return EncoderPreset::Slow;
-    if (slug == "slower") return EncoderPreset::Slower;
-    if (slug == "veryslow") return EncoderPreset::Veryslow;
-    if (slug == "placebo") return EncoderPreset::Placebo;
-    return EncoderPreset::Medium;
-}
-
 [[nodiscard]] AudioCodec audioCodecFromSlug(std::string_view slug) noexcept {
     if (slug == "opus") return AudioCodec::Opus;
     if (slug == "flac") return AudioCodec::FLAC;
@@ -117,7 +104,7 @@ constexpr i64 kMicrosecondsPerSecond = 1'000'000;
     s.video.height = job.height;
     s.video.fps = job.fps;
     s.video.crf = job.crf;
-    s.video.preset = encoderPresetFromSlug(job.encoderPreset);
+    s.video.preset = vc::encoderPresetFromSlug(job.encoderPreset);
     s.video.pixelFormat = pixelFormatFromSlug(job.pixelFormat);
     s.video.gopSize = job.gopSize;
     s.video.twoPass = job.twoPass;

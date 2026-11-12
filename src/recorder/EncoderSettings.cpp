@@ -51,19 +51,6 @@ AudioCodec parseAudioCodec(std::string_view codec) {
     return AudioCodec::AAC;
 }
 
-EncoderPreset parseEncoderPreset(std::string_view preset) {
-    if (preset == "ultrafast") return EncoderPreset::Ultrafast;
-    if (preset == "superfast") return EncoderPreset::Superfast;
-    if (preset == "veryfast") return EncoderPreset::Veryfast;
-    if (preset == "faster") return EncoderPreset::Faster;
-    if (preset == "fast") return EncoderPreset::Fast;
-    if (preset == "slow") return EncoderPreset::Slow;
-    if (preset == "slower") return EncoderPreset::Slower;
-    if (preset == "veryslow") return EncoderPreset::Veryslow;
-    if (preset == "placebo") return EncoderPreset::Placebo;
-    return EncoderPreset::Medium;
-}
-
 std::string formatDefaultFilename(std::string pattern) {
     if (pattern.empty())
         pattern = "chadvis-projectm-qt_{date}_{time}";
@@ -150,29 +137,7 @@ bool VideoSettings::isHardwareAccelerated() const {
 }
 
 std::string VideoSettings::presetName() const {
-    switch (preset) {
-    case EncoderPreset::Ultrafast:
-        return "ultrafast";
-    case EncoderPreset::Superfast:
-        return "superfast";
-    case EncoderPreset::Veryfast:
-        return "veryfast";
-    case EncoderPreset::Faster:
-        return "faster";
-    case EncoderPreset::Fast:
-        return "fast";
-    case EncoderPreset::Medium:
-        return "medium";
-    case EncoderPreset::Slow:
-        return "slow";
-    case EncoderPreset::Slower:
-        return "slower";
-    case EncoderPreset::Veryslow:
-        return "veryslow";
-    case EncoderPreset::Placebo:
-        return "placebo";
-    }
-    return "medium";
+    return std::string(encoderPresetSlug(preset));
 }
 
 std::string VideoSettings::pixelFormatName() const {
@@ -295,7 +260,7 @@ EncoderSettings EncoderSettings::fromConfig() {
     settings.video.height = recCfg.video.height;
     settings.video.fps = recCfg.video.fps;
     settings.video.crf = recCfg.video.crf;
-    settings.video.preset = parseEncoderPreset(recCfg.video.preset);
+    settings.video.preset = encoderPresetFromSlug(recCfg.video.preset);
     // The last two fields ConfigParsers used to drop on every save, because they
     // were in no field table and serialize() rebuilds the whole document from
     // structs. Persisting them is only half a fix: VideoRecorderFFmpeg reads

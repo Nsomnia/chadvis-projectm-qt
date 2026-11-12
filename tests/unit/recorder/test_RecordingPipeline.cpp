@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -1859,6 +1860,82 @@ private slots:
         encoder.cleanup();
         encoder.cleanup();
         QVERIFY(!encoder.hardwareStateHeldForTesting());
+    }
+
+    void encoderPresetSlugsRoundTripAndAreComplete() {
+        // T0124. One canonical table drives presetName(), config parsing,
+        // render-job parsing and the Settings QML model. Four hand-written
+        // lists used to disagree; `placebo` was accepted by C++ but absent
+        // from the UI. Pin the enum<->slug bijection here so it cannot drift.
+        constexpr std::array<EncoderPreset, 10> all{
+            EncoderPreset::Ultrafast, EncoderPreset::Superfast,
+            EncoderPreset::Veryfast,  EncoderPreset::Faster,
+            EncoderPreset::Fast,      EncoderPreset::Medium,
+            EncoderPreset::Slow,      EncoderPreset::Slower,
+            EncoderPreset::Veryslow,  EncoderPreset::Placebo};
+        static_assert(all.size() == kEncoderPresetSlugs.size());
+
+        for (usize i = 0; i < all.size(); ++i) {
+            const auto slug = encoderPresetSlug(all[i]);
+            QVERIFY2(!slug.empty(), "a preset has no slug");
+            QCOMPARE(slug, kEncoderPresetSlugs[i]);
+            QCOMPARE(encoderPresetFromSlug(slug), all[i]);
+            QCOMPARE(std::string_view(slug),
+                     std::string_view(kEncoderPresetSlugs[i]));
+        }
+
+        // Every slug is distinct, so the inverse cannot be ambiguous.
+        for (usize i = 0; i < kEncoderPresetSlugs.size(); ++i) {
+            for (usize j = i + 1; j < kEncoderPresetSlugs.size(); ++j) {
+                QVERIFY(kEncoderPresetSlugs[i] != kEncoderPresetSlugs[j]);
+            }
+        }
+
+        // Unknown and empty inputs keep the historical Medium default.
+        QCOMPARE(encoderPresetFromSlug(""), EncoderPreset::Medium);
+        QCOMPARE(encoderPresetFromSlug("nonsense"), EncoderPreset::Medium);
+        QCOMPARE(encoderPresetFromSlug("ULTRAFAST"), EncoderPreset::Medium);
+
+        // presetName() goes through the same table.
+        VideoSettings v;
+        v.preset = EncoderPreset::Placebo;
+        QCOMPARE(v.presetName(), std::string("placebo"));
+    }
+
+    void qmlPresetModelMatchesTheCanonicalSlugs() {
+        // T0124 drift guard: the Settings combo must offer exactly the presets
+        // C++ accepts. Read the real QML file rather than a copy so a future
+        // edit that drops or reorders a slug fails here.
+#ifdef CHADVIS_SOURCE_DIR
+        const fs::path qml = fs::path(CHADVIS_SOURCE_DIR) / "src" / "qml" /
+                             "panels" / "settings" / "RecordingSettings.qml";
+        std::ifstream in(qml);
+        QVERIFY2(in.good(), ("cannot read " + qml.string()).c_str());
+        const std::string text((std::istreambuf_iterator<char>(in)),
+                               std::istreambuf_iterator<char>());
+        const usize modelAt = text.find("model: [\"ultrafast\"");
+        QVERIFY2(modelAt != std::string::npos,
+                 "the encoder-preset ComboBox model was not found");
+        const usize closeAt = text.find(']', modelAt);
+        QVERIFY(closeAt != std::string::npos);
+        const std::string model = text.substr(modelAt, closeAt - modelAt);
+
+        usize count = 0;
+        for (const auto slug : kEncoderPresetSlugs) {
+            const std::string quoted = "\"" + std::string(slug) + "\"";
+            QVERIFY2(model.find(quoted) != std::string::npos,
+                     ("the QML model is missing " + quoted).c_str());
+            ++count;
+        }
+        // No extra quoted entries beyond the canonical set.
+        usize quotes = 0;
+        for (const char c : model) {
+            if (c == '"') ++quotes;
+        }
+        QCOMPARE(quotes, count * 2);
+#else
+        QSKIP("CHADVIS_SOURCE_DIR not defined for the unit_tests target");
+#endif
     }
 
     void aSourceResizeRebuildsTheScaler() {

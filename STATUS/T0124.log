@@ -1,0 +1,52 @@
+2026-11-12T00:00:00Z  VERIFY  build=378/378 lint-qml=clean(1374 baseline) unit_tests="TestRecorder -> 0, status 0" ctest=33/33 audit=OK guards=OK
+T0124 "Wire up 8 dead encoder presets": premise re-audited, real gap fixed.
+
+Premise audit (grep evidence):
+  - All ten EncoderPreset values were ALREADY reachable in C++:
+    VideoSettings::presetName() had all ten cases; parseEncoderPreset() in
+    EncoderSettings.cpp and encoderPresetFromSlug() in RenderExecutor.cpp each
+    accepted all ten (medium as the unknown/default). So "8 dead presets" was
+    stale. The QML model, however, listed only NINE -- placebo was absent.
+  - The TODO body ("9:16/4:5/1:1 interesting additions. Risk: projectM aspect
+    correction never exercised at 9:16") is about ASPECT RATIOS, not encoder
+    presets. It belongs to no matching TODO item and is recorded in TODO.md as
+    a discovery needing an owner/product decision; no speculative code.
+
+Real defect fixed: the Settings ComboBox could not select `placebo`, and the
+slug<->enum vocabulary existed as four independent hand-written lists with no
+drift guard.
+
+Change:
+  - src/recorder/EncoderSettings.hpp: added
+      inline constexpr std::array<std::string_view,10> kEncoderPresetSlugs
+      encoderPresetSlug(EncoderPreset) / encoderPresetFromSlug(string_view)
+    Unknown or empty slug -> EncoderPreset::Medium (historical default of every
+    parser replaced). Both constexpr, header-only, no new TU or link edge.
+  - EncoderSettings.cpp: removed the anonymous-namespace parseEncoderPreset;
+    presetName() now returns encoderPresetSlug(preset); fromConfig() uses
+    encoderPresetFromSlug(recCfg.video.preset).
+  - RenderExecutor.cpp: removed its duplicate encoderPresetFromSlug; the job
+    parser calls vc::encoderPresetFromSlug(job.encoderPreset).
+  - src/qml/panels/settings/RecordingSettings.qml: added "placebo" to model.
+  - tests/unit/recorder/test_RecordingPipeline.cpp: two new slots,
+      encoderPresetSlugsRoundTripAndAreComplete
+        - static_assert table size == enum count
+        - for all 10: slug non-empty, equals table[i], inverse round-trips,
+        - all slugs distinct, "" / "nonsense" / "ULTRAFAST" -> Medium,
+        - presetName(Placebo) == "placebo"
+      qmlPresetModelMatchesTheCanonicalSlugs
+        - reads the REAL RecordingSettings.qml via CHADVIS_SOURCE_DIR,
+        - locates the `model: ["ultrafast"...]` array, asserts every canonical
+          slug appears and that there are no extra quoted entries.
+
+Verification: ./build.sh --fast --tests 378/378 EXIT 0 (incremental, ~7 TUs
+recompiled for the header, ccache warm, no full rebuild); ./scripts/lint-qml.sh
+EXIT 0 with the 1374-finding baseline unchanged; both new functions confirmed
+in the generated test_RecordingPipeline.moc; ./unit/unit_tests status 0 with
+TestRecorder -> 0 and 0 FAIL; ctest --test-dir build-fast/tests -j4 33/33
+(100%); task.sh audit OK; check-endpoints/check-workflows/check-safe-tests all
+EXIT 0. Real-window selection of the placebo preset was NOT exercised (headless
+box); the QML drift guard verifies the model text, not a click.
+
+Docs: CHANGELOG.md [Unreleased] ### Fixed; TODO.md status + discovery note;
+this STATUS log.

@@ -73,7 +73,7 @@ ColumnLayout {
         Text { text: "Encoder Preset"; color: Theme.textSecondary; font: Theme.fontCaption; Layout.fillWidth: true }
         AppComboBox {
             Accessible.name: "Encoder preset"
-            model: ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]
+            model: ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow", "placebo"]
             currentIndex: model.indexOf(SettingsBridge.recorderPreset)
             onActivated: SettingsBridge.recorderPreset = currentText
         }

@@ -4,6 +4,7 @@
 
 #include "util/Types.hpp"
 #include "util/Result.hpp"
+#include <array>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -55,6 +56,30 @@ enum class EncoderPreset {
     Veryslow,
     Placebo     // For when you have a week to encode
 };
+
+/// The canonical encoder-preset slugs, in EncoderPreset declaration order.
+/// Single source of truth for presetName(), config parsing, render-job parsing
+/// and the Settings QML model -- the four used to keep separate hand-written
+/// lists (T0124), which is how `placebo` ended up missing from the UI while
+/// C++ accepted it. Index with static_cast<usize>(preset).
+inline constexpr std::array<std::string_view, 10> kEncoderPresetSlugs = {
+    "ultrafast", "superfast", "veryfast", "faster", "fast",
+    "medium",    "slow",      "slower",   "veryslow", "placebo"};
+
+[[nodiscard]] constexpr std::string_view encoderPresetSlug(EncoderPreset preset) noexcept {
+    const auto i = static_cast<usize>(preset);
+    return i < kEncoderPresetSlugs.size() ? kEncoderPresetSlugs[i]
+                                          : kEncoderPresetSlugs[static_cast<usize>(EncoderPreset::Medium)];
+}
+
+/// Unknown or empty slugs fall back to Medium, matching the historical default
+/// of every parser this replaces.
+[[nodiscard]] constexpr EncoderPreset encoderPresetFromSlug(std::string_view slug) noexcept {
+    for (usize i = 0; i < kEncoderPresetSlugs.size(); ++i) {
+        if (slug == kEncoderPresetSlugs[i]) return static_cast<EncoderPreset>(i);
+    }
+    return EncoderPreset::Medium;
+}
 
 // Pixel format
 enum class PixelFormat {

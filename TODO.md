@@ -1039,8 +1039,32 @@ Q_INVOKABLE audit, T0406 path-helper dedupe; T0358/T0359 QML lanes still need a 
 - [ ] T0123 Cheap proof render before committing to encode (`EncoderSettings.cpp`) #feature
       6-second, quarter-res, no-audio proof. Correct answer to "watch the render live".
 
-- [ ] T0124 Wire up 8 dead encoder presets (`EncoderSettings.cpp`) #feature #cleanup
+- [x] T0124 Wire up 8 dead encoder presets (`EncoderSettings.cpp`) #feature #cleanup
       9:16/4:5/1:1 interesting additions. Risk: projectM aspect correction never exercised at 9:16.
+      **DONE 2026-11-12.** Both halves of the premise were stale, but the audit
+      found a real gap. (1) "8 dead presets": all ten `EncoderPreset` values were
+      already reachable in C++ — `presetName()` covered all ten, and both the
+      config parser and the render-job parser accepted all ten. (2) The body
+      text (9:16/4:5/1:1, projectM aspect correction) belongs to an aspect-ratio
+      task, not presets; left as a separate discovery, see below. The REAL defect:
+      the Settings ComboBox model listed only nine slugs, omitting `placebo`, so
+      the slowest preset was unreachable from the UI despite C++ accepting it;
+      and the slug<->enum mapping was hand-written in THREE places (plus the QML
+      model as a fourth), with no guard against drift.
+      Fix: one canonical `kEncoderPresetSlugs` table + `encoderPresetSlug()` /
+      `encoderPresetFromSlug()` in `EncoderSettings.hpp` now drives
+      `presetName()`, `fromConfig()`, `RenderExecutor`'s job parser, and (via a
+      drift test) the QML model. Added `placebo` to `RecordingSettings.qml`.
+      Two tests: `encoderPresetSlugsRoundTripAndAreComplete` (bijection over all
+      ten, uniqueness, unknown/empty -> Medium fallback) and
+      `qmlPresetModelMatchesTheCanonicalSlugs` (reads the real QML file via
+      `CHADVIS_SOURCE_DIR` and asserts exactly the canonical set). Verified:
+      378/378 build, `lint-qml.sh` clean (1374 baseline unchanged), `TestRecorder
+      -> 0`, `unit_tests` status 0, ctest 33/33, audit OK. STATUS/T0124.log.
+      **Discovered (not yet filed):** T0124's body describes aspect-ratio presets
+      (9:16/4:5/1:1) and a claim that projectM aspect correction is never
+      exercised at 9:16 — a distinct concern from encoder presets, with no
+      matching TODO item. Needs an owner/product decision before any code.
 
 - [ ] T0125 Poster-frame export (`RenderTarget.cpp`, `FrameGrabber.cpp`) #feature
       `RenderTarget` reads pixels from framebuffer 0. `FrameGrabber::flipImage` is row-flip for `QImage`.
