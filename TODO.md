@@ -595,9 +595,28 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       tests" half -- QML has no test harness and needs a real window/designer, so it
       is not automatable headlessly (see P2c session checkpoint).
 
-- [ ] T0102 FFmpeg: `AVFormatContextDeleter` crash fixed; two residuals (`FFmpegUtils.hpp`) #risk-medium
+- [x] T0102 FFmpeg: `AVFormatContextDeleter` crash fixed; two residuals (`FFmpegUtils.hpp`) #risk-medium
       (a) `hwFramesCtx_`/`hwDeviceCtx_` survive `cleanup()`, never freed. (b) Return `AVERROR_EXIT` from
       `read_packet` before joining worker thread.
+      **DONE 2026-11-12.** (a) is a real correctness bug, not just a leak: the
+      encoder object is reusable, and a later SOFTWARE take skips
+      `initHWDevice()`/`initHWFrames()`, so a surviving `hwFramesCtx_` made
+      `initVideoStream()` (its `if (hwFramesCtx_)` branch) and `encodeVideo()`
+      (`hwFramesCtx_ && hwFrame_`) take the HW transfer path with a device and
+      dimensions from the previous recording. `cleanup()` now releases
+      `hwFrame_` -> `hwFramesCtx_` -> `hwDeviceCtx_` in dependency order and
+      resets `swPixelFormat_`; `videoCodecCtx_.reset()` above already drops the
+      codec's own `hw_frames_ctx` ref. Two device-independent test seams
+      (`installHardwareStateForTesting`, `hardwareStateHeldForTesting`) let
+      `hardwareStateIsNotStickyAcrossRecordings` exercise the REAL `cleanup()`
+      headlessly — no GPU needed. (b) is a **stale premise**: whole-tree grep
+      found no `read_packet`, `avio_alloc_context`, or `AVERROR_EXIT` anywhere;
+      `VideoRecorderFFmpeg.cpp:142` documents that no custom AVIO is used (the
+      muxer writes discrete packets, so the demuxer read-callback idiom does not
+      apply). Nothing to implement. Rule recorded in `docs/dev/INVARIANTS.md`.
+      Verified: `./build.sh --fast --tests` 375/375, `TestRecorder -> 0` (0 FAIL,
+      new test moc-registered), `unit_tests` status 0, ctest 33/33, audit OK.
+      STATUS/T0102.log.
 
 - [ ] T0156 **Encoder teardown blocks GUI thread** (`VideoRecorderCore.cpp:168`, `RecordingBridge.cpp:323`, `RenderExecutor.cpp:802-807`) #risk-high
       `stop` → `flush()` + `cleanup()` blocks on encoder drain. Fix: finalise on worker, post completion.

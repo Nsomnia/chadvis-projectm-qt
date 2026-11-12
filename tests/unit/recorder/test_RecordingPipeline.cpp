@@ -1835,6 +1835,32 @@ private slots:
         }
     }
 
+    void hardwareStateIsNotStickyAcrossRecordings() {
+        // T0102. The encoder object is reusable, so a HW take must not leave its
+        // device/frames/frame contexts behind for the next -- possibly software
+        // -- take: init() skips initHWDevice()/initHWFrames() when HW is off, so
+        // stale hwFramesCtx_ made initVideoStream() and encodeVideo() take the
+        // HW path with a dead device. Stand-ins need no GPU; cleanup() is the
+        // real terminal path (the destructor calls it too).
+        VideoRecorderFFmpeg encoder;
+        QVERIFY(!encoder.hardwareStateHeldForTesting());
+
+        encoder.installHardwareStateForTesting();
+        QVERIFY2(encoder.hardwareStateHeldForTesting(),
+                 "the test seam did not install the hardware state");
+
+        encoder.cleanup();
+        QVERIFY2(!encoder.hardwareStateHeldForTesting(),
+                 "cleanup() left HW contexts alive for the next recording");
+
+        // cleanup() is also the guaranteed-terminal path on a failed init and
+        // at destruction: calling it twice must be harmless.
+        encoder.installHardwareStateForTesting();
+        encoder.cleanup();
+        encoder.cleanup();
+        QVERIFY(!encoder.hardwareStateHeldForTesting());
+    }
+
     void aSourceResizeRebuildsTheScaler() {
         // The scaler used to be built once from the first frame's dimensions and
         // reused for the rest of the recording. A window dragged to another

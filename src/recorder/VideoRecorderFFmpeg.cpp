@@ -357,6 +357,21 @@ void VideoRecorderFFmpeg::cleanup() {
     videoCodecCtx_.reset();
     audioCodecCtx_.reset();
 
+    // Hardware state belongs to the recording that just ended, not to the
+    // reusable encoder object (T0102). Leaving these set is more than a leaked
+    // device reference: a later SOFTWARE recording on the same object never
+    // calls initHWDevice()/initHWFrames(), so initVideoStream() would still see
+    // hwFramesCtx_ at its `if (hwFramesCtx_)` branch and encodeVideo() would
+    // still see `hwFramesCtx_ && hwFrame_` -- taking the HW transfer path with
+    // a frames context whose device and dimensions belong to the old take.
+    // videoCodecCtx_ (reset above) already dropped its own hw_frames_ctx ref.
+    // Free in dependency order: the frame references the frames pool, the
+    // frames context references the device.
+    hwFrame_.reset();
+    hwFramesCtx_.reset();
+    hwDeviceCtx_.reset();
+    swPixelFormat_ = AV_PIX_FMT_YUV420P;
+
     // Captured before anything resets it, and used for both writes below. "The
     // muxer got a header" is the one fact that decides whether either is legal.
     const bool muxerIsWritable = headerWritten_ && formatCtx_ && formatCtx_->pb;

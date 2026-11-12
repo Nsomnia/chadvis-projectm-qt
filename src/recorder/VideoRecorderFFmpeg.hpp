@@ -246,6 +246,25 @@ public:
     injectedResampleFailures_.store(frames, std::memory_order_release);
   }
 
+  /**
+   * @brief Test seam (T0102): fill the three hardware slots with device-
+   * independent stand-ins so cleanup()'s release path can be exercised without
+   * a GPU. av_buffer_alloc()/av_frame_alloc() need no device, and the same
+   * deleters free them, so what runs is the real cleanup() -- not a rehearsal.
+   * Before the fix a software take after a HW take inherited these pointers.
+   */
+  void installHardwareStateForTesting() {
+    hwFrame_.reset(av_frame_alloc());
+    hwFramesCtx_.reset(av_buffer_alloc(1));
+    hwDeviceCtx_.reset(av_buffer_alloc(1));
+  }
+
+  /// Test seam (T0102): are any hardware slots still held? Must be false after
+  /// cleanup(), and therefore at the start of every recording.
+  bool hardwareStateHeldForTesting() const {
+    return hwFrame_ || hwFramesCtx_ || hwDeviceCtx_;
+  }
+
 private:
   Result<void> initVideoStream(const EncoderSettings& settings);
   Result<void> initAudioStream(const EncoderSettings& settings);

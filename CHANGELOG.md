@@ -8,6 +8,13 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Fixed
 
+- **A software recording after a hardware-accelerated one no longer inherits dead HW state.**
+  `cleanup()` now releases the hardware frame, frames context and device context (in
+  dependency order) on the reusable encoder object. Previously they survived teardown,
+  so the next take — which skips hardware init — could take the HW transfer path with a
+  device and frame dimensions belonging to the previous recording. A headless regression
+  test exercises the real `cleanup()` path. (T0102)
+
 - **Reconfiguring audio output can no longer corrupt the audio callback.** The
   PCM conversion scratch buffer is now allocated once at the maximum window and
   never resized; only an atomic window size follows the configured buffer size.

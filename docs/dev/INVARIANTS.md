@@ -111,6 +111,15 @@ another document already owns — it records only *why* the constraints exist.
    the `Config.hpp` header comment; `test_Config.cpp` pins the contract.
 ## Buffers and lifetime
 
+ - **Recorder hardware state belongs to the recording, not the reusable
+   encoder object (T0102).** `cleanup()` must release `hwFrame_`,
+   `hwFramesCtx_` and `hwDeviceCtx_` in dependency order (frame -> frames
+   context -> device). A software take after a HW take skips
+   `initHWDevice()`/`initHWFrames()`, so a surviving `hwFramesCtx_` makes
+   `initVideoStream()` and `encodeVideo()` take the HW transfer path with a
+   device and dimensions from the old recording. `hardwareStateIsNotStickyAcrossRecordings`
+   pins this through the real `cleanup()` using device-independent stand-ins.
+
  - **GL objects are deleted only under their creating context — otherwise they
    are leaked on purpose (T0026).** GL object names live in the creating
    context's share group; deleting with no context current is undefined

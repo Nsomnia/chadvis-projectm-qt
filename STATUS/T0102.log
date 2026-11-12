@@ -1,0 +1,49 @@
+2026-11-12T00:00:00Z  VERIFY  build=375/375 unit_tests="TestRecorder -> 0 (0 FAIL, status 0)" ctest=33/33 audit=OK guards=OK
+T0102: FFmpeg residuals. (a) fixed, (b) refuted as a stale premise.
+
+(a) REAL BUG, not just a leak. VideoRecorderFFmpeg is a reusable object: the
+destructor and VideoRecorderThread::stop() both reach cleanup(), and a new
+init() may follow on the same instance. cleanup() reset every other
+per-recording resource but left hwFrame_, hwFramesCtx_, hwDeviceCtx_ alive.
+A later SOFTWARE take skips initHWDevice()/initHWFrames() (gated on
+settings.video.isHardwareAccelerated()), so:
+  - initVideoStream() line ~1006 `if (hwFramesCtx_)` still allocates hwFrame_
+    and calls av_hwframe_get_buffer() on the STALE frames context;
+  - encodeVideo() line ~501 `if (hwFramesCtx_ && hwFrame_)` still calls
+    av_hwframe_transfer_data() with a device/pool/dimensions belonging to the
+    previous recording.
+Fix (src/recorder/VideoRecorderFFmpeg.cpp, cleanup(), after the codec resets):
+  hwFrame_.reset(); hwFramesCtx_.reset(); hwDeviceCtx_.reset();
+  swPixelFormat_ = AV_PIX_FMT_YUV420P;
+Dependency order: the frame references the frames pool, the frames context
+references the device. videoCodecCtx_.reset() immediately above already drops
+the codec's own hw_frames_ctx ref (codecRef from initHWFrames), so releasing
+our refs afterwards is correct.
+
+Headless verification without a GPU: two test seams in
+VideoRecorderFFmpeg.hpp use av_buffer_alloc(1)/av_frame_alloc() (no device
+needed, same deleters free them):
+  installHardwareStateForTesting() / hardwareStateHeldForTesting()
+New test hardwareStateIsNotStickyAcrossRecordings in
+tests/unit/recorder/test_RecordingPipeline.cpp installs the stand-ins, calls
+the REAL cleanup(), and asserts the state is gone; also asserts cleanup() is
+idempotent (it is the guaranteed-terminal path on a failed init and at
+destruction). Confirmed present in the generated
+test_RecordingPipeline.moc and selected cleanly within TestRecorder.
+
+(b) STALE PREMISE. `grep -rn "read_packet|AVERROR_EXIT|avio_alloc_context"
+src/ tests/ cmake/` returns only the explanatory comment at
+VideoRecorderFFmpeg.cpp:142, which states no AVIO context is used: the muxer
+writes discrete packets and the demuxer read-callback idiom does not apply.
+There is no custom AVIO and no worker join to signal, so there is nothing to
+implement. Consistent with the T0104/T0090 stale-premise closures.
+
+Verification: ./build.sh --fast --tests 375/375 EXIT 0 (only the two recorder
+TUs + test TU recompiled, ccache warm, no full rebuild); ./unit/unit_tests
+status 0, TestRecorder -> 0 with 0 FAIL; ctest --test-dir build-fast/tests -j4
+33/33 (100%); task.sh audit OK; check-endpoints.py --baseline 97,
+check-workflows.py, check-safe-tests.py all EXIT 0. GPU/HW-encode runtime was
+NOT exercised (no device on this box); the test covers the cleanup contract
+with device-independent stand-ins, not a real HW encode. CHANGELOG.md [Unreleased]
+### Fixed entry added (user-visible behaviour change). Rule recorded in
+docs/dev/INVARIANTS.md "Buffers and lifetime".
