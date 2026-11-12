@@ -37,17 +37,18 @@ Who supplies each dependency, and why the build does not use Conan, is
 
 ### `unit_tests` (aggregate)
 
-`tests/unit/CMakeLists.txt` builds a single `unit_tests` executable from **45** sources:
+`tests/unit/CMakeLists.txt` builds a single `unit_tests` executable from **46** sources:
 
 | Source | Coverage |
 | --- | --- |
-| `tests/unit/test_main.cpp` | Aggregate runner; declares and calls all 44 `runTest*` entry points. |
+| `tests/unit/test_main.cpp` | Aggregate runner; declares and calls all 45 `runTest*` entry points. |
 | `tests/unit/core/test_Logger.cpp` | Logger lifecycle coverage. |
 | `tests/unit/core/test_ConfigParsers.cpp` | TOML parsing and serialization coverage. |
 | `tests/unit/core/test_ConfigLoader.cpp` | Every serialized field surviving a round trip; the `[recording.video]`/`[recording.audio]` sub-tables written as sub-tables rather than collapsed onto one key; **no credential reaching either the serialized document or the saved file, across three successive saves**, while the legacy values stay readable for migration; `overlay.enabled` round-tripping in both states; unknown keys dropped; and corrupt, malformed or missing input diagnosed rather than thrown on. Also pins that the shipped `config/default.toml` declares every key the serializer emits. |
 | `tests/unit/core/test_FileUtils.cpp` | Filename sanitization coverage. |
 | `tests/unit/core/test_Signal.cpp` | The corrected cost model: an rvalue emit moves and never copies, an lvalue emit copies exactly once per subscriber, a `const&` payload is not copied at all; plus the emit-chain guards — disconnecting from inside a slot takes effect on the *next* emit, a nested emit does not take the outer emit's chain cleanup, and a throwing subscriber does not strand the chain. |
 | `tests/unit/core/test_Version.cpp` | `--version` banner pinned to `version.txt`: the injected `CHADVIS_VERSION`, the exact banner text, no stale `1.0.0` literal, and the real binary's `--version` output. |
+| `tests/unit/core/test_Diagnostics.cpp` | The `--diagnostics` allowlist is exact (7 keys, in order, no duplicates), no secret/URL/home/config path or env canary reaches any value, rendering is deterministic, the written file matches the rendered report and omits its own destination path, and bad destinations (empty path, missing parent) fail with a message instead of being swallowed. |
 | `tests/unit/recorder/test_RecordingPipeline.cpp` | Frame submissions reach the encoder, recorder audio queue drained before and after the worker starts, sanitized container path from config. |
 | `tests/unit/recorder/test_AudioFileDecoder.cpp` | Exact-value PCM survival from synthesis through `avcodec`/`swresample`; a mono source arriving in stereo at unity rather than at `swr`'s default −3 dB rematrix; the drained-resample frame count that makes the final flush load-bearing; a truncated WAV reported as indistinguishable from a short one; bounded-queue drop accounting and a worker draining every chunk; a real AAC track in an MP4 decoded to completion; and soxr selected only when the library actually accepted it, with a stated reason when it did not. |
 | `tests/unit/recorder/test_RenderQueue.cpp` | The job model and scheduler with no worker, GL, FFmpeg or real I/O — which is what lets the concurrency ceiling be *proved*: failure classification (a full disk permanent, errno overriding a worker's guess), every state/slug round-trip, validation naming the field it rejected, the versioned render receipt (exact round trip, corrupt receipts refused distinctly, **a receipt refusing to certify a short render or a non-terminal outcome**), frame-weighted batch progress, FIFO handing-out with a retry jumping the queue, and a claim of completion after too few frames settling as partial. |

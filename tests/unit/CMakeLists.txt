@@ -14,6 +14,7 @@ add_executable(unit_tests
     core/test_Version.cpp
     core/test_Signal.cpp
     core/test_CliArgs.cpp
+    core/test_Diagnostics.cpp
     recorder/test_RecordingPipeline.cpp
     recorder/test_AudioFileDecoder.cpp
     recorder/test_RenderQueue.cpp

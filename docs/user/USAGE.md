@@ -76,6 +76,19 @@ A lone session JWT is **not** enough. The `__client…` cookies are the part tha
 
 `SettingsBridge` sends this value to `CredentialStore`; it is stored in the OS keychain and is never written to `config.toml` or to logs. The import path stores through the same `CredentialStore`, and reads **only** `suno.com` cookies — of those, only the Clerk `__client`/`__session` family; everything else in the store is left unread. When the session becomes valid, the Account page and main-window account chip can display the user name, plan, and credit balance from `SunoAccountManager`.
 
+## Command Line
+
+Two flags produce a report and exit without opening the window:
+
+| Flag | What it does |
+| :--- | :--- |
+| `--dump-config` | Prints the effective configuration (built-in defaults, TOML file, then command-line overrides) to the terminal. |
+| `--diagnostics <path>` | Writes a **sanitized diagnostics report** to the path you choose, then exits. Nothing is uploaded. |
+
+The diagnostics report is deliberately small. It contains **only** an allowlisted set of facts about the build and the Qt runtime: application version, Qt version, operating system, CPU architecture, compiler, and whether the optional `libavfilter` and libavutil-AES features were compiled in. It never reads `config.toml`, the credential store, your Suno account, your library, clip ids, media URLs, environment variables, or file paths — so it is safe to attach to a support request. The path you pass is used only as the output destination; it does not appear in the report. If the destination's directory does not exist, the command reports the problem and exits with an error rather than creating directories or failing silently.
+
+Other command-line options (theme, audio device, visualizer size, and so on) apply for that launch only and are described in [CONFIG.md](CONFIG.md).
+
 ## Shell Keyboard Controls
 
 Seven bindings come from `config/default.toml` and are read through `SettingsBridge`. Two are hardcoded in QML and are not configurable.

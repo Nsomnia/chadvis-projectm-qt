@@ -45,6 +45,10 @@ struct AppOptions {
     // T0208: action flag (print effective config and exit), not a config
     // override -- a plain bool is correct here.
     bool dumpConfig{false};
+    // T0130: action flag + its destination. The report is built from an
+    // explicit allowlist of build facts; no config, credential, account, URL
+    // or user path is read, and nothing is uploaded.
+    std::optional<fs::path> diagnosticsPath;
     std::optional<fs::path> configFile;
     std::vector<fs::path> inputFiles;
 

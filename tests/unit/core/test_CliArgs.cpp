@@ -27,6 +27,7 @@ private slots:
     void headlessPlusRecordIsRefusedInBothOrders();
     void shortRecordFormIsAlsoRefused();
     void absentDefaultPresetOverrideStaysUnset();
+    void diagnosticsFlagParsesAPath();
     // T0207: the CliArgs.inc table is the single source of truth for
     // --help, topics, and completion — pin its shape so a malformed
     // table edit fails here instead of silently emitting bad help.
@@ -91,10 +92,26 @@ void TestCliArgs::absentDefaultPresetOverrideStaysUnset() {
     QVERIFY(*present.value().useDefaultPreset);
 }
 
+void TestCliArgs::diagnosticsFlagParsesAPath() {
+    const auto result = parse({"--diagnostics", "/tmp/chadvis-diagnostics.txt"});
+    QVERIFY(result.isOk());
+    const auto& opts = result.value();
+    QVERIFY(opts.diagnosticsPath.has_value());
+    QCOMPARE(*opts.diagnosticsPath, fs::path("/tmp/chadvis-diagnostics.txt"));
+
+    const auto absent = parse({});
+    QVERIFY(absent.isOk());
+    QVERIFY(!absent.value().diagnosticsPath.has_value());
+
+    // A missing argument is a parse error, not a silently empty path.
+    QVERIFY(!parse({"--diagnostics"}).isOk());
+}
+
 void TestCliArgs::cliArgTableCoversAllFlags() {
     const auto& table = Cli::cliArgTable();
-    // 27 entries as of T0207 (--dump-config added by T0208); bump when adding a flag to CliArgs.inc.
-    QCOMPARE(table.size(), std::size_t{27});
+    // 28 entries: 27 as of T0207 (--dump-config added by T0208), plus
+    // --diagnostics (T0130). Bump when adding a flag to CliArgs.inc.
+    QCOMPARE(table.size(), std::size_t{28});
 
     auto has = [&](std::string_view name) {
         return std::any_of(table.begin(), table.end(),
@@ -109,6 +126,7 @@ void TestCliArgs::cliArgTableCoversAllFlags() {
     QVERIFY(has("--karaoke-enabled"));
     QVERIFY(has("--karaoke-font"));
     QVERIFY(has("--theme"));
+    QVERIFY(has("--diagnostics"));
     // Negations live on the entry, not as separate entries.
     const auto shuffle =
         std::find_if(table.begin(), table.end(), [&](const CliArg& a) {

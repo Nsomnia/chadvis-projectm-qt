@@ -34,6 +34,7 @@ CLI_BOOL("--headless",       "",    "Run without GUI (batch mode)",     "no",  "
 CLI_SECTION("Config")
 CLI_PATH("--config",         "-c",  "Use custom config file",           "",    "",                            configFile,         _)
 CLI_BOOL("--dump-config",    "",    "Print effective config and exit",    "no",  "",                            dumpConfig,         _)
+CLI_PATH("--diagnostics",    "",    "Write a sanitized diagnostics report to <path> and exit (T0130: allowlisted facts only, never uploaded)", "", "", diagnosticsPath, _)
 // ─── Audio ──────────────────────────────────────────────────
 CLI_SECTION("Audio Options")
 CLI_STRING("--audio-device", "",    "Audio output device",              "default","",                          audioDevice,        audio().device)

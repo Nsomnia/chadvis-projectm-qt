@@ -5,6 +5,7 @@
 #include "CliUtils.hpp"
 #include "Config.hpp"
 #include "ConfigParsers.hpp"
+#include "Diagnostics.hpp"
 #include "Logger.hpp"
 #include "audio/AudioEngine.hpp"
 #include "lyrics/LyricsSync.hpp"
@@ -395,6 +396,25 @@ void warnIfClamped(const std::optional<float>& optVal, float effective, std::str
 } // anonymous namespace
 
 Result<void> Application::init(const AppOptions& opts) {
+    // T0130: --diagnostics is handled FIRST, before config is loaded and before
+    // any GUI, audio, network or credential-store object is constructed. The
+    // report is an explicit allowlist of build facts (Diagnostics.cpp), so no
+    // account, token, cookie, clip id, URL or user path can reach it, and the
+    // process never opens a network connection. It writes only to the path the
+    // user chose on the command line.
+    if (opts.diagnosticsPath) {
+        // Logger::init() has not run yet (it is below), and main.cpp prints any
+        // init() error to stderr, so return the Result on failure rather than
+        // logging. On success exit rather than falling through to exec(): the
+        // flag means "write the report and exit", not "also launch the GUI".
+        if (auto written = writeDiagnosticsReport(*opts.diagnosticsPath,
+                                                  collectDiagnosticsReport());
+            !written) {
+            return written;
+        }
+        std::exit(0);
+    }
+
     // Initialize logging with final debug state
     bool debug = opts.debug || CONFIG.debug();
     Logger::init("chadvis-projectm-qt", debug);

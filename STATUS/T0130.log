@@ -1,0 +1,1 @@
+2026-11-12T00:00:00Z  VERIFY    ctest --test-dir build-fast/tests --output-on-failure -j"$(sysctl -n hw.ncpu)" => "100% tests passed, 0 tests failed out of 33 (Total Test time (real) = 121.89 sec)" (unit_tests 121.82s; all 33 registered entries)

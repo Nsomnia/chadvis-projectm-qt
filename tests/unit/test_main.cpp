@@ -14,6 +14,7 @@ int runTestFileUtils(int argc, char** argv);
 int runTestVersion(int argc, char** argv);
 int runTestSignal(int argc, char** argv);
 int runTestCliArgs(int argc, char** argv);
+int runTestDiagnostics(int argc, char** argv);
 int runTestRecorder(int argc, char** argv);
 int runTestAudioFileDecoder(int argc, char** argv);
 int runTestRenderQueue(int argc, char** argv);
@@ -105,6 +106,7 @@ int main(int argc, char* argv[]) {
     status |= RUN_SUITE(TestVersion);
     status |= RUN_SUITE(TestSignal);
     status |= RUN_SUITE(TestCliArgs);
+    status |= RUN_SUITE(TestDiagnostics);
     status |= RUN_SUITE(TestRecorder);
     status |= RUN_SUITE(TestAudioFileDecoder);
     status |= RUN_SUITE(TestRenderQueue);

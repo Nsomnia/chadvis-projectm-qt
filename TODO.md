@@ -1118,8 +1118,9 @@ Q_INVOKABLE audit, T0406 path-helper dedupe; T0358/T0359 QML lanes still need a 
 
 - [ ] T0129 ReplayGain presented honestly (`LoudnessAnalysis.cpp`) #feature #retention
 
-- [ ] T0130 `--diagnostics` report (`src/`) #feature
+- [x] T0130 `--diagnostics` report (`src/`) #feature
       Secret handling = entire risk. Allowlist not deny-list. Write to user-chosen path, never upload.
+      **DONE 2026-11-12:** `src/core/Diagnostics.hpp/.cpp` emits an exact 7-entry allowlist in fixed order (`application_version`, `qt_version`, `os`, `cpu_architecture`, `compiler`, `feature_avfilter`, `feature_avaes`). `Application::init()` writes the report and exits before Logger/config/GUI/audio/network. `test_Diagnostics.cpp` has 5 slots: allowlist/order, no secret/env/home/config-path/URL leakage (env canary), deterministic render, file matches render and omits destination path, bad destinations refused with message and no file. CHANGELOG entry added. (T0130)
 
 - [ ] T0131 DI over singletons; separate audio from UI (`Config.hpp`, `AudioEngine.cpp`) #blocks-feature
 

@@ -23,6 +23,8 @@ set(CORE_SOURCES
     src/core/CliArgs.inc
     src/core/CliUtils.hpp
     src/core/CliUtils.cpp
+    src/core/Diagnostics.hpp
+    src/core/Diagnostics.cpp
     src/core/Application.hpp
     src/core/Application.cpp
 )

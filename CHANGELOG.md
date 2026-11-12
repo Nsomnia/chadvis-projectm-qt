@@ -140,6 +140,10 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 - **The preset panel and the queue say when they are empty.** Each shows a short line and a single
   action instead of a blank panel. (T0076)
 
+- **`--diagnostics <path>` CLI flag added.** Generates an allowlisted diagnostics report with entries
+  for `application_version`, `qt_version`, `os`, `cpu_architecture`, `compiler`, `feature_avfilter`,
+  and `feature_avaes`; writes to the given path and exits. (T0130)
+
 - **User theme files are discovered and validated in C++.** `ThemeCatalog` reads
   `<configDir>/themes/*.json` with a size, id, schema and WCAG-contrast check, rejecting one file
   without losing the others. The QML side is a later slice. (T0193)
