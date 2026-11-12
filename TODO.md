@@ -527,7 +527,16 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       `AppButton` without a name returns nothing.
       **DONE 2026-11-08:** all five icon-only `AppButton`s (shuffle, clear, random, favorite-star, blacklist) got a state-aware `Accessible.name`, e.g. "Add preset to favorites" / "Remove preset from favorites". `AppButton` already provides tab focus and Enter/Space, so no new keyboard handlers were needed; `ToolTip` added where the file already uses them. Non-icon `AppButton`s with visible text already inherit their name from the text.
 
-- [ ] T0085 `TextAccessible` names hardcoded English (`src/qml/`) #cleanup
+- [-] T0085 `TextAccessible` names hardcoded English (`src/qml/`) #cleanup
+      **DROPPED 2026-11-12 (phantom symbol; real concern owned by T0117).** No
+      `TextAccessible` type exists anywhere: `grep -rn TextAccessible src/` returns
+      zero, and the only `git log -S"TextAccessible"` hit is `39e54ba`, the backlog
+      commit that introduced the phrase. The underlying concern is real but already
+      tracked by **T0117** (Localization: zero `qsTr` across 58 QML files, ~200
+      user-visible literals): `grep -rc "Accessible.name" src/qml/` finds 126
+      hardcoded English names and `qsTr` appears zero times. Fixing hardcoded
+      strings means doing T0117, not inventing a wrapper that does not exist.
+      No code change. STATUS/T0085.log.
 
 - [x] T0086 Remote art fetched with no `sourceSize`, sometimes not `asynchronous` (`ClipDetailSheet.qml:83-88`, `ClipCard.qml`, `SunoPanel.qml`) #perf
       **DONE 2026-11-07:** all three remote Image loads get sourceSize + asynchronous; DiscoverView already had both.
@@ -666,8 +675,22 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       level only (the analyser has no production consumer yet), so no UI/CHANGELOG user
       behaviour changes. VERIFY in STATUS/T0106.log.
 
-- [ ] T0107 `AV_VERSION_INT` untyped `int`, no `uint32_t` overload (`cmake/`, `src/`) #risk-medium
+- [x] T0107 `AV_VERSION_INT` untyped `int`, no `uint32_t` overload (`cmake/`, `src/`) #risk-medium
       Use `pkg_check_modules` at configure, extract `AV_VERSION_MAJOR`/`MINOR` at runtime. Never parse `av_version_info()`.
+      **CLOSED 2026-11-12 (premise refuted, no code change).** `AV_VERSION_INT(a,b,c)`
+      is FFmpeg's own macro (`libavutil/version.h:56`), not a project helper — there
+      is nothing of ours to give a `uint32_t` overload. Whole-tree grep: exactly one
+      use, `#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100)` at
+      `VideoRecorderFFmpeg.cpp:1073`, a compile-time guard comparing two int
+      literals (no signedness mismatch possible) that selects
+      `avcodec_get_supported_config`, which only exists in newer headers. A
+      runtime `avcodec_version()` check could NOT replace a `#if` here: against an
+      older libavcodec the symbol would not exist to link. `pkg_check_modules(FFMPEG
+      ...) already runs at configure (`Dependencies.cmake:365`) and `av_version_info()`
+      is never parsed anywhere. So every actionable half of the note is already
+      satisfied, and the one it proposes would be a regression. A prior checkpoint
+      called this an "owner decision"; the evidence shows the code already makes the
+      correct one. Verified by grep; no build or tests needed. STATUS/T0107.log.
 
 - [ ] T0108 Muxed subtitle tracks: `libavfilter` + `libass` behind CMake option (`Dependencies.cmake`, `SubtitleBurnIn.cpp`) #feature
       `subtitles=filename=subs.ass:fontsdir=…`. `mov_text` for MP4, `webvtt` for WebM. Local FFmpeg has libass/libfontconfig.
@@ -832,6 +855,13 @@ Promote to `docs/suno_api/ENDPOINT-INVENTORY.md` with the same `[T1]` discipline
 ---
 
 ## P2c — recon triage 2026-11-08 (read-only pass, writer-ready)
+
+> **Session checkpoint 2026-11-12 (2 verified code commits pushed, `origin/main` = `9296006`; this commit adds backlog hygiene + the checkpoint).** Ran the loop directly in the main session (several delegated workers from prior turns were killed mid-run and left no partial work — confirmed clean tree + no running builds before starting).
+> - `bf29e7d` **T0102** — fixed a real correctness bug: `cleanup()` now releases `hwFrame_`/`hwFramesCtx_`/`hwDeviceCtx_` in dependency order, so a software take after a HW take cannot inherit dead HW contexts. Two device-independent test seams + `hardwareStateIsNotStickyAcrossRecordings` exercise the real `cleanup()` headlessly. T0102(b) refuted (no custom AVIO anywhere). CHANGELOG, INVARIANTS, STATUS.
+> - `9296006` **T0124** — one canonical `kEncoderPresetSlugs` table in `EncoderSettings.hpp` replaces four hand-written lists; `placebo` added to the Settings combo. Two regression tests: full 10-way round-trip + a drift guard that reads the real QML model. CHANGELOG, STATUS. Discovery noted: T0124's body text (9:16/4:5/1:1, projectM aspect correction) is a separate aspect-ratio concern with no matching TODO item — needs an owner/product decision.
+> - Backlog hygiene (this commit): **T0107** `[x]` refuted (`AV_VERSION_INT` is FFmpeg's macro; one correct compile-time `#if`; `pkg_check_modules` already runs; `av_version_info()` never parsed). **T0085** `[-]` dropped (no `TextAccessible` symbol ever existed; real concern owned by T0117 — 126 `Accessible.name`, zero `qsTr`).
+> - **Verification on every code slice:** `./build.sh --fast --tests` 378/378 (incremental, ccache warm, no full rebuild), `lint-qml.sh` clean (1374 baseline unchanged), `unit_tests` status 0 / `TestRecorder -> 0`, `ctest --test-dir build-fast/tests -j4` 33/33 (100%), `task.sh audit` OK, all guard scripts green. No PR in play (direct branch push).
+> - **For the owner:** (1) Still genuinely blocked here — big P0/P1 Suno features need authenticated captures or GL runtime, QML-heavy refactors need a real window/designer, recorder/HW debt needs a warm sanitizer build + real encode. (2) `scratch/suno.com_create.har` (song-creation capture) was offered as an optional lead for the generation contract (T0346/T0351/T0315); it has NOT been inspected — use only under AGENTS.md §11 sanitization rules, never commit raw HAR content. (3) Release-worthy `[Unreleased]` now has 4 Fixed + 1 Security entry; run `./scripts/release.sh --dry-run` when a release is wanted. (4) Not verified: GL/real-window/audio-device/HW-encode/sanitizers/live recon.
 
 > **Session checkpoint 2026-11-11 (2nd session, post-push; origin/main = 8c92b67; 3 new local commits; fast build 374/374 + ctest 33/33 green on every slice).**
 > **Pushed (Task 1):** the 4 inherited commits (`4d3624b`, `f59971c`, `4cb2c02`, `8c92b67`) went to `origin/main`; direct branch push, no PR in play. Confirmed `git status` shows only the unrelated owner `AGENTS.md` edit.

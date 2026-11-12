@@ -1,0 +1,21 @@
+2026-11-12T00:00:00Z  CHANGE  dropped as phantom-symbol duplicate; no code change
+T0085 "TextAccessible names hardcoded English" is dropped.
+
+  - `grep -rn "TextAccessible" src/` returns ZERO occurrences. There is no
+    such QML component or attached type in this tree.
+  - `git log --oneline -S"TextAccessible" --all` returns one commit,
+    39e54ba ("docs(workflow): rewrite the backlog and add an inter-agent
+    claim protocol") -- the backlog entry itself introduced the phrase; it was
+    never code.
+  - The underlying concern (hardcoded English UI strings) is real but is
+    already owned by T0117 "Localization: zero qsTr across 58 QML files,
+    ~200 user-visible literals". Measured: 126 `Accessible.name` occurrences
+    in src/qml/, zero `qsTr` anywhere in src/qml/.
+  - Fixing those strings means implementing T0117 (qt_add_translations +
+    retranslate + qsTr wrapping), not inventing a `TextAccessible` wrapper
+    that never existed. Keeping a separate [ ] entry for it would be a
+    duplicate that misleads the next agent into looking for a missing type.
+
+Marked [-] (dropped, decided against), so `task.sh audit` does not require a
+VERIFY line; this CHANGE line records the rationale. No code change, no build
+or tests required.

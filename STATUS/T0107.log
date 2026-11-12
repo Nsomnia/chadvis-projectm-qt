@@ -1,0 +1,32 @@
+2026-11-12T00:00:00Z  CHANGE  premise-refuted; no code change (backlog hygiene only)
+T0107 "AV_VERSION_INT untyped int, no uint32_t overload" is refuted.
+
+Evidence (grep 2026-11-12):
+  - AV_VERSION_INT(a,b,c) is FFmpeg's macro, defined at
+    /opt/local/include/libavutil/version.h:56 as
+      #define AV_VERSION_INT(a, b, c) ((a)<<16 | (b)<<8 | (c))
+    It is not a project helper, so there is nothing of ours to give a
+    uint32_t overload.
+  - Whole-tree grep for AV_VERSION_INT / LIBAVCODEC_VERSION_INT /
+    avcodec_version / av_version_info in cmake/, src/, tests/ returns exactly
+    one use: VideoRecorderFFmpeg.cpp:1073
+      #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100)
+    That is a compile-time preprocessor guard comparing two int literals --
+    no signedness mismatch is possible at runtime because there is no runtime
+    comparison. It selects avcodec_get_supported_config(), which only exists
+    in FFmpeg >= 7.1 headers; a runtime avcodec_version() check could not
+    replace a #if, because against an older libavcodec the symbol would not
+    exist to link against.
+  - The note's prescription "use pkg_check_modules at configure" is already
+    satisfied: Dependencies.cmake:365 runs pkg_check_modules(FFMPEG ...).
+  - "Never parse av_version_info()" is already satisfied: the string does not
+    occur anywhere in the tree.
+
+Conclusion: every actionable half of T0107 is already done, and the one
+remaining suggestion (a runtime version check) would be a regression. A prior
+session checkpoint called this "a genuine design decision needing an owner
+call"; re-auditing the actual code shows the correct decision is already
+implemented. No owner input is needed and no code change was made.
+
+Verification: grep evidence above; docs/TODO only. `task.sh audit` OK after
+marking [x] (this CHANGE line is the required evidence).
