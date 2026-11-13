@@ -19,6 +19,7 @@
 
 #include "recorder/RenderJob.hpp"
 #include "recorder/RenderQueue.hpp"
+#include "recorder/RenderVerdict.hpp"
 
 #include <QFile>
 
@@ -1332,6 +1333,26 @@ private slots:
         RenderQueue queue(none);
         QVERIFY(queue.maxConcurrent() >= 1);
         QVERIFY(queue.isEmpty());
+    }
+
+    // T0463: these pure helpers were asserted only in the GL spike, which
+    // skips headless. Pin them here so a reordering is caught without a display.
+    void renderVerdictNames() {
+        QCOMPARE(QString::fromUtf8(vc::toString(RenderThreadVerdict::Supported)),
+                 QStringLiteral("Supported"));
+        QCOMPARE(QString::fromUtf8(vc::toString(RenderThreadVerdict::NeedsMainThread)),
+                 QStringLiteral("NeedsMainThread"));
+        QCOMPARE(QString::fromUtf8(vc::toString(RenderThreadVerdict::Unsupported)),
+                 QStringLiteral("Unsupported"));
+        QCOMPARE(QString::fromUtf8(vc::toString(static_cast<RenderThreadVerdict>(99))),
+                 QStringLiteral("Unsupported"));
+    }
+
+    void renderVerdictConcurrencyCeilings() {
+        QCOMPARE(vc::offscreenVerdictMaxConcurrency(RenderThreadVerdict::Supported), -1);
+        QCOMPARE(vc::offscreenVerdictMaxConcurrency(RenderThreadVerdict::NeedsMainThread), 1);
+        QCOMPARE(vc::offscreenVerdictMaxConcurrency(RenderThreadVerdict::Unsupported), 0);
+        QCOMPARE(vc::offscreenVerdictMaxConcurrency(static_cast<RenderThreadVerdict>(99)), 0);
     }
 };
 
