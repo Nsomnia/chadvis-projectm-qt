@@ -168,6 +168,36 @@ private slots:
         QVERIFY(account.hasAcceptedTosTimestamp().isEmpty());
         QVERIFY(!account.needsTosReprompt());
     }
+
+    void nonObjectEnvelopesAreRejectedNotTreatedAsEmpty() {
+        Rig rig;
+        SunoAccountManager account(&rig.client);
+        QSignalSpy ready(&account, &SunoAccountManager::accountInfoReady);
+        QSignalSpy errors(&account, &SunoAccountManager::accountError);
+
+        account.refreshAll();
+        QTRY_VERIFY_WITH_TIMEOUT(rig.replies.size() >= 2, 15000);
+        // refreshAll enqueues SESSION first, then billing. A valid-but-non-object
+        // body used to become an empty QJsonObject, so the session path reported
+        // the misleading "no user object" instead of naming the real fault.
+        rig.replies[0]->respond(QByteArray("[]"), 200);
+        rig.replies[1]->respond(QByteArray("[]"), 200);
+        QTRY_COMPARE_WITH_TIMEOUT(errors.count(), 2, 15000);
+        QCOMPARE(ready.count(), 0);
+        bool sawSession = false;
+        bool sawBilling = false;
+        for (const auto& signal : errors) {
+            const QString message = signal.at(0).toString();
+            if (message.contains(QStringLiteral("session envelope: expected a JSON object"))) {
+                sawSession = true;
+            }
+            if (message.contains(QStringLiteral("billing envelope: expected a JSON object"))) {
+                sawBilling = true;
+            }
+        }
+        QVERIFY(sawSession);
+        QVERIFY(sawBilling);
+    }
 };
 
 QTEST_MAIN(TestSunoAccountManagerTos)

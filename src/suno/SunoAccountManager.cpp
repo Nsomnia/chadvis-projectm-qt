@@ -1,6 +1,7 @@
 #include "SunoAccountManager.hpp"
 
 #include "ClipParser.hpp"
+#include "SunoJson.hpp"
 #include "core/Logger.hpp"
 
 #include <QtGlobal>
@@ -316,13 +317,13 @@ void SunoAccountManager::handleSessionReply(QNetworkReply* reply) {
         return;
     }
 
-    QJsonParseError parseError{};
-    const QJsonObject root = QJsonDocument::fromJson(*body, &parseError).object();
-    if (parseError.error != QJsonParseError::NoError) {
-        LOG_WARN("SunoAccountManager: session envelope was not valid JSON");
-        emit accountError(QStringLiteral("session envelope was not valid JSON"));
+    auto parsed = parseJsonObject(*body, QStringLiteral("session envelope"));
+    if (!parsed) {
+        LOG_WARN("SunoAccountManager: {}", parsed.error().toStdString());
+        emit accountError(parsed.error());
         return;
     }
+    const QJsonObject& root = *parsed;
 
     // Capture the gating plane BEFORE the user parse, and unconditionally.
     //
@@ -376,13 +377,13 @@ void SunoAccountManager::handleBillingReply(QNetworkReply* reply) {
         return;
     }
 
-    QJsonParseError parseError{};
-    const QJsonObject root = QJsonDocument::fromJson(*body, &parseError).object();
-    if (parseError.error != QJsonParseError::NoError) {
-        LOG_WARN("SunoAccountManager: billing envelope was not valid JSON");
-        emit accountError(QStringLiteral("billing envelope was not valid JSON"));
+    auto parsed = parseJsonObject(*body, QStringLiteral("billing envelope"));
+    if (!parsed) {
+        LOG_WARN("SunoAccountManager: {}", parsed.error().toStdString());
+        emit accountError(parsed.error());
         return;
     }
+    const QJsonObject& root = *parsed;
 
     // The model catalogue lives here, not in `/api/session/`. Measured against
     // the captured bodies, the session `models` array is EMPTY in every capture

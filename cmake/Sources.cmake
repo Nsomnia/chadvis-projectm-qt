@@ -717,3 +717,16 @@ list(APPEND SUNO_SOURCES
     src/suno/SunoSearchService.hpp
     src/suno/SunoSearchService.cpp
 )
+
+# ─────────────────────────────────────────────────────────────
+# SHARED JSON OBJECT PARSER (T0464)
+#
+# parseJsonObject is the one place that checks QJsonParseError AND isObject.
+# Five services still carry a file-local readObject duplicate; consolidating
+# them is T0465 (SunoHooksService deliberately wraps an array and must stay
+# separate). SUNO_SOURCES for the non-globbing reason recorded above.
+# ─────────────────────────────────────────────────────────────
+list(APPEND SUNO_SOURCES
+    src/suno/SunoJson.hpp
+    src/suno/SunoJson.cpp
+)

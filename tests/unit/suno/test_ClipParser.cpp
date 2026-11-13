@@ -1,6 +1,7 @@
 #include <QtTest>
 #include "suno/ClipParser.hpp"
 #include "suno/SunoDownloader.hpp"
+#include "suno/SunoJson.hpp"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -424,6 +425,43 @@ private slots:
 
     void envelopeWithoutClipsArrayErrors() {
         QVERIFY(!ClipParser::parseFeedEnvelope(QJsonObject{{"foo", 1}}).has_value());
+    }
+
+    // T0464: the shared object parser must refuse malformed JSON and every
+    // syntactically valid non-object body, which .object() turns into {}.
+    void parseJsonObjectAcceptsObject() {
+        const auto parsed = parseJsonObject(QByteArray("{\"a\": 1}"),
+                                            QStringLiteral("ctx"));
+        QVERIFY(parsed.has_value());
+        QCOMPARE(parsed->value(QStringLiteral("a")).toInt(), 1);
+    }
+
+    void parseJsonObjectRejectsMalformedJson() {
+        const auto parsed = parseJsonObject(QByteArray("{\"a\":"),
+                                            QStringLiteral("ctx"));
+        QVERIFY(!parsed.has_value());
+        QVERIFY(parsed.error().contains(QStringLiteral("malformed")));
+    }
+
+    void parseJsonObjectRejectsNonObjectBodies() {
+        for (const char* body : {"[]", "\"text\"", "42", "true", "null"}) {
+            const auto parsed = parseJsonObject(QByteArray(body), QStringLiteral("ctx"));
+            QVERIFY2(!parsed.has_value(), body);
+        }
+        // An array is a valid JSON document on every supported Qt version, so
+        // it must reach the explicit isObject() refusal, never a parse error.
+        // Top-level scalars are accepted by Qt 6 but rejected by Qt 5; the loop
+        // above intentionally pins only the refusal, not which reason produced it.
+        const auto array = parseJsonObject(QByteArray("[]"), QStringLiteral("ctx"));
+        QVERIFY(!array.has_value());
+        QVERIFY(array.error().contains(QStringLiteral("expected a JSON object")));
+    }
+
+    void parseJsonObjectErrorNamesItsContext() {
+        const auto parsed = parseJsonObject(QByteArray("[]"),
+                                            QStringLiteral("billing envelope"));
+        QVERIFY(!parsed.has_value());
+        QVERIFY(parsed.error().contains(QStringLiteral("billing envelope")));
     }
 };
 

@@ -1,0 +1,16 @@
+2026-11-13T12:36:04Z  VERIFY  ./build.sh --fast --tests (378/378, exit 0); bounded safe ctest 31/31 passed, 0 failed; unit_tests exit 0 with all 4 TestClipParser parseJsonObject slots PASS; test_SunoAccountManagerTos exit 0 with nonObjectEnvelopesAreRejectedNotTreatedAsEmpty PASS (9/9).
+T0464 (re-scoped T0391): the three cited T0391 line numbers had drifted and the
+parse-error half was already fixed; what remained was that none of the sites
+checked isObject(), so a syntactically valid []/scalar/null 2xx body became an
+empty QJsonObject and the session path misreported "no user object".
+Added src/suno/SunoJson.{hpp,cpp} with parseJsonObject (checks QJsonParseError
+AND isObject), registered in SUNO_SOURCES, and wired handleSessionReply /
+handleBillingReply to it. The emitted accountError now carries the helper's
+contextual reason instead of a factually wrong "was not valid JSON".
+Deliberate behavior change: a rejected envelope fails closed and leaves the
+gating plane intact; previously [] reset gates_ to empty and emitted
+gatesChanged. No test pinned the legacy strings (grep confirmed).
+An independent read-only review caught the dead diagnostic payload and a
+Qt-5-incompatible scalar assertion; both were fixed before this verification.
+Follow-up T0465 tracks the 5 duplicated file-local readObject helpers and the
+SunoClient::onLibraryReply message-precision guard.
