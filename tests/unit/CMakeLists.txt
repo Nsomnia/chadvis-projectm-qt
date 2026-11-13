@@ -19,6 +19,7 @@ add_executable(unit_tests
     recorder/test_AudioFileDecoder.cpp
     recorder/test_RenderQueue.cpp
     audio/test_Playlist.cpp
+    audio/test_MediaMetadata.cpp
     audio/test_PcmFormat.cpp
     audio/test_VisualizerAudioTap.cpp
     audio/test_AudioEngine.cpp

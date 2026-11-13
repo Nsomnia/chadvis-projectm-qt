@@ -1,6 +1,5 @@
 #pragma once
 // MediaMetadata.hpp - Audio file metadata extraction
-// TagLib wrapper because reading ID3 tags manually is pain
 
 #include "util/Types.hpp"
 #include "util/Result.hpp"
@@ -30,7 +29,6 @@ struct MediaMetadata {
     // `QImage`, which is shareable across threads) kept here, decoded at the
     // paint site. Do not reintroduce a QPixmap.
 
-    // Formatted display strings
     std::string displayTitle() const;
     std::string displayArtist() const;
     std::string displayAlbum() const;

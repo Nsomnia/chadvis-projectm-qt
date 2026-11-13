@@ -1,0 +1,8 @@
+2026-11-13T11:13:40Z  VERIFY  ./build.sh --fast --tests (378/378, exit 0); unit_tests exit 0 with all 6 new TestMediaMetadata slots PASS (selfReferentialTokenTerminates, injectedValueIsNotReexpanded, ...).
+T0462: MediaMetadata::formatLine replaced 8 sequential find/replace loops that
+rescanned the whole result from offset 0 each time. A metadata value containing
+its own token (ID3 title literally "{title}") re-inserted the token forever:
+UI hang + unbounded memory growth. Values were also recursively re-expanded.
+Replaced with one forward-only pass over the format string; injected values are
+never rescanned. Unknown tokens stay literal, repeated tokens still all expand.
+Also removed a flippant header comment and a redundant section heading.

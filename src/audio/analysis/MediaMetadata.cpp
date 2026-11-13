@@ -7,6 +7,8 @@
 #include <taglib/tpropertymap.h>
 
 #include <algorithm>
+#include <string_view>
+#include <utility>
 
 namespace vc {
 
@@ -26,36 +28,50 @@ std::string MediaMetadata::displayAlbum() const {
 }
 
 std::string MediaMetadata::formatLine(const std::string& format) const {
-    std::string result = format;
-    
-    // Simple placeholder replacement
-    auto replace = [&result](const std::string& placeholder, const std::string& value) {
-        size_t pos;
-        while ((pos = result.find(placeholder)) != std::string::npos) {
-            result.replace(pos, placeholder.length(), value);
-        }
+    const std::pair<std::string_view, std::string> tokens[] = {
+        {"{title}", displayTitle()},
+        {"{artist}", displayArtist()},
+        {"{album}", displayAlbum()},
+        {"{genre}", genre.empty() ? "Unknown" : genre},
+        {"{year}", year > 0 ? std::to_string(year) : ""},
+        {"{track}", trackNumber > 0 ? std::to_string(trackNumber) : ""},
+        {"{duration}", file::formatDuration(duration)},
+        {"{bitrate}", std::to_string(bitrate) + " kbps"},
     };
-    
-    replace("{title}", displayTitle());
-    replace("{artist}", displayArtist());
-    replace("{album}", displayAlbum());
-    replace("{genre}", genre.empty() ? "Unknown" : genre);
-    replace("{year}", year > 0 ? std::to_string(year) : "");
-    replace("{track}", trackNumber > 0 ? std::to_string(trackNumber) : "");
-    replace("{duration}", file::formatDuration(duration));
-    replace("{bitrate}", std::to_string(bitrate) + " kbps");
-    
+
+    // One forward-only pass: an injected value is never re-scanned, so a title
+    // containing "{title}" or "{artist}" cannot loop forever or expand a token
+    // that arrived inside another value.
+    std::string result;
+    result.reserve(format.size());
+    const std::string_view input{format};
+    for (std::size_t pos = 0; pos < input.size();) {
+        bool replaced = false;
+        if (input[pos] == '{') {
+            for (const auto& [token, value] : tokens) {
+                if (input.substr(pos).starts_with(token)) {
+                    result += value;
+                    pos += token.size();
+                    replaced = true;
+                    break;
+                }
+            }
+        }
+        if (!replaced) {
+            result += input[pos++];
+        }
+    }
     return result;
 }
 
 Result<MediaMetadata> MetadataReader::read(const fs::path& path) {
     MediaMetadata meta;
-    
+
     TagLib::FileRef file(path.c_str());
     if (file.isNull()) {
         return Result<MediaMetadata>::err("Failed to open file: " + path.string());
     }
-    
+
     if (file.tag()) {
         TagLib::Tag* tag = file.tag();
         meta.title = tag->title().to8Bit(true);
@@ -64,7 +80,7 @@ Result<MediaMetadata> MetadataReader::read(const fs::path& path) {
         meta.genre = tag->genre().to8Bit(true);
         meta.year = tag->year();
         meta.trackNumber = tag->track();
-        
+
         std::string comment = tag->comment().to8Bit(true);
         if (comment.find("made by suno") != std::string::npos) {
             size_t idPos = comment.find("id=");
@@ -77,7 +93,7 @@ Result<MediaMetadata> MetadataReader::read(const fs::path& path) {
             }
         }
     }
-    
+
     if (file.audioProperties()) {
         TagLib::AudioProperties* props = file.audioProperties();
         meta.duration = Duration(props->lengthInMilliseconds());
@@ -85,8 +101,7 @@ Result<MediaMetadata> MetadataReader::read(const fs::path& path) {
         meta.sampleRate = props->sampleRate();
         meta.channels = props->channels();
     }
-    
-    // If title is empty, use filename
+
     if (meta.title.empty()) {
         meta.title = path.stem().string();
     }

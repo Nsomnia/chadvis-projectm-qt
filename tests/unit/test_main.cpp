@@ -11,6 +11,7 @@ int runTestConfigParsers(int argc, char** argv);
 int runTestConfigLoader(int argc, char** argv);
 int runTestConfig(int argc, char** argv);
 int runTestFileUtils(int argc, char** argv);
+int runTestMediaMetadata(int argc, char** argv);
 int runTestVersion(int argc, char** argv);
 int runTestSignal(int argc, char** argv);
 int runTestCliArgs(int argc, char** argv);
@@ -103,6 +104,7 @@ int main(int argc, char* argv[]) {
     status |= RUN_SUITE(TestConfigLoader);
     status |= RUN_SUITE(TestConfig);
     status |= RUN_SUITE(TestFileUtils);
+    status |= RUN_SUITE(TestMediaMetadata);
     status |= RUN_SUITE(TestVersion);
     status |= RUN_SUITE(TestSignal);
     status |= RUN_SUITE(TestCliArgs);
