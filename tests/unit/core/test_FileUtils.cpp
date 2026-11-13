@@ -145,6 +145,71 @@ private slots:
         const auto found = listFiles("/nonexistent-chadvis-preset-dir", {".m4a"}, true);
         QVERIFY(found.empty());
     }
+
+    // T0461: the duration/timecode format family had zero coverage, and
+    // parseDuration used a throwing std::stoll on untrusted input.
+
+    void formatDurationShapes() {
+        QCOMPARE(formatDuration(vc::Duration{0}), std::string("00:00"));
+        QCOMPARE(formatDuration(vc::Duration{-5}), std::string("00:00"));
+        QCOMPARE(formatDuration(vc::Duration{65000}), std::string("01:05"));
+        QCOMPARE(formatDuration(vc::Duration{3661000}), std::string("01:01:01"));
+    }
+
+    void parseDurationRoundTrips() {
+        const auto zero = parseDuration("0:00");
+        QVERIFY(zero.has_value());
+        QCOMPARE(zero->count(), 0LL);
+        const auto mmss = parseDuration("01:05");
+        QVERIFY(mmss.has_value());
+        QCOMPARE(mmss->count(), 65000LL);
+        const auto hhmmss = parseDuration("01:01:01");
+        QVERIFY(hhmmss.has_value());
+        QCOMPARE(hhmmss->count(), 3661000LL);
+        const auto longForm = parseDuration("12:34:56");
+        QVERIFY(longForm.has_value());
+        QCOMPARE(longForm->count(), 45296000LL);
+    }
+
+    void parseDurationRejectsMalformed() {
+        QVERIFY(!parseDuration("").has_value());
+        QVERIFY(!parseDuration("not a time").has_value());
+        QVERIFY(!parseDuration("12").has_value());
+        QVERIFY(!parseDuration("1::2").has_value());
+        QVERIFY(!parseDuration("1:2:3:4").has_value());
+        QVERIFY(!parseDuration("1:2x").has_value());
+    }
+
+    void parseDurationRejectsOverflowWithoutThrowing() {
+        // \d+ accepts an arbitrarily long run; std::stoll used to throw
+        // std::out_of_range straight out of the parser.
+        std::optional<vc::Duration> huge;
+        bool threw = false;
+        try {
+            huge = parseDuration("999999999999999999999:0:0");
+        } catch (...) {
+            threw = true;
+        }
+        QVERIFY(!threw);
+        QVERIFY(!huge.has_value());
+
+        // Even a component that fits in i64 overflows the h*3600 / *1000
+        // arithmetic and must be refused rather than wrapping negative.
+        const auto maxed = parseDuration("9223372036854775807:0:0");
+        QVERIFY(!maxed.has_value());
+    }
+
+    void qstringDurationShapes() {
+        QCOMPARE(formatDurationQString(0), QStringLiteral("0:00"));
+        QCOMPARE(formatDurationQString(65000), QStringLiteral("1:05"));
+        QCOMPARE(formatDurationQString(3661000), QStringLiteral("1:01:01"));
+    }
+
+    void srtTimecodeShapes() {
+        QCOMPARE(srtTimecode(0), QStringLiteral("00:00:00,000"));
+        QCOMPARE(srtTimecode(-1), QStringLiteral("00:00:00,000"));
+        QCOMPARE(srtTimecode(3661123), QStringLiteral("01:01:01,123"));
+    }
 };
 
 int runTestFileUtils(int argc, char** argv) {

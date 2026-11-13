@@ -1,9 +1,11 @@
 #include "FileUtils.hpp"
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstdlib>
 #include <format>
 #include <fstream>
+#include <limits>
 #include <regex>
 #include <sstream>
 #include <QByteArray>
@@ -676,23 +678,68 @@ QString srtTimecode(qint64 milliseconds) {
 }
 
 std::optional<Duration> parseDuration(std::string_view str) {
-    std::regex pattern(R"((?:(\d+):)?(\d+):(\d+))");
+    static const std::regex pattern(R"((?:(\d+):)?(\d+):(\d+))");
     std::cmatch match;
-
-    if (std::regex_match(str.data(), str.data() + str.size(), match, pattern)) {
-        i64 hours = match[1].matched ? std::stoll(match[1].str()) : 0;
-        i64 minutes = std::stoll(match[2].str());
-        i64 seconds = std::stoll(match[3].str());
-
-        return Duration((hours * 3600 + minutes * 60 + seconds) * 1000);
+    if (!std::regex_match(str.data(), str.data() + str.size(), match, pattern)) {
+        return std::nullopt;
     }
 
-    return std::nullopt;
+    // std::stoll throws on a >19-digit component that the \d+ regex still
+    // accepts. from_chars is non-throwing and rejects the same out-of-range
+    // value as nullopt -- the policy Color.hpp established for Color::fromHex.
+    const auto component = [](const std::csub_match& m) -> std::optional<i64> {
+        if (!m.matched) {
+            return i64{0};
+        }
+        const std::string text = m.str();
+        i64 value = 0;
+        const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+        if (ec != std::errc{} || end != text.data() + text.size()) {
+            return std::nullopt;
+        }
+        return value;
+    };
+    const auto hours = component(match[1]);
+    const auto minutes = component(match[2]);
+    const auto seconds = component(match[3]);
+    if (!hours || !minutes || !seconds) {
+        return std::nullopt;
+    }
+
+    // Each component fits in i64, but h*3600 and the *1000 millisecond scale
+    // can still overflow; reject rather than wrapping into a negative Duration.
+    constexpr i64 kMax = std::numeric_limits<i64>::max();
+    const auto checkedMul = [](i64 a, i64 b) -> std::optional<i64> {
+        if (a != 0 && b > kMax / a) {
+            return std::nullopt;
+        }
+        return a * b;
+    };
+    const auto checkedAdd = [](i64 a, i64 b) -> std::optional<i64> {
+        if (b > kMax - a) {
+            return std::nullopt;
+        }
+        return a + b;
+    };
+
+    const auto h = checkedMul(*hours, 3600);
+    const auto m = checkedMul(*minutes, 60);
+    if (!h || !m) {
+        return std::nullopt;
+    }
+    auto total = checkedAdd(*h, *m);
+    if (!total) {
+        return std::nullopt;
+    }
+    total = checkedAdd(*total, *seconds);
+    if (!total) {
+        return std::nullopt;
+    }
+    const auto ms = checkedMul(*total, 1000);
+    if (!ms) {
+        return std::nullopt;
+    }
+    return Duration(*ms);
 }
 
 } // namespace vc::file
-
-// Color's hex codec used to live here, which is why this file needed a
-// <regex>, an allocating std::stoi and a second reason to exist. It is now
-// src/util/Color.{hpp,cpp}: see that header for the contract and for the list
-// of call sites still using the legacy Color::fromHex shim.
