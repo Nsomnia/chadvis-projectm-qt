@@ -6,7 +6,35 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- **Headless unit coverage for the render-verdict vocabulary.** `toString` and
+  `offscreenVerdictMaxConcurrency` were previously asserted only in the GL
+  spike, which skips headless; they are now pinned for every enum value plus an
+  out-of-range cast in the `unit_tests` suite. (T0463)
+
 ### Fixed
+
+- **Malformed or non-object Suno account envelopes are now named accurately.**
+  `QJsonDocument::fromJson(...).object()` silently turned a valid `[]`, scalar,
+  or `null` body into an empty object, so the session path reported "no user
+  object" instead of the real fault. One shared `parseJsonObject` now checks
+  the parse error AND `isObject()`; the session and billing handlers use it and
+  surface its contextual reason. A rejected envelope now fails closed without
+  wiping the gating plane. (T0464)
+
+- **`MediaMetadata::formatLine` can no longer hang.** Eight find/replace loops
+  rescanned the result from offset 0, so a metadata value containing its own
+  placeholder re-inserted the token forever (UI hang, unbounded growth) and
+  recursively re-expanded injected values. Replaced with one forward-only pass
+  that never rescans substituted text. (T0462)
+
+- **Duration parsing can no longer throw on untrusted timecode input.** A
+  `>19`-digit component matched `\d+` and made `std::stoll` throw
+  `std::out_of_range` out of the parser; the millisecond accumulation could also
+  wrap `i64` negative. Replaced with non-throwing `std::from_chars` plus checked
+  arithmetic, returning `nullopt` on overflow — the policy `Color::fromHex`
+  already follows. (T0461)
 
 - **The `placebo` encoder preset is now selectable, and presets cannot drift between C++ and the UI.**
   The four hand-written preset lists (name, config parser, render-job parser, Settings combo)

@@ -319,6 +319,16 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
 
 ## P2 — robustness, cleanup, debt
 
+- [ ] T0465 **Consolidate the 5 duplicated `readObject` helpers into `SunoJson`** (`SunoCoverArtService.cpp`, `SunoAlbumsService.cpp`, `SunoLibrarySectionService.cpp`, `SunoPreferencesService.cpp`, `SunoHooksService.cpp`, `SunoJson.hpp/.cpp`) #cleanup
+      Four file-local `readObject(SunoClient&, QNetworkReply*, label)` copies are identical and now
+      duplicate `parseJsonObject`'s parse+isObject guard. Extract one shared body-reading helper.
+      `SunoHooksService` deliberately wraps a top-level array as `{"hooks": ...}` — preserve that
+      shape; do not force it through the object-only parser. Second, consider a precise `isObject()`
+      guard in `SunoClient::onLibraryReply` (the `doc.object()` feed handler): `parseFeedEnvelope`
+      already fails on an empty object, so this is message precision, not a silent-success bug.
+      Acceptance: all 5 services use one helper, existing service suites stay green, and
+      `test_SunoHooksService`'s array-wrap case still passes.
+
 - [?] T0355 **Song-page detail: ancestry, remix count, comments, similar** (`SunoClipDetailService.*`, `SunoBridge.*`, `ClipDetailSheet.qml`) #feature
       4 GETs wired: `/clips/{id}/attribution`, `/gen/{id}/comments`, `/clips/remixes/count?clip_id=`, `/clips/get_similar/?id=`.
       Each section settles independently. Failed read leaves sheet as-is. `load("")` on close drops detail.
