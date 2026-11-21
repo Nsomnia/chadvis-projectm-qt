@@ -15,7 +15,10 @@ Marks: `[ ]` todo | `[~]` claimed | `[?]` unverified | `[x]` verified (`STATUS/<
 ---
 
 ## Features - New Functionality/Ideas To Implement
-- [ ] TO??? (Assign next integer) **Song Relationship:** fins the history of a sonfs lineage—origioal, covera, mashups, and inspirations, optionally with tracks that share a user configurable similarity score but is not directly linked. A new page view canvas in the UI allows seeing all songs linked lime a tree/map of song relationships with the ability to click on a track node and zoom into a filteres tree/node of just that song and its ancestors/children.
+- [ ] TO??? (Assign next integer) **New Song Relationships Viewer:** When opened finds, if data is available else pulls from the db or remote to get a songs direct lineage, plus displays the history/lineage overview of the user's available library data.
+Check if the HTTP schema shows this info directly. The user has seen this in browser extensions for suno.com which can be found again to extract the required logic if needed.
+Displays a relationship node tree of available track data which contains linked connections drawn illustrating library and track lineae/origin/relationships. Mostly pertains to the suno features: cover, mashup, and inspirations. A single track node can be filtered to show child tracks that share a user configurable similarity score but is not directly linked.
+A new page view canvas in the UI allows seeing all songs linked lime a tree/map of song relationships with the ability to click on a track node and zoom into a filtered tree/node of just that song and its ancestory/children/lineage.
 
 ---
 
