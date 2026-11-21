@@ -14,6 +14,11 @@ Marks: `[ ]` todo | `[~]` claimed | `[?]` unverified | `[x]` verified (`STATUS/<
 
 ---
 
+## Features - New Functionality/Ideas To Implement
+- [ ] TO??? (Assign next integer) **Song Relationship:** fins the history of a sonfs lineage—origioal, covera, mashups, and inspirations, optionally with tracks that share a user configurable similarity score but is not directly linked. A new page view canvas in the UI allows seeing all songs linked lime a tree/map of song relationships with the ability to click on a track node and zoom into a filteres tree/node of just that song and its ancestors/children.
+
+---
+
 ## P0 — Product Broken, Data Corrupted, or Secret Exposed
 
 - [ ] T0346 **Bring every non-Studio Suno capability into product** (`src/suno/`, `src/qml_bridge/`) #feature #user-priority
