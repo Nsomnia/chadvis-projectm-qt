@@ -1,5 +1,7 @@
 # Agent skills
 
+> Reviewed: 2026-11-24 | Model: GPT-5.5
+
 Which skill covers what, where each one comes from, and where the gaps are. This
 file owns the *inventory*. A skill's own `SKILL.md` owns its procedure;
 [`AGENTS.md`](../../AGENTS.md) owns the operating rules; [`INVARIANTS.md`](INVARIANTS.md)
@@ -83,6 +85,16 @@ redistributed beyond this repository.
 `chadvis-verify` and the three above are deliberately complementary: verify owns
 *how to build and test*, the others own *what is true in their subsystem*. Where a
 fact is already owned by `INVARIANTS.md`, the skill links to it instead of copying.
+
+## Token-efficiency tooling
+
+The only checked-in RTK guidance is Kilo-specific: [`.kilo/rules/rtk-rules.md`](../../.kilo/rules/rtk-rules.md).
+The OpenCode plugin list in [`.opencode/opencode.jsonc`](../../.opencode/opencode.jsonc)
+has no active plugin, and no `caveman` skill is present in this repository. These
+are not enabled capabilities in every harness. A portable project skill should
+remain useful without a shell, RTK binary, or third-party plugin; treat terse
+"caveman" output as an optional summary style, not a substitute for clear code or
+documentation. Verify plugin provenance and compatibility before enabling one.
 
 ## Gaps that no public skill fills
 

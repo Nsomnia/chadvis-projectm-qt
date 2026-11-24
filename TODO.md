@@ -1,6 +1,7 @@
 ---
 schema: 1
-updated: 2026-11-08
+updated: 2026-11-24
+model: GPT-5.5
 ---
 
 # ChadVis backlog
@@ -11,6 +12,19 @@ Suno endpoints: [`docs/suno_api/ENDPOINT-INVENTORY.md`](docs/suno_api/ENDPOINT-I
 Recon dirs (priority by mtime): `~/Documents/sunox-chadvis-suno-frontend-projectm-qt-research/`,
 `~/Documents/suno-recon/`, `~/Documents/suno-recon-active-investigation/`,
 `~/Documents/suno-recon-cat-stealth-modekl/`.
+
+## Review snapshot — 2026-11-24
+
+Docs-only review; no task status was changed. Suggested sequence, respecting the P-tier ranking and external gates:
+
+1. **T0346** remains the first unfinished P0 by the board's positional ranking; select its next independently verifiable family slice and respect capture/authorization gates. **T0334** follows: its remaining evidence is a real first-sync wall-clock measurement, not another code rewrite.
+2. **T0391** is the best self-contained implementation slice when live Suno/GL evidence is unavailable: split the remaining JSON helper extraction into service-sized batches and test each batch.
+3. **T0417 → T0463**: audit bridge callers before splitting `SunoBridge`; preserve its QML API during staged extraction.
+4. **T0395 / T0396** are worthwhile structural work, but split by ownership and invariants, not an arbitrary LOC target. T0396's old T0362 claim restriction is obsolete; T0362 and T0401 are done.
+5. **T0405** remains gated by T0397. Keep `Application` as the composition root; extract parsing and lifecycle responsibilities only where seams improve tests and ownership.
+6. **T0461 / T0462** capture the harness-efficiency and safe-autonomy gaps below. Do not install or claim an unverified plugin is active.
+
+Build graph note: T0453 already gives the project six module targets. Prefer cohesive source/type boundaries inside those modules; create more libraries only when measured compile/link costs and dependency direction justify them. `SunoController` is already a facade over focused managers/services; do not split it by size alone.
 
 ## Grammar
 
@@ -565,6 +579,13 @@ Finished work moves to [`CHANGELOG.md`](CHANGELOG.md) + [`docs/dev/TODO-archive.
       on the next build; only the header's few consumers rebuild. Verified: reconfigure → app
       `--version` = 1.3.0, `unit_tests` TestVersion 9/9, ctest 33/33. STATUS/T0460.log.
 
+- [ ] T0461 **Make token-efficiency guidance portable and fail-open** (`docs/dev/SKILLS.md`, `.kilo/rules/rtk-rules.md`, `.opencode/skills/`, `.opencode/opencode.jsonc`) #cleanup
+      Audit: RTK guidance exists only for Kilo; OpenCode has no active plugin configured; no `caveman` skill exists in this repository. Add a compact shared skill/rule for targeted reads, batched calls, concise output, and RTK only when available. Treat caveman style as optional for summaries, never code/docs; verify any plugin's source and compatibility before enabling it. No build/runtime dependency and no false claim that a tool is installed.
+- [ ] T0462 **Specify safe autonomous task orchestration across harnesses** (`docs/dev/SKILLS.md`, `.opencode/skills/planning-and-task-breakdown/SKILL.md`) #cleanup
+      The existing `AGENTS.md` already says to continue without asking for routine work; make the planning skill operational: choose the highest eligible P-tier item, honor dependencies/write-set conflicts/leases, parallelize only disjoint work, and keep integration + verification with the orchestrator. Ask only for owner-only evidence, consent, irreversible actions, or product decisions; record external blockers and continue with the next eligible item. Change `AGENTS.md` only if this audit finds a rule gap.
+- [ ] T0463 **Split SunoBridge into domain-specific QML adapters** (`src/qml_bridge/SunoBridge.cpp`, `src/qml_bridge/SunoBridge.hpp`, `src/qml_bridge/`, `tests/unit/qml_bridge/`) #cleanup (after: T0417)
+      The 1886-line TU / 539-line header still combine library, account/auth, discovery/notifications, playlists, generation/upload, and clip-detail state and forwarding; mutations and downloads already have section objects. After T0417 maps the public callers, extract cohesive domain adapters while retaining the current singleton/API as a compatibility facade. Preserve signal/property semantics and singleton lifetime; keep the existing QML module target unless build measurements justify a split. Verify bridge tests, QML registration, and the full build.
+
 - [x] T0090 Nine of fifteen deps unpinned, two bypass system-first (`Dependencies.cmake`) #risk-medium
       CPM tags pinned to commit SHAs (not mutable tags). Conan rejected — CPM+vcpkg.json closes same gaps.
       **CLOSED 2026-11-11 (premise stale):** all four CPM deps (fmt, spdlog,
@@ -932,10 +953,10 @@ Q_INVOKABLE audit, T0406 path-helper dedupe; T0358/T0359 QML lanes still need a 
 - [x] T0394 **Endpoint dead-constant guard script** (`scripts/check-endpoints.py`, `src/suno/SunoEndpoints.hpp`, `docs/suno_api/ENDPOINT-INVENTORY.md`) #cleanup
       Done 2026-11-10: `scripts/check-endpoints.py` extracts all 169 `endpoints::` constants, reports zero-call-site names, and pins the count via `--baseline` (so a new unused route fails CI without gating existing debt). Wired into `guards.yml`.
       Measured at HEAD: 72 referenced, **97 dead** (TODO's "127" was a stale/different count). Verify: `./scripts/check-endpoints.py --baseline 97` exit 0; drift simulation `--baseline 96` exit 1.
-- [ ] T0395 **Split VideoRecorderFFmpeg god TU** (`src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/VideoRecorderFFmpeg.hpp`) #cleanup
-      1734 lines mixing encoder, muxing, resampling, subtitle, HW probe. Verify: HW-probe + subtitle-encoder move to separate TUs; recorder lanes green; file under 600 lines.
-- [ ] T0396 **Split the SunoClient credential worker + queue** (`src/suno/SunoClient.cpp`, `src/suno/SunoClient.hpp`) #cleanup (after: T0401)
-      1660 lines. Do not start while T0362 is claimed. Verify: worker in its own TU; credential tests unchanged and green.
+- [ ] T0395 **Split VideoRecorderFFmpeg by ownership boundaries** (`src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/VideoRecorderFFmpeg.hpp`) #cleanup
+      The 1756-line TU combines output-file reservation/muxing, video and hardware setup, audio resampling/frame assembly, and ASS packet scheduling. Start with low-coupling subtitle and hardware-init seams; keep FFmpeg resource ownership and `cleanup()` order explicit. Verify recorder tests and sanitizers; exercise a real encode for mux/subtitle changes and hardware only where supported. No arbitrary LOC cap.
+- [ ] T0396 **Split SunoClient credential worker and network policy seams** (`src/suno/SunoClient.cpp`, `src/suno/SunoClient.hpp`) #cleanup (after: T0401)
+      The 1683-line TU combines credential persistence (already a distinct `CredentialStoreWorker` type, but implemented here), auth/session lifecycle, bounded reply-body tracking, serialized retry queue, and endpoint handlers. First move the worker implementation into its own TU without changing its test seam; split further only around proven ownership boundaries. Preserve request-epoch, 401/429 retry, and bounded-body invariants. T0362 is closed, so its old claim restriction no longer applies. Verify `test_CredentialRestoreWorker`, `test_SunoRequestEpoch`, and `test_BoundedBody`.
 - [ ] T0397 **De-globalize Config behind an injected interface** (`src/core/Config.hpp`, `src/core/Config.cpp`, `src/core/Application.cpp`, `src/audio/AudioEngine.cpp`) #cleanup
       Two-process-global singletons (`Config`, `Application`) block isolated tests. Verify: tests construct two Configs without global surgery; `CONFIG` macro confined to `main.cpp`.
 - [x] T0398 **Replace raw new/delete in audio upload** (`src/suno/SunoAudioUploadService.cpp`) #risk-medium
@@ -963,8 +984,8 @@ Q_INVOKABLE audit, T0406 path-helper dedupe; T0358/T0359 QML lanes still need a 
       Verified 2026-11-10 (compile probe, AppleClang 16 / libc++ 180100): `__cpp_lib_jthread` is NOT defined; `std::jthread`/`std::stop_token` are compiled out by `_LIBCPP_HAS_NO_EXPERIMENTAL_STOP_TOKEN` (gated behind `_LIBCPP_ENABLE_EXPERIMENTAL`). The fallback at JThread.hpp:42 is what compiles — removing it breaks 8 TUs. Keep it.
       Verify: fallback removed if all supported compilers have jthread, else the comment cites the exact lacking compiler.
       **DONE:** comment corrected to name AppleClang 16 / libc++ 180100 + the experimental gate.
-- [ ] T0405 **Decompose the Application coordinator** (`src/core/Application.cpp`, `src/core/Application.hpp`, `src/core/CliUtils.cpp`) #cleanup (after: T0397)
-      CLI parse + config overrides + subsystem wiring in one 846-line file. Verify: `--help`/`--dump-config` output unchanged.
+- [ ] T0405 **Decompose Application setup without losing the composition root** (`src/core/Application.cpp`, `src/core/Application.hpp`, `src/core/CliUtils.cpp`) #cleanup (after: T0397)
+      The 937-line TU mixes table-driven CLI parsing, process lifecycle/shutdown, config overrides, subsystem construction, and QML setup. `parseArgsFrom()` is already a test seam. Extract parsing and lifecycle/setup phases only where they gain independent tests or ownership; keep `Application` as composition root and preserve destruction order. Verify `--help`/`--dump-config`, startup-failure, and shutdown behavior.
 - [ ] T0406 **Deduplicate the file-path helpers into one module** (`src/qml/`) #cleanup
       `fileName`/`localFileUrl`/`toLocalPath`/`toLocalFilePath` copied 12× across 7 files. Verify: single implementation; all 9 call sites delegate; URL unit test covers spaces/`#`/`?`/drive letters.
 - [ ] T0407 **Extract a shared StateView (loading/empty/error/retry)** (`src/qml/components/StateView.qml`, `src/qml/views/LibraryView.qml`, `src/qml/views/DiscoverView.qml`, `src/qml/views/NotificationsView.qml`, `src/qml/panels/PresetsPanel.qml`, `src/qml/views/VideoView.qml`, `src/qml/views/CreateView.qml`) #cleanup
