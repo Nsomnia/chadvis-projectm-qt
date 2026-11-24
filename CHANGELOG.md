@@ -13,6 +13,17 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   spike, which skips headless; they are now pinned for every enum value plus an
   out-of-range cast in the `unit_tests` suite. (T0463)
 
+### Changed
+
+- **The active backlog now holds open work only.** `TODO.md` was pruned of 82
+  completed and 9 dropped task entries; no open, claimed, unverified, or blocked
+  task was removed. Completed work with user-visible behaviour is already recorded
+  in this changelog; the remaining internal entries — dependency pinning (T0090),
+  FFmpeg API checks (T0104–T0107), thread/test/CI guards (T0329, T0386, T0387,
+  T0392, T0394, T0438, T0444), hardening (T0398–T0401, T0404), build performance
+  (T0456), and backlog housekeeping (T0421–T0429) — had no user-facing effect.
+  T0461–T0464 were archived in `docs/dev/TODO-archive.md` and are recorded above.
+
 ### Fixed
 
 - **Malformed or non-object Suno account envelopes are now named accurately.**
