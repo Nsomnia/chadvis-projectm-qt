@@ -1460,3 +1460,64 @@ Detail: ENDPOINT-INVENTORY §4.12. All 200s.
 ### Suno layer maturity
 Only playback (download tracks locally for free via trick) tested. Tagging, artwork, lyrics — unknown if done.
 Major project still early. Remote info available if needed.
+
+
+---
+
+## Lineage session — 2026-11-24
+
+Shipped this session (see `CHANGELOG.md` `[Unreleased]` and
+[`docs/integration/LINEAGE.md`](docs/integration/LINEAGE.md)): the inference engine, the graph,
+the edge store, the bridge singleton and the `Lineage` view. **Unverified on desktop**: no
+compiler was reachable, so `./build.sh --fast --tests` plus `test_Lineage` are the gate. The
+items below are what that first build will make obvious, plus the follow-ups the design deferred.
+
+- [ ] T0466 **Lineage weights belong in `config.toml`, not only in the cache** (`src/core/ConfigData.hpp`, `ConfigParsers.*`, `ConfigLoader`, `src/qml_bridge/SettingsBridge*`, `config/default.toml`, `docs/user/CONFIG.md`) #feature #cod-medium
+      Today the six weights, `threshold`, both gates and the graph depths persist in
+      `lineage_meta` inside the library cache, which is a cache: deleting it loses the user's
+      tuning. Add a `[lineage]` section with snake_case keys, parse through
+      `lineage::fromVariantMap` so there is ONE validator, seed the store from config on first
+      run, and add a Settings page (the panel in `LineageView` stays as the live dial). Verify:
+      `test_ConfigLoader` cases for present/absent/invalid, and a round-trip written by the
+      Settings page.
+
+- [ ] T0467 **Rebuild blocks the GUI thread** (`src/qml_bridge/SunoLineageBridge.cpp`, `src/suno/lineage/LineageInference.*`) #perf #risk-medium
+      `rebuild()` fingerprints the whole cache and scores up to 250 000 pairs synchronously. It is
+      bounded, but a 6752-clip library is the case the ceiling exists for. Move the pass to a
+      worker (or chunk it across timer slices with progress), carry `InferenceStats` into the
+      progress signal, and keep the store write on the GUI thread after the read completes.
+      Verify: wall-clock on a real 2 k and 6 k library, plus a UI-responsiveness check.
+
+- [ ] T0468 **Remote ancestry is per-focus and manual** (`SunoLineageBridge.cpp`, `SunoClipDetailService.*`) #feature
+      `fetchRemoteAncestry()` reads one clip on demand. The tree would be truer if every clip
+      without a remote edge were read once, slowly, through the existing rate-limited client —
+      and if the attribution a `ClipDetailSheet` already fetches were recorded instead of being
+      displayed and thrown away. Do the second one first: one shared recorder, no new requests.
+      Then a bounded background sweep (respect `Retry-After`, stop on 401) behind the `Lineage`
+      gate. Verify: a fixture test that a sheet's attribution produces a stored remote edge.
+
+- [ ] T0469 **`SunoBridge` still owns too much** (`src/qml_bridge/SunoBridge.*`, `src/qml/components/ClipMutationsSection.qml`, `src/qml/views/*`) #cod-high
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 1886 + 539 lines, and this session added a sibling
+      singleton rather than another section into it. Audit real QML callers per property/verb,
+      then extract library paging and the detail sheet's view-model the way
+      `SunoMutationsSection`/`SunoDownloadSection` were extracted — preserving the QML API in
+      every staged step. Supersedes T0391's remaining batches if they conflict.
+
+- [ ] T0470 **Two readers of the same attribution envelope** (`src/suno/SunoClipDetailService.cpp`, `src/qml_bridge/SunoLineageBridge.cpp`) #cod-medium #risk-medium
+      `source_clips[]` is parsed twice: `SunoClipDetailService::parseAttribution` (with
+      `unwrapClip`'s four envelope shapes) and the lineage bridge's own pass. One owner — a
+      `ClipAttributionParser` in `src/suno/` returning `{peerId, relationship, clip}` — and both
+      callers use it. Any divergence today silently produces a graph edge the sheet does not show,
+      or the reverse.
+
+- [ ] T0471 **`LineageView` has no automated load test** (`tests/unit/qml_bridge/`, `tests/unit/CMakeLists.txt`) #test #blocks-ui
+      `Id`s, imports and singleton bindings in a 530-line QML view cannot be caught by clang.
+      The LibraryView regression (`ClipMutationsSection` without `QtQuick.Controls` made the whole
+      chain unavailable) is the precedent. Add a `QQmlComponent`-loads-successfully case for
+      `LineageView.qml` + `LineageNode.qml` under `QT_QPA_PLATFORM=offscreen`, with a stub
+      `SunoLineageBridge`, and run it in `unit_tests`.
+
+- [ ] T0472 **Lineage edge timestamps are written but never read** (`src/suno/lineage/SunoLineageStore.*`) #cleanup
+      `updated_at` exists so a future "this link changed since you last looked" surface has a
+      basis. Either give it a reader (staleness marker in the graph) or drop the column. Leaving a
+      write-only field is the shape of debt this board exists to catch.

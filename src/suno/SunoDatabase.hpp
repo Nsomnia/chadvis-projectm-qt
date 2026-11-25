@@ -18,6 +18,11 @@ public:
 
     Result<void> init(const std::string& dbPath);
 
+    /// The file this connection was opened on (empty before init). One owner of
+    /// "where the library lives": the lineage store opens its own connection to the
+    /// same file rather than repeating the `dataDir() / "suno_library.db"` rule.
+    [[nodiscard]] const std::string& path() const { return path_; }
+
     Result<void> saveClip(const SunoClip& clip);
     Result<void> saveClips(const std::vector<SunoClip>& clips);
 
@@ -34,6 +39,7 @@ public:
 
 private:
     QSqlDatabase db_;
+    std::string path_;
     bool initialized_{false};
 };
 

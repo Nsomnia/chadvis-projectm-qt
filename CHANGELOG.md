@@ -6,6 +6,39 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- **Song lineage: a native ancestry graph over the local library, plus a heuristic that
+  infers relationships Suno never recorded.** A new `Lineage` page (`src/qml/views/LineageView.qml`,
+  `components/LineageNode.qml`, registered in `cmake/Lineage.cmake`) draws a pan/zoom
+  constellation with one column per generation: ancestors to the left, descendants to the right,
+  the focused clip in the middle. Tapping a node re-centres the graph on it.
+  Two provenances are kept apart on purpose and drawn differently:
+  **remote** edges come from `GET /clips/{id}/attribution` (`source_clips[].relationship`,
+  mapped by `relationFromWire`; an unknown code degrades to `Unknown` rather than guessing a verb),
+  and **inferred** edges come from comparing titles, style/genre tags, description vocabulary,
+  writing system, model generation and age.
+  New headless engine in `src/suno/lineage/`: `LineageText` (tokenizer, Jaccard, script hint,
+  ISO-8601 → epoch), `LineageFingerprint`, `LineageScorer` (six separately-reported components
+  with a weighted mean, plus a strong-signal gate and an instrumental veto),
+  `LineageInference` (two-token blocking so 6752 clips do not become 22.8 M comparisons, a
+  250 k pair ceiling and a generic-bucket ceiling, both *reported* rather than hidden),
+  `LineageGraph` (focus-centred BFS, one parent per node for layout, cycle-safe, layered grid)
+  and `SunoLineageStore` (`lineage_edges` / `lineage_meta` in the library cache file on its own
+  WAL connection; a `WHERE` clause guarantees an inferred row can never overwrite a remote one).
+  Weights, threshold, gates and graph depths are user-editable from the view's tuning panel and
+  persist in `lineage_meta`; they are validated and clamped, never allowed to produce a
+  degenerate run. `SunoLineageBridge` is a new QML singleton rather than another `SunoBridge`
+  section, so the transport/transport-adjacent object does not grow a second database.
+  Design and invariants: [`docs/integration/LINEAGE.md`](docs/integration/LINEAGE.md).
+  **Not verified in this session**: no compiler or Qt build exists on the machine this was
+  written on (`./build.sh --tests` and `test_Lineage` are the first things to run).
+- **The library cache keeps `make_instrumental`.** Schema v4 adds the column, `saveClip` writes it
+  and `clipFromQuery` reads it back. It is a captured field the cache had been dropping since the
+  table was created, and the lineage instrumental veto is inert without it.
+- **`SunoDatabase::path()`.** One owner of "where the library lives", so the lineage store opens
+  the same file instead of repeating the `dataDir() / "suno_library.db"` rule.
+
 ### Fixed
 
 - **The `placebo` encoder preset is now selectable, and presets cannot drift between C++ and the UI.**

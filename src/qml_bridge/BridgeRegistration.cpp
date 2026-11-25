@@ -6,6 +6,7 @@
 #include "PresetBridge.hpp"
 #include "LyricsBridge.hpp"
 #include "SunoBridge.hpp"
+#include "SunoLineageBridge.hpp"
 #include "OverlayBridge.hpp"
 #include "SettingsBridge.hpp"
 
@@ -30,6 +31,8 @@ void registerBridges(QQmlApplicationEngine* engine,
     qmlRegisterSingletonType<PresetBridge>("ChadVis", 1, 0, "PresetBridge", PresetBridge::create);
     qmlRegisterSingletonType<LyricsBridge>("ChadVis", 1, 0, "LyricsBridge", LyricsBridge::create);
     qmlRegisterSingletonType<SunoBridge>("ChadVis", 1, 0, "SunoBridge", SunoBridge::create);
+    qmlRegisterSingletonType<SunoLineageBridge>("ChadVis", 1, 0, "SunoLineageBridge",
+                                                SunoLineageBridge::create);
 qmlRegisterSingletonType<OverlayBridge>("ChadVis", 1, 0, "OverlayBridge", OverlayBridge::create);
     qmlRegisterSingletonType<SettingsBridge>("ChadVis", 1, 0, "SettingsBridge", SettingsBridge::create);
 
@@ -59,6 +62,9 @@ qmlRegisterSingletonType<OverlayBridge>("ChadVis", 1, 0, "OverlayBridge", Overla
     if (sunoController) {
         SettingsBridge::setSunoClient(sunoController->client());
         SunoBridge::setSunoController(sunoController);
+        // The lineage view reads the library cache directly and needs nothing else
+        // from the controller, but it needs to know WHICH database it is reading.
+        SunoLineageBridge::setSunoController(sunoController);
     }
 }
 

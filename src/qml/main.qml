@@ -32,6 +32,7 @@ ApplicationWindow {
 
     readonly property var viewMeta: {
         "library":  { label: "Library" },
+        "lineage":  { label: "Lineage" },
         "notifications": { label: "Notifications" },
         "discover": { label: "Explore" },
         "create":   { label: "Create" },
@@ -104,7 +105,7 @@ ApplicationWindow {
     // re-enter on the next press.
     readonly property bool fullscreenActive: visibility === Window.FullScreen
 
-    readonly property var contentViews: ["library", "notifications", "discover",
+    readonly property var contentViews: ["library", "lineage", "notifications", "discover",
                                         "create", "listen", "video"]
 
     // Geometry is captured on the way in and re-applied on the way out rather
@@ -447,6 +448,18 @@ ApplicationWindow {
             LibraryView {
                 anchors.fill: parent
                 visible: mainWindow.activeView === "library"
+                opacity: visible ? 1 : 0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Theme.durationNormal
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
+
+            LineageView {
+                anchors.fill: parent
+                visible: mainWindow.activeView === "lineage"
                 opacity: visible ? 1 : 0
                 Behavior on opacity {
                     NumberAnimation {

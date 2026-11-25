@@ -717,3 +717,14 @@ list(APPEND SUNO_SOURCES
     src/suno/SunoSearchService.hpp
     src/suno/SunoSearchService.cpp
 )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SONG LINEAGE (appended 2026-11-24)
+#
+# The lists live in cmake/Lineage.cmake and are appended to SUNO_SOURCES,
+# QML_BRIDGE_SOURCES and QML_SOURCES from there. `CMAKE_CURRENT_LIST_DIR` is used
+# because a bare relative include() is resolved against the including directory,
+# not against this file's own location.
+# ─────────────────────────────────────────────────────────────────────────────
+include(${CMAKE_CURRENT_LIST_DIR}/Lineage.cmake)

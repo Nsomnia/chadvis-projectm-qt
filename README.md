@@ -22,6 +22,7 @@ ChadVis is a native **C++23 / Qt6 desktop frontend for [suno.com](https://suno.c
 | **Language** | C++23 (Pure Power) | Legacy Garbage |
 | **Product** | Suno client shell, projectM second | Either one, never both |
 | **Visuals** | projectM v4 (Milkdrop) | Flat static album art |
+| **Lineage** | Ancestry graph over the whole library, server attribution and an infer-from-text heuristic kept visibly apart ([design](docs/integration/LINEAGE.md)) | One song page at a time, when the site feels like it |
 | **Recording** | FFmpeg software encode, HW paths in code but not enabled by the build | Recording your screen with a phone |
 | **AI Integration** | Capture-based, fail-closed, unofficial | Guessing endpoints and hoping |
 | **Flex Factor** | High (Arch BTW) | Non-existent KK&D n00bz |

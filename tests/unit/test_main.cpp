@@ -40,6 +40,7 @@ int runTestLyricsFetchQueue(int argc, char** argv);
 int runTestSunoDatabase(int argc, char** argv);
 int runTestAuthCoordinator(int argc, char** argv);
 int runTestClipParser(int argc, char** argv);
+int runTestLineage(int argc, char** argv);
 int runTestDownloadQueue(int argc, char** argv);
 int runTestCredentialStorePolicy(int argc, char** argv);
 int runTestMangoCrypto(int argc, char** argv);
@@ -132,6 +133,7 @@ int main(int argc, char* argv[]) {
     status |= RUN_SUITE(TestSunoDatabase);
     status |= RUN_SUITE(TestAuthCoordinator);
     status |= RUN_SUITE(TestClipParser);
+    status |= RUN_SUITE(TestLineage);
     status |= RUN_SUITE(TestDownloadQueue);
     status |= RUN_SUITE(TestCredentialStorePolicy);
     status |= RUN_SUITE(TestMangoCrypto);

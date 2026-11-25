@@ -67,6 +67,9 @@ SunoClip clipFromQuery(const QSqlQuery& query) {
     clip.metadata.type = query.value("type").toString().toStdString();
     clip.metadata.duration = query.value("duration").toString().toStdString();
     clip.metadata.error_message = query.value("error_message").toString().toStdString();
+    // v4. A captured field the cache used to drop, which made the lineage
+    // instrumental veto inert for every clip read back from disk.
+    clip.metadata.make_instrumental = query.value("make_instrumental").toInt() != 0;
     return clip;
 }
 
@@ -105,6 +108,7 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
     }
     db_ = QSqlDatabase::addDatabase("QSQLITE", kConnectionName);
     db_.setDatabaseName(QString::fromStdString(dbPath));
+    path_ = dbPath;
 
     if (!db_.open()) {
         return Result<void>::err("Failed to open Suno database: " +
@@ -274,6 +278,22 @@ Result<void> SunoDatabase::init(const std::string& dbPath) {
         }
     }
 
+    //   3 -> 4: make_instrumental, the one captured flag the cache dropped.
+    if (schemaVersion < 4) {
+        QSqlRecord record = db_.record("clips");
+        if (record.indexOf("make_instrumental") == -1) {
+            if (!query.exec("ALTER TABLE clips ADD COLUMN make_instrumental INTEGER DEFAULT 0")) {
+                LOG_ERROR("SunoDatabase: Failed to add make_instrumental column: {}",
+                          query.lastError().text().toStdString());
+            }
+        }
+        if (query.exec("PRAGMA user_version = 4")) {
+            LOG_INFO("SunoDatabase: Schema migrated to version 4");
+        } else {
+            LOG_WARN("SunoDatabase: Failed to persist schema version 4");
+        }
+    }
+
     // The library view sorts by created_at DESC on every open; without this
     // index that is a full scan plus an in-memory sort of the whole table —
     // on a library with no retention policy. (searchClips' five
@@ -300,12 +320,12 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
             "image_url, image_large_url, model_name, major_model_version, "
             "display_name, handle, is_liked, is_trashed, is_public, "
             "status, created_at, play_count, upvote_count, "
-            "prompt, tags, lyrics, type, duration, error_message) "
+            "prompt, tags, lyrics, type, duration, error_message, make_instrumental) "
             "VALUES (:id, :title, :audio_url, :media_urls, :video_url, :image_url, "
             ":image_large_url, :model_name, :major_model_version, :display_name, "
             ":handle, :is_liked, :is_trashed, :is_public, :status, :created_at, "
             ":play_count, :upvote_count, "
-            ":prompt, :tags, :lyrics, :type, :duration, :error_message) "
+            ":prompt, :tags, :lyrics, :type, :duration, :error_message, :make_instrumental) "
             "ON CONFLICT(id) DO UPDATE SET "
             "title=excluded.title, audio_url=excluded.audio_url, media_urls=excluded.media_urls, "
             "video_url=excluded.video_url, image_url=excluded.image_url, "
@@ -317,7 +337,8 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
             "status=excluded.status, created_at=excluded.created_at, "
             "play_count=excluded.play_count, upvote_count=excluded.upvote_count, "
             "prompt=excluded.prompt, tags=excluded.tags, lyrics=excluded.lyrics, "
-            "type=excluded.type, duration=excluded.duration, error_message=excluded.error_message");
+            "type=excluded.type, duration=excluded.duration, error_message=excluded.error_message, "
+            "make_instrumental=excluded.make_instrumental");
 
     query.bindValue(":id", QString::fromStdString(clip.id));
     query.bindValue(":title", QString::fromStdString(clip.title));
@@ -343,6 +364,7 @@ Result<void> SunoDatabase::saveClip(const SunoClip& clip) {
     query.bindValue(":type", QString::fromStdString(clip.metadata.type));
     query.bindValue(":duration", QString::fromStdString(clip.metadata.duration));
     query.bindValue(":error_message", QString::fromStdString(clip.metadata.error_message));
+    query.bindValue(":make_instrumental", clip.metadata.make_instrumental ? 1 : 0);
 
     if (!query.exec()) {
         return Result<void>::err("Failed to save clip: " + query.lastError().text().toStdString());
