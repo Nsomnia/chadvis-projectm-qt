@@ -52,12 +52,6 @@ struct Weights {
     int descendantDepth{4};
 };
 
-/// The weight keys, in the order the settings panel shows them.
-inline QStringList weightKeys() {
-    return {QStringLiteral("title"),   QStringLiteral("style"),  QStringLiteral("prompt"),
-            QStringLiteral("language"), QStringLiteral("model"), QStringLiteral("age")};
-}
-
 /// Validate a candidate set. Returns a sentence naming the first problem; every
 /// rule here is one a slider can actually break.
 std::expected<void, std::string> validate(const Weights& weights);

@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "core/Logger.hpp"
-#include "suno/ClipParser.hpp"
 #include "suno/SunoClient.hpp"
 #include "suno/SunoEndpoints.hpp"
 #include "suno/lineage/LineageFingerprint.hpp"
@@ -45,6 +44,13 @@ QString roleKey(vc::suno::lineage::Role role) {
         break;
     }
     return QStringLiteral("focus");
+}
+
+/// "1 link" / "2 links" without a `const char*` implicit conversion at every call
+/// site (the tree builds with ASCII casts disabled in some consumer configs).
+template <typename Count>
+QString plural(Count count) {
+    return count == 1 ? QString() : QStringLiteral("s");
 }
 
 } // namespace
@@ -198,11 +204,12 @@ void SunoLineageBridge::resetWeights() {
 void SunoLineageBridge::loadWeights() {
     if (store_ == nullptr) return;
     auto stored = store_->meta(kWeightsKey);
-    if (!stored || stored->empty()) {
+    if (!stored || stored.value().empty()) {
         weights_ = vc::suno::lineage::Weights{};
         return;
     }
-    const QJsonDocument document = QJsonDocument::fromJson(QByteArray::fromStdString(*stored));
+    const QJsonDocument document =
+            QJsonDocument::fromJson(QByteArray::fromStdString(stored.value()));
     if (!document.isObject()) {
         weights_ = vc::suno::lineage::Weights{};
         return;
@@ -266,10 +273,10 @@ void SunoLineageBridge::rebuild() {
     QString summary = QStringLiteral("Scored %1 pair%2 across %3 clips; %4 link%5 stored in "
                                      "%6 ms.")
                               .arg(inferred.stats.pairsScored)
-                              .arg(inferred.stats.pairsScored == 1 ? "" : "s")
+                              .arg(plural(inferred.stats.pairsScored))
                               .arg(libraryCount_)
                               .arg(inferred.edges.size())
-                              .arg(inferred.edges.size() == 1 ? "" : "s")
+                              .arg(plural(inferred.edges.size()))
                               .arg(lastRebuildMs_);
     if (inferred.stats.pairCapHit) {
         summary += QStringLiteral(" The comparison ceiling was reached, so this is a partial "
@@ -363,9 +370,9 @@ void SunoLineageBridge::refresh() {
     } else if (status_.isEmpty()) {
         setStatus(QStringLiteral("%1 related clip%2, %3 link%4.")
                           .arg(nodes_.size() - 1)
-                          .arg(nodes_.size() == 2 ? "" : "s")
+                          .arg(plural(nodes_.size() - 1))
                           .arg(edges_.size())
-                          .arg(edges_.size() == 1 ? "" : "s"));
+                          .arg(plural(edges_.size())));
     }
     emit statusChanged();
 }
@@ -465,7 +472,7 @@ void SunoLineageBridge::clearInferred() {
     }
     setStatus(QStringLiteral("Removed %1 inferred link%2. Library data is untouched.")
                       .arg(removed.value())
-                      .arg(removed.value() == 1 ? "" : "s"));
+                      .arg(plural(removed.value())));
     refresh();
 }
 
@@ -588,7 +595,7 @@ void SunoLineageBridge::handleAttribution(QNetworkReply* reply, const QString& c
     }
     setStatus(QStringLiteral("Recorded %1 upstream source%2 from the server.")
                       .arg(recorded.size())
-                      .arg(recorded.size() == 1 ? "" : "s"));
+                      .arg(plural(recorded.size())));
     if (focusId_.isEmpty()) focusId_ = clipId;
     refresh();
 }
