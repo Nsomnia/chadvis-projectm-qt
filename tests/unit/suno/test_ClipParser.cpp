@@ -117,6 +117,41 @@ private slots:
         // Unknown fields ignored liberally - no crash is the contract.
     }
 
+    /// The 2026-11-26 app capture sends `metadata.duration` as a JSON NUMBER
+    /// (14.318666666666667) and the style sliders NESTED under
+    /// `metadata.control_sliders`. Both used to be lost: duration through the
+    /// string-only accessor, the sliders because only the flat spelling was
+    /// read. Duration was the loud one -- every real clip rendered "0:00" and
+    /// the lineage fingerprint scored every pair at zero seconds.
+    void appCaptureMetadataReadsNumbersAndNestedSliders() {
+        const QJsonObject obj = objFrom(
+                "{\"id\": \"clip-1\", \"status\": \"complete\", \"metadata\": {"
+                "\"duration\": 14.318666666666667,"
+                "\"control_sliders\": {\"audio_weight\": 0.35, \"style_weight\": 0.49,"
+                "\"weirdness_constraint\": 0.17, \"aug_creativity\": 4}}}");
+        auto parsed = ClipParser::parseClip(obj);
+        QVERIFY(parsed.has_value());
+        // Prefix compare, not equality: the exact 15-digit rendering of a double
+        // is not what this test is about.
+        QVERIFY(parsed->metadata.duration.starts_with("14.318"));
+        QCOMPARE(parsed->metadata.style_weight, 0.49);
+        QCOMPARE(parsed->metadata.weirdness, 0.17);
+
+        // A whole-number duration must not keep a trailing ".0" in the text.
+        auto whole = ClipParser::parseClip(
+                objFrom("{\"id\": \"clip-2\", \"metadata\": {\"duration\": 151}}"));
+        QVERIFY(whole.has_value());
+        QCOMPARE(QString::fromStdString(whole->metadata.duration), QStringLiteral("151"));
+
+        // The flat spelling still wins where the wire has no `control_sliders`.
+        auto flat = ClipParser::parseClip(objFrom(
+                "{\"id\": \"clip-3\", \"metadata\": {\"style_weight\": 0.25, "
+                "\"weirdness\": 0.5}}"));
+        QVERIFY(flat.has_value());
+        QCOMPARE(flat->metadata.style_weight, 0.25);
+        QCOMPARE(flat->metadata.weirdness, 0.5);
+    }
+
     void imageUrlPolicy_data()
     {
         QTest::addColumn<QString>("url");

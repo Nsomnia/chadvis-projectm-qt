@@ -8,6 +8,57 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Two silent type mismatches in the app capture, and the download meter it proves.**
+  Field pass over the same 2026-11-26 iOS HAR that T0473 took the routes from; recorded in
+  [`docs/suno_api/APP-HAR-2026-11-26-SCHEMA-DELTAS.md`](docs/suno_api/APP-HAR-2026-11-26-SCHEMA-DELTAS.md).
+  `metadata.duration` is a **JSON number** on the wire and was read through the string-only
+  accessor, so it was `""` for every real clip: cards rendered `0:00` and
+  `lineage::parseDurationSeconds` returned 0, which quietly zeroed the duration signal in the
+  lineage scorer library-wide. Same tolerant read now for `bpm`/`key`/`model_id`. The style
+  sliders are **nested** under `metadata.control_sliders` (with `weirdness_constraint`, not
+  `weirdness`), so a v6 clip used to arrive with `style_weight`/`weirdness` at 0; nested-first
+  with the old flat spelling kept as fallback behind it. `/billing/info` gained `is_past_due`
+  (exposed as `SunoBridge.billingPastDue` — a past-due account still answers `is_active`), plus
+  `subscription_platform`, `subscription_anchor`, `download_credit_packs` and
+  `visual_credit_packs`. **`download_credit_packs` is the find**: 1/3/5/10 downloads at
+  2.99/8.95/14.95/29.90 USD, so Suno meters downloads and sells them in packs — the
+  `[LEAD]` hedge on the download product is now `[T1]`. Nothing consumes a pack; the streaming
+  path never spends one. **Not verified in this session**: no build ran. First gate is
+  `./build.sh --fast --tests`, then
+  `test_ClipParser::appCaptureMetadataReadsNumbersAndNestedSliders`.
+
+- **The iOS app's capture closes two open questions, opens one whole surface, and wires
+  one new read.** A signed-in HAR of Suno's own iPhone client (`Suno/534`) is recorded in
+  [`docs/suno_api/ENDPOINT-INVENTORY.md`](docs/suno_api/ENDPOINT-INVENTORY.md) §4.13 and
+  §5.16. It settles the generation gate from the app's side: the app submits on
+  `POST /api/generate/v2` after `POST /api/device_attestation/nonce`, with
+  `Suno-AppAttest-*` headers. Attestation is hardware-backed and bound to that app's
+  bundle id, so a desktop client cannot produce one — the app route is a **permanent
+  boundary**, not missing work, and the web route's `/c/check` gate is unchanged. It also
+  captures `GET /visual/models` answering **200** with the full model matrix where the
+  2026-11-06 corpus got `403 feature_disabled`, so Visuals is *account-gated*, not absent
+  (that 403 had been documented as if the route were dead).
+  Newly captured, recorded as constants and **not** wired: lyrics generation
+  (`generate/lyrics` + poll — a different product from co-write), the autoplay seed
+  (`queue/start`), `playlist/sync/v2`, the `visual/*` generation and reference-upload
+  family, the batched `video_gen/image/generate/{batch}` poll, `cms/create/info-chip`, and
+  `persona/get-loved-personas`. `uploads/image/{id}/upload-finish` gained a captured
+  rejection branch (`moderation_status:"rejected"` plus `moderation_reason`).
+  The one wired read is `clips/clip_roots`: `SunoClipDetailService` now issues a fifth
+  song-page read and reports `clip_attribution_type`, keeping an original song (empty
+  `clips[]` with `"original"`) distinct from the server saying nothing. `SunoBridge`
+  exposes it as `roots` + `attribution_type` on `clipDetail`.
+  `scripts/check-endpoints.py` is re-pinned 97 → 111 (184 constants, 73 referenced,
+  111 dead) with the reason recorded in `guards.yml`.
+  **Not verified in this session**: no build could be run here. First gate is
+  `./build.sh --fast --tests` plus the two new `test_SunoClipDetailService` cases.
+
+- **The app's autoplay and lyrics families are documented as capture-gated.**
+  `queue/start` starts a synthetic queue whose read route was not captured, and a
+  `generate/lyrics` poll was only ever seen `running`, so neither a "list the queue" call
+  nor a terminal lyrics status is assumed. Recorded in §5.16 with what each capture must
+  still answer.
+
 - **Song lineage: a native ancestry graph over the local library, plus a heuristic that
   infers relationships Suno never recorded.** A new `Lineage` page (`src/qml/views/LineageView.qml`,
   `components/LineageNode.qml`, registered in `cmake/Lineage.cmake`) draws a pan/zoom

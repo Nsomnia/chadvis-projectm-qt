@@ -97,16 +97,44 @@ void parseMetadata(const QJsonObject& obj, SunoClip& clip) {
     md.lyrics = ClipParser::optString(meta, "lyrics").toStdString();
     md.negative_tags = ClipParser::optString(meta, "negative_tags").toStdString();
     md.error_message = ClipParser::optString(meta, "error_message").toStdString();
-    md.duration = ClipParser::optString(meta, "duration").toStdString();
     md.type = ClipParser::optString(meta, "type").toStdString();
-    md.bpm = ClipParser::optString(meta, "bpm").toStdString();
-    md.key = ClipParser::optString(meta, "key").toStdString();
-    md.model_id = ClipParser::optString(meta, "model_id").toStdString();
+
+    // ── Numeric-on-the-wire scalars (app HAR 2026-11-26, [T1]) ─────────────
+    // `duration` is a JSON NUMBER (14.318666666666667), not a string. Read
+    // through the string-only accessor it was silently dropped on every real
+    // clip -- the card rendered "0:00" and LineageFingerprint scored every pair
+    // at zero seconds. `json::stringValue` is the tolerant read that was already
+    // in the contract: number or string in, text out, missing -> "".
+    // Both consumers already accept a bare number as seconds
+    // (ClipCard.formatDuration, lineage::parseDurationSeconds), so the fix is
+    // the read and nothing else.
+    md.duration = json::stringValue(meta.value(QStringLiteral("duration"))).toStdString();
+    // Same tolerance for these three. All have been strings in every web
+    // capture; none of them may die if a body sends a number.
+    md.bpm = json::stringValue(meta.value(QStringLiteral("bpm"))).toStdString();
+    md.key = json::stringValue(meta.value(QStringLiteral("key"))).toStdString();
+    md.model_id = json::stringValue(meta.value(QStringLiteral("model_id"))).toStdString();
+
     md.refund_credits = ClipParser::optBool(meta, "refund_credits", false);
     md.stream = ClipParser::optBool(meta, "stream", false);
     md.make_instrumental = ClipParser::optBool(meta, "make_instrumental", false);
-    md.weirdness = ClipParser::optDouble(meta, "weirdness", 0.0);
-    md.style_weight = ClipParser::optDouble(meta, "style_weight", 0.0);
+
+    // ── `control_sliders` is NESTED (app HAR 2026-11-26, [T1]) ─────────────
+    // The sliders ride inside `metadata.control_sliders`:
+    //   {"audio_weight":0.35,"style_weight":0.49,
+    //    "weirdness_constraint":0.17,"aug_creativity":4}
+    // The flat read is kept underneath as the fallback, because the earlier web
+    // captures put `style_weight`/`weirdness` at the top level of `metadata`.
+    // Both spellings were captured, so both are read; neither is a guess.
+    const QJsonObject sliders = meta.value(QStringLiteral("control_sliders")).toObject();
+    const auto slider = [&sliders, &meta](const QString& key) {
+        return ClipParser::optDouble(sliders, key, ClipParser::optDouble(meta, key, 0.0));
+    };
+    md.style_weight = slider(QStringLiteral("style_weight"));
+    md.weirdness =
+            sliders.contains(QStringLiteral("weirdness_constraint"))
+                    ? ClipParser::optDouble(sliders, QStringLiteral("weirdness_constraint"), 0.0)
+                    : slider(QStringLiteral("weirdness"));
 }
 
 } // namespace

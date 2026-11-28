@@ -123,6 +123,19 @@ std::optional<SunoBillingInfo> parseBilling(const QJsonObject& root) {
     const QJsonValue packs = root.value(QStringLiteral("credit_packs"));
     info.credit_pack_count = packs.isArray() ? static_cast<i64>(packs.toArray().size()) : 0;
 
+    // App HAR 2026-11-26 [T1]. See SunoBillingInfo for why these exist; the
+    // short version is that `download_credit_packs` is the captured proof that
+    // downloads are metered and sold in packs. Counted, never bought.
+    info.is_past_due = P::optBool(root, "is_past_due", false);
+    info.subscription_platform = P::optString(root, "subscription_platform").toStdString();
+    info.subscription_anchor = P::optString(root, "subscription_anchor").toStdString();
+    const auto offerCount = [&root](const char* key) {
+        const QJsonValue value = root.value(QString::fromLatin1(key));
+        return value.isArray() ? static_cast<i64>(value.toArray().size()) : i64{0};
+    };
+    info.download_pack_offer_count = offerCount("download_credit_packs");
+    info.visual_pack_offer_count = offerCount("visual_credit_packs");
+
     // `accessible_features` — the 22-entry PlanFeature entitlement plane, and the
     // last of the seven gating planes this client was fetching and discarding.
     // Each element is an object carrying a single `name`, so both the object form

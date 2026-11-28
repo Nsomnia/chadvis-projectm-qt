@@ -167,6 +167,30 @@ struct SunoBillingInfo {
     SunoPlanInfo plan;
     i64 credit_pack_count{0};
 
+    // ── App HAR 2026-11-26 [T1]: four more keys on the SAME body ─────────────
+    //   subscription_platform  "stripe"
+    //   is_past_due            false
+    //   subscription_anchor    "2026-11-13T06:12:58Z"
+    //   download_credit_packs  [{id, amount, price_amount, price_currency_code}]
+    //   visual_credit_packs    [ … same shape … ]
+    //
+    // `download_credit_packs` is the find that matters, because it SETTLES a
+    // question this tree has been hedging: the amounts sold are 1/3/5/10
+    // downloads at 2.99/8.95/14.95/29.90 USD. Suno therefore meters DOWNLOADS
+    // and sells them in packs, separately from generation `credits`. The metered
+    // download product is [T1] now, not [LEAD] -- see the `is_download_unlocked`
+    // comment on SunoClip below.
+    //
+    // Recorded, NOT consumed. These are OFFERS (a price list), not balances, and
+    // this client never buys one: it fetches the progressive asset the account
+    // already streams and decrypts it locally, so the download meter is never
+    // touched.
+    bool is_past_due{false};
+    std::string subscription_platform; // "stripe"
+    std::string subscription_anchor;   // ISO timestamp the cycle anchors on
+    i64 download_pack_offer_count{0};  // size of download_credit_packs
+    i64 visual_pack_offer_count{0};    // size of visual_credit_packs
+
     // ── The PlanFeature entitlement plane ─────────────────────────────────────
     // `accessible_features` from the SAME `/api/billing/info/` reply. This is one
     // of seven independent gating planes and it was being discarded, like the

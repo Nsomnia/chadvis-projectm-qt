@@ -49,6 +49,11 @@
   retention, and capture maintenance discipline. Raw scans and unredacted
   external exports are evidence, never implementation contracts or
   documentation sources.
+- [`APP-HAR-2026-11-26-SCHEMA-DELTAS.md`](APP-HAR-2026-11-26-SCHEMA-DELTAS.md)
+  is the **field-level delta record** for the iOS app capture: which wire field
+  arrived as a different type than this tree assumed, what was wired, and what
+  stays recorded-only. Routes stay in the inventory; only field shapes and their
+  consumers live here.
 
 This index intentionally contains no endpoint tables, auth recipes, model
 claims, or response schemas. Update the canonical inventory first; keep this

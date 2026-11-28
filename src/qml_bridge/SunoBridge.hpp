@@ -54,6 +54,10 @@ class SunoBridge : public QObject,
             bool googleLoginAvailable READ googleLoginAvailable NOTIFY googleLoginAvailableChanged)
     Q_PROPERTY(QVariantList models READ models NOTIFY modelsChanged)
     Q_PROPERTY(int credits READ credits NOTIFY billingInfoChanged)
+    // A past-due subscription keeps answering `is_active`, so `credits` alone
+    // cannot tell a lapsed card from a healthy account. This is the one flag on
+    // /api/billing/info that is worth a property (app HAR 2026-11-26 [T1]).
+    Q_PROPERTY(bool billingPastDue READ billingPastDue NOTIFY billingInfoChanged)
     Q_PROPERTY(QString planName READ planName NOTIFY billingInfoChanged)
     Q_PROPERTY(QString userName READ userName NOTIFY accountInfoChanged)
     // Was CONSTANT, which was honest only while the getter was a literal
@@ -161,6 +165,7 @@ public:
     QString filterText() const { return filterText_; }
     void setFilterText(const QString& filter);
     int credits() const;
+    bool billingPastDue() const;
     QString planName() const;
     QString userName() const;
     bool isAuthenticated() const;

@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-11-24
+updated: 2026-11-26
 model: GPT-5.5
 ---
 
@@ -953,6 +953,8 @@ Q_INVOKABLE audit, T0406 path-helper dedupe; T0358/T0359 QML lanes still need a 
 - [x] T0394 **Endpoint dead-constant guard script** (`scripts/check-endpoints.py`, `src/suno/SunoEndpoints.hpp`, `docs/suno_api/ENDPOINT-INVENTORY.md`) #cleanup
       Done 2026-11-10: `scripts/check-endpoints.py` extracts all 169 `endpoints::` constants, reports zero-call-site names, and pins the count via `--baseline` (so a new unused route fails CI without gating existing debt). Wired into `guards.yml`.
       Measured at HEAD: 72 referenced, **97 dead** (TODO's "127" was a stale/different count). Verify: `./scripts/check-endpoints.py --baseline 97` exit 0; drift simulation `--baseline 96` exit 1.
+      **Re-pinned to 111 on 2026-11-26** (184 constants, 73 referenced) when T0473 recorded the
+      app capture; the numbers above are this entry's measurement, not today's.
 - [ ] T0395 **Split VideoRecorderFFmpeg by ownership boundaries** (`src/recorder/VideoRecorderFFmpeg.cpp`, `src/recorder/VideoRecorderFFmpeg.hpp`) #cleanup
       The 1756-line TU combines output-file reservation/muxing, video and hardware setup, audio resampling/frame assembly, and ASS packet scheduling. Start with low-coupling subtitle and hardware-init seams; keep FFmpeg resource ownership and `cleanup()` order explicit. Verify recorder tests and sanitizers; exercise a real encode for mux/subtitle changes and hardware only where supported. No arbitrary LOC cap.
 - [ ] T0396 **Split SunoClient credential worker and network policy seams** (`src/suno/SunoClient.cpp`, `src/suno/SunoClient.hpp`) #cleanup (after: T0401)
@@ -1521,3 +1523,47 @@ items below are what that first build will make obvious, plus the follow-ups the
       `updated_at` exists so a future "this link changed since you last looked" surface has a
       basis. Either give it a reader (staleness marker in the graph) or drop the column. Leaving a
       write-only field is the shape of debt this board exists to catch.
+
+
+- [?] T0473 **Record the 2026-11-26 app-shaped capture; wire `clips/clip_roots`** (`src/suno/SunoEndpoints.hpp`, `src/suno/SunoClipDetailService.*`, `src/qml_bridge/SunoBridge.cpp`, `tests/unit/suno/test_SunoClipDetailService.cpp`, `docs/suno_api/ENDPOINT-INVENTORY.md`, `AGENTS.md`, `.github/workflows/guards.yml`) #feature #risk-medium
+      The iOS app's signed-in HAR is a **variant** corpus, not a correction: same `/api`
+      prefix on the alias, trailing slashes missing, and generation gated on Apple App
+      Attest. Recorded in ENDPOINT-INVENTORY §4.13/§5.16 with 15 new constants, and one
+      wired: `SunoClipDetailService` now issues a fifth song-page read and keeps
+      `clip_attribution_type` "original" + empty `clips[]` distinct from silence.
+      `check-endpoints.py` baseline re-pinned **97 → 111** deliberately (184 constants,
+      73 referenced, 111 dead) and the reason is in `guards.yml`.
+      **Not verified**: no build ran here. First gate: `./build.sh --fast --tests` plus
+      `test_SunoClipDetailService` (two new cases), then `./scripts/check-endpoints.py
+      --baseline 111`. The App Attest gate is recorded as unpassable and must stay
+      unwired — do not add `Suno-AppAttest-*` headers anywhere.
+
+- [ ] T0474 **Four captured app families have a route and no consumer** (`src/suno/`, `src/qml_bridge/`, `src/qml/views/`) #feature
+      `queue/start` (autoplay seed: client-minted `queue_id`/`version_id`,
+      `context_id:"my_songs"`, `seed_item`; **no captured read** to list what it chose),
+      `generate/lyrics` + its poll (terminal status and poll interval **not** captured),
+      `playlist/sync/v2` (an opaque per-playlist token whose purpose is **not** captured),
+      and the `visual/*` generation family (`visual/models` answered 200 with the matrix;
+      one submit = two takes and one reserved credit; **no completed generation** was
+      reached, so no image URL, edit, or video body). Each needs one more capture before
+      a client, and none may be inferred from the field names. The two trivia reads that
+      need nothing (`cms/create/info-chip`, `visual/presets`) are deliberately consumed
+      by nothing — `visual/presets` is Suno's own visualizer, not a projectM pack.
+
+- [?] T0475 **App capture, field pass: two silent type mismatches and the download meter** (`src/suno/ClipParser.cpp`, `src/suno/SunoModels.hpp`, `src/suno/SunoAccountManager.cpp`, `src/qml_bridge/SunoBridge.*`, `tests/unit/suno/test_ClipParser.cpp`, `docs/suno_api/APP-HAR-2026-11-26-SCHEMA-DELTAS.md`) #risk-medium #data-loss
+      T0473 took the routes; this takes the fields. `metadata.duration` is a JSON NUMBER on
+      the wire and was read through the string-only accessor, so it was **"" for every real
+      clip** — cards rendered `0:00` and `lineage::parseDurationSeconds` returned 0, which
+      made the duration signal in the lineage scorer inert library-wide. Same fix for
+      `bpm`/`key`/`model_id`. Sliders are **nested** under `metadata.control_sliders`
+      (`weirdness_constraint` spelling); only the flat spelling was read, so a v6 clip
+      arrived with `style_weight`/`weirdness` at 0 — nested-first with flat fallback.
+      `/billing/info` gained `is_past_due` (exposed as `SunoBridge.billingPastDue`; a
+      past-due account still answers `is_active`), `subscription_platform`,
+      `subscription_anchor`, and `download_credit_packs` / `visual_credit_packs`.
+      **`download_credit_packs` proves the download product is metered** — 1/3/5/10
+      downloads at 2.99/8.95/14.95/29.90 USD — so the `[LEAD]` hedge in `SunoBillingInfo`
+      is now `[T1]`. Nothing consumes the packs; the streaming path never spends one.
+      **Not verified**: no build ran. First gate `./build.sh --fast --tests`, then
+      `test_ClipParser::appCaptureMetadataReadsNumbersAndNestedSliders`.
+

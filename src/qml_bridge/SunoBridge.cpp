@@ -749,6 +749,12 @@ int SunoBridge::credits() const {
     return billing ? static_cast<int>(billing->credits) : 0;
 }
 
+bool SunoBridge::billingPastDue() const {
+    if (!s_controller || !s_controller->accountManager()) return false;
+    const auto& billing = s_controller->accountManager()->billing();
+    return billing ? billing->is_past_due : false;
+}
+
 QString SunoBridge::planName() const {
     if (!s_controller || !s_controller->accountManager()) return {};
     const auto& billing = s_controller->accountManager()->billing();
@@ -1638,6 +1644,16 @@ void SunoBridge::onClipDetailChanged() {
         sources.push_back(row);
     }
     map[QStringLiteral("sources")] = sources;
+
+    // `roots` is the same question from the other side: what the clip IS.
+    // `attribution_type` stays empty when the server said nothing, which is not
+    // the same as "original", so the sheet must not render one from an absence.
+    QVariantList roots;
+    for (const auto& clip : detail.roots.clips) {
+        roots.push_back(toDiscoverClip(clip));
+    }
+    map[QStringLiteral("roots")] = roots;
+    map[QStringLiteral("attribution_type")] = detail.roots.attributionType;
 
     QVariantList comments;
     const int shown = std::min<int>(static_cast<int>(detail.comments.size()), 5);
