@@ -256,6 +256,10 @@ QString WhisperTranscriber::findExecutable() const {
     if (!options_.executable.isEmpty()) {
         return options_.executable;
     }
+    return probeExecutable();
+}
+
+QString WhisperTranscriber::probeExecutable() {
     // `main` is deliberately absent: it is the pre-rename binary name and far
     // too generic to resolve on PATH without picking up someone else's program.
     for (const QString& name :

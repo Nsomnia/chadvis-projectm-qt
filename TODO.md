@@ -1576,9 +1576,13 @@ items below are what that first build will make obvious, plus the follow-ups the
       parts with a contract, so the suite needs no binary and no model. Interpolation is
       labelled (`WhisperWord::interpolated`, `confidence 0.5`), never presented as measured
       onset. **Not claimed**: aligning whisper's text to Suno's lyrics is forced alignment.
-      Next: config keys (`whisper_executable`, `whisper_model`, language) and a
-      `LyricsBridge` entry point — both need a `ConfigData` field and a QML surface, so they
-      are deliberately not half-wired here.
+      Wired to QML rather than left as dead code: `LyricsBridge.transcribeFile(audio, model,
+      language)` runs it and hands the result to `LyricsSync::loadLyrics`, with
+      `transcriptionAvailable` / `transcribing` / `transcriptionProgress` and a failure signal.
+      Required parameters are per-call ON PURPOSE: there is no model picker in the UI, and a
+      `[lyrics] whisper_model` config key with nothing on the other end would be the same debt.
+      Remaining: a Settings surface to choose the model file, and a per-clip entry point so a
+      library row can trigger it instead of a hand-typed path.
       Build side (doc, not measured): `CHADVIS_UNITY_BUILD` opt-in with batch 8, and
       `<variant>`/`<source_location>` added to `src/pch.hpp`.
       **Not verified**: no build ran. Gate: `./build.sh --fast --tests`, then

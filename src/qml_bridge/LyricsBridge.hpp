@@ -14,6 +14,10 @@ namespace vc {
 class AudioEngine;
 }
 
+namespace vc::lyrics {
+class WhisperTranscriber;
+}
+
 namespace qml_bridge {
 
 class LyricsBridge : public QObject,
@@ -37,6 +41,15 @@ friend class QmlSingletonBridge<LyricsBridge>;
     Q_PROPERTY(QString artist READ artist NOTIFY lyricsChanged)
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
     Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchResultsChanged)
+    // Local transcription (whisper.cpp). The whole feature is optional and
+    // absent-able: `transcriptionAvailable` is the only honest answer to "can
+    // this machine do it", and a UI must ask it rather than showing a button
+    // that fails on click.
+    Q_PROPERTY(bool transcriptionAvailable READ transcriptionAvailable NOTIFY
+                       transcriptionStateChanged)
+    Q_PROPERTY(bool transcribing READ transcribing NOTIFY transcriptionStateChanged)
+    Q_PROPERTY(int transcriptionProgress READ transcriptionProgress NOTIFY
+                       transcriptionStateChanged)
 
 public:
     explicit LyricsBridge(QObject* parent = nullptr);
@@ -57,6 +70,9 @@ public:
     QString artist() const;
     QString searchQuery() const;
     QVariantList searchResults() const;
+    bool transcriptionAvailable() const;
+    bool transcribing() const;
+    int transcriptionProgress() const;
 
     /// Also reachable as `LyricsBridge.setSearchQuery(...)` from QML.
     ///
@@ -119,6 +135,23 @@ public slots:
     /// QML receives.
     Q_INVOKABLE QVariantList getContextLines(int before, int after) const;
 
+    /// Transcribe a local audio file, then load the result as the current
+    /// lyrics. `modelPath` is a ggml model; `language` empty means "auto".
+    ///
+    /// Both paths are supplied per call rather than read from a config section,
+    /// and that is a deliberate boundary rather than an unfinished one: there is
+    /// no model picker in the UI yet, and inventing `[lyrics] whisper_model`
+    /// now would be a config key with nothing on the other end. The CLI itself
+    /// is not supplied at all -- `WhisperTranscriber::probeExecutable()` finds
+    /// `whisper-cli` on PATH, which is how a user who has whisper.cpp gets this
+    /// for free.
+    ///
+    /// This REPLACES whatever lyrics the sync engine holds, including timing
+    /// Suno supplied: the caller is asserting the local read is the better one.
+    Q_INVOKABLE void transcribeFile(const QString& audioPath, const QString& modelPath,
+                                    const QString& language = {});
+    Q_INVOKABLE void cancelTranscription();
+
 signals:
     void lyricsChanged();
     void positionChanged();
@@ -126,6 +159,13 @@ signals:
     void searchResultsChanged();
     void exportFinished(const QString& path);
     void exportFailed(const QString& message);
+    /// Fired for start, progress and finish alike; the three properties above
+    /// are the state, so a UI binds those and treats this as "re-read them".
+    void transcriptionStateChanged();
+    /// `lineCount` is 0 when the audio had no words -- silence or an
+    /// instrumental, which is an answer, not a failure.
+    void transcriptionFinished(int lineCount);
+    void transcriptionFailed(const QString& message);
 
 private slots:
     void onPositionChanged(vc::LyricsSyncPosition pos);
@@ -150,6 +190,12 @@ private:
     bool isInstrumental_{false};
     QString searchQuery_;
     QVariantList searchResults_;
+
+    // Created on the first transcribeFile call, parented here. Null is the
+    // normal state for a machine without whisper.cpp, so every use is guarded.
+    vc::lyrics::WhisperTranscriber* transcriber_{nullptr};
+    bool transcribing_{false};
+    int transcriptionProgress_{0};
 };
 
 } // namespace qml_bridge

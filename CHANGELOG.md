@@ -20,7 +20,12 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
   Interpolation is labelled rather than hidden: a one-word segment is measured, a multi-word one is
   divided across its own bounds and every word it yields carries `interpolated` / `confidence 0.5`.
   **Not charged as alignment**: matching whisper's text to Suno's lyrics is forced alignment and is
-  explicitly not claimed. Also here: `CHADVIS_UNITY_BUILD` (opt-in, off by default, documented as a
+  explicitly not claimed. Wired to QML rather than left as dead code —
+  `LyricsBridge.transcribeFile(audio, model, language)` runs it and hands the result to
+  `LyricsSync::loadLyrics`, with `transcriptionAvailable` / `transcribing` /
+  `transcriptionProgress` and a failure signal. The model path is per-call on purpose: a
+  `[lyrics] whisper_model` key with no UI to set it would be the same debt in a different file.
+  Also here: `CHADVIS_UNITY_BUILD` (opt-in, off by default, documented as a
   cold-build win and an incremental loss) and `<variant>`/`<source_location>` in the PCH — the
   header correction `docs/dev/BUILD-SPEED.md` measured. **Not verified in this session**: no build
   ran. First gate is `./build.sh --fast --tests`, then `TestWhisperTranscriber`.

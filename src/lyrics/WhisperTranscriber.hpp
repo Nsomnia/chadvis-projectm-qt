@@ -125,6 +125,11 @@ public:
     /// `whisper-cli` / `whisper.cpp` / `whisper` found on PATH. Empty when none.
     [[nodiscard]] QString findExecutable() const;
 
+    /// The PATH probe alone, with no options involved. Exposed because a caller
+    /// that has not chosen a model yet can still answer "is the CLI installed"
+    /// without constructing a transcriber to ask it.
+    [[nodiscard]] static QString probeExecutable();
+
     /// Both a CLI and a readable model file are present.
     [[nodiscard]] bool isAvailable() const;
 

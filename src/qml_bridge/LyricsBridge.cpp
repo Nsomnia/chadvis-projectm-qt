@@ -7,6 +7,7 @@
 #include <algorithm>
 #include "lyrics/LyricsData.hpp"
 #include "lyrics/LyricsSync.hpp"
+#include "lyrics/WhisperTranscriber.hpp"
 
 namespace qml_bridge {
 
@@ -206,6 +207,94 @@ int LyricsBridge::currentWordIndex() const { return currentWordIndex_; }
 qreal LyricsBridge::lineProgress() const { return lineProgress_; }
 qreal LyricsBridge::wordProgress() const { return wordProgress_; }
 bool LyricsBridge::isInstrumental() const { return isInstrumental_; }
+
+bool LyricsBridge::transcriptionAvailable() const {
+    if (transcriber_) {
+        return transcriber_->isAvailable();
+    }
+    // Before the first attempt the only question answerable without a model path
+    // is "is the CLI installed". A model is supplied per call, so availability
+    // is re-asked at call time and this must not be cached as the verdict.
+    return !vc::lyrics::WhisperTranscriber::probeExecutable().isEmpty();
+}
+
+bool LyricsBridge::transcribing() const { return transcribing_; }
+
+int LyricsBridge::transcriptionProgress() const { return transcriptionProgress_; }
+
+void LyricsBridge::transcribeFile(const QString& audioPath, const QString& modelPath,
+                                  const QString& language) {
+    if (transcribing_) {
+        emit transcriptionFailed(tr("A transcription is already running."));
+        return;
+    }
+    if (audioPath.isEmpty() || modelPath.isEmpty()) {
+        emit transcriptionFailed(
+                tr("A local audio file and a whisper model path are both required."));
+        return;
+    }
+
+    if (!transcriber_) {
+        transcriber_ = new vc::lyrics::WhisperTranscriber(this);
+
+        connect(transcriber_, &vc::lyrics::WhisperTranscriber::finished, this,
+                [this](const vc::lyrics::WhisperTranscript& transcript) {
+                    transcribing_ = false;
+                    transcriptionProgress_ = 0;
+                    const vc::LyricsData lyrics = vc::lyrics::toLyricsData(transcript);
+                    const int lineCount = static_cast<int>(lyrics.lines.size());
+                    if (lineCount > 0 && s_sync) {
+                        s_sync->loadLyrics(lyrics);
+                        // The lines came from somewhere else, so every binding on
+                        // them has to be told.
+                        currentLineIndex_ = -1;
+                        currentWordIndex_ = -1;
+                        emit lyricsChanged();
+                    }
+                    emit transcriptionStateChanged();
+                    emit transcriptionFinished(lineCount);
+                });
+
+        connect(transcriber_, &vc::lyrics::WhisperTranscriber::failed, this,
+                [this](const QString& reason) {
+                    transcribing_ = false;
+                    transcriptionProgress_ = 0;
+                    emit transcriptionStateChanged();
+                    emit transcriptionFailed(reason);
+                });
+
+        connect(transcriber_, &vc::lyrics::WhisperTranscriber::progressChanged, this,
+                [this](int percent) {
+                    transcriptionProgress_ = percent;
+                    emit transcriptionStateChanged();
+                });
+    }
+
+    vc::lyrics::WhisperOptions options;
+    options.modelPath = modelPath;
+    options.language = language.isEmpty() ? QStringLiteral("auto") : language;
+    transcriber_->setOptions(options);
+
+    const QString executable = transcriber_->findExecutable();
+    if (executable.isEmpty() || !transcriber_->isAvailable()) {
+        emit transcriptionFailed(
+                executable.isEmpty()
+                        ? tr("Whisper CLI not found. Install whisper.cpp (whisper-cli on PATH).")
+                        : tr("Whisper model is not readable: %1").arg(modelPath));
+        return;
+    }
+
+    transcribing_ = true;
+    transcriptionProgress_ = 0;
+    emit transcriptionStateChanged();
+    transcriber_->transcribe(audioPath);
+}
+
+void LyricsBridge::cancelTranscription() {
+    if (transcriber_) {
+        transcriber_->cancel();
+    }
+}
 
 QString LyricsBridge::title() const {
     return s_sync ? QString::fromStdString(s_sync->getLyrics().title) : "";
