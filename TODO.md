@@ -1,6 +1,6 @@
 ---
 schema: 1
-updated: 2026-11-26
+updated: 2026-11-28
 model: GPT-5.5
 ---
 
