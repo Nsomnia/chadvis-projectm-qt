@@ -188,7 +188,12 @@ constexpr std::array<FeatureDefinition, kFeatureGateCount> kCatalog{{
          "and an uncaptured durable-processing contract -- which is exactly why it "
          "belongs behind the client switch instead of a hardcoded false. No flag in "
          "either observed map expresses generation availability; the server-selected "
-         "route arrives as configs[\"gen-endpoint\"] on an authenticated read."},
+         "route arrives as configs[\"gen-endpoint\"] on an authenticated read. "
+         "The app HAR (2026-11-26, §5.16) adds the second captured submit route -- "
+         "POST /api/generate/v2 with Apple App Attest headers -- and it does NOT "
+         "unblock this gate: an assertion is hardware-backed and bound to that app's "
+         "bundle id, so a desktop cannot produce one. Do not add Suno-AppAttest-* "
+         "headers here."},
         {FeatureGate::Upload, "Audio upload", "generation", hosts::Evidence::Captured, "",
          hosts::Tier::Production, ExclusionReason::None,
          "initialize -> direct multipart -> upload-finish is [T1] end to end "
@@ -242,7 +247,11 @@ constexpr std::array<FeatureDefinition, kFeatureGateCount> kCatalog{{
          "request video at all is uncaptured, which is why the gate keys on "
          "`video-to-song` rather than claiming the capability. ClipParser also stores "
          "video_url raw with no origin check, so playback of a video host is a "
-         "separate open question."},
+         "separate open question. The app HAR (2026-11-26, §5.16) opens this one "
+         "further and still not enough: /visual/models answered 200 with the model "
+         "matrix (video-1 480p, video-2 720p, image-1/2/4) and /visual/generations "
+         "submits with two takes, but NO completed generation was captured -- no "
+         "image URL, no edit, no video body -- so nothing here may be wired."},
         {FeatureGate::Stems, "Stems", "generation", hosts::Evidence::Captured,
          "editing-stems,generative-stems,stem-dryer,crop-remove", hosts::Tier::Production,
          ExclusionReason::None,

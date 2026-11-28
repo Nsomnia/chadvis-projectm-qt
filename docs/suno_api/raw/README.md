@@ -168,6 +168,44 @@ It did **not** capture: a loopback or non-`suno.com` callback, a Clerk
 exactly where they were. The file stays outside the repository: it contains live
 credentials, cookies, identity data, and redirect query strings.
 
+## External 2026-11-26 mobile-app capture — no local artifact
+
+Reviewed source: an **inline HAR excerpt** of Suno's own iOS client
+(`Suno/534`, client header `iOS 1.98.0-534`), submitted in a development request
+on 2026-11-26. Its secrets were **partly** redacted by the submitter, so treat
+the remainder as live material. It was **not** written into this repository and
+no file was archived, so this entry has **no path and no SHA-256** — which is the
+provenance defect this file exists to make visible, not to hide.
+
+| Field | Value |
+|---|---|
+| Exporter | The app's own network stack (`CFNetwork/Darwin`), captured by the submitter |
+| Item timestamps | 2026-11-26 07:57–08:10 UTC |
+| Items | 28 request/response pairs plus two clip/desktop-library JSON samples |
+| SHA-256 | **Not available** — the bytes never landed on disk here |
+| Retention | Nothing kept. The cookies, bearer, App Attest values, account fields, and clip/persona identifiers in the submitted text were **not** copied anywhere. |
+
+The evidence role it supports, and nothing wider, is
+[`../ENDPOINT-INVENTORY.md`](../ENDPOINT-INVENTORY.md) §4.13 (the route catalog
+and its three shape facts) and §5.16 (the App Attest chain, lyrics generation,
+the queue seed, `clips/clip_roots`, playlist sync tokens, the `visual/*` family,
+the image-upload rejection shape, the same-host Clerk mint, and the two persona
+reads).
+
+It did **not** capture: a completed `visual/generations` (no image URL), an
+`image_edit` or video task body, a `queue` read, a terminal lyrics-generation
+status, an approved image upload, the derived value of
+`clip_attribution_type`, or a purpose for a playlist sync token. Those stay
+capture targets.
+
+**Two discipline notes.** (1) A capture pasted into a chat is not a reviewed
+artifact: it has no hash and cannot be re-checked, so its rows are `[T1]` on the
+strength of the request/response shape alone — record that plainly rather than
+implying a stored corpus behind it. (2) Re-capturing this surface should write a
+**new** dated directory and hash on disk, per the maintenance rule below;
+overwriting this entry's prose with a manifest row later is fine, but inventing a
+hash now is not.
+
 ## Reviewed-source map
 
 Consolidated from the canonical master on 2026-09-26; the 2026-08-25

@@ -10,6 +10,13 @@ Two kinds of link exist and they are never blended:
 | `remote` | `GET /clips/{id}/attribution` → `source_clips[].relationship` | The server's statement. Never overwritten, never removed locally. |
 | `inferred` | ChadVis comparing the clips' own text, model and age | A guess. Drawn dashed, removable, replaced wholesale on every rebuild. |
 
+The other side of the same question is a **read**, not a link:
+`GET /clips/clip_roots?clip_id=` answers `{clips[], clip_attribution_type}`, so
+"this is an original" arrives as an empty list plus `"original"` rather than as
+silence. It is served to the clip sheet by `SunoClipDetailService`, is **not**
+stored as an edge, and must not be read as "no parents were found" when the
+server said nothing at all.
+
 ## Where it lives
 
 | Piece | File | Job |
@@ -77,4 +84,5 @@ library cache, not in `config.toml` — see backlog `T0466` for the config-file 
    holds a lock across a read of the same file.
 4. Graph traversal is cycle-safe: a clip reachable in both directions appears once.
 5. Nothing here fetches media, loads an image, or calls a host outside the allowlist. The only
-   network request is the attribution read, through `SunoClient`.
+   network requests are the attribution read and its `clips/clip_roots` sibling, both through
+   `SunoClient`.

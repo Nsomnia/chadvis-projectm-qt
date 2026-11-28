@@ -567,10 +567,16 @@ constexpr std::string_view SURVEY_QUESTIONS = "/survey/survey-questions/{}"; // 
 //                    where an MCP connection would appear. Empty for this account.
 //   suno_chat/rooms POST {title} -> 403 feature_disabled "Suno Chat isn't available"
 //   visual/models -> 403 feature_disabled "Visuals aren't available right now."
+//
+// CORRECTION, app HAR 2026-11-26 [T1]: `visual/models` answered **200** with the
+// whole model matrix (see the Visuals block at the end of this file). So the 403
+// above is an ACCOUNT/FEATURE gate on that session, not a dead route, and the
+// same holds for `suno_chat/rooms`. Do not read either 403 as "this route does
+// not exist", and do not read the 200 as an entitlement for every account.
 constexpr std::string_view LABS_CONFIGS = "/labs/configs"; // [T1] GET
 constexpr std::string_view INTEGRATIONS_V2 = "/v2/integrations"; // [T1] GET
 constexpr std::string_view SUNO_CHAT_ROOMS = "/suno_chat/rooms"; // [T1] POST, 403 gated
-constexpr std::string_view VISUAL_MODELS = "/visual/models"; // [T1] GET, 403 gated
+constexpr std::string_view VISUAL_MODELS = "/visual/models"; // [T1] GET, 403 gated / 200 body
 
 // ── 2026-11-07 live UI capture [T1] ─────────────────────────
 // Signed-in Chrome walk of the /me surface, library tabs, trash, playlists,
@@ -645,6 +651,171 @@ constexpr std::string_view UPLOADS_IMAGE = "/uploads/image/"; // [T1] POST
 constexpr std::string_view UPLOADS_IMAGE_UPLOAD_FINISH = "/uploads/image/{}/upload-finish/"; // [T1] POST
 constexpr std::string_view PROMPTS_SUGGESTIONS_CONTEXTUAL = "/prompts/suggestions/contextual"; // [T1] POST
 constexpr std::string_view STATSIG_FORKED_ONBOARDING = "/statsig/experiment/forked-onboarding"; // [T1] GET
+
+// ── 2026-11-26 mobile-app HAR [T1] ───────────────────────────
+// The iOS app's own signed-in capture (`Suno/534`, client `iOS 1.98.0-534`).
+// Call it "app HAR" below. Three facts decide how far any of it may be used,
+// and each one is a correction to an assumption the web captures encourage:
+//
+//   1. HOST AND PREFIX. The app still talks to `studio-api-prod.suno.com` under
+//      `/api`, NOT to `suno.com/a/api`. Its paths are therefore the old shape,
+//      and most of them carry NO trailing slash: `/billing/info`,
+//      `/playlist/create`, `/persona/get-personas`, `/gen/{id}/aligned_lyrics/v2`.
+//      Both spellings answered 200 on their own capture, so the constants above
+//      keep their slashes and nothing here encodes a slash-less twin: deleting a
+//      slash is exactly the "tidy it up" guess §2.2 forbids, and a route is not
+//      re-spelled on the strength of a different client's call.
+//   2. APP ATTEST. Every generation submit in the app is gated on Apple App
+//      Attest, not only on the `/c/check` captcha: a nonce route, then
+//      `Suno-AppAttest-Platform/-Assertion/-Nonce/-Key-Id` on the submit. An
+//      assertion is hardware-backed, per-install, and registered with Apple
+//      against that app's own bundle id, so a desktop client can neither forge
+//      one nor ask Apple for one. This is why the app's route is NOT a way
+//      around the web route's gate, and neither route's gate lifts the other's.
+//   3. VISUALS ARE ON for this account. `visual/models` answered 200 with the
+//      whole matrix, where the persona HAR got 403 `feature_disabled`. That is a
+//      gate opening on an account, not a route appearing.
+//
+// The app's bearer refresh is `POST /api/clerk/v1/client/sessions/{sid}/tokens`
+// with `_is_native=true`, answered `{jwt}` plus `Set-Cookie: __session`, and it
+// sends NO `Authorization` header (cookie-only). Clerk host-relative routes live
+// in `suno/auth/ClerkAuthClient.hpp`, so it is recorded as a comment here
+// rather than as a constant: it is a third captured token variant on the live
+// alias, and `tokens`-first with `touch` fallback stays this client's order.
+
+// App Attest handshake. POST (empty body) -> {"nonce": "<opaque>"}.
+constexpr std::string_view DEVICE_ATTESTATION_NONCE = "/device_attestation/nonce"; // [T1] POST
+// The app's submission route, and NOT an alternative to GENERATE above: it is
+// the same batch envelope (`{id, clips[], batch_size, status, created_at}`) on a
+// different gate. The captured body names the generation keys too:
+//   {"prompt", "negative_tags", "gpt_description_prompt", "type":"gen",
+//    "stream":true, "make_instrumental", "control_sliders":{...},
+//    "persona_id", "vox_render_mode":"strict", "task":"agentic_thinking",
+//    "can_remix", "show_remix", "is_remix", "priority", "image_config", ...}
+// `metadata` reached the clip with keys this tree did not model before:
+// `vox_render_mode`, `is_mumble`, `priority`, `task`, `control_sliders`
+// (`audio_weight`, `style_weight`, `weirdness_constraint`, `aug_creativity`) and
+// `image_config` (`use_image_config_template`, `id`, `default_cover_style`).
+// Deliberately wired nowhere: a desktop cannot produce an attestation (note 2).
+constexpr std::string_view GENERATE_V2 = "/generate/v2"; // [T1] POST, App Attest
+
+// Lyrics GENERATION, distinct from COWRITE_LYRICS above (which edits text the
+// user supplies). POST {"make_instrumental":false,
+// "prompt":"[Verse 1]\n…"} -> {"id": "<lyrics id>"}, then poll:
+//   GET /generate/lyrics/{id} -> {text, title, status, error_message}
+// `status` was "running" on the observed poll, so the settled value is not
+// captured and a poll loop must not assume "complete" is the only terminal
+// state -- `error_message` is the failure branch and is empty while running.
+constexpr std::string_view LYRICS_GENERATE = "/generate/lyrics"; // [T1] POST
+constexpr std::string_view LYRICS_GENERATE_BY_ID = "/generate/lyrics/{}"; // [T1] GET, poll
+
+// Autoplay/radio: seed a synthetic queue from one clip. [T1] POST
+//   {"container_type":"synthetic_playlist", "override":false, "queue_id",
+//    "device_id", "version_id", "context_id":"my_songs", "device_name",
+//    "seed_item":{"content_type":"clip", "content_id":"<clip id>"}}
+//   -> {"version_id", "state":{"context_container_type", "context_id",
+//        "injected_items":[], "version_id"}}
+// `queue_id` and `version_id` were CLIENT-minted UUIDs (both fresh), `device_id`
+// a 64-hex value, and `context_id` the literal "my_songs". The response's
+// `version_id` was a DIFFERENT UUID, so the server's queue version is its own --
+// do not assume the client's was accepted. `injected_items[]` was empty on
+// start, so a client must not read it as "the queue is empty" -- it is the
+// injected set, and the seed is in `seed_item`. Only `override:false` is
+// captured; what `true` replaces is unproven.
+constexpr std::string_view QUEUE_START = "/queue/start"; // [T1] POST
+
+// The one captured read that states what a clip IS rather than what it came
+// from. GET /clips/clip_roots?clip_id=<id> ->
+//   {"clips": [<song_schema>], "clip_attribution_type": "original"}
+// An EMPTY `clips[]` with `"original"` is a real, observed answer (an original
+// song), not a failed read -- the same discipline `parseAttribution` already
+// keeps for `source_clips[]`. Companion of CLIP_ATTRIBUTION above: attribution
+// answers "derived from what", this answers "is it a root at all".
+//
+// CAVEAT, and it is why the caller degrades instead of retrying: the call was
+// captured on the app's base (`studio-api-prod`) and this constant is joined to
+// API_BASE (`suno.com/a/api`), which is a live alias only for the routes probed
+// on both (T0336). So the path is `[T1]` and **its spelling on `/a/api` is
+// unverified** -- a 404 there is a base variant, not a dead route, and the
+// owner (SunoClipDetailService) settles the section empty on any non-2xx.
+constexpr std::string_view CLIP_ROOTS = "/clips/clip_roots"; // [T1] GET
+
+// Per-playlist sync token. POST {"playlists":{"<playlist id>":"<token>"}} ->
+//   {"playlists":[{"playlist_id": "<id>", "sync_token": "<base64>"}]}
+// The token is opaque and server-issued, and the observed answer carried back
+// THE SAME TOKEN the request sent -- an echo, not a demonstrated new version.
+// So this capture shows a round trip and does NOT show how a token is minted,
+// advanced, or invalidated, and what the route is FOR is uncaptured entirely.
+// Nothing beyond storing and echoing a token back may be built on it.
+constexpr std::string_view PLAYLIST_SYNC_V2 = "/playlist/sync/v2"; // [T1] POST
+
+// ── Studio API: Visuals (image/video generation) [T1] ────────
+// App HAR 2026-11-26. `VISUAL_MODELS` above answered 200 here, and its body is
+// the model matrix this family is selected from:
+//   {models:[{id, label, tier, mediaType, provider, description,
+//             resolutions, aspects, durations, chainedDurations, defaultTakes,
+//             maxTakes, maxPromptChars, maxReferenceImages, referenceMode,
+//             tasks[], plans[], staffOnly, credits:{...}}]}
+// Fast tier: `video-1` (480p, credits.perSecond.480p 15) and `image-1`
+// (credits.perGeneration 1, maxPromptChars 800). Standard tier: `video-2`
+// (720p, perSecond.720p 30) and `image-2` (perGeneration 25). Max: `image-4`
+// (perGeneration 50). Video durations 5-15 s with `chainedDurations` [30,60],
+// tasks `text_to_video`/`image_to_video`/`extend`, referenceMode `first_last`;
+// image tasks are `text_to_image`/`image_edit` with referenceMode `references`.
+// Credits are per-model server data -- never derive a cost from a tier name.
+
+// One generation request yields TWO takes by default (`takeCount: 2`), each with
+// its own `creationId` and its own status. [T1] POST
+//   {"prompt", "model":"image-1", "idempotencyKey", "aspect":"9:16",
+//    "task":"text_to_image"}
+//   -> {aspect, id:"gen_…", mediaType, model, origin:"visual", prompt,
+//       requestId, rev, runId, status:"queued", takeCount,
+//       takes:[{creationId, take, status}],
+//       credits:{charged, refunded, reserved}, eta:{expectedMs, …}, task}
+// Poll: GET /visual/generations/{id} -> the same envelope with
+// `status:"running"` and `takes[].providerPhase:"queued"`. `credits.reserved`
+// is held while queued, so a queued generation is not a free one and the same
+// `idempotencyKey` must not be reused for a second request.
+constexpr std::string_view VISUAL_GENERATIONS = "/visual/generations"; // [T1] POST
+constexpr std::string_view VISUAL_GENERATION_BY_ID = "/visual/generations/{}"; // [T1] GET, poll
+
+// Reference-image upload, mirroring the audio and image chains:
+//   POST {"bytes", "contentType":"image/jpeg"} -> 201. The body was 4 131 bytes
+//        and is NOT reproduced, so its key set is uncaptured; the only id
+//        observed is the one the follow-up call is made on.
+//   POST /{id}/complete (empty body) -> {contentType, createdAt, id, liked,
+//        mediaType, ownerUserId, rev, s3Key, source:"uploaded",
+//        status:"pending"}
+// `status` is "pending" on complete: moderation is a later state, not part of
+// the upload answer, and nothing here says when it settles.
+constexpr std::string_view VISUAL_ASSETS_UPLOADS = "/visual/assets/uploads"; // [T1] POST
+constexpr std::string_view VISUAL_ASSETS_UPLOAD_COMPLETE =
+        "/visual/assets/uploads/{}/complete"; // [T1] POST
+
+// Suno's own visualizer backgrounds:
+//   {backgrounds:[{group:"visualizer", id, label, ref:"preset:visualizer-1a",
+//                  imageUrl, width, height}]}
+// Read-only and free. Recorded, NOT consumed: this client renders through
+// projectM v4, and `ref` is a Suno asset id with no projectM file behind it.
+constexpr std::string_view VISUAL_PRESETS = "/visual/presets"; // [T1] GET
+
+// The BATCHED cover-art generator's own poll, distinct from
+// VIDEO_GEN_POLL_BATCHES above. POST /video_gen/image/generate answered
+// {batch_id, status:"processing", title, image_ids[]} -- the ids arrive before
+// the URLs -- and GET /video_gen/image/generate/{batch id} ->
+//   {batch_id, prompt_text, status, images:[{id, image_url, status,
+//    display_order}]}
+// `image_ids` is therefore the id space `playlist/v2/{id}/cover-image` wants,
+// and the URL is what a UI shows; poll this route, never construct the URL.
+constexpr std::string_view VIDEO_GEN_IMAGE_POLL = "/video_gen/image/generate/{}"; // [T1] GET
+
+// App chrome, not a contract: {language:"en", platform:"ios"} for this build.
+constexpr std::string_view CMS_INFO_CHIP = "/cms/create/info-chip"; // [T1] GET
+
+// The second persona read: the personas this account LOVES. Same persona
+// objects as PERSONA_LIST above (each wrapping its `clip`, plus `root_clip_id`),
+// returned as {personas:[…]}. It was a LEAD in §4.7 until this capture.
+constexpr std::string_view PERSONA_GET_LOVED = "/persona/get-loved-personas"; // [T1] GET
 
 // ── Legacy base (NOT under API_BASE) ───────────────────────
 // `GET https://suno.com/api/feature-flags` answered 401 `{"error":"Unauthorized"}`

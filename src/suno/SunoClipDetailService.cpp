@@ -70,6 +70,32 @@ SunoClipDetailService::parseAttribution(const QJsonObject& root)
     return out;
 }
 
+std::expected<SunoClipDetailService::Roots, QString>
+SunoClipDetailService::parseRoots(const QJsonObject& root)
+{
+    // Captured body: `{clips:[...], clip_attribution_type:"original"}`. An empty
+    // `clips[]` is the answer for an original song, so absence of an array is
+    // the only thing treated as "nothing said" -- and even then it is not an
+    // error: this read must never fail the sheet the base clip is already on.
+    Roots out;
+    out.attributionType = json::stringValue(root.value(QStringLiteral("clip_attribution_type")));
+    const QJsonValue clips = root.value(QStringLiteral("clips"));
+    if (!clips.isArray()) {
+        return out;
+    }
+    const QJsonArray entries = clips.toArray();
+    out.clips.reserve(entries.size());
+    for (const QJsonValue& entry : entries) {
+        if (!entry.isObject()) {
+            continue;
+        }
+        if (auto clip = unwrapClip(entry.toObject())) {
+            out.clips.append(std::move(*clip));
+        }
+    }
+    return out;
+}
+
 std::expected<QList<SunoClipDetailService::Comment>, QString>
 SunoClipDetailService::parseComments(const QJsonObject& root)
 {
@@ -166,13 +192,18 @@ void SunoClipDetailService::load(const QString& clipId)
     }
     detail_ = {};
     detail_.clipId = clipId;
-    pending_ = 4;
+    pending_ = 5;
     ++generation_;
     emit detailChanged();
 
     const QString id = QString::fromStdString(clipId.toStdString());
     enqueue(Route::Attribution,
             QString(qstr(endpoints::CLIP_ATTRIBUTION)).replace(QStringLiteral("{}"), id));
+    // `clip_roots` takes `clip_id` as a QUERY key on the captured call, exactly
+    // as `remixes/count` and `get_similar` below do, so it is percent-encoded
+    // rather than substituted into the path.
+    enqueue(Route::Roots, qstr(endpoints::CLIP_ROOTS) + QStringLiteral("?clip_id=")
+                                  + QUrl::toPercentEncoding(id));
     enqueue(Route::Comments,
             QString(qstr(endpoints::GEN_COMMENTS)).replace(QStringLiteral("{}"), id)
                     + QStringLiteral("?order=most_liked"));
@@ -228,6 +259,11 @@ void SunoClipDetailService::handleReply(QNetworkReply* reply, Route route,
     case Route::Attribution:
         if (auto parsed = parseAttribution(root)) {
             detail_.sources = std::move(*parsed);
+        }
+        break;
+    case Route::Roots:
+        if (auto parsed = parseRoots(root)) {
+            detail_.roots = std::move(*parsed);
         }
         break;
     case Route::Comments:

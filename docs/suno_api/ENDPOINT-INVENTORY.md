@@ -3,7 +3,7 @@
 **Status:** Canonical API-spec master, consolidated 2026-09-24; non-contractual
 material extracted 2026-09-26; 2026-08-25 `auth.suno.com` export folded in
 2026-09-28; contradictions and staleness corrected 2026-10-05
-**Current evidence baseline:** the 2026-09-24 Burp export reviewed on 2026-09-24, reconciled with the 2026-08-25 Burp corpus — including the 13-item `auth.suno.com` export folded in on 2026-09-28 — the 2026-09-22 sanitized OAuth recon, the 2026-09-23 browser HAR, the 2026-09-28/30 sanitized recon where it directly captured a request or response (section 1.2, item 5), the **2026-11-05/06 signed-in full-API HAR** (section 4.10) which is the current top of the ladder for the Studio mutation set, the upload/stem/persona chain, and the `video_gen` image family, and the **2026-11-06 persona/voice HAR** (section 4.11) which closes voice verification, the Listen-for-Credits family, and the cover-art image id space
+**Current evidence baseline:** the 2026-09-24 Burp export reviewed on 2026-09-24, reconciled with the 2026-08-25 Burp corpus — including the 13-item `auth.suno.com` export folded in on 2026-09-28 — the 2026-09-22 sanitized OAuth recon, the 2026-09-23 browser HAR, the 2026-09-28/30 sanitized recon where it directly captured a request or response (section 1.2, item 5), the **2026-11-05/06 signed-in full-API HAR** (section 4.10) which is the current top of the ladder for the Studio mutation set, the upload/stem/persona chain, and the `video_gen` image family, the **2026-11-06 persona/voice HAR** (section 4.11) which closes voice verification, the Listen-for-Credits family, and the cover-art image id space, and the **2026-11-26 mobile-app HAR** (section 4.13) which is the only app-shaped corpus: the Apple App Attest generation gate, lyrics generation, the queue/autoplay seed, `clips/clip_roots`, playlist sync tokens, and the whole `visual/*` family with a 200 body for `visual/models`
 **Scope:** Suno web authentication, Studio API, library/feed, generation, media processing, account surfaces, social surfaces, and capture-backed contracts
 
 > **Unofficial and reverse-engineered.** Suno does not publish this API as a
@@ -125,6 +125,17 @@ Additional notation used in the catalog:
    reference. The registered sources, and what each one may and may not
    settle, are in
    [`THIRD-PARTY-IMPLEMENTATIONS.md`](THIRD-PARTY-IMPLEMENTATIONS.md).
+9. The **2026-11-26 mobile-app HAR** governs the **app-shaped variant** of every
+   route it contains (section 4.13). It is our own capture of the iOS client
+   (`Suno/534`, client header `iOS 1.98.0-534`) against the account owner's
+   session, so its requests and responses are `[T1]`. It is a *variant* source
+   in one specific sense and must not be read as a correction: the app still
+   uses the `/api` prefix on `studio-api-prod.suno.com` rather than
+   `suno.com/a/api`, many of its paths omit the trailing slash the web client
+   sends, and it gates generation on Apple App Attest rather than on the web
+   captcha. Both spellings answered `200` on their own capture, so neither
+   form may be normalized into the other here (section 2.2), and no constant in
+   `src/suno/SunoEndpoints.hpp` is re-spelled on this capture's authority.
 
 ### 1.3 Implementation status — a separate axis from evidence
 
@@ -196,6 +207,17 @@ CAPTCHA token flow and durable processing contract are not implemented. The
 B-Side/Orpheus, WAV-conversion, constructed-media, and bundle-only routes remain
 disabled regardless of local UI flags. See
 [`../integration/SUNO.md`](../integration/SUNO.md) for the operational runbook.
+
+**The 2026-11-26 app capture adds the other half of the generation gate, and it
+does not lift it.** The mobile client submits on `POST /api/generate/v2` with
+Apple App Attest assertion headers (`Suno-AppAttest-Platform/-Assertion/-Nonce/
+-Key-Id`) against a nonce from `POST /api/device_attestation/nonce` (section
+5.16). Attestation is hardware-backed and registered with Apple against that
+app's bundle id, so a desktop client cannot produce an assertion at all. That is
+a **closing** fact, not an unblock: it explains why "the phone can generate and
+this client cannot" is not a missing header, and it must never be worked around.
+The web route's gate is still the `/c/check` captcha decision, and neither
+route's gate lifts the other's.
 
 **The media boundary is a decrypt step, not a refusal.** Until 2026-10-22 the
 client selected only `content_type == "mp3"` on the `audiopipe.suno.ai`
@@ -447,6 +469,26 @@ is the **field contract only**: the SSO completion route named by
 [`OBSERVED-LEADS.md`](OBSERVED-LEADS.md). Do not promote that route from this
 observation, and do not assume `strategy` or `action_complete_redirect_url`
 are the only legal values for other providers.
+
+**A second captured `sign_ins` form — the app's silent Google sign-in —
+`[T1]` 2026-11-26.** The mobile client posts the same route as
+`application/x-www-form-urlencoded` with a **two-field** body, `strategy` and
+`token`, where `strategy` was `google_one_tap` and `token` was a Google ID
+token. That is a different field set from the web flow's `strategy` /
+`redirect_url` / `action_complete_redirect_url`, and it does not contradict it:
+the web flow completes a redirect, this one hands Clerk an already-issued
+identity token. The `200` answered the ordinary `sign_in_attempt` envelope
+(`status: "complete"`, `created_session_id`, `is_new_user`) and set the
+`__client` refresh cookie plus `__client_uat` and `sessionid`, so this is a
+**token exchange that never leaves `suno.com`** and is the only captured
+completion of that kind.
+
+Two things it does not establish, and both matter for this client: the ID
+token was minted for the **app's own** Google client (its `azp` names an
+`…apps.googleusercontent.com` iOS client), so a desktop cannot obtain an
+equivalent token for it; and nothing here says a Google ID token issued to any
+other client is accepted. A Google ID token still is not a Suno Studio bearer,
+and none may be placed in `SunoClient`.
 
 **`verify` is a different route from `/v1/verify`.** `POST /v1/client/verify`
 is now `[T1]`; `/v1/verify` is a separate, still-unobserved route with its own
@@ -903,8 +945,9 @@ carries that link plus stem extraction and the persona built from it.
 
 Persona **creation** is captured now, from an uploaded vocal stem, and so is the
 voice-verification chain that gates a voice persona (§5.15). Persona edit and
-visibility are still `[LEAD]`, as are `get-loved-personas/` and
-`get-followed-personas/`.
+visibility are still `[LEAD]`, as is `get-followed-personas/`; the app HAR
+(2026-11-26) captured `GET /persona/get-loved-personas` with the same persona
+objects, so that read is now `[T1]` (§4.13).
 
 No plan matrix, verification requirement, or per-account model limit is canonical
 without a current capture. Persona creation is captured (HAR-11, §5.14); no
@@ -1025,7 +1068,12 @@ the pagination key only.
 | GET | `/api/labs/configs` | Bearer | Lab catalogue; ids `live-radio`, `genre-wheel`, `listen-and-rank`, `milo` | `[T1]` persona HAR 2026-11-06; §4.11 | constant-only |
 | GET | `/api/v2/integrations` | Bearer | In-app connector list; `{connections:[]}` — where an MCP connection appears | `[T1]` persona HAR 2026-11-06; §4.11 | constant-only |
 | POST | `/api/suno_chat/rooms` | Bearer | Create a Suno Chat room; **403 `feature_disabled`** | `[T1]` persona HAR 2026-11-06; §4.11 | constant-only (gated) |
-| GET | `/api/visual/models` | Bearer | Visuals models; **403 `feature_disabled`** | `[T1]` persona HAR 2026-11-06; §4.11 | constant-only (gated) |
+| GET | `/api/visual/models` | Bearer | Visuals model matrix; **403 `feature_disabled`** on 2026-11-06, **200 with the full matrix** on 2026-11-26 (§4.13) | `[T1]` persona HAR 2026-11-06 and app HAR 2026-11-26; §4.11, §5.16 | constant-only (account-gated) |
+| GET | `/api/visual/presets` | Bearer | Suno's own visualizer backgrounds; `{backgrounds:[{group,id,label,ref,imageUrl,width,height}]}` | `[T1]` app HAR 2026-11-26; §5.16 | constant-only |
+| POST | `/api/visual/generations` | Bearer | Visuals generation submit; `{prompt,model,idempotencyKey,aspect,task}` → queued envelope with two takes | `[T1]` app HAR 2026-11-26; §5.16 | constant-only |
+| GET | `/api/visual/generations/{id}` | Bearer | Poll a visual generation; same envelope, `status` `queued`→`running` | `[T1]` app HAR 2026-11-26; §5.16 | constant-only |
+| POST | `/api/visual/assets/uploads` | Bearer | Reserve a reference-image upload; `{bytes,contentType}` → 201 with the target | `[T1]` app HAR 2026-11-26; §5.16 | constant-only |
+| POST | `/api/visual/assets/uploads/{id}/complete` | Bearer | Finalize the reference image; `status:"pending"` (moderation is later) | `[T1]` app HAR 2026-11-26; §5.16 | constant-only |
 | GET | `/api/feature-flags` (legacy base) | Bearer | Feature flags; **401** anonymous. Captured on `suno.com/api`, not `/a/api` | `[T1]` browser 2026-10-24; §4.11 | constant-only |
 | GET | `/api/preferences/{summary,tasks,stats,rewards,leaderboard,profile}` | Bearer | Listen-for-Credits rating program (earns credits) | `[T1]` persona HAR 2026-11-06; §5.15 | constant-only |
 | POST | `/api/preferences/{submit,tasks/release-buffer}` | Bearer | Submit a rating (captcha-gated) / return a claimed task | `[T1]` persona HAR 2026-11-06; §5.15 | constant-only |
@@ -1125,7 +1173,7 @@ Every row answered 200 unless the status column says otherwise.
 | GET | `/a/api/labs/configs` | Lab catalogue; ids `live-radio`, `genre-wheel`, `listen-and-rank`, `milo` | constant-only |
 | GET | `/a/api/v2/integrations` | In-app connector list; `{connections:[]}` here — where an MCP connection appears | constant-only |
 | POST | `/a/api/suno_chat/rooms` | Create a Suno Chat room; **403 `feature_disabled`** for this account | constant-only (gated) |
-| GET | `/a/api/visual/models` | Visuals models; **403 `feature_disabled`** | constant-only (gated) |
+| GET | `/a/api/visual/models` | Visuals models; **403 `feature_disabled` here, 200 with the matrix on 2026-11-26 (§4.13)** | constant-only (account-gated) |
 | GET | `/a/api/generate/cowrite-lyrics/models/` | Cowrite model list; `[]` for this account | constant-only |
 | POST | `/a/api/gen/prompt_image/` | Single cover-art image; `{prompt}` -> `{image_url, image_s3_id, upload_id}` | constant-only |
 | POST | `/a/api/video_gen/action` | Seen/watch telemetry; **204** | not-in-code (deliberate) |
@@ -1229,6 +1277,17 @@ Speech cost 10 credits against a 2-clip-per-generation answer.
 is_file_uploaded}` (signed S3 target); `POST /a/api/uploads/image/{id}/upload-finish/`
 → `{upload_id,moderation_status:"approved"}`.
 
+**The rejection branch is now captured too — `[T1]` 2026-11-26.** The app's
+`POST /uploads/image/{id}/upload-finish` answered `200` with
+`{upload_id, moderation_status:"rejected", moderation_reason:"nudity_sexual"}`
+for an image the server refused. So `moderation_status` has at least the two
+observed members `approved` / `rejected`, `moderation_reason` is present **only
+on the rejection**, and its observed value is a snake_case machine token rather
+than a sentence. Approval itself remains uncaptured on this route: the only
+`approved` value we hold is the web body quoted above, and a client must treat
+"not `rejected`" as unknown rather than as approval. The initializer's body on
+the app is `{"extension":"jpeg"}`, one of the same filename-extension spellings.
+
 **Prompt suggestions (simple mode).**
 `POST /a/api/prompts/suggestions/contextual` `{signature:{has_audio_condition,
 attached_song_count,source_genres[],image_count,has_video,has_lyrics},count:5}`
@@ -1265,6 +1324,96 @@ allowed: `studio-api-prod.suno.com` = prod, `studio-api-staging.suno.com` =
 staging. The current browser surface has moved to `suno.com/a/api`; a
 `studio-api.prod.suno.com/api/forbidden.webm` asset fetch also appears (legacy
 prod asset host).
+
+### 4.13 The 2026-11-26 mobile-app HAR — `[T1]`
+
+Our own capture of the **iOS app** (`Suno/534`, client header
+`iOS 1.98.0-534`), signed in as the account owner. Call it "app HAR". Every
+row below answered `200`, `201`, or `202` unless the table says otherwise, and
+every body quoted is the app's own.
+
+**Three shape facts come before any row**, and each one explains why this
+section does not re-spell a route the web captures already hold:
+
+1. **The host and prefix did not move.** The app calls
+   `https://studio-api-prod.suno.com/api/…` — the old base — not
+   `suno.com/a/api`. The app is a second live consumer of the alias (section
+   2.1, T0336), and its paths are the pre-2026-10-24 spelling.
+2. **Most app paths omit the trailing slash** the web client sends:
+   `/billing/info`, `/playlist/create`, `/persona/get-personas`,
+   `/gen/{id}/aligned_lyrics/v2`, `/uploads/image`. Both spellings answered on
+   their own capture, so neither is "the" spelling and neither may be tidied
+   into the other (section 2.2).
+3. **The app sends no browser headers at all** — no `Origin`, `Referer`,
+   `Browser-Token`, or `Device-Id`. It sends `session-id` (a 64-hex **header**,
+   not a cookie), `X-Suno-Client`, `X-Suno-Timezone`, `X-Suno-Region`,
+   `anonymous-id`, and `Authorization: Bearer`. That set is the app's; its
+   absence from this client is not a defect, and none of these values may be
+   reproduced.
+
+#### Session, lyrics, prompts, chrome
+
+| Method | Path | Body → response |
+|---|---|---|
+| POST | `/api/clerk/v1/client/sessions/{sid}/tokens?_is_native=true` | **Cookie-authenticated, no `Authorization`**, empty body → `{jwt}` plus `Set-Cookie: __session`, `__session_<suffix>`, `__client_uat`, `__client_uat_<suffix>` with **one-hour** expiry. The Clerk mint proxied on the API host (§5.16) |
+| POST | `/api/device_attestation/nonce` | empty → `{nonce}` — the App Attest challenge (§5.16) |
+| POST | `/api/generate/v2` | Attested batch submit, `Suno-AppAttest-*` headers; same batch envelope as `v2-web/` (§5.4, §5.16) |
+| POST | `/api/generate/lyrics` | `{make_instrumental, prompt}` → `{id}` |
+| GET | `/api/generate/lyrics/{id}` | `{text, title, status:"running", error_message}` — poll (§5.16) |
+| POST | `/api/prompts/upsample` | `{original_tags}` → `{upsampled, request_id}` |
+| GET | `/api/cms/create/info-chip` | `{language:"en", platform:"ios"}` — app chrome, not a contract |
+| POST | `/api/user/user_config` | `{}` → publication defaults and player preferences (§5.13) |
+| GET | `/api/billing/info` | Credits/plan envelope; the §5.13 superset, **no trailing slash** |
+
+#### Library, queue, clips, personas, playlists
+
+| Method | Path | Body → response |
+|---|---|---|
+| POST | `/api/queue/start` | `{container_type:"synthetic_playlist", override, queue_id, device_id, version_id, context_id:"my_songs", device_name, seed_item:{content_type,content_id}}` → `{version_id, state:{context_container_type, context_id, injected_items:[]}}` — autoplay/radio seed (§5.16) |
+| GET | `/api/clips/clip_roots?clip_id=…` | `{clips:[], clip_attribution_type:"original"}` — what the clip **is**, the companion of `clips/{id}/attribution` (§5.16) |
+| GET | `/api/clip/{id}` | One clip, no envelope |
+| GET | `/api/gen/{id}/aligned_lyrics/v2` | `{aligned_words:[{word,success,start_s,end_s,p_align}]}`, **no trailing slash** (§5.16) |
+| POST | `/api/playlist/create` | `{name}` → the full 25-key playlist object, **no trailing slash** |
+| POST | `/api/playlist/sync/v2` | `{playlists:{<playlist id>:<token>}}` → `{playlists:[{playlist_id, sync_token}]}` (§5.16) |
+| GET | `/api/persona/get-personas?is_trashed=false` | `{personas:[…]}`, each wrapping its `clip`; **new `is_trashed` query key**, no trailing slash |
+| GET | `/api/persona/get-loved-personas` | `{personas:[…]}`, each with `root_clip_id` and the same wrapped `clip` |
+
+#### Visuals, video-gen, and uploads
+
+| Method | Path | Body → response |
+|---|---|---|
+| GET | `/api/visual/models` | **200**, `{models:[…]}` — the model matrix (§5.16). The 2026-11-06 corpus got `403 feature_disabled` here |
+| GET | `/api/visual/presets` | `{backgrounds:[{group:"visualizer",id,label,ref,imageUrl,width,height}]}` — Suno's own visualizer backgrounds |
+| POST | `/api/visual/generations` | `{prompt, model:"image-1", idempotencyKey, aspect:"9:16", task:"text_to_image"}` → queued envelope with **two takes** (§5.16) |
+| GET | `/api/visual/generations/{id}` | The same envelope, `status:"running"`, `takes[].providerPhase:"queued"` |
+| POST | `/api/visual/assets/uploads` | `{bytes, contentType:"image/jpeg"}` → `201`; the body was 4 131 bytes and is **not reproduced**, so its key set is uncaptured — the asset id appears only in the `{id}` of the follow-up call |
+| POST | `/api/visual/assets/uploads/{id}/complete` | empty → `{contentType, createdAt, id, liked, mediaType, ownerUserId, rev, s3Key, source:"uploaded", status:"pending"}` |
+| POST | `/api/video_gen/image/generate` | `{prompt, quantity, image_gen_category}` → `{batch_id, status:"processing", title, image_ids[]}` |
+| GET | `/api/video_gen/image/generate/{batch_id}` | `{batch_id, prompt_text, status, images:[{id, image_url, status, display_order}]}` — the batch's own poll |
+| POST | `/api/uploads/image` | `{extension:"jpeg"}` → `{id, url, fields}` (signed S3 target) |
+| POST | `/api/uploads/image/{id}/upload-finish` | empty → `{upload_id, moderation_status:"rejected", moderation_reason:"nudity_sexual"}` (§4.12) |
+
+**Two corrections this capture forces on earlier sections.**
+
+1. **`visual/models` is not permanently 403.** Section 4.11 recorded
+   `403 feature_disabled` and section 5.15 told a reader to "record the 403, do
+   not fix it". That was right about the gate and wrong about the route's
+   reachability: the same account answered `200` with the whole matrix three
+   weeks later. A 403 there is an **account/feature gate**, exactly as recorded
+   — but the body exists, so "Visuals aren't available" must not be described as
+   "there is no Visuals API".
+2. **Aligned lyrics keep their section markers inside the first word.**
+   The captured `aligned_words[]` entries carry the line break and the bracket
+   tag on the word that opens a section (`"[Verse 1]\nGet "` followed by
+   `"me "`). A timing consumer that assumes `word` is a bare token will render
+   the section tag as a lyric and mis-time it; strip a leading `[…]` and
+   surrounding whitespace at the boundary rather than inside every word.
+
+**Not recorded, deliberately:** the bearer, the `__session`/`__client`
+cookies, the App Attest assertion/nonce/key id, `anonymous-id`, `session-id`,
+`device_id`, the account id, both clips' ids, the lyrics id, the persona ids,
+and every `cdn*.suno.ai` URL in the bodies. The bodies were read for field
+names, the envelope wrapper, statuses, and counts only.
 
 ## 5. Capture-backed contracts
 
@@ -1503,7 +1652,12 @@ exceptions**:
 | `encoding` | `1.0.0` | 40 |
 
 `mp3` occurs **zero** times in those bodies, and `audiopipe.suno.ai` occurs
-**zero** times anywhere in that corpus's captures. Two distinctions matter and
+**zero** times anywhere in that corpus's captures. The app HAR (2026-11-26,
+§4.13) is a **third corpus and agrees on both**: its `media_urls[]` entries are
+`m4a-opus` / `progressive` / `encoding "1.0.0"` on the same CloudFront host, and
+its legacy `audio_url` is the same `/api/forbidden` sentinel — a sentinel served
+from the API host itself, which is a second reason never to treat a non-empty
+`audio_url` as playable. Two distinctions matter and
 neither is a demotion:
 
 - **Corpus, not host, is the axis.** The `audiopipe.suno.ai` rows and the
@@ -1618,6 +1772,18 @@ threshold, and that is exactly as far as it goes:
 
 Do not assume captcha is required for every account/request: call the captured
 flow and handle both decisions.
+
+**The app's submission route is a different route behind a different gate —
+`[T1]` 2026-11-26.** The mobile client posts `POST /api/generate/v2` (not
+`v2-web/`) with `Suno-AppAttest-Platform`, `Suno-AppAttest-Assertion`,
+`Suno-AppAttest-Nonce`, and `Suno-AppAttest-Key-Id`, after taking a nonce from
+`POST /api/device_attestation/nonce` (§5.16). The batch envelope it answers is
+the same one the web route answers (`id`, `clips[]`, `batch_size`, `status`,
+`created_at`), with `status: "running"` and two clips on a `batch_size: 2`. That
+does **not** make the two routes interchangeable: the assertion is
+hardware-backed and registered with Apple against that app's bundle id, so a
+desktop cannot mint one, and the app's route is not a way around the web
+captcha. Generation submission stays not wired, now for both captured routes.
 
 **Generation submission — `[T1]`**
 
@@ -2249,6 +2415,239 @@ Chat isn't available right now.","retryable":false}` and
 `{connections: []}`, which is the in-app connector list and the surface where an
 MCP connection would appear.
 
+**`visual/models` was re-observed open on 2026-11-26 — the gate is per account,
+and the body exists.** The same account answered `200` with the whole model
+matrix (§4.13, §5.16), so the correct reading of the 403 above is "this account
+may not use Visuals *now*", never "there is no Visuals API", and the matrix —
+not a document — is where a client must learn what a visual model can do.
+
+### 5.16 The app's gates and its new families — `[T1]` 2026-11-26
+
+All bodies below are the app's own (section 4.13). Only `clips/clip_roots` is
+wired; everything else is recorded and deliberately not called, and the App
+Attest pair is recorded precisely **because** it must never be.
+
+#### App Attest — the app-side generation gate
+
+```http
+POST /api/device_attestation/nonce
+Authorization: Bearer …            session-id: …        X-Suno-Client: iOS …
+(no body)                          -> 200 {"nonce": "<opaque>"}
+
+POST /api/generate/v2
+Suno-AppAttest-Platform: ios
+Suno-AppAttest-Assertion: <assertion>
+Suno-AppAttest-Nonce: <nonce>
+Suno-AppAttest-Key-Id: <key id>
+Authorization: Bearer …            anonymous-id: …      X-Suno-Region: CA
+```
+
+The response is the batch envelope section 5.4 describes — `id`, `clips[]`,
+`batch_size: 2`, `status: "running"`, `created_at` — so the *pipeline* is the
+same and only the **gate** differs.
+
+**What the assertion is, and why this client never tries.** Apple App Attest
+assertions are produced inside the app by a hardware-backed key that Apple
+provisioned for that installation and bound to the app's own bundle id, and the
+server validates them against Apple. A desktop process can neither mint one nor
+ask Apple for one on another app's behalf. That makes this gate **unpassable by
+construction**, not by missing work, and it is the honest answer to "the phone
+can generate and this client cannot": the phone holds an attestation key.
+
+Three things it does **not** establish: whether the assertion is also required
+for non-generation writes (only the generation submit was observed), the
+assertion's lifetime or the key-id lifecycle, and whether `nonce` is
+single-use. Do not build on any of them.
+
+#### Lyrics generation — `generate/lyrics`, not co-write
+
+```json
+POST /api/generate/lyrics
+{"make_instrumental": false,
+ "prompt": "[Verse 1]\n…"}                       -> {"id": "<lyrics id>"}
+
+GET  /api/generate/lyrics/{id}
+   -> {"text": "", "title": "", "status": "running", "error_message": ""}
+```
+
+This is a **different product** from `generate/cowrite-lyrics` (§4.4): co-write
+returns an edited version of text the user supplied in one shot, while this one
+*generates* from a prompt and is polled. The observed poll was `running` with an
+empty `error_message`, so the terminal `status` value is not captured — and
+"anything that is not `running` is done" is not evidence either. Treat a
+non-empty `error_message` as the failure branch regardless of `status`.
+
+#### The autoplay seed — `queue/start`
+
+```json
+POST /api/queue/start
+{"container_type": "synthetic_playlist", "override": false,
+ "queue_id": "<uuid>", "device_id": "<64 hex>",
+ "version_id": "<uuid>", "context_id": "my_songs",
+ "device_name": "Apple iPhone",
+ "seed_item": {"content_type": "clip", "content_id": "<clip id>"}}
+
+-> {"version_id": "<uuid>",
+    "state": {"context_container_type": "synthetic_playlist",
+              "context_id": "my_songs", "injected_items": [],
+              "version_id": "<uuid>"}}
+```
+
+`queue_id` and `version_id` were **client-minted** UUIDs (both fresh), `device_id`
+a 64-hex value, and `context_id` the literal `"my_songs"`. The response's
+`version_id` was a **different** UUID from the one sent, so the server's queue
+version is its own — do not assume the client's was accepted. Two traps:
+`injected_items: []` is the *injected* set, so an empty array does **not** mean
+the queue is empty — the seed rides in `seed_item`; and only `override: false` is
+captured, so what `true` replaces is unproven. There is **no captured queue
+read**: this route starts one, and nothing here says how a client would list what
+it chose.
+
+#### `clips/clip_roots` — what the clip *is*
+
+```json
+GET /api/clips/clip_roots?clip_id=<clip id>
+-> {"clips": [], "clip_attribution_type": "original"}
+```
+
+The companion of `clips/{id}/attribution` (§4.6), from the other side.
+Attribution says "derived from what"; this says "is it a root at all", and its
+observed answer for an original song is an **empty `clips[]` together with
+`"original"`** — a real answer, not a failed read. `"original"` is the only
+`clip_attribution_type` value captured, so the derived value is unknown and must
+not be guessed from the field's name. This is the one family below that *is*
+wired: `SunoClipDetailService::parseRoots` keeps an absent array distinct from
+an empty one, and a missing type renders as nothing rather than as "original".
+
+#### Playlist sync tokens — `playlist/sync/v2`
+
+```json
+POST /api/playlist/sync/v2
+{"playlists": {"<playlist id>": "<base64 token>"}}
+-> {"playlists": [{"playlist_id": "<id>", "sync_token": "<base64 token>"}]}
+```
+
+The token is opaque and server-issued, and the observed answer **carried back
+the same token the request sent** — an echo, not a demonstrated new version.
+That is weaker than it looks: the capture shows a round trip and does **not**
+show how a token is minted, advanced, or invalidated. What the route is *for* is
+therefore entirely uncaptured, and nothing beyond storing and echoing a token
+back may be built on it.
+
+#### Visuals — the matrix, and one generation
+
+`GET /visual/models` answered `200` with `{models:[{id, label, tier, mediaType,
+provider, description, resolutions, aspects, durations, chainedDurations,
+defaultTakes, maxTakes, maxPromptChars, maxReferenceImages, referenceMode,
+tasks[], plans[], staffOnly, credits}]}`. The observed matrix:
+
+| Model | Media | Tier | Resolution | Tasks | Credits | Prompt cap |
+|---|---|---|---|---|---|---|
+| `video-1` | video | Fast | 480p | `text_to_video`, `image_to_video`, `extend` | `perSecond.480p` 15 | 30 000 |
+| `video-2` | video | Standard | 720p | same | `perSecond.720p` 30 | 30 000 |
+| `image-1` | image | Fast | — | `text_to_image`, `image_edit` | `perGeneration` 1 | 800 |
+| `image-2` | image | Standard | — | same | `perGeneration` 25 | 47 199 |
+| `image-4` | image | Max | — | same | `perGeneration` 50 | 47 199 |
+
+Video entries carried `durations` 5–15 s, `chainedDurations` `[30,60]`,
+`referenceMode: "first_last"`, and `maxReferenceImages: 2`; image entries
+carried `referenceMode: "references"` and up to 4 references. `defaultTakes` and
+`maxTakes` were both `2` everywhere. **Credits are per-model server data**:
+never derive a cost from a tier name, and never read `perGeneration` as the
+per-song credit cost the session catalog describes.
+
+One submit, two takes:
+
+```json
+POST /visual/generations
+{"prompt": "…", "model": "image-1",
+ "idempotencyKey": "<client uuid>", "aspect": "9:16",
+ "task": "text_to_image"}
+
+-> {"aspect": "9:16", "id": "gen_…", "mediaType": "image",
+    "model": "image-1", "origin": "visual", "prompt": "…",
+    "requestId": "req_…", "rev": 3, "runId": "<uuid>",
+    "status": "queued", "takeCount": 2,
+    "takes": [{"creationId": "crt_…", "take": 1, "status": "pending"}],
+    "credits": {"charged": 0, "refunded": 0, "reserved": 1},
+    "eta": {"expectedMs": 10634, "predictedAt": …, "level": "learned"},
+    "task": "text_to_image", "createdAt": …, "updatedAt": …}
+
+GET /visual/generations/{id}
+-> the same envelope, "status": "running",
+   "takes": [{"creationId": "crt_…", "take": 1, "providerPhase": "queued"}]
+```
+
+**A request is two generations.** `takeCount: 2`, two `creationId`s, and one
+`credits.reserved: 1` per request — so a UI must show the take count *before*
+submitting, and must not reuse `idempotencyKey` for a second attempt. The `eta`
+envelope is a server prediction, not a promise. Nothing shows a completed
+generation (no image URL was reached), nothing shows `image_edit`, and no video
+task body was captured — so this family stays **read-only research** until one
+completes.
+
+#### Reference-image upload, and the batch cover-art poll
+
+`POST /visual/assets/uploads` `{bytes, contentType:"image/jpeg"}` answered `201`
+with a body this excerpt does **not** reproduce (4 131 bytes), so the
+initializer's key set is uncaptured; the only id observed is the one
+`POST /visual/assets/uploads/{id}/complete` is called on. That call answered
+`{contentType, createdAt, id, liked, mediaType, ownerUserId, rev, s3Key,
+source:"uploaded", status:"pending"}`. `status: "pending"` on completion is the
+load-bearing part: moderation is a later state, so "complete" means "uploaded",
+not "usable".
+
+`POST /video_gen/image/generate` answered `{batch_id, status:"processing",
+title, image_ids[]}` and `GET /video_gen/image/generate/{batch_id}` the
+`{images:[{id, image_url, status, display_order}]}` body — the ids arrive before
+the URLs, so a caller polls and never constructs a URL (§5.15).
+
+#### The Clerk mint on the API host
+
+```http
+POST /api/clerk/v1/client/sessions/{sid}/tokens?_is_native=true
+Cookie: __client_uat=…; __client_uat_…=…; __session=…; __session_…=…
+(no Authorization, no body)
+-> 200 {"jwt": "<access token>"}
+   Set-Cookie: __session=…; __session_…=…; __client_uat=…; __client_uat_…=…
+```
+
+Three facts and one non-fact. It is **same-host** (the API host proxies Clerk),
+so it is the app's way to refresh without a cross-origin Clerk call. It is
+**cookie-authenticated only** — no `Authorization` header was sent, and the
+mint's credential is the refresh cookie. And the access-token lifetime is again
+**one hour** (`exp - iat` exactly 3600 s, and `Set-Cookie` one hour out). What
+it does not establish: whether `_is_native=true` is required or merely
+diagnostic, and whether this route accepts a cookie the `auth.suno.com` flow
+would reject. This client keeps its captured **tokens-first, touch-fallback**
+order on `auth.suno.com` (§3.1, Appendix A); this is a third variant, recorded
+and not wired.
+
+#### Persona reads — `is_trashed` and `get-loved-personas`
+
+`GET /persona/get-personas?is_trashed=false` answered `{personas:[…]}`, and
+`GET /persona/get-loved-personas` the same array without a query key. Each entry
+carries the persona's own fields **plus `root_clip_id` and a fully nested
+`clip`** (the `song_schema` again), which is what makes a persona list
+renderable without a second read per row. `is_trashed` was the only query key
+observed on the list, and `false` is the only value captured — so a "show
+trashed personas" view has no captured contract.
+
+**What section 4.13 does not settle.** Whether the app's attestation gate also
+covers non-generation writes; the terminal status of a lyrics generation; how a
+started queue is read back; what `override: true` replaces; the derived value of
+`clip_attribution_type`; what a playlist sync token is for; a completed
+`visual/generations` (image URL, edit, video task); and whether
+`_is_native=true` is required. Each is a capture target, not an inference.
+
+One extrapolation is load-bearing enough to name separately: **every app route
+above was captured on `studio-api-prod`, and `clips/clip_roots` is the only one
+this client calls on `API_BASE`.** The two bases are byte-identical for the
+routes probed on both (T0336), but this route was not among them, so its
+spelling on `suno.com/a/api` is `[VERIFY]` while the route itself is `[T1]`. The
+wired caller settles the section empty on any non-2xx, so a base variant costs
+one request per sheet — not a wrong answer.
+
 ## 6. Errors, statuses, and rate limits
 
 ### 6.1 What the captures establish
@@ -2396,3 +2795,8 @@ no owner.
 | Progressive media host and content type | The 2026-09-24 clip objects returned `mp3`/`webm-opus` over `streaming` on `audiopipe.suno.ai`, while the 2026-09-30 feed bodies returned `m4a-opus` over `progressive` on the CloudFront origin in 40 of 40 entries with no `mp3` and no `audiopipe` occurrence. Two captures of two accounts disagree about the default. | **Both observations stand as `[T1]`**; they are different corpora, not a correction of one another. The recon's 40-entry observation is the only evidence for which form is *observed as the default*, and the client's `mp3`-plus-`audiopipe` filter therefore rejects 100% of it (section 5.3). `audiopipe.suno.ai` does appear inside the recon's client bundles as a hostname regex and a constructed URL template, which is `[LEAD]` and does not affect its `[T1]` row in section 2.1. | **Unresolved which is served to a given account; both captured** |
 | Notification routes vs current client bundle | `/api/notification/v2`, `/v2/badge-count`, and `/v2/read` are `[T1]` from the 2026-08-25/2026-09-24 request-response exports and all three are `wired`, yet two passes over ~96 client-bundle chunks found **zero** `/api/notification*` strings. | The captures are real, so the rows stay `[T1]` and nothing is demoted: section 6.2's rule that absence from the bundle is evidence of client-side disuse rather than server removal applies symmetrically. What the negative changes is handling, not status — degrade a failing notification surface to a visible error state rather than deleting the service on a static negative, and do not present it as working. One authenticated probe settles it. | **Unresolved — captured routes, uncorroborated by the current client** |
 | Library mutation request contracts | This master and the backlog both treated library and playlist mutations as needing a fresh human capture. | **Request** contracts are `[T1]` — recovered from server validation errors, 64 write endpoints probed, and the library/playlist subset is canonical in section 5.9. **Response** shapes were not captured, and `playlist/create/`, `playlist/trash/` and `gen/{id}/set_metadata/` response rows are captured in §5.13 and §4.10; `gen/trash` answered 200 on a restore-to-library click on 2026-11-06 (§4.12): existence `[T1]`, body confirmed from the owner's HAR. `POST /api/clips/delete/` answered 404. Recovered bodies are **flat** (section 1.5). | **Resolved for requests; playlist/create/trash + `gen/trash` response shapes captured; trash verbs wired (T0383)** |
+| `visual/models` availability | §4.11 and §5.15 record `403 feature_disabled "Visuals aren't available right now."` for the 2026-11-06 session and instruct a reader to record the gate; the 2026-11-26 app capture gets `200` with the whole model matrix. | **Both are `[T1]`.** The 403 is an **account/feature gate on that session**, and the 200 is the body that route returns when the gate is open (§4.13, §5.16). Neither demotes the other: "the gate is closed here" and "the route and its body exist" are different claims. Consequence: describe Visuals as *account-gated*, never as *non-existent*, and read the gate from `visual/models` at runtime rather than from a stored 403. | **Resolved — gate vs existence separated** |
+| Generation submission route and gate | The web corpora capture `POST /api/generate/v2-web/` behind the `/c/check` captcha decision (§5.4). The 2026-11-26 app capture submits on `POST /api/generate/v2` with Apple App Attest headers after `POST /api/device_attestation/nonce`. | **Two routes, two gates, neither interchangeable** (§4.13, §5.16). The batch envelope is shared; the gate is not, and neither lifts the other. App Attest is hardware-backed and bound to the app's bundle id, so a desktop client cannot pass the app's gate, and that is a permanent boundary rather than missing work. Both routes stay not wired. | **Resolved — distinct routes; app gate unpassable outside the app** |
+| Trailing slash on the app base | Every earlier corpus is a web/browser capture and spells these paths with a trailing slash (`/billing/info/`, `/playlist/create/`, `/persona/get-personas/`, `/gen/{id}/aligned_lyrics/v2/`, `/uploads/image/`); the 2026-11-26 app capture calls each **without** one and gets `200`. | **Both spellings are `[T1]` on their own capture**, and §2.2 forbids adding or removing one automatically. So the constants in `src/suno/SunoEndpoints.hpp` keep the web spelling, no slash-less twin is added for a route that already exists, and a client that needs the app spelling must capture *its own* call rather than infer it from this row. | **Unresolved which the router prefers — both observed** |
+| `persona/get-loved-personas` | §4.7 listed `get-loved-personas/` as `[LEAD]` alongside `get-followed-personas/`. | The 2026-11-26 app capture directly observed `GET /persona/get-loved-personas` answering `{personas:[…]}` with `root_clip_id` and a nested `clip` per entry (§4.13). Promoted to `[T1]`; `get-followed-personas/` remains `[LEAD]` and must not be promoted from this neighbour. | **Resolved `[T1]` for loved; followed still `[LEAD]`** |
+| `sign_ins` form fields | §3.2 records the web flow's three fields (`strategy`, `redirect_url`, `action_complete_redirect_url`) with `strategy: oauth_google`; the 2026-11-26 app capture posts **two** fields, `strategy: google_one_tap` and `token` (a Google ID token), and completes the sign-in without any redirect. | Both are `[T1]` point-in-time variants of one route, and neither is a hybrid of the other (§3.2). The app's token exchange is the only captured completion that never leaves `suno.com`, and its ID token is scoped to the app's own Google client — so it is not a desktop sign-in path. A Google ID token is still not a Studio bearer. | **Resolved as two variants; desktop use unproven** |

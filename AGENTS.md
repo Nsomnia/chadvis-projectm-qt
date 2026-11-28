@@ -91,7 +91,7 @@ clang-format -i <files>                  # root .clang-format
 ./scripts/check-workflows.py             # after editing .github/workflows/
 ./scripts/check-safe-tests.py
 ./scripts/check-thread-handoffs.py
-./scripts/check-endpoints.py --baseline 97
+./scripts/check-endpoints.py --baseline 111
 ./scripts/check-test-asserts.py
 ./scripts/check-integration-fresh.py
 ```

@@ -57,6 +57,41 @@ private slots:
         QVERIFY(sources->isEmpty());
     }
 
+    void clipRootsSayWhatTheClipIs()
+    {
+        // Captured 2026-11-26: `{clips:[...], clip_attribution_type}` is the
+        // same question as attribution from the other side -- what it IS.
+        const QJsonObject root{
+                {QStringLiteral("clip_attribution_type"), QStringLiteral("original")},
+                {QStringLiteral("clips"),
+                 QJsonArray{clipJson(QStringLiteral("root-1"),
+                                     QStringLiteral("the original"))}}};
+        const auto roots = SunoClipDetailService::parseRoots(root);
+        QVERIFY(roots.has_value());
+        QCOMPARE(roots->attributionType, QStringLiteral("original"));
+        QCOMPARE(roots->clips.size(), 1);
+        QCOMPARE(QString::fromStdString(roots->clips.at(0).id), QStringLiteral("root-1"));
+    }
+
+    void anEmptyRootListIsAnAnswerAndSilenceIsNotOriginal()
+    {
+        // An original answers an EMPTY list plus "original". That is a real
+        // answer; a body that never carried the key is not, and must not be
+        // rendered as one.
+        const auto original = SunoClipDetailService::parseRoots(
+                QJsonObject{{QStringLiteral("clip_attribution_type"),
+                             QStringLiteral("original")},
+                            {QStringLiteral("clips"), QJsonArray{}}});
+        QVERIFY(original.has_value());
+        QVERIFY(original->clips.isEmpty());
+        QCOMPARE(original->attributionType, QStringLiteral("original"));
+
+        const auto silent = SunoClipDetailService::parseRoots(QJsonObject{});
+        QVERIFY(silent.has_value());
+        QVERIFY(silent->clips.isEmpty());
+        QVERIFY(silent->attributionType.isEmpty());
+    }
+
     void commentsReadTheNestedAuthorAndTheFlatFallback()
     {
         const QJsonObject root{

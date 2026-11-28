@@ -60,6 +60,14 @@ solely in [`../suno_api/ENDPOINT-INVENTORY.md`](../suno_api/ENDPOINT-INVENTORY.m
 
 - Generation requires the captured captcha decision and runtime model catalog.
   Missing fields must block submission rather than be replaced with guesses.
+- **Two submission routes are captured, with two different gates, and neither
+  gate lifts the other's.** The web route (`POST /api/generate/v2-web/`) is the
+  one this client would call, behind the `/c/check` captcha decision. The
+  mobile app's route (`POST /api/generate/v2`) is gated on Apple App Attest: an
+  assertion is hardware-backed and registered with Apple against that app's own
+  bundle id, so a desktop client can neither produce one nor legitimately
+  acquire one. Never attempt to satisfy an attestation, and never treat the
+  app's route as a way around the web gate (`ENDPOINT-INVENTORY.md` §5.16).
 - A submitted batch is not complete until a directly observed read surface shows
   playable output.
 - The captured audio-upload transport is initialize → direct multipart storage
@@ -68,6 +76,10 @@ solely in [`../suno_api/ENDPOINT-INVENTORY.md`](../suno_api/ENDPOINT-INVENTORY.m
 - Temporary upload URLs and policy fields are secrets. Use them once, do not log
   or persist them, and never hard-code the storage host as a substitute for the
   returned URL.
+- An image upload's `moderation_status` is the gate, and the captured rejection
+  carried a `moderation_reason`. The app HAR captured a rejected image; nothing
+  in the corpus shows an approved one, so treat approval as unproven and surface
+  a rejection with its reason rather than as a generic failure.
 
 ## Lyrics and karaoke
 

@@ -238,10 +238,10 @@ an evidence statement.
 
 | Method | Path | Auth | Purpose | Evidence | Implemented |
 |---|---|---|---|---|---|
-| POST? | `/api/generate/v2/` | Bearer? | Non-web generation variant | `[LEAD]` old inventory/topic prose | not-in-code |
+| POST | `/api/generate/v2` | Bearer + App Attest | The app's generation submit; same batch envelope as `v2-web/` | **promoted `[T1]` 2026-11-26**, app HAR; master §4.13/§5.16 — the lead row's trailing slash is not the captured spelling, and the gate is unpassable outside the app | constant-only |
 | POST? | `/api/generate/cowrite-lyrics/models/` | Bearer? | Co-writing model discovery | `[LEAD]` loose normalized scan | not-in-code |
-| POST? | `/api/generate/lyrics/` | Bearer? | Start lyrics-generation job | `[LEAD]` old topic prose; not exercised in reviewed capture | not-in-code |
-| GET? | `/api/generate/lyrics/{id}` | Bearer? | Poll lyrics-generation job | `[LEAD]` old topic prose; not exercised in reviewed capture | not-in-code |
+| POST | `/api/generate/lyrics` | Bearer | Start a lyrics-generation job; `{make_instrumental, prompt}` -> `{id}` | **promoted `[T1]` 2026-11-26**, app HAR; master §4.13/§5.16 — no trailing slash on the app | constant-only |
+| GET | `/api/generate/lyrics/{id}` | Bearer | Poll the lyrics job; `{text, title, status, error_message}` | **promoted `[T1]` 2026-11-26**, app HAR; master §5.16 — only `running` observed | constant-only |
 | POST? | `/api/generate/lyrics-infill` | Bearer? | Lyrics infill, no trailing slash | `[LEAD]` raw scan | not-in-code |
 | POST? | `/api/generate/lyrics-infill/` | Bearer? | Lyrics infill, trailing slash | `[LEAD]` raw scan; do not alias automatically | not-in-code |
 | POST? | `/api/generate/lyrics-mashup` | Bearer? | Lyrics mashup | `[LEAD]` raw scan/topic prose | not-in-code |
@@ -362,7 +362,7 @@ three-leg audio upload stay in the master.
 | GET? | `/api/clips/displayable_remixes_count` | Bearer? | Displayable-remix count | `[LEAD]` old inventory/topic prose | not-in-code |
 | GET? | `/api/clips/displayable_user_remixes_for_clip/` | Bearer? | Displayable user remixes for a clip | `[LEAD]` old inventory/topic prose | not-in-code |
 | GET? | `/api/clips/user_remixes_for_clip/` | Bearer? | User remixes for a clip | `[LEAD]` old inventory/topic prose | not-in-code |
-| GET? | `/api/clips/clip_roots` | Bearer? | Clip roots | `[LEAD]` loose normalized scan | not-in-code |
+| GET | `/api/clips/clip_roots` | Bearer | What the clip IS: `{clips[], clip_attribution_type}`; an empty list plus `"original"` is a real answer | **promoted `[T1]` 2026-11-26**, app HAR; master §4.13/§5.16 — wired (`SunoClipDetailService::parseRoots`) | wired |
 | POST? | `/api/clips/reverse-clip/` | Bearer? | Reverse clip | `[LEAD]` loose normalized scan | not-in-code |
 | GET? | `/api/clip/{clip_id}/stems` | Bearer? | Stem metadata | `[LEAD]` old inventory/topic prose | not-in-code |
 | GET? | `/api/clip/{clip_id}/stems/pages` | Bearer? | Paged stem data | `[LEAD]` old inventory/topic prose | not-in-code |
@@ -429,7 +429,7 @@ Master section: 4.7. The captured pending-custom-model route stays in the master
 | POST | `/api/persona/create/` | Bearer | Create persona | **promoted `[T1]` 2026-11-06**, HAR-11; master §4.10/§5.14 | constant-only |
 | GET | `/api/persona/get-personas/` | Bearer | User personas | **promoted `[T1]` 2026-11-06**, HAR-11; master §4.10 | constant-only |
 | GET? | `/api/persona/get-followed-personas/` | Bearer? | Followed personas | `[LEAD]` old inventory/topic prose | not-in-code |
-| GET? | `/api/persona/get-loved-personas/` | Bearer? | Loved personas | `[LEAD]` old inventory/topic prose | not-in-code |
+| GET | `/api/persona/get-loved-personas` | Bearer | Loved personas; `{personas:[…]}` each with `root_clip_id` and a nested `clip` | **promoted `[T1]` 2026-11-26**, app HAR; master §4.13/§5.16 — no trailing slash on the app | constant-only |
 | GET? | `/api/persona/get-persona-paginated/{id}/` | Bearer? | Paginated persona surface | `[LEAD]` old inventory/topic prose | not-in-code |
 | POST? | `/api/custom-model/create/` | Bearer?/entitlement? | Create custom model | `[LEAD]` old inventory/topic prose; training schema unproved | not-in-code |
 | POST? | `/api/custom-model/archive/` | Bearer?/entitlement? | Archive custom model | `[LEAD]` old inventory/topic prose | not-in-code |

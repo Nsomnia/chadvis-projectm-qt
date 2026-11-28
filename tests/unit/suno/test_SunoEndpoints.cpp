@@ -115,6 +115,24 @@ constexpr std::array kAllEndpoints{
         NamedEndpoint{"ORCHESTRATOR_HISTORY", ORCHESTRATOR_HISTORY},
         NamedEndpoint{"CDN_CLIP_MP3", CDN_CLIP_MP3},
         NamedEndpoint{"CDN_CLIP_M4A", CDN_CLIP_M4A},
+        // 2026-11-26 mobile-app capture (ENDPOINT-INVENTORY §4.13/§5.16). The
+        // App Attest pair is listed even though nothing may ever call it: an
+        // uncatalogued path is what makes the URL-shape sweep miss a route.
+        NamedEndpoint{"DEVICE_ATTESTATION_NONCE", DEVICE_ATTESTATION_NONCE},
+        NamedEndpoint{"GENERATE_V2", GENERATE_V2},
+        NamedEndpoint{"LYRICS_GENERATE", LYRICS_GENERATE},
+        NamedEndpoint{"LYRICS_GENERATE_BY_ID", LYRICS_GENERATE_BY_ID},
+        NamedEndpoint{"QUEUE_START", QUEUE_START},
+        NamedEndpoint{"CLIP_ROOTS", CLIP_ROOTS},
+        NamedEndpoint{"PLAYLIST_SYNC_V2", PLAYLIST_SYNC_V2},
+        NamedEndpoint{"VISUAL_GENERATIONS", VISUAL_GENERATIONS},
+        NamedEndpoint{"VISUAL_GENERATION_BY_ID", VISUAL_GENERATION_BY_ID},
+        NamedEndpoint{"VISUAL_ASSETS_UPLOADS", VISUAL_ASSETS_UPLOADS},
+        NamedEndpoint{"VISUAL_ASSETS_UPLOAD_COMPLETE", VISUAL_ASSETS_UPLOAD_COMPLETE},
+        NamedEndpoint{"VISUAL_PRESETS", VISUAL_PRESETS},
+        NamedEndpoint{"VIDEO_GEN_IMAGE_POLL", VIDEO_GEN_IMAGE_POLL},
+        NamedEndpoint{"CMS_INFO_CHIP", CMS_INFO_CHIP},
+        NamedEndpoint{"PERSONA_GET_LOVED", PERSONA_GET_LOVED},
 };
 
 constexpr std::array kStudioApiPaths{
@@ -149,6 +167,13 @@ constexpr std::array kStudioApiPaths{
         UPLOADS_IMAGE, UPLOADS_IMAGE_UPLOAD_FINISH,
         PROMPTS_SUGGESTIONS_CONTEXTUAL, STATSIG_FORKED_ONBOARDING,
         CMS_NUDGES_PUBLISH, CMS_NUDGES_SHARE, SHARE_STATS, REALTIME_DISCOVER,
+        // 2026-11-26 mobile-app capture. Root-relative and never `/api`-prefixed,
+        // which is the property this sweep exists to hold.
+        DEVICE_ATTESTATION_NONCE, GENERATE_V2,
+        LYRICS_GENERATE, LYRICS_GENERATE_BY_ID, QUEUE_START, CLIP_ROOTS,
+        PLAYLIST_SYNC_V2, VISUAL_GENERATIONS, VISUAL_GENERATION_BY_ID,
+        VISUAL_ASSETS_UPLOADS, VISUAL_ASSETS_UPLOAD_COMPLETE, VISUAL_PRESETS,
+        VIDEO_GEN_IMAGE_POLL, CMS_INFO_CHIP, PERSONA_GET_LOVED,
 };
 
 std::size_t occurrences(std::string_view text, std::string_view needle) {
