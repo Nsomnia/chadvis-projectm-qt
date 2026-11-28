@@ -8,6 +8,23 @@ This is the canonical changelog for ChadVis. It follows [Keep a Changelog](https
 
 ### Added
 
+- **Local lyrics transcription: whisper.cpp behind a subprocess, not a vendored library.**
+  `src/lyrics/WhisperTranscriber.{hpp,cpp}` drives `whisper-cli` (`-oj -ml 1`) over an audio file
+  that is already on disk and returns per-word timings the karaoke renderer and the ASS burn-in
+  already consume. This is the aligner `lyric timing`'s header named as the wall: a song whose
+  lyrics arrived with no timing, or with no text at all, can now be fixed locally instead of by
+  re-asking Suno. A subprocess keeps a 1.5 GB model and whisper's own build out of this tree, and
+  makes the feature *absent* rather than broken when the binary is missing — `isAvailable()` is
+  the question, never a crash. Parsing (`parseWhisperJson`) is separate from the driver because it
+  is the only part with a contract worth testing, and it is tested with no binary and no model.
+  Interpolation is labelled rather than hidden: a one-word segment is measured, a multi-word one is
+  divided across its own bounds and every word it yields carries `interpolated` / `confidence 0.5`.
+  **Not charged as alignment**: matching whisper's text to Suno's lyrics is forced alignment and is
+  explicitly not claimed. Also here: `CHADVIS_UNITY_BUILD` (opt-in, off by default, documented as a
+  cold-build win and an incremental loss) and `<variant>`/`<source_location>` in the PCH — the
+  header correction `docs/dev/BUILD-SPEED.md` measured. **Not verified in this session**: no build
+  ran. First gate is `./build.sh --fast --tests`, then `TestWhisperTranscriber`.
+
 - **Two silent type mismatches in the app capture, and the download meter it proves.**
   Field pass over the same 2026-11-26 iOS HAR that T0473 took the routes from; recorded in
   [`docs/suno_api/APP-HAR-2026-11-26-SCHEMA-DELTAS.md`](docs/suno_api/APP-HAR-2026-11-26-SCHEMA-DELTAS.md).

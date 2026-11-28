@@ -50,7 +50,11 @@
 #include <map>
 #include <memory>
 #include <optional>
+// Reached through util/Result.hpp in ~183 TUs and absent here, which is the one
+// header correction docs/dev/BUILD-SPEED.md measured as worth making.
+#include <source_location>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>

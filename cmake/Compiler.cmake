@@ -172,6 +172,31 @@ endif()
 # the exact translation units being compiled: its cache entries are large, keyed
 # on flags that change constantly, and hit essentially never across a run.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Unity builds (opt-in)
+#
+# docs/dev/BUILD-SPEED.md measured the shape of this build: ~350 TUs on a
+# 2-physical-core box, and the cost is per-TU parse, moc and link -- not the
+# scheduler. Batching 8 TUs per unity file cuts the count to ~44, parsing each
+# batch's headers once.
+#
+# OFF by default, and that is the honest default: a unity batch turns an
+# eight-file edit into a one-TU edit, so the incremental loop that this project
+# actually lives in gets *worse* while a cold full build gets better. Turn it on
+# for CI and for a from-scratch build, not for editing.
+#
+# Known hazard, unchanged by this option: unity files concatenate sources into
+# one TU, so two .cpp files that both define the same `static`-like name in
+# distinct anonymous namespaces are fine, and two that define the same *external*
+# symbol were already a link error.
+option(CHADVIS_UNITY_BUILD
+       "Batch translation units into unity files (faster cold builds, coarser incremental)" OFF)
+if(CHADVIS_UNITY_BUILD)
+    set(CMAKE_UNITY_BUILD ON)
+    set(CMAKE_UNITY_BUILD_BATCH_SIZE 8 CACHE STRING "Translation units per unity batch")
+    message(STATUS "unity build: on, batch size ${CMAKE_UNITY_BUILD_BATCH_SIZE}")
+endif()
+
 option(CHADVIS_CCACHE "Compile through ccache when available" ON)
 
 if(CHADVIS_CCACHE AND NOT CHADVIS_SANITIZER AND NOT CMAKE_CXX_COMPILER_LAUNCHER)

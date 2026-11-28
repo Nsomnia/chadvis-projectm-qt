@@ -1567,3 +1567,20 @@ items below are what that first build will make obvious, plus the follow-ups the
       **Not verified**: no build ran. First gate `./build.sh --fast --tests`, then
       `test_ClipParser::appCaptureMetadataReadsNumbersAndNestedSliders`.
 
+- [?] T0476 **Local transcription: whisper.cpp as a subprocess; the PCH and unity knobs BUILD-SPEED measured** (`src/lyrics/WhisperTranscriber.*`, `cmake/Sources.cmake`, `cmake/Compiler.cmake`, `src/pch.hpp`, `tests/unit/lyrics/test_WhisperTranscriber.cpp`, `tests/unit/{CMakeLists.txt,test_main.cpp}`) #feature #perf
+      `LyricTiming.hpp` names the wall: assigning onsets to words needs an acoustic model, and
+      refuses to fake it. This is that model, reached as a **child process** (`whisper-cli -oj
+      -ml 1`) rather than a linked library — no 1.5 GB model in-tree, no second build system,
+      and the feature is absent rather than broken where the binary is missing.
+      `parseWhisperJson` / `toLyricsData` are split from the driver because they are the only
+      parts with a contract, so the suite needs no binary and no model. Interpolation is
+      labelled (`WhisperWord::interpolated`, `confidence 0.5`), never presented as measured
+      onset. **Not claimed**: aligning whisper's text to Suno's lyrics is forced alignment.
+      Next: config keys (`whisper_executable`, `whisper_model`, language) and a
+      `LyricsBridge` entry point — both need a `ConfigData` field and a QML surface, so they
+      are deliberately not half-wired here.
+      Build side (doc, not measured): `CHADVIS_UNITY_BUILD` opt-in with batch 8, and
+      `<variant>`/`<source_location>` added to `src/pch.hpp`.
+      **Not verified**: no build ran. Gate: `./build.sh --fast --tests`, then
+      `TestWhisperTranscriber`, then `./build.sh --fast -DCHADVIS_UNITY_BUILD=ON` once.
+

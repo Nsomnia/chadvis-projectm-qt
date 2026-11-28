@@ -585,6 +585,28 @@ list(APPEND LYRICS_SOURCES
 )
 
 # ─────────────────────────────────────────────────────────────
+# LOCAL TRANSCRIPTION — src/lyrics/WhisperTranscriber.{hpp,cpp}
+# (appended 2026-11-27)
+#
+# The other half of the timing gap LyricTiming.hpp names: a song whose lyrics
+# arrived without timings, or with no text at all, could only be fixed by
+# re-asking Suno. `WhisperTranscriber` drives whisper.cpp's CLI as a child
+# process and produces word timings from the audio that is already on disk.
+#
+# Appended rather than merged into the literal for the same non-globbing reason
+# as the blocks above: `TargetSetup.cmake` names each `*_SOURCES` set explicitly
+# and never globs, so a new set() would be silently dropped.
+#
+# Not gated on anything. It links no whisper library -- the dependency is a
+# binary that is probed at run time and may simply be absent, which is why this
+# compiles everywhere the rest of the tree does.
+# ─────────────────────────────────────────────────────────────
+list(APPEND LYRICS_SOURCES
+    src/lyrics/WhisperTranscriber.hpp
+    src/lyrics/WhisperTranscriber.cpp
+)
+
+# ─────────────────────────────────────────────────────────────
 # CAPTURED HOSTS + FEATURE GATES — the gate subsystem (appended 2026-10-05)
 #
 # The ninth and tenth instances of this project's undeclared-source trap, recorded

@@ -53,6 +53,7 @@ add_executable(unit_tests
     lyrics/test_LyricsPipeline.cpp
     lyrics/test_LyricsExport.cpp
     lyrics/test_LyricTiming.cpp
+    lyrics/test_WhisperTranscriber.cpp
     util/test_PathSafety.cpp
     qml_bridge/test_SunoBridge.cpp
     qml_bridge/test_SunoMutationsSection.cpp

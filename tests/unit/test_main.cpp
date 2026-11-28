@@ -51,6 +51,7 @@ int runTestSunoWorkspace(int argc, char** argv);
 int runTestLyricsPipeline(int argc, char** argv);
 int runTestLyricsExport(int argc, char** argv);
 int runTestLyricTiming(int argc, char** argv);
+int runTestWhisperTranscriber(int argc, char** argv);
 int runTestPcmFormat(int argc, char** argv);
 int runTestLoudnessAnalysis(int argc, char** argv);
 int runTestPathSafety(int argc, char** argv);
@@ -144,6 +145,7 @@ int main(int argc, char* argv[]) {
     status |= RUN_SUITE(TestLyricsPipeline);
     status |= RUN_SUITE(TestLyricsExport);
     status |= RUN_SUITE(TestLyricTiming);
+    status |= RUN_SUITE(TestWhisperTranscriber);
     status |= RUN_SUITE(TestPcmFormat);
     status |= RUN_SUITE(TestLoudnessAnalysis);
     status |= RUN_SUITE(TestPathSafety);
